@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>送迎日誌 - yawaragi</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-size:14px}
+.controls{background:#2c5f8a;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
+.controls h1{font-size:18px;margin-right:8px}
+.controls input[type="date"]{font-size:15px;padding:4px 8px;border:none;border-radius:4px}
+.controls button{padding:6px 14px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold}
+.btn-nav{background:#fff;color:#2c5f8a}
+.btn-nav:hover{background:#e0e0e0}
+.btn-export{background:#4caf50;color:#fff}
+.btn-export:hover{background:#388e3c}
+.btn-import{background:#7b1fa2;color:#fff}
+.btn-import:hover{background:#6a1b9a}
+.btn-setting{background:#ff9800;color:#fff}
+.btn-setting:hover{background:#f57c00}
+.sync-status{font-size:12px;margin-left:4px;cursor:pointer}
+.summary{background:#e8f0fe;padding:8px 16px;font-size:13px;display:flex;gap:20px;flex-wrap:wrap;border-bottom:1px solid #ccc}
+.summary span{font-weight:bold}
+.no-data{text-align:center;padding:60px 20px;color:#888;font-size:16px}
+.grid-container{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
+.section{background:#fff;border:1px solid #ccc;border-radius:6px;overflow:hidden}
+.section-header{padding:6px 10px;font-weight:bold;font-size:14px;color:#fff;display:flex;justify-content:space-between}
+.am-pick .section-header{background:#1565c0}
+.pm-pick .section-header{background:#c62828}
+.am-drop .section-header{background:#2e7d32}
+.pm-drop .section-header{background:#6a1b9a}
+.section table{width:100%;border-collapse:collapse;font-size:12px}
+.section th,.section td{border:1px solid #ddd;padding:3px 5px;text-align:center;white-space:nowrap}
+.section th{background:#f5f5f5;font-weight:bold}
+.row-label{background:#fafafa;font-weight:bold;text-align:left;padding-left:8px;width:60px;min-width:60px}
+.vehicle-header{background:#fff3e0;font-weight:bold;font-size:11px}
+.driver-cell{background:#e3f2fd;font-size:11px}
+.rider-cell{background:#f3e5f5;font-size:11px}
+.time-input{width:52px;border:1px solid #aaa;border-radius:3px;text-align:center;font-size:13px;padding:2px;font-weight:bold;background:#fffde7}
+.time-input:focus{outline:2px solid #ff9800;background:#fff}
+.user-name{font-size:11px;text-align:center;cursor:pointer;user-select:none}
+.user-name:hover{background:#e3f2fd}
+.user-absent{text-decoration:line-through;color:#aaa;background:#f5f5f5}
+.user-absent:hover{background:#ffebee}
+.user-num{color:#999;font-size:10px;width:20px;text-align:center}
+.no-transport{background:#fff;border:1px solid #ccc;border-radius:6px;margin:0 12px 8px;padding:10px 14px}
+.no-transport h3{font-size:13px;margin-bottom:6px;color:#555}
+.no-transport .nt-list{font-size:12px;display:flex;gap:16px;flex-wrap:wrap}
+.no-transport .nt-item{padding:2px 8px;border-radius:10px;font-size:11px;cursor:pointer}
+.nt-walk{background:#e3f2fd;color:#1565c0}
+.nt-family{background:#e8f5e9;color:#2e7d32}
+.remarks-area{background:#fff;border:1px solid #ccc;border-radius:6px;margin:0 12px 12px;padding:10px 14px}
+.remarks-area h3{font-size:13px;margin-bottom:6px;color:#555}
+.remarks-area textarea{width:100%;height:60px;border:1px solid #ccc;border-radius:4px;padding:6px;font-size:13px;resize:vertical}
+.rider-input{width:48px;border:1px solid #ccc;border-radius:3px;text-align:center;font-size:11px;padding:1px;background:#fce4ec}
+.toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:6px;color:#fff;font-weight:bold;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s}
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:8px;padding:24px;max-width:500px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.modal h2{font-size:16px;margin-bottom:12px;color:#2c5f8a}
+.modal p{font-size:13px;color:#555;margin-bottom:12px;line-height:1.6}
+.modal input[type="text"]{width:100%;padding:8px;border:2px solid #ccc;border-radius:4px;font-size:14px;margin-bottom:12px}
+.modal input[type="text"]:focus{border-color:#2c5f8a;outline:none}
+.modal-buttons{display:flex;gap:8px;justify-content:flex-end}
+.modal-buttons button{padding:8px 20px;border:none;border-radius:4px;font-size:14px;font-weight:bold;cursor:pointer}
+.modal-btn-ok{background:#2c5f8a;color:#fff}
+.modal-btn-cancel{background:#eee;color:#333}
+
+@media print {
+  @page { size: A4 portrait; margin: 5mm; }
+  body { background: #fff; font-size: 11px; }
+  .controls, .toast, .modal-overlay { display: none !important; }
+  .summary { background: none; border-bottom: 1px solid #000; padding: 4px 8px; }
+  .grid-container { gap: 8px; padding: 4px; }
+  .section { border: 1px solid #000; border-radius: 0; }
+  .section table { font-size: 10px; }
+  .section th, .section td { border: 1px solid #000 !important; padding: 2px 4px; }
+  .section th { background: #eee !important; }
+  .section-header { color: #000 !important; background: #ddd !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .time-input { border: none; background: none; font-size: 10px; }
+  .rider-input { border: none; background: none; font-size: 10px; }
+  .no-transport { border: 1px solid #000; border-radius: 0; }
+  .remarks-area { border: 1px solid #000; border-radius: 0; }
+  .remarks-area textarea { border: 1px solid #000; }
+  .user-absent { text-decoration: line-through; color: #999; }
+}
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <h1>送迎日誌</h1>
+  <button class="btn-nav" onclick="changeDate(-1)">&#9664;前日</button>
+  <input type="date" id="dateInput">
+  <button class="btn-nav" onclick="changeDate(1)">翌日&#9654;</button>
+  <button class="btn-nav" onclick="window.print()" style="background:#43a047;color:#fff">印刷</button>
+  <button class="btn-export" onclick="exportJSON()">保存</button>
+  <button class="btn-import" onclick="document.getElementById('importFile').click()">読込</button>
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
+  <button class="btn-setting" id="btnSetting" onclick="showSettingModal()">設定</button>
+  <button class="btn-nav" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="background:#e3f2fd;color:#1565c0;border-color:#1976d2">📋 利用者台帳</button>
+  <span class="sync-status" id="syncStatus" onclick="manualSync()"></span>
+</div>
+
+<div class="summary" id="summary"></div>
+
+<div id="mainContent">
+  <div class="no-data" id="noData">日付を選択してください</div>
+
+  <div class="grid-container" id="gridContainer" style="display:none">
+    <div class="section am-pick" id="secAmPick">
+      <div class="section-header"><span>午前 迎え</span><span id="cntAmPick"></span></div>
+      <div id="tblAmPick"></div>
+    </div>
+    <div class="section pm-pick" id="secPmPick">
+      <div class="section-header"><span>午後 迎え</span><span id="cntPmPick"></span></div>
+      <div id="tblPmPick"></div>
+    </div>
+    <div class="section am-drop" id="secAmDrop">
+      <div class="section-header"><span>午前 送り</span><span id="cntAmDrop"></span></div>
+      <div id="tblAmDrop"></div>
+    </div>
+    <div class="section pm-drop" id="secPmDrop">
+      <div class="section-header"><span>午後 送り</span><span id="cntPmDrop"></span></div>
+      <div id="tblPmDrop"></div>
+    </div>
+  </div>
+
+  <div class="no-transport" id="noTransport" style="display:none">
+    <h3>送迎なし（徒歩・家族送迎）</h3>
+    <div class="nt-list" id="ntList"></div>
+  </div>
+
+  <div class="remarks-area" id="remarksArea" style="display:none">
+    <h3>特記事項（ヒヤリハット・体調変化等）</h3>
+    <textarea id="remarksText" placeholder="特記事項があれば記入..." oninput="scheduleSave()"></textarea>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DAILY_OPS_KEY = 'yawaragi_daily_ops';
+const NISSHI_KEY = 'yawaragi_sougei_nisshi';
+const GAS_URL_KEY = 'yawaragi_nisshi_gas_url';
+
+const VEHICLE_NAMES = {
+  'ス':'ステップワゴン','シS':'シエンタS','シW':'シエンタW','モ':'モコ','キ':'キューブ'
+};
+
+const TIME_BASE = {
+  amPick: { h:8, m:55, range:5 },
+  pmPick: { h:13, m:25, range:5 },
+  amDrop: { h:12, m:1, range:2 },
+  pmDrop: { h:16, m:31, range:2 }
+};
+
+// 利用者名の正規化（全角・半角スペース除去）
+function normName(n){ return (n||'').replace(/[\s\u3000]/g,''); }
+
+let currentDate = '';
+let nisshiData = {};
+let saveTimer = null;
+let cloudSaveTimer = null;
+let gasUrl = '';
+let isSyncing = false;
+
+// ===== オンライン同期 =====
+function getGasUrl(){
+  return localStorage.getItem(GAS_URL_KEY) || '';
+}
+
+function setGasUrl(url){
+  localStorage.setItem(GAS_URL_KEY, url);
+  gasUrl = url;
+}
+
+async function cloudSave(){
+  if(!gasUrl || isSyncing) return;
+  isSyncing = true;
+  updateSyncStatus('syncing');
+  try {
+    const payload = {
+      nisshi: {}
+    };
+    // 現在の日付のデータだけ送信（軽量化）
+    if(currentDate && nisshiData[currentDate]){
+      payload.nisshi[currentDate] = nisshiData[currentDate];
+    }
+    await fetch(gasUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    updateSyncStatus('ok');
+  } catch(e){
+    console.error('クラウド保存エラー:', e);
+    updateSyncStatus('error');
+  } finally {
+    isSyncing = false;
+  }
+}
+
+function scheduleCloudSave(){
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(cloudSave, 2000);
+}
+
+// ページ離脱時に未送信データを確実に送信
+function flushCloudSave(){
+  if(!gasUrl || !currentDate || !nisshiData[currentDate]) return;
+  if(cloudSaveTimer) clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = null;
+  const payload = { nisshi: {} };
+  payload.nisshi[currentDate] = nisshiData[currentDate];
+  try {
+    navigator.sendBeacon(gasUrl, JSON.stringify(payload));
+  } catch(e){
+    fetch(gasUrl, { method:'POST', mode:'no-cors', body: JSON.stringify(payload), keepalive: true });
+  }
+}
+window.addEventListener('beforeunload', function(){ flushCloudSave(); });
+window.addEventListener('pagehide', function(){ flushCloudSave(); });
+
+async function cloudLoad(){
+  if(!gasUrl) return false;
+  updateSyncStatus('syncing');
+  try {
+    const sep = gasUrl.includes('?') ? '&' : '?';
+    // 日誌データと出勤＆送迎表データを並行取得
+    const [res, opsRes] = await Promise.all([
+      fetch(gasUrl + sep + 'action=getData&t=' + Date.now()),
+      fetch(gasUrl + sep + 'action=getOps&t=' + Date.now())
+    ]);
+    // 日誌データの反映（ローカルの方が新しければ上書きしない）
+    if(res.ok){
+      const data = await res.json();
+      if(data && data.nisshi){
+        Object.entries(data.nisshi).forEach(([date, val]) => {
+          if(!nisshiData[date]){
+            nisshiData[date] = val;
+          } else {
+            const localMod = nisshiData[date]._lastModified || 0;
+            const cloudMod = (val && val._lastModified) || 0;
+            if(cloudMod > 0 && cloudMod > localMod){
+              nisshiData[date] = val;
+            }
+          }
+        });
+        localStorage.setItem(NISSHI_KEY, JSON.stringify(nisshiData));
+      }
+    }
+    // 出勤＆送迎表データの反映（iPadでも利用者が表示されるように）
+    // ローカルの方が新しいデータは上書きしない（タイムスタンプ比較）
+    if(opsRes.ok){
+      const opsData = await opsRes.json();
+      if(opsData && opsData.dailyOps){
+        const existing = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
+        Object.entries(opsData.dailyOps).forEach(([date, val]) => {
+          if(!existing[date]){
+            // ローカルにデータなし → GASデータを採用
+            existing[date] = val;
+          } else {
+            const localMod = existing[date]._lastModified || 0;
+            const cloudMod = (val && val._lastModified) || 0;
+            if(cloudMod > 0 && cloudMod > localMod){
+              // GASの方が確実に新しい場合のみ上書き
+              existing[date] = val;
+            }
+          }
+        });
+        localStorage.setItem(DAILY_OPS_KEY, JSON.stringify(existing));
+      }
+    }
+    updateSyncStatus('ok');
+    return true;
+  } catch(e){
+    console.error('クラウド読込エラー:', e);
+    updateSyncStatus('error');
+  }
+  return false;
+}
+
+async function manualSync(){
+  if(!gasUrl){ showSettingModal(); return; }
+  const loaded = await cloudLoad();
+  if(loaded){
+    loadDate();
+    showToast('最新データを取得しました', '#4caf50');
+  }
+}
+
+function updateSyncStatus(status){
+  const el = document.getElementById('syncStatus');
+  if(!el) return;
+  switch(status){
+    case 'ok':
+      el.textContent = '● オンライン';
+      el.style.color = '#81c784';
+      el.title = 'クリックで手動更新';
+      break;
+    case 'syncing':
+      el.textContent = '● 同期中...';
+      el.style.color = '#fff';
+      el.title = '同期中';
+      break;
+    case 'error':
+      el.textContent = '● 同期エラー';
+      el.style.color = '#ef5350';
+      el.title = 'クリックで再試行';
+      break;
+    default:
+      el.textContent = '● オフライン';
+      el.style.color = '#bbb';
+      el.title = '設定からURLを登録してください';
+  }
+}
+
+// ===== 設定モーダル =====
+function showSettingModal(){
+  const existing = document.getElementById('settingModal');
+  if(existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'settingModal';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>オンライン同期の設定</h2>
+      <p>Google Apps ScriptのURLを貼り付けてください。<br>
+      （社長から教えてもらったURLです）</p>
+      <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/..." value="${escHtml(gasUrl)}">
+      <div class="modal-buttons">
+        <button class="modal-btn-cancel" onclick="closeSettingModal()">キャンセル</button>
+        <button class="modal-btn-ok" onclick="saveSettingModal()">保存</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('gasUrlInput').focus();
+}
+
+function closeSettingModal(){
+  const m = document.getElementById('settingModal');
+  if(m) m.remove();
+}
+
+async function saveSettingModal(){
+  const url = document.getElementById('gasUrlInput').value.trim();
+  if(url && !url.startsWith('https://script.google.com/')){
+    showToast('Google Apps ScriptのURLを入力してください', '#e53935');
+    return;
+  }
+  setGasUrl(url);
+  closeSettingModal();
+  if(url){
+    const loaded = await cloudLoad();
+    if(loaded) loadDate();
+    showToast('設定を保存しました。オンライン同期が有効です。', '#4caf50');
+  } else {
+    updateSyncStatus('none');
+    showToast('オンライン同期を無効にしました', '#ff9800');
+  }
+}
+
+// ===== 初期化 =====
+async function init(){
+  loadNisshi();
+  gasUrl = getGasUrl();
+  if(gasUrl){
+    const loaded = await cloudLoad();
+    if(loaded) {
+      // クラウドからデータ取得成功
+    }
+  } else {
+    updateSyncStatus('none');
+  }
+  const d = document.getElementById('dateInput');
+  const now = new Date();
+  d.value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  d.addEventListener('change', loadDate);
+  loadDate();
+  startAutoRefresh();
+}
+
+// ===== 自動更新（30秒ごと） =====
+let autoRefreshTimer = null;
+function startAutoRefresh(){
+  if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(async () => {
+    if(!gasUrl || document.hidden || isSyncing) return;
+    const loaded = await cloudLoad();
+    if(loaded) loadDate();
+  }, 30000);
+}
+document.addEventListener('visibilitychange', async () => {
+  if(document.hidden){
+    flushCloudSave();
+  } else if(gasUrl && !isSyncing){
+    const loaded = await cloudLoad();
+    if(loaded) loadDate();
+  }
+});
+
+function loadNisshi(){
+  try{ nisshiData = JSON.parse(localStorage.getItem(NISSHI_KEY)) || {}; }
+  catch(e){ nisshiData = {}; }
+}
+
+// ===== 出勤＆送迎表 → 日誌スナップショット変換 =====
+function snapshotFromOps(ops){
+  const snap = { amPick:{}, pmPick:{}, amDrop:{}, pmDrop:{}, noTransport:[], summary:{}, remarks:'' };
+
+  function extractRoutes(routes){
+    if(!routes) return [];
+    return routes.filter(r => r.stops && r.stops.some(s => s.user && s.user.trim()))
+      .map(r => ({
+        vehicle: r.vehicle || '',
+        driver: r.driver || '',
+        rider: r.rider || '',
+        users: r.stops.filter(s => s.user && s.user.trim()).map(s => normName(s.user))
+      }));
+  }
+
+  const am = ops.am || {};
+  const pm = ops.pm || {};
+
+  snap.amPick.routes = extractRoutes(am.pick);
+  snap.pmPick.routes = extractRoutes(pm.pick);
+  snap.amDrop.routes = extractRoutes(am.drop);
+  snap.pmDrop.routes = extractRoutes(pm.drop);
+
+  ['amPick','pmPick','amDrop','pmDrop'].forEach(sk => {
+    snap[sk].times = snap[sk].routes.map((_,i) => generateRandomTime(sk, i));
+    snap[sk].riders = snap[sk].routes.map(r => r.rider);
+  });
+
+  function collectNT(us, unit){
+    if(!us) return;
+    Object.entries(us).forEach(([name, status]) => {
+      if(status === 'walk') snap.noTransport.push({name, status:'徒歩', unit});
+      if(status === 'family') snap.noTransport.push({name, status:'家族送迎', unit});
+    });
+  }
+  collectNT(am.userStatus, '午前');
+  collectNT(pm.userStatus, '午後');
+
+  let amTotal = (am.users||[]).length, pmTotal = (pm.users||[]).length;
+  let amAbsent=0, pmAbsent=0, amTrial=0, pmTrial=0;
+  Object.values(am.userStatus||{}).forEach(s => { if(s==='absent') amAbsent++; if(s==='trial') amTrial++; });
+  Object.values(pm.userStatus||{}).forEach(s => { if(s==='absent') pmAbsent++; if(s==='trial') pmTrial++; });
+  snap.summary = { amTotal, pmTotal, amAbsent:0, pmAbsent:0, amTrial, pmTrial };
+
+  // 欠席者を自動でabsentに設定（グレーアウト連携）
+  snap.absent = {};
+  Object.entries(am.userStatus||{}).forEach(([name, status]) => {
+    if(status === 'absent') snap.absent[normName(name)] = true;
+  });
+  Object.entries(pm.userStatus||{}).forEach(([name, status]) => {
+    if(status === 'absent') snap.absent[normName(name)] = true;
+  });
+
+  return snap;
+}
+
+// ===== 日付読み込み =====
+function loadDate(){
+  currentDate = document.getElementById('dateInput').value;
+  if(!currentDate) return;
+
+  let dayData = nisshiData[currentDate];
+
+  // 常に出勤＆送迎表の最新データを反映（ルート・欠席・ドライバー等）
+  // 備考(remarks)とランダム生成済みの時間(times)は保持
+  const allOps = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
+  const ops = allOps[currentDate];
+  if(ops){
+    const oldRemarks = dayData ? dayData.remarks : '';
+    const oldAbsent = dayData ? dayData.absent : {};
+    const oldTimes = {};
+    if(dayData){
+      ['amPick','pmPick','amDrop','pmDrop'].forEach(sk => {
+        if(dayData[sk] && dayData[sk].times) oldTimes[sk] = dayData[sk].times;
+      });
+    }
+    dayData = snapshotFromOps(ops);
+    if(oldRemarks) dayData.remarks = oldRemarks;
+    // 送迎日誌で設定した欠席情報を復元（出勤＆送迎表の欠席とマージ）
+    if(oldAbsent && Object.keys(oldAbsent).length > 0){
+      Object.entries(oldAbsent).forEach(([name, val]) => {
+        if(val) dayData.absent[name] = true;
+      });
+    }
+    // 既存のランダム時間を復元（ルート数が同じ場合のみ）
+    ['amPick','pmPick','amDrop','pmDrop'].forEach(sk => {
+      if(oldTimes[sk] && dayData[sk] && dayData[sk].routes &&
+         oldTimes[sk].length === dayData[sk].routes.length){
+        dayData[sk].times = oldTimes[sk];
+      }
+    });
+    nisshiData[currentDate] = dayData;
+    localStorage.setItem(NISSHI_KEY, JSON.stringify(nisshiData));
+    scheduleCloudSave();
+  }
+
+  if(!dayData || !dayData.amPick || !dayData.amPick.routes || dayData.amPick.routes.length === 0){
+    document.getElementById('noData').textContent = 'この日のデータがありません。先に「出勤＆送迎表」でデータを入力してください。';
+    document.getElementById('noData').style.display = 'block';
+    document.getElementById('gridContainer').style.display = 'none';
+    document.getElementById('noTransport').style.display = 'none';
+    document.getElementById('remarksArea').style.display = 'none';
+    document.getElementById('summary').innerHTML = '';
+    return;
+  }
+
+  // 既存データにabsentがない場合、出勤＆送迎表から欠席者を復元
+  if(!dayData.absent || Object.keys(dayData.absent).length === 0){
+    const allOps = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
+    const ops = allOps[currentDate];
+    if(ops){
+      const am = ops.am || {};
+      const pm = ops.pm || {};
+      dayData.absent = {};
+      Object.entries(am.userStatus||{}).forEach(([name, status]) => {
+        if(status === 'absent') dayData.absent[normName(name)] = true;
+      });
+      Object.entries(pm.userStatus||{}).forEach(([name, status]) => {
+        if(status === 'absent') dayData.absent[normName(name)] = true;
+      });
+      if(Object.keys(dayData.absent).length > 0){
+        nisshiData[currentDate] = dayData;
+        localStorage.setItem(NISSHI_KEY, JSON.stringify(nisshiData));
+        scheduleCloudSave();
+      }
+    }
+  }
+
+  // 過去データの時間補正（旧rangeで生成された時間を再生成）
+  let timeFixed = false;
+  ['amDrop','pmDrop'].forEach(sk => {
+    if(!dayData[sk] || !dayData[sk].times) return;
+    dayData[sk].times = dayData[sk].times.map((t, i) => {
+      const newTime = generateRandomTime(sk, i);
+      if(t !== newTime){ timeFixed = true; return newTime; }
+      return t;
+    });
+  });
+  if(timeFixed){
+    nisshiData[currentDate] = dayData;
+    localStorage.setItem(NISSHI_KEY, JSON.stringify(nisshiData));
+    scheduleCloudSave();
+  }
+
+  document.getElementById('noData').style.display = 'none';
+  document.getElementById('gridContainer').style.display = 'grid';
+  document.getElementById('remarksArea').style.display = 'block';
+  render(dayData);
+}
+
+function changeDate(offset){
+  const d = new Date(currentDate || new Date());
+  d.setDate(d.getDate() + offset);
+  document.getElementById('dateInput').value = d.toISOString().slice(0,10);
+  loadDate();
+}
+
+// ===== 描画 =====
+function render(dayData){
+  const absent = dayData.absent || {};
+  const cAmP = renderSection('tblAmPick', dayData.amPick, 'pick', 'amPick', absent);
+  const cPmP = renderSection('tblPmPick', dayData.pmPick, 'pick', 'pmPick', absent);
+  const cAmD = renderSection('tblAmDrop', dayData.amDrop, 'drop', 'amDrop', absent);
+  const cPmD = renderSection('tblPmDrop', dayData.pmDrop, 'drop', 'pmDrop', absent);
+
+  document.getElementById('cntAmPick').textContent = cAmP + '名';
+  document.getElementById('cntPmPick').textContent = cPmP + '名';
+  document.getElementById('cntAmDrop').textContent = cAmD + '名';
+  document.getElementById('cntPmDrop').textContent = cPmD + '名';
+
+  const amUsers = new Set();
+  const pmUsers = new Set();
+  (dayData.amPick.routes||[]).forEach(r => r.users.forEach(u => amUsers.add(u)));
+  (dayData.amDrop.routes||[]).forEach(r => r.users.forEach(u => amUsers.add(u)));
+  (dayData.pmPick.routes||[]).forEach(r => r.users.forEach(u => pmUsers.add(u)));
+  (dayData.pmDrop.routes||[]).forEach(r => r.users.forEach(u => pmUsers.add(u)));
+  (dayData.noTransport || []).forEach(it => {
+    if(it.unit === '午前') amUsers.add(it.name);
+    if(it.unit === '午後') pmUsers.add(it.name);
+  });
+  let nisshiAmAbsent = 0, nisshiPmAbsent = 0;
+  Object.keys(absent).forEach(name => {
+    if(amUsers.has(name)) nisshiAmAbsent++;
+    if(pmUsers.has(name)) nisshiPmAbsent++;
+  });
+
+  renderNoTransport(dayData.noTransport || [], absent);
+  renderSummary(dayData.summary || {}, cAmP, cPmP, cAmD, cPmD, nisshiAmAbsent, nisshiPmAbsent);
+
+  document.getElementById('remarksText').value = dayData.remarks || '';
+}
+
+function renderSection(containerId, secData, type, sectionKey, absent){
+  const routes = secData.routes || [];
+  if(routes.length === 0){
+    document.getElementById(containerId).innerHTML = '<div style="padding:10px;color:#999;text-align:center;font-size:12px">ルートなし</div>';
+    return 0;
+  }
+
+  absent = absent || {};
+  let totalUsers = 0;
+  const maxUsers = Math.max(...routes.map(r => r.users.length));
+
+  let h = '<table>';
+
+  h += '<tr><th class="row-label"></th>';
+  routes.forEach(r => {
+    h += `<th class="vehicle-header">${VEHICLE_NAMES[r.vehicle]||r.vehicle}</th>`;
+  });
+  h += '</tr>';
+
+  h += '<tr><th class="row-label">運転手</th>';
+  routes.forEach(r => {
+    h += `<td class="driver-cell">${escHtml(r.driver)}</td>`;
+  });
+  h += '</tr>';
+
+  h += '<tr><th class="row-label">添乗者</th>';
+  routes.forEach((r,i) => {
+    const riderVal = (secData.riders && secData.riders[i] != null) ? secData.riders[i] : (r.rider||'');
+    h += `<td class="rider-cell"><input type="text" class="rider-input" data-section="${sectionKey}" data-index="${i}" value="${escHtml(riderVal)}" placeholder="-" oninput="scheduleSave()"></td>`;
+  });
+  h += '</tr>';
+
+  const timeLabel = type === 'pick' ? '到着' : '出発';
+  h += `<tr><th class="row-label">${timeLabel}</th>`;
+  routes.forEach((r,i) => {
+    const timeVal = (secData.times && secData.times[i]) ? secData.times[i] : '';
+    h += `<td><input type="text" class="time-input" data-section="${sectionKey}" data-index="${i}" value="${timeVal}" placeholder="00:00" oninput="formatTimeInput(this)" onchange="scheduleSave()"></td>`;
+  });
+  h += '</tr>';
+
+  h += `<tr><th class="row-label" style="background:#f0f0f0">利用者</th>`;
+  routes.forEach(() => { h += '<th style="background:#f0f0f0;font-size:10px">名前</th>'; });
+  h += '</tr>';
+
+  for(let i = 0; i < maxUsers; i++){
+    h += `<tr><td class="user-num">${i+1}</td>`;
+    routes.forEach(r => {
+      const user = r.users[i] || '';
+      if(user){
+        const isAbsent = absent[user];
+        if(!isAbsent) totalUsers++;
+        const cls = isAbsent ? 'user-name user-absent' : 'user-name';
+        h += `<td class="${cls}" data-user="${escHtml(user)}" onclick="toggleAbsent(this)" title="タップで欠席/出席切替">${escHtml(user)}</td>`;
+      } else {
+        h += '<td></td>';
+      }
+    });
+    h += '</tr>';
+  }
+
+  h += '</table>';
+  document.getElementById(containerId).innerHTML = h;
+  return totalUsers;
+}
+
+function renderNoTransport(items, absent){
+  const el = document.getElementById('noTransport');
+  if(items.length === 0){
+    el.style.display = 'none';
+    return;
+  }
+  absent = absent || {};
+  el.style.display = 'block';
+  document.getElementById('ntList').innerHTML = items.map(it => {
+    const cls = it.status === '徒歩' ? 'nt-walk' : 'nt-family';
+    const absentStyle = absent[it.name] ? 'text-decoration:line-through;opacity:0.5' : '';
+    return `<span class="nt-item ${cls}" style="${absentStyle}" data-user="${escHtml(it.name)}" onclick="toggleAbsent(this)" title="タップで欠席/出席切替">${it.unit}：${escHtml(it.name)}（${it.status}）${absent[it.name]?'【欠席】':''}</span>`;
+  }).join('');
+}
+
+function renderSummary(sum, cAmP, cPmP, cAmD, cPmD, nisshiAmAbsent, nisshiPmAbsent){
+  let html = '';
+  const totalAmAbsent = nisshiAmAbsent || 0;
+  const totalPmAbsent = nisshiPmAbsent || 0;
+  const amCount = (sum.amTotal||0) - totalAmAbsent;
+  const pmCount = (sum.pmTotal||0) - totalPmAbsent;
+  html += `<span>午前: ${amCount}名`;
+  if(totalAmAbsent) html += `（欠席${totalAmAbsent}）`;
+  if(sum.amTrial) html += `（体験${sum.amTrial}）`;
+  html += '</span>';
+  html += `<span>午後: ${pmCount}名`;
+  if(totalPmAbsent) html += `（欠席${totalPmAbsent}）`;
+  if(sum.pmTrial) html += `（体験${sum.pmTrial}）`;
+  html += '</span>';
+  html += `<span>送迎: 迎え${cAmP+cPmP}名 / 送り${cAmD+cPmD}名</span>`;
+  document.getElementById('summary').innerHTML = html;
+}
+
+// ===== 欠席切替 =====
+function toggleAbsent(el){
+  if(!currentDate || !nisshiData[currentDate]) return;
+  collectInputs();
+  const day = nisshiData[currentDate];
+  const name = el.dataset.user;
+  if(!name) return;
+  if(!day.absent) day.absent = {};
+  if(day.absent[name]){
+    delete day.absent[name];
+  } else {
+    day.absent[name] = true;
+  }
+  render(day);
+  scheduleSave();
+}
+
+// ===== 保存 =====
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNisshi, 500);
+}
+
+function collectInputs(){
+  if(!currentDate || !nisshiData[currentDate]) return;
+  const day = nisshiData[currentDate];
+  ['amPick','pmPick','amDrop','pmDrop'].forEach(sk => {
+    if(!day[sk]) return;
+    const times = [];
+    const riders = [];
+    document.querySelectorAll(`.time-input[data-section="${sk}"]`).forEach(el => {
+      times[parseInt(el.dataset.index)] = el.value;
+    });
+    document.querySelectorAll(`.rider-input[data-section="${sk}"]`).forEach(el => {
+      riders[parseInt(el.dataset.index)] = el.value;
+    });
+    day[sk].times = times;
+    day[sk].riders = riders;
+  });
+  day.remarks = document.getElementById('remarksText').value;
+}
+
+function saveNisshi(){
+  collectInputs();
+  if(currentDate && nisshiData[currentDate]){
+    nisshiData[currentDate]._lastModified = Date.now();
+  }
+  localStorage.setItem(NISSHI_KEY, JSON.stringify(nisshiData));
+  scheduleCloudSave();
+}
+
+// ===== 手動エクスポート・インポート =====
+function exportJSON(){
+  const dates = Object.keys(nisshiData).sort();
+  if(dates.length === 0){
+    showToast('保存するデータがありません', '#e53935');
+    return;
+  }
+
+  const exportData = {
+    type: 'yawaragi_sougei_nisshi_backup',
+    exportDate: new Date().toISOString(),
+    nisshi: nisshiData
+  };
+
+  const from = dates[0];
+  const to = dates[dates.length - 1];
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `送迎日誌_${from}_${to}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  showToast(`${dates.length}日分のデータを保存しました`, '#4caf50');
+}
+
+function importJSON(event){
+  const file = event.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const data = JSON.parse(e.target.result);
+      if(data.type !== 'yawaragi_sougei_nisshi_backup'){
+        showToast('送迎日誌のファイルではありません', '#e53935');
+        return;
+      }
+
+      let addedCount = 0;
+      if(data.nisshi){
+        Object.entries(data.nisshi).forEach(([date, val]) => {
+          if(!nisshiData[date]){
+            nisshiData[date] = val;
+            addedCount++;
+          }
+        });
+        localStorage.setItem(NISSHI_KEY, JSON.stringify(nisshiData));
+        scheduleCloudSave();
+      }
+
+      showToast(`${addedCount}日分のデータを読み込みました`, '#4caf50');
+      loadDate();
+    } catch(err){
+      showToast('ファイルの読み込みに失敗しました', '#e53935');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ===== 時間自動生成 =====
+function generateRandomTime(sectionKey, vehicleIndex){
+  const base = TIME_BASE[sectionKey];
+  if(!base) return '';
+  const seed = hashCode(currentDate + sectionKey + vehicleIndex);
+  const offset = (seed % (base.range * 2 + 1)) - (sectionKey.includes('Drop') ? 0 : base.range);
+  const absOffset = sectionKey.includes('Drop') ? Math.abs(offset) : offset;
+  let totalMin = base.h * 60 + base.m + absOffset;
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return hh + ':' + String(mm).padStart(2,'0');
+}
+
+function hashCode(str){
+  let hash = 0;
+  for(let i = 0; i < str.length; i++){
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function formatTimeInput(el){
+  let v = el.value.replace(/[^0-9]/g,'');
+  if(v.length >= 3){
+    v = v.slice(0,-2) + ':' + v.slice(-2);
+  }
+  el.value = v;
+}
+
+// ===== ユーティリティ =====
+function escHtml(s){
+  if(!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg, color){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>{ t.style.opacity = '0'; }, 3000);
+}
+
+// ===== 起動 =====
+init();
+</script>
+</body>
+</html>
