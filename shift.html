@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>シフト希望入力 - yawaragi</title>
+<style>
+:root {
+  --primary: #1a73e8;
+  --green: #34a853;
+  --orange: #f9ab00;
+  --red: #ea4335;
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --text: #202124;
+  --sub: #5f6368;
+  --border: #e0e0e0;
+  --admin: #7b1fa2;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Segoe UI','Hiragino Sans','Meiryo',sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ヘッダー */
+.header {
+  background: var(--primary);
+  color: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.header.admin-header { background: var(--admin); }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header-sub { font-size: 12px; opacity: .85; }
+.header-right { display:flex; gap:8px; align-items:center; }
+.header-btn {
+  background: rgba(255,255,255,.2);
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.header-btn:active { background: rgba(255,255,255,.35); }
+
+/* ユーザーバー */
+.user-bar {
+  background: #e8f0fe;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.user-bar.admin-bar { background: #f3e5f5; }
+.user-bar .name { font-weight: 600; color: var(--primary); font-size: 15px; }
+.user-bar.admin-bar .name { color: var(--admin); }
+.user-bar .change-btn {
+  background: none;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* 月ナビ */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.month-nav select {
+  font-size: 20px;
+  font-weight: 700;
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  text-align: center;
+  min-width: 200px;
+}
+
+/* 締切バー */
+.deadline-bar {
+  padding: 8px 16px;
+  font-size: 13px;
+  text-align: center;
+  font-weight: 600;
+}
+.deadline-bar.open { background: #e6f4ea; color: #137333; }
+.deadline-bar.closed { background: #fce8e6; color: #c5221f; }
+.deadline-bar.soon { background: #fef7e0; color: #b06000; }
+
+/* お知らせ */
+.info-bar {
+  padding: 10px 16px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--sub);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  line-height: 1.5;
+}
+
+/* カレンダー */
+.calendar { padding: 8px; }
+.cal-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sub);
+  margin-bottom: 4px;
+}
+.cal-header .sun { color: var(--red); }
+.cal-header .sat { color: var(--primary); }
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-cell {
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  min-height: 60px;
+  padding: 6px 4px;
+  cursor: pointer;
+  transition: all .15s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.cal-cell:active { transform: scale(.96); }
+.cal-cell.empty { background: transparent; border-color: transparent; cursor: default; }
+.cal-cell.holiday { background: #fff5f5; }
+.cal-cell.weekend { background: #f8f8f8; border-color: #eee; cursor: default; opacity: .5; }
+.cal-cell.mine { border-color: #1a73e8; border-width: 3px; background: #e8f0fe; }
+.cal-cell.processing { opacity: .5; pointer-events: none; }
+.cal-cell.processing .cal-mine-label,
+.cal-cell.processing .cal-day { color: #999; }
+.processing-label { font-size: 10px; color: #999; font-weight: 700; margin-top: 4px; }
+
+.cal-day { font-size: 15px; font-weight: 700; }
+.cal-cell.holiday .cal-day { color: var(--red); }
+.cal-mine-label { font-size: 10px; color: var(--primary); font-weight: 700; margin-top: 4px; }
+
+/* 管理者カレンダー：他人の希望表示 */
+.cal-others { font-size: 9px; color: var(--admin); font-weight: 600; margin-top: 2px; }
+.cal-cell.has-wishes { border-color: var(--admin); background: #f3e5f5; }
+.cal-cell.has-wishes.mine { border-color: #1a73e8; background: #e8f0fe; }
+
+/* 自分の希望サマリー */
+.my-summary {
+  margin: 12px 8px;
+  background: var(--card);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.my-summary h3 { font-size: 14px; margin-bottom: 8px; color: var(--primary); }
+.my-summary .days { display: flex; flex-wrap: wrap; gap: 6px; }
+.my-summary .day-chip {
+  background: #e8f0fe;
+  color: var(--primary);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.my-summary .count-text { font-size: 13px; color: var(--sub); margin-top: 8px; }
+
+/* 管理者：全員サマリー */
+.admin-summary {
+  margin: 12px 8px;
+  background: var(--card);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.admin-summary h3 { font-size: 14px; margin-bottom: 10px; color: var(--admin); }
+.admin-staff-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.admin-staff-name { font-weight: 600; font-size: 14px; min-width: 50px; }
+.admin-day-chip {
+  background: #f3e5f5;
+  color: var(--admin);
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-no-wish { color: #999; font-size: 12px; }
+
+/* モーダル */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--card);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 360px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal h2 { font-size: 18px; margin-bottom: 16px; text-align: center; }
+.staff-list { display: flex; flex-direction: column; gap: 8px; }
+.staff-btn {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all .15s;
+}
+.staff-btn:active { background: #e8f0fe; border-color: var(--primary); }
+.admin-login-btn {
+  background: #f3e5f5;
+  border: 2px solid var(--admin);
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  color: var(--admin);
+  margin-top: 16px;
+}
+.admin-login-btn:active { background: #e1bee7; }
+
+/* PIN入力モーダル */
+.pin-input-area { text-align: center; margin: 16px 0; }
+.pin-input {
+  font-size: 28px;
+  text-align: center;
+  width: 160px;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  letter-spacing: 8px;
+}
+.pin-input:focus { border-color: var(--primary); outline: none; }
+.pin-error { color: var(--red); font-size: 13px; margin-top: 8px; display: none; }
+.pin-buttons { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+.pin-ok-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 10px 32px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pin-ok-btn:active { opacity: .7; }
+.pin-cancel-btn {
+  background: var(--bg);
+  color: var(--sub);
+  border: 1px solid var(--border);
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+/* ローディング */
+.loading { text-align: center; padding: 40px; color: var(--sub); font-size: 14px; }
+.loading::after {
+  content: '';
+  display: block;
+  width: 32px; height: 32px;
+  margin: 12px auto;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* トースト */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #323232;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 300;
+  transition: transform .3s;
+  white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* 希望条件セクション */
+.cond-toggle-btn {
+  background: #e8f0fe;
+  border: 2px solid var(--primary);
+  color: var(--primary);
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  width: calc(100% - 16px);
+  margin: 12px 8px 0;
+  text-align: center;
+}
+.cond-toggle-btn.admin { background: #f3e5f5; border-color: var(--admin); color: var(--admin); }
+.cond-toggle-btn:active { opacity: .7; }
+.cond-section {
+  margin: 8px;
+  background: var(--card);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.cond-section h3 { font-size: 15px; margin-bottom: 12px; color: var(--primary); }
+.cond-section.admin h3 { color: var(--admin); }
+.cond-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fafafa;
+}
+.cond-card .cond-content { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.cond-card .cond-meta { font-size: 11px; color: var(--sub); }
+.cond-card .cond-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+.cond-status.approved { background: #e6f4ea; color: #137333; }
+.cond-status.pending { background: #fef7e0; color: #b06000; }
+.cond-status.rejected { background: #fce8e6; color: #c5221f; }
+.cond-card .cond-comment { font-size: 12px; color: var(--admin); margin-top: 4px; font-style: italic; }
+.cond-card .cond-admin-name { font-size: 13px; color: var(--admin); font-weight: 600; margin-bottom: 4px; }
+.cond-actions { display: flex; gap: 8px; margin-top: 8px; }
+.cond-actions button {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+.cond-approve-btn { background: #34a853; color: #fff; }
+.cond-reject-btn { background: #ea4335; color: #fff; }
+.cond-approve-btn:active, .cond-reject-btn:active { opacity: .7; }
+.cond-add-area { margin-top: 12px; }
+.cond-add-area textarea {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  min-height: 60px;
+  resize: vertical;
+  font-family: inherit;
+}
+.cond-add-area textarea:focus { border-color: var(--primary); outline: none; }
+.cond-add-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 8px;
+}
+.cond-add-btn:active { opacity: .7; }
+.cond-empty { color: #999; font-size: 13px; }
+.cond-badge {
+  background: var(--red);
+  color: #fff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* 社員ルール */
+.employee-rules {
+  margin: 8px;
+  background: #fff8e1;
+  border: 2px solid #f9ab00;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.employee-rules h3 { font-size: 14px; color: #e65100; margin-bottom: 8px; }
+.employee-rules ol { padding-left: 20px; font-size: 13px; line-height: 1.8; }
+.employee-rules .close-rules {
+  background: none; border: 1px solid #ccc; padding: 4px 12px; border-radius: 4px;
+  font-size: 12px; cursor: pointer; margin-top: 8px; color: #666;
+}
+
+/* 外せない予定 */
+.absence-toggle-btn {
+  background: #fce8e6;
+  border: 2px solid var(--red);
+  color: var(--red);
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  width: calc(100% - 16px);
+  margin: 8px 8px 0;
+  text-align: center;
+}
+.absence-toggle-btn:active { opacity: .7; }
+.absence-section {
+  margin: 8px;
+  background: var(--card);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.absence-section h3 { font-size: 15px; color: var(--red); margin-bottom: 10px; }
+.absence-card {
+  border: 1px solid #f5c6cb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fff5f5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.absence-card .absence-info { font-size: 14px; font-weight: 600; }
+.absence-card .absence-detail { font-size: 12px; color: var(--sub); }
+.absence-card .absence-del {
+  background: var(--red); color: #fff; border: none; padding: 4px 10px;
+  border-radius: 4px; font-size: 12px; cursor: pointer;
+}
+.absence-form { margin-top: 12px; }
+.absence-form label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 4px; }
+.absence-form input, .absence-form select {
+  width: 100%; padding: 8px; border: 2px solid var(--border); border-radius: 8px;
+  font-size: 14px; margin-bottom: 8px; font-family: inherit;
+}
+.absence-form input:focus { border-color: var(--primary); outline: none; }
+.absence-submit-btn {
+  background: var(--red); color: #fff; border: none; padding: 10px;
+  border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+  width: 100%;
+}
+.cal-cell.has-absence { background: #ffebee !important; }
+.cal-absence-label { font-size: 8px; color: var(--red); font-weight: 700; margin-top: 1px; line-height: 1.2; }
+
+/* 外せない予定お知らせバー（常時表示） */
+.absence-notice {
+  background: #ffebee;
+  border-bottom: 2px solid var(--red);
+  padding: 10px 16px;
+  display: none;
+}
+.absence-notice h4 { font-size: 13px; color: var(--red); margin-bottom: 6px; }
+.absence-notice-item {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c62828;
+  line-height: 1.6;
+}
+
+/* GAS URL未設定 */
+.setup-guide {
+  margin: 20px 16px;
+  padding: 20px;
+  background: #fff3e0;
+  border: 2px solid #ff9800;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.setup-guide h3 { color: #e65100; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header" id="mainHeader">
+  <div>
+    <h1 id="headerTitle">シフト希望入力</h1>
+    <div class="header-sub">yawaragi</div>
+  </div>
+  <div class="header-right">
+    <button class="header-btn" onclick="doRefresh()">更新</button>
+    <button class="header-btn" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="background:#e3f2fd;color:#1565c0">📋 台帳</button>
+  </div>
+</div>
+
+<!-- ユーザーバー -->
+<div class="user-bar" id="userBar" style="display:none">
+  <span><span class="name" id="currentUserName"></span> <span id="userBarLabel">さんでログイン中</span></span>
+  <button class="change-btn" onclick="logout()">変更</button>
+</div>
+
+<!-- 月ナビ -->
+<div class="month-nav">
+  <select id="monthSelect" onchange="jumpToMonth(this.value)"></select>
+</div>
+
+<!-- 締切バー -->
+<div class="deadline-bar" id="deadlineBar"></div>
+
+<!-- 外せない予定お知らせ（常時表示） -->
+<div class="absence-notice" id="absenceNotice">
+  <h4>外せない予定</h4>
+  <div id="absenceNoticeList"></div>
+</div>
+
+<!-- 自分の希望サマリー（スタッフ用） -->
+<div class="my-summary" id="mySummary" style="display:none">
+  <h3 id="mySummaryTitle">自分の希望休</h3>
+  <div class="days" id="myDays"></div>
+  <div class="count-text" id="myCount"></div>
+</div>
+
+<!-- 全員サマリー（管理者用） -->
+<div class="admin-summary" id="adminSummary" style="display:none">
+  <h3>全員の希望休</h3>
+  <div id="adminSummaryContent"></div>
+</div>
+
+<!-- 社員ルール -->
+<div class="employee-rules" id="employeeRules" style="display:none">
+  <h3>社員の休みに関するルール</h3>
+  <ol>
+    <li>社員は週5勤務が基本</li>
+    <li>パートの希望休を優先し、社員は出勤人数が少ない日に休みを取る</li>
+    <li>希望休の申請はOK。ただし当日人手不足の場合は出勤をお願いすることがある</li>
+    <li>旅行等で外せない予定がある場合は、早めに申告し、他のスタッフに共有すること</li>
+  </ol>
+  <button class="close-rules" onclick="document.getElementById('employeeRules').style.display='none'">閉じる</button>
+</div>
+
+<!-- 希望条件トグルボタン -->
+<button class="cond-toggle-btn" id="condToggleBtn" style="display:none" onclick="toggleConditions()">希望条件を見る</button>
+
+<!-- 希望条件セクション -->
+<div class="cond-section" id="condSection" style="display:none">
+  <h3 id="condTitle">希望条件</h3>
+  <div id="condList"></div>
+  <div class="cond-add-area" id="condAddArea">
+    <textarea id="condInput" placeholder="例：連続3日勤務は避けたい"></textarea>
+    <button class="cond-add-btn" onclick="submitCondition()">条件を追加する</button>
+  </div>
+</div>
+
+<!-- 外せない予定トグルボタン（登録用） -->
+<button class="absence-toggle-btn" id="absenceToggleBtn" style="display:none" onclick="toggleAbsences()">外せない予定を登録・確認　※ 何ヶ月先でも登録できます</button>
+
+<!-- 外せない予定セクション -->
+<div class="absence-section" id="absenceSection" style="display:none">
+  <h3>外せない予定（全員に共有されます）</h3>
+  <div id="absenceList"></div>
+  <div class="absence-form" id="absenceForm">
+    <label>開始日</label>
+    <input type="date" id="absenceStart" onchange="showDateDay('absenceStart','absenceStartDay')">
+    <span id="absenceStartDay" style="font-size:14px;font-weight:600;color:#1a73e8;margin:-4px 0 4px;display:block;"></span>
+    <label>終了日（1日だけなら同じ日を選択）</label>
+    <input type="date" id="absenceEnd" onchange="showDateDay('absenceEnd','absenceEndDay')">
+    <span id="absenceEndDay" style="font-size:14px;font-weight:600;color:#1a73e8;margin:-4px 0 4px;display:block;"></span>
+    <label>理由</label>
+    <input type="text" id="absenceReason" placeholder="例：家族旅行">
+    <button class="absence-submit-btn" onclick="submitAbsence()">登録する</button>
+  </div>
+</div>
+
+<!-- お知らせ -->
+<div class="info-bar" id="infoBar">
+  休みたい日をタップしてください<br>
+  被りがあるとカレンダーに名前が表示されます。当事者同士で相談してください
+</div>
+
+<!-- カレンダー（一番下） -->
+<div class="calendar">
+  <div class="cal-header">
+    <div class="sun">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div class="sat">土</div>
+  </div>
+  <div class="cal-grid" id="calGrid"></div>
+</div>
+
+<!-- ローディング -->
+<div class="loading" id="loading">データを読み込み中...</div>
+
+<!-- スタッフ選択モーダル -->
+<div class="modal-overlay" id="staffModal">
+  <div class="modal">
+    <h2 style="font-size:20px; margin-bottom:8px;">あなたの名前を<br>選んでください</h2>
+    <p style="font-size:13px; color:#666; margin-bottom:16px; text-align:center;">※ 一度選ぶと次回から自動でログインされます</p>
+    <div class="staff-list" id="staffList"></div>
+    <button class="admin-login-btn" onclick="showAdminPinModal()">管理者ログイン</button>
+  </div>
+</div>
+
+<!-- PIN入力モーダル -->
+<div class="modal-overlay" id="pinModal">
+  <div class="modal">
+    <h2 id="pinModalTitle">PINを入力</h2>
+    <div class="pin-input-area">
+      <input type="tel" class="pin-input" id="pinInput" maxlength="4" placeholder="----" inputmode="numeric">
+      <div class="pin-error" id="pinError">PINが違います</div>
+    </div>
+    <div class="pin-buttons">
+      <button class="pin-cancel-btn" onclick="closePinModal()">戻る</button>
+      <button class="pin-ok-btn" id="pinOkBtn" onclick="submitPin()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<!-- GAS URL未設定ガイド -->
+<div class="setup-guide" id="setupGuide" style="display:none">
+  <h3>初期設定が必要です</h3>
+  <p>GASのWebアプリURLを設定してください。</p>
+</div>
+
+<script>
+// ============================
+// 設定: GAS WebアプリのURL（ローカルサーバー用）
+// GAS Webアプリからアクセス時はgoogle.script.runを自動使用
+// ============================
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby-Btc1XdsqKAgVwycKzYSyJJz9lIHVkPDIJ-TwlJmVTxzUtb6-o5qHr1hKHH7eXHOjqA/exec';
+const IS_GAS = (typeof google !== 'undefined' && google.script && google.script.run);
+
+// ============================
+// グローバル変数
+// ============================
+let currentUser = localStorage.getItem('shift_wish_user') || '';
+let isAdmin = localStorage.getItem('shift_wish_admin') === 'true';
+let currentMonth = '';
+let staffList = [];
+let myWishes = [];
+let allWishes = [];
+let isProcessing = false;
+let pendingPinAction = null; // { type: 'staff'|'admin', staffName: '' }
+let currentStaffType = localStorage.getItem('shift_wish_type') || '';
+let allAbsences = [];
+
+// 日本の祝日
+const HOLIDAYS = {
+  '2026-01-01': '元日', '2026-01-12': '成人の日',
+  '2026-02-11': '建国記念の日', '2026-02-23': '天皇誕生日',
+  '2026-03-20': '春分の日',
+  '2026-04-29': '昭和の日',
+  '2026-05-03': '憲法記念日', '2026-05-04': 'みどりの日', '2026-05-05': 'こどもの日', '2026-05-06': '振替休日',
+  '2026-07-20': '海の日',
+  '2026-08-11': '山の日',
+  '2026-09-21': '敬老の日', '2026-09-23': '秋分の日',
+  '2026-10-12': 'スポーツの日',
+  '2026-11-03': '文化の日', '2026-11-23': '勤労感謝の日',
+  '2027-01-01': '元日', '2027-01-11': '成人の日',
+  '2027-02-11': '建国記念の日', '2027-02-23': '天皇誕生日',
+  '2027-03-21': '春分の日',
+};
+
+// ============================
+// 初期化
+// ============================
+window.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  currentMonth = next.getFullYear() + '-' + String(next.getMonth() + 1).padStart(2, '0');
+
+  if (!GAS_URL && !IS_GAS) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('setupGuide').style.display = 'block';
+    return;
+  }
+
+  if (isAdmin) {
+    applyAdminUI();
+    loadDataAdmin();
+  } else if (currentUser) {
+    showUserBar();
+    loadData();
+  } else {
+    document.getElementById('loading').style.display = 'none';
+    loadStaffOnly();
+  }
+});
+
+// ============================
+// API通信（GAS環境 → google.script.run、ローカル → JSONP）
+// ============================
+let jsonpCounter = 0;
+function apiCall(params) {
+  if (IS_GAS) {
+    // GAS Webアプリから実行時 → google.script.runを使用
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(err => reject(new Error(err.message || '通信エラー')))
+        .handleAction(params);
+    });
+  }
+  // ローカルサーバーから実行時 → JSONP
+  return new Promise((resolve, reject) => {
+    const cbName = 'jsonp_cb_' + (++jsonpCounter) + '_' + Date.now();
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      reject(new Error('タイムアウト'));
+    }, 15000);
+
+    window[cbName] = function(data) {
+      clearTimeout(timeout);
+      delete window[cbName];
+      const script = document.getElementById('s_' + cbName);
+      if (script) script.remove();
+      resolve(data);
+    };
+
+    params.callback = cbName;
+    const qs = Object.entries(params).map(([k,v]) => k + '=' + encodeURIComponent(v)).join('&');
+    const script = document.createElement('script');
+    script.id = 's_' + cbName;
+    script.src = GAS_URL + '?' + qs;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      reject(new Error('通信エラー'));
+    };
+    document.body.appendChild(script);
+  });
+}
+
+// ============================
+// データ読み込み（スタッフ用）
+// ============================
+async function loadData() {
+  if (!currentUser) return;
+  try {
+    document.getElementById('loading').style.display = 'block';
+    const data = await apiCall({ action: 'getAllData', month: currentMonth });
+
+    if (data.error) { showToast('エラー: ' + data.error); return; }
+
+    staffList = data.staff || [];
+    if (data.month) currentMonth = data.month;
+    allAbsences = data.absences || [];
+
+    allWishes = data.wishes || [];
+    myWishes = allWishes.filter(w => w.staff === currentUser);
+
+    renderAll();
+  } catch (e) {
+    showToast('通信エラー: ' + e.message);
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+// ============================
+// データ読み込み（管理者用）
+// ============================
+async function loadDataAdmin() {
+  try {
+    document.getElementById('loading').style.display = 'block';
+    const data = await apiCall({ action: 'getAllDataAdmin', month: currentMonth });
+
+    if (data.error) { showToast('エラー: ' + data.error); return; }
+
+    staffList = data.staff || [];
+    if (data.month) currentMonth = data.month;
+    allWishes = data.wishes || [];
+    allAbsences = data.absences || [];
+
+    renderAllAdmin();
+  } catch (e) {
+    showToast('通信エラー: ' + e.message);
+  } finally {
+    document.getElementById('loading').style.display = 'none';
+  }
+}
+
+async function loadStaffOnly() {
+  try {
+    const data = await apiCall({ action: 'getStaff' });
+    staffList = data.staff || [];
+    showStaffModal();
+  } catch (e) {
+    showToast('通信エラー');
+  }
+}
+
+function doRefresh() {
+  if (isAdmin) { loadDataAdmin(); }
+  else { loadData(); }
+}
+
+// ============================
+// 描画（スタッフ用）
+// ============================
+function renderAll() {
+  renderMonthLabel();
+  renderAbsenceNotice();
+  renderDeadline();
+  renderCalendar();
+  renderMySummary();
+  document.getElementById('adminSummary').style.display = 'none';
+}
+
+function renderMonthLabel() {
+  const select = document.getElementById('monthSelect');
+  const now = new Date();
+  // 当月〜6ヶ月先の選択肢を生成
+  const options = [];
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const val = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const label = d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+    options.push({ val: val, label: label });
+  }
+  // 現在の月が選択肢にない場合（過去月など）は先頭に追加
+  if (!options.find(o => o.val === currentMonth)) {
+    const [y, m] = currentMonth.split('-').map(Number);
+    options.unshift({ val: currentMonth, label: y + '年' + m + '月' });
+  }
+  select.innerHTML = options.map(o => '<option value="' + o.val + '"' + (o.val === currentMonth ? ' selected' : '') + '>' + o.label + '</option>').join('');
+}
+
+function renderDeadline() {
+  const bar = document.getElementById('deadlineBar');
+  const [y, m] = currentMonth.split('-').map(Number);
+  const deadlineDate = new Date(y, m - 2, 20);
+  const now = new Date();
+  now.setHours(0,0,0,0);
+
+  const diffDays = Math.ceil((deadlineDate - now) / 86400000);
+  const deadlineMonth = m === 1 ? 12 : m - 1;
+  const deadlineStr = deadlineMonth + '月20日';
+
+  if (diffDays < 0) {
+    bar.className = 'deadline-bar closed';
+    bar.textContent = '提出期限（' + deadlineStr + '）を過ぎています。変更は社長に相談してください。';
+  } else if (diffDays <= 3) {
+    bar.className = 'deadline-bar soon';
+    bar.textContent = '提出期限: ' + deadlineStr + 'まで（あと' + diffDays + '日！）';
+  } else {
+    bar.className = 'deadline-bar open';
+    bar.textContent = '提出期限: ' + deadlineStr + 'まで（あと' + diffDays + '日）';
+  }
+}
+
+function getAbsenceNames(day) {
+  const names = [];
+  allAbsences.forEach(a => { if (a.days && a.days.indexOf(day) >= 0) names.push(a.staff); });
+  return names;
+}
+
+function renderCalendar() {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  const [y, m] = currentMonth.split('-').map(Number);
+  const firstDay = new Date(y, m - 1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+
+  const myDaySet = new Set(myWishes.map(w => w.day));
+
+  for (let i = 0; i < firstDay; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell empty';
+    grid.appendChild(cell);
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const cell = document.createElement('div');
+    const dow = new Date(y, m - 1, d).getDay();
+    const dateStr = currentMonth + '-' + String(d).padStart(2, '0');
+    const isWeekend = (dow === 0 || dow === 6);
+    const isHoliday = HOLIDAYS[dateStr];
+    const isMine = myDaySet.has(d);
+    const absenceNames = getAbsenceNames(d);
+
+    let cls = 'cal-cell';
+    if (isWeekend) cls += ' weekend';
+    else if (isMine) cls += ' mine';
+    if (isHoliday && !isWeekend) cls += ' holiday';
+    if (absenceNames.length > 0 && !isWeekend) cls += ' has-absence';
+    cell.className = cls;
+
+    const dayDiv = document.createElement('div');
+    dayDiv.className = 'cal-day';
+    dayDiv.textContent = d;
+    cell.appendChild(dayDiv);
+
+    if (isMine && !isWeekend) {
+      const label = document.createElement('div');
+      label.className = 'cal-mine-label';
+      label.textContent = '希望休';
+      cell.appendChild(label);
+
+      // 被り表示：自分が希望を出した日に他の人も出していたら名前を表示
+      const conflictNames = allWishes.filter(w => w.day === d && w.staff !== currentUser).map(w => w.staff);
+      if (conflictNames.length > 0) {
+        const conflictLabel = document.createElement('div');
+        conflictLabel.style.cssText = 'font-size:9px;color:#c62828;font-weight:700;margin-top:1px;line-height:1.2;';
+        conflictLabel.textContent = conflictNames.join('・') + 'も希望';
+        cell.appendChild(conflictLabel);
+      }
+    }
+
+    if (absenceNames.length > 0 && !isWeekend) {
+      const absLabel = document.createElement('div');
+      absLabel.className = 'cal-absence-label';
+      absLabel.textContent = absenceNames.join('・') + ' 休';
+      cell.appendChild(absLabel);
+    }
+
+    if (!isWeekend) {
+      cell.id = 'cell-' + d;
+      cell.addEventListener('click', () => toggleWish(d, isMine));
+    }
+
+    grid.appendChild(cell);
+  }
+}
+
+function renderMySummary() {
+  const section = document.getElementById('mySummary');
+  if (!currentUser) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+
+  document.getElementById('mySummaryTitle').textContent = currentUser + 'さんの希望休';
+  const sorted = [...myWishes].sort((a,b) => a.day - b.day);
+  const daysDiv = document.getElementById('myDays');
+  daysDiv.innerHTML = '';
+
+  if (sorted.length === 0) {
+    daysDiv.innerHTML = '<span style="color:#999;font-size:13px">まだ希望がありません。カレンダーの日をタップして登録してください。</span>';
+  } else {
+    const [y, m] = currentMonth.split('-').map(Number);
+    sorted.forEach(w => {
+      const chip = document.createElement('span');
+      chip.className = 'day-chip';
+      const dow = ['日','月','火','水','木','金','土'][new Date(y, m - 1, w.day).getDay()];
+      chip.textContent = w.day + '日（' + dow + '）';
+      daysDiv.appendChild(chip);
+    });
+  }
+
+  document.getElementById('myCount').textContent = '希望数: ' + sorted.length + '日';
+}
+
+// ============================
+// 描画（管理者用）
+// ============================
+function renderAllAdmin() {
+  renderMonthLabel();
+  renderAbsenceNotice();
+  renderDeadline();
+  renderCalendarAdmin();
+  renderAdminSummary();
+  document.getElementById('mySummary').style.display = 'none';
+}
+
+function renderCalendarAdmin() {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  const [y, m] = currentMonth.split('-').map(Number);
+  const firstDay = new Date(y, m - 1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+
+  // 日ごとに希望者を集計
+  const dayWishMap = {};
+  allWishes.forEach(w => {
+    if (!dayWishMap[w.day]) dayWishMap[w.day] = [];
+    dayWishMap[w.day].push(w.staff);
+  });
+
+  for (let i = 0; i < firstDay; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell empty';
+    grid.appendChild(cell);
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const cell = document.createElement('div');
+    const dow = new Date(y, m - 1, d).getDay();
+    const dateStr = currentMonth + '-' + String(d).padStart(2, '0');
+    const isWeekend = (dow === 0 || dow === 6);
+    const isHoliday = HOLIDAYS[dateStr];
+    const wishers = dayWishMap[d] || [];
+    const absenceNames = getAbsenceNames(d);
+
+    let cls = 'cal-cell';
+    if (isWeekend) cls += ' weekend';
+    else if (wishers.length > 0) cls += ' has-wishes';
+    if (isHoliday && !isWeekend) cls += ' holiday';
+    if (absenceNames.length > 0 && !isWeekend) cls += ' has-absence';
+    cell.className = cls;
+
+    const dayDiv = document.createElement('div');
+    dayDiv.className = 'cal-day';
+    dayDiv.textContent = d;
+    cell.appendChild(dayDiv);
+
+    if (wishers.length > 0 && !isWeekend) {
+      const othersDiv = document.createElement('div');
+      othersDiv.className = 'cal-others';
+      othersDiv.textContent = wishers.join('・');
+      cell.appendChild(othersDiv);
+    }
+
+    if (absenceNames.length > 0 && !isWeekend) {
+      const absLabel = document.createElement('div');
+      absLabel.className = 'cal-absence-label';
+      absLabel.textContent = absenceNames.join('・') + ' 休';
+      cell.appendChild(absLabel);
+    }
+
+    grid.appendChild(cell);
+  }
+}
+
+function renderAdminSummary() {
+  const section = document.getElementById('adminSummary');
+  section.style.display = 'block';
+  const content = document.getElementById('adminSummaryContent');
+  content.innerHTML = '';
+
+  const [y, m] = currentMonth.split('-').map(Number);
+
+  staffList.forEach(name => {
+    const wishes = allWishes.filter(w => w.staff === name).sort((a,b) => a.day - b.day);
+    const row = document.createElement('div');
+    row.className = 'admin-staff-row';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'admin-staff-name';
+    nameSpan.textContent = name;
+    row.appendChild(nameSpan);
+
+    if (wishes.length === 0) {
+      const noWish = document.createElement('span');
+      noWish.className = 'admin-no-wish';
+      noWish.textContent = 'なし';
+      row.appendChild(noWish);
+    } else {
+      wishes.forEach(w => {
+        const chip = document.createElement('span');
+        chip.className = 'admin-day-chip';
+        const dow = ['日','月','火','水','木','金','土'][new Date(y, m - 1, w.day).getDay()];
+        chip.textContent = w.day + '日(' + dow + ')';
+        row.appendChild(chip);
+      });
+    }
+
+    content.appendChild(row);
+  });
+}
+
+// ============================
+// 希望の追加/削除
+// ============================
+async function toggleWish(day, isMine) {
+  if (!currentUser && !isAdmin) {
+    showStaffModal();
+    return;
+  }
+
+  if (isProcessing) return;
+  isProcessing = true;
+
+  const cell = document.getElementById('cell-' + day);
+  if (cell) {
+    cell.classList.add('processing');
+    let procLabel = cell.querySelector('.processing-label');
+    if (!procLabel) {
+      procLabel = document.createElement('div');
+      procLabel.className = 'processing-label';
+      procLabel.textContent = isMine ? '取消中...' : '登録中...';
+      const mineLabel = cell.querySelector('.cal-mine-label');
+      if (mineLabel) mineLabel.style.display = 'none';
+      cell.appendChild(procLabel);
+    }
+  }
+
+  // 管理者は締切無視
+  if (!isAdmin) {
+    const [y, m] = currentMonth.split('-').map(Number);
+    const deadlineDate = new Date(y, m - 2, 20);
+    deadlineDate.setHours(23, 59, 59, 999);
+    const now = new Date();
+    if (now > deadlineDate) {
+      showToast('提出期限を過ぎています');
+      isProcessing = false;
+      return;
+    }
+  }
+
+  try {
+    if (isMine) {
+      const data = await apiCall({ action: 'removeWish', month: currentMonth, staff: currentUser, day: day });
+      if (data.success) {
+        myWishes = myWishes.filter(w => w.day !== day);
+        showToast(day + '日の希望を取り消しました');
+      } else {
+        showToast(data.message || 'エラー');
+      }
+    } else {
+      const data = await apiCall({ action: 'addWish', month: currentMonth, staff: currentUser, day: day });
+      if (data.success) {
+        myWishes.push({ staff: currentUser, day: day, timestamp: '' });
+        if (data.warning) {
+          alert('⚠ ' + day + '日を登録しましたが注意があります\n\n' + data.warning);
+        } else {
+          showToast(day + '日を希望休に登録しました');
+        }
+      } else if (data.blocked) {
+        alert(data.message);
+      } else {
+        showToast(data.message || 'エラー');
+      }
+    }
+    renderAll();
+  } catch (e) {
+    showToast('通信エラー');
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// ============================
+// 月切替
+// ============================
+let isMonthChanging = false;
+function jumpToMonth(monthStr) {
+  if (isMonthChanging || monthStr === currentMonth) return;
+  isMonthChanging = true;
+
+  const select = document.getElementById('monthSelect');
+  select.disabled = true;
+  select.style.opacity = '.5';
+
+  currentMonth = monthStr;
+
+  document.getElementById('calGrid').innerHTML = '';
+  document.getElementById('mySummary').style.display = 'none';
+  document.getElementById('adminSummary').style.display = 'none';
+  document.getElementById('loading').style.display = 'block';
+
+  const loadFn = isAdmin ? loadDataAdmin() : loadData();
+  loadFn.finally(() => {
+    isMonthChanging = false;
+    select.disabled = false;
+    select.style.opacity = '1';
+  });
+}
+
+// ============================
+// スタッフ選択＋PIN認証
+// ============================
+function showStaffModal() {
+  const modal = document.getElementById('staffModal');
+  const list = document.getElementById('staffList');
+  list.innerHTML = '';
+
+  staffList.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'staff-btn';
+    btn.textContent = name;
+    btn.addEventListener('click', () => {
+      pendingPinAction = { type: 'staff', staffName: name };
+      document.getElementById('staffModal').classList.remove('show');
+      showPinModal(name + 'さんのPINを入力');
+    });
+    list.appendChild(btn);
+  });
+
+  modal.classList.add('show');
+}
+
+function showAdminPinModal() {
+  pendingPinAction = { type: 'admin' };
+  document.getElementById('staffModal').classList.remove('show');
+  showPinModal('管理者PINを入力');
+}
+
+function showPinModal(title) {
+  document.getElementById('pinModalTitle').textContent = title;
+  document.getElementById('pinInput').value = '';
+  document.getElementById('pinError').style.display = 'none';
+  document.getElementById('pinModal').classList.add('show');
+  setTimeout(() => document.getElementById('pinInput').focus(), 100);
+}
+
+function closePinModal() {
+  document.getElementById('pinModal').classList.remove('show');
+  pendingPinAction = null;
+  showStaffModal();
+}
+
+async function submitPin() {
+  const pin = document.getElementById('pinInput').value;
+  if (!pin || pin.length !== 4) {
+    document.getElementById('pinError').textContent = '4桁のPINを入力してください';
+    document.getElementById('pinError').style.display = 'block';
+    return;
+  }
+
+  const okBtn = document.getElementById('pinOkBtn');
+  okBtn.textContent = '確認中...';
+  okBtn.disabled = true;
+
+  try {
+    if (pendingPinAction.type === 'staff') {
+      const data = await apiCall({ action: 'verifyPin', staff: pendingPinAction.staffName, pin: pin });
+      if (data.success) {
+        currentUser = pendingPinAction.staffName;
+        isAdmin = false;
+        currentStaffType = data.staffType || '';
+        localStorage.setItem('shift_wish_user', currentUser);
+        localStorage.setItem('shift_wish_type', currentStaffType);
+        localStorage.removeItem('shift_wish_admin');
+        document.getElementById('pinModal').classList.remove('show');
+        applyStaffUI();
+        showUserBar();
+        if (currentStaffType === '社員') {
+          document.getElementById('employeeRules').style.display = 'block';
+        }
+        loadData();
+      } else {
+        document.getElementById('pinError').textContent = data.message || 'PINが違います';
+        document.getElementById('pinError').style.display = 'block';
+      }
+    } else if (pendingPinAction.type === 'admin') {
+      const data = await apiCall({ action: 'verifyAdminPin', pin: pin });
+      if (data.success) {
+        isAdmin = true;
+        currentUser = '';
+        localStorage.setItem('shift_wish_admin', 'true');
+        localStorage.removeItem('shift_wish_user');
+        document.getElementById('pinModal').classList.remove('show');
+        applyAdminUI();
+        loadDataAdmin();
+      } else {
+        document.getElementById('pinError').textContent = data.message || '管理者PINが違います';
+        document.getElementById('pinError').style.display = 'block';
+      }
+    }
+  } catch (e) {
+    document.getElementById('pinError').textContent = '通信エラー';
+    document.getElementById('pinError').style.display = 'block';
+  } finally {
+    okBtn.textContent = 'OK';
+    okBtn.disabled = false;
+  }
+}
+
+// Enterキーでも送信
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('pinModal').classList.contains('show')) {
+    submitPin();
+  }
+});
+
+// ============================
+// UI切替
+// ============================
+function applyAdminUI() {
+  document.getElementById('mainHeader').classList.add('admin-header');
+  document.getElementById('headerTitle').textContent = 'シフト希望入力（管理者）';
+  document.getElementById('userBar').style.display = 'flex';
+  document.getElementById('userBar').classList.add('admin-bar');
+  document.getElementById('currentUserName').textContent = '管理者';
+  document.getElementById('userBarLabel').textContent = 'モード';
+  document.getElementById('infoBar').textContent = '全スタッフの希望休を確認できます';
+  showCondToggle();
+}
+
+function applyStaffUI() {
+  document.getElementById('mainHeader').classList.remove('admin-header');
+  document.getElementById('headerTitle').textContent = 'シフト希望入力';
+  document.getElementById('userBar').classList.remove('admin-bar');
+  document.getElementById('userBarLabel').textContent = 'さんでログイン中';
+  document.getElementById('infoBar').innerHTML = '休みたい日をタップしてください<br>希望が被った場合は当事者同士で相談してください';
+}
+
+function showUserBar() {
+  document.getElementById('userBar').style.display = 'flex';
+  document.getElementById('currentUserName').textContent = currentUser;
+  showCondToggle();
+}
+
+function showCondToggle() {
+  const btn = document.getElementById('condToggleBtn');
+  btn.style.display = 'block';
+  document.getElementById('absenceToggleBtn').style.display = 'block';
+  if (isAdmin) {
+    btn.classList.add('admin');
+  } else {
+    btn.classList.remove('admin');
+  }
+  // 未確認バッジのために条件を事前ロード
+  apiCall({ action: 'getConditions', staff: isAdmin ? '' : currentUser }).then(data => {
+    conditionsData = data.conditions || [];
+    updateCondBadge();
+  }).catch(() => {});
+}
+
+function logout() {
+  currentUser = '';
+  isAdmin = false;
+  localStorage.removeItem('shift_wish_user');
+  localStorage.removeItem('shift_wish_admin');
+  myWishes = [];
+  allWishes = [];
+  conditionsData = [];
+  conditionsVisible = false;
+  allAbsences = [];
+  absencesVisible = false;
+  currentStaffType = '';
+  localStorage.removeItem('shift_wish_type');
+  applyStaffUI();
+  document.getElementById('userBar').style.display = 'none';
+  document.getElementById('mySummary').style.display = 'none';
+  document.getElementById('adminSummary').style.display = 'none';
+  document.getElementById('condToggleBtn').style.display = 'none';
+  document.getElementById('condSection').style.display = 'none';
+  document.getElementById('absenceToggleBtn').style.display = 'none';
+  document.getElementById('absenceSection').style.display = 'none';
+  document.getElementById('employeeRules').style.display = 'none';
+  document.getElementById('calGrid').innerHTML = '';
+  showStaffModal();
+}
+
+// ============================
+// 外せない予定
+// ============================
+let absencesVisible = false;
+
+function renderAbsenceNotice() {
+  const notice = document.getElementById('absenceNotice');
+  const list = document.getElementById('absenceNoticeList');
+
+  if (allAbsences.length === 0) {
+    notice.style.display = 'none';
+    return;
+  }
+
+  notice.style.display = 'block';
+  list.innerHTML = '';
+  allAbsences.forEach(a => {
+    const item = document.createElement('div');
+    item.className = 'absence-notice-item';
+    item.textContent = a.staff + '　' + a.startDate + '〜' + a.endDate + (a.reason ? '（' + a.reason + '）' : '') + ' → この日は外せない予定があります';
+    list.appendChild(item);
+  });
+}
+
+function toggleAbsences() {
+  absencesVisible = !absencesVisible;
+  const section = document.getElementById('absenceSection');
+  const btn = document.getElementById('absenceToggleBtn');
+
+  if (absencesVisible) {
+    section.style.display = 'block';
+    btn.textContent = '外せない予定を閉じる';
+    // 提出期限ベースでmin日付を計算（期限過ぎた月は登録不可）
+    const today = new Date();
+    const deadlineDay = 20;
+    // 今月の提出期限日を過ぎている → 翌々月以降、まだ → 翌月以降
+    let minMonth;
+    if (today.getDate() > deadlineDay) {
+      minMonth = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+    } else {
+      minMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    }
+    const minStr = minMonth.getFullYear() + '-' + String(minMonth.getMonth()+1).padStart(2,'0') + '-01';
+    const defDate = currentMonth + '-01' < minStr ? minStr : currentMonth + '-01';
+    document.getElementById('absenceStart').value = defDate;
+    document.getElementById('absenceStart').min = minStr;
+    document.getElementById('absenceEnd').value = defDate;
+    document.getElementById('absenceEnd').min = minStr;
+    showDateDay('absenceStart','absenceStartDay');
+    showDateDay('absenceEnd','absenceEndDay');
+    renderAbsenceList();
+  } else {
+    section.style.display = 'none';
+    btn.textContent = '外せない予定を登録・確認　※ 何ヶ月先でも登録できます';
+  }
+}
+
+function renderAbsenceList() {
+  const list = document.getElementById('absenceList');
+  list.innerHTML = '';
+
+  if (allAbsences.length === 0) {
+    list.innerHTML = '<div style="color:#999;font-size:13px;margin-bottom:8px;">登録されている外せない予定はありません</div>';
+    return;
+  }
+
+  allAbsences.forEach(a => {
+    const card = document.createElement('div');
+    card.className = 'absence-card';
+
+    const left = document.createElement('div');
+    left.innerHTML = '<div class="absence-info">' + escHtml(a.staff) + '　' + a.startDate + '〜' + a.endDate + '</div>'
+      + (a.reason ? '<div class="absence-detail">' + escHtml(a.reason) + '</div>' : '');
+    card.appendChild(left);
+
+    // 自分の登録だけ削除可能
+    if (!isAdmin && a.staff === currentUser) {
+      const del = document.createElement('button');
+      del.className = 'absence-del';
+      del.textContent = '取消';
+      del.onclick = () => deleteAbsence(a.id);
+      card.appendChild(del);
+    }
+    if (isAdmin) {
+      const del = document.createElement('button');
+      del.className = 'absence-del';
+      del.textContent = '削除';
+      del.onclick = () => deleteAbsence(a.id);
+      card.appendChild(del);
+    }
+
+    list.appendChild(card);
+  });
+}
+
+function showDateDay(inputId, spanId) {
+  const val = document.getElementById(inputId).value;
+  const span = document.getElementById(spanId);
+  if (!val) { span.textContent = ''; return; }
+  const d = new Date(val + 'T00:00:00');
+  const days = ['日','月','火','水','木','金','土'];
+  const dayName = days[d.getDay()];
+  const color = d.getDay() === 0 ? '#c62828' : d.getDay() === 6 ? '#1565c0' : '#333';
+  span.style.color = color;
+  span.textContent = d.getFullYear() + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '（' + dayName + '）';
+}
+
+async function submitAbsence() {
+  const startVal = document.getElementById('absenceStart').value;
+  const endVal = document.getElementById('absenceEnd').value;
+  const reason = document.getElementById('absenceReason').value.trim();
+
+  if (!startVal || !endVal) { showToast('日付を選択してください'); return; }
+
+  const staff = isAdmin ? prompt('スタッフ名を入力：') : currentUser;
+  if (!staff) return;
+
+  try {
+    const data = await apiCall({ action: 'addAbsence', staff: staff, startDate: startVal, endDate: endVal, reason: reason });
+    if (data.success) {
+      if (data.warning) {
+        alert('⚠ 登録しましたが注意があります\n\n' + data.warning);
+      } else {
+        showToast('外せない予定を登録しました');
+      }
+      document.getElementById('absenceStart').value = '';
+      document.getElementById('absenceEnd').value = '';
+      document.getElementById('absenceReason').value = '';
+      document.getElementById('absenceStartDay').textContent = '';
+      document.getElementById('absenceEndDay').textContent = '';
+      // カレンダーも更新
+      if (isAdmin) { loadDataAdmin(); } else { loadData(); }
+      setTimeout(() => { if (absencesVisible) renderAbsenceList(); }, 1500);
+    } else {
+      alert(data.message || 'エラー');
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  }
+}
+
+async function deleteAbsence(id) {
+  if (!confirm('この外せない予定を取り消しますか？')) return;
+  try {
+    const data = await apiCall({ action: 'removeAbsence', id: id });
+    if (data.success) {
+      showToast('取り消しました');
+      if (isAdmin) { loadDataAdmin(); } else { loadData(); }
+      setTimeout(() => { if (absencesVisible) renderAbsenceList(); }, 1500);
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  }
+}
+
+// ============================
+// 希望条件
+// ============================
+let conditionsVisible = false;
+let conditionsData = [];
+
+function toggleConditions() {
+  conditionsVisible = !conditionsVisible;
+  const section = document.getElementById('condSection');
+  const btn = document.getElementById('condToggleBtn');
+
+  if (conditionsVisible) {
+    section.style.display = 'block';
+    btn.textContent = '希望条件を閉じる';
+    loadConditions();
+  } else {
+    section.style.display = 'none';
+    btn.textContent = '希望条件を見る';
+  }
+}
+
+async function loadConditions() {
+  try {
+    const params = { action: 'getConditions' };
+    if (!isAdmin) params.staff = currentUser;
+    const data = await apiCall(params);
+    conditionsData = data.conditions || [];
+    renderConditions();
+  } catch (e) {
+    showToast('条件の読み込みに失敗');
+  }
+}
+
+function renderConditions() {
+  const list = document.getElementById('condList');
+  list.innerHTML = '';
+
+  if (isAdmin) {
+    document.getElementById('condSection').classList.add('admin');
+    document.getElementById('condTitle').textContent = '全スタッフの希望条件';
+    document.getElementById('condAddArea').style.display = 'none';
+    renderConditionsAdmin(list);
+  } else {
+    document.getElementById('condSection').classList.remove('admin');
+    document.getElementById('condTitle').textContent = '自分の希望条件';
+    document.getElementById('condAddArea').style.display = 'block';
+    renderConditionsStaff(list);
+  }
+
+  updateCondBadge();
+}
+
+function renderConditionsStaff(list) {
+  if (conditionsData.length === 0) {
+    list.innerHTML = '<div class="cond-empty">まだ条件がありません。下のフォームから追加してください。</div>';
+    return;
+  }
+
+  conditionsData.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'cond-card';
+
+    let statusClass = 'pending';
+    let statusText = '未確認';
+    if (c.status === '承認済み') { statusClass = 'approved'; statusText = '承認済み'; }
+    else if (c.status === '却下') { statusClass = 'rejected'; statusText = '却下'; }
+
+    let html = '<div class="cond-content">' + escHtml(c.content) + '</div>';
+    html += '<div class="cond-meta">' + c.date + ' <span class="cond-status ' + statusClass + '">' + statusText + '</span></div>';
+    if (c.comment) {
+      html += '<div class="cond-comment">社長: ' + escHtml(c.comment) + '</div>';
+    }
+    card.innerHTML = html;
+    list.appendChild(card);
+  });
+}
+
+function renderConditionsAdmin(list) {
+  if (conditionsData.length === 0) {
+    list.innerHTML = '<div class="cond-empty">まだ条件がありません。</div>';
+    return;
+  }
+
+  // スタッフごとにグループ化
+  const grouped = {};
+  conditionsData.forEach(c => {
+    if (!grouped[c.staff]) grouped[c.staff] = [];
+    grouped[c.staff].push(c);
+  });
+
+  Object.keys(grouped).forEach(name => {
+    grouped[name].forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'cond-card';
+
+      let statusClass = 'pending';
+      let statusText = '未確認';
+      if (c.status === '承認済み') { statusClass = 'approved'; statusText = '承認済み'; }
+      else if (c.status === '却下') { statusClass = 'rejected'; statusText = '却下'; }
+
+      let html = '<div class="cond-admin-name">' + escHtml(name) + '</div>';
+      html += '<div class="cond-content">' + escHtml(c.content) + '</div>';
+      html += '<div class="cond-meta">' + c.date + ' <span class="cond-status ' + statusClass + '">' + statusText + '</span></div>';
+      if (c.comment) {
+        html += '<div class="cond-comment">社長: ' + escHtml(c.comment) + '</div>';
+      }
+
+      if (c.status === '未確認') {
+        html += '<div class="cond-actions">';
+        html += '<button class="cond-approve-btn" onclick="doApprove(' + c.id + ')">了解</button>';
+        html += '<button class="cond-reject-btn" onclick="doReject(' + c.id + ')">却下</button>';
+        html += '</div>';
+      }
+
+      card.innerHTML = html;
+      list.appendChild(card);
+    });
+  });
+}
+
+async function submitCondition() {
+  const input = document.getElementById('condInput');
+  const content = input.value.trim();
+  if (!content) { showToast('条件を入力してください'); return; }
+
+  try {
+    const data = await apiCall({ action: 'addCondition', staff: currentUser, content: content });
+    if (data.success) {
+      input.value = '';
+      showToast('条件を追加しました');
+      loadConditions();
+    } else {
+      showToast(data.message || 'エラー');
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  }
+}
+
+async function doApprove(id) {
+  const comment = prompt('コメント（任意）：') || '';
+  try {
+    const data = await apiCall({ action: 'approveCondition', id: id, comment: comment });
+    if (data.success) {
+      showToast('承認しました');
+      loadConditions();
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  }
+}
+
+async function doReject(id) {
+  const comment = prompt('却下の理由を入力：');
+  if (comment === null) return;
+  try {
+    const data = await apiCall({ action: 'rejectCondition', id: id, comment: comment });
+    if (data.success) {
+      showToast('却下しました');
+      loadConditions();
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  }
+}
+
+function updateCondBadge() {
+  const btn = document.getElementById('condToggleBtn');
+  const pendingCount = conditionsData.filter(c => c.status === '未確認').length;
+  const badgeHtml = pendingCount > 0 ? ' <span class="cond-badge">' + pendingCount + '</span>' : '';
+
+  if (conditionsVisible) {
+    btn.innerHTML = '希望条件を閉じる' + badgeHtml;
+  } else {
+    btn.innerHTML = '希望条件を見る' + badgeHtml;
+  }
+}
+
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ============================
+// トースト
+// ============================
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>

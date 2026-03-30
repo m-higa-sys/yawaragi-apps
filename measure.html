@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今月の測定・居宅訪問・誕生日一覧</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Meiryo', sans-serif; font-size: 13px; background: #f5f5f5; padding: 15px; }
+
+        .header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .header h1 { font-size: 18px; white-space: nowrap; }
+        .header select, .header button { font-size: 14px; padding: 5px 10px; }
+        .header button { cursor: pointer; border: 1px solid #999; border-radius: 4px; background: #fff; }
+        .header button:hover { background: #e0e0e0; }
+        .btn-primary { background: #4CAF50 !important; color: #fff !important; border-color: #4CAF50 !important; }
+        .btn-primary:hover { background: #388E3C !important; }
+        .btn-print { background: #2196F3 !important; color: #fff !important; border-color: #2196F3 !important; }
+        .btn-print:hover { background: #1976D2 !important; }
+
+        .sync-info { font-size: 12px; color: #666; margin-bottom: 10px; }
+        .sync-info .count { font-weight: bold; color: #333; }
+        .sync-info .warn { color: #f44336; font-weight: bold; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th, td { border: 1px solid #999; padding: 4px 8px; text-align: center; }
+        th { background: #e8f5e9; font-weight: bold; font-size: 12px; }
+        td { font-size: 13px; }
+        td.name { text-align: left; min-width: 80px; }
+        .ampm-header { font-size: 14px; font-weight: bold; }
+        .am-header { background: #c8e6c9; }
+        .pm-header { background: #bbdefb; }
+        .am-sub { background: #e8f5e9; }
+        .pm-sub { background: #e3f2fd; }
+
+        .section-title { font-size: 15px; font-weight: bold; margin: 15px 0 8px; padding: 5px 10px;
+                         background: #e8f5e9; border-left: 4px solid #4CAF50; }
+        .section-title.blue { background: #e3f2fd; border-left-color: #2196F3; }
+        .section-title.orange { background: #fff3e0; border-left-color: #FF9800; }
+        .section-title.red { background: #ffebee; border-left-color: #f44336; }
+
+        .support-label { font-size: 10px; color: #999; margin-left: 2px; }
+        .cert-warn { background: #ffebee; }
+        .cert-date { font-size: 11px; color: #999; }
+
+        input[type="checkbox"] { width: 22px; height: 22px; cursor: pointer; }
+        input.date-input { width: 110px; font-size: 13px; padding: 4px; border: 1px solid #ccc; border-radius: 3px; }
+
+        /* タブレット対応 */
+        .btn-fetch { background: #FF9800 !important; color: #fff !important; border-color: #FF9800 !important; font-weight: bold; }
+        .btn-fetch:hover { background: #F57C00 !important; }
+        .fetch-status { font-size: 12px; margin-top: 5px; }
+
+        @media (max-width: 900px) {
+            body { padding: 8px; }
+            .header h1 { font-size: 15px; }
+            .header select, .header button { font-size: 13px; padding: 8px 12px; }
+            table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            th, td { padding: 5px 6px; font-size: 12px; white-space: nowrap; }
+            td.name { min-width: 70px; }
+            input[type="checkbox"] { width: 26px; height: 26px; }
+            input.date-input { width: 130px; font-size: 14px; padding: 6px; }
+            .section-title { font-size: 14px; }
+        }
+
+        /* モーダル */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                         background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: #fff; padding: 20px; border-radius: 8px; width: 400px; max-width: 90%; }
+        .modal h3 { margin-bottom: 15px; }
+        .modal label { display: block; margin-bottom: 8px; }
+        .modal input, .modal select { width: 100%; padding: 6px; font-size: 14px; margin-top: 3px; }
+        .modal .btn-row { display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end; }
+
+        /* ローディング */
+        .loading { text-align: center; padding: 30px; color: #666; font-size: 15px; }
+
+        /* 印刷 */
+        @media print {
+            body { background: #fff; padding: 5mm; font-size: 11px; }
+            .no-print { display: none !important; }
+            .header { margin-bottom: 5px; }
+            .header h1 { font-size: 16px; }
+            table { page-break-inside: avoid; }
+            th, td { padding: 2px 5px; font-size: 10px; }
+            .section-title { font-size: 12px; margin: 8px 0 4px; padding: 3px 8px; }
+            input[type="checkbox"] { width: 14px; height: 14px; }
+            @page { size: A4 portrait; margin: 10mm; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>今月の測定・居宅訪問・誕生日一覧</h1>
+    <span class="no-print">
+        <select id="yearSelect"></select>年
+        <select id="monthSelect"></select>月
+        <button onclick="renderAll()" class="btn-primary">表示</button>
+        <button onclick="printView()" class="btn-print">印刷</button>
+        <button onclick="fetchFromSpreadsheet()" style="font-size:13px; padding:5px 10px; cursor:pointer; border:1px solid #FF9800; border-radius:4px; background:#fff3e0;">📡 データ更新</button>
+        <button onclick="showLoadArea()" style="font-size:12px; padding:4px 8px; cursor:pointer; border:1px solid #ccc; border-radius:4px; background:#f5f5f5; color:#666;">手動</button>
+        <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="font-size:13px; padding:5px 10px; cursor:pointer; border:1px solid #1976d2; border-radius:4px; background:#e3f2fd; color:#1565c0; font-weight:bold;">📋 利用者台帳</button>
+    </span>
+    <span id="displayYearMonth" style="font-size:16px; font-weight:bold; margin-left:10px;"></span>
+</div>
+
+<div id="syncStatus" class="sync-info no-print"></div>
+
+<!-- データ読み込みエリア -->
+<div id="loadArea" class="no-print" style="background:#fff3e0; border:1px solid #FF9800; border-radius:6px; padding:12px; margin-bottom:15px;">
+    <strong>📋 スプレッドシートからデータを読み込む</strong>
+    <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <div>
+            <button onclick="fetchFromSpreadsheet()" class="btn-fetch" style="font-size:15px; padding:10px 20px; cursor:pointer; border:1px solid #FF9800; border-radius:6px;">
+                📡 スプレッドシートから自動取得
+            </button>
+            <div class="fetch-status" id="fetchStatus"></div>
+        </div>
+    </div>
+    <details style="margin-top:10px;">
+        <summary style="cursor:pointer; font-size:12px; color:#666;">手動で読み込む場合はこちら</summary>
+        <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <div>
+                <div style="font-size:12px; color:#666; margin-bottom:4px;">方法1: CSVファイルを選択</div>
+                <input type="file" id="csvFile" accept=".csv" onchange="loadCSVFile(this)" style="font-size:13px;">
+            </div>
+            <div style="border-left:1px solid #ccc; padding-left:10px;">
+                <div style="font-size:12px; color:#666; margin-bottom:4px;">方法2: スプレッドシートを開く → Ctrl+A → Ctrl+C → 下の枠に Ctrl+V</div>
+                <textarea id="pasteArea" rows="2" style="width:300px; font-size:12px; border:1px solid #ccc; border-radius:4px; padding:4px;" placeholder="ここに貼り付け"></textarea>
+                <button onclick="loadFromPaste()" style="font-size:12px; padding:4px 10px; cursor:pointer; vertical-align:top;">読み込み</button>
+            </div>
+        </div>
+    </details>
+    <div id="loadStatus" style="font-size:12px; margin-top:6px; color:#666;"></div>
+</div>
+
+<!-- 測定セクション -->
+<div class="section-title">体力測定（<span id="nextPlanMonth"></span>計画書用）</div>
+<div id="measurementSection"><div class="loading">データ読み込み中...</div></div>
+
+<!-- 居宅訪問セクション -->
+<div class="section-title blue">居宅訪問（<span id="nextPlanMonth2"></span>計画書用）</div>
+<div id="visitSection"></div>
+
+<!-- 認定期間終了が近い人 -->
+<div class="section-title red">認定期間まもなく終了（要確認）</div>
+<div id="certSection"></div>
+
+<!-- 誕生日セクション -->
+<div class="section-title orange">誕生日</div>
+<div id="birthdaySection"></div>
+
+<!-- イレギュラー追加 -->
+<div class="no-print" style="margin-top: 15px;">
+    <button onclick="showIrregularModal()" style="font-size: 13px; padding: 6px 12px; cursor: pointer;
+            border: 1px solid #FF9800; background: #fff3e0; border-radius: 4px;">
+        ＋ イレギュラー追加（相談員用）
+    </button>
+</div>
+
+<!-- イレギュラー追加モーダル -->
+<div class="modal-overlay" id="irregularModal">
+    <div class="modal">
+        <h3>イレギュラー追加</h3>
+        <label>名前:
+            <select id="irr_name_select"><option value="">-- 利用者を選択 --</option></select>
+            <div style="margin-top:5px; font-size:12px; color:#666;">リストにない場合:
+                <input type="text" id="irr_name_manual" placeholder="名前を直接入力" style="width:auto; display:inline; font-size:12px;">
+            </div>
+        </label>
+        <label>種別:
+            <select id="irr_type">
+                <option value="measurement">測定</option>
+                <option value="visit">居宅訪問</option>
+                <option value="both">測定＋居宅訪問</option>
+            </select>
+        </label>
+        <label>理由: <input type="text" id="irr_reason" placeholder="例: ケアプラン変更"></label>
+        <div class="btn-row">
+            <button onclick="closeIrregularModal()">キャンセル</button>
+            <button onclick="addIrregular()" class="btn-primary">追加</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ========== 定数 ==========
+// GAS WebアプリのURL（ローカルサーバー用。GAS Webアプリからはgoogle.script.runを自動使用）
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwqfudNXAiZ3E1RoD3MP0s2cjFajKk_94MvjnWoLUElYNEM32BUPbpGLEyVxUSDmjyW/exec';
+const IS_GAS = (typeof google !== 'undefined' && google.script && google.script.run);
+const IRREGULAR_KEY = 'yawaragi_monthly_irregular';
+const CHECK_KEY = 'yawaragi_monthly_checks';
+const MEMBERS_CACHE_KEY = 'yawaragi_monthly_members_cache';
+
+let ALL_MEMBERS = []; // スプレッドシートから取得した全利用者
+
+// ========== データ管理 ==========
+function loadIrregulars() {
+    return JSON.parse(localStorage.getItem(IRREGULAR_KEY) || '{}');
+}
+function saveIrregulars(data) {
+    localStorage.setItem(IRREGULAR_KEY, JSON.stringify(data));
+}
+function loadChecks() {
+    return JSON.parse(localStorage.getItem(CHECK_KEY) || '{}');
+}
+function saveChecks(data) {
+    localStorage.setItem(CHECK_KEY, JSON.stringify(data));
+}
+
+// ========== データ読み込み ==========
+function loadCachedMembers() {
+    const cached = localStorage.getItem(MEMBERS_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+    return [];
+}
+
+function loadCSVFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result.replace(/^\uFEFF/, '');
+        processLoadedData(text);
+    };
+    reader.readAsText(file);
+}
+
+function loadFromPaste() {
+    const text = document.getElementById('pasteArea').value.trim();
+    if (!text) {
+        document.getElementById('loadStatus').innerHTML = '<span style="color:#f44336;">貼り付けデータが空です</span>';
+        return;
+    }
+    // タブ区切りをカンマ区切りに変換
+    const converted = text.split(/\r?\n/).map(line => {
+        if (line.includes('\t')) {
+            return line.split('\t').map(c => '"' + c.replace(/"/g, '""') + '"').join(',');
+        }
+        return line;
+    }).join('\n');
+    processLoadedData(converted);
+}
+
+function processLoadedData(text) {
+    const members = parseCSV(text);
+    if (members.length === 0) {
+        document.getElementById('loadStatus').innerHTML = '<span style="color:#f44336;">データを読み込めませんでした。形式を確認してください。</span>';
+        return;
+    }
+    localStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(members));
+    ALL_MEMBERS = members;
+    document.getElementById('loadArea').style.display = 'none';
+    renderAll();
+}
+
+function parseCSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return [];
+
+    // ヘッダー解析
+    const headers = parseCSVLine(lines[0]);
+    const colMap = detectColumns(headers);
+
+    const members = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        const name = clean(cols, colMap.name);
+        if (!name) continue;
+
+        // 要介護度
+        const careRaw = clean(cols, colMap.care);
+        let type = '';
+        if (careRaw) {
+            type = (careRaw.includes('支援') || careRaw.includes('事業対象')) ? '要支援' : '要介護';
+        }
+
+        // AM/PM
+        const unitRaw = clean(cols, colMap.unit);
+        let unit = 'AM';
+        if (unitRaw && (unitRaw.includes('午後') || unitRaw.toUpperCase().includes('PM') || unitRaw.includes('2単位'))) {
+            unit = 'PM';
+        }
+
+        // 誕生日 → 月を抽出
+        const birthRaw = clean(cols, colMap.birthday);
+        let birthMonth = '';
+        let birthDay = '';
+        if (birthRaw) {
+            const parts = birthRaw.match(/(\d{1,2})\/(\d{1,2})/);
+            if (parts) {
+                birthMonth = parseInt(parts[1]);
+                birthDay = parseInt(parts[2]);
+            }
+        }
+
+        // 認定期間終了日
+        const certEndRaw = clean(cols, colMap.certEnd);
+        let certEndDate = '';
+        if (certEndRaw) {
+            certEndDate = certEndRaw;
+        }
+
+        // 計画書開始月
+        const planStartRaw = clean(cols, colMap.planStart);
+        let planStart = '';
+        if (planStartRaw) {
+            // 2026-04 or 2026/04 形式に対応
+            const pm = planStartRaw.match(/(\d{4})[-\/](\d{1,2})/);
+            if (pm) {
+                planStart = pm[1] + '-' + String(pm[2]).padStart(2, '0');
+            }
+        }
+
+        members.push({ name, type, unit, birthMonth, birthDay, certEndDate, planStart });
+    }
+
+    return members;
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (inQuotes) {
+            if (c === '"' && line[i+1] === '"') { current += '"'; i++; }
+            else if (c === '"') { inQuotes = false; }
+            else { current += c; }
+        } else {
+            if (c === '"') { inQuotes = true; }
+            else if (c === ',') { result.push(current); current = ''; }
+            else { current += c; }
+        }
+    }
+    result.push(current);
+    return result;
+}
+
+function clean(cols, idx) {
+    if (idx < 0 || idx >= cols.length) return '';
+    return cols[idx].trim().replace(/^"|"$/g, '');
+}
+
+function detectColumns(headers) {
+    const map = { name: 0, care: -1, unit: -1, birthday: -1, certEnd: -1, planStart: -1 };
+    for (let i = 0; i < headers.length; i++) {
+        const h = headers[i].trim();
+        if (h.includes('名前') || h.includes('氏名')) map.name = i;
+        else if (h.includes('介護度') || h.includes('要介護') || h.includes('認定')) map.care = i;
+        else if (h.includes('午前') || h.includes('午後') || h.includes('AM') || h.includes('PM') || h.includes('単位')) map.unit = i;
+        else if (h.includes('誕生')) map.birthday = i;
+        else if (h.includes('認定期間終了') || h.includes('認定終了')) map.certEnd = i;
+        else if (h.includes('計画書開始')) map.planStart = i;
+    }
+    return map;
+}
+
+// ========== 初期化 ==========
+function init() {
+    const now = new Date();
+    const yearSel = document.getElementById('yearSelect');
+    const monthSel = document.getElementById('monthSelect');
+
+    for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y; opt.textContent = y;
+        if (y === now.getFullYear()) opt.selected = true;
+        yearSel.appendChild(opt);
+    }
+    for (let m = 1; m <= 12; m++) {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        if (m === now.getMonth() + 1) opt.selected = true;
+        monthSel.appendChild(opt);
+    }
+
+    // キャッシュがあればそれを使う（読み込みエリアを非表示）
+    ALL_MEMBERS = loadCachedMembers();
+    if (ALL_MEMBERS.length > 0) {
+        document.getElementById('loadArea').style.display = 'none';
+        renderAll();
+    } else {
+        // キャッシュがない場合はスプレッドシートから自動取得
+        fetchFromSpreadsheet();
+    }
+}
+
+// ========== 測定月計算 ==========
+function isMeasurementMonth(planStartStr, selectedYear, selectedMonth) {
+    if (!planStartStr) return false;
+    const [pYear, pMonth] = planStartStr.split('-').map(Number);
+    const planStart = pYear * 12 + (pMonth - 1);
+    const selected = selectedYear * 12 + (selectedMonth - 1);
+    const diff = selected - (planStart - 1);
+    if (diff < 0) return false;
+    return diff % 3 === 0;
+}
+
+// ========== 認定期間チェック ==========
+function getCertExpiringMembers(year, month) {
+    // 表示月の翌月末までに認定期間が切れる人を抽出
+    const result = [];
+    ALL_MEMBERS.forEach(m => {
+        if (!m.certEndDate) return;
+        const parsed = parseDate(m.certEndDate);
+        if (!parsed) return;
+
+        const endMonths = parsed.year * 12 + (parsed.month - 1);
+        const selectedMonths = year * 12 + (month - 1);
+        const diff = endMonths - selectedMonths;
+
+        // 今月または来月に終了する人
+        if (diff >= 0 && diff <= 1) {
+            result.push({ ...m, certEnd: parsed });
+        }
+    });
+    return result;
+}
+
+function parseDate(str) {
+    // YYYY/M/D or YYYY-M-D
+    const m = str.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+    if (m) return { year: parseInt(m[1]), month: parseInt(m[2]), day: parseInt(m[3]) };
+    return null;
+}
+
+// ========== 一覧表示 ==========
+function renderAll() {
+    const year = parseInt(document.getElementById('yearSelect').value);
+    const month = parseInt(document.getElementById('monthSelect').value);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextMonthYear = month === 12 ? year + 1 : year;
+
+    document.getElementById('displayYearMonth').textContent = '（' + year + '年' + month + '月）';
+    document.getElementById('nextPlanMonth').textContent = nextMonthYear + '年' + nextMonth + '月';
+    document.getElementById('nextPlanMonth2').textContent = nextMonthYear + '年' + nextMonth + '月';
+
+    const members = ALL_MEMBERS;
+    const yearMonthKey = year + '-' + String(month).padStart(2, '0');
+    const irregulars = loadIrregulars()[yearMonthKey] || [];
+    const checks = loadChecks();
+
+    // 連携状態表示
+    const noPlan = members.filter(m => !m.planStart).length;
+    let statusHtml = '';
+    if (members.length === 0) {
+        statusHtml = '<span class="warn">⚠ データがありません。上の読み込みエリアからCSVを読み込んでください。</span>';
+        document.getElementById('loadArea').style.display = 'block';
+    } else {
+        statusHtml = '<span class="count">' + members.length + '名</span> のデータを表示中';
+        if (noPlan > 0) {
+            statusHtml += '　|　<span class="warn">⚠ 計画書開始月が未入力: ' + noPlan + '名</span>（スプレッドシートのH列に入力）';
+        }
+    }
+    document.getElementById('syncStatus').innerHTML = statusHtml;
+
+    // 要介護→要支援の順にソート
+    function sortByPriority(list) {
+        return list.sort((a, b) => {
+            const aIsKaigo = a.type === '要介護' ? 0 : 1;
+            const bIsKaigo = b.type === '要介護' ? 0 : 1;
+            return aIsKaigo - bIsKaigo;
+        });
+    }
+
+    // 測定対象者
+    const measureAM = [];
+    const measurePM = [];
+    members.forEach(m => {
+        if (isMeasurementMonth(m.planStart, year, month)) {
+            if (m.unit === 'AM') measureAM.push({ ...m, irregular: false });
+            else measurePM.push({ ...m, irregular: false });
+        }
+    });
+    irregulars.forEach(irr => {
+        if (irr.type === 'measurement' || irr.type === 'both') {
+            const entry = { name: irr.name, unit: irr.unit || 'AM', irregular: true, reason: irr.reason, type: '' };
+            const already = [...measureAM, ...measurePM].some(m => m.name === irr.name);
+            if (!already) {
+                if (entry.unit === 'AM') measureAM.push(entry);
+                else measurePM.push(entry);
+            }
+        }
+    });
+    sortByPriority(measureAM);
+    sortByPriority(measurePM);
+
+    // 居宅訪問
+    const visitAM = [];
+    const visitPM = [];
+    members.forEach(m => {
+        if (isMeasurementMonth(m.planStart, year, month)) {
+            if (m.unit === 'AM') visitAM.push({ ...m, irregular: false });
+            else visitPM.push({ ...m, irregular: false });
+        }
+    });
+    irregulars.forEach(irr => {
+        if (irr.type === 'visit' || irr.type === 'both') {
+            const entry = { name: irr.name, unit: irr.unit || 'AM', irregular: true, reason: irr.reason, type: '' };
+            const already = [...visitAM, ...visitPM].some(m => m.name === irr.name);
+            if (!already) {
+                if (entry.unit === 'AM') visitAM.push(entry);
+                else visitPM.push(entry);
+            }
+        }
+    });
+    sortByPriority(visitAM);
+    sortByPriority(visitPM);
+
+    // 誕生日
+    const birthAM = [];
+    const birthPM = [];
+    members.forEach(m => {
+        if (parseInt(m.birthMonth) === month) {
+            if (m.unit === 'AM') birthAM.push(m);
+            else birthPM.push(m);
+        }
+    });
+
+    // 認定期間終了が近い人
+    const certExpiring = getCertExpiringMembers(year, month);
+
+    // テーブル描画
+    document.getElementById('measurementSection').innerHTML =
+        buildMeasureTable(measureAM, measurePM, yearMonthKey, 'measure', checks);
+    document.getElementById('visitSection').innerHTML =
+        buildVisitTable(visitAM, visitPM, yearMonthKey, 'visit', checks);
+    document.getElementById('certSection').innerHTML =
+        buildCertTable(certExpiring);
+    document.getElementById('birthdaySection').innerHTML =
+        buildBirthdayTable(birthAM, birthPM, yearMonthKey, 'birth', checks);
+
+    // チェックボックスイベント
+    document.querySelectorAll('.check-item').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const allChecks = loadChecks();
+            allChecks[this.dataset.key] = this.checked;
+            saveChecks(allChecks);
+        });
+    });
+    // 日付入力イベント
+    document.querySelectorAll('.date-item').forEach(di => {
+        di.addEventListener('change', function() {
+            const allChecks = loadChecks();
+            allChecks[this.dataset.key] = this.value;
+            saveChecks(allChecks);
+        });
+    });
+}
+
+function buildMeasureTable(amList, pmList, yearMonth, prefix, checks) {
+    if (amList.length === 0 && pmList.length === 0)
+        return '<p style="color:#999; padding:10px;">該当者なし</p>';
+
+    const maxRows = Math.max(amList.length, pmList.length);
+    let html = '<table><thead><tr>';
+    html += '<th class="ampm-header am-header" colspan="4">AM</th>';
+    html += '<th class="ampm-header pm-header" colspan="4">PM</th>';
+    html += '</tr><tr>';
+    html += '<th class="am-sub">名前</th><th class="am-sub">測定入力</th><th class="am-sub">CM用</th><th class="am-sub">本人用</th>';
+    html += '<th class="pm-sub">名前</th><th class="pm-sub">測定入力</th><th class="pm-sub">CM用</th><th class="pm-sub">本人用</th>';
+    html += '</tr></thead><tbody>';
+    for (let i = 0; i < maxRows; i++) {
+        html += '<tr>';
+        html += buildNameCheckCells(amList, i, yearMonth, prefix + '_am', ['input','cm','honin'], checks);
+        html += buildNameCheckCells(pmList, i, yearMonth, prefix + '_pm', ['input','cm','honin'], checks);
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+}
+
+function buildVisitTable(amList, pmList, yearMonth, prefix, checks) {
+    if (amList.length === 0 && pmList.length === 0)
+        return '<p style="color:#999; padding:10px;">該当者なし</p>';
+
+    const maxRows = Math.max(amList.length, pmList.length);
+    let html = '<table><thead><tr>';
+    html += '<th class="ampm-header am-header" colspan="2">AM</th>';
+    html += '<th class="ampm-header pm-header" colspan="2">PM</th>';
+    html += '</tr><tr>';
+    html += '<th class="am-sub">名前</th><th class="am-sub">check</th>';
+    html += '<th class="pm-sub">名前</th><th class="pm-sub">check</th>';
+    html += '</tr></thead><tbody>';
+    for (let i = 0; i < maxRows; i++) {
+        html += '<tr>';
+        html += buildNameCheckCells(amList, i, yearMonth, prefix + '_am', ['done'], checks);
+        html += buildNameCheckCells(pmList, i, yearMonth, prefix + '_pm', ['done'], checks);
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+}
+
+function buildCertTable(list) {
+    if (list.length === 0)
+        return '<p style="color:#999; padding:10px;">該当者なし</p>';
+
+    let html = '<table><thead><tr>';
+    html += '<th>名前</th><th>AM/PM</th><th>区分</th><th>認定期間終了日</th>';
+    html += '</tr></thead><tbody>';
+    list.forEach(m => {
+        const endStr = m.certEnd.year + '/' + m.certEnd.month + '/' + m.certEnd.day;
+        html += '<tr class="cert-warn">';
+        html += '<td class="name">' + escHtml(m.name) + '</td>';
+        html += '<td>' + m.unit + '</td>';
+        html += '<td>' + escHtml(m.type) + '</td>';
+        html += '<td style="font-weight:bold; color:#f44336;">' + endStr + '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
+function buildBirthdayTable(amList, pmList, yearMonth, prefix, checks) {
+    if (amList.length === 0 && pmList.length === 0)
+        return '<p style="color:#999; padding:10px;">該当者なし</p>';
+
+    const maxRows = Math.max(amList.length, pmList.length);
+    let html = '<table><thead><tr>';
+    html += '<th class="ampm-header am-header" colspan="5">AM</th>';
+    html += '<th class="ampm-header pm-header" colspan="5">PM</th>';
+    html += '</tr><tr>';
+    html += '<th class="am-sub">名前</th><th class="am-sub">誕生日</th><th class="am-sub">写真撮影</th><th class="am-sub">プリントアウト</th><th class="am-sub">お渡し</th>';
+    html += '<th class="pm-sub">名前</th><th class="pm-sub">誕生日</th><th class="pm-sub">写真撮影</th><th class="pm-sub">プリントアウト</th><th class="pm-sub">お渡し</th>';
+    html += '</tr></thead><tbody>';
+    for (let i = 0; i < maxRows; i++) {
+        html += '<tr>';
+        html += buildBirthdayCells(amList, i, yearMonth, prefix + '_am', checks);
+        html += buildBirthdayCells(pmList, i, yearMonth, prefix + '_pm', checks);
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+}
+
+function buildBirthdayCells(list, index, yearMonth, keyPrefix, checks) {
+    if (index >= list.length) {
+        return '<td></td><td></td><td></td><td></td><td></td>';
+    }
+    const m = list[index];
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const dateStr = m.birthMonth && m.birthDay ? m.birthMonth + '/' + m.birthDay : '';
+    let html = '<td class="name">' + escHtml(m.name) + '</td>';
+    html += '<td class="cert-date">' + dateStr + '</td>';
+    ['photo','print','give'].forEach(t => {
+        const key = yearMonth + '_' + keyPrefix + '_' + nameKey + '_' + t;
+        const checked = checks[key] ? ' checked' : '';
+        html += '<td><input type="checkbox" class="check-item" data-key="' + key + '"' + checked + '></td>';
+    });
+    return html;
+}
+
+function buildNameCheckCells(list, index, yearMonth, keyPrefix, checkTypes, checks) {
+    if (index >= list.length) {
+        return '<td></td>' + checkTypes.map(() => '<td></td>').join('');
+    }
+    const m = list[index];
+    const isShien = m.type === '要支援';
+    const bg = m.irregular ? ' style="background:#fff9c4"' : '';
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    let html = '<td class="name"' + bg + '>' + escHtml(m.name) + (isShien ? '<span class="support-label">（支援）</span>' : '') + (m.irregular ? ' ※' : '') + '</td>';
+    checkTypes.forEach(t => {
+        const key = yearMonth + '_' + keyPrefix + '_' + nameKey + '_' + t;
+        if (t === 'input') {
+            // 測定入力は日付カレンダー
+            const dateVal = checks[key] || '';
+            html += '<td' + bg + '><input type="date" class="date-input date-item" data-key="' + key + '" value="' + dateVal + '"></td>';
+        } else {
+            const checked = checks[key] ? ' checked' : '';
+            html += '<td' + bg + '><input type="checkbox" class="check-item" data-key="' + key + '"' + checked + '></td>';
+        }
+    });
+    return html;
+}
+
+// ========== イレギュラー ==========
+function showIrregularModal() {
+    const sel = document.getElementById('irr_name_select');
+    sel.innerHTML = '<option value="">-- 利用者を選択 --</option>';
+    ALL_MEMBERS.forEach(u => {
+        sel.innerHTML += '<option value="' + escAttr(u.name) + '" data-unit="' + u.unit + '">' +
+            escHtml(u.name) + '（' + u.unit + '）</option>';
+    });
+    document.getElementById('irr_name_manual').value = '';
+    document.getElementById('irr_reason').value = '';
+    document.getElementById('irregularModal').classList.add('show');
+}
+
+function closeIrregularModal() {
+    document.getElementById('irregularModal').classList.remove('show');
+}
+
+function addIrregular() {
+    const sel = document.getElementById('irr_name_select');
+    const manual = document.getElementById('irr_name_manual').value.trim();
+    let name = sel.value || manual;
+    if (!name) { alert('利用者を選択または入力してください'); return; }
+
+    let unit = 'AM';
+    if (sel.value) {
+        const opt = sel.options[sel.selectedIndex];
+        unit = opt.dataset.unit || 'AM';
+    }
+
+    const year = parseInt(document.getElementById('yearSelect').value);
+    const month = parseInt(document.getElementById('monthSelect').value);
+    const yearMonthKey = year + '-' + String(month).padStart(2, '0');
+
+    const irregulars = loadIrregulars();
+    if (!irregulars[yearMonthKey]) irregulars[yearMonthKey] = [];
+
+    const irrType = document.getElementById('irr_type').value;
+    const already = irregulars[yearMonthKey].some(i => i.name === name && i.type === irrType);
+    if (already) { alert(name + 'さんは既に追加済みです'); return; }
+
+    irregulars[yearMonthKey].push({
+        name: name,
+        unit: unit,
+        type: irrType,
+        reason: document.getElementById('irr_reason').value.trim()
+    });
+    saveIrregulars(irregulars);
+    closeIrregularModal();
+    renderAll();
+}
+
+// ========== GAS経由でデータ取得 ==========
+// GASレスポンスをメンバーオブジェクトに変換（共通処理）
+function convertGASResponse(response) {
+    if (!response.success || !response.data || response.data.length === 0) return null;
+    return response.data.map(function(m) {
+        let type = '';
+        if (m.care) {
+            type = (m.care.includes('支援') || m.care.includes('事業対象')) ? '要支援' : '要介護';
+        }
+        let unit = 'AM';
+        if (m.unit && (m.unit.includes('午後') || m.unit.toUpperCase().includes('PM') || m.unit.includes('2単位'))) {
+            unit = 'PM';
+        }
+        let birthMonth = '', birthDay = '';
+        if (m.birthday) {
+            const parts = m.birthday.match(/(\d{1,2})\/(\d{1,2})/);
+            if (parts) { birthMonth = parseInt(parts[1]); birthDay = parseInt(parts[2]); }
+        }
+        return {
+            name: m.name, type: type, unit: unit,
+            birthMonth: birthMonth, birthDay: birthDay,
+            certEndDate: m.certEnd || '', planStart: m.planStart || ''
+        };
+    });
+}
+
+function applyMembers(members) {
+    localStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(members));
+    ALL_MEMBERS = members;
+    document.getElementById('loadArea').style.display = 'none';
+    var statusEl = document.getElementById('fetchStatus');
+    if (statusEl) statusEl.innerHTML = '';
+    renderAll();
+}
+
+function showFetchError(msg) {
+    var statusEl = document.getElementById('fetchStatus');
+    if (statusEl) statusEl.innerHTML = '<span style="color:#f44336;">⚠ ' + msg + '</span>';
+    document.getElementById('loadArea').style.display = 'block';
+}
+
+let jsonpCounter = 0;
+function fetchFromSpreadsheet() {
+    var statusEl = document.getElementById('fetchStatus');
+    if (statusEl) statusEl.innerHTML = '<span style="color:#FF9800;">📡 取得中...</span>';
+
+    // GAS Webアプリ内 → google.script.runを使用
+    if (IS_GAS) {
+        google.script.run
+            .withSuccessHandler(function(response) {
+                var members = convertGASResponse(response);
+                if (members) { applyMembers(members); }
+                else { showFetchError('データ取得に失敗: ' + (response.error || 'データが空')); }
+            })
+            .withFailureHandler(function(err) {
+                showFetchError('通信エラー: ' + (err.message || err));
+            })
+            .handleAction({ action: 'getMembersData' });
+        return;
+    }
+
+    // ローカルサーバー → JSONP
+    if (!GAS_URL) { showFetchError('GAS URLが未設定です。手動で読み込んでください。'); return; }
+
+    var cbName = 'jsonp_members_' + (++jsonpCounter) + '_' + Date.now();
+    var timeout = setTimeout(function() {
+        delete window[cbName];
+        showFetchError('タイムアウトしました。手動で読み込んでください。');
+    }, 15000);
+
+    window[cbName] = function(response) {
+        clearTimeout(timeout);
+        delete window[cbName];
+        var script = document.getElementById('s_' + cbName);
+        if (script) script.remove();
+        var members = convertGASResponse(response);
+        if (members) { applyMembers(members); }
+        else { showFetchError('データ取得に失敗: ' + (response.error || 'データが空')); }
+    };
+
+    var script = document.createElement('script');
+    script.id = 's_' + cbName;
+    script.src = GAS_URL + '?callback=' + cbName;
+    script.onerror = function() {
+        clearTimeout(timeout);
+        delete window[cbName];
+        showFetchError('通信エラーが発生しました。手動で読み込んでください。');
+    };
+    document.body.appendChild(script);
+}
+
+function showLoadArea() {
+    localStorage.removeItem(MEMBERS_CACHE_KEY);
+    ALL_MEMBERS = [];
+    document.getElementById('loadArea').style.display = 'block';
+    renderAll();
+}
+
+// ========== 印刷 ==========
+function printView() {
+    window.print();
+}
+
+// ========== ユーティリティ ==========
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+function escAttr(str) {
+    return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// 初期化
+init();
+</script>
+</body>
+</html>

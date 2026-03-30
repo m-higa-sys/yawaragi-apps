@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>口腔チェック表 - yawaragi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Meiryo', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4CAF50, #66BB6A);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .header h1 { font-size: 22px; }
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .year-select {
+            font-size: 18px;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+            min-height: 44px;
+            min-width: 44px;
+            touch-action: manipulation;
+        }
+        .btn-white { background: white; color: #4CAF50; }
+        .btn-white:hover { background: #e8f5e9; }
+        .btn-taicho { background: #e3f2fd; color: #1565c0; border: 1px solid #1976d2; }
+        .btn-taicho:hover { background: #bbdefb; }
+        .btn-red { background: #f44336; color: white; }
+        .btn-red:hover { background: #d32f2f; }
+
+        .toolbar {
+            padding: 12px 20px;
+            background: white;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .stats {
+            font-size: 15px;
+            color: #666;
+        }
+        .stats strong { color: #4CAF50; font-size: 18px; }
+
+        .legend {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            padding: 15px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            border: 1px solid #e0e0e0;
+            text-align: center;
+            padding: 6px 3px;
+            font-size: 14px;
+        }
+        th {
+            background: #4CAF50;
+            color: white;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        th.month-header {
+            background: #388E3C;
+            font-size: 15px;
+            border-left: 3px solid #1B5E20;
+        }
+        th.sub-header {
+            background: #4CAF50;
+            font-size: 12px;
+            min-width: 48px;
+        }
+        th.sub-header.month-start {
+            border-left: 3px solid #1B5E20;
+        }
+
+        .month-border {
+            border-left: 3px solid #a5d6a7 !important;
+        }
+
+        .name-cell {
+            text-align: left;
+            padding-left: 10px;
+            font-weight: bold;
+            min-width: 55px;
+            white-space: nowrap;
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 5;
+        }
+        .group-cell {
+            font-weight: bold;
+            color: #4CAF50;
+            background: #f1f8e9;
+            position: sticky;
+            left: 0;
+            z-index: 5;
+            min-width: 30px;
+        }
+        .care-badge {
+            display: inline-block;
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-left: 4px;
+            font-weight: normal;
+            vertical-align: middle;
+        }
+        .care-kaigo { background: #FFD0D0; color: #900; }
+        .care-shien { background: #D0E8FF; color: #036; }
+
+        .check-cell {
+            cursor: pointer;
+            min-width: 48px;
+            min-height: 44px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            transition: background 0.15s;
+        }
+        .check-cell:hover { background: #f5f5f5; }
+        .check-cell.checked {
+            background: #e8f5e9;
+            color: #2E7D32;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .check-cell.disabled {
+            background: #d0d0d0;
+            color: #888;
+            cursor: default;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .check-cell.highlight-undone {
+            background: #ffebee;
+        }
+
+        .row-even { background: #fafafa; }
+        .row-even .name-cell { background: #fafafa; }
+
+        /* モーダル共通 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal h2 { margin-bottom: 15px; color: #333; }
+        .modal p { margin-bottom: 15px; color: #666; line-height: 1.6; }
+        .modal .btn { width: 100%; margin-top: 10px; }
+
+        /* 日付編集ダイアログ */
+        .date-dialog {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 320px;
+            width: 85%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        .date-dialog h3 {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: #333;
+        }
+        .date-dialog .current-date {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2E7D32;
+            margin-bottom: 15px;
+        }
+        .date-dialog input[type="date"] {
+            font-size: 18px;
+            padding: 10px 14px;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            width: 100%;
+            margin-bottom: 15px;
+            min-height: 44px;
+        }
+        .date-dialog .btn-row {
+            display: flex;
+            gap: 10px;
+        }
+        .date-dialog .btn-row .btn {
+            flex: 1;
+            margin-top: 0;
+        }
+
+        .file-drop {
+            border: 3px dashed #4CAF50;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            margin: 15px 0;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 16px;
+            color: #666;
+        }
+        .file-drop:hover, .file-drop.drag-over { background: #e8f5e9; }
+        .file-drop input { display: none; }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 200;
+            transition: opacity 0.3s;
+            font-size: 15px;
+        }
+
+        /* 印刷用 */
+        @media print {
+            body { background: white; font-size: 10px; }
+            .header, .toolbar, .no-print { display: none !important; }
+            .table-container { padding: 0; overflow: visible; }
+            table { box-shadow: none; font-size: 10px; }
+            th, td { padding: 2px 1px; font-size: 10px; }
+            .name-cell, .group-cell { position: static; }
+            .check-cell.checked { font-size: 13px; }
+            .care-badge { font-size: 8px; }
+            @page { size: A4 landscape; margin: 8mm; }
+        }
+
+        @media (max-width: 768px) {
+            .header { padding: 10px 15px; }
+            .header h1 { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🦷 口腔チェック表</h1>
+    <div class="header-controls">
+        <select id="yearSelect" class="year-select" onchange="changeYear()"></select>
+        <button class="btn btn-white" onclick="loadFromSpreadsheet()">🔄 利用者台帳から取得</button>
+        <button class="btn btn-taicho" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
+        <button class="btn btn-white" onclick="openCsvModal()">📁 CSV読込</button>
+        <button class="btn btn-white" onclick="exportJson()">💾 バックアップ</button>
+        <button class="btn btn-white" onclick="importJson()">📂 復元</button>
+        <button class="btn btn-white no-print" onclick="window.print()">🖨 印刷</button>
+    </div>
+</div>
+
+<div class="toolbar">
+    <div class="toolbar-left">
+        <div class="stats">
+            登録者数: <strong id="totalCount">0</strong>名
+            （要介護: <span id="kaigoCount">0</span>名＝月2回 ／ 要支援: <span id="shienCount">0</span>名＝月1回）
+            ｜ 今月の進捗: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
+        </div>
+    </div>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#e8f5e9;"></div> 実施済</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffebee;"></div> 今月未実施</div>
+        <div class="legend-item"><div class="legend-color" style="background:#f5f5f5;"></div> 対象外</div>
+        <div class="legend-item"><span class="care-badge care-kaigo">介護</span> 月2回</div>
+        <div class="legend-item"><span class="care-badge care-shien">支援</span> 月1回</div>
+    </div>
+</div>
+
+<div class="table-container">
+    <table id="checkTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999; font-size:18px;">
+        「🔄 利用者台帳から取得」ボタンで利用者一覧を読み込んでください
+    </div>
+</div>
+
+<!-- CSVモーダル -->
+<div class="modal-overlay" id="csvModal">
+    <div class="modal">
+        <h2>📁 CSV読込（手動）</h2>
+        <p>利用者台帳からダウンロードしたCSVを手動で読み込みます。<br>
+        通常は「🔄 利用者台帳から取得」ボタンを使ってください。</p>
+        <div class="file-drop" id="fileDrop" onclick="document.getElementById('csvFile').click()">
+            ここをタップしてCSVファイルを選択<br>
+            またはファイルをドラッグ＆ドロップ
+            <input type="file" id="csvFile" accept=".csv" onchange="handleCsvFile(this.files[0])">
+        </div>
+        <p style="font-size:13px; color:#999;">
+            「名前」or「氏名」列 ＋「カナ」列 ＋「要介護度」列があるCSV
+        </p>
+        <button class="btn btn-red" onclick="closeCsvModal()">閉じる</button>
+    </div>
+</div>
+
+<!-- 日付編集ダイアログ -->
+<div class="modal-overlay" id="dateDialog">
+    <div class="date-dialog">
+        <h3 id="dateDialogTitle">日付を設定</h3>
+        <input type="date" id="dateInput">
+        <div class="btn-row">
+            <button class="btn btn-red" onclick="clearCheckDate()">取消</button>
+            <button class="btn" style="background:#4CAF50;color:white;" onclick="saveDateFromDialog()">OK</button>
+        </div>
+        <button class="btn" style="background:#eee;color:#666;width:100%;margin-top:10px;" onclick="closeDateDialog()">キャンセル</button>
+    </div>
+</div>
+
+<!-- JSON復元用 -->
+<input type="file" id="jsonFile" accept=".json" style="display:none" onchange="handleJsonFile(this.files[0])">
+
+<div id="toast" class="toast" style="opacity:0;"></div>
+
+<script>
+// ============ 定数 ============
+const STORAGE_KEY = 'yawaragi_oral_check';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+
+const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
+const SUB_COLS = ['1回目', '2回目', 'ﾓﾆﾀﾘﾝｸﾞ'];
+
+let appData = {
+    users: [],       // [{name, furigana, care:'kaigo'|'shien'}]
+    checks: {},      // { "年度": { "ユーザー名": { "4月_1回目": true, ... } } }
+    currentYear: getCurrentFiscalYear()
+};
+
+// ============ ユーティリティ ============
+function getCurrentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function showToast(msg, color) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = color || '#4CAF50';
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escapeAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ============ データ管理 ============
+function loadData() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const p = JSON.parse(saved);
+            appData.users = p.users || [];
+            appData.checks = p.checks || {};
+        }
+    } catch(e) { console.error('読込エラー:', e); }
+}
+
+function saveData() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, checks: appData.checks }));
+    } catch(e) { console.error('保存エラー:', e); }
+}
+
+// ============ あいうえお順ソート ============
+function getGroup(furigana) {
+    if (!furigana) return 'その他';
+    const first = furigana.charAt(0);
+    const groups = [
+        { label: 'あ', chars: 'あいうえおアイウエオ' },
+        { label: 'か', chars: 'かきくけこがぎぐげごカキクケコガギグゲゴ' },
+        { label: 'さ', chars: 'さしすせそざじずぜぞサシスセソザジズゼゾ' },
+        { label: 'た', chars: 'たちつてとだぢづでどタチツテトダヂヅデド' },
+        { label: 'な', chars: 'なにぬねのナニヌネノ' },
+        { label: 'は', chars: 'はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ' },
+        { label: 'ま', chars: 'まみむめもマミムメモ' },
+        { label: 'や', chars: 'やゆよヤユヨ' },
+        { label: 'ら', chars: 'らりるれろラリルレロ' },
+        { label: 'わ', chars: 'わをんワヲン' }
+    ];
+    for (const g of groups) { if (g.chars.includes(first)) return g.label; }
+    return 'その他';
+}
+
+function sortUsers() {
+    appData.users.sort((a, b) => (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja'));
+}
+
+// ============ 利用者台帳から取得（GAS JSONP方式 = サーバー不要） ============
+function loadFromSpreadsheet() {
+    showToast('📋 利用者台帳からデータ取得中...', '#2196F3');
+
+    const callbackName = 'gasCallback_' + Date.now();
+    const url = GAS_URL + '?callback=' + callbackName;
+
+    const timeout = setTimeout(() => {
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        showToast('⚠ 取得に時間がかかっています。ネット接続を確認してください', '#f44');
+    }, 15000);
+
+    window[callbackName] = function(data) {
+        clearTimeout(timeout);
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+
+        try {
+            const users = (data.users || []).map(u => ({
+                name: u.name || '',
+                furigana: u.kana || '',
+                care: u.care || 'kaigo'
+            })).filter(u => u.name);
+
+            if (users.length === 0) {
+                showToast('⚠ 利用者が見つかりません', '#f44');
+                return;
+            }
+            mergeUsers(users);
+            saveData();
+            renderTable();
+            showToast(`✅ ${appData.users.length}名の利用者を取得しました`, '#4CAF50');
+        } catch(err) {
+            showToast('⚠ データの解析に失敗しました', '#f44');
+            console.error(err);
+        }
+    };
+
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = function() {
+        clearTimeout(timeout);
+        delete window[callbackName];
+        showToast('⚠ 取得失敗。ネット接続を確認してください', '#f44');
+    };
+    document.head.appendChild(script);
+}
+
+// CSV手動読込用のパーサー
+function parseSpreadsheetCsv(text) {
+    text = text.replace(/^\uFEFF/, '');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return [];
+    const headers = parseCSVLine(lines[0]).map(h => h.trim());
+    let nameIdx = -1, kanaIdx = -1, careIdx = -1, statusIdx = -1;
+    for (let i = 0; i < headers.length; i++) {
+        const h = headers[i];
+        if (h.includes('名前') || h === '氏名' || h === '利用者名') nameIdx = i;
+        else if (h.includes('カナ') || h.includes('かな') || h.includes('ふりがな') || h.includes('フリガナ')) kanaIdx = i;
+        else if (h.includes('介護度') || h.includes('要介護') || h.includes('認定')) careIdx = i;
+        else if (h.includes('ステータス') || h.includes('状態') || h.includes('利用状況')) statusIdx = i;
+    }
+    if (nameIdx === -1) return [];
+    const users = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        const name = (cols[nameIdx] || '').trim();
+        if (!name) continue;
+        if (statusIdx >= 0) {
+            const status = (cols[statusIdx] || '').trim();
+            if (status.includes('終了') || status.includes('中止') || status.includes('卒業')) continue;
+        }
+        const kana = kanaIdx >= 0 ? (cols[kanaIdx] || '').trim() : '';
+        let care = 'kaigo';
+        if (careIdx >= 0) {
+            const careRaw = (cols[careIdx] || '').trim();
+            if (careRaw.includes('支援') || careRaw.includes('事業対象')) care = 'shien';
+        }
+        users.push({ name, furigana: kana, care });
+    }
+    return users;
+}
+
+function mergeUsers(newUsers) {
+    const newNameSet = new Set(newUsers.map(u => u.name));
+    // 既存ユーザーの情報を更新
+    const existingMap = {};
+    appData.users.forEach(u => { existingMap[u.name] = u; });
+
+    appData.users = newUsers.map(nu => {
+        const existing = existingMap[nu.name];
+        return {
+            name: nu.name,
+            furigana: nu.furigana || (existing ? existing.furigana : ''),
+            care: nu.care
+        };
+    });
+    sortUsers();
+}
+
+// ============ 年度セレクト ============
+function initYearSelect() {
+    const sel = document.getElementById('yearSelect');
+    const fy = getCurrentFiscalYear();
+    sel.innerHTML = '';
+    for (let y = fy - 2; y <= fy + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = `令和${y - 2018}年度`;
+        sel.appendChild(opt);
+    }
+    sel.value = appData.currentYear;
+}
+
+function changeYear() {
+    appData.currentYear = parseInt(document.getElementById('yearSelect').value);
+    renderTable();
+}
+
+// ============ テーブル描画 ============
+function renderTable() {
+    const year = appData.currentYear;
+    const thead = document.getElementById('tableHead');
+    const tbody = document.getElementById('tableBody');
+
+    if (appData.users.length === 0) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        document.getElementById('emptyMessage').style.display = 'block';
+        updateStats(0, 0, 0, 0);
+        return;
+    }
+    document.getElementById('emptyMessage').style.display = 'none';
+
+    // ヘッダー
+    let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" style="min-width:55px;">氏名</th>';
+    for (const m of MONTHS) h1 += `<th class="month-header" colspan="3">${m}</th>`;
+    h1 += '</tr>';
+
+    let h2 = '<tr>';
+    for (let i = 0; i < MONTHS.length; i++) {
+        for (let si = 0; si < SUB_COLS.length; si++) {
+            const borderCls = si === 0 ? ' month-start' : '';
+            h2 += `<th class="sub-header${borderCls}">${SUB_COLS[si]}</th>`;
+        }
+    }
+    h2 += '</tr>';
+    thead.innerHTML = h1 + h2;
+
+    // データ準備
+    if (!appData.checks[year]) appData.checks[year] = {};
+    const yearData = appData.checks[year];
+
+    const now = new Date();
+    const currentMonthNum = now.getMonth() + 1;
+    const currentMonthLabel = currentMonthNum + '月';
+    const isCurrentYear = (currentMonthNum >= 4 && year === now.getFullYear()) ||
+                          (currentMonthNum < 4 && year === now.getFullYear() - 1);
+
+    let html = '';
+    let currentGroup = '';
+    let rowIndex = 0;
+    let doneCount = 0;
+    let kaigoCount = 0;
+    let shienCount = 0;
+
+    sortUsers();
+
+    for (const user of appData.users) {
+        if (user.care === 'kaigo') kaigoCount++; else shienCount++;
+
+        const group = getGroup(user.furigana);
+        if (group !== currentGroup) {
+            currentGroup = group;
+            html += `<tr><td class="group-cell">${group}</td><td colspan="${1 + MONTHS.length * 3}" style="background:#f1f8e9;"></td></tr>`;
+        }
+
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+        if (!yearData[user.name]) yearData[user.name] = {};
+
+        const isKaigo = user.care === 'kaigo';
+        const careBadge = isKaigo
+            ? '<span class="care-badge care-kaigo">介護</span>'
+            : '<span class="care-badge care-shien">支援</span>';
+
+        html += `<tr class="${rowClass}">`;
+        html += `<td class="group-cell"></td>`;
+        html += `<td class="name-cell">${escapeHtml(user.name)}${careBadge}</td>`;
+
+        // 今月の完了判定
+        let userDoneThisMonth = false;
+
+        for (const m of MONTHS) {
+            for (let si = 0; si < SUB_COLS.length; si++) {
+                const sub = SUB_COLS[si];
+                const key = `${m}_${sub}`;
+                const checked = yearData[user.name][key];
+
+                // 要支援は「2回目」が対象外
+                const is2nd = si === 1;
+                const disabled = !isKaigo && is2nd;
+
+                let cls = 'check-cell';
+                if (si === 0) cls += ' month-border';
+                if (disabled) {
+                    cls += ' disabled';
+                } else if (checked) {
+                    cls += ' checked';
+                } else if (m === currentMonthLabel && isCurrentYear && si === 0) {
+                    cls += ' highlight-undone';
+                }
+
+                if (disabled) {
+                    html += `<td class="${cls}">-</td>`;
+                } else {
+                    const displayVal = checked ? (checked === true ? '✓' : checked) : '';
+                    html += `<td class="${cls}" onclick="toggleCheck('${escapeAttr(user.name)}','${key}')">${displayVal}</td>`;
+                }
+            }
+        }
+        html += '</tr>';
+
+        // 進捗計算: 1回目にチェック（日付）があれば完了
+        if (isCurrentYear && yearData[user.name] && yearData[user.name][`${currentMonthLabel}_1回目`]) {
+            doneCount++;
+        }
+        rowIndex++;
+    }
+    tbody.innerHTML = html;
+    updateStats(appData.users.length, kaigoCount, shienCount, isCurrentYear ? doneCount : -1);
+}
+
+function updateStats(total, kaigo, shien, done) {
+    document.getElementById('totalCount').textContent = total;
+    document.getElementById('kaigoCount').textContent = kaigo;
+    document.getElementById('shienCount').textContent = shien;
+    document.getElementById('progressCount').textContent = done >= 0 ? done : '-';
+    document.getElementById('progressTotal').textContent = done >= 0 ? total : '-';
+}
+
+// 日付フォーマット: "3/25" のような形式
+function formatDateShort(dateObj) {
+    return (dateObj.getMonth() + 1) + '/' + dateObj.getDate();
+}
+
+// 日付ダイアログ用の状態
+let dialogState = { userName: '', key: '' };
+
+function toggleCheck(userName, key) {
+    const year = appData.currentYear;
+    if (!appData.checks[year]) appData.checks[year] = {};
+    if (!appData.checks[year][userName]) appData.checks[year][userName] = {};
+
+    const current = appData.checks[year][userName][key];
+
+    if (current) {
+        // 既にチェック済み → 日付編集ダイアログを表示
+        openDateDialog(userName, key, current);
+    } else {
+        // 未チェック → 今日の日付を入れる
+        appData.checks[year][userName][key] = formatDateShort(new Date());
+        saveData();
+        renderTable();
+    }
+}
+
+function openDateDialog(userName, key, currentValue) {
+    dialogState = { userName, key };
+    const dialog = document.getElementById('dateDialog');
+    const input = document.getElementById('dateInput');
+    document.getElementById('dateDialogTitle').textContent = userName + ' - 日付変更';
+
+    // 現在の値からdate inputの初期値を設定
+    const now = new Date();
+    let initDate = now;
+    if (typeof currentValue === 'string' && currentValue.includes('/')) {
+        const parts = currentValue.split('/');
+        const m = parseInt(parts[0]);
+        const d = parseInt(parts[1]);
+        // 年度から適切な年を推定
+        const year = appData.currentYear;
+        const fullYear = m >= 4 ? year : year + 1;
+        initDate = new Date(fullYear, m - 1, d);
+    }
+    input.value = initDate.getFullYear() + '-' +
+        String(initDate.getMonth() + 1).padStart(2, '0') + '-' +
+        String(initDate.getDate()).padStart(2, '0');
+
+    dialog.classList.add('active');
+}
+
+function closeDateDialog() {
+    document.getElementById('dateDialog').classList.remove('active');
+}
+
+function saveDateFromDialog() {
+    const input = document.getElementById('dateInput');
+    if (!input.value) return;
+    const d = new Date(input.value + 'T00:00:00');
+    const year = appData.currentYear;
+    if (!appData.checks[year]) appData.checks[year] = {};
+    if (!appData.checks[year][dialogState.userName]) appData.checks[year][dialogState.userName] = {};
+    appData.checks[year][dialogState.userName][dialogState.key] = formatDateShort(d);
+    saveData();
+    closeDateDialog();
+    renderTable();
+}
+
+function clearCheckDate() {
+    const year = appData.currentYear;
+    if (appData.checks[year] && appData.checks[year][dialogState.userName]) {
+        delete appData.checks[year][dialogState.userName][dialogState.key];
+    }
+    saveData();
+    closeDateDialog();
+    renderTable();
+}
+
+// ============ CSV読込（手動） ============
+function openCsvModal() { document.getElementById('csvModal').classList.add('active'); }
+function closeCsvModal() { document.getElementById('csvModal').classList.remove('active'); }
+
+const fileDrop = document.getElementById('fileDrop');
+fileDrop.addEventListener('dragover', (e) => { e.preventDefault(); fileDrop.classList.add('drag-over'); });
+fileDrop.addEventListener('dragleave', () => { fileDrop.classList.remove('drag-over'); });
+fileDrop.addEventListener('drop', (e) => {
+    e.preventDefault(); fileDrop.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) handleCsvFile(e.dataTransfer.files[0]);
+});
+
+function handleCsvFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const result = parseCsvManual(e.target.result);
+            if (result.length === 0) { alert('利用者が見つかりません'); return; }
+            mergeUsers(result);
+            closeCsvModal();
+            saveData();
+            renderTable();
+            showToast(`✅ ${appData.users.length}名を読み込みました`, '#4CAF50');
+        } catch(err) { alert('CSV読込エラー: ' + err.message); }
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+function parseCsvManual(text) {
+    return parseSpreadsheetCsv(text);
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+            if (ch === '"' && line[i+1] === '"') { current += '"'; i++; }
+            else if (ch === '"') { inQuotes = false; }
+            else { current += ch; }
+        } else {
+            if (ch === '"') { inQuotes = true; }
+            else if (ch === ',') { result.push(current); current = ''; }
+            else { current += ch; }
+        }
+    }
+    result.push(current);
+    return result;
+}
+
+// ============ バックアップ/復元 ============
+function exportJson() {
+    const data = {
+        type: 'yawaragi_oral_check', version: 1,
+        exportDate: new Date().toISOString(),
+        users: appData.users, checks: appData.checks
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const d = new Date();
+    a.download = `口腔チェック_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function importJson() { document.getElementById('jsonFile').click(); }
+
+function handleJsonFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (data.type !== 'yawaragi_oral_check') { alert('口腔チェックのバックアップファイルではありません'); return; }
+            if (confirm('現在のデータを復元データで上書きします。よろしいですか？')) {
+                appData.users = data.users || [];
+                appData.checks = data.checks || {};
+                saveData(); renderTable();
+                showToast('✅ データを復元しました', '#4CAF50');
+            }
+        } catch(err) { alert('復元エラー: ' + err.message); }
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+// ============ 初期化 ============
+loadData();
+initYearSelect();
+renderTable();
+</script>
+</body>
+</html>

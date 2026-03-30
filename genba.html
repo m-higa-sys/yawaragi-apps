@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>現場配置管理 - yawaragi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif;
+            background: #f0f4f8; color: #333; min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #2c7a7b, #38a169); color: white;
+            padding: 16px 24px; display: flex; align-items: center;
+            justify-content: space-between; flex-wrap: wrap; gap: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header h1 { font-size: 1.3rem; font-weight: 700; }
+        .header-sub { font-size: 0.85rem; opacity: 0.9; }
+        .tab-bar { display: flex; background: white; border-bottom: 2px solid #e2e8f0; overflow-x: auto; }
+        .tab-btn {
+            flex: 1; min-width: 100px; padding: 14px 16px; border: none; background: white;
+            font-size: 0.95rem; font-weight: 600; color: #718096; cursor: pointer;
+            border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap;
+        }
+        .tab-btn.active { color: #2c7a7b; border-bottom-color: #2c7a7b; background: #f0fff4; }
+        .tab-btn:hover { background: #f7fafc; }
+        .tab-content { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .tab-content.active { display: block; }
+        .date-selector {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            margin-bottom: 20px; background: white; padding: 16px;
+            border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .date-selector label { font-weight: 600; font-size: 0.95rem; }
+        .date-selector input[type="date"] {
+            padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem;
+        }
+        .unit-btns { display: flex; gap: 6px; }
+        .unit-btn {
+            padding: 8px 20px; border: 2px solid #e2e8f0; border-radius: 8px;
+            background: white; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .unit-btn.active { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .unit-btn:hover:not(.active) { border-color: #2c7a7b; color: #2c7a7b; }
+        .busy-notice {
+            padding: 12px 16px; border-radius: 10px; margin-bottom: 16px;
+            font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 8px;
+        }
+        .busy-early { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+        .busy-mid { background: #fffff0; color: #b7791f; border: 1px solid #fefcbf; }
+        .busy-late { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+        .floor-map {
+            display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+            gap: 12px; margin-bottom: 20px;
+        }
+        @media (max-width: 1000px) { .floor-map { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 550px) { .floor-map { grid-template-columns: 1fr; } }
+        .position-card {
+            background: white; border-radius: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden;
+        }
+        .position-header {
+            padding: 12px 16px; color: white; font-weight: 700; font-size: 1rem;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .position-num {
+            width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.3);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; font-weight: 800;
+        }
+        .pos-1 .position-header { background: linear-gradient(135deg, #3182ce, #2b6cb0); }
+        .pos-2 .position-header { background: linear-gradient(135deg, #dd6b20, #c05621); }
+        .pos-3 .position-header { background: linear-gradient(135deg, #38a169, #2f855a); }
+        .pos-4 .position-header { background: linear-gradient(135deg, #805ad5, #6b46c1); }
+        .pos-5 .position-header { background: linear-gradient(135deg, #d69e2e, #b7791f); }
+        .position-body { padding: 14px 16px; }
+        .equipment-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+        .eq-tag {
+            font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+            background: #edf2f7; color: #4a5568; font-weight: 600;
+        }
+        .assign-area {
+            min-height: 48px; border: 2px dashed #cbd5e0; border-radius: 10px;
+            padding: 8px; display: flex; flex-wrap: wrap; gap: 6px;
+            align-items: center; transition: all 0.2s; cursor: pointer;
+        }
+        .assign-area:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .assign-area.has-staff { border-style: solid; border-color: #a0aec0; }
+        .assign-placeholder { color: #a0aec0; font-size: 0.85rem; width: 100%; text-align: center; }
+        .staff-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 10px; border-radius: 20px; font-size: 0.85rem;
+            font-weight: 600; color: white; cursor: pointer; transition: transform 0.15s;
+        }
+        .staff-chip:hover { transform: scale(1.05); }
+        .staff-chip .remove-x { font-size: 0.75rem; opacity: 0.8; margin-left: 2px; }
+
+        /* 仕事チェックリスト */
+        .job-checklist { margin-top: 10px; border-top: 1px solid #edf2f7; padding-top: 8px; }
+        .job-toggle-btn {
+            padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 8px;
+            background: #f7fafc; font-size: 0.8rem; color: #4a5568;
+            cursor: pointer; width: 100%; text-align: center; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        .job-toggle-btn:hover { background: #edf2f7; color: #2d3748; }
+        .progress-badge {
+            font-size: 0.7rem; padding: 1px 7px; border-radius: 10px;
+            color: white; font-weight: 700;
+        }
+        .progress-badge.done { background: #38a169; }
+        .progress-badge.partial { background: #dd6b20; }
+        .progress-badge.none { background: #a0aec0; }
+        .job-items { display: none; margin-top: 8px; }
+        .job-items.open { display: block; }
+        .job-item {
+            display: flex; align-items: flex-start; gap: 6px;
+            padding: 5px 4px; border-radius: 6px; transition: background 0.15s;
+        }
+        .job-item:hover { background: #f7fafc; }
+        .job-item input[type="checkbox"] {
+            margin-top: 3px; width: 18px; height: 18px; cursor: pointer;
+            accent-color: #38a169; flex-shrink: 0;
+        }
+        .job-item-text {
+            flex: 1; font-size: 0.8rem; line-height: 1.4; cursor: pointer; color: #4a5568;
+        }
+        .job-item.checked .job-item-text { color: #a0aec0; text-decoration: line-through; }
+        .job-item-move {
+            flex-shrink: 0; width: 22px; height: 22px; border: 1px solid #e2e8f0;
+            border-radius: 4px; background: white; font-size: 0.65rem; color: #a0aec0;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .job-item-move:hover { border-color: #805ad5; color: #805ad5; background: #faf5ff; }
+        .job-moved-tag {
+            font-size: 0.65rem; padding: 1px 5px; border-radius: 4px;
+            background: #faf5ff; color: #805ad5; font-weight: 600; white-space: nowrap;
+        }
+        .job-cat-label {
+            font-size: 0.72rem; font-weight: 700; color: #718096;
+            margin-top: 6px; margin-bottom: 2px; padding-left: 4px;
+        }
+        .progress-bar-wrap {
+            margin-top: 8px; background: #edf2f7; border-radius: 6px; height: 6px; overflow: hidden;
+        }
+        .progress-bar-fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
+
+        /* カスタム仕事追加 */
+        .add-custom-job {
+            display: flex; gap: 4px; margin-top: 8px;
+        }
+        .add-custom-job input {
+            flex: 1; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 6px;
+            font-size: 0.8rem; min-width: 0;
+        }
+        .add-custom-job input:focus { outline: none; border-color: #2c7a7b; }
+        .add-custom-job button {
+            padding: 5px 10px; border: 1px solid #e2e8f0; border-radius: 6px;
+            background: #f7fafc; font-size: 0.75rem; font-weight: 600;
+            cursor: pointer; white-space: nowrap; color: #4a5568;
+        }
+        .add-custom-job button:hover { background: #edf2f7; border-color: #2c7a7b; color: #2c7a7b; }
+        .custom-job-tag {
+            font-size: 0.6rem; padding: 1px 4px; border-radius: 3px;
+            background: #ebf8ff; color: #2b6cb0; font-weight: 600;
+        }
+        .custom-job-remove {
+            flex-shrink: 0; width: 18px; height: 18px; border: none;
+            border-radius: 4px; background: transparent; font-size: 0.7rem; color: #fc8181;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .custom-job-remove:hover { background: #fff5f5; color: #e53e3e; }
+
+        .memo-area {
+            background: white; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px;
+        }
+        .memo-area h3 { font-size: 0.95rem; color: #4a5568; margin-bottom: 8px; }
+        .memo-area textarea {
+            width: 100%; min-height: 60px; border: 2px solid #e2e8f0;
+            border-radius: 8px; padding: 10px; font-size: 0.9rem;
+            resize: vertical; font-family: inherit;
+        }
+        .memo-area textarea:focus { outline: none; border-color: #2c7a7b; }
+        .save-bar {
+            display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px;
+        }
+        .save-btn {
+            padding: 12px 32px; border: none; border-radius: 10px;
+            font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.2s;
+        }
+        .save-btn.primary { background: linear-gradient(135deg, #2c7a7b, #38a169); color: white; }
+        .save-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(44,122,123,0.3); }
+        .save-btn.secondary { background: white; color: #4a5568; border: 2px solid #e2e8f0; }
+        .save-btn.secondary:hover { border-color: #a0aec0; }
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 1000;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: white; border-radius: 16px; max-width: 500px;
+            width: 100%; max-height: 80vh; overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            padding: 16px 20px; font-weight: 700; font-size: 1.1rem;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-close {
+            width: 32px; height: 32px; border: none; background: #f7fafc;
+            border-radius: 50%; font-size: 1.2rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-body { padding: 20px; }
+        .staff-select-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .staff-select-btn {
+            padding: 10px 20px; border-radius: 10px; border: 2px solid #e2e8f0;
+            background: white; font-size: 0.95rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .staff-select-btn:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .staff-select-btn.already { opacity: 0.35; cursor: not-allowed; text-decoration: line-through; }
+
+        /* 移動先選択モーダル */
+        .move-target-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .move-target-btn {
+            padding: 12px 20px; border-radius: 10px; border: 2px solid #e2e8f0;
+            background: white; font-size: 0.95rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; color: white; min-width: 80px; text-align: center;
+        }
+        .move-target-btn:hover { transform: scale(1.05); opacity: 0.9; }
+        .move-undo-btn {
+            padding: 12px 20px; border-radius: 10px; border: 2px solid #fc8181;
+            background: white; font-size: 0.9rem; font-weight: 600;
+            cursor: pointer; color: #e53e3e; margin-top: 12px;
+        }
+        .move-undo-btn:hover { background: #fff5f5; }
+        .move-job-text { font-size: 0.9rem; color: #4a5568; margin-bottom: 8px; padding: 10px; background: #f7fafc; border-radius: 8px; }
+
+        .stats-controls {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; align-items: center;
+        }
+        .stats-controls label { font-weight: 600; }
+        .stats-controls select, .stats-controls input {
+            padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95rem;
+        }
+        .stats-table-wrap {
+            overflow-x: auto; background: white; border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .stats-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .stats-table th, .stats-table td {
+            padding: 12px 16px; text-align: center; border-bottom: 1px solid #e2e8f0;
+        }
+        .stats-table th {
+            background: #f7fafc; font-weight: 700; color: #4a5568; position: sticky; top: 0;
+        }
+        .stats-table th:first-child, .stats-table td:first-child { text-align: left; font-weight: 600; }
+        .stats-table tr:hover { background: #f0fff4; }
+        .stats-table .count-high { background: #fed7d7; color: #c53030; font-weight: 700; border-radius: 6px; }
+        .stats-table .count-zero { color: #cbd5e0; }
+        .stats-table .total-col { background: #f7fafc; font-weight: 700; }
+        .bias-warnings { margin-top: 16px; }
+        .bias-item {
+            padding: 10px 14px; background: #fffff0; border: 1px solid #fefcbf;
+            border-radius: 8px; margin-bottom: 8px; font-size: 0.9rem; color: #744210;
+        }
+        .history-list { display: flex; flex-direction: column; gap: 10px; }
+        .history-card {
+            background: white; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .history-date { font-weight: 700; font-size: 1rem; color: #2d3748; margin-bottom: 8px; }
+        .history-unit { font-size: 0.85rem; color: #718096; margin-bottom: 6px; }
+        .history-positions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .history-pos-tag {
+            font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; color: white; font-weight: 600;
+        }
+        .data-section {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px;
+        }
+        .data-section h3 { margin-bottom: 12px; color: #2d3748; }
+        .data-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+        .data-btn {
+            padding: 10px 20px; border: 2px solid #e2e8f0; border-radius: 8px;
+            background: white; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .data-btn:hover { border-color: #2c7a7b; color: #2c7a7b; }
+        .data-btn.danger { border-color: #fc8181; color: #e53e3e; }
+        .data-btn.danger:hover { background: #fff5f5; }
+        .toast {
+            position: fixed; bottom: 30px; left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #2d3748; color: white; padding: 12px 24px;
+            border-radius: 10px; font-weight: 600; font-size: 0.9rem;
+            z-index: 2000; transition: transform 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .staff-color-0 { background: #3182ce; }
+        .staff-color-1 { background: #dd6b20; }
+        .staff-color-2 { background: #38a169; }
+        .staff-color-3 { background: #805ad5; }
+        .staff-color-4 { background: #d69e2e; }
+        .staff-color-5 { background: #e53e3e; }
+        .staff-color-6 { background: #319795; }
+        .staff-color-7 { background: #d53f8c; }
+        .staff-color-8 { background: #2b6cb0; }
+        .staff-color-9 { background: #744210; }
+        .staff-color-10 { background: #5a67d8; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>現場配置管理</h1>
+        <div class="header-sub">リハビリデイサービス yawaragi</div>
+    </div>
+</div>
+
+<div class="tab-bar">
+    <button class="tab-btn active" data-tab="assign">配置登録</button>
+    <button class="tab-btn" data-tab="stats">集計</button>
+    <button class="tab-btn" data-tab="history">履歴</button>
+    <button class="tab-btn" data-tab="data">データ管理</button>
+</div>
+
+<div id="tab-assign" class="tab-content active">
+    <div class="date-selector">
+        <label>日付:</label>
+        <input type="date" id="assign-date">
+        <div class="unit-btns">
+            <button class="unit-btn active" data-unit="am">午前（1単位）</button>
+            <button class="unit-btn" data-unit="pm">午後（2単位）</button>
+        </div>
+        <button class="save-btn secondary" onclick="loadAssignment()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
+    </div>
+    <div id="busy-notice"></div>
+    <div class="floor-map" id="floor-map"></div>
+    <div class="memo-area">
+        <h3>メモ（申し送り等）</h3>
+        <textarea id="assign-memo" placeholder="例: 今日は〇〇さんに③を経験させたい"></textarea>
+    </div>
+    <div class="save-bar">
+        <button class="save-btn primary" onclick="saveAssignment()">保存する</button>
+        <button class="save-btn secondary" onclick="clearAssignment()">この枠をクリア</button>
+    </div>
+</div>
+
+<div id="tab-stats" class="tab-content">
+    <div class="stats-controls">
+        <label>期間:</label>
+        <input type="month" id="stats-month">
+        <button class="save-btn secondary" onclick="showStats()" style="padding:8px 16px; font-size:0.85rem;">集計する</button>
+    </div>
+    <div id="stats-result"></div>
+</div>
+
+<div id="tab-history" class="tab-content">
+    <div class="stats-controls">
+        <label>月:</label>
+        <input type="month" id="history-month">
+        <button class="save-btn secondary" onclick="showHistory()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
+    </div>
+    <div id="history-result"></div>
+</div>
+
+<div id="tab-data" class="tab-content">
+    <div class="data-section">
+        <h3>スタッフ管理</h3>
+        <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;">配置に表示するスタッフを管理できます</p>
+        <div id="staff-manage-list"></div>
+        <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="text" id="new-staff-name" placeholder="スタッフ名を入力" style="padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.9rem;">
+            <button class="data-btn" onclick="addStaff()">追加</button>
+        </div>
+    </div>
+    <div class="data-section">
+        <h3>バックアップ</h3>
+        <div class="data-btns">
+            <button class="data-btn" onclick="exportData()">JSONエクスポート</button>
+            <button class="data-btn" onclick="document.getElementById('import-file').click()">JSONインポート</button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+        </div>
+    </div>
+    <div class="data-section">
+        <h3>データ削除</h3>
+        <div class="data-btns">
+            <button class="data-btn danger" onclick="clearAllData()">全データ削除</button>
+        </div>
+    </div>
+</div>
+
+<!-- モーダル: スタッフ選択 -->
+<div class="modal-overlay" id="staff-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span id="staff-modal-title">スタッフを選択</span>
+            <button class="modal-close" onclick="closeModal('staff-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="staff-select-grid" id="staff-select-grid"></div>
+        </div>
+    </div>
+</div>
+
+<!-- モーダル: 仕事移動先選択 -->
+<div class="modal-overlay" id="move-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span>仕事の移動</span>
+            <button class="modal-close" onclick="closeModal('move-modal')">&times;</button>
+        </div>
+        <div class="modal-body" id="move-modal-body"></div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ========== データ定義 ==========
+const POS_COLORS = { 1: '#3182ce', 2: '#dd6b20', 3: '#38a169', 4: '#805ad5', 5: '#d69e2e' };
+
+const POSITIONS = [
+    {
+        id: 1, name: '全体サポート', color: POS_COLORS[1], equipment: [],
+        jobs: [
+            { category: 'カバー', items: ['②③⑤が休憩・退勤等の場合は①が入る', '①がいなければ④が入る'] },
+            { category: '測定', items: ['身体機能評価の実施'] },
+            { category: '連絡', items: ['送迎時間変更等の連絡'] },
+            { category: 'その他', items: ['進捗を見て横断的にサポート', '仕事が終わったらリマインダーを行う'] }
+        ]
+    },
+    {
+        id: 2, name: 'WB・足温器', color: POS_COLORS[2], equipment: ['WB×2', '足温器', '滑車・バイク'],
+        jobs: [
+            { category: '定位置対応', items: ['WB・足温器・滑車・バイクの定位置対応'] },
+            { category: '周囲サポート', items: ['進捗を見て横断的にサポート'] },
+            { category: '機能訓練', items: ['PM月次チェック'] },
+            { category: '入力', items: ['送迎日誌の入力'] },
+            { category: '撮影', items: ['インスタ・誕生日の撮影'] }
+        ]
+    },
+    {
+        id: 3, name: '干渉波', color: POS_COLORS[3], equipment: ['干渉波'],
+        jobs: [
+            { category: '対応・誘導', items: ['干渉波の対応・利用者の誘導'] },
+            { category: '他者支援', items: ['他スタッフの状況を見て支援'] },
+            { category: '準備', items: ['明日の午前の準備（名札等）'] },
+            { category: '測定', items: ['体重・身長の測定'] },
+            { category: '確認', items: ['利用者状態の確認（25日まで）'] }
+        ]
+    },
+    {
+        id: 4, name: '事務・作業', color: POS_COLORS[4], equipment: [],
+        jobs: [
+            { category: 'バックヤード', items: ['基本はバックヤード作業（籠って作業）'] },
+            { category: 'バックアップ', items: ['①が多忙・不在時は①業務へ'] },
+            { category: 'その他', items: ['④が利用者対応時は他スタッフが代わる'] }
+        ]
+    },
+    {
+        id: 5, name: 'マシン', color: POS_COLORS[5], equipment: ['マシン×4'],
+        jobs: [
+            { category: '安全確認', items: ['マシンエリアの安全確認'] },
+            { category: '見守り', items: ['入力しながら見守り'] },
+            { category: '運動', items: ['時間があればyトレを提案・実施'] },
+            { category: '入力', items: ['介護記録（連絡帳）の入力'] }
+        ]
+    }
+];
+
+// ジョブをフラット化（元のポジションID付き）
+function getBaseJobList(posId) {
+    const pos = POSITIONS.find(p => p.id === posId);
+    const list = [];
+    pos.jobs.forEach(cat => {
+        cat.items.forEach(item => {
+            list.push({ id: `${posId}_${list.length}`, origPos: posId, category: cat.category, text: item });
+        });
+    });
+    return list;
+}
+
+// 全ジョブのフラットリスト
+function getAllBaseJobs() {
+    const all = [];
+    for (let pid = 1; pid <= 5; pid++) { all.push(...getBaseJobList(pid)); }
+    return all;
+}
+
+// あるポジションに「今日」表示すべきジョブを取得
+// = 元からこのポジションにある仕事（移動されていないもの） + 他ポジションから移動されてきた仕事 + カスタム仕事
+function getEffectiveJobs(posId) {
+    const moves = currentAssignment.jobMoves || {};
+    const customJobs = (currentAssignment.customJobs || {})[posId] || [];
+    const jobs = [];
+
+    // 全ポジションの元ジョブをチェック
+    for (let pid = 1; pid <= 5; pid++) {
+        getBaseJobList(pid).forEach(j => {
+            const movedTo = moves[j.id];
+            if (pid === posId && movedTo === undefined) {
+                // 元からこのポジション & 移動されていない
+                jobs.push({ ...j, movedFrom: null });
+            } else if (movedTo === posId) {
+                // 他ポジションからここに移動されてきた
+                jobs.push({ ...j, movedFrom: pid });
+            }
+        });
+    }
+
+    // カスタム仕事
+    customJobs.forEach(cj => {
+        jobs.push({ id: cj.id, origPos: posId, category: '追加', text: cj.text, isCustom: true });
+    });
+
+    return jobs;
+}
+
+const DEFAULT_STAFF = [
+    '星野', '勝又', '下浦', '工藤', '髙山', '春山', '小野', '林', '大久保'
+];
+
+const STAFF_COLORS = {};
+function assignStaffColors() {
+    const staff = getStaff();
+    staff.forEach((s, i) => { STAFF_COLORS[s] = 'staff-color-' + (i % 11); });
+}
+
+// ========== ストレージ ==========
+const STORAGE_KEY = 'yawaragi_haichi';
+
+function getData() {
+    try {
+        const d = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return d || { assignments: {}, staff: [...DEFAULT_STAFF] };
+    } catch { return { assignments: {}, staff: [...DEFAULT_STAFF] }; }
+}
+function saveData(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
+function getAssignmentKey(date, unit) { return date + '_' + unit; }
+
+function emptyAssignment() {
+    return { positions: {1:[], 2:[], 3:[], 4:[], 5:[]}, jobChecks: {}, jobMoves: {}, customJobs: {}, memo: '' };
+}
+
+function getAssignment(date, unit) {
+    const d = getData();
+    const a = d.assignments[getAssignmentKey(date, unit)];
+    if (!a) return emptyAssignment();
+    if (!a.jobChecks) a.jobChecks = {};
+    if (!a.jobMoves) a.jobMoves = {};
+    if (!a.customJobs) a.customJobs = {};
+    return a;
+}
+
+function setAssignment(date, unit, assignment) {
+    const d = getData();
+    d.assignments[getAssignmentKey(date, unit)] = assignment;
+    saveData(d);
+}
+
+function autoSave() {
+    currentAssignment.memo = document.getElementById('assign-memo').value;
+    setAssignment(currentDate, currentUnit, currentAssignment);
+}
+
+// ========== 状態管理 ==========
+let currentDate = '';
+let currentUnit = 'am';
+let currentAssignment = emptyAssignment();
+let openChecklists = {};
+let movingJobId = null; // 移動中のジョブID
+
+function init() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    currentDate = `${yyyy}-${mm}-${dd}`;
+    document.getElementById('assign-date').value = currentDate;
+    document.getElementById('stats-month').value = `${yyyy}-${mm}`;
+    document.getElementById('history-month').value = `${yyyy}-${mm}`;
+    const d = getData();
+    if (!d.staff) { d.staff = [...DEFAULT_STAFF]; saveData(d); }
+    assignStaffColors();
+    setupTabs();
+    setupUnitBtns();
+    renderFloorMap();
+    loadAssignment();
+    renderStaffManage();
+}
+
+function setupTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+    });
+}
+
+function setupUnitBtns() {
+    document.querySelectorAll('.unit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentUnit = btn.dataset.unit;
+            loadAssignment();
+        });
+    });
+}
+
+// ========== フロアマップ ==========
+
+function renderFloorMap() {
+    const map = document.getElementById('floor-map');
+    map.innerHTML = '';
+    POSITIONS.forEach(pos => {
+        const card = document.createElement('div');
+        card.className = `position-card pos-${pos.id}`;
+        card.innerHTML = `
+            <div class="position-header">
+                <div class="position-num">${pos.id}</div>
+                <span>${pos.name}</span>
+            </div>
+            <div class="position-body">
+                ${pos.equipment.length ? `<div class="equipment-tags">${pos.equipment.map(e => `<span class="eq-tag">${e}</span>`).join('')}</div>` : ''}
+                <div class="assign-area" id="assign-${pos.id}" onclick="openStaffSelect(${pos.id})">
+                    <span class="assign-placeholder">タップしてスタッフを配置</span>
+                </div>
+                <div class="job-checklist" id="jobcl-${pos.id}"></div>
+            </div>
+        `;
+        map.appendChild(card);
+    });
+}
+
+function renderAssignments() {
+    POSITIONS.forEach(pos => {
+        const area = document.getElementById('assign-' + pos.id);
+        const staff = currentAssignment.positions[pos.id] || [];
+        if (staff.length === 0) {
+            area.innerHTML = '<span class="assign-placeholder">タップしてスタッフを配置</span>';
+            area.classList.remove('has-staff');
+        } else {
+            area.innerHTML = staff.map(s =>
+                `<span class="staff-chip ${STAFF_COLORS[s] || 'staff-color-0'}" onclick="event.stopPropagation(); removeStaff(${pos.id}, '${s}')">${s}<span class="remove-x">&times;</span></span>`
+            ).join('');
+            area.classList.add('has-staff');
+        }
+        renderJobChecklist(pos.id);
+    });
+}
+
+// ========== 仕事チェックリスト ==========
+
+function renderJobChecklist(posId) {
+    const container = document.getElementById('jobcl-' + posId);
+    const jobs = getEffectiveJobs(posId);
+    const checks = currentAssignment.jobChecks || {};
+    const doneCount = jobs.filter(j => checks[j.id]).length;
+    const totalCount = jobs.length;
+    const isOpen = openChecklists[posId] || false;
+
+    let progressCls = 'none';
+    if (doneCount === totalCount && totalCount > 0) progressCls = 'done';
+    else if (doneCount > 0) progressCls = 'partial';
+
+    const pct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0;
+    const posColor = POS_COLORS[posId];
+
+    let html = `
+        <button class="job-toggle-btn" onclick="toggleChecklist(${posId})">
+            <span>${isOpen ? '閉じる' : '仕事チェック'}</span>
+            <span class="progress-badge ${progressCls}">${doneCount}/${totalCount}</span>
+        </button>
+        <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" style="width:${pct}%; background:${posColor};"></div>
+        </div>
+        <div class="job-items ${isOpen ? 'open' : ''}">
+    `;
+
+    let currentCat = '';
+    jobs.forEach(j => {
+        if (j.category !== currentCat) {
+            currentCat = j.category;
+            html += `<div class="job-cat-label">${currentCat}</div>`;
+        }
+        const checked = checks[j.id] ? true : false;
+
+        // タグ表示（移動元 or カスタム）
+        let tags = '';
+        if (j.movedFrom) {
+            const fromName = POSITIONS.find(p => p.id === j.movedFrom).name;
+            tags = `<span class="job-moved-tag">${j.movedFrom}${fromName}から</span>`;
+        }
+        if (j.isCustom) {
+            tags = `<span class="custom-job-tag">追加</span>`;
+        }
+
+        html += `<div class="job-item ${checked ? 'checked' : ''}">
+            <input type="checkbox" ${checked ? 'checked' : ''} onclick="toggleJobCheck('${j.id}', ${posId})">
+            <span class="job-item-text" onclick="toggleJobCheck('${j.id}', ${posId})">${tags} ${j.text}</span>`;
+
+        if (j.isCustom) {
+            html += `<button class="custom-job-remove" onclick="removeCustomJob(${posId}, '${j.id}')" title="削除">&times;</button>`;
+        } else {
+            html += `<button class="job-item-move" onclick="openMoveModal('${j.id}', ${posId})" title="他のポジションへ移動">&#8644;</button>`;
+        }
+        html += `</div>`;
+    });
+
+    // 移動で出て行った仕事を表示（グレー）
+    const moves = currentAssignment.jobMoves || {};
+    getBaseJobList(posId).forEach(j => {
+        if (moves[j.id] !== undefined && moves[j.id] !== posId) {
+            const toName = POSITIONS.find(p => p.id === moves[j.id]).name;
+            html += `<div class="job-item" style="opacity:0.4;">
+                <span class="job-item-text" style="text-decoration:line-through; font-size:0.75rem;">
+                    <span class="job-moved-tag" style="background:#fff5f5; color:#e53e3e;">${moves[j.id]}${toName}へ移動</span>
+                    ${j.text}
+                </span>
+                <button class="job-item-move" onclick="undoMoveJob('${j.id}')" title="移動を取消" style="color:#e53e3e; border-color:#fed7d7;">&#x21A9;</button>
+            </div>`;
+        }
+    });
+
+    // カスタム仕事追加欄
+    html += `
+        <div class="add-custom-job">
+            <input type="text" id="custom-input-${posId}" placeholder="仕事を追加..." onkeydown="if(event.key==='Enter')addCustomJob(${posId})">
+            <button onclick="addCustomJob(${posId})">+追加</button>
+        </div>
+    `;
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function toggleChecklist(posId) {
+    openChecklists[posId] = !openChecklists[posId];
+    renderJobChecklist(posId);
+}
+
+function toggleJobCheck(jobId, posId) {
+    if (!currentAssignment.jobChecks) currentAssignment.jobChecks = {};
+    currentAssignment.jobChecks[jobId] = !currentAssignment.jobChecks[jobId];
+    autoSave();
+    renderJobChecklist(posId);
+}
+
+// ========== 仕事の移動 ==========
+
+function openMoveModal(jobId, currentPosId) {
+    movingJobId = jobId;
+    const allJobs = getAllBaseJobs();
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    const moves = currentAssignment.jobMoves || {};
+    const currentlyAt = moves[jobId] !== undefined ? moves[jobId] : job.origPos;
+    const origPosName = POSITIONS.find(p => p.id === job.origPos).name;
+
+    let html = `<div class="move-job-text">
+        <strong>「${job.text}」</strong><br>
+        <span style="font-size:0.8rem; color:#718096;">元のポジション: ${job.origPos} ${origPosName}</span>
+    </div>`;
+    html += '<p style="font-size:0.9rem; font-weight:600; margin-bottom:8px;">移動先を選んでください:</p>';
+    html += '<div class="move-target-grid">';
+    POSITIONS.forEach(p => {
+        if (p.id === currentlyAt) {
+            html += `<button class="move-target-btn" style="background:${p.color}; opacity:0.4; cursor:not-allowed;" disabled>${p.id} ${p.name}（今ここ）</button>`;
+        } else {
+            html += `<button class="move-target-btn" style="background:${p.color};" onclick="doMoveJob('${jobId}', ${p.id})">${p.id} ${p.name}</button>`;
+        }
+    });
+    html += '</div>';
+
+    // 元に戻すボタン（移動済みの場合のみ）
+    if (moves[jobId] !== undefined) {
+        html += `<button class="move-undo-btn" onclick="undoMoveJob('${jobId}')">元のポジション（${job.origPos} ${origPosName}）に戻す</button>`;
+    }
+
+    document.getElementById('move-modal-body').innerHTML = html;
+    openModal('move-modal');
+}
+
+function doMoveJob(jobId, targetPosId) {
+    if (!currentAssignment.jobMoves) currentAssignment.jobMoves = {};
+    const allJobs = getAllBaseJobs();
+    const job = allJobs.find(j => j.id === jobId);
+    if (job && targetPosId === job.origPos) {
+        // 元のポジションに戻す場合はmovesから削除
+        delete currentAssignment.jobMoves[jobId];
+    } else {
+        currentAssignment.jobMoves[jobId] = targetPosId;
+    }
+    autoSave();
+    closeModal('move-modal');
+    renderAssignments();
+    const targetName = POSITIONS.find(p => p.id === targetPosId).name;
+    showToast(`${targetPosId} ${targetName} に移動しました`);
+}
+
+function undoMoveJob(jobId) {
+    if (currentAssignment.jobMoves) {
+        delete currentAssignment.jobMoves[jobId];
+    }
+    autoSave();
+    closeModal('move-modal');
+    renderAssignments();
+    showToast('元に戻しました');
+}
+
+// ========== カスタム仕事追加 ==========
+
+function addCustomJob(posId) {
+    const input = document.getElementById('custom-input-' + posId);
+    const text = input.value.trim();
+    if (!text) return;
+    if (!currentAssignment.customJobs) currentAssignment.customJobs = {};
+    if (!currentAssignment.customJobs[posId]) currentAssignment.customJobs[posId] = [];
+    const id = `custom_${posId}_${Date.now()}`;
+    currentAssignment.customJobs[posId].push({ id, text });
+    autoSave();
+    renderJobChecklist(posId);
+    showToast('仕事を追加しました');
+}
+
+function removeCustomJob(posId, jobId) {
+    if (!currentAssignment.customJobs || !currentAssignment.customJobs[posId]) return;
+    currentAssignment.customJobs[posId] = currentAssignment.customJobs[posId].filter(j => j.id !== jobId);
+    // チェックも消す
+    if (currentAssignment.jobChecks) delete currentAssignment.jobChecks[jobId];
+    autoSave();
+    renderJobChecklist(posId);
+}
+
+// ========== 繁忙期表示 ==========
+
+function updateBusyNotice() {
+    const el = document.getElementById('busy-notice');
+    const d = new Date(currentDate);
+    const day = d.getDate();
+    let html = '';
+    if (day <= 10) {
+        html = `<div class="busy-notice busy-early"><span>&#128293;</span> 上旬: ②月次チェック・入力、④請求業務・レセプト が忙しい時期</div>`;
+    } else if (day <= 20) {
+        html = `<div class="busy-notice busy-mid"><span>&#128293;</span> 中旬: ③状態確認・モニタリング、①計画書作成・評価 が忙しい時期</div>`;
+    } else {
+        html = `<div class="busy-notice busy-late"><span>&#128293;</span> 下旬: ⑤実績入力・確認、③翌月準備・名札 が忙しい時期</div>`;
+    }
+    el.innerHTML = html;
+}
+
+// ========== 配置の読み込み・保存 ==========
+
+function loadAssignment() {
+    currentDate = document.getElementById('assign-date').value;
+    currentAssignment = getAssignment(currentDate, currentUnit);
+    openChecklists = {};
+    renderAssignments();
+    document.getElementById('assign-memo').value = currentAssignment.memo || '';
+    updateBusyNotice();
+}
+
+function saveAssignment() {
+    currentAssignment.memo = document.getElementById('assign-memo').value;
+    setAssignment(currentDate, currentUnit, currentAssignment);
+    showToast('保存しました');
+}
+
+function clearAssignment() {
+    if (!confirm('この枠の配置をクリアしますか？')) return;
+    currentAssignment = emptyAssignment();
+    renderAssignments();
+    document.getElementById('assign-memo').value = '';
+    const d = getData();
+    delete d.assignments[getAssignmentKey(currentDate, currentUnit)];
+    saveData(d);
+    showToast('クリアしました');
+}
+
+// ========== スタッフ選択 ==========
+
+function getAllAssignedStaff() {
+    const assigned = new Set();
+    for (let pid = 1; pid <= 5; pid++) {
+        (currentAssignment.positions[pid] || []).forEach(s => assigned.add(s));
+    }
+    return assigned;
+}
+
+function openStaffSelect(posId) {
+    const pos = POSITIONS.find(p => p.id === posId);
+    document.getElementById('staff-modal-title').textContent = `${pos.id} ${pos.name} にスタッフを配置`;
+    const grid = document.getElementById('staff-select-grid');
+    const assigned = getAllAssignedStaff();
+    const inThisPos = new Set(currentAssignment.positions[posId] || []);
+    const staff = getStaff();
+    grid.innerHTML = staff.map(s => {
+        const alreadyElsewhere = assigned.has(s) && !inThisPos.has(s);
+        const inThis = inThisPos.has(s);
+        return `<button class="staff-select-btn ${alreadyElsewhere ? 'already' : ''}"
+            onclick="${alreadyElsewhere ? '' : `selectStaff('${s}', ${posId})`}"
+            ${alreadyElsewhere ? 'disabled' : ''}>
+            ${s}${inThis ? ' (配置済み)' : ''}${alreadyElsewhere ? ' (他に配置中)' : ''}
+        </button>`;
+    }).join('');
+    openModal('staff-modal');
+}
+
+function selectStaff(name, posId) {
+    if (!currentAssignment.positions[posId]) currentAssignment.positions[posId] = [];
+    const arr = currentAssignment.positions[posId];
+    const idx = arr.indexOf(name);
+    if (idx >= 0) { arr.splice(idx, 1); } else { arr.push(name); }
+    renderAssignments();
+    closeModal('staff-modal');
+}
+
+function removeStaff(posId, name) {
+    const arr = currentAssignment.positions[posId] || [];
+    const idx = arr.indexOf(name);
+    if (idx >= 0) arr.splice(idx, 1);
+    renderAssignments();
+}
+
+// ========== 集計 ==========
+
+function getEffectiveJobsForAssignment(posId, assignment) {
+    const moves = assignment.jobMoves || {};
+    const customJobs = (assignment.customJobs || {})[posId] || [];
+    const jobs = [];
+    for (let pid = 1; pid <= 5; pid++) {
+        getBaseJobList(pid).forEach(j => {
+            const movedTo = moves[j.id];
+            if (pid === posId && movedTo === undefined) jobs.push(j);
+            else if (movedTo === posId) jobs.push(j);
+        });
+    }
+    customJobs.forEach(cj => jobs.push({ id: cj.id, text: cj.text }));
+    return jobs;
+}
+
+function showStats() {
+    const month = document.getElementById('stats-month').value;
+    if (!month) return;
+    const d = getData();
+    const staff = getStaff();
+    const counts = {};
+    staff.forEach(s => { counts[s] = {1:0, 2:0, 3:0, 4:0, 5:0, total:0}; });
+
+    let totalJobs = 0, totalDone = 0;
+    const posJobStats = {1:{total:0,done:0}, 2:{total:0,done:0}, 3:{total:0,done:0}, 4:{total:0,done:0}, 5:{total:0,done:0}};
+
+    Object.keys(d.assignments).forEach(key => {
+        if (!key.startsWith(month)) return;
+        const a = d.assignments[key];
+        for (let pid = 1; pid <= 5; pid++) {
+            (a.positions[pid] || []).forEach(s => {
+                if (counts[s]) { counts[s][pid]++; counts[s].total++; }
+            });
+            const jobs = getEffectiveJobsForAssignment(pid, a);
+            const checks = a.jobChecks || {};
+            jobs.forEach(j => {
+                posJobStats[pid].total++; totalJobs++;
+                if (checks[j.id]) { posJobStats[pid].done++; totalDone++; }
+            });
+        }
+    });
+
+    let html = '<div class="stats-table-wrap"><table class="stats-table"><thead><tr><th>スタッフ</th>';
+    POSITIONS.forEach(p => { html += `<th style="color:${p.color}">${p.id} ${p.name}</th>`; });
+    html += '<th class="total-col">合計</th></tr></thead><tbody>';
+    staff.forEach(s => {
+        const c = counts[s];
+        html += `<tr><td>${s}</td>`;
+        const maxPos = Math.max(c[1], c[2], c[3], c[4], c[5]);
+        for (let pid = 1; pid <= 5; pid++) {
+            const val = c[pid]; let cls = '';
+            if (val === 0) cls = 'count-zero';
+            else if (val === maxPos && c.total > 3 && maxPos > c.total * 0.6) cls = 'count-high';
+            html += `<td class="${cls}">${val}</td>`;
+        }
+        html += `<td class="total-col">${c.total}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+
+    if (totalJobs > 0) {
+        html += '<div style="margin-top:20px; background:white; border-radius:12px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">';
+        html += '<h3 style="font-size:0.95rem; color:#2d3748; margin-bottom:12px;">仕事の完了率</h3>';
+        html += `<p style="font-size:0.9rem; margin-bottom:12px;">全体: <strong>${Math.round(totalDone/totalJobs*100)}%</strong>（${totalDone}/${totalJobs}件）</p>`;
+        html += '<div style="display:flex; flex-wrap:wrap; gap:10px;">';
+        POSITIONS.forEach(p => {
+            const s = posJobStats[p.id];
+            const pct = s.total > 0 ? Math.round(s.done / s.total * 100) : 0;
+            html += `<div style="flex:1; min-width:140px; padding:10px; background:#f7fafc; border-radius:8px;">
+                <div style="font-weight:700; color:${p.color}; font-size:0.85rem;">${p.id} ${p.name}</div>
+                <div style="font-size:1.1rem; font-weight:700;">${pct}%</div>
+                <div style="font-size:0.75rem; color:#a0aec0;">${s.done}/${s.total}件</div>
+                <div class="progress-bar-wrap" style="margin-top:4px;">
+                    <div class="progress-bar-fill" style="width:${pct}%; background:${p.color};"></div>
+                </div>
+            </div>`;
+        });
+        html += '</div></div>';
+    }
+
+    let warnings = [];
+    staff.forEach(s => {
+        const c = counts[s];
+        if (c.total < 4) return;
+        for (let pid = 1; pid <= 5; pid++) {
+            const ratio = c[pid] / c.total;
+            if (ratio >= 0.7) {
+                const posName = POSITIONS.find(p => p.id === pid).name;
+                warnings.push(`${s}さんは配置の${Math.round(ratio*100)}%が「${pid} ${posName}」に偏っています`);
+            }
+        }
+    });
+    if (warnings.length > 0) {
+        html += '<div class="bias-warnings">';
+        warnings.forEach(w => { html += `<div class="bias-item">&#9888;&#65039; ${w}</div>`; });
+        html += '</div>';
+    }
+    document.getElementById('stats-result').innerHTML = html;
+}
+
+// ========== 履歴 ==========
+
+function showHistory() {
+    const month = document.getElementById('history-month').value;
+    if (!month) return;
+    const d = getData();
+    const entries = [];
+    Object.keys(d.assignments).forEach(key => {
+        if (key.startsWith(month)) {
+            const [date, unit] = key.split('_');
+            entries.push({ date, unit, data: d.assignments[key] });
+        }
+    });
+    entries.sort((a, b) => (a.date + a.unit).localeCompare(b.date + b.unit));
+
+    if (entries.length === 0) {
+        document.getElementById('history-result').innerHTML = '<p style="color:#a0aec0; text-align:center; padding:30px;">この月のデータはありません</p>';
+        return;
+    }
+
+    let html = '<div class="history-list">';
+    entries.forEach(e => {
+        const dateObj = new Date(e.date);
+        const dayNames = ['日','月','火','水','木','金','土'];
+        const dayName = dayNames[dateObj.getDay()];
+        const unitName = e.unit === 'am' ? '午前' : '午後';
+
+        let totalJ = 0, doneJ = 0;
+        const checks = e.data.jobChecks || {};
+        for (let pid = 1; pid <= 5; pid++) {
+            getEffectiveJobsForAssignment(pid, e.data).forEach(j => { totalJ++; if (checks[j.id]) doneJ++; });
+        }
+        const jobPct = totalJ > 0 ? Math.round(doneJ / totalJ * 100) : 0;
+        let pctColor = '#a0aec0';
+        if (jobPct === 100) pctColor = '#38a169';
+        else if (jobPct > 0) pctColor = '#dd6b20';
+
+        // 移動があったか
+        const moveCount = Object.keys(e.data.jobMoves || {}).length;
+        const customCount = Object.values(e.data.customJobs || {}).reduce((sum, arr) => sum + arr.length, 0);
+
+        html += `<div class="history-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="history-date">${e.date.replace(month + '-', '')}日（${dayName}） ${unitName}</div>
+                <span style="font-size:0.85rem; font-weight:700; color:${pctColor};">仕事 ${jobPct}%</span>
+            </div>
+            <div class="history-unit">${e.data.memo ? 'メモ: ' + e.data.memo : ''}
+                ${moveCount > 0 ? `<span style="margin-left:8px; font-size:0.75rem; color:#805ad5;">移動${moveCount}件</span>` : ''}
+                ${customCount > 0 ? `<span style="margin-left:8px; font-size:0.75rem; color:#2b6cb0;">追加${customCount}件</span>` : ''}
+            </div>
+            <div class="history-positions">`;
+        for (let pid = 1; pid <= 5; pid++) {
+            const staff = e.data.positions[pid] || [];
+            if (staff.length > 0) {
+                const pJobs = getEffectiveJobsForAssignment(pid, e.data);
+                const pDone = pJobs.filter(j => checks[j.id]).length;
+                const pPct = pJobs.length > 0 ? Math.round(pDone / pJobs.length * 100) : 0;
+                html += `<span class="history-pos-tag" style="background:${POS_COLORS[pid]}">
+                    ${pid} ${staff.join('・')} (${pPct}%)
+                </span>`;
+            }
+        }
+        html += '</div></div>';
+    });
+    html += '</div>';
+    document.getElementById('history-result').innerHTML = html;
+}
+
+// ========== スタッフ管理 ==========
+
+function renderStaffManage() {
+    const staff = getStaff();
+    assignStaffColors();
+    const el = document.getElementById('staff-manage-list');
+    el.innerHTML = '<div style="display:flex; flex-wrap:wrap; gap:8px;">' +
+        staff.map(s => `<span class="staff-chip ${STAFF_COLORS[s]}" style="cursor:default;">
+            ${s}
+            <span class="remove-x" style="cursor:pointer;" onclick="removeStaffFromList('${s}')">&times;</span>
+        </span>`).join('') + '</div>';
+}
+
+function addStaff() {
+    const input = document.getElementById('new-staff-name');
+    const name = input.value.trim();
+    if (!name) return;
+    const d = getData();
+    if (d.staff.includes(name)) { showToast('既に登録されています'); return; }
+    d.staff.push(name);
+    saveData(d);
+    input.value = '';
+    renderStaffManage();
+    showToast(`${name}さんを追加しました`);
+}
+
+function removeStaffFromList(name) {
+    if (!confirm(`${name}さんを削除しますか？`)) return;
+    const d = getData();
+    d.staff = d.staff.filter(s => s !== name);
+    saveData(d);
+    renderStaffManage();
+    showToast(`${name}さんを削除しました`);
+}
+
+// ========== データ管理 ==========
+
+function exportData() {
+    const d = getData();
+    const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    a.download = `現場配置データ_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('エクスポートしました');
+}
+
+function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const d = JSON.parse(e.target.result);
+            if (d.assignments) {
+                saveData(d); assignStaffColors(); renderStaffManage(); loadAssignment();
+                showToast('インポートしました');
+            } else { alert('正しいデータファイルではありません'); }
+        } catch { alert('ファイルの読み込みに失敗しました'); }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+}
+
+function clearAllData() {
+    if (!confirm('全データを削除しますか？')) return;
+    if (!confirm('本当に削除しますか？（最終確認）')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    loadAssignment();
+    renderStaffManage();
+    showToast('全データを削除しました');
+}
+
+// ========== モーダル・トースト ==========
+
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', (e) => { if (e.target === o) o.classList.remove('show'); });
+});
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+init();
+</script>
+</body>
+</html>

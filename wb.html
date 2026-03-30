@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>WB設定表</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+            background: #f0f2f5;
+            color: #333;
+        }
+
+        /* ===== 管理画面 ===== */
+        .app-header {
+            background: linear-gradient(135deg, #1a73e8, #0d47a1);
+            color: white;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .app-header h1 { font-size: 22px; font-weight: 600; }
+        .header-buttons { display: flex; gap: 8px; }
+        .header-buttons button, .header-buttons a {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+        .btn-print {
+            background: #fff;
+            color: #1a73e8;
+        }
+        .btn-settings {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        .btn-sync {
+            background: #4caf50;
+            color: white;
+        }
+        .btn-edit {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        .btn-edit.editing {
+            background: #ff9800;
+            color: white;
+        }
+        .btn-ledger {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        /* ロック時のフォーム無効化 */
+        .locked .user-card select,
+        .locked .user-card input[type="checkbox"] {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        /* 非表示ボタン */
+        .btn-hide {
+            margin-left: auto;
+            padding: 4px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            color: #999;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn-hide:active { background: #f5f5f5; }
+        /* 非表示復帰ボタン */
+        .hidden-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .hidden-item button {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 4px;
+            background: #1a73e8;
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+        .status-bar {
+            background: white;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-size: 14px;
+        }
+        .status-bar .count { font-weight: 600; color: #1a73e8; }
+
+        .user-card {
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .user-card .kana-initial {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #e8f0fe;
+            color: #1a73e8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .user-card .kana-large {
+            width: 40px;
+            font-size: 28px;
+            font-weight: 700;
+            color: #999;
+            flex-shrink: 0;
+            text-align: center;
+        }
+        .user-card .kana-spacer {
+            width: 40px;
+            flex-shrink: 0;
+        }
+        .user-card .user-name {
+            min-width: 100px;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        .user-card .user-kana {
+            font-size: 11px;
+            color: #888;
+            min-width: 100px;
+        }
+        .user-card input, .user-card select {
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .user-card .height-select { width: 90px; }
+        .user-card .strength-select { width: 60px; }
+        .user-card .other-checkboxes { display: flex; gap: 14px; flex-wrap: nowrap; }
+        .user-card .other-checkboxes label {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .user-card .other-checkboxes input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .user-card label {
+            font-size: 12px;
+            color: #666;
+            white-space: nowrap;
+        }
+
+        .field-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ===== 設定モーダル ===== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+        }
+        .modal h2 { margin-bottom: 16px; font-size: 18px; }
+        .modal label { display: block; margin-bottom: 4px; font-size: 14px; color: #555; }
+        .modal input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .btn-save { background: #1a73e8; color: white; }
+        .btn-cancel { background: #e0e0e0; color: #333; }
+
+        /* ===== 新規追加セクション ===== */
+        .blank-rows-section {
+            margin-top: 16px;
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .blank-rows-section h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .blank-count-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .blank-count-control button {
+            width: 32px;
+            height: 32px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        .blank-count-control span { font-size: 16px; min-width: 24px; text-align: center; }
+
+        /* ===== 検索・フィルタ ===== */
+        .filter-section {
+            background: white;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .search-box {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 10px;
+            outline: none;
+        }
+        .search-box:focus { border-color: #1a73e8; }
+        .kana-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .kana-btn {
+            padding: 8px 14px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            background: white;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+            min-width: 50px;
+            text-align: center;
+        }
+        .kana-btn:active { transform: scale(0.95); }
+        .kana-btn.active {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+        .filter-count {
+            font-size: 13px;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+            font-size: 16px;
+        }
+
+        /* ===== 印刷スタイル ===== */
+        @media print {
+            body { background: white; margin: 0; }
+            .app-header, .status-bar, .blank-rows-section,
+            .modal-overlay, .no-print { display: none !important; }
+            .container { display: none; }
+            .user-card { display: none; }
+
+            .print-area { display: block !important; }
+
+            @page {
+                size: A4 portrait;
+                margin: 7mm 7mm 7mm 7mm;
+            }
+
+            .print-area {
+                font-family: 'Meiryo', sans-serif;
+            }
+            .print-title {
+                text-align: center;
+                font-size: 14pt;
+                font-weight: bold;
+                margin-bottom: 2mm;
+                border-bottom: 2px solid #333;
+                padding-bottom: 1mm;
+            }
+            .print-date {
+                text-align: right;
+                font-size: 7pt;
+                color: #666;
+                margin-bottom: 2mm;
+            }
+            .print-columns {
+                display: flex;
+                gap: 2mm;
+            }
+            .print-col {
+                flex: 1;
+            }
+            .print-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 7pt;
+            }
+            .print-table th {
+                background: #d0d0d0;
+                border: 1px solid #333;
+                padding: 0.8mm 1mm;
+                text-align: center;
+                font-weight: bold;
+                font-size: 6.5pt;
+            }
+            .print-table td {
+                border: 1px solid #555;
+                padding: 0.8mm 1mm;
+                text-align: center;
+                line-height: 1.2;
+            }
+            .print-table td.name-cell {
+                text-align: left;
+                padding-left: 1.5mm;
+                font-weight: 500;
+                white-space: nowrap;
+            }
+            .print-table td.other-cell {
+                text-align: left;
+                font-size: 6.5pt;
+                padding-left: 1mm;
+            }
+            .print-table tr.blank-row td {
+                height: 5mm;
+            }
+            .print-table .group-header {
+                background: #e0e0e0;
+                font-weight: bold;
+                text-align: center;
+                font-size: 7pt;
+                padding: 0.5mm;
+            }
+        }
+
+        /* 画面では印刷エリアを非表示 */
+        .print-area { display: none; }
+    </style>
+</head>
+<body>
+    <div class="app-header">
+        <h1>WB設定表</h1>
+        <div class="header-buttons">
+            <button class="btn-edit" id="editModeBtn" onclick="toggleEditMode()">🔒 ロック中</button>
+            <a class="btn-ledger" href="https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0" target="_blank">利用者台帳</a>
+            <button class="btn-sync" onclick="syncUsers()">利用者を同期</button>
+            <button class="btn-print" onclick="printTable()">印刷</button>
+            <button class="btn-settings" onclick="openSettings()">設定</button>
+        </div>
+    </div>
+
+    <div class="container locked" id="mainContainer">
+        <div class="status-bar">
+            <span>登録者数: <span class="count" id="userCount">0</span>人</span>
+            <span><span id="saveStatus"></span> <span id="lastSync">未同期</span></span>
+        </div>
+
+        <div class="filter-section" id="filterSection" style="display:none;">
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input type="text" class="search-box" id="searchBox" placeholder="名前で検索..." oninput="applyFilter()" style="margin-bottom:0; flex:1;">
+                <a href="#" id="hiddenCount" onclick="showHiddenModal(); return false;" style="font-size:13px; color:#1a73e8; white-space:nowrap; display:none;"></a>
+            </div>
+            <div class="kana-buttons" id="kanaButtons">
+                <button class="kana-btn active" onclick="setKanaFilter('')">全員</button>
+                <button class="kana-btn" onclick="setKanaFilter('あ行')">あ行</button>
+                <button class="kana-btn" onclick="setKanaFilter('か行')">か行</button>
+                <button class="kana-btn" onclick="setKanaFilter('さ行')">さ行</button>
+                <button class="kana-btn" onclick="setKanaFilter('た行')">た行</button>
+                <button class="kana-btn" onclick="setKanaFilter('な行')">な行</button>
+                <button class="kana-btn" onclick="setKanaFilter('は行')">は行</button>
+                <button class="kana-btn" onclick="setKanaFilter('ま行')">ま行</button>
+                <button class="kana-btn" onclick="setKanaFilter('や行')">や行</button>
+                <button class="kana-btn" onclick="setKanaFilter('ら行')">ら行</button>
+                <button class="kana-btn" onclick="setKanaFilter('わ行')">わ行</button>
+            </div>
+            <div class="filter-count" id="filterCount"></div>
+        </div>
+
+        <div id="userList" class="loading">
+            利用者データを読み込んでいます...
+        </div>
+
+        <div class="blank-rows-section no-print">
+            <h3>印刷時の空白行（新規用）</h3>
+            <div class="blank-count-control">
+                <button onclick="changeBlankRows(-1)">−</button>
+                <span id="blankCount">3</span>
+                <button onclick="changeBlankRows(1)">＋</button>
+                <span style="font-size:13px; color:#888;">行</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 印刷エリア -->
+    <div class="print-area" id="printArea"></div>
+
+    <!-- 設定モーダル -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <h2>設定</h2>
+            <label>GAS WebアプリURL</label>
+            <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+            <p style="font-size:12px; color:#888; margin-top:-12px; margin-bottom:16px;">
+                利用者台帳から名前を取得するためのURLです
+            </p>
+            <label>自動同期間隔</label>
+            <select id="autoSyncSelect" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:16px;">
+                <option value="30">30秒ごと</option>
+                <option value="60">1分ごと</option>
+                <option value="180">3分ごと</option>
+                <option value="300">5分ごと</option>
+                <option value="0">手動のみ</option>
+            </select>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeSettings()">キャンセル</button>
+                <button class="btn-save" onclick="saveSettings()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 非表示管理モーダル -->
+    <div class="modal-overlay" id="hiddenModal">
+        <div class="modal">
+            <h2>非表示の利用者（WBなし）</h2>
+            <div id="hiddenList" style="max-height:400px; overflow-y:auto; margin-bottom:16px;"></div>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeHiddenModal()">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== 定数 =====
+        const STORAGE_KEY = 'wb_settings_data';
+        const STORAGE_GAS = 'wb_settings_gas_url';
+        const STORAGE_BLANK = 'wb_settings_blank_rows';
+        const STORAGE_LAST_SYNC = 'wb_settings_last_sync';
+        const STORAGE_AUTO_SYNC = 'wb_settings_auto_sync';
+
+        // ===== 状態 =====
+        let users = [];         // [{name, kana, wbHeight, wbStrength, wbOther}]
+        let wbSettings = {};    // {name: {height, strength, other}}  ローカルキャッシュ
+        let blankRows = parseInt(localStorage.getItem(STORAGE_BLANK)) || 3;
+        let saveTimers = {};    // ユーザーごとの保存タイマー
+        let hasWBCols = false;  // スプレッドシートにWB列があるか
+        let activeKanaFilter = '';  // 現在のあいうえお行フィルタ
+        let editMode = false;       // ロック/編集モード
+        let autoSyncTimer = null;   // 自動同期タイマー
+        const STORAGE_HIDDEN = 'wb_hidden_users';
+        let hiddenUsers = [];       // WBなし非表示リスト
+
+        // ===== 初期化 =====
+        document.addEventListener('DOMContentLoaded', function() {
+            loadLocalData();
+            loadHiddenUsers();
+            document.getElementById('blankCount').textContent = blankRows;
+
+            const gasUrl = localStorage.getItem(STORAGE_GAS);
+            if (gasUrl) {
+                fetchUsers();
+                startAutoSync();
+            } else {
+                document.getElementById('userList').innerHTML =
+                    '<div style="text-align:center; padding:40px;">' +
+                    '<p style="font-size:16px; margin-bottom:12px;">GAS URLが未設定です</p>' +
+                    '<p style="font-size:14px; color:#888;">右上の「設定」からGAS WebアプリのURLを入力してください</p>' +
+                    '</div>';
+                renderFromLocal();
+            }
+            updateSyncStatus();
+        });
+
+        // ===== localStorage読み込み =====
+        function loadLocalData() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) wbSettings = JSON.parse(saved);
+            } catch(e) {}
+        }
+
+        function saveLocalData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(wbSettings));
+        }
+
+        // ===== GASから利用者取得 =====
+        function fetchUsers(silent) {
+            const gasUrl = localStorage.getItem(STORAGE_GAS);
+            if (!gasUrl) return;
+
+            if (!silent) {
+                document.getElementById('userList').innerHTML = '<div class="loading">利用者データを読み込み中...</div>';
+            }
+
+            const callbackName = 'wbCallback_' + Date.now();
+            window[callbackName] = function(data) {
+                delete window[callbackName];
+                const script = document.getElementById('jsonpScript');
+                if (script) script.remove();
+
+                if (data.error) {
+                    document.getElementById('userList').innerHTML =
+                        '<div class="loading" style="color:#d32f2f;">エラー: ' + data.error + '</div>';
+                    renderFromLocal();
+                    return;
+                }
+
+                users = data.users || [];
+                hasWBCols = data.hasWBCols || false;
+
+                // スプレッドシートのWB設定をローカルに反映
+                if (hasWBCols) {
+                    users.forEach(function(user) {
+                        if (user.wbHeight || user.wbStrength || user.wbOther) {
+                            wbSettings[user.name] = {
+                                height: user.wbHeight || '',
+                                strength: user.wbStrength || '',
+                                other: user.wbOther || ''
+                            };
+                        }
+                    });
+                    saveLocalData();
+                }
+
+                localStorage.setItem(STORAGE_LAST_SYNC, new Date().toLocaleString('ja-JP'));
+                updateSyncStatus();
+                renderUsers();
+            };
+
+            const script = document.createElement('script');
+            script.id = 'jsonpScript';
+            script.src = gasUrl + '?callback=' + callbackName;
+            script.onerror = function() {
+                delete window[callbackName];
+                script.remove();
+                document.getElementById('userList').innerHTML =
+                    '<div class="loading" style="color:#d32f2f;">GASへの接続に失敗しました</div>';
+                renderFromLocal();
+            };
+            document.head.appendChild(script);
+        }
+
+        // ===== ローカルデータだけで表示 =====
+        function renderFromLocal() {
+            const names = Object.keys(wbSettings);
+            if (names.length === 0) return;
+            names.sort(function(a, b) { return a.localeCompare(b, 'ja'); });
+            users = names.map(function(n) { return { name: n, kana: '' }; });
+            renderUsers();
+        }
+
+        // ===== あいうえお行判定（フィルタ用） =====
+        function getKanaRow(user) {
+            const kanaMap = {
+                'ア': 'あ行', 'イ': 'あ行', 'ウ': 'あ行', 'エ': 'あ行', 'オ': 'あ行',
+                'カ': 'か行', 'キ': 'か行', 'ク': 'か行', 'ケ': 'か行', 'コ': 'か行',
+                'ガ': 'か行', 'ギ': 'か行', 'グ': 'か行', 'ゲ': 'か行', 'ゴ': 'か行',
+                'サ': 'さ行', 'シ': 'さ行', 'ス': 'さ行', 'セ': 'さ行', 'ソ': 'さ行',
+                'ザ': 'さ行', 'ジ': 'さ行', 'ズ': 'さ行', 'ゼ': 'さ行', 'ゾ': 'さ行',
+                'タ': 'た行', 'チ': 'た行', 'ツ': 'た行', 'テ': 'た行', 'ト': 'た行',
+                'ダ': 'た行', 'ヂ': 'た行', 'ヅ': 'た行', 'デ': 'た行', 'ド': 'た行',
+                'ナ': 'な行', 'ニ': 'な行', 'ヌ': 'な行', 'ネ': 'な行', 'ノ': 'な行',
+                'ハ': 'は行', 'ヒ': 'は行', 'フ': 'は行', 'ヘ': 'は行', 'ホ': 'は行',
+                'バ': 'は行', 'ビ': 'は行', 'ブ': 'は行', 'ベ': 'は行', 'ボ': 'は行',
+                'パ': 'は行', 'ピ': 'は行', 'プ': 'は行', 'ペ': 'は行', 'ポ': 'は行',
+                'マ': 'ま行', 'ミ': 'ま行', 'ム': 'ま行', 'メ': 'ま行', 'モ': 'ま行',
+                'ヤ': 'や行', 'ユ': 'や行', 'ヨ': 'や行',
+                'ラ': 'ら行', 'リ': 'ら行', 'ル': 'ら行', 'レ': 'ら行', 'ロ': 'ら行',
+                'ワ': 'わ行', 'ヲ': 'わ行', 'ン': 'わ行'
+            };
+            function toKatakana(str) {
+                return str.replace(/[\u3041-\u3096]/g, function(ch) {
+                    return String.fromCharCode(ch.charCodeAt(0) + 0x60);
+                });
+            }
+            var firstChar = '';
+            if (user.kana) {
+                firstChar = toKatakana(user.kana.charAt(0));
+            } else {
+                firstChar = toKatakana(user.name.charAt(0));
+            }
+            return kanaMap[firstChar] || 'その他';
+        }
+
+        // ===== フィルタ =====
+        function setKanaFilter(row) {
+            activeKanaFilter = row;
+            var btns = document.querySelectorAll('.kana-btn');
+            btns.forEach(function(btn) {
+                var btnRow = btn.textContent === '全員' ? '' : btn.textContent;
+                btn.classList.toggle('active', btnRow === row);
+            });
+            applyFilter();
+        }
+
+        function applyFilter() {
+            var searchText = (document.getElementById('searchBox').value || '').trim();
+            var cards = document.querySelectorAll('.user-card');
+            var visibleCount = 0;
+
+            cards.forEach(function(card) {
+                var name = card.getAttribute('data-name') || '';
+                var kanaRow = card.getAttribute('data-kana-row') || '';
+
+                var matchSearch = !searchText || name.indexOf(searchText) >= 0;
+                var matchKana = !activeKanaFilter || kanaRow === activeKanaFilter;
+
+                if (matchSearch && matchKana) {
+                    card.style.display = '';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            var filterCountEl = document.getElementById('filterCount');
+            if (searchText || activeKanaFilter) {
+                filterCountEl.textContent = visibleCount + '人 / ' + users.length + '人 表示中';
+            } else {
+                filterCountEl.textContent = '';
+            }
+        }
+
+        // ===== 利用者リスト描画 =====
+        function renderUsers() {
+            const container = document.getElementById('userList');
+            var visibleUsers = users.filter(function(u) { return hiddenUsers.indexOf(u.name) < 0; });
+            updateHiddenCount();
+            document.getElementById('userCount').textContent = visibleUsers.length;
+
+            // フィルタセクションを表示
+            if (users.length > 0) {
+                document.getElementById('filterSection').style.display = '';
+            }
+
+            if (visibleUsers.length === 0) {
+                container.innerHTML = '<div class="loading">利用者がいません</div>';
+                return;
+            }
+
+            const HEIGHT_OPTIONS = ['', '140', '145', '150', '155', '160', '165', '170', '175', '180'];
+            const OTHER_OPTIONS = ['緑枕', '足の重りなし', '膝枕'];
+
+            let html = '';
+            let lastKanaInitial = '';
+            visibleUsers.forEach(function(user) {
+                const s = wbSettings[user.name] || {};
+                const otherList = s.other ? s.other.split(',') : [];
+
+                var kanaRow = getKanaRow(user);
+                var kanaInitial = user.kana ? user.kana.charAt(0) : '';
+                var isFirstOfChar = (kanaInitial !== lastKanaInitial);
+                lastKanaInitial = kanaInitial;
+
+                var kanaColors = {
+                    'あ行': '#e57373', 'か行': '#ff8a65', 'さ行': '#4db6ac',
+                    'た行': '#4fc3f7', 'な行': '#7986cb', 'は行': '#ba68c8',
+                    'ま行': '#f06292', 'や行': '#aed581', 'ら行': '#ffb74d',
+                    'わ行': '#90a4ae', 'その他': '#bdbdbd'
+                };
+                var kanaColor = kanaColors[kanaRow] || '#bdbdbd';
+
+                var kanaHtml = '';
+                if (kanaInitial && isFirstOfChar) {
+                    kanaHtml = '<div class="kana-large" style="color:' + kanaColor + ';">' + escapeHtml(kanaInitial) + '</div>';
+                } else {
+                    kanaHtml = '<div class="kana-spacer"></div>';
+                }
+
+                html += '<div class="user-card" data-name="' + escapeAttr(user.name) + '" data-kana-row="' + escapeAttr(kanaRow) + '">' +
+                    kanaHtml +
+                    '<div class="user-name">' + escapeHtml(user.name) + '</div>' +
+                    (user.kana ? '<div class="user-kana">' + escapeHtml(user.kana) + '</div>' : '') +
+                    '<div class="field-group"><label>身長</label>' +
+                    '<select class="height-select" onchange="updateSetting(\'' + escapeAttr(user.name) + '\',\'height\',this.value)">' +
+                    '<option value="">-</option>';
+                HEIGHT_OPTIONS.forEach(function(h) {
+                    if (!h) return;
+                    html += '<option value="' + h + '"' + (s.height == h ? ' selected' : '') + '>' + h + 'cm</option>';
+                });
+                html += '</select></div>' +
+                    '<div class="field-group"><label>強さ</label>' +
+                    '<select class="strength-select" onchange="updateSetting(\'' + escapeAttr(user.name) + '\',\'strength\',this.value)">' +
+                    '<option value="">-</option>';
+                var STRENGTH_OPTIONS = ['1', '2', '3', '4', 'BT'];
+                STRENGTH_OPTIONS.forEach(function(v) {
+                    html += '<option value="' + v + '"' + (s.strength == v ? ' selected' : '') + '>' + v + '</option>';
+                });
+                html += '</select></div>' +
+                    '<div class="field-group"><label>その他</label>' +
+                    '<div class="other-checkboxes">';
+                OTHER_OPTIONS.forEach(function(opt) {
+                    var checked = otherList.indexOf(opt) >= 0 ? ' checked' : '';
+                    html += '<label><input type="checkbox"' + checked +
+                        ' onchange="toggleOther(\'' + escapeAttr(user.name) + '\',\'' + escapeAttr(opt) + '\',this.checked)">' + opt + '</label>';
+                });
+                html += '</div></div>' +
+                    '<button class="btn-hide" onclick="hideUser(\'' + escapeAttr(user.name) + '\')">WBなし</button>' +
+                    '</div>';
+            });
+            container.innerHTML = html;
+            applyFilter();
+            updatePrintArea();
+        }
+
+        // ===== 設定更新 =====
+        function updateSetting(name, field, value) {
+            if (!wbSettings[name]) wbSettings[name] = {};
+            wbSettings[name][field] = value;
+            saveLocalData();
+            updatePrintArea();
+            saveToGAS(name);
+        }
+
+        function toggleOther(name, option, checked) {
+            if (!wbSettings[name]) wbSettings[name] = {};
+            var current = wbSettings[name].other ? wbSettings[name].other.split(',') : [];
+            if (checked) {
+                if (current.indexOf(option) < 0) current.push(option);
+            } else {
+                current = current.filter(function(v) { return v !== option; });
+            }
+            wbSettings[name].other = current.join(',');
+            saveLocalData();
+            updatePrintArea();
+            saveToGAS(name);
+        }
+
+        // ===== スプレッドシートに保存（1.5秒後に自動保存） =====
+        function saveToGAS(name) {
+            var gasUrl = localStorage.getItem(STORAGE_GAS);
+            if (!gasUrl || !hasWBCols) return;
+
+            // 前の保存タイマーをキャンセル（連続操作に対応）
+            if (saveTimers[name]) clearTimeout(saveTimers[name]);
+            showSaveStatus('変更あり...');
+
+            saveTimers[name] = setTimeout(function() {
+                var s = wbSettings[name] || {};
+                var callbackName = 'saveCb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+
+                window[callbackName] = function(result) {
+                    delete window[callbackName];
+                    if (result.success) {
+                        showSaveStatus('保存完了');
+                        setTimeout(function() { showSaveStatus(''); }, 2000);
+                    } else {
+                        showSaveStatus('保存エラー: ' + (result.error || ''));
+                    }
+                };
+
+                var url = gasUrl +
+                    '?action=save' +
+                    '&name=' + encodeURIComponent(name) +
+                    '&wbHeight=' + encodeURIComponent(s.height || '') +
+                    '&wbStrength=' + encodeURIComponent(s.strength || '') +
+                    '&wbOther=' + encodeURIComponent(s.other || '') +
+                    '&callback=' + callbackName;
+
+                var script = document.createElement('script');
+                script.src = url;
+                script.onerror = function() {
+                    delete window[callbackName];
+                    script.remove();
+                    showSaveStatus('保存失敗（通信エラー）');
+                };
+                document.head.appendChild(script);
+
+                showSaveStatus('保存中...');
+            }, 1500);
+        }
+
+        function showSaveStatus(msg) {
+            var el = document.getElementById('saveStatus');
+            if (!el) return;
+            el.textContent = msg;
+            el.style.color = msg.indexOf('エラー') >= 0 || msg.indexOf('失敗') >= 0 ? '#d32f2f' : '#4caf50';
+        }
+
+        // ===== 同期ボタン =====
+        function syncUsers() {
+            const gasUrl = localStorage.getItem(STORAGE_GAS);
+            if (!gasUrl) {
+                openSettings();
+                return;
+            }
+            fetchUsers();
+        }
+
+        function updateSyncStatus() {
+            const lastSync = localStorage.getItem(STORAGE_LAST_SYNC);
+            var syncInterval = parseInt(localStorage.getItem(STORAGE_AUTO_SYNC) || '60');
+            var syncLabel = '';
+            if (syncInterval > 0) {
+                syncLabel = syncInterval < 60 ? '（' + syncInterval + '秒ごと自動同期）' : '（' + (syncInterval / 60) + '分ごと自動同期）';
+            }
+            document.getElementById('lastSync').textContent = (lastSync ? '最終同期: ' + lastSync : '未同期') + syncLabel;
+        }
+
+        // ===== 空白行 =====
+        function changeBlankRows(delta) {
+            blankRows = Math.max(0, Math.min(10, blankRows + delta));
+            document.getElementById('blankCount').textContent = blankRows;
+            localStorage.setItem(STORAGE_BLANK, blankRows);
+            updatePrintArea();
+        }
+
+        // ===== 印刷エリア生成 =====
+        function updatePrintArea() {
+            const printArea = document.getElementById('printArea');
+            const allItems = [];
+
+            // 設定済みの利用者を追加
+            users.forEach(function(user) {
+                const s = wbSettings[user.name] || {};
+                allItems.push({
+                    name: user.name,
+                    height: s.height || '',
+                    strength: s.strength || '',
+                    other: s.other || ''
+                });
+            });
+
+            // 空白行を追加
+            for (var i = 0; i < blankRows; i++) {
+                allItems.push({ name: '', height: '', strength: '', other: '', blank: true });
+            }
+
+            // あいうえお行のグループ分け
+            const groups = groupByKanaRow(allItems);
+
+            // 全アイテムをフラットなリストに（グループヘッダー含む）
+            const flatItems = [];
+            for (const groupName in groups) {
+                const groupItems = groups[groupName];
+                flatItems.push({ type: 'header', label: groupName });
+                groupItems.forEach(function(item) {
+                    flatItems.push({ type: 'data', item: item });
+                });
+            }
+
+            // 3列に均等分割
+            const colCount = 3;
+            const perCol = Math.ceil(flatItems.length / colCount);
+            const columns = [];
+            for (var c = 0; c < colCount; c++) {
+                columns.push(flatItems.slice(c * perCol, (c + 1) * perCol));
+            }
+
+            // HTML生成
+            const today = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            let html = '<div class="print-title">WB設定表</div>';
+            html += '<div class="print-date">' + today + ' 現在 （' + users.length + '名）</div>';
+            html += '<div class="print-columns">';
+            columns.forEach(function(colItems) {
+                html += '<div class="print-col">' + buildPrintTable(colItems) + '</div>';
+            });
+            html += '</div>';
+
+            printArea.innerHTML = html;
+        }
+
+        function buildPrintTable(items) {
+            if (items.length === 0) return '';
+            let html = '<table class="print-table">';
+            html += '<tr><th style="width:32%">名前</th><th style="width:17%">身長</th><th style="width:13%">強</th><th style="width:38%">その他</th></tr>';
+            items.forEach(function(entry) {
+                if (entry.type === 'header') {
+                    html += '<tr><td colspan="4" class="group-header">' + entry.label + '</td></tr>';
+                } else {
+                    const item = entry.item;
+                    const cls = item.blank ? ' class="blank-row"' : '';
+                    html += '<tr' + cls + '>' +
+                        '<td class="name-cell">' + escapeHtml(item.name) + '</td>' +
+                        '<td>' + (item.height ? item.height + 'cm' : '') + '</td>' +
+                        '<td>' + escapeHtml(item.strength) + '</td>' +
+                        '<td class="other-cell">' + escapeHtml(item.other) + '</td>' +
+                        '</tr>';
+                }
+            });
+            html += '</table>';
+            return html;
+        }
+
+        // ===== あいうえお行グループ分け =====
+        function groupByKanaRow(items) {
+            const kanaMap = {
+                'ア': 'あ行', 'イ': 'あ行', 'ウ': 'あ行', 'エ': 'あ行', 'オ': 'あ行',
+                'カ': 'か行', 'キ': 'か行', 'ク': 'か行', 'ケ': 'か行', 'コ': 'か行',
+                'ガ': 'か行', 'ギ': 'か行', 'グ': 'か行', 'ゲ': 'か行', 'ゴ': 'か行',
+                'サ': 'さ行', 'シ': 'さ行', 'ス': 'さ行', 'セ': 'さ行', 'ソ': 'さ行',
+                'ザ': 'さ行', 'ジ': 'さ行', 'ズ': 'さ行', 'ゼ': 'さ行', 'ゾ': 'さ行',
+                'タ': 'た行', 'チ': 'た行', 'ツ': 'た行', 'テ': 'た行', 'ト': 'た行',
+                'ダ': 'た行', 'ヂ': 'た行', 'ヅ': 'た行', 'デ': 'た行', 'ド': 'た行',
+                'ナ': 'な行', 'ニ': 'な行', 'ヌ': 'な行', 'ネ': 'な行', 'ノ': 'な行',
+                'ハ': 'は行', 'ヒ': 'は行', 'フ': 'は行', 'ヘ': 'は行', 'ホ': 'は行',
+                'バ': 'は行', 'ビ': 'は行', 'ブ': 'は行', 'ベ': 'は行', 'ボ': 'は行',
+                'パ': 'は行', 'ピ': 'は行', 'プ': 'は行', 'ペ': 'は行', 'ポ': 'は行',
+                'マ': 'ま行', 'ミ': 'ま行', 'ム': 'ま行', 'メ': 'ま行', 'モ': 'ま行',
+                'ヤ': 'や行', 'ユ': 'や行', 'ヨ': 'や行',
+                'ラ': 'ら行', 'リ': 'ら行', 'ル': 'ら行', 'レ': 'ら行', 'ロ': 'ら行',
+                'ワ': 'わ行', 'ヲ': 'わ行', 'ン': 'わ行'
+            };
+
+            // ひらがな→カタカナ変換
+            function toKatakana(str) {
+                return str.replace(/[\u3041-\u3096]/g, function(ch) {
+                    return String.fromCharCode(ch.charCodeAt(0) + 0x60);
+                });
+            }
+
+            const ordered = ['あ行','か行','さ行','た行','な行','は行','ま行','や行','ら行','わ行','その他'];
+            const groups = {};
+
+            items.forEach(function(item) {
+                if (item.blank) {
+                    if (!groups['新規']) groups['新規'] = [];
+                    groups['新規'].push(item);
+                    return;
+                }
+                // GASから取得したカナ、または名前の先頭文字で判定
+                const user = users.find(function(u) { return u.name === item.name; });
+                let firstChar = '';
+                if (user && user.kana) {
+                    firstChar = toKatakana(user.kana.charAt(0));
+                } else {
+                    firstChar = toKatakana(item.name.charAt(0));
+                }
+                const row = kanaMap[firstChar] || 'その他';
+                if (!groups[row]) groups[row] = [];
+                groups[row].push(item);
+            });
+
+            // 順序通りに並べ替え
+            const result = {};
+            ordered.forEach(function(key) {
+                if (groups[key]) result[key] = groups[key];
+            });
+            if (groups['新規']) result['新規'] = groups['新規'];
+            return result;
+        }
+
+        // ===== 印刷 =====
+        function printTable() {
+            updatePrintArea();
+            window.print();
+        }
+
+        // ===== 非表示管理（WBなし） =====
+        function loadHiddenUsers() {
+            try {
+                var saved = localStorage.getItem(STORAGE_HIDDEN);
+                if (saved) hiddenUsers = JSON.parse(saved);
+            } catch(e) { hiddenUsers = []; }
+        }
+        function saveHiddenUsers() {
+            localStorage.setItem(STORAGE_HIDDEN, JSON.stringify(hiddenUsers));
+        }
+        function hideUser(name) {
+            if (hiddenUsers.indexOf(name) < 0) {
+                hiddenUsers.push(name);
+                saveHiddenUsers();
+                renderUsers();
+            }
+        }
+        function unhideUser(name) {
+            hiddenUsers = hiddenUsers.filter(function(n) { return n !== name; });
+            saveHiddenUsers();
+            renderUsers();
+            showHiddenModal();
+        }
+        function updateHiddenCount() {
+            var el = document.getElementById('hiddenCount');
+            if (hiddenUsers.length > 0) {
+                el.textContent = '（非表示: ' + hiddenUsers.length + '人）';
+                el.style.display = '';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+        function showHiddenModal() {
+            var html = '';
+            if (hiddenUsers.length === 0) {
+                html = '<p style="text-align:center; color:#888; padding:20px;">非表示の利用者はいません</p>';
+            } else {
+                hiddenUsers.forEach(function(name) {
+                    html += '<div class="hidden-item"><span>' + escapeHtml(name) + '</span>' +
+                        '<button onclick="unhideUser(\'' + escapeAttr(name) + '\')">表示に戻す</button></div>';
+                });
+            }
+            document.getElementById('hiddenList').innerHTML = html;
+            document.getElementById('hiddenModal').classList.add('active');
+        }
+        function closeHiddenModal() {
+            document.getElementById('hiddenModal').classList.remove('active');
+        }
+
+        // ===== 自動同期 =====
+        function startAutoSync() {
+            if (autoSyncTimer) clearInterval(autoSyncTimer);
+            var interval = parseInt(localStorage.getItem(STORAGE_AUTO_SYNC) || '60') * 1000;
+            if (interval <= 0) return; // 0 = 手動のみ
+            autoSyncTimer = setInterval(function() {
+                var gasUrl = localStorage.getItem(STORAGE_GAS);
+                if (gasUrl) fetchUsers(true);
+            }, interval);
+        }
+
+        // ===== ロック/編集モード切替 =====
+        function toggleEditMode() {
+            editMode = !editMode;
+            var btn = document.getElementById('editModeBtn');
+            var container = document.getElementById('mainContainer');
+            if (editMode) {
+                btn.textContent = '✏️ 編集中';
+                btn.classList.add('editing');
+                container.classList.remove('locked');
+            } else {
+                btn.textContent = '🔒 ロック中';
+                btn.classList.remove('editing');
+                container.classList.add('locked');
+            }
+        }
+
+        // ===== 設定モーダル =====
+        function openSettings() {
+            document.getElementById('gasUrlInput').value = localStorage.getItem(STORAGE_GAS) || '';
+            document.getElementById('autoSyncSelect').value = localStorage.getItem(STORAGE_AUTO_SYNC) || '60';
+            document.getElementById('settingsModal').classList.add('active');
+        }
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.remove('active');
+        }
+        function saveSettings() {
+            const url = document.getElementById('gasUrlInput').value.trim();
+            var syncInterval = document.getElementById('autoSyncSelect').value;
+            localStorage.setItem(STORAGE_AUTO_SYNC, syncInterval);
+            if (url) {
+                localStorage.setItem(STORAGE_GAS, url);
+                closeSettings();
+                fetchUsers();
+                startAutoSync();
+            } else {
+                localStorage.removeItem(STORAGE_GAS);
+                if (autoSyncTimer) clearInterval(autoSyncTimer);
+                closeSettings();
+            }
+        }
+
+        // ===== ユーティリティ =====
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function escapeAttr(str) {
+            return escapeHtml(str).replace(/'/g, '&#39;');
+        }
+
+        // 初期同期状態表示
+        updateSyncStatus();
+    </script>
+</body>
+</html>

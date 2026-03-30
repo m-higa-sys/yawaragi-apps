@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>ケアマネ連絡メール作成</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f0f4f8; color: #333; min-height: 100vh; -webkit-text-size-adjust: 100%; }
+
+        .header {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white; padding: 16px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header h1 { font-size: 22px; font-weight: 600; }
+        .header .reload-btn {
+            background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4);
+            color: white; padding: 8px 16px; border-radius: 8px; font-size: 14px;
+            cursor: pointer; min-height: 44px;
+        }
+        .header .reload-btn:active { background: rgba(255,255,255,0.3); }
+
+        .tabs {
+            display: flex; background: #e2e8f0; border-bottom: 2px solid #cbd5e1;
+        }
+        .tab {
+            padding: 14px 24px; cursor: pointer; font-size: 16px; font-weight: 500;
+            border: none; background: none; color: #64748b; transition: all 0.2s;
+            min-height: 48px; flex: 1; text-align: center;
+        }
+        .tab.active { color: #1e40af; background: white; border-bottom: 3px solid #2563eb; margin-bottom: -2px; }
+
+        .tab-content { display: none; padding: 24px; max-width: 800px; margin: 0 auto; }
+        .tab-content.active { display: block; }
+
+        .card {
+            background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .card h2 { font-size: 17px; color: #1e40af; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+
+        label { display: block; font-size: 15px; font-weight: 500; margin-bottom: 6px; color: #475569; }
+        input, select, textarea {
+            width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px;
+            font-size: 16px; font-family: inherit; transition: border-color 0.2s;
+            min-height: 48px;
+        }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+        .form-row { margin-bottom: 16px; }
+        .form-row-inline { display: flex; gap: 12px; margin-bottom: 16px; }
+        .form-row-inline > div { flex: 1; }
+
+        .btn {
+            padding: 12px 22px; border: none; border-radius: 8px; font-size: 16px;
+            font-weight: 600; cursor: pointer; transition: all 0.2s; display: inline-flex;
+            align-items: center; gap: 6px; min-height: 48px;
+        }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-success { background: #059669; color: white; }
+        .btn-danger { background: #dc2626; color: white; font-size: 14px; padding: 10px 16px; min-height: 44px; }
+        .btn-secondary { background: #64748b; color: white; }
+        .btn-outline { background: white; color: #2563eb; border: 2px solid #2563eb; }
+
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+        /* メール作成 */
+        .search-box { position: relative; margin-bottom: 16px; }
+        .search-box input { padding-left: 40px; }
+        .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 18px; }
+
+        .user-list {
+            max-height: 350px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px;
+            margin-bottom: 16px; -webkit-overflow-scrolling: touch;
+        }
+        .user-item {
+            padding: 14px 16px; cursor: pointer; border-bottom: 1px solid #f1f5f9;
+            display: flex; justify-content: space-between; align-items: center;
+            min-height: 48px; font-size: 16px;
+        }
+        .user-item:active { background: #dbeafe; }
+        .user-item.selected { background: #dbeafe; font-weight: 600; }
+        .user-item:last-child { border-bottom: none; }
+        .user-item .cm-name { font-size: 14px; color: #64748b; }
+        .user-item .no-cm { font-size: 13px; color: #dc2626; }
+
+        .preview-box {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+            padding: 16px; font-size: 15px; line-height: 1.8; white-space: pre-wrap;
+            font-family: 'Meiryo', sans-serif; min-height: 200px;
+        }
+
+        .cm-group-header {
+            padding: 10px 16px; background: #f1f5f9; font-size: 14px; font-weight: 600;
+            color: #64748b; border-bottom: 1px solid #e2e8f0;
+        }
+
+        .empty-state { text-align: center; padding: 40px; color: #94a3b8; }
+        .empty-state p { font-size: 16px; margin-bottom: 8px; }
+
+        .toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: #059669; color: white;
+            padding: 14px 28px; border-radius: 10px; font-weight: 500; font-size: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2); opacity: 0;
+            transition: all 0.3s ease; z-index: 1000; text-align: center; max-width: 90%;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+        .history-item { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; font-size: 15px; }
+        .history-item .date { color: #94a3b8; font-size: 14px; margin-top: 4px; }
+
+        .info-box {
+            background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+            padding: 14px 16px; margin-bottom: 16px; font-size: 14px; color: #1e40af; line-height: 1.6;
+        }
+        .warning-box {
+            background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px;
+            padding: 14px 16px; margin-bottom: 16px; font-size: 14px; color: #92400e; line-height: 1.6;
+        }
+
+        .loading {
+            text-align: center; padding: 30px; color: #64748b; font-size: 16px;
+        }
+        .loading::after {
+            content: ''; display: inline-block; width: 20px; height: 20px;
+            border: 3px solid #e2e8f0; border-top-color: #2563eb;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+            vertical-align: middle; margin-left: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .data-count {
+            font-size: 14px; color: #64748b; margin-bottom: 12px;
+        }
+        .data-count strong { color: #059669; }
+
+        /* 設定 */
+        .register-section { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px; margin-top: 16px; background: #fafbfc; }
+
+        .email-register-item {
+            display: flex; align-items: center; gap: 10px; padding: 12px 0;
+            border-bottom: 1px solid #f1f5f9; flex-wrap: wrap;
+        }
+        .email-register-item:last-child { border-bottom: none; }
+        .email-register-item .office-name {
+            font-weight: 600; font-size: 15px; color: #1e40af; min-width: 180px; flex-shrink: 0;
+        }
+        .email-register-item input[type="email"] {
+            flex: 1; min-width: 200px; padding: 10px 12px; min-height: 44px;
+        }
+        .email-register-item .status-badge {
+            font-size: 13px; padding: 4px 10px; border-radius: 12px; white-space: nowrap;
+        }
+        .status-registered { background: #d1fae5; color: #065f46; }
+        .status-unregistered { background: #fee2e2; color: #991b1b; }
+
+        /* タブレット・スマホ対応 */
+        @media (max-width: 768px) {
+            .form-row-inline { flex-direction: column; gap: 12px; }
+            .tabs { overflow-x: auto; }
+            .tab { padding: 14px 12px; font-size: 15px; white-space: nowrap; }
+            .tab-content { padding: 16px; }
+            .card { padding: 20px; }
+            .btn-group { flex-direction: column; }
+            .btn-group .btn { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>ケアマネ連絡メール作成</h1>
+    <button class="reload-btn" onclick="loadUsersFromGAS()">データ再取得</button>
+    <button class="reload-btn" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="background:#e3f2fd;color:#1565c0;border-color:#1976d2">📋 利用者台帳</button>
+</div>
+
+<div class="tabs">
+    <button class="tab active" onclick="switchTab('mail')">メール作成</button>
+    <button class="tab" onclick="switchTab('history')">送信履歴</button>
+    <button class="tab" onclick="switchTab('settings')">設定</button>
+</div>
+
+<!-- メール作成タブ -->
+<div id="tab-mail" class="tab-content active">
+    <div class="card">
+        <h2>連絡者（あなたの名前）</h2>
+        <div class="form-row">
+            <input type="text" id="senderName" placeholder="例：田中" oninput="saveSenderName(); generatePreview();">
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>利用者を選択</h2>
+        <div class="search-box">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" id="userSearch" placeholder="利用者名で検索..." oninput="filterUsers()">
+        </div>
+        <div class="data-count" id="dataCount"></div>
+        <div class="user-list" id="userList">
+            <div class="loading" id="loadingMsg">利用者台帳からデータを取得中</div>
+        </div>
+    </div>
+
+    <div class="card" id="mailFormCard" style="display:none;">
+        <h2>連絡内容</h2>
+        <div class="form-row-inline">
+            <div>
+                <label>日付</label>
+                <input type="date" id="absenceDate" onchange="generatePreview()">
+            </div>
+            <div>
+                <label>利用単位</label>
+                <select id="absenceUnit" onchange="generatePreview()">
+                    <option value="">選択してください</option>
+                    <option value="午前（9:00〜12:00）">午前（9:00〜12:00）</option>
+                    <option value="午後（13:30〜16:30）">午後（13:30〜16:30）</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <label>欠席理由</label>
+            <select id="absenceReason" onchange="handleReasonChange(); generatePreview();">
+                <option value="">選択してください</option>
+                <option value="体調不良">体調不良</option>
+                <option value="通院">通院</option>
+                <option value="私用">私用</option>
+                <option value="家族の都合">家族の都合</option>
+                <option value="入院">入院</option>
+                <option value="other">その他（自由入力）</option>
+            </select>
+        </div>
+        <div class="form-row" id="customReasonRow" style="display:none;">
+            <label>理由を入力</label>
+            <input type="text" id="customReason" placeholder="欠席理由を入力" oninput="generatePreview()">
+        </div>
+        <div class="form-row">
+            <label>補足（任意）</label>
+            <textarea id="extraNote" rows="2" placeholder="例：来週のご利用は予定通りです" oninput="generatePreview()"></textarea>
+        </div>
+    </div>
+
+    <div class="card" id="previewCard" style="display:none;">
+        <h2>メールプレビュー</h2>
+        <div class="form-row">
+            <label>件名</label>
+            <div id="previewSubject" style="padding:10px 14px; background:#f8fafc; border-radius:6px; font-weight:600; font-size:15px;"></div>
+        </div>
+        <div class="form-row">
+            <label>宛先</label>
+            <div id="previewTo" style="padding:10px 14px; background:#f8fafc; border-radius:6px; font-size:15px;"></div>
+        </div>
+        <div class="form-row">
+            <label>本文</label>
+            <div class="preview-box" id="previewBody"></div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="openMailto()" style="font-size:18px; padding:16px 32px; min-height: 56px;">
+                &#9993; メールソフトで開く
+            </button>
+            <button class="btn btn-outline" onclick="copyToClipboard()" style="min-height: 48px;">
+                &#128203; 本文をコピー
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 送信履歴タブ -->
+<div id="tab-history" class="tab-content">
+    <div class="card">
+        <h2>送信履歴</h2>
+        <p style="font-size:14px; color:#94a3b8; margin-bottom:12px;">「メールソフトで開く」ボタンを押した記録が残ります</p>
+        <div id="historyList"></div>
+        <div class="btn-group" id="clearHistoryBtn" style="display:none;">
+            <button class="btn btn-danger" onclick="clearHistory()">履歴をすべて削除</button>
+        </div>
+    </div>
+</div>
+
+<!-- 設定タブ -->
+<div id="tab-settings" class="tab-content">
+    <div class="card">
+        <h2>ケアマネ事業所メールアドレス登録</h2>
+        <div class="info-box">
+            ケアマネ担当者ごとにメールアドレスを1回登録すれば、同じ担当者の全利用者に自動適用されます。<br>
+            利用者データを取得すると担当者一覧が表示されます。
+        </div>
+        <div id="emailRegisterList">
+            <div class="empty-state"><p>まず「メール作成」タブでデータを取得してください</p></div>
+        </div>
+        <div class="btn-group" style="margin-top:16px;">
+            <button class="btn btn-success" onclick="saveAllEmails()">すべて保存</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>GAS URL設定</h2>
+        <div class="info-box">
+            通常は変更不要です。利用者台帳のApps Script URLが変わった場合のみ更新してください。
+        </div>
+        <div class="form-row">
+            <label>GAS WebアプリURL</label>
+            <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-success" onclick="saveGasUrl()">保存してデータ取得</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    // ===== 定数 =====
+    const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbw-YSG3-ZRHNzhpOVYf8quiofU5e2Hq1cv8l-ZQzBpW1uqtBdjbZUPFVXXBc7qxX9Rz/exec';
+
+    const STORAGE_KEYS = {
+        gasUrl: 'cm_contact_gas_url',
+        history: 'cm_contact_history',
+        senderName: 'cm_contact_sender',
+        cachedUsers: 'cm_contact_cached_users',
+        cmEmails: 'cm_contact_emails' // 事業所名 → メールアドレスのマップ
+    };
+
+    // ===== データ =====
+    let usersData = []; // GASから取得した利用者データ
+    let selectedUserIdx = -1;
+
+    function getData(key) {
+        try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; }
+    }
+    function setData(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
+
+    // ===== タブ切り替え =====
+    function switchTab(name) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelector(`#tab-${name}`).classList.add('active');
+        event.target.classList.add('active');
+        if (name === 'history') renderHistory();
+        if (name === 'settings') {
+            document.getElementById('gasUrl').value = localStorage.getItem(STORAGE_KEYS.gasUrl) || '';
+            renderEmailRegister();
+        }
+    }
+
+    // ===== GASからデータ取得 =====
+    function loadUsersFromGAS() {
+        const gasUrl = localStorage.getItem(STORAGE_KEYS.gasUrl) || DEFAULT_GAS_URL;
+        if (!gasUrl) {
+            // キャッシュがあればそれを使う
+            const cached = getData(STORAGE_KEYS.cachedUsers);
+            if (cached.length > 0) {
+                usersData = cached;
+                renderUserList();
+                return;
+            }
+            document.getElementById('userList').innerHTML =
+                '<div class="empty-state"><p>GAS URLが設定されていません</p><p style="font-size:14px">「設定」タブからURLを入力してください</p></div>';
+            document.getElementById('dataCount').innerHTML = '';
+            return;
+        }
+
+        document.getElementById('userList').innerHTML = '<div class="loading" id="loadingMsg">利用者台帳からデータを取得中</div>';
+        document.getElementById('dataCount').innerHTML = '';
+
+        fetch(gasUrl)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('userList').innerHTML =
+                        `<div class="empty-state"><p>エラー: ${esc(data.error)}</p></div>`;
+                    return;
+                }
+                usersData = data.users || [];
+                // キャッシュに保存（次回オフラインでも使える）
+                setData(STORAGE_KEYS.cachedUsers, usersData);
+                renderUserList();
+                showToast(`${usersData.length}名の利用者データを取得しました`);
+            })
+            .catch(err => {
+                // ネットワークエラー時はキャッシュを使う
+                const cached = getData(STORAGE_KEYS.cachedUsers);
+                if (cached.length > 0) {
+                    usersData = cached;
+                    renderUserList();
+                    showToast('オフラインのため前回のデータを使用しています', true);
+                } else {
+                    document.getElementById('userList').innerHTML =
+                        `<div class="empty-state"><p>データ取得に失敗しました</p><p style="font-size:14px">${esc(err.message)}</p></div>`;
+                }
+            });
+    }
+
+    // ===== ケアマネメールアドレス管理（localStorage） =====
+    // キー: "担当者名@@事業所名" でユニークに管理
+    function cmKey(cmName, cmOffice) { return cmName + '@@' + (cmOffice || ''); }
+
+    function getCmEmails() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.cmEmails)) || {}; } catch { return {}; }
+    }
+    function saveCmEmails(map) { localStorage.setItem(STORAGE_KEYS.cmEmails, JSON.stringify(map)); }
+
+    function getCmEmailByCm(cmName, cmOffice) {
+        if (!cmName) return '';
+        // localStorage優先、なければスプレッドシートのメールを使う
+        const local = getCmEmails()[cmKey(cmName, cmOffice)];
+        if (local) return local;
+        // スプレッドシートから取得したメールを探す
+        const user = usersData.find(u => u.cmName === cmName && u.cmOffice === cmOffice && u.cmEmail);
+        return user ? user.cmEmail : '';
+    }
+
+    // 設定タブ：ケアマネ担当者一覧とメールアドレス入力欄を表示
+    function renderEmailRegister() {
+        const el = document.getElementById('emailRegisterList');
+        if (usersData.length === 0) {
+            el.innerHTML = '<div class="empty-state"><p>まず「メール作成」タブでデータを取得してください</p></div>';
+            return;
+        }
+        // ユニークなケアマネ担当者一覧を取得（担当者名+事業所名で一意）
+        const cms = {}; // key → { cmName, cmOffice, users[] }
+        usersData.forEach(u => {
+            if (u.cmName) {
+                const key = cmKey(u.cmName, u.cmOffice);
+                if (!cms[key]) cms[key] = { cmName: u.cmName, cmOffice: u.cmOffice, users: [] };
+                cms[key].users.push(u.name);
+            }
+        });
+        const cmKeys = Object.keys(cms).sort((a, b) => {
+            const ca = cms[a], cb = cms[b];
+            const offCmp = (ca.cmOffice || '').localeCompare(cb.cmOffice || '', 'ja');
+            return offCmp !== 0 ? offCmp : ca.cmName.localeCompare(cb.cmName, 'ja');
+        });
+        if (cmKeys.length === 0) {
+            el.innerHTML = '<div class="empty-state"><p>ケアマネ担当者が登録されている利用者がいません</p></div>';
+            return;
+        }
+
+        const saved = getCmEmails();
+        // スプレッドシートのメールも集める
+        const sheetEmails = {};
+        usersData.forEach(u => {
+            if (u.cmName && u.cmEmail) sheetEmails[cmKey(u.cmName, u.cmOffice)] = u.cmEmail;
+        });
+        const registered = cmKeys.filter(k => saved[k] || sheetEmails[k]);
+        const countText = `<div class="data-count" style="margin-bottom:16px;">全 <strong>${cmKeys.length}名</strong>（登録済み: <strong>${registered.length}</strong>）</div>`;
+
+        let html = countText;
+        let currentOffice = null;
+        cmKeys.forEach(key => {
+            const cm = cms[key];
+            // 事業所が変わったら見出し表示
+            if (cm.cmOffice !== currentOffice) {
+                currentOffice = cm.cmOffice;
+                html += `<div class="cm-group-header">${esc(cm.cmOffice || '事業所未設定')}</div>`;
+            }
+            const localEmail = saved[key] || '';
+            const sheetEmail = sheetEmails[key] || '';
+            const email = localEmail || sheetEmail;
+            const userNames = cm.users.join('、');
+            const fromSheet = !localEmail && sheetEmail;
+            const statusClass = email ? 'status-registered' : 'status-unregistered';
+            const statusText = fromSheet ? '台帳から取得' : (email ? '登録済み' : '未登録');
+            const inputId = 'email_' + btoa(unescape(encodeURIComponent(key)));
+            html += `<div class="email-register-item">
+                <div class="office-name">${esc(cm.cmName)}</div>
+                <input type="email" id="${inputId}" value="${esc(email)}" placeholder="メールアドレスを入力">
+                <span class="status-badge ${statusClass}">${statusText}</span>
+                <div style="width:100%; font-size:13px; color:#94a3b8; margin-top:2px;">担当利用者: ${esc(userNames)}</div>
+            </div>`;
+        });
+        el.innerHTML = html;
+    }
+
+    function saveAllEmails() {
+        const saved = getCmEmails();
+        const cmSet = {};
+        usersData.forEach(u => { if (u.cmName) cmSet[cmKey(u.cmName, u.cmOffice)] = true; });
+
+        let count = 0;
+        Object.keys(cmSet).forEach(key => {
+            const inputId = 'email_' + btoa(unescape(encodeURIComponent(key)));
+            const input = document.getElementById(inputId);
+            if (input) {
+                const val = input.value.trim();
+                if (val) {
+                    saved[key] = val;
+                    count++;
+                } else {
+                    delete saved[key];
+                }
+            }
+        });
+        saveCmEmails(saved);
+        renderEmailRegister();
+        renderUserList();
+        showToast(`${count}件のメールアドレスを保存しました`);
+    }
+
+    function saveGasUrl() {
+        const url = document.getElementById('gasUrl').value.trim();
+        if (!url) { showToast('URLを入力してください', true); return; }
+        localStorage.setItem(STORAGE_KEYS.gasUrl, url);
+        showToast('URLを保存しました。データを取得します...');
+        switchTab('mail');
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab')[0].classList.add('active');
+        loadUsersFromGAS();
+    }
+
+    // ===== メール作成 =====
+    function renderUserList() {
+        const el = document.getElementById('userList');
+        const countEl = document.getElementById('dataCount');
+        const search = (document.getElementById('userSearch').value || '').trim();
+
+        if (usersData.length === 0) {
+            el.innerHTML = '<div class="empty-state"><p>利用者データがありません</p></div>';
+            countEl.innerHTML = '';
+            return;
+        }
+
+        const filtered = search ? usersData.filter(u => u.name.includes(search)) : usersData;
+
+        if (filtered.length === 0) {
+            el.innerHTML = '<div class="empty-state"><p>該当する利用者がいません</p></div>';
+            countEl.innerHTML = '';
+            return;
+        }
+
+        // ケアマネ事業所ごとにグループ化
+        const groups = {};
+        let withEmail = 0;
+        const cmEmailMap = getCmEmails();
+        filtered.forEach((u, idx) => {
+            const key = u.cmOffice || '事業所未設定';
+            if (!groups[key]) groups[key] = [];
+            const origIdx = usersData.indexOf(u);
+            const localEmail = u.cmName ? (cmEmailMap[cmKey(u.cmName, u.cmOffice)] || '') : '';
+            const email = localEmail || u.cmEmail || '';
+            groups[key].push({ ...u, origIdx, cmEmail: email });
+            if (email) withEmail++;
+        });
+
+        const keys = Object.keys(groups).sort((a, b) => {
+            if (a === '事業所未設定') return 1;
+            if (b === '事業所未設定') return -1;
+            return a.localeCompare(b, 'ja');
+        });
+
+        countEl.innerHTML = `全 <strong>${filtered.length}名</strong>` +
+            (filtered.length !== usersData.length ? ` ／ ${usersData.length}名中` : '') +
+            ` （メール送信可能: <strong>${withEmail}名</strong>）`;
+
+        let html = '';
+        keys.forEach(office => {
+            html += `<div class="cm-group-header">${esc(office)}</div>`;
+            groups[office].forEach(u => {
+                const isSelected = selectedUserIdx === u.origIdx;
+                const canSend = u.cmName && u.cmEmail;
+                html += `<div class="user-item ${isSelected ? 'selected' : ''}" onclick="selectUser(${u.origIdx})">
+                    <span>${esc(u.name)}</span>
+                    ${canSend
+                        ? `<span class="cm-name">${esc(u.cmName)}</span>`
+                        : `<span class="no-cm">${!u.cmName ? 'ケアマネ未設定' : 'メール未設定'}</span>`
+                    }
+                </div>`;
+            });
+        });
+        el.innerHTML = html;
+    }
+
+    function filterUsers() { renderUserList(); }
+
+    function selectUser(idx) {
+        const u = usersData[idx];
+        if (!u) return;
+
+        if (!u.cmName) {
+            showToast('この利用者はケアマネが台帳に登録されていません', true);
+            return;
+        }
+        const email = getCmEmailByCm(u.cmName, u.cmOffice) || u.cmEmail || '';
+        if (!email) {
+            showToast('このケアマネのメールアドレスが未登録です。「設定」タブで登録してください', true);
+            return;
+        }
+
+        selectedUserIdx = idx;
+        renderUserList();
+        document.getElementById('mailFormCard').style.display = '';
+        if (!document.getElementById('absenceDate').value) {
+            document.getElementById('absenceDate').value = new Date().toISOString().split('T')[0];
+        }
+        generatePreview();
+    }
+
+    function handleReasonChange() {
+        const sel = document.getElementById('absenceReason');
+        document.getElementById('customReasonRow').style.display = sel.value === 'other' ? '' : 'none';
+    }
+
+    function generatePreview() {
+        if (selectedUserIdx < 0) { document.getElementById('previewCard').style.display = 'none'; return; }
+        const u = usersData[selectedUserIdx];
+        const cmEmail = u ? (getCmEmailByCm(u.cmName, u.cmOffice) || u.cmEmail || '') : '';
+        if (!u || !cmEmail) { document.getElementById('previewCard').style.display = 'none'; return; }
+
+        const dateStr = document.getElementById('absenceDate').value;
+        const unit = document.getElementById('absenceUnit').value;
+        const reasonSel = document.getElementById('absenceReason').value;
+        const customReason = document.getElementById('customReason').value.trim();
+        const reason = reasonSel === 'other' ? customReason : reasonSel;
+        const extra = document.getElementById('extraNote').value.trim();
+        const sender = document.getElementById('senderName').value.trim();
+
+        if (!dateStr || !reason) { document.getElementById('previewCard').style.display = 'none'; return; }
+
+        const d = new Date(dateStr);
+        const dayNames = ['日','月','火','水','木','金','土'];
+        const formatted = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${dayNames[d.getDay()]}）`;
+
+        const subject = `ご利用者様欠席のご連絡（yawaragi／${u.name}様）`;
+
+        let body = `${u.cmOffice}\n${u.cmName}様\n\nいつもお世話になっております。\nリハビリデイサービスyawaragiの${sender || '＿＿'}です。\n\n${u.name}様の${formatted}${unit ? '（' + unit + '）' : ''}のご利用について、\n${reason}のためお休みのご連絡をいただきましたのでご報告いたします。`;
+
+        if (extra) { body += `\n\n${extra}`; }
+
+        body += `\n\n何かご不明な点がございましたら、お気軽にご連絡ください。\n\nリハビリデイサービスyawaragi\nTEL: 0493-81-5125`;
+
+        document.getElementById('previewSubject').textContent = subject;
+        document.getElementById('previewTo').textContent = `${u.cmName}（${u.cmOffice}）<${cmEmail}>`;
+        document.getElementById('previewBody').textContent = body;
+        document.getElementById('previewCard').style.display = '';
+
+        window._mailData = { subject, body, email: cmEmail, userName: u.name, cmName: u.cmName, cmOffice: u.cmOffice, reason, date: formatted };
+    }
+
+    function openMailto() {
+        if (!window._mailData) return;
+        const { subject, body, email } = window._mailData;
+        // Gmailで直接開く
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.open(gmailUrl, '_blank');
+
+        const history = getData(STORAGE_KEYS.history);
+        history.unshift({
+            id: generateId(),
+            timestamp: new Date().toISOString(),
+            userName: window._mailData.userName,
+            cmName: window._mailData.cmName,
+            cmOffice: window._mailData.cmOffice,
+            reason: window._mailData.reason,
+            date: window._mailData.date,
+            sender: document.getElementById('senderName').value.trim()
+        });
+        if (history.length > 100) history.pop();
+        setData(STORAGE_KEYS.history, history);
+        showToast('メールソフトを開きました。送信履歴に記録しました。');
+    }
+
+    function copyToClipboard() {
+        const body = document.getElementById('previewBody').textContent;
+        navigator.clipboard.writeText(body).then(() => {
+            showToast('本文をコピーしました');
+        });
+    }
+
+    // ===== 送信履歴 =====
+    function renderHistory() {
+        const history = getData(STORAGE_KEYS.history);
+        const el = document.getElementById('historyList');
+        const clearBtn = document.getElementById('clearHistoryBtn');
+
+        if (history.length === 0) {
+            el.innerHTML = '<div class="empty-state"><p>まだ送信履歴がありません</p></div>';
+            clearBtn.style.display = 'none';
+            return;
+        }
+
+        clearBtn.style.display = '';
+        let html = '';
+        history.forEach(h => {
+            const d = new Date(h.timestamp);
+            const ts = `${d.getFullYear()}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+            html += `<div class="history-item">
+                <div><strong>${esc(h.userName)}</strong>様 → ${esc(h.cmName)}（${esc(h.cmOffice)}）</div>
+                <div style="margin-top:4px">${esc(h.date)} ／ ${esc(h.reason)} ／ 連絡者：${esc(h.sender || '未入力')}</div>
+                <div class="date">${ts}</div>
+            </div>`;
+        });
+        el.innerHTML = html;
+    }
+
+    function clearHistory() {
+        if (!confirm('送信履歴をすべて削除しますか？')) return;
+        setData(STORAGE_KEYS.history, []);
+        renderHistory();
+        showToast('履歴を削除しました');
+    }
+
+    // ===== ユーティリティ =====
+    function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+    function esc(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+    function showToast(msg, isError) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.background = isError ? '#dc2626' : '#059669';
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    function saveSenderName() {
+        localStorage.setItem(STORAGE_KEYS.senderName, document.getElementById('senderName').value);
+    }
+
+    // ===== 初期化 =====
+    function init() {
+        const savedSender = localStorage.getItem(STORAGE_KEYS.senderName);
+        if (savedSender) document.getElementById('senderName').value = savedSender;
+        loadUsersFromGAS();
+    }
+
+    init();
+</script>
+</body>
+</html>

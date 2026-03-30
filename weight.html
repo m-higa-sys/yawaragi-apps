@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>体重チェック表 - yawaragi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Meiryo', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2196F3, #42A5F5);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .header h1 { font-size: 22px; }
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .year-select {
+            font-size: 18px;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+            min-height: 44px;
+            min-width: 44px;
+            touch-action: manipulation;
+        }
+        .btn-white { background: white; color: #2196F3; }
+        .btn-white:hover { background: #e3f2fd; }
+        .btn-taicho { background: #e3f2fd; color: #1565c0; border: 1px solid #1976d2; }
+        .btn-taicho:hover { background: #bbdefb; }
+        .btn-red { background: #f44336; color: white; }
+        .btn-red:hover { background: #d32f2f; }
+
+        .toolbar {
+            padding: 12px 20px;
+            background: white;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .stats {
+            font-size: 15px;
+            color: #666;
+        }
+        .stats strong { color: #2196F3; font-size: 18px; }
+
+        .legend {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .legend-color {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            padding: 15px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            border: 1px solid #e0e0e0;
+            text-align: center;
+            padding: 8px 6px;
+            font-size: 15px;
+        }
+        th {
+            background: #2196F3;
+            color: white;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-size: 16px;
+        }
+
+        .name-cell {
+            text-align: left;
+            padding-left: 10px;
+            font-weight: bold;
+            min-width: 55px;
+            white-space: nowrap;
+            position: sticky;
+            left: 0;
+            background: white;
+            z-index: 5;
+        }
+        .group-cell {
+            font-weight: bold;
+            color: #2196F3;
+            background: #e3f2fd;
+            position: sticky;
+            left: 0;
+            z-index: 5;
+            min-width: 30px;
+        }
+
+        .month-border {
+            border-left: 3px solid #90caf9 !important;
+        }
+
+        .weight-cell {
+            cursor: pointer;
+            min-width: 75px;
+            min-height: 44px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            position: relative;
+            font-size: 15px;
+        }
+        .weight-cell:hover { background: #f5f5f5; }
+        .weight-cell.has-value { background: #e3f2fd; }
+        .weight-cell.highlight-undone { background: #ffebee; }
+
+        .weight-value { font-weight: bold; font-size: 16px; }
+        .weight-change { font-size: 11px; display: block; margin-top: 1px; }
+        .weight-change.up { color: #f44336; }
+        .weight-change.down { color: #2196F3; }
+        .weight-change.same { color: #9e9e9e; }
+        .weight-change.alert { color: #f44336; font-weight: bold; }
+
+        .name-cell.clickable { cursor: pointer; }
+        .name-cell.clickable:hover { background: #e3f2fd !important; text-decoration: underline; }
+
+        .row-even { background: #fafafa; }
+        .row-even .name-cell { background: #fafafa; }
+
+        /* モーダル共通 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal h2 { margin-bottom: 15px; color: #333; font-size: 20px; }
+        .modal p { margin-bottom: 15px; color: #666; line-height: 1.6; }
+        .modal .btn { width: 100%; margin-top: 10px; }
+
+        .weight-input {
+            font-size: 28px;
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #2196F3;
+            border-radius: 8px;
+            text-align: center;
+            outline: none;
+        }
+        .weight-input:focus { border-color: #1565C0; box-shadow: 0 0 0 3px rgba(33,150,243,0.2); }
+
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        .btn-group .btn { flex: 1; }
+        .btn-blue { background: #2196F3; color: white; }
+        .btn-blue:hover { background: #1976D2; }
+
+        .file-drop {
+            border: 3px dashed #2196F3;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            margin: 15px 0;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 16px;
+            color: #666;
+        }
+        .file-drop:hover, .file-drop.drag-over { background: #e3f2fd; }
+        .file-drop input { display: none; }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 200;
+            transition: opacity 0.3s;
+            font-size: 15px;
+        }
+
+        /* グラフモーダル */
+        .graph-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .graph-modal-overlay.active { display: flex; }
+        .graph-modal {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            max-width: 700px;
+            width: 95%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .graph-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .graph-modal-header h2 { font-size: 20px; color: #333; }
+        .graph-modal-body { position: relative; width: 100%; }
+        .graph-modal-body canvas { width: 100% !important; }
+        .graph-data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        .graph-data-table th {
+            background: #2196F3;
+            color: white;
+            padding: 6px 8px;
+            font-size: 13px;
+            position: static;
+        }
+        .graph-data-table td {
+            padding: 5px 8px;
+            border: 1px solid #e0e0e0;
+            font-size: 14px;
+        }
+        .graph-data-table .change-up { color: #f44336; }
+        .graph-data-table .change-down { color: #2196F3; }
+        .graph-btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .graph-btn-group .btn { flex: 1; }
+
+        /* 印刷用 */
+        @media print {
+            body { background: white; font-size: 12px; }
+            .header, .toolbar, .no-print { display: none !important; }
+            .table-container { padding: 0; overflow: visible; }
+            table { box-shadow: none; font-size: 12px; }
+            th, td { padding: 4px 3px; font-size: 12px; }
+            .name-cell, .group-cell { position: static; }
+            .weight-value { font-size: 12px; }
+            .weight-change { font-size: 9px; }
+            @page { size: A4 landscape; margin: 10mm; }
+        }
+
+        /* グラフ印刷用 */
+        body.print-graph .header,
+        body.print-graph .toolbar,
+        body.print-graph .table-container,
+        body.print-graph .no-print,
+        body.print-graph #weightModal,
+        body.print-graph #csvModal { display: none !important; }
+        body.print-graph .graph-modal-overlay {
+            display: block !important;
+            position: static !important;
+            background: none !important;
+        }
+        body.print-graph .graph-modal {
+            box-shadow: none !important;
+            max-width: 100% !important;
+            width: 100% !important;
+            padding: 15px !important;
+            border-radius: 0 !important;
+        }
+        body.print-graph .graph-btn-group { display: none !important; }
+        @media print {
+            body.print-graph { background: white; }
+            body.print-graph .graph-modal-overlay { display: block !important; position: static !important; background: none !important; }
+            body.print-graph .graph-modal { box-shadow: none !important; max-width: 100% !important; padding: 10px !important; }
+            body.print-graph .graph-btn-group { display: none !important; }
+            body.print-graph .graph-data-table th { background: #2196F3 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: A4 portrait; margin: 10mm; }
+        }
+
+        @media (max-width: 768px) {
+            .header { padding: 10px 15px; }
+            .header h1 { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>⚖ 体重チェック表</h1>
+    <div class="header-controls">
+        <select id="yearSelect" class="year-select" onchange="changeYear()"></select>
+        <button class="btn btn-white" onclick="loadFromSpreadsheet()">🔄 利用者台帳から取得</button>
+        <button class="btn btn-taicho" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
+        <button class="btn btn-white" onclick="openCsvModal()">📁 CSV読込</button>
+        <button class="btn btn-white" onclick="exportJson()">💾 バックアップ</button>
+        <button class="btn btn-white" onclick="importJson()">📂 復元</button>
+        <button class="btn btn-white no-print" onclick="window.print()">🖨 印刷</button>
+    </div>
+</div>
+
+<div class="toolbar">
+    <div class="stats">
+        登録者数: <strong id="totalCount">0</strong>名
+        ｜ 今月の入力: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
+    </div>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#e3f2fd;">kg</div> 入力済</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffebee;"></div> 今月未入力</div>
+        <div class="legend-item"><div class="legend-color"><span style="color:#f44336;">↑</span></div> ±2kg以上</div>
+    </div>
+</div>
+
+<div class="table-container">
+    <table id="checkTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999; font-size:18px;">
+        「🔄 利用者台帳から取得」ボタンで利用者一覧を読み込んでください
+    </div>
+</div>
+
+<!-- 体重入力モーダル -->
+<div class="modal-overlay" id="weightModal">
+    <div class="modal">
+        <h2 id="weightModalTitle">体重入力</h2>
+        <p id="weightModalInfo"></p>
+        <input type="number" class="weight-input" id="weightInput" placeholder="例: 65.5" step="0.1" min="20" max="200" inputmode="decimal">
+        <div class="btn-group">
+            <button class="btn btn-blue" onclick="saveWeight()">保存</button>
+            <button class="btn btn-red" onclick="clearWeight()">削除</button>
+        </div>
+        <button class="btn" style="background:#eee; color:#666; width:100%; margin-top:5px;" onclick="closeWeightModal()">キャンセル</button>
+    </div>
+</div>
+
+<!-- CSVモーダル -->
+<div class="modal-overlay" id="csvModal">
+    <div class="modal">
+        <h2>📁 CSV読込（手動）</h2>
+        <p>通常は「🔄 利用者台帳から取得」ボタンを使ってください。</p>
+        <div class="file-drop" id="fileDrop" onclick="document.getElementById('csvFile').click()">
+            ここをタップしてCSVファイルを選択<br>
+            またはファイルをドラッグ＆ドロップ
+            <input type="file" id="csvFile" accept=".csv" onchange="handleCsvFile(this.files[0])">
+        </div>
+        <button class="btn btn-red" onclick="closeCsvModal()">閉じる</button>
+    </div>
+</div>
+
+<!-- グラフモーダル -->
+<div class="graph-modal-overlay" id="graphModal">
+    <div class="graph-modal">
+        <div class="graph-modal-header">
+            <h2 id="graphTitle">体重推移</h2>
+            <span id="graphYear" style="color:#666; font-size:14px;"></span>
+        </div>
+        <div class="graph-modal-body">
+            <canvas id="weightChart" height="280"></canvas>
+        </div>
+        <table class="graph-data-table" id="graphDataTable"></table>
+        <div class="graph-btn-group">
+            <button class="btn btn-blue" onclick="printGraph()">🖨 この人を印刷</button>
+            <button class="btn" style="background:#eee; color:#666;" onclick="closeGraphModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<!-- JSON復元用 -->
+<input type="file" id="jsonFile" accept=".json" style="display:none" onchange="handleJsonFile(this.files[0])">
+
+<div id="toast" class="toast" style="opacity:0;"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+// ============ 定数 ============
+const STORAGE_KEY = 'yawaragi_weight_check';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+
+const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
+
+let appData = {
+    users: [],       // [{name, furigana}]
+    weights: {},     // { "年度": { "ユーザー名": { "4月": 65.5, ... } } }
+    currentYear: getCurrentFiscalYear()
+};
+
+let editingUser = '';
+let editingMonth = '';
+
+// ============ ユーティリティ ============
+function getCurrentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function showToast(msg, color) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = color || '#2196F3';
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escapeAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ============ データ管理 ============
+function loadData() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const p = JSON.parse(saved);
+            appData.users = p.users || [];
+            appData.weights = p.weights || {};
+        }
+    } catch(e) { console.error('読込エラー:', e); }
+}
+
+function saveData() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, weights: appData.weights }));
+    } catch(e) { console.error('保存エラー:', e); }
+}
+
+// ============ あいうえお順ソート ============
+function getGroup(furigana) {
+    if (!furigana) return 'その他';
+    const first = furigana.charAt(0);
+    const groups = [
+        { label: 'あ', chars: 'あいうえおアイウエオ' },
+        { label: 'か', chars: 'かきくけこがぎぐげごカキクケコガギグゲゴ' },
+        { label: 'さ', chars: 'さしすせそざじずぜぞサシスセソザジズゼゾ' },
+        { label: 'た', chars: 'たちつてとだぢづでどタチツテトダヂヅデド' },
+        { label: 'な', chars: 'なにぬねのナニヌネノ' },
+        { label: 'は', chars: 'はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ' },
+        { label: 'ま', chars: 'まみむめもマミムメモ' },
+        { label: 'や', chars: 'やゆよヤユヨ' },
+        { label: 'ら', chars: 'らりるれろラリルレロ' },
+        { label: 'わ', chars: 'わをんワヲン' }
+    ];
+    for (const g of groups) { if (g.chars.includes(first)) return g.label; }
+    return 'その他';
+}
+
+function sortUsers() {
+    appData.users.sort((a, b) => (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja'));
+}
+
+// ============ 利用者台帳から取得（GAS JSONP方式 = サーバー不要） ============
+function loadFromSpreadsheet() {
+    showToast('📋 利用者台帳からデータ取得中...', '#2196F3');
+
+    const callbackName = 'gasCallback_' + Date.now();
+    const url = GAS_URL + '?callback=' + callbackName;
+
+    const timeout = setTimeout(() => {
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        showToast('⚠ 取得に時間がかかっています。ネット接続を確認してください', '#f44');
+    }, 15000);
+
+    window[callbackName] = function(data) {
+        clearTimeout(timeout);
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+
+        try {
+            const users = (data.users || []).map(u => ({
+                name: u.name || '',
+                furigana: u.kana || ''
+            })).filter(u => u.name);
+
+            if (users.length === 0) {
+                showToast('⚠ 利用者が見つかりません', '#f44');
+                return;
+            }
+            mergeUsers(users);
+            saveData();
+            renderTable();
+            showToast(`✅ ${appData.users.length}名の利用者を取得しました`, '#4CAF50');
+        } catch(err) {
+            showToast('⚠ データの解析に失敗しました', '#f44');
+            console.error(err);
+        }
+    };
+
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = function() {
+        clearTimeout(timeout);
+        delete window[callbackName];
+        showToast('⚠ 取得失敗。ネット接続を確認してください', '#f44');
+    };
+    document.head.appendChild(script);
+}
+
+// CSV手動読込用のパーサー
+function parseSpreadsheetCsv(text) {
+    text = text.replace(/^\uFEFF/, '');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return [];
+    const headers = parseCSVLine(lines[0]).map(h => h.trim());
+    let nameIdx = -1, kanaIdx = -1, statusIdx = -1;
+    for (let i = 0; i < headers.length; i++) {
+        const h = headers[i];
+        if (h.includes('名前') || h === '氏名' || h === '利用者名') nameIdx = i;
+        else if (h.includes('カナ') || h.includes('かな') || h.includes('ふりがな') || h.includes('フリガナ')) kanaIdx = i;
+        else if (h.includes('ステータス') || h.includes('状態') || h.includes('利用状況')) statusIdx = i;
+    }
+    if (nameIdx === -1) return [];
+    const users = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        const name = (cols[nameIdx] || '').trim();
+        if (!name) continue;
+        if (statusIdx >= 0) {
+            const status = (cols[statusIdx] || '').trim();
+            if (status.includes('終了') || status.includes('中止') || status.includes('卒業')) continue;
+        }
+        const kana = kanaIdx >= 0 ? (cols[kanaIdx] || '').trim() : '';
+        users.push({ name, furigana: kana });
+    }
+    return users;
+}
+
+function mergeUsers(newUsers) {
+    const existingMap = {};
+    appData.users.forEach(u => { existingMap[u.name] = u; });
+
+    appData.users = newUsers.map(nu => ({
+        name: nu.name,
+        furigana: nu.furigana || (existingMap[nu.name] ? existingMap[nu.name].furigana : '')
+    }));
+    sortUsers();
+}
+
+// ============ 年度セレクト ============
+function initYearSelect() {
+    const sel = document.getElementById('yearSelect');
+    const fy = getCurrentFiscalYear();
+    sel.innerHTML = '';
+    for (let y = fy - 2; y <= fy + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = `令和${y - 2018}年度`;
+        sel.appendChild(opt);
+    }
+    sel.value = appData.currentYear;
+}
+
+function changeYear() {
+    appData.currentYear = parseInt(document.getElementById('yearSelect').value);
+    renderTable();
+}
+
+// ============ テーブル描画 ============
+function renderTable() {
+    const year = appData.currentYear;
+    const thead = document.getElementById('tableHead');
+    const tbody = document.getElementById('tableBody');
+
+    if (appData.users.length === 0) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        document.getElementById('emptyMessage').style.display = 'block';
+        document.getElementById('totalCount').textContent = '0';
+        document.getElementById('progressCount').textContent = '0';
+        document.getElementById('progressTotal').textContent = '0';
+        return;
+    }
+    document.getElementById('emptyMessage').style.display = 'none';
+
+    let headerRow = '<tr><th style="min-width:30px;"></th><th style="min-width:55px;">氏名</th>';
+    for (const m of MONTHS) headerRow += `<th style="border-left:3px solid #1565C0;">${m}</th>`;
+    headerRow += '</tr>';
+    thead.innerHTML = headerRow;
+
+    if (!appData.weights[year]) appData.weights[year] = {};
+    const yearData = appData.weights[year];
+
+    const now = new Date();
+    const currentMonthNum = now.getMonth() + 1;
+    const currentMonthLabel = currentMonthNum + '月';
+    const isCurrentYear = (currentMonthNum >= 4 && year === now.getFullYear()) ||
+                          (currentMonthNum < 4 && year === now.getFullYear() - 1);
+
+    let doneCount = 0;
+    let html = '';
+    let currentGroup = '';
+    let rowIndex = 0;
+
+    sortUsers();
+
+    for (const user of appData.users) {
+        const group = getGroup(user.furigana);
+        if (group !== currentGroup) {
+            currentGroup = group;
+            html += `<tr><td class="group-cell">${group}</td><td colspan="${1 + MONTHS.length}" style="background:#e3f2fd;"></td></tr>`;
+        }
+
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+        if (!yearData[user.name]) yearData[user.name] = {};
+
+        html += `<tr class="${rowClass}">`;
+        html += `<td class="group-cell"></td>`;
+        html += `<td class="name-cell clickable" onclick="openGraph('${escapeAttr(user.name)}')">${escapeHtml(user.name)}</td>`;
+
+        for (let mi = 0; mi < MONTHS.length; mi++) {
+            const m = MONTHS[mi];
+            const weight = yearData[user.name][m];
+            let cls = 'weight-cell month-border';
+            let content = '';
+
+            if (weight !== undefined && weight !== null && weight !== '') {
+                cls += ' has-value';
+                content = `<span class="weight-value">${weight}</span>`;
+
+                // 前月比較
+                let prevWeight = null;
+                if (mi > 0) {
+                    prevWeight = yearData[user.name][MONTHS[mi - 1]];
+                } else {
+                    const prevYearData = appData.weights[year - 1];
+                    if (prevYearData && prevYearData[user.name]) {
+                        prevWeight = prevYearData[user.name]['3月'];
+                    }
+                }
+
+                if (prevWeight !== undefined && prevWeight !== null && prevWeight !== '') {
+                    const diff = (weight - prevWeight).toFixed(1);
+                    const absDiff = Math.abs(parseFloat(diff));
+                    let changeClass = 'same';
+                    let arrow = '→±0';
+                    if (parseFloat(diff) > 0) { arrow = '↑+' + diff; changeClass = absDiff >= 2 ? 'alert' : 'up'; }
+                    else if (parseFloat(diff) < 0) { arrow = '↓' + diff; changeClass = absDiff >= 2 ? 'alert' : 'down'; }
+                    content += `<span class="weight-change ${changeClass}">${arrow}kg</span>`;
+                }
+            } else {
+                if (m === currentMonthLabel && isCurrentYear) cls += ' highlight-undone';
+            }
+
+            html += `<td class="${cls}" onclick="openWeightInput('${escapeAttr(user.name)}','${m}')">${content}</td>`;
+        }
+        html += '</tr>';
+
+        if (isCurrentYear && yearData[user.name][currentMonthLabel] !== undefined && yearData[user.name][currentMonthLabel] !== null && yearData[user.name][currentMonthLabel] !== '') {
+            doneCount++;
+        }
+        rowIndex++;
+    }
+    tbody.innerHTML = html;
+
+    document.getElementById('totalCount').textContent = appData.users.length;
+    document.getElementById('progressCount').textContent = isCurrentYear ? doneCount : '-';
+    document.getElementById('progressTotal').textContent = isCurrentYear ? appData.users.length : '-';
+}
+
+// ============ 体重入力 ============
+function openWeightInput(userName, month) {
+    editingUser = userName;
+    editingMonth = month;
+    document.getElementById('weightModalTitle').textContent = `${userName} - ${month}`;
+
+    const year = appData.currentYear;
+    const current = appData.weights[year]?.[userName]?.[month];
+    const input = document.getElementById('weightInput');
+    input.value = (current !== undefined && current !== null && current !== '') ? current : '';
+
+    const mi = MONTHS.indexOf(month);
+    let prevInfo = '';
+    if (mi > 0) {
+        const prev = appData.weights[year]?.[userName]?.[MONTHS[mi-1]];
+        if (prev) prevInfo = `前月（${MONTHS[mi-1]}）: ${prev}kg`;
+    } else if (mi === 0) {
+        const prevYearData = appData.weights[year - 1];
+        if (prevYearData?.[userName]?.['3月']) prevInfo = `前月（3月）: ${prevYearData[userName]['3月']}kg`;
+    }
+    document.getElementById('weightModalInfo').textContent = prevInfo;
+
+    document.getElementById('weightModal').classList.add('active');
+    setTimeout(() => input.focus(), 100);
+}
+
+function closeWeightModal() {
+    document.getElementById('weightModal').classList.remove('active');
+}
+
+function saveWeight() {
+    const val = parseFloat(document.getElementById('weightInput').value);
+    if (isNaN(val) || val < 20 || val > 200) {
+        alert('体重は20〜200kgの範囲で入力してください');
+        return;
+    }
+    const year = appData.currentYear;
+    if (!appData.weights[year]) appData.weights[year] = {};
+    if (!appData.weights[year][editingUser]) appData.weights[year][editingUser] = {};
+    appData.weights[year][editingUser][editingMonth] = val;
+    saveData();
+    closeWeightModal();
+    renderTable();
+}
+
+function clearWeight() {
+    if (!confirm('この月の体重データを削除しますか？')) return;
+    const year = appData.currentYear;
+    if (appData.weights[year]?.[editingUser]) {
+        delete appData.weights[year][editingUser][editingMonth];
+    }
+    saveData();
+    closeWeightModal();
+    renderTable();
+}
+
+document.getElementById('weightInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') saveWeight();
+    if (e.key === 'Escape') closeWeightModal();
+});
+
+// ============ CSV読込（手動） ============
+function openCsvModal() { document.getElementById('csvModal').classList.add('active'); }
+function closeCsvModal() { document.getElementById('csvModal').classList.remove('active'); }
+
+const fileDrop = document.getElementById('fileDrop');
+fileDrop.addEventListener('dragover', (e) => { e.preventDefault(); fileDrop.classList.add('drag-over'); });
+fileDrop.addEventListener('dragleave', () => { fileDrop.classList.remove('drag-over'); });
+fileDrop.addEventListener('drop', (e) => {
+    e.preventDefault(); fileDrop.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) handleCsvFile(e.dataTransfer.files[0]);
+});
+
+function handleCsvFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const result = parseSpreadsheetCsv(e.target.result);
+            if (result.length === 0) { alert('利用者が見つかりません'); return; }
+            mergeUsers(result);
+            closeCsvModal();
+            saveData();
+            renderTable();
+            showToast(`✅ ${appData.users.length}名を読み込みました`, '#4CAF50');
+        } catch(err) { alert('CSV読込エラー: ' + err.message); }
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+            if (ch === '"' && line[i+1] === '"') { current += '"'; i++; }
+            else if (ch === '"') { inQuotes = false; }
+            else { current += ch; }
+        } else {
+            if (ch === '"') { inQuotes = true; }
+            else if (ch === ',') { result.push(current); current = ''; }
+            else { current += ch; }
+        }
+    }
+    result.push(current);
+    return result;
+}
+
+// ============ バックアップ/復元 ============
+function exportJson() {
+    const data = {
+        type: 'yawaragi_weight_check', version: 1,
+        exportDate: new Date().toISOString(),
+        users: appData.users, weights: appData.weights
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const d = new Date();
+    a.download = `体重チェック_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function importJson() { document.getElementById('jsonFile').click(); }
+
+function handleJsonFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (data.type !== 'yawaragi_weight_check') { alert('体重チェックのバックアップファイルではありません'); return; }
+            if (confirm('現在のデータを復元データで上書きします。よろしいですか？')) {
+                appData.users = data.users || [];
+                appData.weights = data.weights || {};
+                saveData(); renderTable();
+                showToast('✅ データを復元しました', '#4CAF50');
+            }
+        } catch(err) { alert('復元エラー: ' + err.message); }
+    };
+    reader.readAsText(file, 'UTF-8');
+}
+
+// ============ 個別グラフ ============
+let weightChart = null;
+let graphUserName = '';
+
+function openGraph(userName) {
+    graphUserName = userName;
+    const year = appData.currentYear;
+    const yearLabel = `令和${year - 2018}年度`;
+    document.getElementById('graphTitle').textContent = `${userName} さんの体重推移`;
+    document.getElementById('graphYear').textContent = yearLabel;
+
+    const yearData = appData.weights[year]?.[userName] || {};
+    const prevYearData = appData.weights[year - 1]?.[userName] || {};
+
+    // データ準備
+    const labels = [];
+    const values = [];
+    const changes = [];
+    for (let mi = 0; mi < MONTHS.length; mi++) {
+        const m = MONTHS[mi];
+        const w = yearData[m];
+        labels.push(m);
+        if (w !== undefined && w !== null && w !== '') {
+            values.push(w);
+            // 前月比
+            let prev = null;
+            if (mi > 0) {
+                prev = yearData[MONTHS[mi - 1]];
+            } else {
+                prev = prevYearData['3月'];
+            }
+            if (prev !== undefined && prev !== null && prev !== '') {
+                changes.push((w - prev).toFixed(1));
+            } else {
+                changes.push(null);
+            }
+        } else {
+            values.push(null);
+            changes.push(null);
+        }
+    }
+
+    // グラフ描画
+    const ctx = document.getElementById('weightChart').getContext('2d');
+    if (weightChart) weightChart.destroy();
+
+    // Y軸の範囲を計算
+    const validValues = values.filter(v => v !== null);
+    let yMin = 40, yMax = 80;
+    if (validValues.length > 0) {
+        const min = Math.min(...validValues);
+        const max = Math.max(...validValues);
+        const padding = Math.max((max - min) * 0.3, 2);
+        yMin = Math.floor(min - padding);
+        yMax = Math.ceil(max + padding);
+    }
+
+    weightChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '体重 (kg)',
+                data: values,
+                borderColor: '#2196F3',
+                backgroundColor: 'rgba(33,150,243,0.1)',
+                borderWidth: 3,
+                pointBackgroundColor: '#2196F3',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                fill: true,
+                tension: 0.3,
+                spanGaps: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 400 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            let label = ctx.parsed.y + ' kg';
+                            const ci = ctx.dataIndex;
+                            if (changes[ci] !== null) {
+                                const d = parseFloat(changes[ci]);
+                                label += d > 0 ? ` (前月比 +${changes[ci]}kg)` : ` (前月比 ${changes[ci]}kg)`;
+                            }
+                            return label;
+                        }
+                    },
+                    titleFont: { size: 14 },
+                    bodyFont: { size: 14 }
+                }
+            },
+            scales: {
+                y: {
+                    min: yMin,
+                    max: yMax,
+                    ticks: { font: { size: 14 }, callback: v => v + 'kg' },
+                    grid: { color: '#e0e0e0' }
+                },
+                x: {
+                    ticks: { font: { size: 14 } },
+                    grid: { color: '#f0f0f0' }
+                }
+            }
+        }
+    });
+
+    // データテーブル
+    let tableHtml = '<thead><tr><th>月</th>';
+    for (const m of MONTHS) tableHtml += `<th>${m}</th>`;
+    tableHtml += '</tr></thead><tbody>';
+    tableHtml += '<tr><td style="font-weight:bold;">体重</td>';
+    for (let i = 0; i < MONTHS.length; i++) {
+        tableHtml += `<td>${values[i] !== null ? values[i] + 'kg' : '-'}</td>`;
+    }
+    tableHtml += '</tr><tr><td style="font-weight:bold;">前月比</td>';
+    for (let i = 0; i < MONTHS.length; i++) {
+        if (changes[i] !== null) {
+            const d = parseFloat(changes[i]);
+            const cls = d > 0 ? 'change-up' : d < 0 ? 'change-down' : '';
+            const sign = d > 0 ? '+' : '';
+            tableHtml += `<td class="${cls}">${sign}${changes[i]}kg</td>`;
+        } else {
+            tableHtml += '<td>-</td>';
+        }
+    }
+    tableHtml += '</tr></tbody>';
+    document.getElementById('graphDataTable').innerHTML = tableHtml;
+
+    document.getElementById('graphModal').classList.add('active');
+}
+
+function closeGraphModal() {
+    document.getElementById('graphModal').classList.remove('active');
+}
+
+function printGraph() {
+    document.body.classList.add('print-graph');
+    setTimeout(() => {
+        window.print();
+        document.body.classList.remove('print-graph');
+    }, 300);
+}
+
+// グラフモーダルの背景クリックで閉じる
+document.getElementById('graphModal').addEventListener('click', function(e) {
+    if (e.target === this) closeGraphModal();
+});
+
+// ============ 初期化 ============
+loadData();
+initYearSelect();
+renderTable();
+</script>
+</body>
+</html>

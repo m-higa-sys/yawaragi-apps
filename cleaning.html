@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>清掃・準備チェック表 - yawaragi</title>
+<style>
+:root {
+  --primary: #1a73e8;
+  --green: #34a853;
+  --orange: #f9ab00;
+  --red: #ea4335;
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --text: #202124;
+  --sub: #5f6368;
+  --border: #e0e0e0;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Segoe UI','Hiragino Sans','Meiryo',sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ヘッダー */
+.header {
+  background: var(--primary);
+  color: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.header h1 { font-size: 18px; font-weight: 600; }
+.header-date { font-size: 13px; opacity: .9; }
+.header-right { display:flex; gap:8px; align-items:center; }
+.header-btn {
+  background: rgba(255,255,255,.2);
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.header-btn:active { background: rgba(255,255,255,.35); }
+
+/* ユーザー表示 */
+.user-bar {
+  background: #e8f0fe;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.user-bar .name { font-weight: 600; color: var(--primary); }
+.user-bar .change-btn {
+  background: none;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 進捗バー */
+.progress-section {
+  padding: 12px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.progress-bar-wrap {
+  background: #e0e0e0;
+  border-radius: 10px;
+  height: 20px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), #43b581);
+  border-radius: 10px;
+  transition: width .4s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #fff;
+  font-weight: 600;
+  min-width: 30px;
+}
+.progress-text {
+  font-size: 13px;
+  color: var(--sub);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* 時間帯セクション */
+.time-section {
+  margin: 8px 0;
+}
+.time-header {
+  background: #fff;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--primary);
+  border-left: 4px solid var(--primary);
+  margin: 0 8px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.time-header .count {
+  font-size: 12px;
+  color: var(--sub);
+  font-weight: 400;
+}
+
+/* タスクアイテム */
+.task-list { padding: 0 8px; }
+.task-item {
+  background: var(--card);
+  margin: 4px 0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  transition: all .2s;
+  cursor: pointer;
+  border: 2px solid transparent;
+  min-height: 52px;
+}
+.task-item:active { transform: scale(.98); }
+.task-item.checked {
+  background: #f0faf0;
+  border-color: var(--green);
+}
+.task-item.checked .task-name { text-decoration: line-through; color: var(--sub); }
+
+.task-check {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all .2s;
+  font-size: 16px;
+}
+.task-item.checked .task-check {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.task-info { flex: 1; min-width: 0; }
+.task-name { font-size: 14px; line-height: 1.3; }
+.task-meta {
+  font-size: 11px;
+  color: var(--sub);
+  margin-top: 2px;
+}
+.task-meta .staff-name { color: var(--green); font-weight: 600; }
+.task-day-limit {
+  display: inline-block;
+  background: #fef7e0;
+  color: var(--orange);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  font-weight: 600;
+}
+
+/* 統計セクション */
+.stats-toggle {
+  background: var(--card);
+  margin: 8px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  overflow: hidden;
+}
+.stats-toggle-btn {
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.stats-toggle-btn:active { background: #f0f4ff; }
+.stats-content { display: none; padding: 0 16px 16px; }
+.stats-content.show { display: block; }
+
+.stats-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.stats-tab {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: #f0f0f0;
+  color: var(--sub);
+  font-weight: 500;
+}
+.stats-tab.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.stats-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  gap: 10px;
+}
+.stats-row:last-child { border-bottom: none; }
+.stats-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.stats-rank.rank1 { background: #ffd700; color: #7a6200; }
+.stats-rank.rank2 { background: #c0c0c0; color: #555; }
+.stats-rank.rank3 { background: #cd7f32; color: #fff; }
+.stats-name { flex: 1; font-size: 14px; }
+.stats-bar-wrap {
+  flex: 2;
+  background: #f0f0f0;
+  border-radius: 4px;
+  height: 16px;
+  overflow: hidden;
+}
+.stats-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), #4a90d9);
+  border-radius: 4px;
+  transition: width .3s;
+}
+.stats-count {
+  width: 36px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--primary);
+}
+.stats-unit {
+  font-size: 11px;
+  color: var(--sub);
+  font-weight: 400;
+}
+
+/* スタッフ選択モーダル */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.2);
+}
+.modal h2 {
+  font-size: 18px;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.modal p {
+  text-align: center;
+  font-size: 13px;
+  color: var(--sub);
+  margin-bottom: 16px;
+}
+.staff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.staff-btn {
+  background: #f0f4ff;
+  border: 2px solid transparent;
+  padding: 14px 8px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all .15s;
+  color: var(--text);
+}
+.staff-btn:active { transform: scale(.95); }
+.staff-btn.selected {
+  border-color: var(--primary);
+  background: #d2e3fc;
+}
+
+/* 設定画面 */
+.settings-panel {
+  display: none;
+  padding: 16px;
+}
+.settings-panel.show { display: block; }
+.settings-section {
+  background: var(--card);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.settings-section h3 {
+  font-size: 15px;
+  margin-bottom: 12px;
+  color: var(--primary);
+}
+.input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.input-row input, .input-row select {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+}
+.input-row button {
+  padding: 10px 16px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.input-row button:active { opacity: .8; }
+
+.gas-url-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.save-url-btn {
+  width: 100%;
+  padding: 10px;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.save-url-btn:active { opacity: .8; }
+
+/* トースト */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #323232;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 300;
+  transition: transform .3s ease;
+  white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* 同期状態 */
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.2);
+}
+.sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4caf50;
+}
+.sync-dot.offline { background: #ff9800; }
+.sync-dot.error { background: #f44336; }
+
+/* 更新ボタン */
+.refresh-float {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  font-size: 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.25);
+  cursor: pointer;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.refresh-float:active { transform: scale(.9); }
+.refresh-float.syncing { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* メインとセッティング切り替え */
+.main-view { display: block; }
+.main-view.hide { display: none; }
+
+/* レスポンシブ */
+@media (max-width: 400px) {
+  .staff-grid { grid-template-columns: repeat(2, 1fr); }
+  .header h1 { font-size: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <div>
+    <h1>清掃・準備チェック表</h1>
+    <div class="header-date" id="headerDate"></div>
+  </div>
+  <div class="header-right">
+    <div class="sync-status">
+      <div class="sync-dot" id="syncDot"></div>
+      <span id="syncText">接続中</span>
+    </div>
+    <button class="header-btn" id="btnSettings" onclick="toggleSettings()">設定</button>
+    <button class="header-btn" onclick="window.open('https://docs.google.com/spreadsheets/d/1sFrr5ScSoAcOzvxEs1QtV2qdM_v4OdXe3W5bJJm25G0/edit','_blank')" style="background:rgba(52,168,83,.85);color:#fff">+ タスク編集</button>
+  </div>
+</div>
+
+<!-- ユーザーバー -->
+<div class="user-bar" id="userBar" style="display:none">
+  <div>操作中: <span class="name" id="currentUserName"></span></div>
+  <button class="change-btn" onclick="showStaffModal()">変更</button>
+</div>
+
+<!-- メイン画面 -->
+<div class="main-view" id="mainView">
+  <!-- 進捗バー -->
+  <div class="progress-section">
+    <div class="progress-text">
+      <span id="progressLabel">読み込み中...</span>
+      <span id="progressCount"></span>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- 統計セクション -->
+  <div class="stats-toggle">
+    <button class="stats-toggle-btn" onclick="toggleStats()">
+      <span>みんなの貢献</span>
+      <span id="statsArrow">▼</span>
+    </button>
+    <div class="stats-content" id="statsContent">
+      <div class="stats-tabs">
+        <button class="stats-tab active" id="tabToday" onclick="showStats('today')">今日</button>
+        <button class="stats-tab" id="tabMonth" onclick="showStats('month')">今月</button>
+      </div>
+      <div id="statsBody">読み込み中...</div>
+    </div>
+  </div>
+
+  <!-- タスク一覧 -->
+  <div id="taskContainer"></div>
+</div>
+
+<!-- 設定画面 -->
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-section">
+    <h3>GAS URL設定</h3>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:8px;text-align:left">
+      GASのウェブアプリURLを貼り付けてください
+    </p>
+    <input type="text" class="gas-url-input" id="gasUrlInput" placeholder="https://script.google.com/macros/s/...">
+    <button class="save-url-btn" onclick="saveGasUrl()">URLを保存して接続テスト</button>
+  </div>
+
+  <div class="settings-section">
+    <h3>タスク追加</h3>
+    <div class="input-row">
+      <input type="text" id="newTaskName" placeholder="タスク名">
+      <select id="newTaskSlot">
+        <option value="朝（1から順番に行う）">朝</option>
+        <option value="午前利用中（前半）">午前前半</option>
+        <option value="前半終了後">前半終了後</option>
+        <option value="午前利用中（後半）">午前後半</option>
+        <option value="午前終了後">午前終了後</option>
+        <option value="午後準備">午後準備</option>
+      </select>
+      <button onclick="addNewTask()">追加</button>
+    </div>
+    <div class="input-row">
+      <input type="text" id="newTaskDay" placeholder="曜日制限（例: 月・水・金）空欄=毎日">
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h3>自動更新間隔</h3>
+    <div class="input-row">
+      <select id="refreshInterval" onchange="saveRefreshInterval()">
+        <option value="10">10秒ごと</option>
+        <option value="30" selected>30秒ごと</option>
+        <option value="60">1分ごと</option>
+        <option value="0">手動のみ</option>
+      </select>
+    </div>
+    <p style="font-size:12px;color:var(--sub);text-align:left">
+      他のスタッフのチェックが反映されるまでの時間です
+    </p>
+  </div>
+
+  <div class="settings-section">
+    <h3>データ</h3>
+    <button class="save-url-btn" style="background:var(--orange);margin-bottom:8px" onclick="loadAllData()">最新データを取得</button>
+    <button class="save-url-btn" style="background:var(--red)" onclick="clearLocalData()">この端末のキャッシュをクリア</button>
+  </div>
+</div>
+
+<!-- 更新ボタン -->
+<button class="refresh-float" id="btnRefresh" onclick="loadAllData()" title="最新データを取得">&#8635;</button>
+
+<!-- スタッフ選択モーダル -->
+<div class="modal-overlay" id="staffModal">
+  <div class="modal">
+    <h2>あなたの名前を選んでください</h2>
+    <p>チェックした人として記録されます</p>
+    <div class="staff-grid" id="staffGrid"></div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================
+// 業務チェック表 メインスクリプト
+// ============================================
+
+// --- 状態管理 ---
+let STATE = {
+  gasUrl: localStorage.getItem('gyomu_gas_url') || 'https://script.google.com/macros/s/AKfycbzejQJ-JNok50wACj5XRSR13-ODvaocl9GhaHX245EFC7nPeL5jtNSyyqf21mi7DAyi/exec',
+  currentUser: localStorage.getItem('gyomu_current_user') || '',
+  tasks: [],
+  log: [],
+  staff: [],
+  refreshInterval: parseInt(localStorage.getItem('gyomu_refresh_interval') || '30'),
+  lastSync: null,
+  monthlyStats: {},
+  statsView: 'today'
+};
+
+let refreshTimer = null;
+
+// --- 初期化 ---
+document.addEventListener('DOMContentLoaded', function() {
+  updateDateDisplay();
+  loadRefreshInterval();
+
+  if (!STATE.gasUrl) {
+    showToast('設定からGAS URLを入力してください');
+    toggleSettings();
+  } else if (!STATE.currentUser) {
+    loadAllData().then(function() {
+      showStaffModal();
+    });
+  } else {
+    document.getElementById('userBar').style.display = 'flex';
+    document.getElementById('currentUserName').textContent = STATE.currentUser;
+    loadAllData();
+  }
+
+  startAutoRefresh();
+});
+
+// --- 日付表示 ---
+function updateDateDisplay() {
+  const now = new Date();
+  const days = ['日','月','火','水','木','金','土'];
+  const str = now.getFullYear() + '年' + (now.getMonth()+1) + '月' + now.getDate() + '日（' + days[now.getDay()] + '）';
+  document.getElementById('headerDate').textContent = str;
+}
+
+// --- GAS通信（JSONP方式：file://でも動作する） ---
+function gasRequest(params) {
+  return new Promise(function(resolve, reject) {
+    if (!STATE.gasUrl) { reject(new Error('GAS URLが設定されていません')); return; }
+    var callbackName = '_gasCallback_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    var timeout = setTimeout(function() {
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('タイムアウト'));
+    }, 15000);
+
+    window[callbackName] = function(data) {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      resolve(data);
+    };
+
+    params.callback = callbackName;
+    var url = STATE.gasUrl + '?' + new URLSearchParams(params).toString();
+    var script = document.createElement('script');
+    script.src = url;
+    script.onerror = function() {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      reject(new Error('通信エラー'));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// gasGet/gasPostの代わりに全部gasRequestを使う
+async function gasGet(params) { return gasRequest(params); }
+async function gasPost(data) { return gasRequest(data); }
+
+// --- データ読み込み ---
+async function loadAllData() {
+  const btn = document.getElementById('btnRefresh');
+  btn.classList.add('syncing');
+  setSyncStatus('syncing');
+
+  try {
+    // 1回のリクエストで全データを取得
+    const allRes = await gasGet({ action: 'getAllData' });
+    if (allRes.error) throw new Error(allRes.error);
+
+    STATE.tasks = allRes.tasks || [];
+    STATE.log = allRes.log || [];
+    STATE.staff = allRes.staff || [];
+    STATE.monthlyStats = allRes.monthlyStats || {};
+    STATE.lastSync = new Date();
+
+    // ローカルキャッシュに保存（オフライン対策）
+    localStorage.setItem('gyomu_tasks_cache', JSON.stringify(STATE.tasks));
+    localStorage.setItem('gyomu_log_cache', JSON.stringify(STATE.log));
+    localStorage.setItem('gyomu_staff_cache', JSON.stringify(STATE.staff));
+    localStorage.setItem('gyomu_monthly_cache', JSON.stringify(STATE.monthlyStats));
+
+    renderTasks();
+    renderStats();
+    setSyncStatus('online');
+  } catch (e) {
+    console.error('データ取得エラー:', e);
+    // キャッシュから復元
+    try {
+      STATE.tasks = JSON.parse(localStorage.getItem('gyomu_tasks_cache') || '[]');
+      STATE.log = JSON.parse(localStorage.getItem('gyomu_log_cache') || '[]');
+      STATE.staff = JSON.parse(localStorage.getItem('gyomu_staff_cache') || '[]');
+      renderTasks();
+      setSyncStatus('offline');
+      showToast('オフライン: キャッシュを表示中');
+    } catch (e2) {
+      setSyncStatus('error');
+      showToast('データ取得に失敗しました');
+    }
+  } finally {
+    btn.classList.remove('syncing');
+  }
+}
+
+// チェックログだけ更新（軽量）
+async function refreshLog() {
+  try {
+    const logRes = await gasGet({ action: 'getLog' });
+    if (logRes.error) return;
+    STATE.log = logRes.log || [];
+    localStorage.setItem('gyomu_log_cache', JSON.stringify(STATE.log));
+    renderTasks();
+    renderStats();
+    setSyncStatus('online');
+    STATE.lastSync = new Date();
+  } catch (e) {
+    setSyncStatus('offline');
+  }
+}
+
+// --- 同期状態表示 ---
+function setSyncStatus(status) {
+  const dot = document.getElementById('syncDot');
+  const text = document.getElementById('syncText');
+  dot.className = 'sync-dot';
+  if (status === 'online') {
+    // 緑（デフォルト。追加クラス不要）
+    text.textContent = '接続中';
+  } else if (status === 'offline') {
+    dot.classList.add('offline');
+    text.textContent = 'オフライン';
+  } else if (status === 'syncing') {
+    dot.classList.add('offline');
+    text.textContent = '同期中...';
+  } else {
+    dot.classList.add('error');
+    text.textContent = 'エラー';
+  }
+}
+
+// --- タスク描画 ---
+function renderTasks() {
+  const container = document.getElementById('taskContainer');
+  const today = new Date();
+  const days = ['日','月','火','水','木','金','土'];
+  const todayDay = days[today.getDay()];
+
+  // 時間帯でグループ化
+  const timeSlots = [
+    '朝（1から順番に行う）',
+    '午前利用中（前半）',
+    '前半終了後',
+    '午前利用中（後半）',
+    '午前終了後',
+    '午後準備'
+  ];
+
+  const timeSlotLabels = {
+    '朝（1から順番に行う）': '朝（1から順番に行う）',
+    '午前利用中（前半）': '午前利用中（前半）',
+    '前半終了後': '前半終了後',
+    '午前利用中（後半）': '午前利用中（後半）',
+    '午前終了後': '午前終了後',
+    '午後準備': '午後準備'
+  };
+
+  let html = '';
+  let totalTasks = 0;
+  let checkedTasks = 0;
+
+  timeSlots.forEach(function(slot) {
+    const slotTasks = STATE.tasks.filter(function(t) { return t.timeSlot === slot; });
+    if (slotTasks.length === 0) return;
+
+    // 今日の曜日でフィルタ
+    const filteredTasks = slotTasks.filter(function(t) {
+      if (!t.dayLimit) return true;
+      return t.dayLimit.indexOf(todayDay) >= 0;
+    });
+
+    if (filteredTasks.length === 0) return;
+
+    let slotChecked = 0;
+    let taskHtml = '';
+
+    filteredTasks.forEach(function(task) {
+      const logEntry = STATE.log.find(function(l) { return l.taskNo == task.no; });
+      const isChecked = !!logEntry;
+      if (isChecked) { checkedTasks++; slotChecked++; }
+      totalTasks++;
+
+      taskHtml += '<div class="task-item' + (isChecked ? ' checked' : '') + '" '
+        + 'onclick="toggleTask(' + task.no + ',\'' + escHtml(task.name) + '\',' + isChecked + ')" '
+        + 'data-no="' + task.no + '">'
+        + '<div class="task-check">' + (isChecked ? '&#10003;' : '') + '</div>'
+        + '<div class="task-info">'
+        + '<div class="task-name">' + escHtml(task.name)
+        + (task.dayLimit ? '<span class="task-day-limit">' + escHtml(task.dayLimit) + '</span>' : '')
+        + '</div>'
+        + (isChecked ? '<div class="task-meta"><span class="staff-name">' + escHtml(logEntry.staff) + '</span> ' + escHtml(logEntry.time) + '</div>' : '')
+        + '</div></div>';
+    });
+
+    html += '<div class="time-section">'
+      + '<div class="time-header">'
+      + '<span>' + escHtml(slot) + '</span>'
+      + '<span class="count">' + slotChecked + '/' + filteredTasks.length + '</span>'
+      + '</div>'
+      + '<div class="task-list">' + taskHtml + '</div></div>';
+  });
+
+  container.innerHTML = html;
+  updateProgress(checkedTasks, totalTasks);
+}
+
+function updateProgress(checked, total) {
+  const pct = total === 0 ? 0 : Math.round((checked / total) * 100);
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressBar').textContent = pct + '%';
+  document.getElementById('progressLabel').textContent =
+    pct === 100 ? '全タスク完了！' : '今日の進捗';
+  document.getElementById('progressCount').textContent = checked + ' / ' + total;
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// --- タスクのチェック/チェック解除 ---
+async function toggleTask(taskNo, taskName, isChecked) {
+  if (!STATE.currentUser) {
+    showStaffModal();
+    return;
+  }
+
+  if (isChecked) {
+    // チェック解除は確認する（誤タップ防止）
+    if (!confirm('「' + taskName + '」のチェックを解除しますか？')) return;
+  }
+
+  try {
+    if (isChecked) {
+      // チェック解除
+      await gasPost({ action: 'uncheck', taskNo: taskNo });
+      // ローカルでも即反映
+      STATE.log = STATE.log.filter(function(l) { return l.taskNo != taskNo; });
+      renderTasks();
+      renderStats();
+      showToast(taskName + ' のチェックを解除しました');
+    } else {
+      // チェック
+      await gasPost({ action: 'check', taskNo: taskNo, taskName: taskName, staff: STATE.currentUser });
+      // ローカルでも即反映
+      var now = new Date();
+      STATE.log.push({ taskNo: taskNo, taskName: taskName, staff: STATE.currentUser, time: ('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2) });
+      renderTasks();
+      renderStats();
+      showToast(STATE.currentUser + ' が「' + taskName + '」を完了');
+    }
+    // 少し待ってからサーバーのデータと同期
+    setTimeout(function() { refreshLog(); }, 2000);
+  } catch (e) {
+    showToast('通信エラー: ' + e.message);
+    // オフライン時もローカルで即反映
+    if (!isChecked) {
+      var now2 = new Date();
+      STATE.log.push({ taskNo: taskNo, taskName: taskName, staff: STATE.currentUser, time: ('0'+now2.getHours()).slice(-2)+':'+('0'+now2.getMinutes()).slice(-2) });
+    } else {
+      STATE.log = STATE.log.filter(function(l) { return l.taskNo != taskNo; });
+    }
+    renderTasks();
+    renderStats();
+  }
+}
+
+// --- スタッフ選択モーダル ---
+function showStaffModal() {
+  const grid = document.getElementById('staffGrid');
+  let html = '';
+
+  const staffList = STATE.staff.length > 0 ? STATE.staff : ['（スタッフ読込中）'];
+
+  staffList.forEach(function(name) {
+    const selected = name === STATE.currentUser ? ' selected' : '';
+    html += '<button class="staff-btn' + selected + '" onclick="selectStaff(\'' + escHtml(name) + '\')">'
+      + escHtml(name) + '</button>';
+  });
+
+  grid.innerHTML = html;
+  document.getElementById('staffModal').classList.add('show');
+}
+
+function selectStaff(name) {
+  STATE.currentUser = name;
+  localStorage.setItem('gyomu_current_user', name);
+  document.getElementById('currentUserName').textContent = name;
+  document.getElementById('userBar').style.display = 'flex';
+  document.getElementById('staffModal').classList.remove('show');
+  showToast(name + ' でログインしました');
+}
+
+// --- 設定画面 ---
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  const main = document.getElementById('mainView');
+  const btn = document.getElementById('btnSettings');
+  const refresh = document.getElementById('btnRefresh');
+
+  if (panel.classList.contains('show')) {
+    panel.classList.remove('show');
+    main.classList.remove('hide');
+    btn.textContent = '設定';
+    refresh.style.display = 'flex';
+  } else {
+    panel.classList.add('show');
+    main.classList.add('hide');
+    btn.textContent = '戻る';
+    refresh.style.display = 'none';
+    document.getElementById('gasUrlInput').value = STATE.gasUrl;
+    document.getElementById('refreshInterval').value = STATE.refreshInterval;
+  }
+}
+
+function saveGasUrl() {
+  const url = document.getElementById('gasUrlInput').value.trim();
+  if (!url) {
+    showToast('URLを入力してください');
+    return;
+  }
+  STATE.gasUrl = url;
+  localStorage.setItem('gyomu_gas_url', url);
+  showToast('URL保存中... 接続テスト中');
+
+  // 接続テスト
+  loadAllData().then(function() {
+    if (STATE.tasks.length > 0) {
+      showToast('接続成功！ タスク' + STATE.tasks.length + '件を取得しました');
+      if (!STATE.currentUser) {
+        setTimeout(function() { showStaffModal(); }, 1000);
+      }
+    }
+  });
+}
+
+// --- タスク追加 ---
+async function addNewTask() {
+  const name = document.getElementById('newTaskName').value.trim();
+  const slot = document.getElementById('newTaskSlot').value;
+  const day = document.getElementById('newTaskDay').value.trim();
+
+  if (!name) {
+    showToast('タスク名を入力してください');
+    return;
+  }
+
+  try {
+    const res = await gasPost({ action: 'addTask', name: name, timeSlot: slot, dayLimit: day });
+    if (res.error) throw new Error(res.error);
+    showToast('「' + name + '」を追加しました');
+    document.getElementById('newTaskName').value = '';
+    document.getElementById('newTaskDay').value = '';
+    await loadAllData();
+  } catch (e) {
+    showToast('追加に失敗: ' + e.message);
+  }
+}
+
+// --- 自動更新 ---
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  if (STATE.refreshInterval > 0) {
+    refreshTimer = setInterval(function() {
+      if (!document.getElementById('settingsPanel').classList.contains('show')) {
+        refreshLog();
+      }
+    }, STATE.refreshInterval * 1000);
+  }
+}
+
+function saveRefreshInterval() {
+  STATE.refreshInterval = parseInt(document.getElementById('refreshInterval').value);
+  localStorage.setItem('gyomu_refresh_interval', STATE.refreshInterval);
+  startAutoRefresh();
+  showToast('更新間隔を変更しました');
+}
+
+function loadRefreshInterval() {
+  document.getElementById('refreshInterval').value = STATE.refreshInterval;
+}
+
+// --- ローカルデータクリア ---
+function clearLocalData() {
+  if (!confirm('この端末のキャッシュデータをクリアしますか？\n（スプレッドシートのデータは消えません）')) return;
+  localStorage.removeItem('gyomu_tasks_cache');
+  localStorage.removeItem('gyomu_log_cache');
+  localStorage.removeItem('gyomu_staff_cache');
+  showToast('キャッシュをクリアしました');
+  loadAllData();
+}
+
+// --- 統計表示 ---
+function toggleStats() {
+  const content = document.getElementById('statsContent');
+  const arrow = document.getElementById('statsArrow');
+  if (content.classList.contains('show')) {
+    content.classList.remove('show');
+    arrow.textContent = '▼';
+  } else {
+    content.classList.add('show');
+    arrow.textContent = '▲';
+    renderStats();
+  }
+}
+
+function showStats(view) {
+  STATE.statsView = view;
+  document.getElementById('tabToday').classList.toggle('active', view === 'today');
+  document.getElementById('tabMonth').classList.toggle('active', view === 'month');
+  renderStats();
+}
+
+function renderStats() {
+  const body = document.getElementById('statsBody');
+  let data = {};
+
+  if (STATE.statsView === 'today') {
+    // 今日のログからスタッフごとにカウント
+    STATE.log.forEach(function(l) {
+      if (!data[l.staff]) data[l.staff] = 0;
+      data[l.staff]++;
+    });
+  } else {
+    data = STATE.monthlyStats || {};
+  }
+
+  // ソート（多い順）
+  const sorted = Object.entries(data).sort(function(a, b) { return b[1] - a[1]; });
+
+  if (sorted.length === 0) {
+    body.innerHTML = '<div style="text-align:center;color:var(--sub);padding:16px;font-size:13px">'
+      + (STATE.statsView === 'today' ? 'まだチェックがありません' : 'データがありません') + '</div>';
+    return;
+  }
+
+  const maxCount = sorted[0][1];
+  let html = '';
+
+  sorted.forEach(function(item, i) {
+    const name = item[0];
+    const count = item[1];
+    const pct = maxCount > 0 ? Math.round((count / maxCount) * 100) : 0;
+    const rankClass = i === 0 ? ' rank1' : i === 1 ? ' rank2' : i === 2 ? ' rank3' : '';
+
+    html += '<div class="stats-row">'
+      + '<div class="stats-rank' + rankClass + '">' + (i + 1) + '</div>'
+      + '<div class="stats-name">' + escHtml(name) + '</div>'
+      + '<div class="stats-bar-wrap"><div class="stats-bar-fill" style="width:' + pct + '%"></div></div>'
+      + '<div class="stats-count">' + count + '<span class="stats-unit">回</span></div>'
+      + '</div>';
+  });
+
+  body.innerHTML = html;
+}
+
+// --- トースト ---
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 2500);
+}
+</script>
+</body>
+</html>
