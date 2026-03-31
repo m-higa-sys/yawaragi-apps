@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>インク在庫管理 - yawaragi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
+  background: #f0f4f8;
+  min-height: 100vh;
+  padding: 16px;
+}
+h1 {
+  text-align: center;
+  color: #2c3e50;
+  font-size: 1.4em;
+  margin-bottom: 4px;
+}
+.subtitle {
+  text-align: center;
+  color: #7f8c8d;
+  font-size: 0.85em;
+  margin-bottom: 20px;
+}
+
+/* プリンター切替タブ */
+.tabs {
+  display: flex;
+  max-width: 500px;
+  margin: 0 auto 16px;
+  gap: 8px;
+}
+.tab {
+  flex: 1;
+  padding: 12px;
+  text-align: center;
+  background: #fff;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  font-size: 1em;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tab.active {
+  border-color: #3498db;
+  background: #ebf5fb;
+  color: #2980b9;
+}
+
+/* インク一覧 */
+.ink-list {
+  max-width: 500px;
+  margin: 0 auto;
+  display: none;
+}
+.ink-list.active {
+  display: block;
+}
+
+.ink-item {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+.ink-color-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid rgba(0,0,0,0.1);
+}
+.ink-info {
+  flex: 1;
+}
+.ink-name {
+  font-weight: 600;
+  font-size: 1em;
+  color: #2c3e50;
+}
+.ink-status {
+  font-size: 0.85em;
+  margin-top: 2px;
+}
+.ink-status.ok {
+  color: #27ae60;
+}
+.ink-status.empty {
+  color: #e74c3c;
+  font-weight: 600;
+}
+.ink-time {
+  font-size: 0.75em;
+  color: #95a5a6;
+  margin-top: 2px;
+}
+
+/* ボタン */
+.ink-btn {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ink-btn:active {
+  transform: scale(0.95);
+}
+.btn-empty {
+  background: #e74c3c;
+  color: #fff;
+}
+.btn-refill {
+  background: #27ae60;
+  color: #fff;
+}
+
+/* 確認ダイアログ */
+.overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+}
+.overlay.show {
+  display: flex;
+}
+.dialog {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 340px;
+  width: 90%;
+  text-align: center;
+}
+.dialog h2 {
+  font-size: 1.1em;
+  margin-bottom: 8px;
+  color: #2c3e50;
+}
+.dialog p {
+  font-size: 0.95em;
+  color: #555;
+  margin-bottom: 20px;
+}
+.dialog-btns {
+  display: flex;
+  gap: 10px;
+}
+.dialog-btns button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-cancel {
+  background: #ecf0f1;
+  color: #555;
+}
+.btn-confirm-empty {
+  background: #e74c3c;
+  color: #fff;
+}
+.btn-confirm-refill {
+  background: #27ae60;
+  color: #fff;
+}
+
+/* 通知バナー */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-80px);
+  background: #2c3e50;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-size: 0.9em;
+  font-weight: 600;
+  z-index: 200;
+  transition: transform 0.3s;
+  white-space: nowrap;
+}
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 履歴 */
+.history-section {
+  max-width: 500px;
+  margin: 24px auto 0;
+}
+.history-title {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: #7f8c8d;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+.history-list {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 12px 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.history-item {
+  font-size: 0.8em;
+  color: #555;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.history-item:last-child {
+  border-bottom: none;
+}
+.history-empty {
+  font-size: 0.8em;
+  color: #bbb;
+  text-align: center;
+  padding: 12px;
+}
+
+/* GAS未設定バナー */
+.setup-banner {
+  max-width: 500px;
+  margin: 0 auto 16px;
+  background: #fef9e7;
+  border: 1px solid #f9e79f;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 0.85em;
+  color: #7d6608;
+  text-align: center;
+  display: none;
+}
+.setup-banner.show { display: block; }
+
+/* 設定ボタン */
+.settings-link {
+  display: block;
+  max-width: 500px;
+  margin: 20px auto 0;
+  text-align: center;
+  color: #95a5a6;
+  font-size: 0.8em;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* 設定画面 */
+.settings-panel {
+  display: none;
+  max-width: 500px;
+  margin: 12px auto 0;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 16px;
+}
+.settings-panel.show { display: block; }
+.settings-panel label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #2c3e50;
+  display: block;
+  margin-bottom: 4px;
+}
+.settings-panel input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 0.9em;
+  margin-bottom: 12px;
+}
+.settings-panel button {
+  width: 100%;
+  padding: 12px;
+  background: #3498db;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.back-link {
+  display: block;
+  text-align: center;
+  margin-top: 24px;
+  color: #3498db;
+  text-decoration: none;
+  font-size: 0.9em;
+}
+</style>
+</head>
+<body>
+
+<h1>インク在庫管理</h1>
+<p class="subtitle">在庫がなくなったらボタンを押してください</p>
+
+<div class="setup-banner" id="setupBanner">
+  GAS URLが未設定です。下の「設定」からURLを入力してください。<br>
+  （設定前はオフラインモードで動作します）
+</div>
+
+<!-- プリンター切替タブ -->
+<div class="tabs">
+  <div class="tab active" onclick="switchPrinter('canon')">Canon</div>
+  <div class="tab" onclick="switchPrinter('brother')">Brother</div>
+</div>
+
+<!-- Canon インク一覧 -->
+<div class="ink-list active" id="canon">
+</div>
+
+<!-- Brother インク一覧 -->
+<div class="ink-list" id="brother">
+</div>
+
+<!-- 履歴 -->
+<div class="history-section">
+  <div class="history-title">最近の記録</div>
+  <div class="history-list" id="historyList">
+    <div class="history-empty">まだ記録がありません</div>
+  </div>
+</div>
+
+<!-- 設定リンク -->
+<div class="settings-link" onclick="toggleSettings()">設定</div>
+
+<!-- 設定パネル -->
+<div class="settings-panel" id="settingsPanel">
+  <label>GAS URL（Google Apps Script）</label>
+  <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/...">
+  <button onclick="saveGasUrl()">保存</button>
+</div>
+
+<a class="back-link" href="portal.html">アプリ一覧に戻る</a>
+
+<!-- 確認ダイアログ -->
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <h2 id="dialogTitle"></h2>
+    <p id="dialogMsg"></p>
+    <div class="dialog-btns">
+      <button class="btn-cancel" onclick="closeDialog()">キャンセル</button>
+      <button id="dialogConfirm" onclick="confirmAction()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通知バナー -->
+<div class="toast" id="toast"></div>
+
+<script>
+// === プリンター・インク定義 ===
+const PRINTERS = {
+  canon: {
+    name: 'Canon',
+    inks: [
+      { id: 'canon_black',   name: 'ブラック',     color: '#1a1a1a' },
+      { id: 'canon_black_l', name: 'ブラック(大)', color: '#000000' },
+      { id: 'canon_cyan',    name: 'シアン',       color: '#00bcd4' },
+      { id: 'canon_magenta', name: 'マゼンタ',     color: '#e91e63' },
+      { id: 'canon_yellow',  name: 'イエロー',     color: '#ffc107' },
+      { id: 'canon_gray',    name: 'グレー',       color: '#9e9e9e' }
+    ]
+  },
+  brother: {
+    name: 'Brother',
+    inks: [
+      { id: 'brother_black',   name: 'ブラック', color: '#1a1a1a' },
+      { id: 'brother_cyan',    name: 'シアン',   color: '#00bcd4' },
+      { id: 'brother_magenta', name: 'マゼンタ', color: '#e91e63' },
+      { id: 'brother_yellow',  name: 'イエロー', color: '#ffc107' }
+    ]
+  }
+};
+
+// === 状態管理 ===
+const STORAGE_KEY = 'yawaragi_ink_stock';
+const HISTORY_KEY = 'yawaragi_ink_history';
+const GAS_URL_KEY = 'yawaragi_ink_gas_url';
+
+let currentPrinter = 'canon';
+let pendingAction = null; // { inkId, action: 'empty' | 'refill' }
+
+function loadStock() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) return JSON.parse(saved);
+  // 初期状態：全て在庫あり
+  const stock = {};
+  for (const p of Object.values(PRINTERS)) {
+    for (const ink of p.inks) {
+      stock[ink.id] = { hasStock: true, updatedAt: null, updatedBy: null };
+    }
+  }
+  return stock;
+}
+
+function saveStock(stock) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stock));
+}
+
+function loadHistory() {
+  const saved = localStorage.getItem(HISTORY_KEY);
+  return saved ? JSON.parse(saved) : [];
+}
+
+function saveHistory(history) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function getGasUrl() {
+  return localStorage.getItem(GAS_URL_KEY) || '';
+}
+
+// === 画面描画 ===
+function renderAll() {
+  const stock = loadStock();
+  for (const [printerId, printer] of Object.entries(PRINTERS)) {
+    const container = document.getElementById(printerId);
+    container.innerHTML = '';
+    for (const ink of printer.inks) {
+      const s = stock[ink.id] || { hasStock: true };
+      const item = document.createElement('div');
+      item.className = 'ink-item';
+
+      const timeStr = s.updatedAt
+        ? formatTime(s.updatedAt)
+        : '';
+      const byStr = s.updatedBy ? `（${s.updatedBy}）` : '';
+
+      item.innerHTML = `
+        <div class="ink-color-dot" style="background:${ink.color}"></div>
+        <div class="ink-info">
+          <div class="ink-name">${ink.name}</div>
+          <div class="ink-status ${s.hasStock ? 'ok' : 'empty'}">
+            ${s.hasStock ? '在庫あり' : '在庫なし'}
+          </div>
+          ${timeStr ? `<div class="ink-time">${timeStr}${byStr}</div>` : ''}
+        </div>
+        ${s.hasStock
+          ? `<button class="ink-btn btn-empty" onclick="askAction('${ink.id}','empty')">なくなった</button>`
+          : `<button class="ink-btn btn-refill" onclick="askAction('${ink.id}','refill')">補充済み</button>`
+        }
+      `;
+      container.appendChild(item);
+    }
+  }
+  renderHistory();
+  // GAS URL チェック
+  document.getElementById('setupBanner').classList.toggle('show', !getGasUrl());
+}
+
+function renderHistory() {
+  const history = loadHistory();
+  const el = document.getElementById('historyList');
+  if (history.length === 0) {
+    el.innerHTML = '<div class="history-empty">まだ記録がありません</div>';
+    return;
+  }
+  el.innerHTML = history.slice(0, 20).map(h => {
+    const icon = h.action === 'empty' ? '🔴' : '🟢';
+    const actionText = h.action === 'empty' ? 'なくなった' : '補充済み';
+    return `<div class="history-item">${icon} ${h.printerName} ${h.inkName}：${actionText}　${formatTime(h.time)}${h.by ? '（' + h.by + '）' : ''}</div>`;
+  }).join('');
+}
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// === タブ切替 ===
+function switchPrinter(id) {
+  currentPrinter = id;
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && id === 'canon') || (i === 1 && id === 'brother'));
+  });
+  document.querySelectorAll('.ink-list').forEach(el => {
+    el.classList.toggle('active', el.id === id);
+  });
+}
+
+// === アクション（確認ダイアログ） ===
+function askAction(inkId, action) {
+  const ink = findInk(inkId);
+  if (!ink) return;
+  pendingAction = { inkId, action };
+
+  const title = document.getElementById('dialogTitle');
+  const msg = document.getElementById('dialogMsg');
+  const btn = document.getElementById('dialogConfirm');
+
+  if (action === 'empty') {
+    title.textContent = `${ink.printerName} ${ink.inkName}`;
+    msg.textContent = '在庫がなくなりましたか？社長に通知します。';
+    btn.textContent = 'なくなった！';
+    btn.className = 'btn-confirm-empty';
+  } else {
+    title.textContent = `${ink.printerName} ${ink.inkName}`;
+    msg.textContent = '在庫を補充しましたか？';
+    btn.textContent = '補充済み！';
+    btn.className = 'btn-confirm-refill';
+  }
+  document.getElementById('overlay').classList.add('show');
+}
+
+function closeDialog() {
+  document.getElementById('overlay').classList.remove('show');
+  pendingAction = null;
+}
+
+function confirmAction() {
+  if (!pendingAction) return;
+  const { inkId, action } = pendingAction;
+  closeDialog();
+
+  const stock = loadStock();
+  const now = new Date().toISOString();
+
+  stock[inkId] = {
+    hasStock: action === 'refill',
+    updatedAt: now,
+    updatedBy: null
+  };
+  saveStock(stock);
+
+  // 履歴追加
+  const ink = findInk(inkId);
+  const history = loadHistory();
+  history.unshift({
+    inkId,
+    printerName: ink.printerName,
+    inkName: ink.inkName,
+    action,
+    time: now,
+    by: null
+  });
+  if (history.length > 50) history.length = 50;
+  saveHistory(history);
+
+  renderAll();
+
+  // GAS に送信（在庫なしの時のみ通知）
+  if (action === 'empty') {
+    sendToGas(ink, action);
+    showToast('社長に通知しました！');
+  } else {
+    sendToGas(ink, action);
+    showToast('補充済みにしました！');
+  }
+}
+
+// === GAS 送信 ===
+function sendToGas(ink, action) {
+  const url = getGasUrl();
+  if (!url) return;
+
+  const payload = {
+    printer: ink.printerName,
+    color: ink.inkName,
+    action: action,
+    time: new Date().toISOString()
+  };
+
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(payload)
+  }).catch(err => {
+    console.error('GAS送信エラー:', err);
+  });
+}
+
+// === ユーティリティ ===
+function findInk(inkId) {
+  for (const [pid, printer] of Object.entries(PRINTERS)) {
+    for (const ink of printer.inks) {
+      if (ink.id === inkId) {
+        return { ...ink, printerId: pid, printerName: printer.name };
+      }
+    }
+  }
+  return null;
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// === 設定 ===
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  panel.classList.toggle('show');
+  if (panel.classList.contains('show')) {
+    document.getElementById('gasUrlInput').value = getGasUrl();
+  }
+}
+
+function saveGasUrl() {
+  const url = document.getElementById('gasUrlInput').value.trim();
+  if (url) {
+    localStorage.setItem(GAS_URL_KEY, url);
+  } else {
+    localStorage.removeItem(GAS_URL_KEY);
+  }
+  document.getElementById('settingsPanel').classList.remove('show');
+  renderAll();
+  showToast('設定を保存しました');
+}
+
+// === 初期化 ===
+renderAll();
+</script>
+</body>
+</html>
