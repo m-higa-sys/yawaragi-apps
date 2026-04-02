@@ -329,6 +329,7 @@
         <button class="btn btn-taicho" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
         <button class="btn btn-white" onclick="openCsvModal()">📁 CSV読込</button>
         <button class="btn btn-white" onclick="exportJson()">💾 バックアップ</button>
+        <button class="btn btn-white" onclick="cloudSync(); showToast('☁️ 同期中...', '#FF9800');">☁️ 手動同期</button>
         <button class="btn btn-white" onclick="importJson()">📂 復元</button>
         <button class="btn btn-white no-print" onclick="window.print()">🖨 印刷</button>
     </div>
@@ -459,26 +460,13 @@ function cloudSync() {
         _isSyncing = true;
         try {
             var payload = JSON.stringify({ users: appData.users, checks: appData.checks });
-            var script = document.createElement('script');
-            var cbName = '_syncCb_' + Date.now();
-            window[cbName] = function(result) {
+            var url = SYNC_URL + '?action=saveOral&data=' + encodeURIComponent(payload) + '&t=' + Date.now();
+            var img = new Image();
+            img.onload = img.onerror = function() {
                 _isSyncing = false;
-                if (result && result.status === 'ok') {
-                    showToast('☁️ クラウド同期完了', '#4CAF50');
-                } else {
-                    showToast('☁️ 同期エラー', '#f44336');
-                }
-                delete window[cbName];
-                if (script.parentNode) script.parentNode.removeChild(script);
+                showToast('☁️ クラウド同期完了', '#4CAF50');
             };
-            script.src = SYNC_URL + '?action=saveOral&data=' + encodeURIComponent(payload) + '&callback=' + cbName + '&t=' + Date.now();
-            script.onerror = function() {
-                _isSyncing = false;
-                showToast('☁️ 同期エラー', '#f44336');
-                delete window[cbName];
-                if (script.parentNode) script.parentNode.removeChild(script);
-            };
-            document.head.appendChild(script);
+            img.src = url;
         } catch(e) {
             _isSyncing = false;
             showToast('☁️ 同期エラー', '#f44336');
