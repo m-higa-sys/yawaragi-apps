@@ -329,7 +329,6 @@
         <button class="btn btn-taicho" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
         <button class="btn btn-white" onclick="openCsvModal()">📁 CSV読込</button>
         <button class="btn btn-white" onclick="exportJson()">💾 バックアップ</button>
-        <button class="btn btn-white" onclick="cloudSync(); showToast('☁️ 同期中...', '#FF9800');">☁️ 手動同期</button>
         <button class="btn btn-white" onclick="importJson()">📂 復元</button>
         <button class="btn btn-white no-print" onclick="window.print()">🖨 印刷</button>
     </div>
@@ -404,7 +403,6 @@ const STORAGE_KEY = 'yawaragi_oral_check';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
 
 const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
-const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
 const SUB_COLS = ['1回目', '2回目', 'ﾓﾆﾀﾘﾝｸﾞ'];
 
 let appData = {
@@ -430,26 +428,8 @@ function showToast(msg, color) {
 function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escapeAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
-// ============ データ管理 ============
-function loadData() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            const p = JSON.parse(saved);
-            appData.users = p.users || [];
-            appData.checks = p.checks || {};
-        }
-    } catch(e) { console.error('読込エラー:', e); }
-}
-
-function saveData() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, checks: appData.checks }));
-        cloudSync();
-    } catch(e) { console.error('保存エラー:', e); }
-}
-
 // ============ クラウド同期 ============
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
 let _syncTimer = null;
 let _isSyncing = false;
 
@@ -458,23 +438,79 @@ function cloudSync() {
     _syncTimer = setTimeout(function() {
         if (_isSyncing) return;
         _isSyncing = true;
+        showToast('☁️ 同期中...', '#2196F3');
         try {
-            var payload = JSON.stringify({ users: appData.users, checks: appData.checks });
-            var url = SYNC_URL + '?action=saveOral&data=' + encodeURIComponent(payload) + '&t=' + Date.now();
-            var img = new Image();
-            img.onload = img.onerror = function() {
-                _isSyncing = false;
-                showToast('☁️ クラウド同期完了', '#4CAF50');
-            };
-            img.src = url;
+            var fullData = JSON.stringify({ users: appData.users, checks: appData.checks });
+            var CHUNK_SIZE = 2000;
+            var chunks = [];
+            for (var i = 0; i < fullData.length; i += CHUNK_SIZE) {
+                chunks.push(fullData.substring(i, i + CHUNK_SIZE));
+            }
+            var syncId = '' + Date.now();
+            var total = chunks.length;
+            var idx = 0;
+
+            function sendChunk() {
+                if (idx >= total) {
+                    sendFinalize();
+                    return;
+                }
+                var cbName = '_chunkCb_' + syncId + '_' + idx;
+                var script = document.createElement('script');
+                window[cbName] = function(result) {
+                    delete window[cbName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                    if (result && result.status === 'ok') {
+                        idx++;
+                        showToast('☁️ 同期中... (' + idx + '/' + total + ')', '#2196F3');
+                        sendChunk();
+                    } else {
+                        _isSyncing = false;
+                        showToast('☁️ 同期エラー（チャンク' + idx + '）', '#f44336');
+                    }
+                };
+                script.src = SYNC_URL + '?action=saveOralChunk&syncId=' + syncId + '&idx=' + idx + '&total=' + total + '&data=' + encodeURIComponent(chunks[idx]) + '&callback=' + cbName + '&t=' + Date.now();
+                script.onerror = function() {
+                    _isSyncing = false;
+                    showToast('☁️ 同期エラー（通信失敗）', '#f44336');
+                    delete window[cbName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                };
+                document.head.appendChild(script);
+            }
+
+            function sendFinalize() {
+                var cbName = '_finCb_' + syncId;
+                var script = document.createElement('script');
+                window[cbName] = function(result) {
+                    delete window[cbName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                    _isSyncing = false;
+                    if (result && result.status === 'ok') {
+                        showToast('☁️ クラウド同期完了', '#4CAF50');
+                    } else {
+                        showToast('☁️ 同期エラー（保存失敗）', '#f44336');
+                    }
+                };
+                script.src = SYNC_URL + '?action=saveOralFinalize&syncId=' + syncId + '&total=' + total + '&callback=' + cbName + '&t=' + Date.now();
+                script.onerror = function() {
+                    _isSyncing = false;
+                    showToast('☁️ 同期エラー（通信失敗）', '#f44336');
+                    delete window[cbName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                };
+                document.head.appendChild(script);
+            }
+
+            sendChunk();
         } catch(e) {
             _isSyncing = false;
-            showToast('☁️ 同期エラー', '#f44336');
+            showToast('☁️ 同期エラー: ' + e.message, '#f44336');
         }
     }, 2000);
 }
 
-function cloudLoad() {
+async function cloudLoad() {
     try {
         var script = document.createElement('script');
         var cbName = '_cloudCb_' + Date.now();
@@ -505,12 +541,33 @@ function cloudLoad() {
         };
         script.src = SYNC_URL + '?action=getOral&callback=' + cbName + '&t=' + Date.now();
         script.onerror = function() {
-            if (!loaded) showToast('☁️ クラウド取得エラー', '#f44336');
-            delete window[cbName];
+            if (!loaded) {
+                showToast('☁️ クラウド取得エラー', '#f44336');
+                delete window[cbName];
+            }
             if (script.parentNode) script.parentNode.removeChild(script);
         };
         document.head.appendChild(script);
-    } catch(e) { console.error('cloudLoad error:', e); }
+    } catch(e) { console.warn('☁️ クラウド取得エラー:', e); }
+}
+
+// ============ データ管理 ============
+function loadData() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const p = JSON.parse(saved);
+            appData.users = p.users || [];
+            appData.checks = p.checks || {};
+        }
+    } catch(e) { console.error('読込エラー:', e); }
+}
+
+function saveData() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, checks: appData.checks }));
+        cloudSync();
+    } catch(e) { console.error('保存エラー:', e); }
 }
 
 // ============ あいうえお順ソート ============
