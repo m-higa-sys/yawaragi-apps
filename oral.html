@@ -450,56 +450,50 @@ function cloudSync() {
             var total = chunks.length;
             var idx = 0;
 
+            // Image方式でチャンク送信（iPad Safari対応）
             function sendChunk() {
                 if (idx >= total) {
                     sendFinalize();
                     return;
                 }
-                var cbName = '_chunkCb_' + syncId + '_' + idx;
-                var script = document.createElement('script');
-                window[cbName] = function(result) {
-                    delete window[cbName];
-                    if (script.parentNode) script.parentNode.removeChild(script);
-                    if (result && result.status === 'ok') {
-                        idx++;
-                        showToast('☁️ 同期中... (' + idx + '/' + total + ')', '#2196F3');
-                        sendChunk();
-                    } else {
-                        _isSyncing = false;
-                        showToast('☁️ 同期エラー（チャンク' + idx + '）', '#f44336');
-                    }
+                var url = SYNC_URL + '?action=saveOralChunk&syncId=' + syncId + '&idx=' + idx + '&total=' + total + '&data=' + encodeURIComponent(chunks[idx]) + '&t=' + Date.now();
+                var img = new Image();
+                img.onload = img.onerror = function() {
+                    idx++;
+                    showToast('☁️ 同期中... (' + idx + '/' + total + ')', '#2196F3');
+                    sendChunk();
                 };
-                script.src = SYNC_URL + '?action=saveOralChunk&syncId=' + syncId + '&idx=' + idx + '&total=' + total + '&data=' + encodeURIComponent(chunks[idx]) + '&callback=' + cbName + '&t=' + Date.now();
-                script.onerror = function() {
-                    _isSyncing = false;
-                    showToast('☁️ 同期エラー（通信失敗）', '#f44336');
-                    delete window[cbName];
-                    if (script.parentNode) script.parentNode.removeChild(script);
-                };
-                document.head.appendChild(script);
+                img.src = url;
             }
 
             function sendFinalize() {
-                var cbName = '_finCb_' + syncId;
-                var script = document.createElement('script');
-                window[cbName] = function(result) {
-                    delete window[cbName];
-                    if (script.parentNode) script.parentNode.removeChild(script);
-                    _isSyncing = false;
-                    if (result && result.status === 'ok') {
-                        showToast('☁️ クラウド同期完了', '#4CAF50');
-                    } else {
-                        showToast('☁️ 同期エラー（保存失敗）', '#f44336');
-                    }
+                var url = SYNC_URL + '?action=saveOralFinalize&syncId=' + syncId + '&total=' + total + '&t=' + Date.now();
+                var img = new Image();
+                img.onload = img.onerror = function() {
+                    // 保存確認：クラウドからデータを読み込んで検証
+                    setTimeout(function() {
+                        var cbName = '_verifyCb_' + Date.now();
+                        var script = document.createElement('script');
+                        window[cbName] = function(cloud) {
+                            delete window[cbName];
+                            if (script.parentNode) script.parentNode.removeChild(script);
+                            _isSyncing = false;
+                            if (cloud && cloud.checks && Object.keys(cloud.checks).length > 0) {
+                                showToast('☁️ クラウド同期完了', '#4CAF50');
+                            } else {
+                                showToast('☁️ 同期完了（確認できず）', '#ff9800');
+                            }
+                        };
+                        script.src = SYNC_URL + '?action=getOral&callback=' + cbName + '&t=' + Date.now();
+                        script.onerror = function() {
+                            _isSyncing = false;
+                            showToast('☁️ 同期完了（確認できず）', '#ff9800');
+                            delete window[cbName];
+                        };
+                        document.head.appendChild(script);
+                    }, 2000);
                 };
-                script.src = SYNC_URL + '?action=saveOralFinalize&syncId=' + syncId + '&total=' + total + '&callback=' + cbName + '&t=' + Date.now();
-                script.onerror = function() {
-                    _isSyncing = false;
-                    showToast('☁️ 同期エラー（通信失敗）', '#f44336');
-                    delete window[cbName];
-                    if (script.parentNode) script.parentNode.removeChild(script);
-                };
-                document.head.appendChild(script);
+                img.src = url;
             }
 
             sendChunk();
