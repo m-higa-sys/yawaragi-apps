@@ -403,6 +403,7 @@ const STORAGE_KEY = 'yawaragi_oral_check';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
 
 const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
 const SUB_COLS = ['1回目', '2回目', 'ﾓﾆﾀﾘﾝｸﾞ'];
 
 let appData = {
@@ -443,7 +444,85 @@ function loadData() {
 function saveData() {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, checks: appData.checks }));
+        cloudSync();
     } catch(e) { console.error('保存エラー:', e); }
+}
+
+// ============ クラウド同期 ============
+let _syncTimer = null;
+let _isSyncing = false;
+
+function cloudSync() {
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(function() {
+        if (_isSyncing) return;
+        _isSyncing = true;
+        try {
+            var payload = JSON.stringify({ users: appData.users, checks: appData.checks });
+            var script = document.createElement('script');
+            var cbName = '_syncCb_' + Date.now();
+            window[cbName] = function(result) {
+                _isSyncing = false;
+                if (result && result.status === 'ok') {
+                    showToast('☁️ クラウド同期完了', '#4CAF50');
+                } else {
+                    showToast('☁️ 同期エラー', '#f44336');
+                }
+                delete window[cbName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+            };
+            script.src = SYNC_URL + '?action=saveOral&data=' + encodeURIComponent(payload) + '&callback=' + cbName + '&t=' + Date.now();
+            script.onerror = function() {
+                _isSyncing = false;
+                showToast('☁️ 同期エラー', '#f44336');
+                delete window[cbName];
+                if (script.parentNode) script.parentNode.removeChild(script);
+            };
+            document.head.appendChild(script);
+        } catch(e) {
+            _isSyncing = false;
+            showToast('☁️ 同期エラー', '#f44336');
+        }
+    }, 2000);
+}
+
+function cloudLoad() {
+    try {
+        var script = document.createElement('script');
+        var cbName = '_cloudCb_' + Date.now();
+        var loaded = false;
+        window[cbName] = function(cloud) {
+            loaded = true;
+            if (cloud && cloud.checks) {
+                Object.keys(cloud.checks).forEach(function(fy) {
+                    if (!appData.checks[fy]) appData.checks[fy] = {};
+                    Object.keys(cloud.checks[fy]).forEach(function(name) {
+                        if (!appData.checks[fy][name]) appData.checks[fy][name] = {};
+                        Object.keys(cloud.checks[fy][name]).forEach(function(mk) {
+                            if (cloud.checks[fy][name][mk] && !appData.checks[fy][name][mk]) {
+                                appData.checks[fy][name][mk] = cloud.checks[fy][name][mk];
+                            }
+                        });
+                    });
+                });
+            }
+            if (cloud && cloud.users && cloud.users.length > 0 && appData.users.length === 0) {
+                appData.users = cloud.users;
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, checks: appData.checks }));
+            renderTable();
+            showToast('☁️ クラウドから取得完了', '#2196F3');
+            delete window[cbName];
+            if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        script.src = SYNC_URL + '?action=getOral&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            if (!loaded) showToast('☁️ クラウド取得エラー', '#f44336');
+            delete window[cbName];
+            if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        document.head.appendChild(script);
+    } catch(e) { console.error('cloudLoad error:', e); }
 }
 
 // ============ あいうえお順ソート ============
@@ -883,6 +962,7 @@ function handleJsonFile(file) {
 loadData();
 initYearSelect();
 renderTable();
+cloudLoad();
 </script>
 </body>
 </html>
