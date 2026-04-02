@@ -556,6 +556,22 @@ function saveData() {
     } catch(e) { console.error('保存エラー:', e); }
 }
 
+// ============ 自動更新（30秒ごと＋画面復帰時） ============
+let _autoRefreshTimer = null;
+function startAutoRefresh() {
+    if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = setInterval(function() {
+        if (document.hidden || _isSyncing) return;
+        cloudLoad();
+    }, 30000);
+}
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && !_isSyncing) {
+        cloudLoad();
+    }
+});
+startAutoRefresh();
+
 // ============ あいうえお順ソート ============
 function getGroup(furigana) {
     if (!furigana) return 'その他';
