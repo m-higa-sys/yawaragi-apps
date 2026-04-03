@@ -552,10 +552,11 @@
 
     const defaultData = {
         stamps: [
-            { value: 84, label: '84円', alert: 5 },
-            { value: 94, label: '94円', alert: 5 }
+            { value: 110, label: '110円', alert: 5 },
+            { value: 180, label: '180円', alert: 5 },
+            { value: 320, label: '320円', alert: 5 }
         ],
-        stock: { 84: 0, 94: 0 },
+        stock: { 110: 0, 180: 0, 320: 0 },
         staff: ['下浦', '工藤', '髙山', '春山', '大久保', '小野', '林', '比嘉'],
         history: []
     };
@@ -564,8 +565,13 @@
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const data = JSON.parse(saved);
-            // マイグレーション: 古いデータに新フィールドがない場合
-            if (!data.stamps) data.stamps = defaultData.stamps;
+            // マイグレーション: 切手種類を110/180/320円に更新
+            const newValues = [110, 180, 320];
+            const oldValues = data.stamps ? data.stamps.map(s => s.value) : [];
+            if (!newValues.every(v => oldValues.includes(v))) {
+                data.stamps = defaultData.stamps;
+                newValues.forEach(v => { if (!(v in data.stock)) data.stock[v] = 0; });
+            }
             if (!data.staff) data.staff = defaultData.staff;
             return data;
         }
@@ -619,7 +625,8 @@
             data.stamps.forEach(stamp => {
                 const btn = document.createElement('button');
                 btn.className = 'stamp-btn';
-                btn.innerHTML = `${stamp.value}円<span>定形郵便</span>`;
+                const desc = stamp.value <= 110 ? '定形郵便' : stamp.value <= 180 ? '定形外' : 'レターパック等';
+                btn.innerHTML = `${stamp.value}円<span>${desc}</span>`;
                 btn.onclick = () => selectStamp(type, stamp.value, btn);
                 container.appendChild(btn);
             });
