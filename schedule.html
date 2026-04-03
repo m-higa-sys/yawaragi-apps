@@ -128,7 +128,12 @@ select { padding: 6px 10px; border: 2px solid #ccc; border-radius: 6px; font-siz
 .option-check.oral-done { border-color: #4CAF50; background: #e8f5e9; opacity: 0.5; }
 .option-check.oral-done .oname { text-decoration: line-through; }
 .option-check.sokutei-target { border-color: #e67e22; background: #fff8f0; }
+.option-check.sokutei-kaigo { border-color: #e74c3c; background: #FFE8E8; }
+.option-check.sokutei-kaigo.checked-s { border-color: #c0392b; background: #FFD0D0; }
 .sokutei-mark { font-size: 10px; color: #e67e22; font-weight: bold; white-space: nowrap; }
+.sokutei-care-label { font-size: 9px; padding: 1px 4px; border-radius: 3px; font-weight: bold; white-space: nowrap; }
+.sokutei-care-label.kaigo { background: #FFD0D0; color: #900; }
+.sokutei-care-label.shien { background: #D0FFD0; color: #060; }
 .sokutei-auto-info { font-size: 11px; color: #e67e22; margin-top: 4px; }
 .option-check .oral-mark { font-size: 9px; color: #2E7D32; margin-left: 2px; }
 
@@ -1720,30 +1725,42 @@ function renderOptionChecks() {
   }
   koukuChecks.innerHTML = khtml;
 
-  // 測定チェックボックス（測定月の人を自動ピックアップ）
+  // 測定チェックボックス（測定月の人を自動ピックアップ・要介護優先）
   let shtml = '';
   let autoCount = 0;
-  // 初回表示時のみ自動チェック（_sokuteiAutoApplied で2重適用を防止）
   const needAutoApply = !STATE._sokuteiAutoApplied;
+
+  // 要介護を先、要支援を後にソートした表示順を作成（元のインデックスを保持）
+  const sokuteiOrder = [];
   for (let i = 0; i < users.length; i++) {
-    if (isAbsent(users[i].name)) continue; // 欠席者はスキップ
+    if (isAbsent(users[i].name)) continue;
+    sokuteiOrder.push(i);
+  }
+  sokuteiOrder.sort((a, b) => {
+    const careA = users[a].care === 'kaigo' ? 0 : 1;
+    const careB = users[b].care === 'kaigo' ? 0 : 1;
+    return careA - careB;
+  });
+
+  for (const i of sokuteiOrder) {
     const nm = users[i].name || ('No.' + (i + 1));
-    // STATEの元ユーザーからplanStart/startDateを取得
+    const isKaigo = users[i].care === 'kaigo';
     const origUser = STATE.users.find(u => u.name === users[i].name);
     const mStatus = origUser ? getMeasurementStatus(origUser) : { target: false, label: '' };
 
-    // 初回のみ: 測定対象者を自動チェック
     if (needAutoApply && mStatus.target && !STATE.sokuteiChecked.includes(i)) {
       STATE.sokuteiChecked.push(i);
     }
     if (mStatus.target) autoCount++;
 
     const checked = STATE.sokuteiChecked.includes(i);
+    const kaigoCls = isKaigo ? ' sokutei-kaigo' : '';
     const targetCls = mStatus.target ? ' sokutei-target' : '';
+    const careLabel = '<span class="sokutei-care-label ' + (isKaigo ? 'kaigo' : 'shien') + '">' + (isKaigo ? '介護' : '支援') + '</span>';
     const markHtml = mStatus.label ? '<span class="sokutei-mark">📏' + mStatus.label + '</span>' : '';
-    shtml += '<label class="option-check' + (checked ? ' checked-s' : '') + targetCls + '">' +
+    shtml += '<label class="option-check' + (checked ? ' checked-s' : '') + kaigoCls + targetCls + '">' +
       '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleSokutei(' + i + ')">' +
-      CIRCLED[i + 1] + '<span class="oname">' + escHtml(nm) + '</span>' + markHtml + '</label>';
+      CIRCLED[i + 1] + careLabel + '<span class="oname">' + escHtml(nm) + '</span>' + markHtml + '</label>';
   }
   if (needAutoApply) {
     STATE._sokuteiAutoApplied = true;
