@@ -317,6 +317,58 @@
             .header { padding: 10px 15px; }
             .header h1 { font-size: 18px; }
         }
+        /* ===== 曜日＋午前/午後フィルター ===== */
+        .filter-bar {
+            padding: 8px 20px;
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .filter-label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #555;
+            white-space: nowrap;
+        }
+        .filter-group {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            padding: 6px 14px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            background: #fff;
+            color: #555;
+            font-size: 14px;
+            cursor: pointer;
+            min-height: 36px;
+            touch-action: manipulation;
+            transition: all 0.15s;
+        }
+        .filter-btn:hover { background: #f5f5f5; }
+        .filter-btn.active {
+            background: #4CAF50;
+            color: #fff;
+            border-color: #4CAF50;
+            font-weight: bold;
+        }
+        .filter-btn.active-ampm {
+            background: #2196F3;
+            color: #fff;
+            border-color: #2196F3;
+            font-weight: bold;
+        }
+        .filter-count {
+            font-size: 13px;
+            color: #888;
+            align-self: center;
+        }
+        @media print { .filter-bar { display: none; } }
     </style>
 </head>
 <body>
@@ -349,6 +401,26 @@
         <div class="legend-item"><span class="care-badge care-kaigo">介護</span> 月2回</div>
         <div class="legend-item"><span class="care-badge care-shien">支援</span> 月1回</div>
     </div>
+</div>
+
+<div class="filter-bar" id="filterBar" style="display:none;">
+    <span class="filter-label">曜日:</span>
+    <div class="filter-group" id="dayFilters">
+        <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
+        <button class="filter-btn" onclick="setDayFilter('月')">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火')">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水')">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木')">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金')">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+    </div>
+    <span class="filter-label" style="margin-left:8px;">時間:</span>
+    <div class="filter-group" id="ampmFilters">
+        <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
 </div>
 
 <div class="table-container">
@@ -406,10 +478,45 @@ const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月
 const SUB_COLS = ['1回目', '2回目', 'ﾓﾆﾀﾘﾝｸﾞ'];
 
 let appData = {
-    users: [],       // [{name, furigana, care:'kaigo'|'shien'}]
+    users: [],       // [{name, furigana, care:'kaigo'|'shien', days:'', ampm:''}]
     checks: {},      // { "年度": { "ユーザー名": { "4月_1回目": true, ... } } }
     currentYear: getCurrentFiscalYear()
 };
+
+// ============ 曜日＋午前/午後フィルター ============
+let filterDay = '';
+let filterAmpm = '';
+
+function setDayFilter(day) {
+    filterDay = day;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderTable();
+}
+
+function setAmpmFilter(ampm) {
+    filterAmpm = ampm;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
+    event.target.classList.add('active-ampm');
+    renderTable();
+}
+
+function matchesSchedule(user, day, ampm) {
+    if (!day) return true;
+    if (!user.days || user.days.indexOf(day) < 0) return false;
+    if (!ampm) return true;
+    const ap = user.ampm || '';
+    if (ap === '午前' || ap === '午後') return ap === ampm;
+    // 複合パターン: 「月午前、木午後」
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) {
+            return p.indexOf(ampm) >= 0;
+        }
+    }
+    return false;
+}
 
 // ============ ユーティリティ ============
 function getCurrentFiscalYear() {
@@ -571,7 +678,9 @@ function loadFromSpreadsheet() {
             const users = (data.users || []).map(u => ({
                 name: u.name || '',
                 furigana: u.kana || '',
-                care: u.care || 'kaigo'
+                care: u.care || 'kaigo',
+                days: u.days || '',
+                ampm: u.ampm || ''
             })).filter(u => u.name);
 
             if (users.length === 0) {
@@ -604,13 +713,15 @@ function parseSpreadsheetCsv(text) {
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) return [];
     const headers = parseCSVLine(lines[0]).map(h => h.trim());
-    let nameIdx = -1, kanaIdx = -1, careIdx = -1, statusIdx = -1;
+    let nameIdx = -1, kanaIdx = -1, careIdx = -1, statusIdx = -1, daysIdx = -1, ampmIdx = -1;
     for (let i = 0; i < headers.length; i++) {
         const h = headers[i];
         if (h.includes('名前') || h === '氏名' || h === '利用者名') nameIdx = i;
         else if (h.includes('カナ') || h.includes('かな') || h.includes('ふりがな') || h.includes('フリガナ')) kanaIdx = i;
         else if (h.includes('介護度') || h.includes('要介護') || h.includes('認定')) careIdx = i;
         else if (h.includes('ステータス') || h.includes('状態') || h.includes('利用状況')) statusIdx = i;
+        else if (h === '利用曜日') daysIdx = i;
+        else if (h.includes('午前') && h.includes('午後')) ampmIdx = i;
     }
     if (nameIdx === -1) return [];
     const users = [];
@@ -628,7 +739,9 @@ function parseSpreadsheetCsv(text) {
             const careRaw = (cols[careIdx] || '').trim();
             if (careRaw.includes('支援') || careRaw.includes('事業対象')) care = 'shien';
         }
-        users.push({ name, furigana: kana, care });
+        const days = daysIdx >= 0 ? (cols[daysIdx] || '').trim() : '';
+        const ampm = ampmIdx >= 0 ? (cols[ampmIdx] || '').trim() : '';
+        users.push({ name, furigana: kana, care, days, ampm });
     }
     return users;
 }
@@ -644,7 +757,9 @@ function mergeUsers(newUsers) {
         return {
             name: nu.name,
             furigana: nu.furigana || (existing ? existing.furigana : ''),
-            care: nu.care
+            care: nu.care,
+            days: nu.days || (existing ? existing.days : '') || '',
+            ampm: nu.ampm || (existing ? existing.ampm : '') || ''
         };
     });
     sortUsers();
@@ -718,7 +833,20 @@ function renderTable() {
 
     sortUsers();
 
-    for (const user of appData.users) {
+    // フィルター適用
+    const filteredUsers = appData.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+    const hasScheduleData = appData.users.some(u => u.days);
+
+    // フィルターバーの表示制御
+    document.getElementById('filterBar').style.display = hasScheduleData ? 'flex' : 'none';
+    const fcEl = document.getElementById('filterCount');
+    if (filterDay || filterAmpm) {
+        fcEl.textContent = filteredUsers.length + ' / ' + appData.users.length + '名 表示中';
+    } else {
+        fcEl.textContent = '';
+    }
+
+    for (const user of filteredUsers) {
         if (user.care === 'kaigo') kaigoCount++; else shienCount++;
 
         const group = getGroup(user.furigana);

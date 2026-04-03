@@ -422,6 +422,26 @@
                 <input type="text" class="search-box" id="searchBox" placeholder="名前で検索..." oninput="applyFilter()" style="margin-bottom:0; flex:1;">
                 <a href="#" id="hiddenCount" onclick="showHiddenModal(); return false;" style="font-size:13px; color:#1a73e8; white-space:nowrap; display:none;"></a>
             </div>
+            <div id="scheduleFilter" style="display:none; margin-bottom:8px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span style="font-size:13px; font-weight:bold; color:#555;">曜日:</span>
+                    <div class="kana-buttons" id="dayButtons" style="margin-bottom:0;">
+                        <button class="kana-btn active" onclick="setScheduleDay('')">全員</button>
+                        <button class="kana-btn" onclick="setScheduleDay('月')">月</button>
+                        <button class="kana-btn" onclick="setScheduleDay('火')">火</button>
+                        <button class="kana-btn" onclick="setScheduleDay('水')">水</button>
+                        <button class="kana-btn" onclick="setScheduleDay('木')">木</button>
+                        <button class="kana-btn" onclick="setScheduleDay('金')">金</button>
+                        <button class="kana-btn" onclick="setScheduleDay('土')">土</button>
+                    </div>
+                    <span style="font-size:13px; font-weight:bold; color:#555; margin-left:4px;">時間:</span>
+                    <div class="kana-buttons" id="ampmButtons" style="margin-bottom:0;">
+                        <button class="kana-btn active" onclick="setScheduleAmpm('')">全</button>
+                        <button class="kana-btn" onclick="setScheduleAmpm('午前')">午前</button>
+                        <button class="kana-btn" onclick="setScheduleAmpm('午後')">午後</button>
+                    </div>
+                </div>
+            </div>
             <div class="kana-buttons" id="kanaButtons">
                 <button class="kana-btn active" onclick="setKanaFilter('')">全員</button>
                 <button class="kana-btn" onclick="setKanaFilter('あ行')">あ行</button>
@@ -506,6 +526,8 @@
         let saveTimers = {};    // ユーザーごとの保存タイマー
         let hasWBCols = false;  // スプレッドシートにWB列があるか
         let activeKanaFilter = '';  // 現在のあいうえお行フィルタ
+        let activeScheduleDay = '';   // 曜日フィルタ
+        let activeScheduleAmpm = '';  // 午前/午後フィルタ
         let editMode = false;       // ロック/編集モード
         let autoSyncTimer = null;   // 自動同期タイマー
         const STORAGE_HIDDEN = 'wb_hidden_users';
@@ -566,7 +588,17 @@
                     return;
                 }
 
-                users = data.users || [];
+                users = (data.users || []).map(function(u) {
+                    return {
+                        name: u.name || '',
+                        kana: u.kana || '',
+                        wbHeight: u.wbHeight || '',
+                        wbStrength: u.wbStrength || '',
+                        wbOther: u.wbOther || '',
+                        days: u.days || '',
+                        ampm: u.ampm || ''
+                    };
+                });
                 hasWBCols = data.hasWBCols || false;
 
                 // スプレッドシートのWB設定をローカルに反映
@@ -654,19 +686,59 @@
             applyFilter();
         }
 
+        function matchesSchedule(days, ampm, filterDay, filterAmpm) {
+            if (!filterDay) return true;
+            if (!days || days.indexOf(filterDay) < 0) return false;
+            if (!filterAmpm) return true;
+            if (ampm === '午前' || ampm === '午後') return ampm === filterAmpm;
+            var parts = ampm.split(/[、,]/);
+            for (var i = 0; i < parts.length; i++) {
+                var p = parts[i].trim();
+                if (p.indexOf(filterDay) >= 0) {
+                    return p.indexOf(filterAmpm) >= 0;
+                }
+            }
+            return false;
+        }
+
+        function setScheduleDay(day) {
+            activeScheduleDay = day;
+            var btns = document.querySelectorAll('#dayButtons .kana-btn');
+            btns.forEach(function(btn) {
+                var btnVal = btn.textContent === '全員' ? '' : btn.textContent;
+                btn.classList.toggle('active', btnVal === day);
+            });
+            applyFilter();
+        }
+
+        function setScheduleAmpm(ampm) {
+            activeScheduleAmpm = ampm;
+            var btns = document.querySelectorAll('#ampmButtons .kana-btn');
+            btns.forEach(function(btn) {
+                var btnVal = btn.textContent === '全' ? '' : btn.textContent;
+                btn.classList.toggle('active', btnVal === ampm);
+            });
+            applyFilter();
+        }
+
         function applyFilter() {
             var searchText = (document.getElementById('searchBox').value || '').trim();
             var cards = document.querySelectorAll('.user-card');
             var visibleCount = 0;
+            var totalVisible = 0;
 
             cards.forEach(function(card) {
                 var name = card.getAttribute('data-name') || '';
                 var kanaRow = card.getAttribute('data-kana-row') || '';
+                var days = card.getAttribute('data-days') || '';
+                var ampm = card.getAttribute('data-ampm') || '';
 
+                totalVisible++;
                 var matchSearch = !searchText || name.indexOf(searchText) >= 0;
                 var matchKana = !activeKanaFilter || kanaRow === activeKanaFilter;
+                var matchSchedule = matchesSchedule(days, ampm, activeScheduleDay, activeScheduleAmpm);
 
-                if (matchSearch && matchKana) {
+                if (matchSearch && matchKana && matchSchedule) {
                     card.style.display = '';
                     visibleCount++;
                 } else {
@@ -675,8 +747,8 @@
             });
 
             var filterCountEl = document.getElementById('filterCount');
-            if (searchText || activeKanaFilter) {
-                filterCountEl.textContent = visibleCount + '人 / ' + users.length + '人 表示中';
+            if (searchText || activeKanaFilter || activeScheduleDay || activeScheduleAmpm) {
+                filterCountEl.textContent = visibleCount + '人 / ' + totalVisible + '人 表示中';
             } else {
                 filterCountEl.textContent = '';
             }
@@ -692,6 +764,9 @@
             // フィルタセクションを表示
             if (users.length > 0) {
                 document.getElementById('filterSection').style.display = '';
+                // スケジュールデータがある場合、曜日フィルタを表示
+                var hasSchedule = users.some(function(u) { return u.days; });
+                document.getElementById('scheduleFilter').style.display = hasSchedule ? '' : 'none';
             }
 
             if (visibleUsers.length === 0) {
@@ -728,7 +803,7 @@
                     kanaHtml = '<div class="kana-spacer"></div>';
                 }
 
-                html += '<div class="user-card" data-name="' + escapeAttr(user.name) + '" data-kana-row="' + escapeAttr(kanaRow) + '">' +
+                html += '<div class="user-card" data-name="' + escapeAttr(user.name) + '" data-kana-row="' + escapeAttr(kanaRow) + '" data-days="' + escapeAttr(user.days || '') + '" data-ampm="' + escapeAttr(user.ampm || '') + '">' +
                     kanaHtml +
                     '<div class="user-name">' + escapeHtml(user.name) + '</div>' +
                     (user.kana ? '<div class="user-kana">' + escapeHtml(user.kana) + '</div>' : '') +

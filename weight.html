@@ -350,6 +350,59 @@
             .header { padding: 10px 15px; }
             .header h1 { font-size: 18px; }
         }
+
+        /* ===== 曜日＋午前/午後フィルター ===== */
+        .filter-bar {
+            padding: 8px 20px;
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .filter-label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #555;
+            white-space: nowrap;
+        }
+        .filter-group {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            padding: 6px 14px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            background: #fff;
+            color: #555;
+            font-size: 14px;
+            cursor: pointer;
+            min-height: 36px;
+            touch-action: manipulation;
+            transition: all 0.15s;
+        }
+        .filter-btn:hover { background: #f5f5f5; }
+        .filter-btn.active {
+            background: #2196F3;
+            color: #fff;
+            border-color: #2196F3;
+            font-weight: bold;
+        }
+        .filter-btn.active-ampm {
+            background: #ff9800;
+            color: #fff;
+            border-color: #ff9800;
+            font-weight: bold;
+        }
+        .filter-count {
+            font-size: 13px;
+            color: #888;
+            align-self: center;
+        }
+        @media print { .filter-bar { display: none; } }
     </style>
 </head>
 <body>
@@ -377,6 +430,26 @@
         <div class="legend-item"><div class="legend-color" style="background:#ffebee;"></div> 今月未入力</div>
         <div class="legend-item"><div class="legend-color"><span style="color:#f44336;">↑</span></div> ±2kg以上</div>
     </div>
+</div>
+
+<div class="filter-bar" id="filterBar" style="display:none;">
+    <span class="filter-label">曜日:</span>
+    <div class="filter-group" id="dayFilters">
+        <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
+        <button class="filter-btn" onclick="setDayFilter('月')">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火')">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水')">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木')">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金')">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+    </div>
+    <span class="filter-label" style="margin-left:8px;">時間:</span>
+    <div class="filter-group" id="ampmFilters">
+        <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
 </div>
 
 <div class="table-container">
@@ -449,13 +522,47 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7y
 const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
 
 let appData = {
-    users: [],       // [{name, furigana}]
+    users: [],       // [{name, furigana, days:'', ampm:''}]
     weights: {},     // { "年度": { "ユーザー名": { "4月": 65.5, ... } } }
     currentYear: getCurrentFiscalYear()
 };
 
 let editingUser = '';
 let editingMonth = '';
+
+// ============ 曜日＋午前/午後フィルター ============
+let filterDay = '';
+let filterAmpm = '';
+
+function setDayFilter(day) {
+    filterDay = day;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderTable();
+}
+
+function setAmpmFilter(ampm) {
+    filterAmpm = ampm;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
+    event.target.classList.add('active-ampm');
+    renderTable();
+}
+
+function matchesSchedule(user, day, ampm) {
+    if (!day) return true;
+    if (!user.days || user.days.indexOf(day) < 0) return false;
+    if (!ampm) return true;
+    const ap = user.ampm || '';
+    if (ap === '午前' || ap === '午後') return ap === ampm;
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) {
+            return p.indexOf(ampm) >= 0;
+        }
+    }
+    return false;
+}
 
 // ============ ユーティリティ ============
 function getCurrentFiscalYear() {
@@ -474,6 +581,52 @@ function showToast(msg, color) {
 function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escapeAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
+// ============ クラウド同期 ============
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+let _syncTimer = null;
+
+function cloudSync() {
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(async function() {
+        try {
+            await fetch(SYNC_URL, {
+                method: 'POST', mode: 'no-cors',
+                body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: appData.weights } }),
+                keepalive: true
+            });
+            console.log('☁️ 体重データ同期完了');
+        } catch(e) { console.warn('☁️ 同期エラー:', e); }
+    }, 2000);
+}
+
+async function cloudLoad() {
+    try {
+        const res = await fetch(SYNC_URL + '?action=getWeight&t=' + Date.now());
+        if (!res.ok) return;
+        const cloud = await res.json();
+        if (cloud && cloud.weights) {
+            Object.keys(cloud.weights).forEach(function(fy) {
+                if (!appData.weights[fy]) appData.weights[fy] = {};
+                Object.keys(cloud.weights[fy]).forEach(function(name) {
+                    if (!appData.weights[fy][name]) appData.weights[fy][name] = {};
+                    Object.keys(cloud.weights[fy][name]).forEach(function(mk) {
+                        var val = cloud.weights[fy][name][mk];
+                        if (val !== undefined && val !== null && val !== '' &&
+                            (appData.weights[fy][name][mk] === undefined || appData.weights[fy][name][mk] === null || appData.weights[fy][name][mk] === '')) {
+                            appData.weights[fy][name][mk] = val;
+                        }
+                    });
+                });
+            });
+        }
+        if (cloud && cloud.users && cloud.users.length > 0 && appData.users.length === 0) {
+            appData.users = cloud.users;
+        }
+        saveData();
+        console.log('☁️ クラウドからデータ取得完了');
+    } catch(e) { console.warn('☁️ クラウド取得エラー:', e); }
+}
+
 // ============ データ管理 ============
 function loadData() {
     try {
@@ -489,6 +642,7 @@ function loadData() {
 function saveData() {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, weights: appData.weights }));
+        cloudSync();
     } catch(e) { console.error('保存エラー:', e); }
 }
 
@@ -537,7 +691,9 @@ function loadFromSpreadsheet() {
         try {
             const users = (data.users || []).map(u => ({
                 name: u.name || '',
-                furigana: u.kana || ''
+                furigana: u.kana || '',
+                days: u.days || '',
+                ampm: u.ampm || ''
             })).filter(u => u.name);
 
             if (users.length === 0) {
@@ -570,12 +726,14 @@ function parseSpreadsheetCsv(text) {
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 2) return [];
     const headers = parseCSVLine(lines[0]).map(h => h.trim());
-    let nameIdx = -1, kanaIdx = -1, statusIdx = -1;
+    let nameIdx = -1, kanaIdx = -1, statusIdx = -1, daysIdx = -1, ampmIdx = -1;
     for (let i = 0; i < headers.length; i++) {
         const h = headers[i];
         if (h.includes('名前') || h === '氏名' || h === '利用者名') nameIdx = i;
         else if (h.includes('カナ') || h.includes('かな') || h.includes('ふりがな') || h.includes('フリガナ')) kanaIdx = i;
         else if (h.includes('ステータス') || h.includes('状態') || h.includes('利用状況')) statusIdx = i;
+        else if (h === '利用曜日') daysIdx = i;
+        else if (h.includes('午前') && h.includes('午後')) ampmIdx = i;
     }
     if (nameIdx === -1) return [];
     const users = [];
@@ -588,7 +746,9 @@ function parseSpreadsheetCsv(text) {
             if (status.includes('終了') || status.includes('中止') || status.includes('卒業')) continue;
         }
         const kana = kanaIdx >= 0 ? (cols[kanaIdx] || '').trim() : '';
-        users.push({ name, furigana: kana });
+        const days = daysIdx >= 0 ? (cols[daysIdx] || '').trim() : '';
+        const ampm = ampmIdx >= 0 ? (cols[ampmIdx] || '').trim() : '';
+        users.push({ name, furigana: kana, days, ampm });
     }
     return users;
 }
@@ -599,7 +759,9 @@ function mergeUsers(newUsers) {
 
     appData.users = newUsers.map(nu => ({
         name: nu.name,
-        furigana: nu.furigana || (existingMap[nu.name] ? existingMap[nu.name].furigana : '')
+        furigana: nu.furigana || (existingMap[nu.name] ? existingMap[nu.name].furigana : ''),
+        days: nu.days || (existingMap[nu.name] ? existingMap[nu.name].days : '') || '',
+        ampm: nu.ampm || (existingMap[nu.name] ? existingMap[nu.name].ampm : '') || ''
     }));
     sortUsers();
 }
@@ -661,7 +823,18 @@ function renderTable() {
 
     sortUsers();
 
-    for (const user of appData.users) {
+    // フィルター適用
+    const filteredUsers = appData.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+    const hasScheduleData = appData.users.some(u => u.days);
+    document.getElementById('filterBar').style.display = hasScheduleData ? 'flex' : 'none';
+    const fcEl = document.getElementById('filterCount');
+    if (filterDay || filterAmpm) {
+        fcEl.textContent = filteredUsers.length + ' / ' + appData.users.length + '名 表示中';
+    } else {
+        fcEl.textContent = '';
+    }
+
+    for (const user of filteredUsers) {
         const group = getGroup(user.furigana);
         if (group !== currentGroup) {
             currentGroup = group;
@@ -1032,6 +1205,7 @@ document.getElementById('graphModal').addEventListener('click', function(e) {
 loadData();
 initYearSelect();
 renderTable();
+cloudLoad().then(function(){ renderTable(); });
 </script>
 </body>
 </html>

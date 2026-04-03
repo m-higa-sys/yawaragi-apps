@@ -45,6 +45,7 @@
         .support-label { font-size: 10px; color: #999; margin-left: 2px; }
         .cert-warn { background: #ffebee; }
         .cert-date { font-size: 11px; color: #999; }
+        .carry-over-label { font-size: 10px; color: #e65100; margin-left: 2px; font-weight: bold; }
 
         input[type="checkbox"] { width: 22px; height: 22px; cursor: pointer; }
         input.date-input { width: 110px; font-size: 13px; padding: 4px; border: 1px solid #ccc; border-radius: 3px; }
@@ -80,6 +81,49 @@
         .loading { text-align: center; padding: 30px; color: #666; font-size: 15px; }
 
         /* 印刷 */
+        /* ===== 曜日＋午前/午後フィルター ===== */
+        .filter-bar {
+            padding: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .filter-label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #555;
+            white-space: nowrap;
+        }
+        .filter-group { display: flex; gap: 4px; flex-wrap: wrap; }
+        .filter-btn {
+            padding: 5px 12px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            background: #fff;
+            color: #555;
+            font-size: 13px;
+            cursor: pointer;
+            min-height: 32px;
+            touch-action: manipulation;
+            transition: all 0.15s;
+        }
+        .filter-btn:hover { background: #f5f5f5; }
+        .filter-btn.active {
+            background: #4CAF50;
+            color: #fff;
+            border-color: #4CAF50;
+            font-weight: bold;
+        }
+        .filter-btn.active-ampm {
+            background: #2196F3;
+            color: #fff;
+            border-color: #2196F3;
+            font-weight: bold;
+        }
+        .filter-count { font-size: 12px; color: #888; }
+
         @media print {
             body { background: #fff; padding: 5mm; font-size: 11px; }
             .no-print { display: none !important; }
@@ -107,6 +151,26 @@
         <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="font-size:13px; padding:5px 10px; cursor:pointer; border:1px solid #1976d2; border-radius:4px; background:#e3f2fd; color:#1565c0; font-weight:bold;">📋 利用者台帳</button>
     </span>
     <span id="displayYearMonth" style="font-size:16px; font-weight:bold; margin-left:10px;"></span>
+</div>
+
+<div class="filter-bar no-print" id="filterBar" style="display:none;">
+    <span class="filter-label">曜日:</span>
+    <div class="filter-group" id="dayFilters">
+        <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
+        <button class="filter-btn" onclick="setDayFilter('月')">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火')">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水')">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木')">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金')">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+    </div>
+    <span class="filter-label" style="margin-left:6px;">時間:</span>
+    <div class="filter-group" id="ampmFilters">
+        <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
 </div>
 
 <div id="syncStatus" class="sync-info no-print"></div>
@@ -198,6 +262,53 @@ const CHECK_KEY = 'yawaragi_monthly_checks';
 const MEMBERS_CACHE_KEY = 'yawaragi_monthly_members_cache';
 
 let ALL_MEMBERS = []; // スプレッドシートから取得した全利用者
+let filterDay = '';
+let filterAmpm = '';
+
+function setDayFilter(day) {
+    filterDay = day;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderAll();
+}
+
+function setAmpmFilter(ampm) {
+    filterAmpm = ampm;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
+    event.target.classList.add('active-ampm');
+    renderAll();
+}
+
+function matchesSchedule(member, day, ampm) {
+    if (!day) return true;
+    if (!member.days || member.days.indexOf(day) < 0) return false;
+    if (!ampm) return true;
+    // unitRaw（元の午前/午後文字列）を使って判定
+    const ap = member.unitRaw || '';
+    if (ap === '午前' || ap === '午後') return ap === ampm;
+    // 複合パターン: 「月午前、木午後」
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) return p.indexOf(ampm) >= 0;
+    }
+    return false;
+}
+
+// 曜日に応じてAM/PMを動的に決定
+function getUnitForDay(member, day) {
+    if (!day) return member.unit;
+    const ap = member.unitRaw || '';
+    if (ap === '午前' || ap === '午後') return ap.includes('午後') ? 'PM' : 'AM';
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) {
+            return p.indexOf('午後') >= 0 ? 'PM' : 'AM';
+        }
+    }
+    return member.unit;
+}
 
 // ========== データ管理 ==========
 function loadIrregulars() {
@@ -317,7 +428,16 @@ function parseCSV(text) {
             }
         }
 
-        members.push({ name, type, unit, birthMonth, birthDay, certEndDate, planStart });
+        // 利用開始日
+        const startDateRaw = clean(cols, colMap.startDate);
+        let startDate = '';
+        if (startDateRaw) {
+            const sm = startDateRaw.match(/(\d{4})[-\/](\d{1,2})/);
+            if (sm) startDate = sm[1] + '-' + String(sm[2]).padStart(2, '0');
+        }
+
+        const days = map.days >= 0 ? clean(cols, map.days) : '';
+        members.push({ name, type, unit, birthMonth, birthDay, certEndDate, planStart, startDate, days, unitRaw: unitRaw || '' });
     }
 
     return members;
@@ -349,7 +469,7 @@ function clean(cols, idx) {
 }
 
 function detectColumns(headers) {
-    const map = { name: 0, care: -1, unit: -1, birthday: -1, certEnd: -1, planStart: -1 };
+    const map = { name: 0, care: -1, unit: -1, birthday: -1, certEnd: -1, planStart: -1, startDate: -1, days: -1 };
     for (let i = 0; i < headers.length; i++) {
         const h = headers[i].trim();
         if (h.includes('名前') || h.includes('氏名')) map.name = i;
@@ -358,6 +478,8 @@ function detectColumns(headers) {
         else if (h.includes('誕生')) map.birthday = i;
         else if (h.includes('認定期間終了') || h.includes('認定終了')) map.certEnd = i;
         else if (h.includes('計画書開始')) map.planStart = i;
+        else if (h.includes('利用開始日') || h.includes('利用開始')) map.startDate = i;
+        else if (h === '利用曜日') map.days = i;
     }
     return map;
 }
@@ -393,14 +515,61 @@ function init() {
 }
 
 // ========== 測定月計算 ==========
-function isMeasurementMonth(planStartStr, selectedYear, selectedMonth) {
+function isMeasurementMonth(planStartStr, selectedYear, selectedMonth, startDateStr) {
     if (!planStartStr) return false;
     const [pYear, pMonth] = planStartStr.split('-').map(Number);
     const planStart = pYear * 12 + (pMonth - 1);
     const selected = selectedYear * 12 + (selectedMonth - 1);
+
+    // 新規利用者（利用開始日あり）: 利用開始月を基準に3ヶ月サイクル
+    if (startDateStr) {
+        const [sYear, sMonth] = startDateStr.split('-').map(Number);
+        if (!isNaN(sYear) && !isNaN(sMonth)) {
+            const startMonth = sYear * 12 + (sMonth - 1);
+            if (selected < startMonth) return false;
+            const diff = selected - startMonth;
+            return diff % 3 === 0;
+        }
+    }
+
+    // 既存利用者（利用開始日なし）: 従来の計算
     const diff = selected - (planStart - 1);
     if (diff < 0) return false;
     return diff % 3 === 0;
+}
+
+// ========== 繰り越しチェック ==========
+// 過去1〜2ヶ月にサイクル月があり、未実施なら繰り越し対象
+function getCarryOver(m, year, month, checks, checkPrefix, checkField) {
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const unitPrefix = m.unit === 'AM' ? checkPrefix + '_am' : checkPrefix + '_pm';
+
+    const today = new Date();
+    const todayYM = today.getFullYear() * 12 + today.getMonth(); // 今月（0始まり）
+
+    for (let back = 1; back <= 2; back++) {
+        let checkMonth = month - back;
+        let checkYear = year;
+        if (checkMonth <= 0) { checkMonth += 12; checkYear--; }
+
+        // 2026年4月より前は繰り越し対象外（4月から測定開始のため）
+        if (checkYear < 2026 || (checkYear === 2026 && checkMonth < 4)) continue;
+
+        // まだ終わっていない月は繰り越し対象外（その月が過ぎてから表示）
+        const checkYMval = checkYear * 12 + (checkMonth - 1);
+        if (checkYMval >= todayYM) continue;
+
+        if (isMeasurementMonth(m.planStart, checkYear, checkMonth, m.startDate)) {
+            const checkYM = checkYear + '-' + String(checkMonth).padStart(2, '0');
+            const checkKey = checkYM + '_' + unitPrefix + '_' + nameKey + '_' + checkField;
+            if (!checks[checkKey]) {
+                // 未実施 → 繰り越し
+                return { carryOver: true, carryFromMonth: checkMonth + '月分', carryYearMonth: checkYM };
+            }
+            break; // 直近のサイクル月だけチェック
+        }
+    }
+    return null;
 }
 
 // ========== 認定期間チェック ==========
@@ -442,7 +611,30 @@ function renderAll() {
     document.getElementById('nextPlanMonth').textContent = nextMonthYear + '年' + nextMonth + '月';
     document.getElementById('nextPlanMonth2').textContent = nextMonthYear + '年' + nextMonth + '月';
 
-    const members = ALL_MEMBERS;
+    // フィルターバー表示制御
+    const hasScheduleData = ALL_MEMBERS.some(m => m.days);
+    document.getElementById('filterBar').style.display = hasScheduleData ? 'flex' : 'none';
+
+    // 曜日＋午前/午後フィルター適用
+    let members = ALL_MEMBERS;
+    if (filterDay || filterAmpm) {
+        members = ALL_MEMBERS.filter(m => matchesSchedule(m, filterDay, filterAmpm));
+        // 曜日指定時はunitを動的に切り替え（「月午前、木午後」対応）
+        if (filterDay) {
+            members = members.map(m => {
+                const newUnit = getUnitForDay(m, filterDay);
+                return newUnit !== m.unit ? { ...m, unit: newUnit } : m;
+            });
+        }
+    }
+
+    const fcEl = document.getElementById('filterCount');
+    if (filterDay || filterAmpm) {
+        fcEl.textContent = members.length + ' / ' + ALL_MEMBERS.length + '名 表示中';
+    } else {
+        fcEl.textContent = '';
+    }
+
     const yearMonthKey = year + '-' + String(month).padStart(2, '0');
     const irregulars = loadIrregulars()[yearMonthKey] || [];
     const checks = loadChecks();
@@ -470,18 +662,26 @@ function renderAll() {
         });
     }
 
-    // 測定対象者
+    // 測定対象者（繰り越し含む）
     const measureAM = [];
     const measurePM = [];
     members.forEach(m => {
-        if (isMeasurementMonth(m.planStart, year, month)) {
-            if (m.unit === 'AM') measureAM.push({ ...m, irregular: false });
-            else measurePM.push({ ...m, irregular: false });
+        // 本来のサイクルで今月が測定月
+        if (isMeasurementMonth(m.planStart, year, month, m.startDate)) {
+            if (m.unit === 'AM') measureAM.push({ ...m, irregular: false, carryOver: false });
+            else measurePM.push({ ...m, irregular: false, carryOver: false });
+            return;
+        }
+        // 繰り越しチェック（測定入力日付が空なら繰り越し）
+        const carry = getCarryOver(m, year, month, checks, 'measure', 'input');
+        if (carry) {
+            if (m.unit === 'AM') measureAM.push({ ...m, irregular: false, ...carry });
+            else measurePM.push({ ...m, irregular: false, ...carry });
         }
     });
     irregulars.forEach(irr => {
         if (irr.type === 'measurement' || irr.type === 'both') {
-            const entry = { name: irr.name, unit: irr.unit || 'AM', irregular: true, reason: irr.reason, type: '' };
+            const entry = { name: irr.name, unit: irr.unit || 'AM', irregular: true, reason: irr.reason, type: '', carryOver: false };
             const already = [...measureAM, ...measurePM].some(m => m.name === irr.name);
             if (!already) {
                 if (entry.unit === 'AM') measureAM.push(entry);
@@ -492,18 +692,26 @@ function renderAll() {
     sortByPriority(measureAM);
     sortByPriority(measurePM);
 
-    // 居宅訪問
+    // 居宅訪問（繰り越し含む）
     const visitAM = [];
     const visitPM = [];
     members.forEach(m => {
-        if (isMeasurementMonth(m.planStart, year, month)) {
-            if (m.unit === 'AM') visitAM.push({ ...m, irregular: false });
-            else visitPM.push({ ...m, irregular: false });
+        // 本来のサイクルで今月が測定月
+        if (isMeasurementMonth(m.planStart, year, month, m.startDate)) {
+            if (m.unit === 'AM') visitAM.push({ ...m, irregular: false, carryOver: false });
+            else visitPM.push({ ...m, irregular: false, carryOver: false });
+            return;
+        }
+        // 繰り越しチェック（居宅訪問のcheckが未チェックなら繰り越し）
+        const carry = getCarryOver(m, year, month, checks, 'visit', 'done');
+        if (carry) {
+            if (m.unit === 'AM') visitAM.push({ ...m, irregular: false, ...carry });
+            else visitPM.push({ ...m, irregular: false, ...carry });
         }
     });
     irregulars.forEach(irr => {
         if (irr.type === 'visit' || irr.type === 'both') {
-            const entry = { name: irr.name, unit: irr.unit || 'AM', irregular: true, reason: irr.reason, type: '' };
+            const entry = { name: irr.name, unit: irr.unit || 'AM', irregular: true, reason: irr.reason, type: '', carryOver: false };
             const already = [...visitAM, ...visitPM].some(m => m.name === irr.name);
             if (!already) {
                 if (entry.unit === 'AM') visitAM.push(entry);
@@ -561,19 +769,45 @@ function buildMeasureTable(amList, pmList, yearMonth, prefix, checks) {
 
     const maxRows = Math.max(amList.length, pmList.length);
     let html = '<table><thead><tr>';
-    html += '<th class="ampm-header am-header" colspan="4">AM</th>';
-    html += '<th class="ampm-header pm-header" colspan="4">PM</th>';
+    html += '<th class="ampm-header am-header" colspan="2">AM</th>';
+    html += '<th class="ampm-header pm-header" colspan="2">PM</th>';
     html += '</tr><tr>';
-    html += '<th class="am-sub">名前</th><th class="am-sub">測定入力</th><th class="am-sub">CM用</th><th class="am-sub">本人用</th>';
-    html += '<th class="pm-sub">名前</th><th class="pm-sub">測定入力</th><th class="pm-sub">CM用</th><th class="pm-sub">本人用</th>';
+    html += '<th class="am-sub">名前</th><th class="am-sub">チェック</th>';
+    html += '<th class="pm-sub">名前</th><th class="pm-sub">チェック</th>';
     html += '</tr></thead><tbody>';
     for (let i = 0; i < maxRows; i++) {
         html += '<tr>';
-        html += buildNameCheckCells(amList, i, yearMonth, prefix + '_am', ['input','cm','honin'], checks);
-        html += buildNameCheckCells(pmList, i, yearMonth, prefix + '_pm', ['input','cm','honin'], checks);
+        html += buildMeasureCompactCells(amList, i, yearMonth, prefix + '_am', checks);
+        html += buildMeasureCompactCells(pmList, i, yearMonth, prefix + '_pm', checks);
         html += '</tr>';
     }
     html += '</tbody></table>';
+    return html;
+}
+
+function buildMeasureCompactCells(list, index, yearMonth, keyPrefix, checks) {
+    if (index >= list.length) return '<td></td><td></td>';
+    const m = list[index];
+    const isShien = m.type === '要支援';
+    const isCarry = m.carryOver;
+    const bg = m.irregular ? ' style="background:#fff9c4"' : (isCarry ? ' style="background:#ffe0b2"' : '');
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const baseYM = isCarry && m.carryYearMonth ? m.carryYearMonth : yearMonth;
+
+    let html = '<td class="name"' + bg + '>' + escHtml(m.name)
+        + (isShien ? '<span class="support-label">（支援）</span>' : '')
+        + (m.irregular ? ' ※' : '')
+        + (isCarry ? '<span class="carry-over-label">※' + m.carryFromMonth + '</span>' : '')
+        + '</td>';
+    // 3つのチェックを1セルにまとめる
+    html += '<td' + bg + ' style="white-space:nowrap">';
+    ['input','cm','honin'].forEach((t, idx) => {
+        const key = baseYM + '_' + keyPrefix + '_' + nameKey + '_' + t;
+        const checked = checks[key] ? ' checked' : '';
+        const label = ['測定','CM','本人'][idx];
+        html += '<label style="font-size:11px;margin-right:6px;cursor:pointer"><input type="checkbox" class="check-item" data-key="' + key + '"' + checked + '>' + label + '</label>';
+    });
+    html += '</td>';
     return html;
 }
 
@@ -664,11 +898,20 @@ function buildNameCheckCells(list, index, yearMonth, keyPrefix, checkTypes, chec
     }
     const m = list[index];
     const isShien = m.type === '要支援';
-    const bg = m.irregular ? ' style="background:#fff9c4"' : '';
+    const isCarry = m.carryOver;
+    const bg = m.irregular ? ' style="background:#fff9c4"' : (isCarry ? ' style="background:#ffe0b2"' : '');
     const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
-    let html = '<td class="name"' + bg + '>' + escHtml(m.name) + (isShien ? '<span class="support-label">（支援）</span>' : '') + (m.irregular ? ' ※' : '') + '</td>';
+
+    // 繰り越しの場合、元の月のキーを使う（チェックが元月に記録される）
+    const baseYM = isCarry && m.carryYearMonth ? m.carryYearMonth : yearMonth;
+
+    let html = '<td class="name"' + bg + '>' + escHtml(m.name)
+        + (isShien ? '<span class="support-label">（支援）</span>' : '')
+        + (m.irregular ? ' ※' : '')
+        + (isCarry ? '<span class="carry-over-label">※' + m.carryFromMonth + '</span>' : '')
+        + '</td>';
     checkTypes.forEach(t => {
-        const key = yearMonth + '_' + keyPrefix + '_' + nameKey + '_' + t;
+        const key = baseYM + '_' + keyPrefix + '_' + nameKey + '_' + t;
         if (t === 'input') {
             // 測定入力は日付カレンダー
             const dateVal = checks[key] || '';
@@ -753,7 +996,10 @@ function convertGASResponse(response) {
         return {
             name: m.name, type: type, unit: unit,
             birthMonth: birthMonth, birthDay: birthDay,
-            certEndDate: m.certEnd || '', planStart: m.planStart || ''
+            certEndDate: m.certEnd || '', planStart: m.planStart || '',
+            startDate: m.startDate || '',
+            days: m.days || '',
+            unitRaw: m.unit || ''
         };
     });
 }
