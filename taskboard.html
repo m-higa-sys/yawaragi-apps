@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>今日のタスクボード - yawaragi</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #0f766e;
+  --primary-dark: #115e59;
+  --primary-light: #ccfbf1;
+  --bg: #f0f4f8;
+  --white: #ffffff;
+  --text: #1e293b;
+  --text-sub: #64748b;
+  --border: #e2e8f0;
+  --red: #ef4444;
+  --red-bg: rgba(239,68,68,0.1);
+  --orange: #f59e0b;
+  --orange-bg: rgba(245,158,11,0.1);
+  --green: #22c55e;
+  --green-bg: rgba(34,197,94,0.1);
+  --shadow: 0 1px 4px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Noto Sans JP', 'Segoe UI', 'Meiryo', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ===== ヘッダー ===== */
+.header {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white;
+  padding: 14px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.header-left { display:flex; align-items:center; gap:12px; }
+.header h1 { font-size:20px; font-weight:700; }
+.header .date { font-size:14px; opacity:0.85; }
+.header-btn {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.4);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  min-height: 44px;
+}
+.header-btn:hover { background: rgba(255,255,255,0.3); }
+.header-btn.active { background: rgba(255,255,255,0.4); font-weight:700; }
+
+/* ===== タブ ===== */
+.tabs {
+  display: flex;
+  background: white;
+  padding: 8px 16px 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.tab {
+  padding: 12px 24px;
+  border-radius: 10px 10px 0 0;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-sub);
+  border: none;
+  background: none;
+  font-family: inherit;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-height: 48px;
+}
+.tab:hover { color: var(--primary); background: #f0fdfa; }
+.tab.active {
+  color: var(--primary);
+  background: #f0fdfa;
+  border-bottom: 3px solid var(--primary);
+  font-weight: 700;
+}
+
+/* ===== コンテナ ===== */
+.container { max-width:1200px; margin:0 auto; padding:16px; }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+/* ===== カード ===== */
+.card {
+  background: var(--white);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.card h2 {
+  font-size: 16px;
+  color: var(--primary);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--primary-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== スタッフ選択 ===== */
+.staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.staff-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--white);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: all 0.2s;
+  min-height: 52px;
+}
+.staff-chip:hover { border-color: var(--primary); background: #f0fdfa; }
+.staff-chip.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+.staff-chip .check { display:none; }
+.staff-chip.selected .check { display:inline; }
+
+/* ===== タスク登録フォーム ===== */
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.form-row label {
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 80px;
+  color: var(--text-sub);
+}
+.form-row input, .form-row select {
+  flex: 1;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+  font-family: inherit;
+  min-height: 48px;
+  min-width: 0;
+}
+.form-row input:focus, .form-row select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(15,118,110,0.1);
+}
+
+/* ===== 優先度ボタン ===== */
+.priority-btns { display:flex; gap:8px; flex:1; }
+.priority-btn {
+  flex: 1;
+  padding: 12px 8px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: all 0.2s;
+  min-height: 48px;
+  text-align: center;
+}
+.priority-btn[data-p="high"] { color: var(--red); }
+.priority-btn[data-p="normal"] { color: var(--orange); }
+.priority-btn[data-p="low"] { color: var(--green); }
+.priority-btn.selected[data-p="high"] { background:var(--red-bg); border-color:var(--red); font-weight:700; }
+.priority-btn.selected[data-p="normal"] { background:var(--orange-bg); border-color:var(--orange); font-weight:700; }
+.priority-btn.selected[data-p="low"] { background:var(--green-bg); border-color:var(--green); font-weight:700; }
+
+/* ===== 登録ボタン ===== */
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  padding: 14px 32px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+  min-height: 52px;
+  width: 100%;
+}
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
+
+.btn-danger {
+  background: var(--red);
+  color: white;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 36px;
+}
+
+.btn-complete {
+  background: var(--green);
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 44px;
+  transition: all 0.2s;
+}
+.btn-complete:hover { background: #16a34a; }
+
+/* ===== ボード ===== */
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.staff-column {
+  background: var(--white);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.staff-column-header {
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.staff-column-header .task-count {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+/* 忙しさレベル */
+.busy-high .staff-column-header { background: var(--red-bg); color: var(--red); border-bottom: 3px solid var(--red); }
+.busy-high .task-count { background: var(--red); color:white; }
+.busy-mid .staff-column-header { background: var(--orange-bg); color: #b45309; border-bottom: 3px solid var(--orange); }
+.busy-mid .task-count { background: var(--orange); color:white; }
+.busy-low .staff-column-header { background: var(--green-bg); color: #15803d; border-bottom: 3px solid var(--green); }
+.busy-low .task-count { background: var(--green); color:white; }
+
+.staff-column-body { padding: 12px; min-height: 80px; }
+.staff-column-body .empty-msg {
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 14px;
+  padding: 20px 0;
+}
+
+/* タスクカード */
+.task-card {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  transition: all 0.2s;
+}
+.task-card:last-child { margin-bottom:0; }
+.task-card.done {
+  opacity: 0.5;
+  background: #f8fafc;
+}
+.task-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.task-name {
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+  word-break: break-all;
+}
+.task-card.done .task-name { text-decoration: line-through; }
+.priority-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.priority-badge.high { background:var(--red-bg); color:var(--red); }
+.priority-badge.normal { background:var(--orange-bg); color:#b45309; }
+.priority-badge.low { background:var(--green-bg); color:#15803d; }
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-sub);
+  flex-wrap: wrap;
+}
+.time-over { color: var(--red); font-weight:700; }
+.time-ok { color: var(--green); font-weight:600; }
+
+.task-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ===== 管理画面 ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--white);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.stat-value { font-size: 32px; font-weight: 700; color: var(--primary); }
+.stat-label { font-size: 13px; color: var(--text-sub); margin-top: 4px; }
+
+.ranking-table { width:100%; border-collapse:collapse; font-size:14px; }
+.ranking-table th {
+  background: #f1f5f9;
+  padding: 12px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 2px solid var(--border);
+}
+.ranking-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.ranking-table tr:hover { background: #f8fafc; }
+
+/* ===== 設定画面 ===== */
+.setting-section { margin-bottom: 24px; }
+.setting-section h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 12px;
+}
+.staff-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+.staff-list-item input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: inherit;
+  min-height: 44px;
+}
+.staff-list-item .remove-staff {
+  background: none;
+  border: none;
+  color: var(--red);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.task-template-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.task-template-item input[type="text"] {
+  flex: 2;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: inherit;
+  min-height: 44px;
+  min-width: 120px;
+}
+.task-template-item input[type="number"] {
+  width: 80px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: inherit;
+  min-height: 44px;
+  text-align: center;
+}
+.add-btn {
+  background: #f0fdfa;
+  color: var(--primary);
+  border: 2px dashed var(--primary-light);
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+  min-height: 48px;
+  transition: all 0.2s;
+}
+.add-btn:hover { background: var(--primary-light); border-color: var(--primary); }
+
+/* ===== モーダル ===== */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top:0; left:0; right:0; bottom:0;
+  background: rgba(0,0,0,0.5);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.show { display:flex; }
+.modal {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-md);
+}
+.modal h3 { font-size:18px; margin-bottom:16px; color:var(--primary); }
+.modal-actions { display:flex; gap:10px; margin-top:16px; }
+.modal-actions button { flex:1; min-height:48px; border-radius:8px; font-size:15px; font-family:inherit; cursor:pointer; }
+
+/* ===== レスポンシブ ===== */
+@media (max-width: 600px) {
+  .header { padding: 12px 14px; }
+  .header h1 { font-size: 17px; }
+  .container { padding: 12px; }
+  .board-grid { grid-template-columns: 1fr; }
+  .form-row { flex-direction: column; align-items: stretch; }
+  .form-row label { min-width: auto; }
+  .priority-btns { flex-wrap: nowrap; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ===== 印刷 ===== */
+@media print {
+  .header, .tabs, .tab-content:not(.active) { display:none !important; }
+  body { background:white; }
+  .card { box-shadow:none; border:1px solid #ddd; break-inside:avoid; }
+}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <div class="header-left">
+    <h1>📋 今日のタスクボード</h1>
+    <span class="date" id="todayDate"></span>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+    <button class="header-btn" onclick="location.reload()">🔄 更新</button>
+    <button class="header-btn" id="btnResetDay" onclick="confirmResetDay()">🗑 今日のリセット</button>
+  </div>
+</div>
+
+<!-- タブ -->
+<div class="tabs">
+  <button class="tab active" data-tab="board">📊 ボード</button>
+  <button class="tab" data-tab="register">✏️ タスク登録</button>
+  <button class="tab" data-tab="admin">👔 管理画面</button>
+  <button class="tab" data-tab="settings">⚙ 設定</button>
+</div>
+
+<!-- ===== ボード ===== -->
+<div class="tab-content active" id="tab-board">
+  <div class="container">
+    <div class="board-grid" id="boardGrid">
+      <!-- JSで生成 -->
+    </div>
+    <p id="boardEmpty" style="text-align:center;color:var(--text-sub);padding:40px 0;font-size:15px;display:none;">
+      まだ今日のタスクがありません。「タスク登録」タブから登録してください。
+    </p>
+  </div>
+</div>
+
+<!-- ===== タスク登録 ===== -->
+<div class="tab-content" id="tab-register">
+  <div class="container">
+    <div class="card">
+      <h2>👤 誰のタスク？</h2>
+      <div class="staff-grid" id="staffSelect">
+        <!-- JSで生成 -->
+      </div>
+    </div>
+    <div class="card">
+      <h2>📝 タスク内容</h2>
+      <div style="margin-bottom:12px;">
+        <label style="font-size:14px;font-weight:500;color:var(--text-sub);display:block;margin-bottom:6px;">よく使うタスクから選ぶ</label>
+        <div id="templateBtns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+          <!-- JSで生成 -->
+        </div>
+      </div>
+      <div class="form-row">
+        <label>タスク名</label>
+        <input type="text" id="taskName" placeholder="例：利用者の記録整理">
+      </div>
+      <div class="form-row">
+        <label>急ぎ度</label>
+        <div class="priority-btns">
+          <button class="priority-btn selected" data-p="high" onclick="selectPriority('high')">🔴 急ぎ</button>
+          <button class="priority-btn" data-p="normal" onclick="selectPriority('normal')">🟡 普通</button>
+          <button class="priority-btn" data-p="low" onclick="selectPriority('low')">🟢 余裕</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>目安時間</label>
+        <select id="taskTime">
+          <option value="">未設定</option>
+          <option value="5">5分</option>
+          <option value="10">10分</option>
+          <option value="15">15分</option>
+          <option value="20">20分</option>
+          <option value="30">30分</option>
+          <option value="45">45分</option>
+          <option value="60">1時間</option>
+          <option value="90">1時間30分</option>
+          <option value="120">2時間</option>
+        </select>
+      </div>
+      <button class="btn-primary" id="btnAddTask" onclick="addTask()">タスクを登録</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 管理画面 ===== -->
+<div class="tab-content" id="tab-admin">
+  <div class="container">
+    <div class="stats-grid" id="statsGrid">
+      <!-- JSで生成 -->
+    </div>
+    <div class="card">
+      <h2>📈 スタッフ別の状況</h2>
+      <div style="overflow-x:auto;">
+        <table class="ranking-table" id="rankingTable">
+          <thead>
+            <tr>
+              <th>スタッフ</th>
+              <th>タスク数</th>
+              <th>完了</th>
+              <th>残り</th>
+              <th>目安合計</th>
+              <th>実績合計</th>
+              <th>状態</th>
+            </tr>
+          </thead>
+          <tbody id="rankingBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>⏱ 完了タスクの時間比較</h2>
+      <div style="overflow-x:auto;">
+        <table class="ranking-table" id="timeTable">
+          <thead>
+            <tr>
+              <th>スタッフ</th>
+              <th>タスク名</th>
+              <th>目安</th>
+              <th>実績</th>
+              <th>差</th>
+            </tr>
+          </thead>
+          <tbody id="timeBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 設定 ===== -->
+<div class="tab-content" id="tab-settings">
+  <div class="container">
+    <div class="card">
+      <h2>👥 スタッフ登録</h2>
+      <div class="setting-section">
+        <div id="staffListEdit">
+          <!-- JSで生成 -->
+        </div>
+        <button class="add-btn" onclick="addStaffRow()">＋ スタッフを追加</button>
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="saveStaff()">スタッフを保存</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📋 よく使うタスク（テンプレート）</h2>
+      <div class="setting-section">
+        <p style="font-size:13px;color:var(--text-sub);margin-bottom:12px;">目安時間リストが見つかったらここに登録してください</p>
+        <div id="templateListEdit">
+          <!-- JSで生成 -->
+        </div>
+        <button class="add-btn" onclick="addTemplateRow()">＋ テンプレートを追加</button>
+        <div style="margin-top:12px;">
+          <button class="btn-primary" onclick="saveTemplates()">テンプレートを保存</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--red);">
+      <h2 style="color:var(--red);">⚠ データ管理</h2>
+      <p style="font-size:13px;color:var(--text-sub);margin-bottom:12px;">※ この端末のデータのみ削除されます</p>
+      <button class="btn-danger" onclick="confirmClearAll()" style="padding:12px 24px;font-size:14px;border-radius:8px;">全データを削除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 確認モーダル -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h3 id="modalTitle"></h3>
+    <p id="modalMsg" style="font-size:14px;color:var(--text-sub);"></p>
+    <div class="modal-actions">
+      <button style="background:var(--border);border:none;color:var(--text);" onclick="closeModal()">キャンセル</button>
+      <button id="modalOk" style="background:var(--red);border:none;color:white;font-weight:700;"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== データ管理 =====
+const STORAGE_KEY = 'yawaragi_taskboard';
+const TODAY = new Date().toISOString().slice(0,10);
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return getDefault();
+    const d = JSON.parse(raw);
+    // 日付が変わったらタスクだけリセット（スタッフ・テンプレートは保持）
+    if (d.date !== TODAY) {
+      d.date = TODAY;
+      d.tasks = [];
+    }
+    return d;
+  } catch(e) { return getDefault(); }
+}
+const DEFAULT_TEMPLATES = [
+  {name:'介護請求　利用者請求表のチェック', time:60},
+  {name:'国保連請求', time:30},
+  {name:'国保連請求の明細を介護請求ファイルへ', time:15},
+  {name:'利用者請求、請求書・領収書発行', time:30},
+  {name:'介護請求　利用者請求表の作成', time:30},
+  {name:'実績用メール・FAXファイル作成', time:10},
+  {name:'来月の測定一覧表の作成', time:30},
+  {name:'新規利用者　口座登録　郵送', time:null},
+  {name:'通所モニタリング・最終評価', time:null},
+  {name:'科学的介護推進体制加算　データ入力', time:90},
+  {name:'口腔・栄養改善等の加算チェック', time:120},
+  {name:'測定結果　ケアマネ用印刷（PDF）', time:60},
+  {name:'計画書の確認とスキャンと仕分け', time:60},
+  {name:'長期休み連絡', time:null},
+  {name:'実績確定', time:null},
+  {name:'実績送付準備【メール】送信', time:60},
+  {name:'口座振替　リハブ　レセプト登録', time:15},
+  {name:'区分変更者リスト記入', time:null},
+  {name:'ケアプラン更新者リスト作成', time:30},
+  {name:'リマインダーに翌月のケアプラン更新者入力', time:15},
+];
+
+function getDefault() {
+  return { date: TODAY, staff: [], templates: DEFAULT_TEMPLATES.map(t=>({...t})), tasks: [] };
+}
+function saveData(d) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+}
+
+let data = loadData();
+// 既存データにテンプレートが空なら初期値を入れる
+if (data.templates.length === 0) {
+  data.templates = DEFAULT_TEMPLATES.map(t=>({...t}));
+  saveData(data);
+}
+
+// ===== 日付表示 =====
+function formatDate() {
+  const d = new Date();
+  const days = ['日','月','火','水','木','金','土'];
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${days[d.getDay()]}）`;
+}
+document.getElementById('todayDate').textContent = formatDate();
+
+// ===== タブ切替 =====
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'board') renderBoard();
+    if (tab.dataset.tab === 'register') renderRegister();
+    if (tab.dataset.tab === 'admin') renderAdmin();
+    if (tab.dataset.tab === 'settings') renderSettings();
+  });
+});
+
+// ===== タスク登録 =====
+let selectedStaff = null;
+let selectedPriority = 'high';
+
+function renderRegister() {
+  const grid = document.getElementById('staffSelect');
+  grid.innerHTML = data.staff.map(name =>
+    `<button class="staff-chip ${selectedStaff===name?'selected':''}" onclick="selectStaff('${name}')">
+      <span class="check">✓</span>${name}
+    </button>`
+  ).join('');
+  if (data.staff.length === 0) {
+    grid.innerHTML = '<p style="color:var(--text-sub);font-size:14px;">先に「設定」タブでスタッフを登録してください</p>';
+  }
+  // テンプレートボタン
+  const tmpl = document.getElementById('templateBtns');
+  tmpl.innerHTML = data.templates.map(t =>
+    `<button style="padding:10px 16px;border:1px solid var(--border);border-radius:20px;background:white;
+     font-size:14px;font-family:inherit;cursor:pointer;min-height:44px;transition:all 0.2s;"
+     onclick="applyTemplate('${t.name.replace(/'/g,"\\'")}',${t.time||0})"
+     onmouseover="this.style.background='#f0fdfa'" onmouseout="this.style.background='white'">
+     ${t.name}${t.time ? ' ('+t.time+'分)' : ''}</button>`
+  ).join('');
+  if (data.templates.length === 0) {
+    tmpl.innerHTML = '<span style="font-size:13px;color:var(--text-sub);">「設定」タブでテンプレートを追加できます</span>';
+  }
+}
+
+function selectStaff(name) {
+  selectedStaff = name;
+  renderRegister();
+}
+function selectPriority(p) {
+  selectedPriority = p;
+  document.querySelectorAll('.priority-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.p === p);
+  });
+}
+function applyTemplate(name, time) {
+  document.getElementById('taskName').value = name;
+  if (time) document.getElementById('taskTime').value = time;
+}
+
+function addTask() {
+  const name = document.getElementById('taskName').value.trim();
+  if (!selectedStaff) { alert('スタッフを選んでください'); return; }
+  if (!name) { alert('タスク名を入力してください'); return; }
+  const timeStr = document.getElementById('taskTime').value;
+  const task = {
+    id: Date.now(),
+    staff: selectedStaff,
+    name: name,
+    priority: selectedPriority,
+    estimatedMin: timeStr ? parseInt(timeStr) : null,
+    startTime: new Date().toISOString(),
+    endTime: null,
+    done: false
+  };
+  data.tasks.push(task);
+  saveData(data);
+  document.getElementById('taskName').value = '';
+  document.getElementById('taskTime').value = '';
+  // 成功メッセージ
+  const btn = document.getElementById('btnAddTask');
+  btn.textContent = '✓ 登録しました！';
+  btn.style.background = '#22c55e';
+  setTimeout(() => { btn.textContent = 'タスクを登録'; btn.style.background = ''; }, 1500);
+}
+
+// ===== ボード表示 =====
+function renderBoard() {
+  const grid = document.getElementById('boardGrid');
+  const empty = document.getElementById('boardEmpty');
+  // 今日タスクがあるスタッフだけ表示
+  const staffWithTasks = [...new Set(data.tasks.map(t=>t.staff))];
+  if (staffWithTasks.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // スタッフごとに忙しさ順でソート（残タスク多い順）
+  const sorted = staffWithTasks.map(s => {
+    const tasks = data.tasks.filter(t=>t.staff===s);
+    const remaining = tasks.filter(t=>!t.done).length;
+    return { name:s, tasks, remaining };
+  }).sort((a,b) => b.remaining - a.remaining);
+
+  grid.innerHTML = sorted.map(s => {
+    const level = s.remaining >= 3 ? 'high' : s.remaining >= 1 ? 'mid' : 'low';
+    const levelText = s.remaining >= 3 ? '🔴 忙しい' : s.remaining >= 1 ? '🟡 対応中' : '🟢 完了';
+    // 優先度順にソート: high→normal→low、未完了を先に
+    const sortedTasks = [...s.tasks].sort((a,b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const po = {high:0,normal:1,low:2};
+      return po[a.priority] - po[b.priority];
+    });
+    return `
+    <div class="staff-column busy-${level}">
+      <div class="staff-column-header">
+        <span>${s.name} ${levelText}</span>
+        <span class="task-count">${s.tasks.filter(t=>t.done).length}/${s.tasks.length} 完了</span>
+      </div>
+      <div class="staff-column-body">
+        ${sortedTasks.length === 0 ? '<div class="empty-msg">タスクなし</div>' :
+          sortedTasks.map(t => renderTaskCard(t)).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTaskCard(t) {
+  const pLabel = {high:'🔴 急ぎ', normal:'🟡 普通', low:'🟢 余裕'};
+  const pClass = t.priority;
+  let timeMeta = '';
+  if (t.estimatedMin) {
+    timeMeta += `目安 ${formatMin(t.estimatedMin)}`;
+  }
+  if (t.done && t.endTime) {
+    const actual = Math.round((new Date(t.endTime) - new Date(t.startTime)) / 60000);
+    timeMeta += ` → 実績 ${formatMin(actual)}`;
+    if (t.estimatedMin) {
+      const diff = actual - t.estimatedMin;
+      if (diff > 0) {
+        timeMeta += ` <span class="time-over">（+${diff}分）</span>`;
+      } else {
+        timeMeta += ` <span class="time-ok">（${diff}分）</span>`;
+      }
+    }
+  } else if (!t.done) {
+    const elapsed = Math.round((Date.now() - new Date(t.startTime)) / 60000);
+    if (t.estimatedMin && elapsed > t.estimatedMin) {
+      timeMeta += ` <span class="time-over">⚠ ${elapsed - t.estimatedMin}分オーバー</span>`;
+    } else if (elapsed > 0) {
+      timeMeta += ` （経過 ${elapsed}分）`;
+    }
+  }
+
+  return `
+  <div class="task-card ${t.done?'done':''}">
+    <div class="task-card-top">
+      <span class="task-name">${escapeHtml(t.name)}</span>
+      <span class="priority-badge ${pClass}">${pLabel[t.priority]}</span>
+    </div>
+    <div class="task-meta">${timeMeta}</div>
+    <div class="task-actions">
+      ${t.done
+        ? `<button class="btn-complete" style="background:var(--text-sub);font-size:13px;padding:6px 12px;" onclick="undoTask(${t.id})">↩ 戻す</button>`
+        : `<button class="btn-complete" onclick="completeTask(${t.id})">✓ 完了</button>`
+      }
+      <button class="btn-danger" onclick="deleteTask(${t.id})">削除</button>
+    </div>
+  </div>`;
+}
+
+function formatMin(m) {
+  if (m >= 60) return Math.floor(m/60) + '時間' + (m%60 ? m%60 + '分' : '');
+  return m + '分';
+}
+
+function completeTask(id) {
+  const t = data.tasks.find(t=>t.id===id);
+  if (t) { t.done = true; t.endTime = new Date().toISOString(); }
+  saveData(data);
+  renderBoard();
+}
+function undoTask(id) {
+  const t = data.tasks.find(t=>t.id===id);
+  if (t) { t.done = false; t.endTime = null; }
+  saveData(data);
+  renderBoard();
+}
+function deleteTask(id) {
+  data.tasks = data.tasks.filter(t=>t.id!==id);
+  saveData(data);
+  renderBoard();
+}
+
+// ===== 管理画面 =====
+function renderAdmin() {
+  const tasks = data.tasks;
+  const total = tasks.length;
+  const done = tasks.filter(t=>t.done).length;
+  const remaining = total - done;
+  const urgent = tasks.filter(t=>!t.done && t.priority==='high').length;
+
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">全タスク数</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--green)">${done}</div><div class="stat-label">完了</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--orange)">${remaining}</div><div class="stat-label">残り</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--red)">${urgent}</div><div class="stat-label">急ぎ（未完了）</div></div>
+  `;
+
+  // スタッフ別
+  const staffNames = [...new Set(tasks.map(t=>t.staff))];
+  const tbody = document.getElementById('rankingBody');
+  tbody.innerHTML = staffNames.map(name => {
+    const st = tasks.filter(t=>t.staff===name);
+    const d = st.filter(t=>t.done);
+    const r = st.filter(t=>!t.done);
+    const estTotal = st.reduce((s,t)=>s+(t.estimatedMin||0), 0);
+    const actTotal = d.reduce((s,t) => {
+      if (t.endTime) return s + Math.round((new Date(t.endTime)-new Date(t.startTime))/60000);
+      return s;
+    }, 0);
+    const status = r.length === 0 && d.length > 0 ? '🟢 全完了' :
+                   r.filter(t=>t.priority==='high').length > 0 ? '🔴 急ぎあり' :
+                   r.length > 0 ? '🟡 対応中' : '—';
+    return `<tr>
+      <td style="font-weight:600;">${name}</td>
+      <td>${st.length}</td>
+      <td>${d.length}</td>
+      <td>${r.length}</td>
+      <td>${estTotal ? formatMin(estTotal) : '—'}</td>
+      <td>${actTotal ? formatMin(actTotal) : '—'}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+
+  // 時間比較
+  const doneTasks = tasks.filter(t=>t.done && t.endTime);
+  const timeBody = document.getElementById('timeBody');
+  timeBody.innerHTML = doneTasks.map(t => {
+    const actual = Math.round((new Date(t.endTime)-new Date(t.startTime))/60000);
+    const est = t.estimatedMin;
+    let diffHtml = '—';
+    if (est) {
+      const diff = actual - est;
+      if (diff > 0) diffHtml = `<span style="color:var(--red);font-weight:700;">+${diff}分</span>`;
+      else if (diff < 0) diffHtml = `<span style="color:var(--green);font-weight:600;">${diff}分</span>`;
+      else diffHtml = `<span style="color:var(--green);">±0</span>`;
+    }
+    return `<tr>
+      <td>${t.staff}</td>
+      <td>${escapeHtml(t.name)}</td>
+      <td>${est ? formatMin(est) : '—'}</td>
+      <td>${formatMin(actual)}</td>
+      <td>${diffHtml}</td>
+    </tr>`;
+  }).join('');
+  if (doneTasks.length === 0) {
+    timeBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-sub);padding:20px;">まだ完了タスクがありません</td></tr>';
+  }
+}
+
+// ===== 設定画面 =====
+function renderSettings() {
+  renderStaffList();
+  renderTemplateList();
+}
+
+function renderStaffList() {
+  const el = document.getElementById('staffListEdit');
+  el.innerHTML = data.staff.map((name, i) =>
+    `<div class="staff-list-item">
+      <span style="font-size:14px;color:var(--text-sub);min-width:24px;">${i+1}.</span>
+      <input type="text" value="${escapeHtml(name)}" data-staff-idx="${i}" onchange="updateStaffName(${i}, this.value)">
+      <button class="remove-staff" onclick="removeStaff(${i})">✕</button>
+    </div>`
+  ).join('');
+}
+function addStaffRow() {
+  data.staff.push('');
+  renderStaffList();
+  // フォーカス
+  const inputs = document.querySelectorAll('[data-staff-idx]');
+  if (inputs.length) inputs[inputs.length-1].focus();
+}
+function updateStaffName(idx, val) {
+  data.staff[idx] = val.trim();
+}
+function removeStaff(idx) {
+  data.staff.splice(idx, 1);
+  renderStaffList();
+}
+function saveStaff() {
+  data.staff = data.staff.filter(s => s.trim());
+  saveData(data);
+  renderStaffList();
+  alert('スタッフを保存しました（' + data.staff.length + '名）');
+}
+
+function renderTemplateList() {
+  const el = document.getElementById('templateListEdit');
+  el.innerHTML = data.templates.map((t, i) =>
+    `<div class="task-template-item">
+      <input type="text" value="${escapeHtml(t.name)}" placeholder="タスク名" data-tmpl-idx="${i}" onchange="updateTemplate(${i},'name',this.value)">
+      <input type="number" value="${t.time||''}" placeholder="分" min="1" onchange="updateTemplate(${i},'time',this.value)">
+      <span style="font-size:13px;color:var(--text-sub);">分</span>
+      <button class="remove-staff" onclick="removeTemplate(${i})">✕</button>
+    </div>`
+  ).join('');
+}
+function addTemplateRow() {
+  data.templates.push({name:'', time:null});
+  renderTemplateList();
+  const inputs = document.querySelectorAll('[data-tmpl-idx]');
+  if (inputs.length) inputs[inputs.length-1].focus();
+}
+function updateTemplate(idx, key, val) {
+  if (key === 'name') data.templates[idx].name = val.trim();
+  if (key === 'time') data.templates[idx].time = val ? parseInt(val) : null;
+}
+function removeTemplate(idx) {
+  data.templates.splice(idx, 1);
+  renderTemplateList();
+}
+function saveTemplates() {
+  data.templates = data.templates.filter(t => t.name.trim());
+  saveData(data);
+  renderTemplateList();
+  alert('テンプレートを保存しました（' + data.templates.length + '件）');
+}
+
+// ===== モーダル =====
+function showModal(title, msg, okText, okFn) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalMsg').textContent = msg;
+  const okBtn = document.getElementById('modalOk');
+  okBtn.textContent = okText;
+  okBtn.onclick = () => { closeModal(); okFn(); };
+  document.getElementById('confirmModal').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('confirmModal').classList.remove('show');
+}
+function confirmResetDay() {
+  showModal('今日のタスクをリセット', '今日登録されたタスクをすべて削除します。スタッフ・テンプレートの設定は残ります。', 'リセットする', () => {
+    data.tasks = [];
+    saveData(data);
+    renderBoard();
+  });
+}
+function confirmClearAll() {
+  showModal('全データを削除', 'スタッフ・テンプレート・タスクすべてのデータを削除します。この操作は元に戻せません。', '全削除する', () => {
+    localStorage.removeItem(STORAGE_KEY);
+    data = getDefault();
+    renderBoard();
+    renderSettings();
+  });
+}
+
+// ===== ユーティリティ =====
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ===== 自動更新（経過時間の更新用） =====
+setInterval(() => {
+  const activeTab = document.querySelector('.tab.active');
+  if (activeTab && activeTab.dataset.tab === 'board') renderBoard();
+}, 60000); // 1分ごと
+
+// ===== 初期表示 =====
+renderBoard();
+renderRegister();
+</script>
+</body>
+</html>

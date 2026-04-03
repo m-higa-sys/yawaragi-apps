@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>切手管理 - yawaragi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+            background: #f0f4f8;
+            color: #333;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #2c7a5c, #3a9d7c);
+            color: white;
+            padding: 16px 20px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header h1 { font-size: 22px; }
+        .header p { font-size: 12px; opacity: 0.85; margin-top: 4px; }
+
+        /* 在庫カード */
+        .stock-section {
+            display: flex;
+            gap: 12px;
+            padding: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .stock-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 150px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            position: relative;
+        }
+        .stock-card .stamp-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2c7a5c;
+        }
+        .stock-card .stamp-unit { font-size: 14px; color: #666; }
+        .stock-card .stamp-count {
+            font-size: 42px;
+            font-weight: bold;
+            margin: 8px 0;
+            color: #333;
+        }
+        .stock-card .stamp-label { font-size: 13px; color: #888; }
+        .stock-card .stamp-total {
+            font-size: 13px;
+            color: #666;
+            margin-top: 4px;
+            border-top: 1px solid #eee;
+            padding-top: 8px;
+        }
+        .stock-card.low-stock {
+            border: 2px solid #e74c3c;
+            animation: pulse 2s infinite;
+        }
+        .low-stock-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #e74c3c;
+            color: white;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 2px 8px rgba(231,76,60,0.15); }
+            50% { box-shadow: 0 2px 16px rgba(231,76,60,0.35); }
+        }
+
+        .total-amount-card {
+            background: white;
+            border-radius: 12px;
+            padding: 14px 20px;
+            margin: 0 16px 12px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            font-size: 15px;
+            color: #555;
+        }
+        .total-amount-card span {
+            font-weight: bold;
+            font-size: 20px;
+            color: #2c7a5c;
+        }
+
+        /* タブ */
+        .tabs {
+            display: flex;
+            padding: 0 16px;
+            gap: 4px;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            background: #dde6e0;
+            border: none;
+            border-radius: 10px 10px 0 0;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #555;
+            transition: all 0.2s;
+        }
+        .tab.active {
+            background: white;
+            color: #2c7a5c;
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            margin: 0 16px 16px;
+            border-radius: 0 0 12px 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .tab-content.active { display: block; }
+
+        /* フォーム */
+        .form-group { margin-bottom: 16px; }
+        .form-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: #444;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: #2c7a5c;
+            outline: none;
+        }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+
+        .stamp-select {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .stamp-btn {
+            flex: 1;
+            padding: 14px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            transition: all 0.2s;
+            color: #555;
+        }
+        .stamp-btn.selected {
+            border-color: #2c7a5c;
+            background: #e8f5e9;
+            color: #2c7a5c;
+        }
+        .stamp-btn span { display: block; font-size: 12px; font-weight: normal; margin-top: 4px; }
+
+        .quantity-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: center;
+        }
+        .qty-btn {
+            width: 44px;
+            height: 44px;
+            border: 2px solid #ddd;
+            border-radius: 50%;
+            background: white;
+            font-size: 22px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            color: #555;
+        }
+        .qty-btn:hover { border-color: #2c7a5c; color: #2c7a5c; }
+        .qty-input {
+            width: 70px !important;
+            text-align: center;
+            font-size: 24px !important;
+            font-weight: bold;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-add {
+            background: #2c7a5c;
+            color: white;
+        }
+        .btn-add:hover:not(:disabled) { background: #236347; }
+        .btn-use {
+            background: #e67e22;
+            color: white;
+        }
+        .btn-use:hover:not(:disabled) { background: #cf6d17; }
+
+        /* 履歴 */
+        .history-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            padding: 6px 14px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .filter-btn.active {
+            background: #2c7a5c;
+            color: white;
+            border-color: #2c7a5c;
+        }
+
+        .history-list { list-style: none; }
+        .history-item {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .history-item:last-child { border-bottom: none; }
+        .history-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .history-icon.add { background: #e8f5e9; color: #2c7a5c; }
+        .history-icon.use { background: #fef3e2; color: #e67e22; }
+        .history-detail { flex: 1; }
+        .history-detail .main {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .history-detail .sub {
+            font-size: 12px;
+            color: #888;
+            margin-top: 2px;
+        }
+        .history-detail .purpose {
+            font-size: 12px;
+            color: #555;
+            margin-top: 2px;
+            background: #f8f8f8;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .history-amount {
+            font-weight: bold;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+        .history-amount.add { color: #2c7a5c; }
+        .history-amount.use { color: #e67e22; }
+
+        .delete-btn {
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 11px;
+            color: #999;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .delete-btn:hover { border-color: #e74c3c; color: #e74c3c; }
+
+        .no-data {
+            text-align: center;
+            color: #aaa;
+            padding: 30px;
+            font-size: 14px;
+        }
+
+        /* 設定 */
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .setting-item label { font-size: 14px; }
+        .setting-item input {
+            width: 80px;
+            padding: 6px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .staff-list { margin-top: 12px; }
+        .staff-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+        }
+        .staff-item input {
+            flex: 1;
+            padding: 8px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .staff-remove {
+            background: none;
+            border: none;
+            color: #e74c3c;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 4px;
+        }
+        .staff-add-btn {
+            margin-top: 8px;
+            padding: 8px 16px;
+            background: #f0f0f0;
+            border: 1px dashed #ccc;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            width: 100%;
+        }
+        .staff-add-btn:hover { background: #e8e8e8; }
+
+        /* 月別集計 */
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 12px;
+        }
+        .summary-table th, .summary-table td {
+            padding: 8px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+        .summary-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+        }
+        .summary-table .total-row {
+            background: #e8f5e9;
+            font-weight: bold;
+        }
+
+        /* トースト */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            transition: transform 0.3s;
+            white-space: nowrap;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        /* 月選択 */
+        .month-selector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .month-selector button {
+            background: #f0f0f0;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .month-selector span {
+            font-weight: bold;
+            font-size: 16px;
+            min-width: 120px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📮 切手管理</h1>
+    <p>リハビリデイサービス yawaragi</p>
+</div>
+
+<!-- 在庫表示 -->
+<div class="stock-section" id="stockCards"></div>
+<div class="total-amount-card">
+    在庫合計金額: <span id="totalAmount">0円</span>
+</div>
+
+<!-- タブ -->
+<div class="tabs">
+    <button class="tab active" onclick="switchTab('use')">使用する</button>
+    <button class="tab" onclick="switchTab('add')">補充する</button>
+    <button class="tab" onclick="switchTab('history')">履歴</button>
+    <button class="tab" onclick="switchTab('settings')">設定</button>
+</div>
+
+<!-- 使用タブ -->
+<div class="tab-content active" id="tab-use">
+    <h3 style="margin-bottom:12px; color:#e67e22;">切手を使う</h3>
+    <div class="form-group">
+        <label>切手の種類</label>
+        <div class="stamp-select" id="useStampSelect"></div>
+    </div>
+    <div class="form-group">
+        <label>枚数</label>
+        <div class="quantity-control">
+            <button class="qty-btn" onclick="changeQty('use', -1)">−</button>
+            <input type="number" class="qty-input" id="useQty" value="1" min="1" max="99">
+            <button class="qty-btn" onclick="changeQty('use', 1)">+</button>
+        </div>
+    </div>
+    <div class="form-group">
+        <label>使用者</label>
+        <select id="useStaff"></select>
+    </div>
+    <div class="form-group">
+        <label>目的・宛先</label>
+        <textarea id="usePurpose" placeholder="例：ケアマネ○○様へ報告書送付"></textarea>
+    </div>
+    <button class="submit-btn btn-use" onclick="recordUse()">使用を記録する</button>
+</div>
+
+<!-- 補充タブ -->
+<div class="tab-content" id="tab-add">
+    <h3 style="margin-bottom:12px; color:#2c7a5c;">切手を補充する</h3>
+    <div class="form-group">
+        <label>切手の種類</label>
+        <div class="stamp-select" id="addStampSelect"></div>
+    </div>
+    <div class="form-group">
+        <label>枚数</label>
+        <div class="quantity-control">
+            <button class="qty-btn" onclick="changeQty('add', -1)">−</button>
+            <input type="number" class="qty-input" id="addQty" value="1" min="1" max="99">
+            <button class="qty-btn" onclick="changeQty('add', 1)">+</button>
+        </div>
+    </div>
+    <button class="submit-btn btn-add" onclick="recordAdd()">補充を記録する</button>
+</div>
+
+<!-- 履歴タブ -->
+<div class="tab-content" id="tab-history">
+    <h3 style="margin-bottom:12px;">使用・補充の履歴</h3>
+    <div class="history-filters">
+        <button class="filter-btn active" onclick="setFilter('all')">すべて</button>
+        <button class="filter-btn" onclick="setFilter('use')">使用</button>
+        <button class="filter-btn" onclick="setFilter('add')">補充</button>
+    </div>
+    <div class="month-selector">
+        <button onclick="changeHistoryMonth(-1)">◀</button>
+        <span id="historyMonth"></span>
+        <button onclick="changeHistoryMonth(1)">▶</button>
+    </div>
+    <ul class="history-list" id="historyList"></ul>
+
+    <h3 style="margin-top:24px; margin-bottom:8px;">月別集計</h3>
+    <div class="month-selector">
+        <button onclick="changeSummaryMonth(-1)">◀</button>
+        <span id="summaryMonth"></span>
+        <button onclick="changeSummaryMonth(1)">▶</button>
+    </div>
+    <table class="summary-table" id="summaryTable"></table>
+</div>
+
+<!-- 設定タブ -->
+<div class="tab-content" id="tab-settings">
+    <h3 style="margin-bottom:12px;">設定</h3>
+
+    <h4 style="margin-bottom:8px; color:#e74c3c;">在庫アラート（残り何枚で警告）</h4>
+    <div id="alertSettings"></div>
+
+    <h4 style="margin-top:20px; margin-bottom:8px;">スタッフ名の管理</h4>
+    <div class="staff-list" id="staffList"></div>
+    <button class="staff-add-btn" onclick="addStaffField()">＋ スタッフを追加</button>
+    <button class="submit-btn btn-add" style="margin-top:16px;" onclick="saveSettings()">設定を保存</button>
+
+    <h4 style="margin-top:24px; margin-bottom:8px; color:#e74c3c;">データ管理</h4>
+    <button class="submit-btn" style="background:#888;" onclick="exportData()">データをエクスポート（バックアップ）</button>
+    <button class="submit-btn" style="background:#555; margin-top:8px;" onclick="importData()">データをインポート（復元）</button>
+    <input type="file" id="importFile" accept=".json" style="display:none;" onchange="handleImport(event)">
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+    // ===== データ管理 =====
+    const STORAGE_KEY = 'yawaragi_stamp_manager';
+
+    const defaultData = {
+        stamps: [
+            { value: 84, label: '84円', alert: 5 },
+            { value: 94, label: '94円', alert: 5 }
+        ],
+        stock: { 84: 0, 94: 0 },
+        staff: ['下浦', '工藤', '髙山', '春山', '大久保', '小野', '林', '比嘉'],
+        history: []
+    };
+
+    function loadData() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const data = JSON.parse(saved);
+            // マイグレーション: 古いデータに新フィールドがない場合
+            if (!data.stamps) data.stamps = defaultData.stamps;
+            if (!data.staff) data.staff = defaultData.staff;
+            return data;
+        }
+        return JSON.parse(JSON.stringify(defaultData));
+    }
+
+    function saveData(data) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    let data = loadData();
+    let currentFilter = 'all';
+    let historyDate = new Date();
+    let summaryDate = new Date();
+
+    // ===== 在庫カード表示 =====
+    function renderStock() {
+        const container = document.getElementById('stockCards');
+        container.innerHTML = '';
+        let totalAmount = 0;
+
+        data.stamps.forEach(stamp => {
+            const count = data.stock[stamp.value] || 0;
+            const isLow = count <= stamp.alert && count > 0;
+            const isEmpty = count === 0;
+            totalAmount += count * stamp.value;
+
+            container.innerHTML += `
+                <div class="stock-card ${isLow || isEmpty ? 'low-stock' : ''}">
+                    ${isLow ? '<div class="low-stock-badge">残りわずか</div>' : ''}
+                    ${isEmpty ? '<div class="low-stock-badge">在庫なし</div>' : ''}
+                    <div class="stamp-value">${stamp.value}<span class="stamp-unit">円</span></div>
+                    <div class="stamp-count">${count}</div>
+                    <div class="stamp-label">枚</div>
+                    <div class="stamp-total">${(count * stamp.value).toLocaleString()}円分</div>
+                </div>
+            `;
+        });
+
+        document.getElementById('totalAmount').textContent = totalAmount.toLocaleString() + '円';
+    }
+
+    // ===== 切手選択ボタン =====
+    let selectedUseStamp = null;
+    let selectedAddStamp = null;
+
+    function renderStampButtons() {
+        ['use', 'add'].forEach(type => {
+            const container = document.getElementById(type + 'StampSelect');
+            container.innerHTML = '';
+            data.stamps.forEach(stamp => {
+                const btn = document.createElement('button');
+                btn.className = 'stamp-btn';
+                btn.innerHTML = `${stamp.value}円<span>定形郵便</span>`;
+                btn.onclick = () => selectStamp(type, stamp.value, btn);
+                container.appendChild(btn);
+            });
+        });
+    }
+
+    function selectStamp(type, value, btn) {
+        const container = btn.parentElement;
+        container.querySelectorAll('.stamp-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        if (type === 'use') selectedUseStamp = value;
+        else selectedAddStamp = value;
+    }
+
+    // ===== 数量コントロール =====
+    function changeQty(type, delta) {
+        const input = document.getElementById(type + 'Qty');
+        let val = parseInt(input.value) || 1;
+        val = Math.max(1, Math.min(99, val + delta));
+        input.value = val;
+    }
+
+    // ===== 使用記録 =====
+    function recordUse() {
+        if (!selectedUseStamp) { showToast('切手の種類を選んでください'); return; }
+        const qty = parseInt(document.getElementById('useQty').value) || 1;
+        const staff = document.getElementById('useStaff').value;
+        const purpose = document.getElementById('usePurpose').value.trim();
+
+        if (!staff) { showToast('使用者を選んでください'); return; }
+        if (!purpose) { showToast('目的・宛先を入力してください'); return; }
+
+        const currentStock = data.stock[selectedUseStamp] || 0;
+        if (qty > currentStock) {
+            showToast(`在庫が足りません（残り${currentStock}枚）`);
+            return;
+        }
+
+        data.stock[selectedUseStamp] -= qty;
+        data.history.unshift({
+            type: 'use',
+            stamp: selectedUseStamp,
+            qty: qty,
+            staff: staff,
+            purpose: purpose,
+            date: new Date().toISOString()
+        });
+        saveData(data);
+        renderStock();
+        renderHistory();
+
+        // リセット
+        document.getElementById('useQty').value = 1;
+        document.getElementById('usePurpose').value = '';
+        document.querySelectorAll('#useStampSelect .stamp-btn').forEach(b => b.classList.remove('selected'));
+        selectedUseStamp = null;
+
+        showToast(`${staff}さんの使用を記録しました`);
+    }
+
+    // ===== 補充記録 =====
+    function recordAdd() {
+        if (!selectedAddStamp) { showToast('切手の種類を選んでください'); return; }
+        const qty = parseInt(document.getElementById('addQty').value) || 1;
+
+        if (!data.stock[selectedAddStamp]) data.stock[selectedAddStamp] = 0;
+        data.stock[selectedAddStamp] += qty;
+        data.history.unshift({
+            type: 'add',
+            stamp: selectedAddStamp,
+            qty: qty,
+            date: new Date().toISOString()
+        });
+        saveData(data);
+        renderStock();
+        renderHistory();
+
+        // リセット
+        document.getElementById('addQty').value = 1;
+        document.querySelectorAll('#addStampSelect .stamp-btn').forEach(b => b.classList.remove('selected'));
+        selectedAddStamp = null;
+
+        showToast(`${selectedAddStamp || ''}切手を${qty}枚補充しました`);
+    }
+
+    // ===== 履歴表示 =====
+    function renderHistory() {
+        const list = document.getElementById('historyList');
+        const year = historyDate.getFullYear();
+        const month = historyDate.getMonth();
+        document.getElementById('historyMonth').textContent = `${year}年${month + 1}月`;
+
+        const filtered = data.history.filter(item => {
+            const d = new Date(item.date);
+            const matchMonth = d.getFullYear() === year && d.getMonth() === month;
+            const matchType = currentFilter === 'all' || item.type === currentFilter;
+            return matchMonth && matchType;
+        });
+
+        if (filtered.length === 0) {
+            list.innerHTML = '<div class="no-data">この月の記録はありません</div>';
+            return;
+        }
+
+        list.innerHTML = filtered.map((item, idx) => {
+            const d = new Date(item.date);
+            const dateStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+            const isUse = item.type === 'use';
+            const originalIdx = data.history.indexOf(item);
+
+            return `
+                <li class="history-item">
+                    <div class="history-icon ${item.type}">${isUse ? '📤' : '📥'}</div>
+                    <div class="history-detail">
+                        <div class="main">${item.stamp}円 × ${item.qty}枚 ${isUse ? '使用' : '補充'}</div>
+                        <div class="sub">${dateStr}${isUse ? ' / ' + item.staff : ''}</div>
+                        ${isUse && item.purpose ? `<div class="purpose">${escapeHtml(item.purpose)}</div>` : ''}
+                    </div>
+                    <div class="history-amount ${item.type}">${isUse ? '-' : '+'}${(item.stamp * item.qty).toLocaleString()}円</div>
+                    <button class="delete-btn" onclick="deleteRecord(${originalIdx})">取消</button>
+                </li>
+            `;
+        }).join('');
+
+        renderSummary();
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function changeHistoryMonth(delta) {
+        historyDate.setMonth(historyDate.getMonth() + delta);
+        renderHistory();
+    }
+
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        renderHistory();
+    }
+
+    // ===== 記録の取り消し =====
+    function deleteRecord(idx) {
+        const item = data.history[idx];
+        if (!item) return;
+        if (!confirm(`この記録を取り消しますか？\n${item.stamp}円 × ${item.qty}枚 ${item.type === 'use' ? '使用' : '補充'}`)) return;
+
+        // 在庫を戻す
+        if (item.type === 'use') {
+            data.stock[item.stamp] = (data.stock[item.stamp] || 0) + item.qty;
+        } else {
+            data.stock[item.stamp] = Math.max(0, (data.stock[item.stamp] || 0) - item.qty);
+        }
+        data.history.splice(idx, 1);
+        saveData(data);
+        renderStock();
+        renderHistory();
+        showToast('記録を取り消しました');
+    }
+
+    // ===== 月別集計 =====
+    function renderSummary() {
+        const year = summaryDate.getFullYear();
+        const month = summaryDate.getMonth();
+        document.getElementById('summaryMonth').textContent = `${year}年${month + 1}月`;
+
+        const monthItems = data.history.filter(item => {
+            const d = new Date(item.date);
+            return d.getFullYear() === year && d.getMonth() === month;
+        });
+
+        const table = document.getElementById('summaryTable');
+        if (monthItems.length === 0) {
+            table.innerHTML = '<tr><td class="no-data">データなし</td></tr>';
+            return;
+        }
+
+        let totalUsed = 0, totalAdded = 0, totalUsedAmount = 0, totalAddedAmount = 0;
+        const byStamp = {};
+
+        data.stamps.forEach(s => {
+            byStamp[s.value] = { used: 0, added: 0 };
+        });
+
+        monthItems.forEach(item => {
+            if (!byStamp[item.stamp]) byStamp[item.stamp] = { used: 0, added: 0 };
+            if (item.type === 'use') {
+                byStamp[item.stamp].used += item.qty;
+                totalUsed += item.qty;
+                totalUsedAmount += item.qty * item.stamp;
+            } else {
+                byStamp[item.stamp].added += item.qty;
+                totalAdded += item.qty;
+                totalAddedAmount += item.qty * item.stamp;
+            }
+        });
+
+        let html = `
+            <tr><th>種類</th><th>補充</th><th>使用</th><th>使用金額</th></tr>
+        `;
+        data.stamps.forEach(s => {
+            const info = byStamp[s.value];
+            html += `
+                <tr>
+                    <td>${s.value}円</td>
+                    <td>+${info.added}枚</td>
+                    <td>-${info.used}枚</td>
+                    <td>${(info.used * s.value).toLocaleString()}円</td>
+                </tr>
+            `;
+        });
+        html += `
+            <tr class="total-row">
+                <td>合計</td>
+                <td>+${totalAdded}枚</td>
+                <td>-${totalUsed}枚</td>
+                <td>${totalUsedAmount.toLocaleString()}円</td>
+            </tr>
+        `;
+        table.innerHTML = html;
+    }
+
+    function changeSummaryMonth(delta) {
+        summaryDate.setMonth(summaryDate.getMonth() + delta);
+        renderSummary();
+    }
+
+    // ===== スタッフ管理 =====
+    function renderStaffList() {
+        const container = document.getElementById('staffList');
+        container.innerHTML = '';
+        data.staff.forEach((name, idx) => {
+            container.innerHTML += `
+                <div class="staff-item">
+                    <input type="text" value="${escapeHtml(name)}" onchange="updateStaff(${idx}, this.value)">
+                    <button class="staff-remove" onclick="removeStaff(${idx})">×</button>
+                </div>
+            `;
+        });
+        renderStaffSelect();
+    }
+
+    function renderStaffSelect() {
+        const select = document.getElementById('useStaff');
+        select.innerHTML = '<option value="">-- 選択 --</option>';
+        data.staff.forEach(name => {
+            select.innerHTML += `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`;
+        });
+    }
+
+    function updateStaff(idx, value) {
+        data.staff[idx] = value.trim();
+    }
+
+    function removeStaff(idx) {
+        if (data.staff.length <= 1) { showToast('最低1人は必要です'); return; }
+        data.staff.splice(idx, 1);
+        renderStaffList();
+    }
+
+    function addStaffField() {
+        data.staff.push('');
+        renderStaffList();
+        // 最後のinputにフォーカス
+        const inputs = document.querySelectorAll('#staffList input');
+        if (inputs.length) inputs[inputs.length - 1].focus();
+    }
+
+    // ===== アラート設定 =====
+    function renderAlertSettings() {
+        const container = document.getElementById('alertSettings');
+        container.innerHTML = '';
+        data.stamps.forEach((stamp, idx) => {
+            container.innerHTML += `
+                <div class="setting-item">
+                    <label>${stamp.value}円切手</label>
+                    <div>残り <input type="number" value="${stamp.alert}" min="0" max="50"
+                        onchange="data.stamps[${idx}].alert = parseInt(this.value) || 0"> 枚以下で警告</div>
+                </div>
+            `;
+        });
+    }
+
+    function saveSettings() {
+        // スタッフ名を収集
+        const inputs = document.querySelectorAll('#staffList input');
+        data.staff = Array.from(inputs).map(i => i.value.trim()).filter(v => v);
+        if (data.staff.length === 0) {
+            showToast('最低1人のスタッフが必要です');
+            return;
+        }
+        saveData(data);
+        renderStaffSelect();
+        renderStock();
+        showToast('設定を保存しました');
+    }
+
+    // ===== エクスポート/インポート =====
+    function exportData() {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `切手管理_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('エクスポートしました');
+    }
+
+    function importData() {
+        document.getElementById('importFile').click();
+    }
+
+    function handleImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (!imported.history || !imported.stock) {
+                    showToast('無効なファイルです');
+                    return;
+                }
+                if (!confirm('現在のデータを上書きしますか？')) return;
+                data = imported;
+                saveData(data);
+                initAll();
+                showToast('インポートしました');
+            } catch (err) {
+                showToast('ファイルの読み込みに失敗しました');
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+
+    // ===== タブ切替 =====
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.getElementById('tab-' + tabName).classList.add('active');
+        event.target.classList.add('active');
+        if (tabName === 'history') {
+            renderHistory();
+            renderSummary();
+        }
+        if (tabName === 'settings') {
+            renderAlertSettings();
+            renderStaffList();
+        }
+    }
+
+    // ===== トースト =====
+    function showToast(msg) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // ===== 初期化 =====
+    function initAll() {
+        renderStock();
+        renderStampButtons();
+        renderStaffSelect();
+        renderHistory();
+        renderSummary();
+    }
+
+    initAll();
+</script>
+</body>
+</html>
