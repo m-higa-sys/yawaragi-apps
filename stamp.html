@@ -485,8 +485,15 @@
         <input type="text" id="useDestOther" placeholder="宛先を入力" style="display:none;width:100%;padding:10px;font-size:15px;border:1px solid #ddd;border-radius:8px;margin-top:6px;">
     </div>
     <div class="form-group">
-        <label>目的・備考</label>
-        <textarea id="usePurpose" placeholder="例：報告書送付"></textarea>
+        <label>目的</label>
+        <select id="usePurposeSelect" style="width:100%;padding:10px;font-size:15px;border:1px solid #ddd;border-radius:8px;" onchange="onPurposeChange()">
+            <option value="">-- 選択してください --</option>
+            <option value="9割実績の送付">9割実績の送付</option>
+            <option value="運営推進会議の案内状">運営推進会議の案内状</option>
+            <option value="領収書の送付（利用中止）">領収書の送付（利用中止）</option>
+            <option value="__other__">その他（手入力）</option>
+        </select>
+        <input type="text" id="usePurposeOther" placeholder="目的を入力" style="display:none;width:100%;padding:10px;font-size:15px;border:1px solid #ddd;border-radius:8px;margin-top:6px;">
     </div>
     <button class="submit-btn btn-use" onclick="recordUse()">使用を記録する</button>
 </div>
@@ -646,6 +653,26 @@
         return sel.value;
     }
 
+    function getSelectedPurpose() {
+        const sel = document.getElementById('usePurposeSelect');
+        if (sel.value === '__other__') {
+            return document.getElementById('usePurposeOther').value.trim();
+        }
+        return sel.value;
+    }
+
+    function onPurposeChange() {
+        const sel = document.getElementById('usePurposeSelect');
+        const otherInput = document.getElementById('usePurposeOther');
+        if (sel.value === '__other__') {
+            otherInput.style.display = '';
+            otherInput.focus();
+        } else {
+            otherInput.style.display = 'none';
+            otherInput.value = '';
+        }
+    }
+
     // ===== 在庫カード表示 =====
     function renderStock() {
         const container = document.getElementById('stockCards');
@@ -714,12 +741,13 @@
         const qty = parseInt(document.getElementById('useQty').value) || 1;
         const staff = document.getElementById('useStaff').value;
         const dest = getSelectedDest();
-        const purpose = document.getElementById('usePurpose').value.trim();
+        const purpose = getSelectedPurpose();
 
         if (!staff) { showToast('使用者を選んでください'); return; }
         if (!dest) { showToast('宛先を選んでください'); return; }
+        if (!purpose) { showToast('目的を選んでください'); return; }
 
-        const fullPurpose = dest + (purpose ? '（' + purpose + '）' : '');
+        const fullPurpose = dest + '／' + purpose;
 
         const currentStock = data.stock[selectedUseStamp] || 0;
         if (qty > currentStock) {
@@ -745,7 +773,9 @@
         document.getElementById('useDest').value = '';
         document.getElementById('useDestOther').style.display = 'none';
         document.getElementById('useDestOther').value = '';
-        document.getElementById('usePurpose').value = '';
+        document.getElementById('usePurposeSelect').value = '';
+        document.getElementById('usePurposeOther').style.display = 'none';
+        document.getElementById('usePurposeOther').value = '';
         document.querySelectorAll('#useStampSelect .stamp-btn').forEach(b => b.classList.remove('selected'));
         selectedUseStamp = null;
 
