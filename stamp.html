@@ -478,8 +478,15 @@
         <select id="useStaff"></select>
     </div>
     <div class="form-group">
-        <label>目的・宛先</label>
-        <textarea id="usePurpose" placeholder="例：ケアマネ○○様へ報告書送付"></textarea>
+        <label>宛先</label>
+        <select id="useDest" style="width:100%;padding:10px;font-size:15px;border:1px solid #ddd;border-radius:8px;">
+            <option value="">-- 選択してください --</option>
+        </select>
+        <input type="text" id="useDestOther" placeholder="宛先を入力" style="display:none;width:100%;padding:10px;font-size:15px;border:1px solid #ddd;border-radius:8px;margin-top:6px;">
+    </div>
+    <div class="form-group">
+        <label>目的・備考</label>
+        <textarea id="usePurpose" placeholder="例：報告書送付"></textarea>
     </div>
     <button class="submit-btn btn-use" onclick="recordUse()">使用を記録する</button>
 </div>
@@ -587,6 +594,58 @@
     let historyDate = new Date();
     let summaryDate = new Date();
 
+    // ===== 宛先データ取得（利用者台帳のケアマネ事業所） =====
+    const SPREADSHEET_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPDnaVvnt2FjU798fRTws1PoDJoLPOi3AmGwcVp-dBkj2zgblVBCEFe1pQ/exec';
+    const DEST_STORAGE_KEY = 'yawaragi_stamp_destinations';
+
+    async function fetchDestinations() {
+        try {
+            const res = await fetch(SPREADSHEET_API_URL);
+            if (!res.ok) return;
+            const json = await res.json();
+            if (!json.users) return;
+            const offices = new Set();
+            json.users.forEach(u => {
+                if (u.cmOffice) offices.add(u.cmOffice);
+            });
+            const list = [...offices].sort((a, b) => a.localeCompare(b, 'ja'));
+            localStorage.setItem(DEST_STORAGE_KEY, JSON.stringify(list));
+            renderDestSelect(list);
+        } catch (e) {
+            // オフライン時はキャッシュから
+            const cached = localStorage.getItem(DEST_STORAGE_KEY);
+            if (cached) renderDestSelect(JSON.parse(cached));
+        }
+    }
+
+    function renderDestSelect(offices) {
+        const sel = document.getElementById('useDest');
+        sel.innerHTML = '<option value="">-- 選択してください --</option>';
+        offices.forEach(name => {
+            sel.innerHTML += '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + '</option>';
+        });
+        sel.innerHTML += '<option value="電算システム">電算システム</option>';
+        sel.innerHTML += '<option value="__other__">その他（手入力）</option>';
+        sel.onchange = function() {
+            const otherInput = document.getElementById('useDestOther');
+            if (this.value === '__other__') {
+                otherInput.style.display = '';
+                otherInput.focus();
+            } else {
+                otherInput.style.display = 'none';
+                otherInput.value = '';
+            }
+        };
+    }
+
+    function getSelectedDest() {
+        const sel = document.getElementById('useDest');
+        if (sel.value === '__other__') {
+            return document.getElementById('useDestOther').value.trim();
+        }
+        return sel.value;
+    }
+
     // ===== 在庫カード表示 =====
     function renderStock() {
         const container = document.getElementById('stockCards');
@@ -654,10 +713,13 @@
         if (!selectedUseStamp) { showToast('切手の種類を選んでください'); return; }
         const qty = parseInt(document.getElementById('useQty').value) || 1;
         const staff = document.getElementById('useStaff').value;
+        const dest = getSelectedDest();
         const purpose = document.getElementById('usePurpose').value.trim();
 
         if (!staff) { showToast('使用者を選んでください'); return; }
-        if (!purpose) { showToast('目的・宛先を入力してください'); return; }
+        if (!dest) { showToast('宛先を選んでください'); return; }
+
+        const fullPurpose = dest + (purpose ? '（' + purpose + '）' : '');
 
         const currentStock = data.stock[selectedUseStamp] || 0;
         if (qty > currentStock) {
@@ -671,7 +733,7 @@
             stamp: selectedUseStamp,
             qty: qty,
             staff: staff,
-            purpose: purpose,
+            purpose: fullPurpose,
             date: new Date().toISOString()
         });
         saveData(data);
@@ -680,6 +742,9 @@
 
         // リセット
         document.getElementById('useQty').value = 1;
+        document.getElementById('useDest').value = '';
+        document.getElementById('useDestOther').style.display = 'none';
+        document.getElementById('useDestOther').value = '';
         document.getElementById('usePurpose').value = '';
         document.querySelectorAll('#useStampSelect .stamp-btn').forEach(b => b.classList.remove('selected'));
         selectedUseStamp = null;
@@ -999,6 +1064,10 @@
         renderStaffSelect();
         renderHistory();
         renderSummary();
+        // 宛先データ取得（キャッシュがあればまず表示、裏で最新を取得）
+        const cached = localStorage.getItem(DEST_STORAGE_KEY);
+        if (cached) renderDestSelect(JSON.parse(cached));
+        fetchDestinations();
     }
 
     initAll();
