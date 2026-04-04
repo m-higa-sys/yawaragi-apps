@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>yawaragiボード</title>
+<style>
+/* ===== リセット・ベース ===== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
+  background: #f0f2f5; color: #1a1a2e; min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+  padding-bottom: 80px;
+}
+
+/* ===== ヘッダー ===== */
+.header {
+  background: linear-gradient(135deg, #2c3e50, #3498db);
+  color: #fff; padding: 16px 20px; position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.header-top { display: flex; justify-content: space-between; align-items: center; }
+.header h1 { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+.header-date { font-size: 15px; opacity: 0.9; margin-top: 4px; }
+.header-actions { display: flex; gap: 8px; }
+.header-btn {
+  background: rgba(255,255,255,0.2); border: none; color: #fff;
+  width: 40px; height: 40px; border-radius: 50%; font-size: 18px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.header-btn:active { background: rgba(255,255,255,0.35); }
+
+/* 単位切替 */
+.unit-toggle {
+  display: flex; gap: 0; margin-top: 12px; background: rgba(255,255,255,0.15);
+  border-radius: 8px; overflow: hidden;
+}
+.unit-btn {
+  flex: 1; padding: 10px; text-align: center; font-size: 15px; font-weight: 600;
+  border: none; background: transparent; color: rgba(255,255,255,0.7); cursor: pointer;
+  transition: all 0.2s;
+}
+.unit-btn.active { background: rgba(255,255,255,0.95); color: #2c3e50; }
+
+/* ===== セクション共通 ===== */
+.section { margin: 12px; background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; }
+.section-header {
+  padding: 14px 16px; font-size: 15px; font-weight: 700;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #eee;
+}
+.section-body { padding: 12px 16px; }
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 12px;
+  font-size: 12px; font-weight: 600;
+}
+.badge-green { background: #d5f5e3; color: #1e8449; }
+.badge-red { background: #fadbd8; color: #c0392b; }
+.badge-gray { background: #eaecee; color: #5d6d7e; }
+
+/* ===== 伝達事項 ===== */
+.msg-item {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+.msg-item:last-child { border-bottom: none; }
+.msg-check {
+  width: 24px; height: 24px; border: 2px solid #bdc3c7; border-radius: 50%;
+  flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  margin-top: 2px; transition: all 0.2s;
+}
+.msg-check.done { background: #27ae60; border-color: #27ae60; color: #fff; }
+.msg-text { flex: 1; font-size: 14px; line-height: 1.5; }
+.msg-text.done { text-decoration: line-through; color: #aaa; }
+.msg-author { font-size: 11px; color: #999; margin-top: 2px; }
+.msg-empty { text-align: center; padding: 16px; color: #aaa; font-size: 13px; }
+
+/* ===== 出席予定グリッド ===== */
+.attendance-stats {
+  display: flex; gap: 12px; padding: 0 16px 8px; font-size: 13px;
+}
+.stat-item { display: flex; align-items: center; gap: 4px; }
+.stat-dot { width: 8px; height: 8px; border-radius: 50%; }
+.stat-dot.green { background: #27ae60; }
+.stat-dot.red { background: #e74c3c; }
+
+.user-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px; padding: 4px 16px 16px;
+}
+.user-card {
+  padding: 12px 8px; border-radius: 10px; text-align: center;
+  cursor: pointer; transition: all 0.15s; border-left: 4px solid;
+  position: relative;
+}
+.user-card.present {
+  background: #fff; border-left-color: #27ae60;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.user-card.absent {
+  background: #f8f9fa; border-left-color: #e74c3c; opacity: 0.7;
+}
+.user-card:active { transform: scale(0.96); }
+.user-name { font-size: 14px; font-weight: 600; }
+.user-card.absent .user-name { text-decoration: line-through; color: #999; }
+.user-status { font-size: 11px; margin-top: 4px; }
+.user-care { font-size: 10px; color: #999; margin-top: 2px; }
+.user-reason { font-size: 10px; color: #e74c3c; margin-top: 2px; }
+
+/* ===== 今後の欠席予定 ===== */
+.absence-list { font-size: 13px; }
+.absence-row {
+  display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f5f5f5;
+  align-items: center;
+}
+.absence-row:last-child { border-bottom: none; }
+.absence-date { font-weight: 600; min-width: 90px; color: #e74c3c; }
+.absence-name { font-weight: 500; min-width: 70px; }
+.absence-info { color: #777; flex: 1; }
+
+/* ===== 配置表リンク ===== */
+.haichi-link {
+  display: block; text-align: center; padding: 16px;
+  color: #3498db; font-size: 15px; font-weight: 600;
+  text-decoration: none;
+}
+.haichi-link:active { background: #eaf2f8; }
+
+/* ===== FAB（伝達追加ボタン）===== */
+.fab {
+  position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
+  background: linear-gradient(135deg, #27ae60, #2ecc71); color: #fff;
+  border: none; border-radius: 50%; font-size: 28px; cursor: pointer;
+  box-shadow: 0 4px 12px rgba(39,174,96,0.4); z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+}
+.fab:active { transform: scale(0.92); }
+
+/* ===== モーダル ===== */
+.modal-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 200; justify-content: center;
+  align-items: flex-end; padding: 0;
+}
+.modal-overlay.show { display: flex; }
+.modal-content {
+  background: #fff; border-radius: 16px 16px 0 0; width: 100%; max-width: 500px;
+  max-height: 85vh; overflow-y: auto; padding: 20px; padding-bottom: 40px;
+  animation: slideUp 0.25s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+
+/* モーダル内フォーム */
+.form-group { margin-bottom: 16px; }
+.form-label { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; display: block; }
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 8px 16px; border-radius: 20px; border: 2px solid #ddd;
+  background: #fff; font-size: 13px; cursor: pointer; transition: all 0.15s;
+  font-weight: 500;
+}
+.chip.active { border-color: #3498db; background: #eaf2f8; color: #2980b9; }
+.chip:active { transform: scale(0.95); }
+
+input[type="date"], input[type="text"], textarea, select {
+  width: 100%; padding: 10px 12px; border: 2px solid #ddd; border-radius: 8px;
+  font-size: 15px; font-family: inherit; -webkit-appearance: none;
+}
+input:focus, textarea:focus, select:focus { border-color: #3498db; outline: none; }
+textarea { resize: vertical; min-height: 60px; }
+select { background: #fff; }
+
+.date-range { display: flex; gap: 8px; align-items: center; }
+.date-range input { flex: 1; }
+
+.cm-notice {
+  background: #fef9e7; border-left: 4px solid #f39c12; padding: 10px 12px;
+  border-radius: 0 8px 8px 0; font-size: 13px; line-height: 1.5;
+}
+.cm-notice.no-email { background: #f8f9fa; border-left-color: #bdc3c7; color: #999; }
+
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+.btn {
+  flex: 1; padding: 14px; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700; cursor: pointer; text-align: center;
+}
+.btn-cancel { background: #eee; color: #666; }
+.btn-submit { background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff; }
+.btn-submit-green { background: linear-gradient(135deg, #27ae60, #219a52); color: #fff; }
+.btn:active { opacity: 0.85; }
+.btn:disabled { opacity: 0.5; }
+
+/* ===== セットアップ画面 ===== */
+.setup-screen {
+  max-width: 500px; margin: 40px auto; padding: 20px;
+}
+.setup-card {
+  background: #fff; border-radius: 16px; padding: 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.setup-card h2 { font-size: 18px; margin-bottom: 16px; text-align: center; }
+.step { margin-bottom: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px; }
+.step-num { font-weight: 700; color: #3498db; margin-right: 4px; }
+
+/* ===== 設定パネル ===== */
+.settings-panel {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: #f0f2f5; z-index: 150; overflow-y: auto; padding: 20px;
+}
+.settings-panel.show { display: block; }
+.settings-back {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: #3498db; font-size: 14px; font-weight: 600; cursor: pointer;
+  margin-bottom: 16px; background: none; border: none;
+}
+
+/* ===== トースト ===== */
+.toast {
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px);
+  background: #2c3e50; color: #fff; padding: 12px 24px; border-radius: 8px;
+  font-size: 14px; z-index: 300; opacity: 0; transition: all 0.3s;
+  pointer-events: none; white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ===== ローディング ===== */
+.loading { text-align: center; padding: 40px; color: #999; }
+.spinner {
+  display: inline-block; width: 24px; height: 24px; border: 3px solid #ddd;
+  border-top-color: #3498db; border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin-bottom: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== レスポンシブ ===== */
+@media (min-width: 768px) {
+  .user-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .modal-content { border-radius: 16px; margin: auto; max-height: 80vh; }
+  .modal-overlay { align-items: center; padding: 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <div class="header-top">
+    <div>
+      <h1>yawaragi</h1>
+      <div class="header-date" id="dateDisplay"></div>
+    </div>
+    <div class="header-actions">
+      <button class="header-btn" onclick="loadData()" title="更新">&#8635;</button>
+      <button class="header-btn" onclick="openSettings()" title="設定">&#9881;</button>
+    </div>
+  </div>
+  <div class="unit-toggle">
+    <button class="unit-btn active" data-unit="am" onclick="switchUnit('am')">午前の部（9:00-12:00）</button>
+    <button class="unit-btn" data-unit="pm" onclick="switchUnit('pm')">午後の部（13:30-16:30）</button>
+  </div>
+</div>
+
+<!-- メインコンテンツ -->
+<div id="mainContent">
+  <div class="loading" id="loadingArea">
+    <div class="spinner"></div>
+    <div>データを読み込んでいます...</div>
+  </div>
+</div>
+
+<!-- セットアップ画面（GAS未設定時）-->
+<div class="setup-screen" id="setupScreen" style="display:none;">
+  <div class="setup-card">
+    <h2>yawaragiボード セットアップ</h2>
+    <p style="text-align:center;color:#777;margin-bottom:20px;font-size:14px;">
+      初回のみ設定が必要です
+    </p>
+    <div class="step">
+      <span class="step-num">1.</span> 利用者台帳のスプレッドシートを開く
+    </div>
+    <div class="step">
+      <span class="step-num">2.</span> 「拡張機能」→「Apps Script」を開く
+    </div>
+    <div class="step">
+      <span class="step-num">3.</span> gas_yawaragiボード.gs のコードを貼り付ける
+    </div>
+    <div class="step">
+      <span class="step-num">4.</span> setupSheets() を実行（シート3つが作成される）
+    </div>
+    <div class="step">
+      <span class="step-num">5.</span> 「デプロイ」→「新しいデプロイ」→ ウェブアプリとしてデプロイ
+    </div>
+    <div class="step">
+      <span class="step-num">6.</span> デプロイURLを下に貼り付け
+    </div>
+    <div class="form-group" style="margin-top:16px;">
+      <label class="form-label">GAS デプロイURL</label>
+      <input type="text" id="setupGasUrl" placeholder="https://script.google.com/macros/s/...">
+    </div>
+    <button class="btn btn-submit-green" style="width:100%;" onclick="saveSetupUrl()">設定を保存して開始</button>
+  </div>
+</div>
+
+<!-- 伝達事項追加FAB -->
+<button class="fab" id="fabBtn" onclick="openMessageModal()" style="display:none;">+</button>
+
+<!-- 欠席登録モーダル -->
+<div class="modal-overlay" id="absenceModal">
+  <div class="modal-content">
+    <div class="modal-title" id="absenceTitle">欠席登録</div>
+
+    <div class="form-group">
+      <label class="form-label">いつ休む？</label>
+      <div class="chip-group" id="dateMode">
+        <div class="chip active" onclick="setDateMode('today')">今日</div>
+        <div class="chip" onclick="setDateMode('single')">日付を選ぶ</div>
+        <div class="chip" onclick="setDateMode('range')">期間で選ぶ</div>
+      </div>
+      <div id="dateSingle" style="display:none;margin-top:8px;">
+        <input type="date" id="absenceDate">
+      </div>
+      <div id="dateRange" style="display:none;margin-top:8px;">
+        <div class="date-range">
+          <input type="date" id="absenceDateFrom">
+          <span>〜</span>
+          <input type="date" id="absenceDateTo">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">午前？午後？</label>
+      <div class="chip-group" id="unitChips">
+        <div class="chip active" data-val="午前" onclick="setAbsenceUnit(this)">午前</div>
+        <div class="chip" data-val="午後" onclick="setAbsenceUnit(this)">午後</div>
+        <div class="chip" data-val="終日" onclick="setAbsenceUnit(this)">終日（午前＋午後）</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">理由</label>
+      <div class="chip-group" id="reasonChips">
+        <div class="chip active" data-val="体調不良" onclick="setReason(this)">体調不良</div>
+        <div class="chip" data-val="通院" onclick="setReason(this)">通院</div>
+        <div class="chip" data-val="私用" onclick="setReason(this)">私用</div>
+        <div class="chip" data-val="家族の都合" onclick="setReason(this)">家族の都合</div>
+        <div class="chip" data-val="入院" onclick="setReason(this)">入院</div>
+        <div class="chip" data-val="その他" onclick="setReason(this)">その他</div>
+      </div>
+      <div id="reasonOther" style="display:none;margin-top:8px;">
+        <input type="text" id="reasonText" placeholder="理由を入力">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">誰から連絡？</label>
+      <select id="absenceReporter">
+        <option value="">選択してください</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">補足（任意）</label>
+      <input type="text" id="absenceSupplement" placeholder="例: 来週には復帰予定">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">ケアマネ通知</label>
+      <div id="cmNotice" class="cm-notice no-email">ケアマネのメールアドレスが未登録です</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeAbsenceModal()">キャンセル</button>
+      <button class="btn btn-submit" id="absenceSubmitBtn" onclick="submitAbsence()">欠席を登録</button>
+    </div>
+  </div>
+</div>
+
+<!-- 伝達事項追加モーダル -->
+<div class="modal-overlay" id="messageModal">
+  <div class="modal-content">
+    <div class="modal-title">伝達事項を追加</div>
+
+    <div class="form-group">
+      <label class="form-label">内容</label>
+      <textarea id="msgContent" rows="3" placeholder="スタッフに伝えたいことを入力"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">登録者</label>
+      <select id="msgAuthor">
+        <option value="社長">社長</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">対象日</label>
+      <input type="date" id="msgDate">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeMessageModal()">キャンセル</button>
+      <button class="btn btn-submit-green" onclick="submitMessage()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 設定パネル -->
+<div class="settings-panel" id="settingsPanel">
+  <button class="settings-back" onclick="closeSettings()">&#9664; 戻る</button>
+  <div class="section">
+    <div class="section-header">GAS設定</div>
+    <div class="section-body">
+      <div class="form-group">
+        <label class="form-label">デプロイURL</label>
+        <input type="text" id="settingsGasUrl" placeholder="https://script.google.com/macros/s/...">
+      </div>
+      <button class="btn btn-submit-green" style="width:100%;" onclick="saveGasUrl()">保存</button>
+    </div>
+  </div>
+  <div class="section" style="margin-top:12px;">
+    <div class="section-header">スタッフ一覧</div>
+    <div class="section-body">
+      <div id="staffListArea"></div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input type="text" id="newStaffName" placeholder="名前を入力">
+        <button class="btn btn-submit-green" style="flex:0 0 auto;padding:10px 16px;" onclick="addStaff()">追加</button>
+      </div>
+    </div>
+  </div>
+  <div class="section" style="margin-top:12px;">
+    <div class="section-header">リンク</div>
+    <div class="section-body">
+      <a href="genba.html" class="haichi-link" style="padding:8px 0;">配置表（現場配置管理）を開く &#8594;</a>
+    </div>
+  </div>
+  <div class="section" style="margin-top:12px;">
+    <div class="section-header">データ管理</div>
+    <div class="section-body">
+      <button class="btn btn-cancel" style="width:100%;margin-bottom:8px;" onclick="exportLocalData()">設定データをエクスポート</button>
+      <button class="btn btn-cancel" style="width:100%;" onclick="clearLocalData()">ローカルデータをクリア</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== 設定・状態 =====
+var GAS_URL = localStorage.getItem('yawaragi_board_gas_url') || '';
+var STAFF = JSON.parse(localStorage.getItem('yawaragi_board_staff') ||
+  '["星野","勝又","下浦","工藤","本橋","清水","鈴木","比嘉"]');
+var currentUnit = new Date().getHours() < 12 ? 'am' : 'pm';
+var currentDate = todayStr();
+var boardData = null;
+var cmContacts = [];
+var userPatterns = {};
+var refreshTimer = null;
+
+// 欠席モーダル用の一時データ
+var absTarget = { name: '', cmName: '', cmOffice: '', cmEmail: '' };
+
+// ===== 初期化 =====
+document.addEventListener('DOMContentLoaded', function() {
+  if (!GAS_URL) {
+    document.getElementById('loadingArea').style.display = 'none';
+    document.getElementById('setupScreen').style.display = 'block';
+    return;
+  }
+  initBoard();
+});
+
+function initBoard() {
+  updateDateDisplay();
+  switchUnit(currentUnit);
+  loadData();
+  refreshTimer = setInterval(loadData, 30000);
+  document.getElementById('fabBtn').style.display = 'flex';
+  document.getElementById('setupScreen').style.display = 'none';
+}
+
+// ===== 日付 =====
+function todayStr() {
+  var d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+function getDow(dateStr) {
+  var p = dateStr.split('-');
+  var d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+  return ['日','月','火','水','木','金','土'][d.getDay()];
+}
+
+function fmtDateJP(dateStr) {
+  var p = dateStr.split('-');
+  return parseInt(p[1]) + '月' + parseInt(p[2]) + '日（' + getDow(dateStr) + '）';
+}
+
+function updateDateDisplay() {
+  document.getElementById('dateDisplay').textContent = fmtDateJP(currentDate);
+}
+
+// ===== 単位切替 =====
+function switchUnit(unit) {
+  currentUnit = unit;
+  document.querySelectorAll('.unit-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.unit === unit);
+  });
+  renderBoard();
+}
+
+// ===== データ読み込み（JSONP）=====
+function loadData(dateStr) {
+  if (!GAS_URL) return;
+  if (dateStr) currentDate = dateStr;
+
+  var cbName = '_cb_' + Date.now();
+  window[cbName] = function(data) {
+    delete window[cbName];
+    var s = document.getElementById('jsonp_' + cbName);
+    if (s) s.remove();
+
+    if (data.error) {
+      showToast('エラー: ' + data.error);
+      return;
+    }
+
+    boardData = data;
+    if (data.cmContacts) cmContacts = data.cmContacts;
+    if (data.patterns) userPatterns = data.patterns;
+    renderBoard();
+    document.getElementById('loadingArea').style.display = 'none';
+  };
+
+  var script = document.createElement('script');
+  script.id = 'jsonp_' + cbName;
+  script.src = GAS_URL + '?callback=' + cbName + '&action=all&date=' + currentDate;
+  script.onerror = function() {
+    delete window[cbName];
+    script.remove();
+    showToast('通信エラー。GAS URLを確認してください。');
+    document.getElementById('loadingArea').innerHTML =
+      '<div style="color:#e74c3c;">通信エラー<br><small>設定を確認してください</small></div>';
+  };
+  document.body.appendChild(script);
+}
+
+// ===== POST送信（no-cors）=====
+function postData(payload, onDone) {
+  fetch(GAS_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(payload)
+  }).then(function() {
+    // no-corsなのでレスポンスは読めない。少し待ってからリロード
+    setTimeout(function() {
+      loadData();
+      if (onDone) onDone();
+    }, 2000);
+  }).catch(function(err) {
+    showToast('送信エラー: ' + err.message);
+    if (onDone) onDone();
+  });
+}
+
+// ===== メイン描画 =====
+function renderBoard() {
+  if (!boardData) return;
+  var main = document.getElementById('mainContent');
+
+  var att = boardData.attendance || { am: [], pm: [] };
+  var msgs = boardData.messages || [];
+  var absences = boardData.absences || [];
+
+  var users = currentUnit === 'am' ? att.am : att.pm;
+  var present = users.filter(function(u) { return u.status === '出席'; });
+  var absent = users.filter(function(u) { return u.status === '欠席'; });
+
+  var html = '';
+
+  // 伝達事項
+  html += '<div class="section">';
+  html += '<div class="section-header">伝達事項';
+  if (msgs.length > 0) html += ' <span class="badge badge-green">' + msgs.length + '件</span>';
+  html += '</div>';
+  if (msgs.length === 0) {
+    html += '<div class="msg-empty">今日の伝達事項はありません</div>';
+  } else {
+    html += '<div class="section-body">';
+    msgs.forEach(function(m) {
+      html += '<div class="msg-item">';
+      html += '<div class="msg-check ' + (m.done ? 'done' : '') + '" onclick="toggleMessage(' + m.row + ', ' + m.done + ')">';
+      if (m.done) html += '&#10003;';
+      html += '</div>';
+      html += '<div>';
+      html += '<div class="msg-text ' + (m.done ? 'done' : '') + '">' + escHtml(m.content) + '</div>';
+      html += '<div class="msg-author">' + escHtml(m.author) + '</div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // 出席予定
+  html += '<div class="section">';
+  html += '<div class="section-header">出席予定';
+  html += ' <span class="badge badge-green">' + present.length + '人</span>';
+  if (absent.length > 0) html += ' <span class="badge badge-red">' + absent.length + '人欠席</span>';
+  html += '</div>';
+
+  if (users.length === 0) {
+    html += '<div class="msg-empty">この単位の利用予定者はいません</div>';
+  } else {
+    html += '<div class="user-grid">';
+    // 出席者を先に、欠席者を後に
+    present.concat(absent).forEach(function(u) {
+      var cls = u.status === '出席' ? 'present' : 'absent';
+      html += '<div class="user-card ' + cls + '" onclick="onUserTap(\'' + escAttr(u.name) + '\', \'' + escAttr(u.cmName) + '\', \'' + escAttr(u.cmOffice) + '\', \'' + escAttr(u.status) + '\')">';
+      html += '<div class="user-name">' + escHtml(u.name) + '</div>';
+      if (u.status === '欠席') {
+        html += '<div class="user-reason">' + escHtml(u.reason || '欠席') + '</div>';
+      }
+      if (u.care) {
+        html += '<div class="user-care">' + escHtml(u.care) + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // 今後の欠席予定（今日以降）
+  var futureAbs = absences.filter(function(a) { return a.date > currentDate; });
+  if (futureAbs.length > 0) {
+    html += '<div class="section">';
+    html += '<div class="section-header">今後の欠席予定 <span class="badge badge-gray">' + futureAbs.length + '件</span></div>';
+    html += '<div class="section-body absence-list">';
+    futureAbs.forEach(function(a) {
+      html += '<div class="absence-row">';
+      html += '<div class="absence-date">' + fmtDateJP(a.date) + '</div>';
+      html += '<div class="absence-name">' + escHtml(a.name) + '</div>';
+      html += '<div class="absence-info">' + escHtml(a.unit + ' ' + a.reason) + '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // 配置表リンク
+  html += '<div class="section">';
+  html += '<a href="genba.html" class="haichi-link">配置表を開く &#8594;</a>';
+  html += '</div>';
+
+  main.innerHTML = html;
+}
+
+// ===== 利用者カードタップ =====
+function onUserTap(name, cmName, cmOffice, status) {
+  if (status === '欠席') {
+    // 欠席者をタップ → 欠席取消の確認
+    if (confirm(name + 'さんの欠席を取り消しますか？')) {
+      var unit = currentUnit === 'am' ? '午前' : '午後';
+      postData({
+        action: 'cancel_absence',
+        name: name,
+        date: currentDate,
+        unit: unit
+      }, function() {
+        showToast('欠席を取り消しました');
+      });
+    }
+    return;
+  }
+  // 出席者をタップ → 欠席登録モーダル
+  openAbsenceModal(name, cmName, cmOffice);
+}
+
+// ===== 欠席登録モーダル =====
+function openAbsenceModal(name, cmName, cmOffice) {
+  absTarget = { name: name, cmName: cmName, cmOffice: cmOffice, cmEmail: '' };
+
+  document.getElementById('absenceTitle').textContent = name + 'さんの欠席登録';
+
+  // デフォルトリセット
+  setDateMode('today');
+  var defaultUnit = currentUnit === 'am' ? '午前' : '午後';
+  document.querySelectorAll('#unitChips .chip').forEach(function(c) {
+    c.classList.toggle('active', c.dataset.val === defaultUnit);
+  });
+  document.querySelectorAll('#reasonChips .chip').forEach(function(c) {
+    c.classList.toggle('active', c.dataset.val === '体調不良');
+  });
+  document.getElementById('reasonOther').style.display = 'none';
+  document.getElementById('reasonText').value = '';
+  document.getElementById('absenceSupplement').value = '';
+  document.getElementById('absenceDate').value = currentDate;
+  document.getElementById('absenceDateFrom').value = currentDate;
+  document.getElementById('absenceDateTo').value = currentDate;
+
+  // 連絡者ドロップダウン
+  var sel = document.getElementById('absenceReporter');
+  sel.innerHTML = '<option value="">選択してください</option>';
+  STAFF.forEach(function(s) {
+    sel.innerHTML += '<option value="' + escAttr(s) + '">' + escHtml(s) + '</option>';
+  });
+
+  // ケアマネ情報
+  var email = findCmEmail(cmOffice);
+  absTarget.cmEmail = email;
+  var notice = document.getElementById('cmNotice');
+  if (email) {
+    notice.className = 'cm-notice';
+    notice.innerHTML = '<strong>' + escHtml(cmName || cmOffice) + '</strong>にメールで通知します<br>' +
+      '<small>送信先: ' + escHtml(email) + '</small>';
+  } else if (cmOffice || cmName) {
+    notice.className = 'cm-notice no-email';
+    notice.innerHTML = escHtml(cmName || '') + '（' + escHtml(cmOffice || '') + '）<br>' +
+      '<small>メールアドレスが未登録です。スプレッドシートの「ケアマネ連絡先」シートに登録してください。</small>';
+  } else {
+    notice.className = 'cm-notice no-email';
+    notice.textContent = 'ケアマネ情報がありません';
+  }
+
+  document.getElementById('absenceModal').classList.add('show');
+  document.getElementById('absenceSubmitBtn').disabled = false;
+}
+
+function closeAbsenceModal() {
+  document.getElementById('absenceModal').classList.remove('show');
+}
+
+function setDateMode(mode) {
+  document.querySelectorAll('#dateMode .chip').forEach(function(c) {
+    c.classList.remove('active');
+  });
+  event.target.classList.add('active');
+  document.getElementById('dateSingle').style.display = mode === 'single' ? 'block' : 'none';
+  document.getElementById('dateRange').style.display = mode === 'range' ? 'block' : 'none';
+}
+
+function setAbsenceUnit(el) {
+  document.querySelectorAll('#unitChips .chip').forEach(function(c) { c.classList.remove('active'); });
+  el.classList.add('active');
+}
+
+function setReason(el) {
+  document.querySelectorAll('#reasonChips .chip').forEach(function(c) { c.classList.remove('active'); });
+  el.classList.add('active');
+  document.getElementById('reasonOther').style.display = el.dataset.val === 'その他' ? 'block' : 'none';
+}
+
+function submitAbsence() {
+  var btn = document.getElementById('absenceSubmitBtn');
+  btn.disabled = true;
+
+  // 日付を取得
+  var dates = [];
+  var activeDate = document.querySelector('#dateMode .chip.active');
+  var mode = 'today';
+  if (activeDate) {
+    if (activeDate.textContent.indexOf('日付') >= 0) mode = 'single';
+    else if (activeDate.textContent.indexOf('期間') >= 0) mode = 'range';
+  }
+
+  if (mode === 'today') {
+    dates = [currentDate];
+  } else if (mode === 'single') {
+    var d = document.getElementById('absenceDate').value;
+    if (!d) { showToast('日付を選択してください'); btn.disabled = false; return; }
+    dates = [d];
+  } else {
+    var from = document.getElementById('absenceDateFrom').value;
+    var to = document.getElementById('absenceDateTo').value;
+    if (!from || !to) { showToast('期間を選択してください'); btn.disabled = false; return; }
+    dates = generateDateRange(from, to);
+    if (dates.length === 0) { showToast('開始日は終了日より前にしてください'); btn.disabled = false; return; }
+    if (dates.length > 60) { showToast('期間が長すぎます（最大60日）'); btn.disabled = false; return; }
+  }
+
+  // 単位
+  var unitEl = document.querySelector('#unitChips .chip.active');
+  var unit = unitEl ? unitEl.dataset.val : '終日';
+
+  // 理由
+  var reasonEl = document.querySelector('#reasonChips .chip.active');
+  var reason = reasonEl ? reasonEl.dataset.val : '';
+  if (reason === 'その他') {
+    reason = document.getElementById('reasonText').value || 'その他';
+  }
+
+  var reporter = document.getElementById('absenceReporter').value;
+  var supplement = document.getElementById('absenceSupplement').value;
+
+  var payload = {
+    action: 'absence',
+    name: absTarget.name,
+    dates: dates,
+    unit: unit,
+    reason: reason,
+    reporter: reporter,
+    supplement: supplement,
+    cmEmail: absTarget.cmEmail,
+    cmName: absTarget.cmName,
+    cmOffice: absTarget.cmOffice
+  };
+
+  showToast('登録中...');
+  closeAbsenceModal();
+
+  postData(payload, function() {
+    showToast(absTarget.name + 'さんの欠席を登録しました');
+  });
+}
+
+// 日付範囲を生成
+function generateDateRange(from, to) {
+  var dates = [];
+  var pf = from.split('-'), pt = to.split('-');
+  var d = new Date(parseInt(pf[0]), parseInt(pf[1]) - 1, parseInt(pf[2]));
+  var end = new Date(parseInt(pt[0]), parseInt(pt[1]) - 1, parseInt(pt[2]));
+  while (d <= end) {
+    dates.push(d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0'));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
+// ケアマネのメールアドレスを検索
+function findCmEmail(cmOffice) {
+  if (!cmOffice) return '';
+  for (var i = 0; i < cmContacts.length; i++) {
+    if (cmContacts[i].office === cmOffice && cmContacts[i].email) {
+      return cmContacts[i].email;
+    }
+  }
+  return '';
+}
+
+// ===== 伝達事項モーダル =====
+function openMessageModal() {
+  document.getElementById('msgContent').value = '';
+  document.getElementById('msgDate').value = currentDate;
+
+  var sel = document.getElementById('msgAuthor');
+  sel.innerHTML = '<option value="社長">社長</option>';
+  STAFF.forEach(function(s) {
+    sel.innerHTML += '<option value="' + escAttr(s) + '">' + escHtml(s) + '</option>';
+  });
+
+  document.getElementById('messageModal').classList.add('show');
+}
+
+function closeMessageModal() {
+  document.getElementById('messageModal').classList.remove('show');
+}
+
+function submitMessage() {
+  var content = document.getElementById('msgContent').value.trim();
+  if (!content) { showToast('内容を入力してください'); return; }
+
+  var payload = {
+    action: 'message',
+    content: content,
+    author: document.getElementById('msgAuthor').value,
+    date: document.getElementById('msgDate').value || currentDate
+  };
+
+  closeMessageModal();
+  showToast('追加中...');
+
+  postData(payload, function() {
+    showToast('伝達事項を追加しました');
+  });
+}
+
+// 伝達事項の完了トグル
+function toggleMessage(row, isDone) {
+  if (isDone) return; // 完了済みは戻さない（シンプルに）
+  postData({
+    action: 'complete_message',
+    row: row
+  }, function() {
+    showToast('完了にしました');
+  });
+}
+
+// ===== 設定 =====
+function openSettings() {
+  document.getElementById('settingsGasUrl').value = GAS_URL;
+  renderStaffList();
+  document.getElementById('settingsPanel').classList.add('show');
+}
+
+function closeSettings() {
+  document.getElementById('settingsPanel').classList.remove('show');
+}
+
+function saveGasUrl() {
+  var url = document.getElementById('settingsGasUrl').value.trim();
+  if (!url) { showToast('URLを入力してください'); return; }
+  localStorage.setItem('yawaragi_board_gas_url', url);
+  GAS_URL = url;
+  showToast('保存しました');
+  closeSettings();
+  loadData();
+}
+
+function saveSetupUrl() {
+  var url = document.getElementById('setupGasUrl').value.trim();
+  if (!url) { showToast('URLを入力してください'); return; }
+  localStorage.setItem('yawaragi_board_gas_url', url);
+  GAS_URL = url;
+  initBoard();
+}
+
+function renderStaffList() {
+  var area = document.getElementById('staffListArea');
+  area.innerHTML = '';
+  STAFF.forEach(function(s, i) {
+    var div = document.createElement('div');
+    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee;';
+    div.innerHTML = '<span>' + escHtml(s) + '</span>' +
+      '<button onclick="removeStaff(' + i + ')" style="background:none;border:none;color:#e74c3c;font-size:18px;cursor:pointer;padding:4px 8px;">&times;</button>';
+    area.appendChild(div);
+  });
+}
+
+function addStaff() {
+  var name = document.getElementById('newStaffName').value.trim();
+  if (!name) return;
+  STAFF.push(name);
+  localStorage.setItem('yawaragi_board_staff', JSON.stringify(STAFF));
+  document.getElementById('newStaffName').value = '';
+  renderStaffList();
+}
+
+function removeStaff(index) {
+  if (!confirm(STAFF[index] + 'を削除しますか？')) return;
+  STAFF.splice(index, 1);
+  localStorage.setItem('yawaragi_board_staff', JSON.stringify(STAFF));
+  renderStaffList();
+}
+
+function exportLocalData() {
+  var data = {
+    gas_url: GAS_URL,
+    staff: STAFF,
+    exported: new Date().toISOString()
+  };
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'yawaragi_board_settings.json';
+  a.click();
+}
+
+function clearLocalData() {
+  if (!confirm('ローカルデータ（GAS URL・スタッフ一覧）をクリアしますか？')) return;
+  localStorage.removeItem('yawaragi_board_gas_url');
+  localStorage.removeItem('yawaragi_board_staff');
+  location.reload();
+}
+
+// ===== ユーティリティ =====
+function escHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function escAttr(s) {
+  return (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function() { t.classList.remove('show'); }, 3000);
+}
+</script>
+</body>
+</html>
