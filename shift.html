@@ -329,6 +329,84 @@ body {
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
 
+/* 通知バナー */
+.notif-banner {
+  background: #fff3e0;
+  border: 2px solid #ff9800;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 12px 16px;
+  font-size: 13px;
+}
+.notif-banner h3 { font-size: 14px; color: #e65100; margin-bottom: 8px; }
+.notif-item {
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-left: 4px solid #ff9800;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.notif-item .notif-date { font-size: 11px; color: #999; margin-top: 4px; }
+.notif-dismiss {
+  display: block;
+  text-align: center;
+  margin-top: 8px;
+  padding: 8px;
+  background: #ff9800;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 社長休みUI（管理者のみ） */
+.boss-rest-section {
+  background: #fce4ec;
+  border: 2px solid #e91e63;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 12px 16px;
+  display: none;
+}
+.boss-rest-section h3 { font-size: 14px; color: #c2185b; margin-bottom: 8px; }
+.boss-rest-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.boss-rest-chip {
+  background: #fff;
+  border: 1px solid #e91e63;
+  border-radius: 16px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #c2185b;
+  cursor: pointer;
+}
+.boss-rest-chip:hover { background: #fce4ec; text-decoration: line-through; }
+.boss-rest-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.boss-rest-add input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.boss-rest-add button {
+  padding: 6px 14px;
+  background: #e91e63;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* 希望条件セクション */
 .cond-toggle-btn {
   background: #e8f0fe;
@@ -570,6 +648,23 @@ body {
   <div class="count-text" id="myCount"></div>
 </div>
 
+<!-- 通知バナー -->
+<div class="notif-banner" id="notifBanner" style="display:none">
+  <h3>お知らせ</h3>
+  <div id="notifContent"></div>
+  <button class="notif-dismiss" onclick="dismissNotifications()">確認しました</button>
+</div>
+
+<!-- 社長休みUI（管理者のみ） -->
+<div class="boss-rest-section" id="bossRestSection">
+  <h3>社長の休み登録（スタッフには非表示）</h3>
+  <div class="boss-rest-chips" id="bossRestChips"></div>
+  <div class="boss-rest-add">
+    <input type="date" id="bossRestDate">
+    <button onclick="addBossRest()">追加</button>
+  </div>
+</div>
+
 <!-- 全員サマリー（管理者用） -->
 <div class="admin-summary" id="adminSummary" style="display:none">
   <h3>全員の希望休</h3>
@@ -788,7 +883,7 @@ async function loadData() {
   if (!currentUser) return;
   try {
     document.getElementById('loading').style.display = 'block';
-    const data = await apiCall({ action: 'getAllData', month: currentMonth });
+    const data = await apiCall({ action: 'getAllData', month: currentMonth, staff: currentUser });
 
     if (data.error) { showToast('エラー: ' + data.error); return; }
 
@@ -800,6 +895,11 @@ async function loadData() {
     myWishes = allWishes.filter(w => w.staff === currentUser);
 
     renderAll();
+
+    // 通知表示
+    if (data.notifications && data.notifications.length > 0) {
+      showNotifications(data.notifications);
+    }
   } catch (e) {
     showToast('通信エラー: ' + e.message);
   } finally {
@@ -810,6 +910,8 @@ async function loadData() {
 // ============================
 // データ読み込み（管理者用）
 // ============================
+let bossRests = [];
+
 async function loadDataAdmin() {
   try {
     document.getElementById('loading').style.display = 'block';
@@ -821,8 +923,10 @@ async function loadDataAdmin() {
     if (data.month) currentMonth = data.month;
     allWishes = data.wishes || [];
     allAbsences = data.absences || [];
+    bossRests = data.bossRests || [];
 
     renderAllAdmin();
+    renderBossRests();
   } catch (e) {
     showToast('通信エラー: ' + e.message);
   } finally {
@@ -1162,12 +1266,12 @@ async function toggleWish(day, isMine) {
       if (data.success) {
         myWishes.push({ staff: currentUser, day: day, timestamp: '' });
         if (data.warning) {
-          alert('⚠ ' + day + '日を登録しましたが注意があります\n\n' + data.warning);
+          alert('⚠ ' + day + '日を登録しました\n\n' + data.warning);
         } else {
           showToast(day + '日を希望休に登録しました');
         }
       } else if (data.blocked) {
-        alert(data.message);
+        alert('❌ ' + day + '日は登録できません\n\n' + data.message);
       } else {
         showToast(data.message || 'エラー');
       }
@@ -1384,6 +1488,8 @@ function logout() {
   document.getElementById('condSection').style.display = 'none';
   document.getElementById('absenceToggleBtn').style.display = 'none';
   document.getElementById('absenceSection').style.display = 'none';
+  document.getElementById('bossRestSection').style.display = 'none';
+  document.getElementById('notifBanner').style.display = 'none';
   document.getElementById('employeeRules').style.display = 'none';
   document.getElementById('calGrid').innerHTML = '';
   showStaffModal();
@@ -1403,14 +1509,20 @@ function renderAbsenceNotice() {
     return;
   }
 
-  notice.style.display = 'block';
-  list.innerHTML = '';
-  allAbsences.forEach(a => {
-    const item = document.createElement('div');
-    item.className = 'absence-notice-item';
-    item.textContent = a.staff + '　' + a.startDate + '〜' + a.endDate + (a.reason ? '（' + a.reason + '）' : '') + ' → この日は外せない予定があります';
-    list.appendChild(item);
-  });
+  // 管理者は全情報表示、スタッフは「外せない予定がある」とだけ表示
+  if (isAdmin) {
+    notice.style.display = 'block';
+    list.innerHTML = '';
+    allAbsences.forEach(a => {
+      const item = document.createElement('div');
+      item.className = 'absence-notice-item';
+      item.textContent = a.staff + '　' + a.startDate + '〜' + a.endDate + (a.reason ? '（' + a.reason + '）' : '') + ' → この日は外せない予定があります';
+      list.appendChild(item);
+    });
+  } else {
+    // スタッフ用：外せない予定がある日だけ表示（名前・理由は非表示）
+    notice.style.display = 'none';
+  }
 }
 
 function toggleAbsences() {
@@ -1736,6 +1848,106 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ============================
+// 通知表示
+// ============================
+let currentNotifications = [];
+
+function showNotifications(notifications) {
+  currentNotifications = notifications;
+  const banner = document.getElementById('notifBanner');
+  const content = document.getElementById('notifContent');
+  content.innerHTML = '';
+
+  notifications.forEach(n => {
+    const item = document.createElement('div');
+    item.className = 'notif-item';
+    item.innerHTML = escHtml(n.message) + '<div class="notif-date">' + escHtml(n.date) + '</div>';
+    content.appendChild(item);
+  });
+
+  banner.style.display = 'block';
+}
+
+async function dismissNotifications() {
+  if (!currentUser) return;
+  try {
+    await apiCall({ action: 'markNotificationRead', staff: currentUser });
+  } catch (e) { /* 既読失敗しても閉じる */ }
+  document.getElementById('notifBanner').style.display = 'none';
+  currentNotifications = [];
+}
+
+// ============================
+// 社長休み管理（管理者のみ）
+// ============================
+function renderBossRests() {
+  if (!isAdmin) return;
+  const section = document.getElementById('bossRestSection');
+  section.style.display = 'block';
+  const chips = document.getElementById('bossRestChips');
+  chips.innerHTML = '';
+
+  const [y, m] = currentMonth.split('-').map(Number);
+  bossRests.sort((a, b) => a - b);
+
+  if (bossRests.length === 0) {
+    chips.innerHTML = '<span style="color:#999;font-size:12px">登録なし</span>';
+  } else {
+    bossRests.forEach(day => {
+      const chip = document.createElement('span');
+      chip.className = 'boss-rest-chip';
+      chip.textContent = m + '/' + day;
+      chip.title = 'クリックで削除';
+      chip.onclick = () => removeBossRest(y, m, day);
+      chips.appendChild(chip);
+    });
+  }
+
+  // デフォルト日付を設定
+  const dateInput = document.getElementById('bossRestDate');
+  if (!dateInput.value) {
+    dateInput.value = currentMonth + '-01';
+  }
+  dateInput.min = currentMonth + '-01';
+  const daysInMonth = new Date(y, m, 0).getDate();
+  dateInput.max = currentMonth + '-' + String(daysInMonth).padStart(2, '0');
+}
+
+async function addBossRest() {
+  const dateInput = document.getElementById('bossRestDate');
+  const dateVal = dateInput.value;
+  if (!dateVal) { showToast('日付を選択してください'); return; }
+
+  try {
+    const data = await apiCall({ action: 'addBossRest', date: dateVal });
+    if (data.success) {
+      showToast('登録しました');
+      loadDataAdmin();
+    } else {
+      showToast(data.message || 'エラー');
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  }
+}
+
+async function removeBossRest(y, m, day) {
+  if (!confirm(m + '/' + day + ' を削除しますか？')) return;
+  const dateStr = y + '-' + String(m).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  try {
+    const data = await apiCall({ action: 'removeBossRest', date: dateStr });
+    if (data.success) {
+      showToast('削除しました');
+      loadDataAdmin();
+    } else {
+      showToast(data.message || 'エラー');
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  }
 }
 </script>
 </body>
