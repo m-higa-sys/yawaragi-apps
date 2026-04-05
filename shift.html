@@ -1559,12 +1559,20 @@ function renderAbsenceList() {
   }
 
   allAbsences.forEach(a => {
+    // スタッフ画面：自分の分だけ表示
+    if (!isAdmin && a.staff && a.staff !== currentUser) return;
+
     const card = document.createElement('div');
     card.className = 'absence-card';
 
     const left = document.createElement('div');
-    left.innerHTML = '<div class="absence-info">' + escHtml(a.staff) + '　' + a.startDate + '〜' + a.endDate + '</div>'
-      + (a.reason ? '<div class="absence-detail">' + escHtml(a.reason) + '</div>' : '');
+    if (isAdmin) {
+      left.innerHTML = '<div class="absence-info">' + escHtml(a.staff) + '　' + a.startDate + '〜' + a.endDate + '</div>'
+        + (a.reason ? '<div class="absence-detail">' + escHtml(a.reason) + '</div>' : '');
+    } else {
+      left.innerHTML = '<div class="absence-info">' + a.startDate + '〜' + a.endDate + '</div>'
+        + (a.reason ? '<div class="absence-detail">' + escHtml(a.reason) + '</div>' : '');
+    }
     card.appendChild(left);
 
     // 自分の登録だけ削除可能
