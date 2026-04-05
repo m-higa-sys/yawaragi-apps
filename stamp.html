@@ -561,6 +561,74 @@
 <div class="toast" id="toast"></div>
 
 <script>
+    // ===== クラウド同期 =====
+    const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+    let _syncTimer = null;
+    let _isSyncing = false;
+
+    function cloudSync() {
+        if (_syncTimer) clearTimeout(_syncTimer);
+        _syncTimer = setTimeout(function() {
+            if (_isSyncing) return;
+            _isSyncing = true;
+            try {
+                var payload = JSON.stringify({
+                    type: 'stamp',
+                    data: { stamps: data.stamps, stock: data.stock, staff: data.staff, history: data.history }
+                });
+                fetch(SYNC_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                }).then(function() {
+                    _isSyncing = false;
+                }).catch(function() {
+                    _isSyncing = false;
+                });
+            } catch(e) {
+                _isSyncing = false;
+            }
+        }, 2000);
+    }
+
+    function fetchFromCloud() {
+        var cbName = '_stampCb_' + Date.now();
+        var loaded = false;
+        var script = document.createElement('script');
+        window[cbName] = function(cloudData) {
+            loaded = true;
+            if (cloudData && cloudData.stock && cloudData.history) {
+                data.stamps = cloudData.stamps || data.stamps;
+                data.stock = cloudData.stock;
+                data.staff = cloudData.staff || data.staff;
+                data.history = cloudData.history;
+                saveDataLocal(data);
+                renderStock();
+                renderStampButtons();
+                renderHistory();
+                renderSummary();
+            }
+            delete window[cbName];
+            if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        script.src = SYNC_URL + '?action=getStamp&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            if (!loaded) {
+                delete window[cbName];
+            }
+            if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        document.body.appendChild(script);
+    }
+
+    // 30秒ごとにクラウドから取得
+    setInterval(fetchFromCloud, 30000);
+    // 画面復帰時にも取得
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) fetchFromCloud();
+    });
+
     // ===== データ管理 =====
     const STORAGE_KEY = 'yawaragi_stamp_manager';
 
@@ -592,8 +660,13 @@
         return JSON.parse(JSON.stringify(defaultData));
     }
 
-    function saveData(data) {
+    function saveDataLocal(data) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function saveData(data) {
+        saveDataLocal(data);
+        cloudSync();
     }
 
     let data = loadData();
@@ -1101,6 +1174,8 @@
     }
 
     initAll();
+    // 起動時にクラウドから最新データを取得
+    fetchFromCloud();
 </script>
 </body>
 </html>
