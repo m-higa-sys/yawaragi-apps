@@ -699,30 +699,41 @@ function openAbsenceModal(name, cmName, cmOffice) {
 
   document.getElementById('absenceTitle').textContent = name + 'さんの欠席登録';
 
-  // 利用曜日パターンを取得
-  var pattern = userPatterns[name] || '';
+  // 利用曜日・午前午後パターンを取得
+  var patternData = userPatterns[name] || '';
   var patternInfo = document.getElementById('patternInfo');
-  if (pattern) {
+  // 新形式: { days: "月木", unit: "午前" } / 旧形式: "月木"
+  var patternDays = typeof patternData === 'object' ? (patternData.days || '') : patternData;
+  var patternUnit = typeof patternData === 'object' ? (patternData.unit || '') : '';
+  if (patternDays) {
     absTarget.allowedDays = [];
-    for (var i = 0; i < pattern.length; i++) {
-      var dayNum = DAY_MAP[pattern[i]];
+    for (var i = 0; i < patternDays.length; i++) {
+      var dayNum = DAY_MAP[patternDays[i]];
       if (dayNum !== undefined) absTarget.allowedDays.push(dayNum);
     }
-    var dayLabels = pattern.split('').join('・');
-    patternInfo.textContent = '利用曜日: ' + dayLabels;
+    var dayLabels = patternDays.split('').join('・');
+    var infoText = '利用曜日: ' + dayLabels;
+    if (patternUnit) infoText += '（' + patternUnit + '）';
+    patternInfo.textContent = infoText;
     patternInfo.style.display = 'block';
   } else {
     patternInfo.style.display = 'none';
     absTarget.allowedDays = null;
+    patternUnit = '';
   }
+
+  // 午前/午後を自動選択（パターンに基づく）
+  var autoUnit = '';
+  if (patternUnit === '午前') autoUnit = '午前';
+  else if (patternUnit === '午後') autoUnit = '午後';
+  else autoUnit = currentUnit === 'am' ? '午前' : '午後';
 
   // デフォルトリセット
   setDateMode('today');
   document.getElementById('dateWarn').style.display = 'none';
-  document.getElementById('rangeInfo').style.display = pattern ? 'block' : 'none';
-  var defaultUnit = currentUnit === 'am' ? '午前' : '午後';
+  document.getElementById('rangeInfo').style.display = patternDays ? 'block' : 'none';
   document.querySelectorAll('#unitChips .chip').forEach(function(c) {
-    c.classList.toggle('active', c.dataset.val === defaultUnit);
+    c.classList.toggle('active', c.dataset.val === autoUnit);
   });
   document.querySelectorAll('#reasonChips .chip').forEach(function(c) {
     c.classList.toggle('active', c.dataset.val === '体調不良');
