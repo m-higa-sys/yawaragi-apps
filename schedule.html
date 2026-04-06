@@ -1652,6 +1652,42 @@ function setUnit(u) {
 function onOptionChange() {}
 
 // ===========================
+//  口腔データをクラウドから取得してlocalStorageに保存
+// ===========================
+const ORAL_SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+
+function fetchOralFromCloud() {
+  return new Promise(function(resolve) {
+    try {
+      var cbName = '_oralCb_' + Date.now();
+      var script = document.createElement('script');
+      var done = false;
+      var timeout = setTimeout(function() {
+        if (!done) { done = true; delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); resolve(false); }
+      }, 5000);
+      window[cbName] = function(cloud) {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        if (cloud && cloud.checks) {
+          var existing = {};
+          try { existing = JSON.parse(localStorage.getItem('yawaragi_oral_check') || '{}'); } catch(e) {}
+          existing.checks = cloud.checks;
+          if (cloud.users && cloud.users.length > 0) existing.users = cloud.users;
+          localStorage.setItem('yawaragi_oral_check', JSON.stringify(existing));
+        }
+        delete window[cbName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        resolve(true);
+      };
+      script.src = ORAL_SYNC_URL + '?action=getOral&callback=' + cbName + '&t=' + Date.now();
+      script.onerror = function() { if (!done) { done = true; clearTimeout(timeout); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); resolve(false); } };
+      document.head.appendChild(script);
+    } catch(e) { resolve(false); }
+  });
+}
+
+// ===========================
 //  口腔完了チェック（localStorageから今月の口腔チェック状態を取得）
 // ===========================
 function getOralCompletionStatus(userName, userCare) {
@@ -5666,6 +5702,8 @@ function resetConstraint(userName) {
 async function init() {
   // クラウドから最新データを自動読み込み（施設のPCでも自動反映）
   const cloudLoaded = await autoLoadFromCloud();
+  // 口腔チェックデータをクラウドから取得（iPadでもカウント反映）
+  await fetchOralFromCloud();
   loadUsers();
   // 利用者台帳スプレッドシートから最新データを自動同期（中止・終了・休止を除外）
   const syncResult = await autoSyncFromSpreadsheet();
