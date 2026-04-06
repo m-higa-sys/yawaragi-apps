@@ -127,6 +127,8 @@ select { padding: 6px 10px; border: 2px solid #ccc; border-radius: 6px; font-siz
 .option-check .oname { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 60px; }
 .option-check.oral-done { border-color: #4CAF50; background: #e8f5e9; opacity: 0.5; }
 .option-check.oral-done .oname { text-decoration: line-through; }
+.option-check.sokutei-done { border-color: #4CAF50; background: #e8f5e9; opacity: 0.5; }
+.option-check.sokutei-done .oname { text-decoration: line-through; }
 .option-check.sokutei-target { border-color: #e67e22; background: #fff8f0; }
 .option-check.sokutei-kaigo { border-color: #e74c3c; background: #FFE8E8; }
 .option-check.sokutei-kaigo.checked-s { border-color: #c0392b; background: #FFD0D0; }
@@ -1753,6 +1755,62 @@ function getOralCompletionStatus(userName, userCare) {
 }
 
 // ===========================
+//  体重データをクラウドから取得（測定完了判定用）
+// ===========================
+function fetchWeightFromCloud() {
+  return new Promise(function(resolve) {
+    try {
+      var cbName = '_weightCb_' + Date.now();
+      var script = document.createElement('script');
+      var done = false;
+      var timeout = setTimeout(function() {
+        if (!done) { done = true; delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); resolve(false); }
+      }, 5000);
+      window[cbName] = function(cloud) {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        if (cloud && cloud.weights) {
+          var existing = {};
+          try { existing = JSON.parse(localStorage.getItem('yawaragi_weight_check') || '{}'); } catch(e) {}
+          existing.weights = cloud.weights;
+          if (cloud.users && cloud.users.length > 0) existing.users = cloud.users;
+          localStorage.setItem('yawaragi_weight_check', JSON.stringify(existing));
+        }
+        delete window[cbName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        resolve(true);
+      };
+      script.src = ORAL_SYNC_URL + '?action=getWeight&callback=' + cbName + '&t=' + Date.now();
+      script.onerror = function() { if (!done) { done = true; clearTimeout(timeout); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); resolve(false); } };
+      document.head.appendChild(script);
+    } catch(e) { resolve(false); }
+  });
+}
+
+// ===========================
+//  測定完了チェック（体重データから今月の測定状態を取得）
+// ===========================
+function getWeightCompletionStatus(userName) {
+  try {
+    const weightData = JSON.parse(localStorage.getItem('yawaragi_weight_check') || '{}');
+    const now = new Date();
+    const fy = (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+    const ml = (now.getMonth() + 1) + '月';
+    const weights = (weightData.weights || {})[fy] || {};
+    const uw = weights[userName] || {};
+    const val = uw[ml];
+    // 値が存在し、数値として有効であれば測定完了
+    if (val !== undefined && val !== null && val !== '' && !isNaN(Number(val))) {
+      return { complete: true, label: '✓' };
+    }
+    return { complete: false, label: '' };
+  } catch (e) {
+    return { complete: false, label: '' };
+  }
+}
+
+// ===========================
 //  口腔・測定チェックエリア
 // ===========================
 function renderOptionChecks() {
@@ -1810,13 +1868,17 @@ function renderOptionChecks() {
     return careA - careB;
   });
 
+  let weightCompletedCount = 0;
   for (const i of sokuteiOrder) {
     const nm = users[i].name || ('No.' + (i + 1));
     const isKaigo = users[i].care === 'kaigo';
     const origUser = STATE.users.find(u => u.name === users[i].name);
     const mStatus = origUser ? getMeasurementStatus(origUser) : { target: false, label: '' };
+    const wStatus = getWeightCompletionStatus(nm);
+    const isWeightDone = mStatus.target && wStatus.complete;
+    if (isWeightDone) weightCompletedCount++;
 
-    if (needAutoApply && mStatus.target && !STATE.sokuteiChecked.includes(i)) {
+    if (needAutoApply && mStatus.target && !isWeightDone && !STATE.sokuteiChecked.includes(i)) {
       STATE.sokuteiChecked.push(i);
     }
     if (mStatus.target) autoCount++;
@@ -1824,15 +1886,20 @@ function renderOptionChecks() {
     const checked = STATE.sokuteiChecked.includes(i);
     const kaigoCls = isKaigo ? ' sokutei-kaigo' : '';
     const targetCls = mStatus.target ? ' sokutei-target' : '';
+    const doneCls = isWeightDone ? ' sokutei-done' : '';
     const careLabel = '<span class="sokutei-care-label ' + (isKaigo ? 'kaigo' : 'shien') + '">' + (isKaigo ? '介護' : '支援') + '</span>';
+    const wMarkHtml = wStatus.label ? '<span class="sokutei-mark">⚖️' + wStatus.label + '</span>' : '';
     const markHtml = mStatus.label ? '<span class="sokutei-mark">📏' + mStatus.label + '</span>' : '';
-    shtml += '<label class="option-check' + (checked ? ' checked-s' : '') + kaigoCls + targetCls + '">' +
-      '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleSokutei(' + i + ')">' +
-      CIRCLED[i + 1] + careLabel + '<span class="oname">' + escHtml(nm) + '</span>' + markHtml + '</label>';
+    shtml += '<label class="option-check' + (checked ? ' checked-s' : '') + kaigoCls + targetCls + doneCls + '">' +
+      '<input type="checkbox" ' + (checked ? 'checked' : '') + (isWeightDone ? ' disabled' : '') + ' onchange="toggleSokutei(' + i + ')">' +
+      CIRCLED[i + 1] + careLabel + '<span class="oname">' + escHtml(nm) + '</span>' + wMarkHtml + markHtml + '</label>';
   }
   if (needAutoApply) {
     STATE._sokuteiAutoApplied = true;
     saveSettings();
+  }
+  if (weightCompletedCount > 0) {
+    shtml += '<div style="font-size:11px;color:#2E7D32;margin-top:4px">※ 今月測定済み ' + weightCompletedCount + '人（自動除外）</div>';
   }
   if (autoCount > 0) {
     shtml += '<div class="sokutei-auto-info">📏 今月測定対象: ' + autoCount + '人（自動チェック済み。手動で変更もできます）</div>';
@@ -1855,6 +1922,14 @@ function toggleKouku(idx) {
 }
 
 function toggleSokutei(idx) {
+  // 測定完了者はトグル不可
+  const users = STATE.orderedDayUsers.length > 0 ? STATE.orderedDayUsers : getDayUsers(STATE.currentDay, STATE.unit);
+  if (users[idx]) {
+    const wStatus = getWeightCompletionStatus(users[idx].name);
+    const origUser = STATE.users.find(u => u.name === users[idx].name);
+    const mStatus = origUser ? getMeasurementStatus(origUser) : { target: false };
+    if (mStatus.target && wStatus.complete) return;
+  }
   const pos = STATE.sokuteiChecked.indexOf(idx);
   if (pos >= 0) STATE.sokuteiChecked.splice(pos, 1);
   else STATE.sokuteiChecked.push(idx);
@@ -2344,7 +2419,8 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
   const afterTaiso = slot;
   let tvFreeFrom = afterTaiso; // テレビモニターが空くスロット
 
-  // Phase 4: 個別機能訓練（要介護のみ・TV使用）※要支援は対象外
+  // 個別機能訓練は準備体操直後ではなく、マシン休憩時間に配置（⑤の位置）
+  // → fillMachineIdleWithKinou() で処理
   const kinouAll = [];
   for (let p = 0; p < n; p++) {
     if (careTypes[p] === 'kaigo' && !isBanned(p, 'kinou')) kinouAll.push(p);
@@ -2353,16 +2429,9 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
   for (let p = 0; p < n; p++) {
     if (careTypes[p] === 'kaigo') kaigoPersons.push(p);
   }
-  if (kinouAll.length > 0) {
-    for (const p of kinouAll) {
-      for (let s = afterTaiso; s < afterTaiso + T.kinou && s < SLOTS; s++) {
-        grid[s][p] = 'kinou';
-      }
-    }
-    tvFreeFrom = afterTaiso + T.kinou;
-  }
+  // tvFreeFrom = afterTaiso のまま（個別をここに入れないので口腔がすぐ始まる）
 
-  // Phase 5: 口腔体操（対象者のみ・TV使用・個別の後）
+  // Phase 5: 口腔体操（対象者のみ・TV使用・準備体操の後すぐ）
   if (koukuPersons.length > 0) {
     const koukuStart = tvFreeFrom;
     const koukuActive = koukuPersons.filter(p => !isBanned(p, 'kouku'));
@@ -2494,40 +2563,39 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     }
   }
 
-  // マシン最初の休憩時間に個別機能訓練を配置
+  // マシン休憩時間に個別機能訓練を配置
   // 全グループ: 要介護のみ（個別機能訓練は要介護の加算）
-  // ルール: マシンの最初のスタート前の休憩のみ。途中の休憩には入れない
+  // ルール: マシン期間中の空きスロット（休憩から入る人含む）に個別を配置
   function fillMachineIdleWithKinou(g, machineStart, machineEnd) {
     const kinouLen = T.kinou;
     if (kinouLen <= 0) return;
-    const M = machinePerPerson;
-    const rotSlot = machineRotationSlot;
     const N_g = groups[g];
     for (let j = 0; j < N_g; j++) {
       const p = groupMembers[g][j];
       if (careTypes[p] !== 'kaigo') continue;
       if (isBanned(p, 'kinou')) continue;
-      // 既に個別が配置済みならスキップ（Phase 4で配置済みの場合）
+      // 既に個別が配置済みならスキップ
       var alreadyHasKinou = false;
       for (let s = 0; s < SLOTS; s++) {
         if (grid[s][p] === 'kinou') { alreadyHasKinou = true; break; }
       }
       if (alreadyHasKinou) continue;
-      // この人の最初のマシン開始スロットを計算
-      var firstMachineSlot = machineEnd; // デフォルト=見つからない
-      for (let r = 0; r < N_g; r++) {
-        if ((j + r) % N_g < MACHINE_COUNT) {
-          firstMachineSlot = machineStart + r * rotSlot;
-          break;
+      // マシン期間中のどこかに kinouLen 連続の free スロットを見つけて個別を入れる
+      var bestStart = -1;
+      var runLen = 0;
+      for (let s = machineStart; s < machineEnd && s < endLimit; s++) {
+        if (grid[s][p] === 'free') {
+          if (runLen === 0) bestStart = s;
+          runLen++;
+          if (runLen >= kinouLen) break;
+        } else {
+          runLen = 0;
+          bestStart = -1;
         }
       }
-      // 最初のマシン開始前の空きスロットにのみ個別を入れる
-      if (firstMachineSlot <= machineStart) continue; // 最初からマシン→休憩なし
-      let placed = 0;
-      for (let s = machineStart; s < firstMachineSlot && s < endLimit; s++) {
-        if (grid[s][p] === 'free' && placed < kinouLen) {
+      if (bestStart >= 0 && runLen >= kinouLen) {
+        for (let s = bestStart; s < bestStart + kinouLen && s < endLimit; s++) {
           grid[s][p] = 'kinou';
-          placed++;
         }
       }
     }
@@ -5729,8 +5797,8 @@ function resetConstraint(userName) {
 async function init() {
   // クラウドから最新データを自動読み込み（施設のPCでも自動反映）
   const cloudLoaded = await autoLoadFromCloud();
-  // 口腔チェックデータをクラウドから取得（iPadでもカウント反映）
-  await fetchOralFromCloud();
+  // 口腔・体重チェックデータをクラウドから取得（iPadでもカウント反映）
+  await Promise.all([fetchOralFromCloud(), fetchWeightFromCloud()]);
   loadUsers();
   // 利用者台帳スプレッドシートから最新データを自動同期（中止・終了・休止を除外）
   const syncResult = await autoSyncFromSpreadsheet();
