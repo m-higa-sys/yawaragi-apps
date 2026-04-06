@@ -315,13 +315,15 @@ select { background: #fff; }
 
     <div class="form-group">
       <label class="form-label">いつ休む？</label>
+      <div id="patternInfo" style="display:none;margin-bottom:6px;padding:4px 10px;background:#e8f5e9;border-radius:8px;font-size:13px;color:#2e7d32;"></div>
       <div class="chip-group" id="dateMode">
         <div class="chip active" onclick="setDateMode('today')">今日</div>
         <div class="chip" onclick="setDateMode('single')">日付を選ぶ</div>
         <div class="chip" onclick="setDateMode('range')">期間で選ぶ</div>
       </div>
       <div id="dateSingle" style="display:none;margin-top:8px;">
-        <input type="date" id="absenceDate">
+        <input type="date" id="absenceDate" onchange="validateDateDay(this)">
+        <div id="dateWarn" style="display:none;margin-top:4px;font-size:12px;color:#e74c3c;"></div>
       </div>
       <div id="dateRange" style="display:none;margin-top:8px;">
         <div class="date-range">
@@ -329,6 +331,7 @@ select { background: #fff; }
           <span>〜</span>
           <input type="date" id="absenceDateTo">
         </div>
+        <div id="rangeInfo" style="display:none;margin-top:4px;font-size:12px;color:#666;">※利用曜日の日付だけ登録されます</div>
       </div>
     </div>
 
@@ -337,7 +340,6 @@ select { background: #fff; }
       <div class="chip-group" id="unitChips">
         <div class="chip active" data-val="午前" onclick="setAbsenceUnit(this)">午前</div>
         <div class="chip" data-val="午後" onclick="setAbsenceUnit(this)">午後</div>
-        <div class="chip" data-val="終日" onclick="setAbsenceUnit(this)">終日（午前＋午後）</div>
       </div>
     </div>
 
@@ -368,7 +370,7 @@ select { background: #fff; }
       <input type="text" id="absenceSupplement" placeholder="例: 来週には復帰予定">
     </div>
 
-    <div class="form-group">
+    <div class="form-group" id="cmNoticeGroup" style="display:none;">
       <label class="form-label">ケアマネ通知</label>
       <div id="cmNotice" class="cm-notice no-email">ケアマネのメールアドレスが未登録です</div>
     </div>
@@ -689,13 +691,35 @@ function onUserTap(name, cmName, cmOffice, status) {
 }
 
 // ===== 欠席登録モーダル =====
+// 曜日マッピング（日〜土）
+var DAY_MAP = { '日': 0, '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6 };
+
 function openAbsenceModal(name, cmName, cmOffice) {
-  absTarget = { name: name, cmName: cmName, cmOffice: cmOffice, cmEmail: '' };
+  absTarget = { name: name, cmName: cmName, cmOffice: cmOffice, cmEmail: '', allowedDays: null };
 
   document.getElementById('absenceTitle').textContent = name + 'さんの欠席登録';
 
+  // 利用曜日パターンを取得
+  var pattern = userPatterns[name] || '';
+  var patternInfo = document.getElementById('patternInfo');
+  if (pattern) {
+    absTarget.allowedDays = [];
+    for (var i = 0; i < pattern.length; i++) {
+      var dayNum = DAY_MAP[pattern[i]];
+      if (dayNum !== undefined) absTarget.allowedDays.push(dayNum);
+    }
+    var dayLabels = pattern.split('').join('・');
+    patternInfo.textContent = '利用曜日: ' + dayLabels;
+    patternInfo.style.display = 'block';
+  } else {
+    patternInfo.style.display = 'none';
+    absTarget.allowedDays = null;
+  }
+
   // デフォルトリセット
   setDateMode('today');
+  document.getElementById('dateWarn').style.display = 'none';
+  document.getElementById('rangeInfo').style.display = pattern ? 'block' : 'none';
   var defaultUnit = currentUnit === 'am' ? '午前' : '午後';
   document.querySelectorAll('#unitChips .chip').forEach(function(c) {
     c.classList.toggle('active', c.dataset.val === defaultUnit);
@@ -717,25 +741,44 @@ function openAbsenceModal(name, cmName, cmOffice) {
     sel.innerHTML += '<option value="' + escAttr(s) + '">' + escHtml(s) + '</option>';
   });
 
-  // ケアマネ情報
+  // ケアマネ情報（ケアマネがいなければ欄ごと非表示）
+  var cmGroup = document.getElementById('cmNoticeGroup');
   var email = findCmEmail(cmOffice);
   absTarget.cmEmail = email;
-  var notice = document.getElementById('cmNotice');
-  if (email) {
-    notice.className = 'cm-notice';
-    notice.innerHTML = '<strong>' + escHtml(cmName || cmOffice) + '</strong>にメールで通知します<br>' +
-      '<small>送信先: ' + escHtml(email) + '</small>';
-  } else if (cmOffice || cmName) {
-    notice.className = 'cm-notice no-email';
-    notice.innerHTML = escHtml(cmName || '') + '（' + escHtml(cmOffice || '') + '）<br>' +
-      '<small>メールアドレスが未登録です。スプレッドシートの「ケアマネ連絡先」シートに登録してください。</small>';
+  if (!cmOffice && !cmName) {
+    cmGroup.style.display = 'none';
   } else {
-    notice.className = 'cm-notice no-email';
-    notice.textContent = 'ケアマネ情報がありません';
+    cmGroup.style.display = 'block';
+    var notice = document.getElementById('cmNotice');
+    if (email) {
+      notice.className = 'cm-notice';
+      notice.innerHTML = '<strong>' + escHtml(cmName || cmOffice) + '</strong>にメールで通知します<br>' +
+        '<small>送信先: ' + escHtml(email) + '</small>';
+    } else {
+      notice.className = 'cm-notice no-email';
+      notice.innerHTML = escHtml(cmName || '') + '（' + escHtml(cmOffice || '') + '）<br>' +
+        '<small>メールアドレスが未登録です。スプレッドシートの「ケアマネ連絡先」シートに登録してください。</small>';
+    }
   }
 
   document.getElementById('absenceModal').classList.add('show');
   document.getElementById('absenceSubmitBtn').disabled = false;
+}
+
+// 日付の曜日バリデーション
+function validateDateDay(input) {
+  var warn = document.getElementById('dateWarn');
+  if (!absTarget.allowedDays || !input.value) { warn.style.display = 'none'; return; }
+  var parts = input.value.split('-');
+  var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  var dayOfWeek = d.getDay();
+  if (absTarget.allowedDays.indexOf(dayOfWeek) < 0) {
+    var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    warn.textContent = dayNames[dayOfWeek] + '曜日は利用日ではありません';
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
 }
 
 function closeAbsenceModal() {
@@ -790,9 +833,21 @@ function submitAbsence() {
     if (dates.length > 60) { showToast('期間が長すぎます（最大60日）'); btn.disabled = false; return; }
   }
 
+  // 曜日バリデーション（今日・日付選択時）
+  if (absTarget.allowedDays && dates.length === 1) {
+    var chkParts = dates[0].split('-');
+    var chkDate = new Date(parseInt(chkParts[0]), parseInt(chkParts[1]) - 1, parseInt(chkParts[2]));
+    if (absTarget.allowedDays.indexOf(chkDate.getDay()) < 0) {
+      var dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+      if (!confirm(dayNames[chkDate.getDay()] + '曜日は利用日ではありません。登録しますか？')) {
+        btn.disabled = false; return;
+      }
+    }
+  }
+
   // 単位
   var unitEl = document.querySelector('#unitChips .chip.active');
-  var unit = unitEl ? unitEl.dataset.val : '終日';
+  var unit = unitEl ? unitEl.dataset.val : '午前';
 
   // 理由
   var reasonEl = document.querySelector('#reasonChips .chip.active');
