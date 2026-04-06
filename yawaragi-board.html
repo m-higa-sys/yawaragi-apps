@@ -741,6 +741,29 @@
                 placeholder="連絡者名を入力" style="display:none;" oninput="absContactOtherInput()">
         </div>
 
+        <!-- STEP5: 連絡方法 -->
+        <div class="abs-step" id="abs-step-method" style="display:none;">
+            <label class="abs-label">5. 連絡方法</label>
+            <div class="abs-contact-btns" id="abs-method-btns">
+                <button class="abs-contact-btn" onclick="absSelectMethod('電話')">電話</button>
+                <button class="abs-contact-btn" onclick="absSelectMethod('留守電')">留守電</button>
+                <button class="abs-contact-btn" onclick="absSelectMethod('直接')">直接</button>
+                <button class="abs-contact-btn" onclick="absSelectMethod('メール')">メール</button>
+                <button class="abs-contact-btn" onclick="absSelectMethod('LINE')">LINE</button>
+                <button class="abs-contact-btn" onclick="absSelectMethod('ケアマネ経由')">ケアマネ経由</button>
+            </div>
+        </div>
+
+        <!-- STEP6: 連絡日 -->
+        <div class="abs-step" id="abs-step-contactdate" style="display:none;">
+            <label class="abs-label">6. いつ連絡をもらった？</label>
+            <div class="abs-date-type-btns">
+                <button class="abs-date-type-btn abs-cd-btn active" data-cd="today" onclick="absSelectContactDate('today')">今日</button>
+                <button class="abs-date-type-btn abs-cd-btn" data-cd="other" onclick="absSelectContactDate('other')">別の日</button>
+            </div>
+            <div id="abs-contactdate-input" style="margin-top:8px;"></div>
+        </div>
+
         <!-- 登録ボタン -->
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
@@ -2065,7 +2088,9 @@ let absState = {
     reason: '',
     reasonOther: '',
     contact: '',
-    contactOther: ''
+    contactOther: '',
+    method: '',            // 連絡方法
+    contactDate: ''        // 連絡日
 };
 
 // ----- 利用者データ（利用者台帳スプレッドシートからGAS経由で自動取得） -----
@@ -2309,9 +2334,13 @@ function absClearName() {
     document.getElementById('abs-step-date').style.display = 'none';
     document.getElementById('abs-step-reason').style.display = 'none';
     document.getElementById('abs-step-contact').style.display = 'none';
+    document.getElementById('abs-step-method').style.display = 'none';
+    document.getElementById('abs-step-contactdate').style.display = 'none';
     document.getElementById('abs-step-submit').style.display = 'none';
     absState.reason = '';
     absState.contact = '';
+    absState.method = '';
+    absState.contactDate = '';
 }
 
 // ----- 日付選択 -----
@@ -2447,17 +2476,55 @@ function absSelectContact(contact) {
         absState.contactOther = '';
     }
 
-    absUpdateConfirm();
+    // STEP5を表示
+    document.getElementById('abs-step-method').style.display = 'block';
+    if (absState.method) absUpdateConfirm();
 }
 
 function absContactOtherInput() {
     absState.contactOther = document.getElementById('abs-contact-other').value;
-    absUpdateConfirm();
+    if (absState.method && absState.contactDate) absUpdateConfirm();
+}
+
+// ----- 連絡方法選択 -----
+function absSelectMethod(method) {
+    absState.method = method;
+    document.querySelectorAll('#abs-method-btns .abs-contact-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent.trim() === method);
+    });
+
+    // STEP6を表示
+    document.getElementById('abs-step-contactdate').style.display = 'block';
+    // 連絡日が未設定なら「今日」をデフォルトで設定
+    if (!absState.contactDate) absSelectContactDate('today');
+    else absUpdateConfirm();
+}
+
+// ----- 連絡日選択 -----
+function absSelectContactDate(type) {
+    document.querySelectorAll('.abs-cd-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.cd === type);
+    });
+    const container = document.getElementById('abs-contactdate-input');
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    if (type === 'today') {
+        absState.contactDate = todayStr;
+        const t = new Date();
+        container.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:4px 0;">
+            ${t.getFullYear()}/${String(t.getMonth()+1).padStart(2,'0')}/${String(t.getDate()).padStart(2,'0')}（${DAY_NAMES[t.getDay()]}）
+        </p>`;
+        absUpdateConfirm();
+    } else {
+        container.innerHTML = `<input type="date" value="${todayStr}" max="${todayStr}" style="padding:10px 14px; border:2px solid #e2e8f0; border-radius:10px; font-size:1rem; font-family:inherit;" onchange="absState.contactDate = this.value; absUpdateConfirm()">`;
+        absState.contactDate = todayStr;
+        absUpdateConfirm();
+    }
 }
 
 // ----- 確認表示 -----
 function absUpdateConfirm() {
-    if (!absState.selectedUser || !absState.reason || !absState.contact) return;
+    if (!absState.selectedUser || !absState.reason || !absState.contact || !absState.method || !absState.contactDate) return;
 
     const submitStep = document.getElementById('abs-step-submit');
     submitStep.style.display = 'block';
@@ -2478,17 +2545,23 @@ function absUpdateConfirm() {
         dateText = `${df.getFullYear()}/${String(df.getMonth()+1).padStart(2,'0')}/${String(df.getDate()).padStart(2,'0')} 〜 ${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}`;
     }
 
+    // 連絡日の表示
+    const cd = new Date(absState.contactDate);
+    const contactDateText = `${cd.getFullYear()}/${String(cd.getMonth()+1).padStart(2,'0')}/${String(cd.getDate()).padStart(2,'0')}（${DAY_NAMES[cd.getDay()]}）`;
+
     document.getElementById('abs-confirm-card').innerHTML = `
         <strong>利用者:</strong> ${absState.selectedUser.name}<br>
         <strong>欠席日:</strong> ${dateText}<br>
         <strong>理由:</strong> ${reason}<br>
-        <strong>連絡者:</strong> ${contact}
+        <strong>連絡者:</strong> ${contact}<br>
+        <strong>連絡方法:</strong> ${absState.method}<br>
+        <strong>連絡日:</strong> ${contactDateText}
     `;
 }
 
 // ----- 登録 -----
 function absSubmit() {
-    if (!absState.selectedUser || !absState.reason || !absState.contact) {
+    if (!absState.selectedUser || !absState.reason || !absState.contact || !absState.method || !absState.contactDate) {
         alert('すべての項目を入力してください');
         return;
     }
@@ -2530,8 +2603,10 @@ function absSubmit() {
         unit: unit,
         reason: reason,
         reporter: contact,
+        method: absState.method,
+        contactDate: absState.contactDate,
         cmOffice: absState.selectedUser.cmOffice || '',
-        cmEmail: '', // ケアマネ連絡先シートから自動取得（GAS側で対応予定）
+        cmEmail: '',
         cmName: ''
     };
 
@@ -2556,6 +2631,8 @@ function absSubmit() {
         dateType: absState.dateType,
         reason: reason,
         contact: contact,
+        method: absState.method,
+        contactDate: absState.contactDate,
         registeredAt: new Date().toISOString(),
         registeredBy: ''
     };
@@ -2600,9 +2677,8 @@ function absRenderTodayList() {
             <div class="abs-record-main">
                 <div class="abs-record-name">${r.userName}</div>
                 <div class="abs-record-detail">
-                    理由: ${r.reason}　／　連絡者: ${r.contact}<br>
-                    ${r.dateType === 'range' ? `期間: ${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}` : ''}
-                    登録: ${absFormatTime(r.registeredAt)}
+                    理由: ${r.reason}　／　連絡者: ${r.contact}（${r.method || ''}）<br>
+                    ${r.contactDate ? `連絡日: ${absFormatDate(r.contactDate)}　` : ''}${r.dateType === 'range' ? `期間: ${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}　` : ''}登録: ${absFormatTime(r.registeredAt)}
                 </div>
             </div>
             <button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>
@@ -2638,7 +2714,7 @@ function absRenderUpcomingList() {
             <div class="abs-record-main">
                 <div class="abs-record-name">${r.userName}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}
+                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}（${r.method || ''}）
                 </div>
             </div>
             <button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>
