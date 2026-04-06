@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>車両メンテナンス管理 - yawaragi</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f0f4f8; color: #333; min-height: 100vh; }
+
+  .header { background: linear-gradient(135deg, #1e40af, #1e3a5f); color: white; padding: 20px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+  .header-actions { display: flex; gap: 8px; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  /* アラートバナー */
+  .alerts { margin-bottom: 20px; }
+  .alert-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 10px; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+  .alert-red { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+  .alert-yellow { background: #fffbeb; border: 1px solid #fde68a; color: #b45309; }
+  .alert-green { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+  .alert-icon { font-size: 20px; flex-shrink: 0; }
+
+  /* 車両タブ */
+  .vehicle-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 0; }
+  .vehicle-tab { padding: 10px 20px; border-radius: 10px 10px 0 0; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; background: white; border: 1px solid #e2e8f0; border-bottom: none; transition: all 0.2s; }
+  .vehicle-tab:hover { color: #1e40af; background: #eff6ff; }
+  .vehicle-tab.active { color: #1e40af; background: #eff6ff; font-weight: 600; border-color: #bfdbfe; }
+  .vehicle-tab .tab-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .badge-ok { background: #dcfce7; color: #166534; }
+  .badge-warn { background: #fef3c7; color: #92400e; }
+  .badge-danger { background: #fee2e2; color: #991b1b; }
+
+  .vehicle-content { background: white; border-radius: 0 12px 12px 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
+
+  /* ダッシュボード一覧 */
+  .dashboard-tab { padding: 10px 20px; border-radius: 10px 10px 0 0; cursor: pointer; font-size: 14px; font-weight: 600; color: white; background: #1e40af; border: 1px solid #1e40af; border-bottom: none; }
+
+  /* カード */
+  .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .card h2 { font-size: 16px; color: #1e40af; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #dbeafe; }
+
+  /* メンテナンス項目テーブル */
+  .maint-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .maint-table th { text-align: left; padding: 10px 12px; background: #f8fafc; color: #475569; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
+  .maint-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+  .maint-table tr:hover { background: #f8fafc; }
+
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .status-ok { background: #dcfce7; color: #166534; }
+  .status-soon { background: #fef3c7; color: #92400e; }
+  .status-overdue { background: #fee2e2; color: #991b1b; }
+  .status-unknown { background: #f1f5f9; color: #64748b; }
+
+  /* ボタン */
+  .btn { padding: 8px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+  .btn-primary { background: #1e40af; color: white; }
+  .btn-primary:hover { background: #1e3a8a; }
+  .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #d1d5db; }
+  .btn-secondary:hover { background: #e2e8f0; }
+  .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-sm { font-size: 12px; padding: 5px 12px; }
+  .btn-icon { background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px; border-radius: 6px; }
+  .btn-icon:hover { background: #f1f5f9; }
+
+  /* モーダル */
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: white; border-radius: 16px; padding: 28px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
+  .modal h2 { font-size: 18px; color: #1e40af; margin-bottom: 20px; }
+  .modal .field { margin-bottom: 14px; }
+  .modal label { display: block; font-size: 13px; color: #475569; font-weight: 500; margin-bottom: 4px; }
+  .modal input, .modal select, .modal textarea { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; }
+  .modal input:focus, .modal select:focus, .modal textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+  /* 履歴リスト */
+  .history-list { list-style: none; }
+  .history-item { display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 14px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+  .history-item:last-child { border-bottom: none; }
+  .history-item:hover { background: #f8fafc; }
+  .history-date { font-weight: 600; color: #1e40af; white-space: nowrap; }
+  .history-detail { flex: 1; margin-left: 12px; color: #475569; }
+  .history-memo { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+  /* ダッシュボード一覧 */
+  .dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  .dash-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-left: 4px solid #3b82f6; }
+  .dash-card h3 { font-size: 15px; color: #334155; margin-bottom: 12px; }
+  .dash-card .dash-items { list-style: none; }
+  .dash-card .dash-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+  .dash-card .dash-item:last-child { border-bottom: none; }
+
+  /* 車両メモ */
+  .vehicle-memo-area { margin-top: 16px; }
+  .vehicle-memo-area textarea { width: 100%; min-height: 60px; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical; }
+  .vehicle-memo-area textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+  /* エクスポート */
+  .export-section { margin-top: 20px; padding: 16px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+  .export-section span { font-size: 13px; color: #64748b; margin-right: auto; }
+
+  @media (max-width: 768px) {
+    .header { padding: 16px; }
+    .header h1 { font-size: 18px; }
+    .container { padding: 12px; }
+    .vehicle-tabs { gap: 2px; }
+    .vehicle-tab { padding: 8px 12px; font-size: 12px; }
+    .vehicle-content { padding: 16px; }
+    .maint-table { font-size: 12px; }
+    .maint-table th, .maint-table td { padding: 8px 6px; }
+    .dash-grid { grid-template-columns: 1fr; }
+    .modal { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>🚗 車両メンテナンス管理</h1>
+    <p>yawaragi 送迎車両（5台）のメンテナンス状況を一元管理</p>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-secondary" onclick="exportJSON()" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.3);">💾 バックアップ</button>
+    <label class="btn btn-secondary" style="background:rgba(255,255,255,0.15);color:white;border-color:rgba(255,255,255,0.3);cursor:pointer;">
+      📂 復元
+      <input type="file" accept=".json" onchange="importJSON(event)" style="display:none;">
+    </label>
+  </div>
+</div>
+
+<div class="container">
+  <!-- アラート -->
+  <div class="alerts" id="alertsArea"></div>
+
+  <!-- タブ -->
+  <div class="vehicle-tabs" id="vehicleTabs"></div>
+
+  <!-- コンテンツ -->
+  <div class="vehicle-content" id="vehicleContent"></div>
+</div>
+
+<!-- 記録追加モーダル -->
+<div class="modal-overlay" id="recordModal">
+  <div class="modal">
+    <h2 id="modalTitle">メンテナンス記録</h2>
+    <div class="field">
+      <label>項目</label>
+      <select id="modalType"></select>
+    </div>
+    <div class="field">
+      <label>実施日</label>
+      <input type="date" id="modalDate">
+    </div>
+    <div class="field" id="mileageField">
+      <label>走行距離 (km)（任意）</label>
+      <input type="number" id="modalMileage" placeholder="例: 45000">
+    </div>
+    <div class="field">
+      <label>費用（円）（任意）</label>
+      <input type="number" id="modalCost" placeholder="例: 5000">
+    </div>
+    <div class="field">
+      <label>メモ（任意）</label>
+      <textarea id="modalMemo" placeholder="店名、部品の銘柄など"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveRecord()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 車両設定モーダル -->
+<div class="modal-overlay" id="vehicleSettingModal">
+  <div class="modal">
+    <h2>車両設定</h2>
+    <div class="field">
+      <label>車両名</label>
+      <input type="text" id="vsName" placeholder="例: モコ">
+    </div>
+    <div class="field">
+      <label>ナンバー（任意）</label>
+      <input type="text" id="vsNumber" placeholder="例: 熊谷 580 あ 1234">
+    </div>
+    <div class="field">
+      <label>次回車検日</label>
+      <input type="date" id="vsShaken">
+    </div>
+    <div class="field">
+      <label>車両メモ（任意）</label>
+      <textarea id="vsMemo" placeholder="特記事項など"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeVehicleSettingModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveVehicleSetting()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 車両追加モーダル -->
+<div class="modal-overlay" id="addVehicleModal">
+  <div class="modal">
+    <h2>車両を追加</h2>
+    <div class="field">
+      <label>車両名 *</label>
+      <input type="text" id="avName" placeholder="例: 新車両">
+    </div>
+    <div class="field">
+      <label>ナンバー（任意）</label>
+      <input type="text" id="avNumber" placeholder="例: 熊谷 580 あ 1234">
+    </div>
+    <div class="field">
+      <label>次回車検日（任意）</label>
+      <input type="date" id="avShaken">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeAddVehicleModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="addNewVehicle()">追加</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== データ構造 =====
+const MAINT_TYPES = [
+  { id: 'oil', name: 'エンジンオイル', icon: '🛢️', intervalDays: 180, intervalKm: 5000, unit: 'km/半年' },
+  { id: 'element', name: 'オイルエレメント', icon: '🔧', intervalDays: 365, intervalKm: 10000, unit: 'km/1年' },
+  { id: 'tire', name: 'タイヤ交換', icon: '🔄', intervalDays: null, intervalKm: null, unit: '都度' },
+  { id: 'tire_rotation', name: 'タイヤローテーション', icon: '↻', intervalDays: 180, intervalKm: 5000, unit: '半年/5000km' },
+  { id: 'wiper', name: 'ワイパー', icon: '🌧️', intervalDays: 365, intervalKm: null, unit: '約1年' },
+  { id: 'ac_filter', name: 'エアコンフィルター', icon: '❄️', intervalDays: 365, intervalKm: null, unit: '約1年' },
+  { id: 'battery', name: 'バッテリー', icon: '🔋', intervalDays: 730, intervalKm: null, unit: '約2年' },
+  { id: 'coolant', name: '冷却水(LLC)', icon: '💧', intervalDays: 730, intervalKm: null, unit: '約2年' },
+  { id: 'brake', name: 'ブレーキパッド', icon: '🛑', intervalDays: null, intervalKm: 30000, unit: '約30000km' },
+  { id: 'other', name: 'その他', icon: '📝', intervalDays: null, intervalKm: null, unit: '—' },
+  { id: 'mileage_log', name: '走行距離記録', icon: '📏', intervalDays: null, intervalKm: null, unit: '月1回記録' },
+];
+
+const DEFAULT_VEHICLES = [
+  { id: 'stepwagon', name: 'ステップワゴン', number: '4847', shaken: '2026-11-28', memo: '' },
+  { id: 'sienta_w', name: 'シエンタ（白）', number: '9677', shaken: '2027-03-26', memo: '' },
+  { id: 'sienta_s', name: 'シエンタ（銀）', number: '5939', shaken: '2026-02-19', memo: '' },
+  { id: 'moco', name: 'モコ', number: '4629', shaken: '2026-06-29', memo: '' },
+  { id: 'cube', name: 'キューブ', number: '4763', shaken: '2027-06-29', memo: '' },
+];
+
+// Excelから取り込んだ初期メンテナンス記録
+const INITIAL_RECORDS = [
+  // ステップワゴン
+  { id: 'init_sw_oil', vehicleId: 'stepwagon', type: 'oil', date: '2025-12-12', mileage: 18253, cost: null, memo: 'Excelデータより取込' },
+  { id: 'init_sw_elem', vehicleId: 'stepwagon', type: 'element', date: '2025-12-12', mileage: 18253, cost: null, memo: 'Excelデータより取込' },
+  // シエンタ（白）
+  { id: 'init_sw2_oil', vehicleId: 'sienta_w', type: 'oil', date: '2025-12-08', mileage: 55600, cost: null, memo: 'Excelデータより取込' },
+  { id: 'init_sw2_elem', vehicleId: 'sienta_w', type: 'element', date: '2025-12-08', mileage: 55600, cost: null, memo: 'Excelデータより取込' },
+  // シエンタ（銀）
+  { id: 'init_ss_oil', vehicleId: 'sienta_s', type: 'oil', date: '2025-10-16', mileage: 72963, cost: null, memo: 'Excelデータより取込' },
+  { id: 'init_ss_elem', vehicleId: 'sienta_s', type: 'element', date: '2025-04-16', mileage: null, cost: null, memo: 'Excelデータより取込' },
+  // モコ
+  { id: 'init_mo_oil', vehicleId: 'moco', type: 'oil', date: '2025-12-04', mileage: 99433, cost: null, memo: 'Excelデータより取込' },
+  { id: 'init_mo_elem', vehicleId: 'moco', type: 'element', date: '2025-12-04', mileage: 99433, cost: null, memo: 'Excelデータより取込' },
+  // キューブ
+  { id: 'init_cu_oil', vehicleId: 'cube', type: 'oil', date: '2025-12-09', mileage: 104856, cost: null, memo: 'Excelデータより取込' },
+  { id: 'init_cu_elem', vehicleId: 'cube', type: 'element', date: '2025-12-09', mileage: 104856, cost: null, memo: 'Excelデータより取込' },
+];
+
+const STORAGE_KEY = 'yawaragi_vehicle_maint';
+
+let data = loadData();
+let activeTab = 'dashboard';
+let editingVehicleId = null;
+
+function loadData() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try { return JSON.parse(saved); } catch(e) {}
+  }
+  // 初回起動時: Excelデータを初期データとしてセット
+  return {
+    vehicles: JSON.parse(JSON.stringify(DEFAULT_VEHICLES)),
+    records: JSON.parse(JSON.stringify(INITIAL_RECORDS))
+  };
+}
+
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// ===== 日付ユーティリティ =====
+function today() { return new Date().toISOString().split('T')[0]; }
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const target = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0,0,0,0);
+  return Math.ceil((target - now) / (1000*60*60*24));
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${d.getFullYear()}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
+}
+
+function daysSince(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0,0,0,0);
+  return Math.floor((now - d) / (1000*60*60*24));
+}
+
+// ===== 走行距離ユーティリティ =====
+function getLatestMileage(vehicleId) {
+  // 全記録（メンテ記録＋走行距離記録）から最新の走行距離を取得
+  const withMileage = data.records
+    .filter(r => r.vehicleId === vehicleId && r.mileage)
+    .sort((a,b) => b.date.localeCompare(a.date) || b.mileage - a.mileage);
+  return withMileage.length > 0 ? withMileage[0].mileage : null;
+}
+
+function saveMileageLog(vehicleId) {
+  const dateEl = document.getElementById('mileageDate_' + vehicleId);
+  const kmEl = document.getElementById('mileageKm_' + vehicleId);
+  const date = dateEl.value;
+  const km = parseInt(kmEl.value);
+
+  if (!date) { alert('日付を入力してください'); return; }
+  if (!km || km <= 0) { alert('走行距離を入力してください'); return; }
+
+  // 前回より小さい値のチェック
+  const latest = getLatestMileage(vehicleId);
+  if (latest && km < latest) {
+    if (!confirm(`前回の記録（${latest.toLocaleString()} km）より小さい値です。\n入力値: ${km.toLocaleString()} km\n\nこのまま保存しますか？`)) return;
+  }
+
+  data.records.push({
+    id: 'r_' + Date.now() + '_' + Math.random().toString(36).substr(2,6),
+    vehicleId: vehicleId,
+    type: 'mileage_log',
+    date: date,
+    mileage: km,
+    cost: null,
+    memo: ''
+  });
+
+  saveData();
+  render();
+}
+
+// ===== アラート計算 =====
+function getAlerts() {
+  const alerts = [];
+
+  data.vehicles.forEach(v => {
+    // 車検チェック
+    if (v.shaken) {
+      const days = daysUntil(v.shaken);
+      if (days !== null) {
+        if (days < 0) {
+          alerts.push({ level: 'red', text: `【${v.name}】車検が ${Math.abs(days)}日 期限切れです！`, vehicle: v.id });
+        } else if (days <= 30) {
+          alerts.push({ level: 'red', text: `【${v.name}】車検まで あと${days}日（${formatDate(v.shaken)}）`, vehicle: v.id });
+        } else if (days <= 90) {
+          alerts.push({ level: 'yellow', text: `【${v.name}】車検まで あと${days}日（${formatDate(v.shaken)}）`, vehicle: v.id });
+        }
+      }
+    }
+
+    // メンテナンス項目チェック
+    MAINT_TYPES.forEach(mt => {
+      if (!mt.intervalDays && !mt.intervalKm) return;
+      const lastRecord = getLastRecord(v.id, mt.id);
+      if (!lastRecord) return;
+
+      if (mt.intervalDays) {
+        const elapsed = daysSince(lastRecord.date);
+        if (elapsed !== null) {
+          const remaining = mt.intervalDays - elapsed;
+          if (remaining < 0) {
+            alerts.push({ level: 'red', text: `【${v.name}】${mt.name} — ${Math.abs(remaining)}日 超過（前回: ${formatDate(lastRecord.date)}）`, vehicle: v.id });
+          } else if (remaining <= 30) {
+            alerts.push({ level: 'yellow', text: `【${v.name}】${mt.name} — あと${remaining}日で交換目安（前回: ${formatDate(lastRecord.date)}）`, vehicle: v.id });
+          }
+        }
+      }
+
+      if (mt.intervalKm && lastRecord.mileage) {
+        const currentRecords = data.records.filter(r => r.vehicleId === v.id && r.mileage).sort((a,b) => b.mileage - a.mileage);
+        if (currentRecords.length > 0) {
+          const latestMileage = currentRecords[0].mileage;
+          const kmSince = latestMileage - lastRecord.mileage;
+          const remaining = mt.intervalKm - kmSince;
+          if (remaining < 0) {
+            alerts.push({ level: 'red', text: `【${v.name}】${mt.name} — ${Math.abs(remaining)}km 超過`, vehicle: v.id });
+          } else if (remaining <= 1000) {
+            alerts.push({ level: 'yellow', text: `【${v.name}】${mt.name} — あと${remaining}kmで交換目安`, vehicle: v.id });
+          }
+        }
+      }
+    });
+  });
+
+  // 重要度順
+  alerts.sort((a,b) => (a.level === 'red' ? 0 : 1) - (b.level === 'red' ? 0 : 1));
+  return alerts;
+}
+
+function getLastRecord(vehicleId, typeId) {
+  const records = data.records
+    .filter(r => r.vehicleId === vehicleId && r.type === typeId)
+    .sort((a,b) => b.date.localeCompare(a.date));
+  return records[0] || null;
+}
+
+function getRecords(vehicleId, typeId) {
+  return data.records
+    .filter(r => r.vehicleId === vehicleId && (typeId ? r.type === typeId : true))
+    .sort((a,b) => b.date.localeCompare(a.date));
+}
+
+// ===== ステータス判定 =====
+function getTypeStatus(vehicleId, typeId) {
+  const mt = MAINT_TYPES.find(m => m.id === typeId);
+  const last = getLastRecord(vehicleId, typeId);
+  if (!last) return { status: 'unknown', label: '未登録' };
+
+  if (mt.intervalDays) {
+    const elapsed = daysSince(last.date);
+    const remaining = mt.intervalDays - elapsed;
+    if (remaining < 0) return { status: 'overdue', label: `${Math.abs(remaining)}日超過` };
+    if (remaining <= 30) return { status: 'soon', label: `あと${remaining}日` };
+    return { status: 'ok', label: `あと${remaining}日` };
+  }
+  if (mt.intervalKm && last.mileage) {
+    const currentRecords = data.records.filter(r => r.vehicleId === vehicleId && r.mileage).sort((a,b) => b.mileage - a.mileage);
+    if (currentRecords.length > 0) {
+      const kmSince = currentRecords[0].mileage - last.mileage;
+      const remaining = mt.intervalKm - kmSince;
+      if (remaining < 0) return { status: 'overdue', label: `${Math.abs(remaining)}km超過` };
+      if (remaining <= 1000) return { status: 'soon', label: `あと${remaining}km` };
+      return { status: 'ok', label: `あと${remaining}km` };
+    }
+  }
+  return { status: 'ok', label: `前回: ${formatDate(last.date)}` };
+}
+
+function getVehicleBadge(vehicleId) {
+  let worst = 'ok';
+  const v = data.vehicles.find(vv => vv.id === vehicleId);
+  if (v && v.shaken) {
+    const days = daysUntil(v.shaken);
+    if (days !== null && days < 0) worst = 'danger';
+    else if (days !== null && days <= 30) worst = 'danger';
+    else if (days !== null && days <= 90) worst = 'warn';
+  }
+
+  MAINT_TYPES.forEach(mt => {
+    const s = getTypeStatus(vehicleId, mt.id);
+    if (s.status === 'overdue' && worst !== 'danger') worst = 'danger';
+    if (s.status === 'soon' && worst === 'ok') worst = 'warn';
+  });
+  return worst;
+}
+
+// ===== 描画 =====
+function render() {
+  renderAlerts();
+  renderTabs();
+  renderContent();
+}
+
+function renderAlerts() {
+  const alerts = getAlerts();
+  const area = document.getElementById('alertsArea');
+  if (alerts.length === 0) {
+    area.innerHTML = '<div class="alert-item alert-green"><span class="alert-icon">✅</span> すべての車両のメンテナンス状況は良好です</div>';
+    return;
+  }
+  area.innerHTML = alerts.map(a =>
+    `<div class="alert-item alert-${a.level}" style="cursor:pointer;" onclick="switchTab('${a.vehicle}')">
+      <span class="alert-icon">${a.level === 'red' ? '🚨' : '⚠️'}</span>
+      ${a.text}
+    </div>`
+  ).join('');
+}
+
+function renderTabs() {
+  const tabsEl = document.getElementById('vehicleTabs');
+  let html = `<div class="vehicle-tab ${activeTab === 'dashboard' ? 'active' : ''}" onclick="switchTab('dashboard')" style="${activeTab === 'dashboard' ? 'background:#1e40af;color:white;border-color:#1e40af;' : ''}">📊 一覧</div>`;
+
+  data.vehicles.forEach(v => {
+    const badge = getVehicleBadge(v.id);
+    const badgeLabel = badge === 'ok' ? '✓' : badge === 'warn' ? '!' : '!!';
+    html += `<div class="vehicle-tab ${activeTab === v.id ? 'active' : ''}" onclick="switchTab('${v.id}')">
+      ${v.name}<span class="tab-badge badge-${badge}">${badgeLabel}</span>
+    </div>`;
+  });
+
+  html += `<div class="vehicle-tab" onclick="openAddVehicleModal()" style="color:#3b82f6;font-size:18px;padding:10px 14px;" title="車両を追加">＋</div>`;
+  tabsEl.innerHTML = html;
+}
+
+function renderContent() {
+  const el = document.getElementById('vehicleContent');
+  if (activeTab === 'dashboard') {
+    renderDashboard(el);
+  } else {
+    renderVehicleDetail(el, activeTab);
+  }
+}
+
+function renderDashboard(el) {
+  let html = '<div class="dash-grid">';
+  data.vehicles.forEach(v => {
+    const badge = getVehicleBadge(v.id);
+    const borderColor = badge === 'danger' ? '#ef4444' : badge === 'warn' ? '#f59e0b' : '#3b82f6';
+    html += `<div class="dash-card" style="border-left-color:${borderColor};cursor:pointer;" onclick="switchTab('${v.id}')">
+      <h3>${v.name} ${v.number ? '<span style="font-size:12px;color:#94a3b8;">(' + v.number + ')</span>' : ''}</h3>
+      <ul class="dash-items">`;
+
+    // 車検
+    if (v.shaken) {
+      const days = daysUntil(v.shaken);
+      const statusClass = days < 0 ? 'status-overdue' : days <= 30 ? 'status-overdue' : days <= 90 ? 'status-soon' : 'status-ok';
+      const label = days < 0 ? `${Math.abs(days)}日超過` : `あと${days}日`;
+      html += `<li class="dash-item"><span>🔖 車検</span><span class="status-badge ${statusClass}">${label}（${formatDate(v.shaken)}）</span></li>`;
+    } else {
+      html += `<li class="dash-item"><span>🔖 車検</span><span class="status-badge status-unknown">未設定</span></li>`;
+    }
+
+    // 走行距離
+    const lm = getLatestMileage(v.id);
+    html += `<li class="dash-item"><span>📏 走行距離</span><span style="font-weight:600;color:#334155;">${lm ? lm.toLocaleString() + ' km' : '未登録'}</span></li>`;
+
+    // 各メンテ
+    MAINT_TYPES.filter(m => m.id !== 'other' && m.id !== 'mileage_log').forEach(mt => {
+      const s = getTypeStatus(v.id, mt.id);
+      html += `<li class="dash-item"><span>${mt.icon} ${mt.name}</span><span class="status-badge status-${s.status}">${s.label}</span></li>`;
+    });
+
+    html += `</ul></div>`;
+  });
+  html += '</div>';
+
+  // エクスポートセクション
+  html += `<div class="export-section">
+    <span>データ管理</span>
+    <button class="btn btn-secondary btn-sm" onclick="exportJSON()">💾 JSONバックアップ</button>
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer;">📂 JSON復元<input type="file" accept=".json" onchange="importJSON(event)" style="display:none;"></label>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+function renderVehicleDetail(el, vehicleId) {
+  const v = data.vehicles.find(vv => vv.id === vehicleId);
+  if (!v) return;
+
+  let html = '';
+
+  // 車両情報ヘッダ
+  html += `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <h2 style="font-size:20px;color:#1e40af;margin:0;">${v.name}</h2>
+      ${v.number ? `<p style="font-size:14px;color:#64748b;margin-top:4px;">ナンバー: ${v.number}</p>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="openRecordModal('${v.id}')">＋ 記録を追加</button>
+      <button class="btn btn-secondary btn-sm" onclick="openVehicleSettingModal('${v.id}')">⚙ 設定</button>
+      ${data.vehicles.length > 1 ? `<button class="btn btn-danger btn-sm" onclick="deleteVehicle('${v.id}')">🗑 削除</button>` : ''}
+    </div>
+  </div>`;
+
+  // 車検情報
+  html += '<div class="card">';
+  html += '<h2>🔖 車検情報</h2>';
+  if (v.shaken) {
+    const days = daysUntil(v.shaken);
+    const statusClass = days < 0 ? 'status-overdue' : days <= 30 ? 'status-overdue' : days <= 90 ? 'status-soon' : 'status-ok';
+    const label = days < 0 ? `${Math.abs(days)}日 期限切れ！` : `あと${days}日`;
+    html += `<p style="font-size:15px;">次回車検: <strong>${formatDate(v.shaken)}</strong> <span class="status-badge ${statusClass}">${label}</span></p>`;
+  } else {
+    html += `<p style="color:#94a3b8;">車検日が未設定です。<a href="#" onclick="openVehicleSettingModal('${v.id}');return false;" style="color:#3b82f6;">設定する</a></p>`;
+  }
+  html += '</div>';
+
+  // 走行距離カード
+  const mileageLogs = data.records
+    .filter(r => r.vehicleId === v.id && r.type === 'mileage_log')
+    .sort((a,b) => b.date.localeCompare(a.date));
+  const latestMileage = getLatestMileage(v.id);
+
+  html += '<div class="card">';
+  html += '<h2>📏 走行距離</h2>';
+  html += `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <div style="font-size:28px;font-weight:700;color:#1e40af;">${latestMileage ? latestMileage.toLocaleString() + ' <span style=font-size:16px;font-weight:500>km</span>' : '<span style=color:#94a3b8;font-size:16px>未登録</span>'}</div>
+    ${latestMileage ? '<span style="font-size:12px;color:#94a3b8;">最新の記録</span>' : ''}
+  </div>`;
+
+  // 簡単入力フォーム
+  html += `<div style="display:flex;gap:8px;align-items:flex-end;margin-top:16px;flex-wrap:wrap;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:12px;color:#64748b;font-weight:500;">日付</label>
+      <input type="date" id="mileageDate_${v.id}" value="${today()}" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:12px;color:#64748b;font-weight:500;">走行距離（km）</label>
+      <input type="number" id="mileageKm_${v.id}" placeholder="例: 50000" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;width:150px;">
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveMileageLog('${v.id}')">記録する</button>
+  </div>`;
+
+  // 走行距離の履歴（最新5件）
+  if (mileageLogs.length > 0) {
+    html += '<div style="margin-top:14px;">';
+    html += '<table class="maint-table"><thead><tr><th>日付</th><th>走行距離</th><th>前回からの走行</th><th></th></tr></thead><tbody>';
+    mileageLogs.slice(0, 5).forEach((log, i) => {
+      const prev = mileageLogs[i + 1];
+      const diff = (prev && log.mileage && prev.mileage) ? (log.mileage - prev.mileage) : null;
+      html += `<tr>
+        <td>${formatDate(log.date)}</td>
+        <td style="font-weight:600;">${log.mileage ? log.mileage.toLocaleString() + ' km' : '—'}</td>
+        <td>${diff !== null ? '+' + diff.toLocaleString() + ' km' : '—'}</td>
+        <td><button class="btn-icon" onclick="deleteRecord('${log.id}')" title="削除">🗑</button></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    if (mileageLogs.length > 5) {
+      html += `<p style="font-size:12px;color:#94a3b8;margin-top:8px;text-align:right;">他 ${mileageLogs.length - 5}件の記録あり</p>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // メンテナンス状況テーブル
+  html += '<div class="card">';
+  html += '<h2>🔧 メンテナンス状況</h2>';
+  html += `<table class="maint-table">
+    <thead><tr><th>項目</th><th>前回実施日</th><th>走行距離</th><th>交換目安</th><th>状態</th></tr></thead>
+    <tbody>`;
+
+  MAINT_TYPES.filter(mt => mt.id !== 'mileage_log').forEach(mt => {
+    const last = getLastRecord(v.id, mt.id);
+    const s = getTypeStatus(v.id, mt.id);
+    html += `<tr>
+      <td>${mt.icon} ${mt.name}</td>
+      <td>${last ? formatDate(last.date) : '—'}</td>
+      <td>${last && last.mileage ? last.mileage.toLocaleString() + ' km' : '—'}</td>
+      <td style="font-size:12px;color:#64748b;">${mt.unit}</td>
+      <td><span class="status-badge status-${s.status}">${s.label}</span></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table></div>';
+
+  // メンテナンス履歴
+  const records = getRecords(v.id);
+  html += '<div class="card">';
+  html += `<h2>📋 メンテナンス履歴（${records.length}件）</h2>`;
+  if (records.length === 0) {
+    html += '<p style="color:#94a3b8;font-size:14px;padding:12px 0;">まだ記録がありません。「＋ 記録を追加」ボタンから登録してください。</p>';
+  } else {
+    html += '<ul class="history-list">';
+    records.forEach(r => {
+      const mt = MAINT_TYPES.find(m => m.id === r.type);
+      html += `<li class="history-item">
+        <span class="history-date">${formatDate(r.date)}</span>
+        <div class="history-detail">
+          <strong>${mt ? mt.icon + ' ' + mt.name : r.type}</strong>
+          ${r.mileage ? ` — ${r.mileage.toLocaleString()} km` : ''}
+          ${r.cost ? ` — ¥${r.cost.toLocaleString()}` : ''}
+          ${r.memo ? `<div class="history-memo">${escapeHtml(r.memo)}</div>` : ''}
+        </div>
+        <button class="btn-icon" onclick="deleteRecord('${r.id}')" title="削除">🗑</button>
+      </li>`;
+    });
+    html += '</ul>';
+  }
+  html += '</div>';
+
+  // 車両メモ
+  html += `<div class="card">
+    <h2>📝 メモ</h2>
+    <div class="vehicle-memo-area">
+      <textarea id="vehicleMemo_${v.id}" placeholder="修理履歴、気になる点など..." oninput="saveVehicleMemo('${v.id}')">${escapeHtml(v.memo || '')}</textarea>
+    </div>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ===== タブ切替 =====
+function switchTab(tabId) {
+  activeTab = tabId;
+  render();
+}
+
+// ===== メンテナンス記録モーダル =====
+let currentRecordVehicle = null;
+
+function openRecordModal(vehicleId) {
+  currentRecordVehicle = vehicleId;
+  const v = data.vehicles.find(vv => vv.id === vehicleId);
+  document.getElementById('modalTitle').textContent = `${v.name} — メンテナンス記録`;
+
+  const sel = document.getElementById('modalType');
+  sel.innerHTML = MAINT_TYPES.filter(mt => mt.id !== 'mileage_log').map(mt => `<option value="${mt.id}">${mt.icon} ${mt.name}</option>`).join('');
+
+  document.getElementById('modalDate').value = today();
+  document.getElementById('modalMileage').value = '';
+  document.getElementById('modalCost').value = '';
+  document.getElementById('modalMemo').value = '';
+  document.getElementById('recordModal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('recordModal').classList.remove('show');
+}
+
+function saveRecord() {
+  const type = document.getElementById('modalType').value;
+  const date = document.getElementById('modalDate').value;
+  const mileage = parseInt(document.getElementById('modalMileage').value) || null;
+  const cost = parseInt(document.getElementById('modalCost').value) || null;
+  const memo = document.getElementById('modalMemo').value.trim();
+
+  if (!date) { alert('日付を入力してください'); return; }
+
+  data.records.push({
+    id: 'r_' + Date.now() + '_' + Math.random().toString(36).substr(2,6),
+    vehicleId: currentRecordVehicle,
+    type, date, mileage, cost, memo
+  });
+
+  saveData();
+  closeModal();
+  render();
+}
+
+function deleteRecord(recordId) {
+  if (!confirm('この記録を削除しますか？')) return;
+  data.records = data.records.filter(r => r.id !== recordId);
+  saveData();
+  render();
+}
+
+// ===== 車両設定モーダル =====
+function openVehicleSettingModal(vehicleId) {
+  editingVehicleId = vehicleId;
+  const v = data.vehicles.find(vv => vv.id === vehicleId);
+  document.getElementById('vsName').value = v.name;
+  document.getElementById('vsNumber').value = v.number || '';
+  document.getElementById('vsShaken').value = v.shaken || '';
+  document.getElementById('vsMemo').value = v.memo || '';
+  document.getElementById('vehicleSettingModal').classList.add('show');
+}
+
+function closeVehicleSettingModal() {
+  document.getElementById('vehicleSettingModal').classList.remove('show');
+}
+
+function saveVehicleSetting() {
+  const v = data.vehicles.find(vv => vv.id === editingVehicleId);
+  if (!v) return;
+  const name = document.getElementById('vsName').value.trim();
+  if (!name) { alert('車両名を入力してください'); return; }
+  v.name = name;
+  v.number = document.getElementById('vsNumber').value.trim();
+  v.shaken = document.getElementById('vsShaken').value;
+  v.memo = document.getElementById('vsMemo').value.trim();
+  saveData();
+  closeVehicleSettingModal();
+  render();
+}
+
+// ===== 車両メモ保存 =====
+function saveVehicleMemo(vehicleId) {
+  const v = data.vehicles.find(vv => vv.id === vehicleId);
+  if (!v) return;
+  const textarea = document.getElementById('vehicleMemo_' + vehicleId);
+  v.memo = textarea.value;
+  saveData();
+}
+
+// ===== 車両追加 =====
+function openAddVehicleModal() {
+  document.getElementById('avName').value = '';
+  document.getElementById('avNumber').value = '';
+  document.getElementById('avShaken').value = '';
+  document.getElementById('addVehicleModal').classList.add('show');
+}
+
+function closeAddVehicleModal() {
+  document.getElementById('addVehicleModal').classList.remove('show');
+}
+
+function addNewVehicle() {
+  const name = document.getElementById('avName').value.trim();
+  if (!name) { alert('車両名を入力してください'); return; }
+  const id = 'v_' + Date.now();
+  data.vehicles.push({
+    id, name,
+    number: document.getElementById('avNumber').value.trim(),
+    shaken: document.getElementById('avShaken').value,
+    memo: ''
+  });
+  saveData();
+  closeAddVehicleModal();
+  activeTab = id;
+  render();
+}
+
+function deleteVehicle(vehicleId) {
+  const v = data.vehicles.find(vv => vv.id === vehicleId);
+  if (!confirm(`「${v.name}」を削除しますか？\nこの車両のメンテナンス記録もすべて削除されます。`)) return;
+  data.vehicles = data.vehicles.filter(vv => vv.id !== vehicleId);
+  data.records = data.records.filter(r => r.vehicleId !== vehicleId);
+  saveData();
+  activeTab = 'dashboard';
+  render();
+}
+
+// ===== バックアップ・復元 =====
+function exportJSON() {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `車両メンテナンス_${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!imported.vehicles || !imported.records) {
+        alert('ファイル形式が正しくありません');
+        return;
+      }
+      if (!confirm('現在のデータを上書きしますか？')) return;
+      data = imported;
+      saveData();
+      render();
+      alert('復元しました');
+    } catch(err) {
+      alert('ファイルの読み込みに失敗しました');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ===== 初期描画 =====
+render();
+</script>
+</body>
+</html>

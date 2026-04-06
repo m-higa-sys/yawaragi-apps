@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>振替不能管理ツール - yawaragi</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f0f4f8; color: #333; padding: 20px; }
+
+  .header { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; padding: 20px 30px; border-radius: 12px; margin-bottom: 20px; }
+  .header h1 { font-size: 22px; margin-bottom: 4px; }
+  .header p { font-size: 13px; opacity: 0.9; }
+
+  .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+  .controls label { font-weight: bold; font-size: 14px; }
+  .controls select, .controls button { padding: 8px 16px; border-radius: 8px; border: 1px solid #ccc; font-size: 14px; }
+  .btn { cursor: pointer; font-weight: bold; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; transition: 0.2s; }
+  .btn-primary { background: #3498db; color: white; }
+  .btn-primary:hover { background: #2980b9; }
+  .btn-danger { background: #e74c3c; color: white; }
+  .btn-danger:hover { background: #c0392b; }
+  .btn-success { background: #27ae60; color: white; }
+  .btn-success:hover { background: #219a52; }
+  .btn-secondary { background: #95a5a6; color: white; }
+  .btn-secondary:hover { background: #7f8c8d; }
+  .btn-small { padding: 6px 12px; font-size: 12px; }
+
+  .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }
+  .card .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .card .value { font-size: 28px; font-weight: bold; }
+  .card .value.red { color: #e74c3c; }
+  .card .value.green { color: #27ae60; }
+  .card .value.blue { color: #3498db; }
+  .card .value.orange { color: #f39c12; }
+
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+  th { background: #34495e; color: white; padding: 12px 10px; font-size: 13px; text-align: center; }
+  td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; text-align: center; vertical-align: middle; }
+  tr:hover { background: #f8f9fa; }
+
+  .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+  .status-未対応 { background: #fdeaea; color: #e74c3c; }
+  .status-連絡済 { background: #fef5e7; color: #f39c12; }
+  .status-回収済 { background: #eafaf1; color: #27ae60; }
+  .status-再提出済 { background: #eaf2fe; color: #3498db; }
+
+  .reason-badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; }
+  .reason-依頼書なし { background: #fdeaea; color: #c0392b; }
+  .reason-取引なし { background: #fef5e7; color: #e67e22; }
+  .reason-残高不足 { background: #fdf2f8; color: #9b59b6; }
+  .reason-その他 { background: #f0f0f0; color: #666; }
+
+  .name-input { border: 1px dashed #ccc; border-radius: 6px; padding: 4px 8px; width: 100px; font-size: 13px; text-align: center; }
+  .name-input:focus { border-color: #3498db; outline: none; }
+  .name-filled { border: 1px solid #27ae60; background: #eafaf1; }
+
+  .memo-input { border: 1px solid #ddd; border-radius: 6px; padding: 4px 8px; width: 140px; font-size: 12px; }
+  .memo-input:focus { border-color: #3498db; outline: none; }
+
+  .date-input { border: 1px solid #ddd; border-radius: 6px; padding: 3px 5px; width: 120px; font-size: 11px; }
+  .date-input:focus { border-color: #3498db; outline: none; }
+  .date-filled { border-color: #27ae60; background: #eafaf1; }
+  .expected-input { border: 1px solid #ddd; border-radius: 6px; padding: 3px 5px; width: 120px; font-size: 11px; }
+  .expected-input:focus { border-color: #3498db; outline: none; }
+  .expected-filled { border-color: #3498db; background: #eaf2fe; }
+
+  .status-手続中 { background: #eaf2fe; color: #2471a3; }
+  .progress-label { display: inline-block; font-size: 11px; margin-top: 3px; padding: 2px 8px; border-radius: 10px; background: #eaf2fe; color: #2471a3; font-weight: bold; }
+  .progress-label.overdue { background: #fdeaea; color: #c0392b; }
+
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: white; border-radius: 16px; padding: 30px; width: 90%; max-width: 500px; }
+  .modal h3 { margin-bottom: 16px; }
+  .modal .form-group { margin-bottom: 12px; }
+  .modal .form-group label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+  .modal .form-group input, .modal .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; }
+  .modal .form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  .history-section { margin-top: 30px; }
+  .history-section h2 { font-size: 18px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e74c3c; }
+  .month-tab { display: inline-block; padding: 8px 16px; margin-right: 4px; margin-bottom: 8px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 13px; font-weight: bold; background: #ddd; }
+  .month-tab.active { background: #34495e; color: white; }
+
+  .actions-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+
+  .print-only { display: none; }
+  @media print {
+    .no-print { display: none !important; }
+    .print-only { display: block; }
+    body { background: white; padding: 0; }
+    .header { background: #e74c3c !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  .help-text { font-size: 12px; color: #888; margin-top: 4px; }
+  .highlight-row { background: #fff3cd !important; }
+
+  .drop-zone { border: 3px dashed #3498db; border-radius: 16px; padding: 30px; text-align: center; background: #eaf4fd; margin-bottom: 20px; cursor: pointer; transition: 0.3s; }
+  .drop-zone:hover, .drop-zone.dragover { background: #d4e9f7; border-color: #2980b9; }
+  .drop-zone p { font-size: 16px; font-weight: bold; color: #2980b9; margin-bottom: 8px; }
+  .drop-zone .sub { font-size: 13px; color: #666; }
+  .drop-zone input[type="file"] { display: none; }
+  .import-result { background: #eafaf1; border: 1px solid #27ae60; border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; font-size: 14px; color: #1e7e34; display: none; }
+  .import-result.error { background: #fdeaea; border-color: #e74c3c; color: #c0392b; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>💰 振替不能管理ツール</h1>
+  <p>口座振替不能の管理・対応状況を追跡します</p>
+  <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="position:absolute;right:20px;top:12px;padding:6px 12px;background:#e3f2fd;color:#1565c0;border:1px solid #1976d2;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;">📋 利用者台帳</button>
+</div>
+
+<!-- Excel取込エリア -->
+<div class="drop-zone no-print" id="dropZone" onclick="document.getElementById('excelFileInput').click()">
+  <p>📂 電算の結果Excelファイルをここにドラッグ＆ドロップ</p>
+  <div class="sub">またはクリックしてファイルを選択（20260327_kekka.xls 等）</div>
+  <input type="file" id="excelFileInput" accept=".xls,.xlsx,.csv" onchange="handleFileSelect(event)">
+</div>
+<div class="import-result" id="importResult"></div>
+
+<div class="controls no-print">
+  <label>表示月：</label>
+  <select id="monthSelect" onchange="renderMonth()"></select>
+  <button class="btn btn-primary" onclick="openAddModal()">＋ 不能データ追加</button>
+  <button class="btn btn-secondary" onclick="exportCSV()">📥 CSV出力</button>
+  <button class="btn btn-secondary" onclick="window.print()">🖨 印刷</button>
+</div>
+
+<div class="summary-cards" id="summaryCards"></div>
+
+<table id="mainTable">
+  <thead>
+    <tr>
+      <th>No.</th>
+      <th>利用者名</th>
+      <th>金融機関</th>
+      <th>支店</th>
+      <th>口座番号</th>
+      <th>金額</th>
+      <th>顧客番号</th>
+      <th>不能理由</th>
+      <th>対応状況</th>
+      <th>依頼書郵送日</th>
+      <th>引落開始予定日</th>
+      <th>メモ</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<!-- 新規手続き進捗パネル -->
+<div id="pendingPanel" style="display:none; background:white; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.08); margin-bottom:20px;">
+  <h3 style="font-size:16px; margin-bottom:12px; color:#2471a3;">📋 口座振替手続き中の一覧（全月横断）</h3>
+  <div id="pendingList"></div>
+</div>
+
+<div class="history-section">
+  <h2>📊 月別サマリー</h2>
+  <table id="historyTable">
+    <thead>
+      <tr>
+        <th>引落月</th>
+        <th>振替不能件数</th>
+        <th>不能金額合計</th>
+        <th>回収済</th>
+        <th>未回収</th>
+        <th>対応完了率</th>
+      </tr>
+    </thead>
+    <tbody id="historyBody"></tbody>
+  </table>
+</div>
+
+<!-- 追加モーダル -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h3>振替不能データ追加</h3>
+    <div class="form-group">
+      <label>引落月（例: 2026-02）</label>
+      <input type="month" id="formMonth" value="2026-02">
+    </div>
+    <div class="form-group">
+      <label>連番</label>
+      <input type="text" id="formNo" placeholder="例: 00101">
+    </div>
+    <div class="form-group">
+      <label>利用者名（任意・後から入力可）</label>
+      <input type="text" id="formName" placeholder="例: 山田太郎">
+    </div>
+    <div class="form-group">
+      <label>金融機関</label>
+      <input type="text" id="formBank" placeholder="例: 埼玉中央農協">
+    </div>
+    <div class="form-group">
+      <label>支店</label>
+      <input type="text" id="formBranch" placeholder="例: 東松山">
+    </div>
+    <div class="form-group">
+      <label>口座番号</label>
+      <input type="text" id="formAccount" placeholder="例: 0004622">
+    </div>
+    <div class="form-group">
+      <label>金額（円）</label>
+      <input type="number" id="formAmount" placeholder="例: 2920">
+    </div>
+    <div class="form-group">
+      <label>顧客番号</label>
+      <input type="text" id="formCustomerId" placeholder="例: 149">
+    </div>
+    <div class="form-group">
+      <label>不能理由</label>
+      <select id="formReason">
+        <option value="預金口座振替依頼書なし">預金口座振替依頼書なし</option>
+        <option value="預金取引なし">預金取引なし</option>
+        <option value="残高不足">残高不足</option>
+        <option value="その他">その他</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>依頼書郵送日（任意・新規の方向け）</label>
+      <input type="date" id="formSentDate">
+      <div class="help-text">口座振替依頼書を電算に送った日</div>
+    </div>
+    <div class="form-group">
+      <label>引落開始予定日（任意）</label>
+      <input type="date" id="formExpectedStart">
+      <div class="help-text">郵送から2〜3ヶ月後の27日が目安</div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeAddModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="addRecord()">追加</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// ============ Excel取込（ドラッグ＆ドロップ） ============
+const ERROR_CODE_MAP = {
+  '0': null,
+  '1': '残高不足',
+  '2': '預金取引なし',
+  '3': '振替停止（預金者都合）',
+  '4': '預金口座振替依頼書なし',
+  '8': '振替停止（委託者都合）',
+  '9': 'その他'
+};
+
+function setupDropZone() {
+  const dz = document.getElementById('dropZone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) processExcelFile(file);
+  });
+}
+
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) processExcelFile(file);
+  event.target.value = '';
+}
+
+function processExcelFile(file) {
+  const resultDiv = document.getElementById('importResult');
+
+  // ファイル名から引落月を推定（20260327_kekka.xls → 2026-03）
+  const match = file.name.match(/(\d{4})(\d{2})(\d{2})/);
+  let hikiotoshiMonth = '';
+  let hikiotoshiDate = '';
+  if (match) {
+    hikiotoshiMonth = `${match[1]}-${match[2]}`;
+    hikiotoshiDate = `${match[1]}-${match[2]}-${match[3]}`;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const workbook = XLSX.read(e.target.result, { type: 'binary' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+      if (rows.length < 2) {
+        showImportResult('データが見つかりませんでした', true);
+        return;
+      }
+
+      // 1行目はヘッダー、2行目以降がデータ
+      const dataRows = rows.slice(1);
+      const funou = [];
+
+      dataRows.forEach(row => {
+        if (!row || row.length < 10) return;
+        // 振替結果コードが「0:振替済」「4:預金口座振替依頼書なし」等の形式に対応
+        const rawCode = String(row[9] || '0').trim();
+        const resultCode = rawCode.match(/\d/) ? rawCode.match(/\d/)[0] : '0';
+        if (resultCode === '0') return;
+
+        const reason = ERROR_CODE_MAP[resultCode] || 'その他（コード:' + rawCode + '）';
+        funou.push({
+          bank: String(row[1] || '').trim(),
+          branch: String(row[8] || '').trim(),
+          accountType: String(row[3] || '').trim(),
+          account: String(row[4] || '').trim(),
+          name: String(row[5] || '').trim(),
+          amount: parseInt(row[6]) || 0,
+          customerId: String(parseInt(row[7]) || row[7] || '').trim(),
+          reason: reason,
+          resultCode: resultCode
+        });
+      });
+
+      if (funou.length === 0) {
+        showImportResult(`✅ 振替不能は0件でした！（全${dataRows.length}件が正常振替）`, false);
+        return;
+      }
+
+      // 月を決定（ファイル名から取れない場合はプロンプト）
+      let month = hikiotoshiMonth;
+      if (!month) {
+        month = prompt('引落月を入力してください（例: 2026-03）');
+        if (!month) return;
+      }
+
+      // 重複チェック（同月・同顧客番号）
+      const existingIds = data.records
+        .filter(r => r.month === month)
+        .map(r => r.customerId);
+
+      const newRecords = [];
+      let skipCount = 0;
+
+      funou.forEach((f, i) => {
+        if (existingIds.includes(f.customerId)) {
+          skipCount++;
+          return;
+        }
+        newRecords.push({
+          id: data.nextId++,
+          month: month,
+          hikiotoshiDate: hikiotoshiDate,
+          no: String(i + 1).padStart(5, '0'),
+          name: f.name,
+          bank: f.bank,
+          branch: f.branch,
+          account: f.account,
+          amount: f.amount,
+          customerId: f.customerId,
+          reason: f.reason,
+          status: '未対応',
+          memo: '',
+          formSentDate: '',
+          expectedStartMonth: '',
+          createdAt: new Date().toISOString().split('T')[0]
+        });
+      });
+
+      if (newRecords.length === 0) {
+        showImportResult(`この月のデータは既に登録済みです（${skipCount}件スキップ）`, false);
+        return;
+      }
+
+      data.records.push(...newRecords);
+      saveData(data);
+
+      // 表示を更新
+      initMonthSelect();
+      document.getElementById('monthSelect').value = month;
+      renderMonth();
+
+      let msg = `📥 ${newRecords.length}件の振替不能を取り込みました（${month}）`;
+      if (skipCount > 0) msg += `\n（${skipCount}件は登録済みのためスキップ）`;
+      newRecords.forEach(r => {
+        msg += `\n　・顧客${r.customerId}: ${r.name} ${r.amount.toLocaleString()}円（${r.reason}）`;
+      });
+      showImportResult(msg, false);
+
+    } catch (err) {
+      showImportResult('ファイルの読み込みに失敗しました: ' + err.message, true);
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+function showImportResult(msg, isError) {
+  const div = document.getElementById('importResult');
+  div.textContent = msg;
+  div.style.whiteSpace = 'pre-line';
+  div.className = 'import-result' + (isError ? ' error' : '');
+  div.style.display = 'block';
+  setTimeout(() => { div.style.display = 'none'; }, 15000);
+}
+
+// ============ データ管理 ============
+const STORAGE_KEY = 'yawaragi_furikae_funou';
+
+function loadData() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) return JSON.parse(saved);
+  // 初期データ: 2026年2月分（2/27引落）
+  return {
+    records: [
+      {
+        id: 1,
+        month: '2026-02',
+        hikiotoshiDate: '2026-02-27',
+        no: '00101',
+        name: '',
+        bank: '埼玉中央農協',
+        branch: '東松山',
+        account: '0004622',
+        amount: 2920,
+        customerId: '149',
+        reason: '預金口座振替依頼書なし',
+        status: '未対応',
+        memo: '',
+        createdAt: '2026-03-08'
+      },
+      {
+        id: 2,
+        month: '2026-02',
+        hikiotoshiDate: '2026-02-27',
+        no: '00102',
+        name: '',
+        bank: 'ゆうちょ銀行',
+        branch: '038',
+        account: '0383281',
+        amount: 741,
+        customerId: '151',
+        reason: '預金取引なし',
+        status: '未対応',
+        memo: '新規',
+        createdAt: '2026-03-08'
+      },
+      {
+        id: 3,
+        month: '2026-02',
+        hikiotoshiDate: '2026-02-27',
+        no: '00103',
+        name: '',
+        bank: '東和銀行',
+        branch: '東松山',
+        account: '0394904',
+        amount: 552,
+        customerId: '152',
+        reason: '預金口座振替依頼書なし',
+        status: '未対応',
+        memo: '',
+        createdAt: '2026-03-08'
+      }
+    ],
+    nextId: 4
+  };
+}
+
+function saveData(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+let data = loadData();
+
+// ============ 月選択 ============
+function getMonths() {
+  const months = [...new Set(data.records.map(r => r.month))];
+  months.sort().reverse();
+  if (months.length === 0) months.push('2026-02');
+  return months;
+}
+
+function initMonthSelect() {
+  const sel = document.getElementById('monthSelect');
+  const months = getMonths();
+  sel.innerHTML = months.map(m => {
+    const [y, mo] = m.split('-');
+    return `<option value="${m}">${y}年${parseInt(mo)}月分</option>`;
+  }).join('');
+}
+
+// ============ 描画 ============
+function renderMonth() {
+  const month = document.getElementById('monthSelect').value;
+  const records = data.records.filter(r => r.month === month);
+
+  // サマリーカード
+  const total = records.length;
+  const totalAmount = records.reduce((s, r) => s + r.amount, 0);
+  const collected = records.filter(r => r.status === '回収済');
+  const collectedAmount = collected.reduce((s, r) => s + r.amount, 0);
+  const pendingCount = records.filter(r => r.expectedStartDate || r.expectedStartMonth).length;
+  const uncollected = totalAmount - collectedAmount;
+
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="card"><div class="label">不能件数</div><div class="value red">${total}件</div></div>
+    <div class="card"><div class="label">不能金額合計</div><div class="value red">${totalAmount.toLocaleString()}円</div></div>
+    <div class="card"><div class="label">回収済</div><div class="value green">${collectedAmount.toLocaleString()}円</div></div>
+    <div class="card"><div class="label">未回収</div><div class="value orange">${uncollected.toLocaleString()}円</div></div>
+    ${pendingCount > 0 ? `<div class="card"><div class="label">手続中（新規）</div><div class="value blue">${pendingCount}件</div></div>` : ''}
+  `;
+
+  // テーブル
+  const tbody = document.getElementById('tableBody');
+  if (records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="12" style="padding:30px;color:#888;">この月のデータはありません</td></tr>';
+  } else {
+    tbody.innerHTML = records.map(r => {
+      const reasonClass = r.reason.includes('依頼書') ? '依頼書なし' :
+                          r.reason.includes('取引なし') ? '取引なし' :
+                          r.reason.includes('残高') ? '残高不足' : 'その他';
+      const nameClass = r.name ? 'name-input name-filled' : 'name-input';
+      const sentDateClass = r.formSentDate ? 'date-input date-filled' : 'date-input';
+      // expectedStartMonth（旧：月）とexpectedStartDate（新：日付）の両方に対応
+      const expectedDate = r.expectedStartDate || r.expectedStartMonth || '';
+      const expectedClass = expectedDate ? 'expected-input expected-filled' : 'expected-input';
+
+      // 引落開始予定の進捗ラベル
+      let progressHtml = '';
+      if (expectedDate) {
+        const now = new Date();
+        now.setHours(0,0,0,0);
+        // 日付形式（2026-04-27）か月形式（2026-04）かを判定
+        let targetDate;
+        let displayStr;
+        if (expectedDate.length <= 7) {
+          // 月形式 → その月の27日として扱う
+          targetDate = new Date(expectedDate + '-27');
+          const [ey, em] = expectedDate.split('-');
+          displayStr = `${parseInt(em)}/27`;
+        } else {
+          targetDate = new Date(expectedDate);
+          const [ey, em, ed] = expectedDate.split('-');
+          displayStr = `${parseInt(em)}/${parseInt(ed)}`;
+        }
+        const diffDays = Math.ceil((targetDate - now) / (1000*60*60*24));
+        if (diffDays > 0) {
+          progressHtml = `<div class="progress-label">${displayStr}開始（あと${diffDays}日）</div>`;
+        } else if (diffDays === 0) {
+          progressHtml = `<div class="progress-label">今日引落予定</div>`;
+        } else {
+          progressHtml = `<div class="progress-label overdue">予定超過（${Math.abs(diffDays)}日前）</div>`;
+        }
+      }
+
+      return `<tr class="${r.status === '未対応' && !r.expectedStartMonth ? 'highlight-row' : ''}">
+        <td>${r.no}</td>
+        <td><input type="text" class="${nameClass}" value="${escapeHtml(r.name)}"
+            placeholder="名前入力" onchange="updateName(${r.id}, this.value)"
+            title="利用者名を入力"></td>
+        <td>${escapeHtml(r.bank)}</td>
+        <td>${escapeHtml(r.branch)}</td>
+        <td>${r.account}</td>
+        <td style="font-weight:bold;">${r.amount.toLocaleString()}円</td>
+        <td>${r.customerId}</td>
+        <td><span class="reason-badge reason-${reasonClass}">${r.reason}</span></td>
+        <td>
+          <select onchange="updateStatus(${r.id}, this.value)" style="font-size:12px;padding:4px;border-radius:6px;">
+            ${['未対応','連絡済','回収済','再提出済','手続中'].map(s =>
+              `<option value="${s}" ${r.status === s ? 'selected' : ''}>${s}</option>`
+            ).join('')}
+          </select>
+        </td>
+        <td>
+          <input type="date" class="${sentDateClass}" value="${r.formSentDate || ''}"
+            onchange="updateFormSentDate(${r.id}, this.value)"
+            title="依頼書を電算に郵送した日">
+        </td>
+        <td>
+          <input type="date" class="${expectedClass}" value="${expectedDate}"
+            onchange="updateExpectedStart(${r.id}, this.value)"
+            title="引落が始まる予定の日">
+          ${progressHtml}
+        </td>
+        <td><input type="text" class="memo-input" value="${escapeHtml(r.memo)}"
+            placeholder="メモ" onchange="updateMemo(${r.id}, this.value)"></td>
+      </tr>`;
+    }).join('');
+  }
+
+  renderPendingPanel();
+
+  renderHistory();
+}
+
+function renderHistory() {
+  const months = getMonths();
+  const tbody = document.getElementById('historyBody');
+  tbody.innerHTML = months.map(m => {
+    const recs = data.records.filter(r => r.month === m);
+    const total = recs.length;
+    const totalAmt = recs.reduce((s, r) => s + r.amount, 0);
+    const collectedAmt = recs.filter(r => r.status === '回収済').reduce((s, r) => s + r.amount, 0);
+    const uncollectedAmt = totalAmt - collectedAmt;
+    const doneCount = recs.filter(r => r.status === '回収済' || r.status === '再提出済' || r.status === '手続中').length;
+    const rate = total > 0 ? Math.round(doneCount / total * 100) : 0;
+    const [y, mo] = m.split('-');
+    return `<tr>
+      <td>${y}年${parseInt(mo)}月</td>
+      <td>${total}件</td>
+      <td style="color:#e74c3c;font-weight:bold;">${totalAmt.toLocaleString()}円</td>
+      <td style="color:#27ae60;">${collectedAmt.toLocaleString()}円</td>
+      <td style="color:#f39c12;font-weight:bold;">${uncollectedAmt.toLocaleString()}円</td>
+      <td>
+        <div style="background:#eee;border-radius:10px;height:20px;width:100px;display:inline-block;vertical-align:middle;">
+          <div style="background:${rate === 100 ? '#27ae60' : '#3498db'};height:100%;border-radius:10px;width:${rate}%;transition:0.3s;"></div>
+        </div>
+        ${rate}%
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ============ データ操作 ============
+function updateName(id, value) {
+  const rec = data.records.find(r => r.id === id);
+  if (rec) { rec.name = value; saveData(data); renderMonth(); }
+}
+
+function updateStatus(id, value) {
+  const rec = data.records.find(r => r.id === id);
+  if (rec) { rec.status = value; saveData(data); renderMonth(); }
+}
+
+function updateMemo(id, value) {
+  const rec = data.records.find(r => r.id === id);
+  if (rec) { rec.memo = value; saveData(data); }
+}
+
+function updateFormSentDate(id, value) {
+  const rec = data.records.find(r => r.id === id);
+  if (rec) {
+    rec.formSentDate = value;
+    // 郵送日を入れたら自動でスケジュール表に基づく引落日を提案
+    if (value && !rec.expectedStartDate && !rec.expectedStartMonth) {
+      const suggestDate = guessExpectedDate(value);
+      if (suggestDate) {
+        const [sy, sm, sd] = suggestDate.split('-');
+        if (confirm(`引落開始予定を「${sy}年${parseInt(sm)}月${parseInt(sd)}日」に設定しますか？\n（スケジュール表に基づく見込み）`)) {
+          rec.expectedStartDate = suggestDate;
+          rec.expectedStartMonth = suggestDate.substring(0, 7);
+          rec.status = '手続中';
+        }
+      }
+    }
+    saveData(data);
+    renderMonth();
+  }
+}
+
+// 電算スケジュール表2026年（27日振替）に基づいて引落開始予定日を推定
+function guessExpectedDate(sentDate) {
+  // 新規依頼書締切日 → その月の振替日（27日 or 振替日）
+  const schedule = [
+    { deadline: '2025-12-18', furikaeDate: '2026-01-27' },
+    { deadline: '2026-01-21', furikaeDate: '2026-02-27' },
+    { deadline: '2026-02-18', furikaeDate: '2026-03-27' },
+    { deadline: '2026-03-23', furikaeDate: '2026-04-27' },
+    { deadline: '2026-04-17', furikaeDate: '2026-05-27' },
+    { deadline: '2026-05-21', furikaeDate: '2026-06-29' },
+    { deadline: '2026-06-23', furikaeDate: '2026-07-27' },
+    { deadline: '2026-07-22', furikaeDate: '2026-08-27' },
+    { deadline: '2026-08-21', furikaeDate: '2026-09-28' },
+    { deadline: '2026-09-18', furikaeDate: '2026-10-27' },
+    { deadline: '2026-10-21', furikaeDate: '2026-11-27' },
+    { deadline: '2026-11-20', furikaeDate: '2026-12-28' },
+  ];
+  // 郵送日がどの締切に間に合うかを判定
+  for (const s of schedule) {
+    if (sentDate <= s.deadline) {
+      return s.furikaeDate;
+    }
+  }
+  // 2026年内に間に合わない場合は翌年1月
+  return '2027-01-27';
+}
+
+function updateExpectedStart(id, value) {
+  const rec = data.records.find(r => r.id === id);
+  if (rec) {
+    rec.expectedStartDate = value;
+    // 旧形式のexpectedStartMonthも残しておく（互換性）
+    if (value) rec.expectedStartMonth = value.substring(0, 7);
+    if (value && rec.status === '未対応') {
+      rec.status = '手続中';
+    }
+    saveData(data);
+    renderMonth();
+  }
+}
+
+function renderPendingPanel() {
+  // 全月横断で手続中のものを一覧表示
+  const pending = data.records.filter(r => (r.expectedStartDate || r.expectedStartMonth) && r.status !== '回収済');
+  const panel = document.getElementById('pendingPanel');
+  const list = document.getElementById('pendingList');
+
+  if (pending.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  const now = new Date();
+  now.setHours(0,0,0,0);
+
+  list.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+    '<tr style="background:#f0f7ff;"><th style="padding:8px;text-align:left;">利用者</th><th>顧客番号</th><th>不能理由</th><th>依頼書郵送日</th><th>引落開始予定</th><th>状態</th></tr>' +
+    pending.map(r => {
+      const expectedDate = r.expectedStartDate || r.expectedStartMonth || '';
+      let targetDate;
+      if (expectedDate.length <= 7) {
+        targetDate = new Date(expectedDate + '-27');
+      } else {
+        targetDate = new Date(expectedDate);
+      }
+      const diffDays = Math.ceil((targetDate - now) / (1000*60*60*24));
+      let statusLabel = '';
+      if (diffDays > 0) {
+        statusLabel = `<span class="progress-label">あと${diffDays}日</span>`;
+      } else if (diffDays === 0) {
+        statusLabel = '<span class="progress-label">今日引落予定</span>';
+      } else {
+        statusLabel = '<span class="progress-label overdue">予定超過！要確認</span>';
+      }
+      const sentStr = r.formSentDate || '未入力';
+      const expectedStr = expectedDate.length <= 7 ? expectedDate + '-27' : expectedDate;
+      return `<tr style="border-bottom:1px solid #eee;">
+        <td style="padding:8px;">${escapeHtml(r.name) || '（未入力）'}</td>
+        <td style="text-align:center;">${r.customerId}</td>
+        <td style="text-align:center;">${r.reason}</td>
+        <td style="text-align:center;">${sentStr}</td>
+        <td style="text-align:center;">${expectedStr}</td>
+        <td style="text-align:center;">${statusLabel}</td>
+      </tr>`;
+    }).join('') + '</table>';
+}
+
+// ============ 追加モーダル ============
+function openAddModal() {
+  document.getElementById('addModal').classList.add('active');
+  const currentMonth = document.getElementById('monthSelect').value || '2026-02';
+  document.getElementById('formMonth').value = currentMonth;
+}
+
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('active');
+}
+
+function addRecord() {
+  const month = document.getElementById('formMonth').value;
+  const no = document.getElementById('formNo').value.trim();
+  const amount = parseInt(document.getElementById('formAmount').value) || 0;
+
+  if (!month || !no || amount <= 0) {
+    alert('引落月・連番・金額は必須です');
+    return;
+  }
+
+  const sentDate = document.getElementById('formSentDate').value || '';
+  const expectedStart = document.getElementById('formExpectedStart').value || '';
+  const autoStatus = expectedStart ? '手続中' : '未対応';
+  const expectedMonth = expectedStart ? expectedStart.substring(0, 7) : '';
+
+  const rec = {
+    id: data.nextId++,
+    month: month,
+    hikiotoshiDate: '',
+    no: no,
+    name: document.getElementById('formName').value.trim(),
+    bank: document.getElementById('formBank').value.trim(),
+    branch: document.getElementById('formBranch').value.trim(),
+    account: document.getElementById('formAccount').value.trim(),
+    amount: amount,
+    customerId: document.getElementById('formCustomerId').value.trim(),
+    reason: document.getElementById('formReason').value,
+    status: autoStatus,
+    memo: '',
+    formSentDate: sentDate,
+    expectedStartDate: expectedStart,
+    expectedStartMonth: expectedMonth,
+    createdAt: new Date().toISOString().split('T')[0]
+  };
+
+  data.records.push(rec);
+  saveData(data);
+
+  // フォームリセット
+  ['formNo','formName','formBank','formBranch','formAccount','formAmount','formCustomerId','formSentDate','formExpectedStart'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+
+  closeAddModal();
+  initMonthSelect();
+  document.getElementById('monthSelect').value = month;
+  renderMonth();
+}
+
+// ============ CSV出力 ============
+function exportCSV() {
+  const month = document.getElementById('monthSelect').value;
+  const records = data.records.filter(r => r.month === month);
+  const bom = '\uFEFF';
+  const header = '連番,利用者名,金融機関,支店,口座番号,金額,顧客番号,不能理由,対応状況,依頼書郵送日,引落開始予定日,メモ\n';
+  const rows = records.map(r =>
+    `${r.no},${r.name},${r.bank},${r.branch},${r.account},${r.amount},${r.customerId},${r.reason},${r.status},${r.formSentDate || ''},${r.expectedStartDate || r.expectedStartMonth || ''},${r.memo}`
+  ).join('\n');
+
+  const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const [y, mo] = month.split('-');
+  a.download = `振替不能_${y}年${parseInt(mo)}月.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============ ユーティリティ ============
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============ 初期化 ============
+setupDropZone();
+initMonthSelect();
+renderMonth();
+</script>
+</body>
+</html>
