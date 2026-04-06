@@ -466,6 +466,65 @@
         .abs-record-delete:hover { background: #fff5f5; }
         .abs-empty { text-align: center; color: #a0aec0; font-size: 0.9rem; padding: 20px 0; }
 
+        /* ===== 実績確認タブ ===== */
+        .jis-controls {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+            margin-bottom: 12px; background: white; padding: 14px;
+            border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .jis-controls label { font-weight: 600; font-size: 0.95rem; }
+        .jis-controls input[type="month"] {
+            padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem;
+        }
+        .jis-load-btn {
+            padding: 8px 20px; border: none; border-radius: 8px;
+            background: linear-gradient(135deg, #2c7a7b, #38a169); color: white;
+            font-size: 0.9rem; font-weight: 700; cursor: pointer; font-family: inherit;
+        }
+        .jis-load-btn:hover { opacity: 0.9; }
+        .jis-status { font-size: 0.8rem; color: #718096; }
+        .jis-filter-bar {
+            display: flex; gap: 6px; margin-bottom: 12px;
+        }
+        .jis-filter-btn {
+            padding: 8px 16px; border: 2px solid #e2e8f0; border-radius: 8px;
+            background: white; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; font-family: inherit; transition: all 0.2s;
+        }
+        .jis-filter-btn.active { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .jis-filter-btn:hover:not(.active) { border-color: #2c7a7b; }
+        .jis-table-wrap {
+            overflow-x: auto; background: white; border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 8px;
+        }
+        .jis-table { border-collapse: collapse; font-size: 0.8rem; width: 100%; min-width: 600px; }
+        .jis-table th, .jis-table td {
+            padding: 4px 3px; text-align: center; border: 1px solid #e2e8f0;
+            white-space: nowrap;
+        }
+        .jis-table th {
+            background: #f7fafc; font-weight: 700; color: #4a5568;
+            position: sticky; top: 0; z-index: 2;
+        }
+        .jis-table th.jis-name-col {
+            position: sticky; left: 0; z-index: 3; background: #f7fafc;
+            text-align: left; min-width: 80px;
+        }
+        .jis-table td.jis-name-cell {
+            position: sticky; left: 0; z-index: 1; background: white;
+            text-align: left; font-weight: 600; font-size: 0.85rem;
+        }
+        .jis-table .jis-day-header { font-size: 0.7rem; }
+        .jis-table .jis-dow { font-size: 0.65rem; color: #a0aec0; }
+        .jis-table .jis-sun { color: #e53e3e; }
+        .jis-table .jis-sat { color: #3182ce; }
+        .jis-table .jis-attend { background: #f0fff4; color: #38a169; font-weight: 700; }
+        .jis-table .jis-absent { background: #fff5f5; color: #e53e3e; font-weight: 700; }
+        .jis-table .jis-oral { color: #805ad5; font-weight: 700; font-size: 0.7rem; }
+        .jis-table .jis-not-day { background: #f7fafc; color: #cbd5e0; }
+        .jis-table .jis-summary-col { background: #f7fafc; font-weight: 600; font-size: 0.75rem; }
+        .jis-table .jis-warn { color: #e53e3e; font-weight: 700; }
+
         /* ===== タスク確認タブ ===== */
         .task-register-card {
             background: white; border-radius: 12px; padding: 20px;
@@ -623,6 +682,7 @@
 
 <div class="tab-bar">
     <button class="tab-btn active" data-tab="absence">欠席登録</button>
+    <button class="tab-btn" data-tab="jisseki">実績確認</button>
     <button class="tab-btn" data-tab="task">タスク確認</button>
     <button class="tab-btn" data-tab="assign">配置登録</button>
     <button class="tab-btn" data-tab="stats">集計</button>
@@ -698,6 +758,24 @@
     <div class="abs-today-card" style="margin-top:16px;">
         <h3 class="abs-section-title">今後の欠席予定（1週間）</h3>
         <div id="abs-upcoming-list"></div>
+    </div>
+</div>
+
+<!-- ===== 実績確認タブ ===== -->
+<div id="tab-jisseki" class="tab-content">
+    <div class="jis-controls">
+        <label>月:</label>
+        <input type="month" id="jis-month">
+        <button class="jis-load-btn" onclick="jisLoad()">表示</button>
+        <span class="jis-status" id="jis-status"></span>
+    </div>
+    <div class="jis-filter-bar">
+        <button class="jis-filter-btn active" onclick="jisSetFilter('all', this)">全員</button>
+        <button class="jis-filter-btn" onclick="jisSetFilter('am', this)">午前</button>
+        <button class="jis-filter-btn" onclick="jisSetFilter('pm', this)">午後</button>
+    </div>
+    <div class="jis-table-wrap" id="jis-table-wrap">
+        <p style="text-align:center; color:#a0aec0; padding:40px;">月を選んで「表示」を押してください</p>
     </div>
 </div>
 
@@ -1017,6 +1095,7 @@ function init() {
     document.getElementById('assign-date').value = currentDate;
     document.getElementById('stats-month').value = `${yyyy}-${mm}`;
     document.getElementById('history-month').value = `${yyyy}-${mm}`;
+    document.getElementById('jis-month').value = `${yyyy}-${mm}`;
     const d = getData();
     if (!d.staff) { d.staff = [...DEFAULT_STAFF]; saveData(d); }
     assignStaffColors();
@@ -1041,6 +1120,7 @@ function setupTabs() {
             // タブ切替時に表示を更新
             if (btn.dataset.tab === 'task') tbRenderAll();
             if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
+            if (btn.dataset.tab === 'jisseki' && absUserLoaded) jisLoad();
             if (btn.dataset.tab === 'data') absRenderUserManage();
         });
     });
@@ -2608,6 +2688,206 @@ function absRenderUserManage() {
             <span style="color:#a0aec0; margin-left:auto; font-size:0.75rem;">${patternText}</span>
         </div>`;
     }).join('');
+}
+
+// ================================================================
+// ========== 実績確認機能 ==========
+// ================================================================
+
+const JIS_ORAL_SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+
+let jisFilter = 'all'; // 'all' | 'am' | 'pm'
+let jisOralData = null; // 口腔チェックデータ
+let jisAbsenceData = []; // 欠席データ（GASから取得）
+
+function jisSetFilter(f, btn) {
+    jisFilter = f;
+    document.querySelectorAll('.jis-filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    jisRender();
+}
+
+function jisLoad() {
+    const month = document.getElementById('jis-month').value;
+    if (!month) { alert('月を選んでください'); return; }
+
+    const status = document.getElementById('jis-status');
+    status.textContent = '読み込み中...';
+
+    // 口腔チェックデータと欠席データを並行取得
+    let loaded = 0;
+    const total = 2;
+    const checkDone = () => { loaded++; if (loaded >= total) { status.textContent = '取得完了'; jisRender(); } };
+
+    // 1. 口腔チェックデータ取得（JSONP）
+    const cbOral = '_jisOralCb_' + Date.now();
+    window[cbOral] = function(data) {
+        delete window[cbOral];
+        if (data && data.checks) jisOralData = data.checks;
+        checkDone();
+    };
+    const scriptOral = document.createElement('script');
+    scriptOral.src = JIS_ORAL_SYNC_URL + '?action=getOral&callback=' + cbOral + '&t=' + Date.now();
+    scriptOral.onerror = () => { delete window[cbOral]; checkDone(); };
+    document.body.appendChild(scriptOral);
+
+    // 2. 欠席データ取得（yawaragiボードGAS JSONP）
+    const cbAbs = '_jisAbsCb_' + Date.now();
+    window[cbAbs] = function(data) {
+        delete window[cbAbs];
+        if (data && data.absences) jisAbsenceData = data.absences;
+        checkDone();
+    };
+    const scriptAbs = document.createElement('script');
+    // 月の1日を指定して14日分ではなく、全月分取得したいので、直接出欠変更を見る
+    // yawaragiボードGASは今日起点で14日先までなので、localStorageの欠席データも併用
+    scriptAbs.src = ABS_BOARD_API_URL + '?action=absences&date=' + month + '-01&callback=' + cbAbs + '&t=' + Date.now();
+    scriptAbs.onerror = () => { delete window[cbAbs]; checkDone(); };
+    document.body.appendChild(scriptAbs);
+}
+
+function jisRender() {
+    const month = document.getElementById('jis-month').value;
+    if (!month) return;
+
+    const [yearStr, monStr] = month.split('-');
+    const year = parseInt(yearStr);
+    const mon = parseInt(monStr);
+
+    // この月の日数
+    const daysInMonth = new Date(year, mon, 0).getDate();
+
+    // 利用者一覧
+    let users = absGetUsers();
+    if (users.length === 0) {
+        document.getElementById('jis-table-wrap').innerHTML = '<p style="text-align:center; color:#a0aec0; padding:40px;">利用者データがありません</p>';
+        return;
+    }
+
+    // フィルター適用
+    if (jisFilter === 'am') {
+        users = users.filter(u => u.pattern && u.pattern.some(p => p.unit === 'am'));
+    } else if (jisFilter === 'pm') {
+        users = users.filter(u => u.pattern && u.pattern.some(p => p.unit === 'pm'));
+    }
+
+    // 欠席マップ作成（日付+名前 → 理由）
+    const absMap = {};
+    // localStorageから
+    const localRecords = absGetRecords();
+    localRecords.forEach(r => {
+        const from = new Date(r.dateFrom);
+        const to = new Date(r.dateTo);
+        for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+            const key = d.toISOString().slice(0, 10) + '_' + r.userName;
+            absMap[key] = r.reason;
+        }
+    });
+    // GASから取得した欠席データも追加
+    if (jisAbsenceData) {
+        jisAbsenceData.forEach(a => {
+            absMap[a.date + '_' + a.name] = a.reason;
+        });
+    }
+
+    // 口腔チェックマップ作成（名前 → { "4月_1回目": "4/7", ... }）
+    const fiscalYear = mon >= 4 ? year : year - 1;
+    const monthLabel = mon + '月';
+    const oralMap = {};
+    if (jisOralData && jisOralData[fiscalYear]) {
+        Object.keys(jisOralData[fiscalYear]).forEach(name => {
+            const checks = jisOralData[fiscalYear][name];
+            oralMap[name] = {};
+            // この月の口腔チェック日を抽出
+            Object.keys(checks).forEach(key => {
+                if (key.startsWith(monthLabel + '_')) {
+                    const val = checks[key];
+                    if (val) oralMap[name][key] = val;
+                }
+            });
+        });
+    }
+
+    // テーブル生成
+    const dowNames = ['日','月','火','水','木','金','土'];
+    let html = '<table class="jis-table"><thead><tr>';
+    html += '<th class="jis-name-col">利用者</th>';
+
+    // 日付ヘッダー
+    for (let d = 1; d <= daysInMonth; d++) {
+        const date = new Date(year, mon - 1, d);
+        const dow = date.getDay();
+        let dowClass = '';
+        if (dow === 0) dowClass = 'jis-sun';
+        else if (dow === 6) dowClass = 'jis-sat';
+        html += `<th class="jis-day-header"><div>${d}</div><div class="jis-dow ${dowClass}">${dowNames[dow]}</div></th>`;
+    }
+    html += '<th class="jis-summary-col">出席</th>';
+    html += '<th class="jis-summary-col">口腔</th>';
+    html += '</tr></thead><tbody>';
+
+    users.forEach(u => {
+        html += '<tr>';
+        html += `<td class="jis-name-cell">${u.name}</td>`;
+
+        let attendCount = 0;
+        let totalDays = 0;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(year, mon - 1, d);
+            const dow = date.getDay();
+            const dateStr = `${year}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+            // この曜日に通所するか
+            const isScheduled = u.pattern && u.pattern.some(p => {
+                if (p.day !== dow) return false;
+                if (jisFilter === 'am') return p.unit === 'am';
+                if (jisFilter === 'pm') return p.unit === 'pm';
+                return true;
+            });
+
+            if (!isScheduled) {
+                html += '<td class="jis-not-day"></td>';
+                continue;
+            }
+
+            totalDays++;
+            const absKey = dateStr + '_' + u.name;
+            const isAbsent = absMap[absKey];
+
+            if (isAbsent) {
+                html += `<td class="jis-absent" title="${isAbsent}">✕</td>`;
+            } else {
+                attendCount++;
+                // 口腔チェックがこの日に実施されたか
+                let oralMark = '';
+                if (oralMap[u.name]) {
+                    Object.values(oralMap[u.name]).forEach(val => {
+                        if (typeof val === 'string' && val === `${mon}/${d}`) {
+                            oralMark = '<br><span class="jis-oral">口</span>';
+                        }
+                    });
+                }
+                html += `<td class="jis-attend">○${oralMark}</td>`;
+            }
+        }
+
+        // 月計
+        html += `<td class="jis-summary-col">${attendCount}/${totalDays}</td>`;
+
+        // 口腔チェック回数
+        const oralCount = oralMap[u.name] ? Object.keys(oralMap[u.name]).length : 0;
+        const today = new Date();
+        const isCurrentMonth = (today.getFullYear() === year && today.getMonth() + 1 === mon);
+        const isLateMonth = isCurrentMonth && today.getDate() >= 20;
+        const warnOral = oralCount === 0 && isLateMonth;
+        html += `<td class="jis-summary-col ${warnOral ? 'jis-warn' : ''}">${oralCount}回${warnOral ? ' !!!' : ''}</td>`;
+
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('jis-table-wrap').innerHTML = html;
 }
 
 // ----- 欠席登録の初期化 -----
