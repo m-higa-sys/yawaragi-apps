@@ -1165,7 +1165,35 @@ function parseDaySchedule(dayRaw, unitRaw) {
   const schedule = {};
   if (!dayRaw) return schedule;
 
-  // デフォルトのunit判定（幅広く対応）
+  // E列（unitRaw）に曜日ごとの指定があるかチェック（例: 「月午前、木午後」「月午前」など）
+  // 曜日文字（月火水木金土）が含まれていれば、E列を曜日別パースする
+  const DAYS_SET = new Set(DAYS);
+  const unitHasDaySpec = unitRaw ? [...unitRaw].some(ch => DAYS_SET.has(ch)) : false;
+
+  if (unitHasDaySpec) {
+    // E列に曜日ごとの午前/午後指定がある場合（例: 「月午前、木午後」）
+    // まずD列から全曜日を抽出
+    for (const ch of dayRaw) {
+      if (DAYS_SET.has(ch)) schedule[ch] = 'both'; // デフォルトは両方
+    }
+    // E列をパースして曜日ごとのunitを上書き
+    const unitSegments = unitRaw.split(/[、,，・\/]/).map(s => s.trim()).filter(s => s);
+    for (const seg of unitSegments) {
+      let segUnit = 'both';
+      let dayPart = seg;
+      if (seg.includes('午前') && seg.includes('午後')) { segUnit = 'both'; dayPart = seg.replace(/午前|午後/g, ''); }
+      else if (seg.includes('午前')) { segUnit = 'am'; dayPart = seg.replace('午前', ''); }
+      else if (seg.includes('午後')) { segUnit = 'pm'; dayPart = seg.replace('午後', ''); }
+      for (const ch of dayPart) {
+        if (DAYS_SET.has(ch)) {
+          schedule[ch] = segUnit;
+        }
+      }
+    }
+    return schedule;
+  }
+
+  // デフォルトのunit判定（E列に曜日指定がない場合）
   const u = unitRaw.toLowerCase();
   let defaultUnit = '';
   if (u.includes('午前') && u.includes('午後')) defaultUnit = 'both';
@@ -1174,7 +1202,6 @@ function parseDaySchedule(dayRaw, unitRaw) {
   else if (u.includes('午後') || u === 'pm') defaultUnit = 'pm';
   else {
     // E列が空欄や不明な値 → D列に「午前」「午後」が含まれていなければ「both」をデフォルトにする
-    // D列内に午前/午後の記載があればそちらで判定できるため、空でも進める
     if (dayRaw.includes('午前') || dayRaw.includes('午後')) {
       defaultUnit = 'both'; // D列内で個別指定されているのでデフォルトは使われない
     } else {
