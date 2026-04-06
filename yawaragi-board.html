@@ -1,0 +1,2632 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>yawaragiボード</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif;
+            background: #f0f4f8; color: #333; min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #2c7a7b, #38a169); color: white;
+            padding: 16px 24px; display: flex; align-items: center;
+            justify-content: space-between; flex-wrap: wrap; gap: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header h1 { font-size: 1.3rem; font-weight: 700; }
+        .header-sub { font-size: 0.85rem; opacity: 0.9; }
+        .tab-bar { display: flex; background: white; border-bottom: 2px solid #e2e8f0; overflow-x: auto; }
+        .tab-btn {
+            flex: 1; min-width: 80px; padding: 14px 12px; border: none; background: white;
+            font-size: 0.9rem; font-weight: 600; color: #718096; cursor: pointer;
+            border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap;
+        }
+        .tab-btn.active { color: #2c7a7b; border-bottom-color: #2c7a7b; background: #f0fff4; }
+        .tab-btn:hover { background: #f7fafc; }
+        .tab-content { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .tab-content.active { display: block; }
+        .date-selector {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            margin-bottom: 20px; background: white; padding: 16px;
+            border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .date-selector label { font-weight: 600; font-size: 0.95rem; }
+        .date-selector input[type="date"] {
+            padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem;
+        }
+        .unit-btns { display: flex; gap: 6px; }
+        .unit-btn {
+            padding: 8px 20px; border: 2px solid #e2e8f0; border-radius: 8px;
+            background: white; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .unit-btn.active { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .unit-btn:hover:not(.active) { border-color: #2c7a7b; color: #2c7a7b; }
+        .busy-notice {
+            padding: 12px 16px; border-radius: 10px; margin-bottom: 16px;
+            font-size: 0.9rem; font-weight: 600; display: flex; align-items: center; gap: 8px;
+        }
+        .busy-early { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+        .busy-mid { background: #fffff0; color: #b7791f; border: 1px solid #fefcbf; }
+        .busy-late { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+        .floor-map {
+            display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+            gap: 12px; margin-bottom: 20px;
+        }
+        @media (max-width: 1000px) { .floor-map { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 550px) { .floor-map { grid-template-columns: 1fr; } }
+        .position-card {
+            background: white; border-radius: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden;
+        }
+        .position-header {
+            padding: 12px 16px; color: white; font-weight: 700; font-size: 1rem;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .position-num {
+            width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.3);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; font-weight: 800;
+        }
+        .pos-1 .position-header { background: linear-gradient(135deg, #3182ce, #2b6cb0); }
+        .pos-2 .position-header { background: linear-gradient(135deg, #dd6b20, #c05621); }
+        .pos-3 .position-header { background: linear-gradient(135deg, #38a169, #2f855a); }
+        .pos-4 .position-header { background: linear-gradient(135deg, #805ad5, #6b46c1); }
+        .pos-5 .position-header { background: linear-gradient(135deg, #d69e2e, #b7791f); }
+        .position-body { padding: 14px 16px; }
+        .equipment-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+        .eq-tag {
+            font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+            background: #edf2f7; color: #4a5568; font-weight: 600;
+        }
+        .assign-area {
+            min-height: 48px; border: 2px dashed #cbd5e0; border-radius: 10px;
+            padding: 8px; display: flex; flex-wrap: wrap; gap: 6px;
+            align-items: center; transition: all 0.2s; cursor: pointer;
+        }
+        .assign-area:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .assign-area.has-staff { border-style: solid; border-color: #a0aec0; }
+        .assign-placeholder { color: #a0aec0; font-size: 0.85rem; width: 100%; text-align: center; }
+        .staff-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 10px; border-radius: 20px; font-size: 0.85rem;
+            font-weight: 600; color: white; cursor: pointer; transition: transform 0.15s;
+        }
+        .staff-chip:hover { transform: scale(1.05); }
+        .staff-chip .remove-x { font-size: 0.75rem; opacity: 0.8; margin-left: 2px; }
+
+        /* 仕事チェックリスト */
+        .job-checklist { margin-top: 10px; border-top: 1px solid #edf2f7; padding-top: 8px; }
+        .job-toggle-btn {
+            padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 8px;
+            background: #f7fafc; font-size: 0.8rem; color: #4a5568;
+            cursor: pointer; width: 100%; text-align: center; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        .job-toggle-btn:hover { background: #edf2f7; color: #2d3748; }
+        .progress-badge {
+            font-size: 0.7rem; padding: 1px 7px; border-radius: 10px;
+            color: white; font-weight: 700;
+        }
+        .progress-badge.done { background: #38a169; }
+        .progress-badge.partial { background: #dd6b20; }
+        .progress-badge.none { background: #a0aec0; }
+        .job-items { display: none; margin-top: 8px; }
+        .job-items.open { display: block; }
+        .job-item {
+            display: flex; align-items: flex-start; gap: 6px;
+            padding: 5px 4px; border-radius: 6px; transition: background 0.15s;
+        }
+        .job-item:hover { background: #f7fafc; }
+        .job-item input[type="checkbox"] {
+            margin-top: 3px; width: 18px; height: 18px; cursor: pointer;
+            accent-color: #38a169; flex-shrink: 0;
+        }
+        .job-item-text {
+            flex: 1; font-size: 0.8rem; line-height: 1.4; cursor: pointer; color: #4a5568;
+        }
+        .job-item.checked .job-item-text { color: #a0aec0; text-decoration: line-through; }
+        .job-item-move {
+            flex-shrink: 0; width: 22px; height: 22px; border: 1px solid #e2e8f0;
+            border-radius: 4px; background: white; font-size: 0.65rem; color: #a0aec0;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .job-item-move:hover { border-color: #805ad5; color: #805ad5; background: #faf5ff; }
+        .job-moved-tag {
+            font-size: 0.65rem; padding: 1px 5px; border-radius: 4px;
+            background: #faf5ff; color: #805ad5; font-weight: 600; white-space: nowrap;
+        }
+        .job-cat-label {
+            font-size: 0.72rem; font-weight: 700; color: #718096;
+            margin-top: 6px; margin-bottom: 2px; padding-left: 4px;
+        }
+        .progress-bar-wrap {
+            margin-top: 8px; background: #edf2f7; border-radius: 6px; height: 6px; overflow: hidden;
+        }
+        .progress-bar-fill { height: 100%; border-radius: 6px; transition: width 0.3s; }
+
+        /* カスタム仕事追加 */
+        .add-custom-job {
+            display: flex; gap: 4px; margin-top: 8px;
+        }
+        .add-custom-job input {
+            flex: 1; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 6px;
+            font-size: 0.8rem; min-width: 0;
+        }
+        .add-custom-job input:focus { outline: none; border-color: #2c7a7b; }
+        .add-custom-job button {
+            padding: 5px 10px; border: 1px solid #e2e8f0; border-radius: 6px;
+            background: #f7fafc; font-size: 0.75rem; font-weight: 600;
+            cursor: pointer; white-space: nowrap; color: #4a5568;
+        }
+        .add-custom-job button:hover { background: #edf2f7; border-color: #2c7a7b; color: #2c7a7b; }
+        .custom-job-tag {
+            font-size: 0.6rem; padding: 1px 4px; border-radius: 3px;
+            background: #ebf8ff; color: #2b6cb0; font-weight: 600;
+        }
+        .custom-job-remove {
+            flex-shrink: 0; width: 18px; height: 18px; border: none;
+            border-radius: 4px; background: transparent; font-size: 0.7rem; color: #fc8181;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .custom-job-remove:hover { background: #fff5f5; color: #e53e3e; }
+
+        .memo-area {
+            background: white; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px;
+        }
+        .memo-area h3 { font-size: 0.95rem; color: #4a5568; margin-bottom: 8px; }
+        .memo-area textarea {
+            width: 100%; min-height: 60px; border: 2px solid #e2e8f0;
+            border-radius: 8px; padding: 10px; font-size: 0.9rem;
+            resize: vertical; font-family: inherit;
+        }
+        .memo-area textarea:focus { outline: none; border-color: #2c7a7b; }
+        .save-bar {
+            display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 30px;
+        }
+        .save-btn {
+            padding: 12px 32px; border: none; border-radius: 10px;
+            font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.2s;
+        }
+        .save-btn.primary { background: linear-gradient(135deg, #2c7a7b, #38a169); color: white; }
+        .save-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(44,122,123,0.3); }
+        .save-btn.secondary { background: white; color: #4a5568; border: 2px solid #e2e8f0; }
+        .save-btn.secondary:hover { border-color: #a0aec0; }
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 1000;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: white; border-radius: 16px; max-width: 500px;
+            width: 100%; max-height: 80vh; overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            padding: 16px 20px; font-weight: 700; font-size: 1.1rem;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-close {
+            width: 32px; height: 32px; border: none; background: #f7fafc;
+            border-radius: 50%; font-size: 1.2rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-body { padding: 20px; }
+        .staff-select-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .staff-select-btn {
+            padding: 10px 20px; border-radius: 10px; border: 2px solid #e2e8f0;
+            background: white; font-size: 0.95rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .staff-select-btn:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .staff-select-btn.already { opacity: 0.35; cursor: not-allowed; text-decoration: line-through; }
+
+        /* 移動先選択モーダル */
+        .move-target-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .move-target-btn {
+            padding: 12px 20px; border-radius: 10px; border: 2px solid #e2e8f0;
+            background: white; font-size: 0.95rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; color: white; min-width: 80px; text-align: center;
+        }
+        .move-target-btn:hover { transform: scale(1.05); opacity: 0.9; }
+        .move-undo-btn {
+            padding: 12px 20px; border-radius: 10px; border: 2px solid #fc8181;
+            background: white; font-size: 0.9rem; font-weight: 600;
+            cursor: pointer; color: #e53e3e; margin-top: 12px;
+        }
+        .move-undo-btn:hover { background: #fff5f5; }
+        .move-job-text { font-size: 0.9rem; color: #4a5568; margin-bottom: 8px; padding: 10px; background: #f7fafc; border-radius: 8px; }
+
+        .stats-controls {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; align-items: center;
+        }
+        .stats-controls label { font-weight: 600; }
+        .stats-controls select, .stats-controls input {
+            padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95rem;
+        }
+        .stats-table-wrap {
+            overflow-x: auto; background: white; border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .stats-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .stats-table th, .stats-table td {
+            padding: 12px 16px; text-align: center; border-bottom: 1px solid #e2e8f0;
+        }
+        .stats-table th {
+            background: #f7fafc; font-weight: 700; color: #4a5568; position: sticky; top: 0;
+        }
+        .stats-table th:first-child, .stats-table td:first-child { text-align: left; font-weight: 600; }
+        .stats-table tr:hover { background: #f0fff4; }
+        .stats-table .count-high { background: #fed7d7; color: #c53030; font-weight: 700; border-radius: 6px; }
+        .stats-table .count-zero { color: #cbd5e0; }
+        .stats-table .total-col { background: #f7fafc; font-weight: 700; }
+        .bias-warnings { margin-top: 16px; }
+        .bias-item {
+            padding: 10px 14px; background: #fffff0; border: 1px solid #fefcbf;
+            border-radius: 8px; margin-bottom: 8px; font-size: 0.9rem; color: #744210;
+        }
+        .history-list { display: flex; flex-direction: column; gap: 10px; }
+        .history-card {
+            background: white; border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .history-date { font-weight: 700; font-size: 1rem; color: #2d3748; margin-bottom: 8px; }
+        .history-unit { font-size: 0.85rem; color: #718096; margin-bottom: 6px; }
+        .history-positions { display: flex; flex-wrap: wrap; gap: 6px; }
+        .history-pos-tag {
+            font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; color: white; font-weight: 600;
+        }
+        .data-section {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px;
+        }
+        .data-section h3 { margin-bottom: 12px; color: #2d3748; }
+        .data-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+        .data-btn {
+            padding: 10px 20px; border: 2px solid #e2e8f0; border-radius: 8px;
+            background: white; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .data-btn:hover { border-color: #2c7a7b; color: #2c7a7b; }
+        .data-btn.danger { border-color: #fc8181; color: #e53e3e; }
+        .data-btn.danger:hover { background: #fff5f5; }
+        .toast {
+            position: fixed; bottom: 30px; left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #2d3748; color: white; padding: 12px 24px;
+            border-radius: 10px; font-weight: 600; font-size: 0.9rem;
+            z-index: 2000; transition: transform 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .staff-color-0 { background: #3182ce; }
+        .staff-color-1 { background: #dd6b20; }
+        .staff-color-2 { background: #38a169; }
+        .staff-color-3 { background: #805ad5; }
+        .staff-color-4 { background: #d69e2e; }
+        .staff-color-5 { background: #e53e3e; }
+        .staff-color-6 { background: #319795; }
+        .staff-color-7 { background: #d53f8c; }
+        .staff-color-8 { background: #2b6cb0; }
+        .staff-color-9 { background: #744210; }
+        .staff-color-10 { background: #5a67d8; }
+
+        /* ===== 欠席登録タブ ===== */
+        .abs-form-card {
+            background: white; border-radius: 14px; padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px;
+        }
+        .abs-section-title {
+            font-size: 1rem; color: #2c7a7b; font-weight: 700;
+            margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e6fffa;
+        }
+        .abs-step { margin-bottom: 20px; }
+        .abs-label {
+            display: block; font-size: 0.9rem; font-weight: 700; color: #4a5568;
+            margin-bottom: 8px;
+        }
+        .abs-search-wrap {
+            position: relative; display: flex; align-items: center;
+        }
+        .abs-search-input {
+            width: 100%; padding: 12px 40px 12px 14px; border: 2px solid #e2e8f0;
+            border-radius: 10px; font-size: 1rem; font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .abs-search-input:focus { outline: none; border-color: #2c7a7b; }
+        .abs-clear-btn {
+            position: absolute; right: 10px; width: 28px; height: 28px;
+            border: none; background: #edf2f7; border-radius: 50%;
+            font-size: 1.1rem; color: #718096; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .abs-clear-btn:hover { background: #e2e8f0; color: #e53e3e; }
+        .abs-search-results {
+            margin-top: 4px; max-height: 200px; overflow-y: auto;
+            border-radius: 10px;
+        }
+        .abs-search-item {
+            padding: 12px 14px; background: #f7fafc; border: 1px solid #e2e8f0;
+            border-radius: 8px; margin-bottom: 4px; cursor: pointer;
+            font-size: 0.95rem; font-weight: 600; transition: all 0.15s;
+        }
+        .abs-search-item:hover { background: #e6fffa; border-color: #2c7a7b; }
+        .abs-search-item .abs-name-main { font-size: 1rem; }
+        .abs-search-item .abs-name-reading { font-size: 0.8rem; color: #718096; margin-left: 8px; }
+        .abs-selected-info {
+            margin-top: 10px; padding: 14px; background: #f0fff4;
+            border: 2px solid #c6f6d5; border-radius: 10px;
+        }
+        .abs-selected-name {
+            font-size: 1.1rem; font-weight: 700; color: #234e52; margin-bottom: 6px;
+        }
+        .abs-selected-pattern {
+            font-size: 0.85rem; color: #4a5568; line-height: 1.5;
+        }
+
+        .abs-date-type-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .abs-date-type-btn {
+            flex: 1; min-width: 90px; padding: 12px 8px; border: 2px solid #e2e8f0;
+            border-radius: 10px; background: white; font-size: 0.9rem;
+            font-weight: 600; cursor: pointer; text-align: center;
+            transition: all 0.2s; font-family: inherit;
+        }
+        .abs-date-type-btn.active { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .abs-date-type-btn:hover:not(.active) { border-color: #2c7a7b; color: #2c7a7b; }
+        .abs-date-inputs { margin-top: 8px; }
+        .abs-date-inputs input[type="date"] {
+            padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px;
+            font-size: 1rem; font-family: inherit; width: 100%; max-width: 220px;
+        }
+        .abs-date-inputs input[type="date"]:focus { outline: none; border-color: #2c7a7b; }
+        .abs-date-range-wrap {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .abs-date-range-wrap span { font-weight: 600; color: #718096; }
+        .abs-date-warning {
+            margin-top: 8px; padding: 10px 14px; background: #fffff0;
+            border: 1px solid #fefcbf; border-radius: 8px;
+            font-size: 0.85rem; color: #b7791f; font-weight: 600;
+        }
+
+        .abs-reason-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 6px;
+        }
+        @media (max-width: 550px) { .abs-reason-grid { grid-template-columns: 1fr 1fr; } }
+        .abs-reason-btn {
+            padding: 10px 8px; border: 2px solid #e2e8f0; border-radius: 10px;
+            background: white; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; text-align: center; transition: all 0.2s;
+            font-family: inherit; line-height: 1.3;
+        }
+        .abs-reason-btn:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .abs-reason-btn.selected { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .abs-reason-other-input {
+            margin-top: 8px; width: 100%; padding: 10px 14px; border: 2px solid #e2e8f0;
+            border-radius: 10px; font-size: 0.9rem; font-family: inherit;
+        }
+        .abs-reason-other-input:focus { outline: none; border-color: #2c7a7b; }
+
+        .abs-contact-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+        .abs-contact-btn {
+            padding: 12px 20px; border: 2px solid #e2e8f0; border-radius: 10px;
+            background: white; font-size: 0.9rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; font-family: inherit;
+        }
+        .abs-contact-btn:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .abs-contact-btn.selected { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .abs-contact-other-input {
+            margin-top: 8px; width: 100%; max-width: 300px; padding: 10px 14px;
+            border: 2px solid #e2e8f0; border-radius: 10px;
+            font-size: 0.9rem; font-family: inherit;
+        }
+        .abs-contact-other-input:focus { outline: none; border-color: #2c7a7b; }
+
+        .abs-confirm-card {
+            padding: 16px; background: #ebf8ff; border: 2px solid #bee3f8;
+            border-radius: 12px; margin-bottom: 14px; font-size: 0.9rem; line-height: 1.8;
+        }
+        .abs-confirm-card strong { color: #2c5282; }
+        .abs-submit-btn {
+            width: 100%; padding: 16px; border: none; border-radius: 12px;
+            background: linear-gradient(135deg, #e53e3e, #c53030); color: white;
+            font-size: 1.1rem; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; font-family: inherit;
+        }
+        .abs-submit-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(229,62,62,0.3); }
+        .abs-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .abs-today-card {
+            background: white; border-radius: 14px; padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px;
+        }
+        .abs-record {
+            padding: 12px 14px; border-radius: 10px; border: 1px solid #e2e8f0;
+            margin-bottom: 8px; display: flex; justify-content: space-between;
+            align-items: flex-start; gap: 10px;
+        }
+        .abs-record:last-child { margin-bottom: 0; }
+        .abs-record-main { flex: 1; }
+        .abs-record-name { font-size: 1rem; font-weight: 700; color: #2d3748; }
+        .abs-record-detail { font-size: 0.82rem; color: #718096; margin-top: 4px; line-height: 1.5; }
+        .abs-record-delete {
+            padding: 6px 12px; border: 1px solid #fed7d7; border-radius: 8px;
+            background: white; color: #e53e3e; font-size: 0.75rem; font-weight: 600;
+            cursor: pointer; white-space: nowrap; font-family: inherit;
+        }
+        .abs-record-delete:hover { background: #fff5f5; }
+        .abs-empty { text-align: center; color: #a0aec0; font-size: 0.9rem; padding: 20px 0; }
+
+        /* ===== タスク確認タブ ===== */
+        .task-register-card {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px;
+        }
+        .task-register-card h3 {
+            font-size: 0.95rem; color: #2c7a7b; margin-bottom: 14px;
+            padding-bottom: 8px; border-bottom: 2px solid #e6fffa;
+        }
+        .task-staff-grid {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;
+        }
+        .task-staff-chip {
+            padding: 10px 16px; border-radius: 10px; border: 2px solid #e2e8f0;
+            background: white; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; min-height: 44px;
+        }
+        .task-staff-chip:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .task-staff-chip.selected { border-color: #2c7a7b; background: #e6fffa; color: #234e52; font-weight: 700; }
+        .task-form-row {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+        }
+        .task-form-row label { font-size: 0.85rem; font-weight: 600; min-width: 70px; color: #718096; }
+        .task-form-row input, .task-form-row select {
+            flex: 1; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 8px;
+            font-size: 0.9rem; font-family: inherit; min-width: 0;
+        }
+        .task-form-row input:focus, .task-form-row select:focus { outline: none; border-color: #2c7a7b; }
+        .task-priority-btns { display: flex; gap: 6px; flex: 1; }
+        .task-priority-btn {
+            flex: 1; padding: 10px 8px; border-radius: 8px; border: 2px solid #e2e8f0;
+            background: white; cursor: pointer; font-size: 0.85rem; font-weight: 600;
+            transition: all 0.2s; text-align: center; font-family: inherit;
+        }
+        .task-priority-btn[data-p="high"] { color: #e53e3e; }
+        .task-priority-btn[data-p="normal"] { color: #d69e2e; }
+        .task-priority-btn[data-p="low"] { color: #38a169; }
+        .task-priority-btn.selected[data-p="high"] { background: #fff5f5; border-color: #e53e3e; font-weight: 700; }
+        .task-priority-btn.selected[data-p="normal"] { background: #fffff0; border-color: #d69e2e; font-weight: 700; }
+        .task-priority-btn.selected[data-p="low"] { background: #f0fff4; border-color: #38a169; font-weight: 700; }
+        .task-templates-wrap {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;
+        }
+        .task-template-btn {
+            padding: 8px 14px; border: 1px solid #e2e8f0; border-radius: 20px;
+            background: white; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;
+            font-family: inherit;
+        }
+        .task-template-btn:hover { background: #f0fff4; border-color: #2c7a7b; }
+        .task-add-btn {
+            width: 100%; padding: 12px; border: none; border-radius: 10px;
+            background: linear-gradient(135deg, #2c7a7b, #38a169); color: white;
+            font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: all 0.2s;
+            font-family: inherit;
+        }
+        .task-add-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(44,122,123,0.3); }
+
+        /* タスクボード */
+        .task-board-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        @media (max-width: 550px) { .task-board-grid { grid-template-columns: 1fr; } }
+        .task-staff-column {
+            background: white; border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden;
+        }
+        .task-col-header {
+            padding: 14px 16px; font-size: 0.95rem; font-weight: 700;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .task-col-header .task-count-badge {
+            font-size: 0.8rem; font-weight: 600; padding: 4px 10px; border-radius: 20px;
+        }
+        .task-busy-high .task-col-header { background: #fff5f5; color: #c53030; border-bottom: 3px solid #e53e3e; }
+        .task-busy-high .task-count-badge { background: #e53e3e; color: white; }
+        .task-busy-mid .task-col-header { background: #fffff0; color: #b7791f; border-bottom: 3px solid #d69e2e; }
+        .task-busy-mid .task-count-badge { background: #d69e2e; color: white; }
+        .task-busy-low .task-col-header { background: #f0fff4; color: #276749; border-bottom: 3px solid #38a169; }
+        .task-busy-low .task-count-badge { background: #38a169; color: white; }
+        .task-col-body { padding: 12px; min-height: 60px; }
+        .task-col-body .task-empty { text-align: center; color: #a0aec0; font-size: 0.85rem; padding: 16px 0; }
+        .task-card {
+            padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0;
+            margin-bottom: 8px; transition: all 0.2s;
+        }
+        .task-card:last-child { margin-bottom: 0; }
+        .task-card.task-done { opacity: 0.5; background: #f8fafc; }
+        .task-card-top {
+            display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;
+        }
+        .task-card-name { font-size: 0.9rem; font-weight: 600; flex: 1; word-break: break-all; }
+        .task-card.task-done .task-card-name { text-decoration: line-through; }
+        .task-card-priority {
+            font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+        }
+        .task-card-priority.high { background: #fff5f5; color: #e53e3e; }
+        .task-card-priority.normal { background: #fffff0; color: #b7791f; }
+        .task-card-priority.low { background: #f0fff4; color: #276749; }
+        .task-card-meta { font-size: 0.8rem; color: #718096; margin-bottom: 8px; }
+        .task-card-meta .time-over { color: #e53e3e; font-weight: 700; }
+        .task-card-meta .time-ok { color: #38a169; font-weight: 600; }
+        .task-card-actions { display: flex; gap: 6px; }
+        .task-card-actions button {
+            padding: 6px 14px; border-radius: 8px; border: none; font-size: 0.8rem;
+            font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.2s;
+        }
+        .task-complete-btn { background: #38a169; color: white; }
+        .task-complete-btn:hover { background: #2f855a; }
+        .task-undo-btn { background: #a0aec0; color: white; font-size: 0.75rem; }
+        .task-delete-btn { background: #e53e3e; color: white; font-size: 0.75rem; padding: 6px 10px; }
+
+        .task-board-empty {
+            text-align: center; color: #a0aec0; padding: 40px 0; font-size: 0.95rem;
+        }
+        .task-reset-bar {
+            display: flex; justify-content: flex-end; margin-bottom: 16px;
+        }
+        .task-reset-btn {
+            padding: 8px 16px; border: 2px solid #fed7d7; border-radius: 8px;
+            background: white; color: #e53e3e; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; font-family: inherit;
+        }
+        .task-reset-btn:hover { background: #fff5f5; }
+
+        /* テンプレート管理 */
+        .tmpl-item {
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 6px; flex-wrap: wrap;
+        }
+        .tmpl-item input[type="text"] {
+            flex: 2; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;
+            font-size: 0.85rem; font-family: inherit; min-width: 120px;
+        }
+        .tmpl-item input[type="number"] {
+            width: 70px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;
+            font-size: 0.85rem; font-family: inherit; text-align: center;
+        }
+        .tmpl-item input:focus { outline: none; border-color: #2c7a7b; }
+        .tmpl-remove {
+            border: none; background: none; color: #fc8181; font-size: 1.1rem;
+            cursor: pointer; padding: 4px 8px;
+        }
+        .tmpl-remove:hover { color: #e53e3e; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>yawaragiボード</h1>
+        <div class="header-sub">リハビリデイサービス yawaragi</div>
+    </div>
+</div>
+
+<div class="tab-bar">
+    <button class="tab-btn active" data-tab="absence">欠席登録</button>
+    <button class="tab-btn" data-tab="task">タスク確認</button>
+    <button class="tab-btn" data-tab="assign">配置登録</button>
+    <button class="tab-btn" data-tab="stats">集計</button>
+    <button class="tab-btn" data-tab="history">履歴</button>
+    <button class="tab-btn" data-tab="data">データ管理</button>
+</div>
+
+<!-- ===== 欠席登録タブ ===== -->
+<div id="tab-absence" class="tab-content active">
+    <!-- 欠席登録フォーム -->
+    <div class="abs-form-card">
+        <h3 class="abs-section-title">欠席登録</h3>
+
+        <!-- STEP1: 名前検索 -->
+        <div class="abs-step">
+            <label class="abs-label">1. 利用者名</label>
+            <div class="abs-search-wrap">
+                <input type="text" id="abs-name-input" class="abs-search-input"
+                    placeholder="名前を入力（ひらがな・カタカナ・漢字）"
+                    oninput="absSearchName(this.value)" autocomplete="off">
+                <button class="abs-clear-btn" onclick="absClearName()" id="abs-clear-btn" style="display:none;">&times;</button>
+            </div>
+            <div class="abs-search-results" id="abs-search-results"></div>
+            <div class="abs-selected-info" id="abs-selected-info" style="display:none;"></div>
+        </div>
+
+        <!-- STEP2: いつ休み？ -->
+        <div class="abs-step" id="abs-step-date" style="display:none;">
+            <label class="abs-label">2. いつ休み？</label>
+            <div class="abs-date-type-btns">
+                <button class="abs-date-type-btn active" data-type="today" onclick="absSelectDateType('today')">今日</button>
+                <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
+                <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
+            </div>
+            <div class="abs-date-inputs" id="abs-date-inputs"></div>
+            <div class="abs-date-warning" id="abs-date-warning" style="display:none;"></div>
+        </div>
+
+        <!-- STEP3: 理由 -->
+        <div class="abs-step" id="abs-step-reason" style="display:none;">
+            <label class="abs-label">3. 理由</label>
+            <div class="abs-reason-grid" id="abs-reason-grid"></div>
+        </div>
+
+        <!-- STEP4: 連絡者 -->
+        <div class="abs-step" id="abs-step-contact" style="display:none;">
+            <label class="abs-label">4. 誰から連絡？</label>
+            <div class="abs-contact-btns" id="abs-contact-btns">
+                <button class="abs-contact-btn" onclick="absSelectContact('本人')">本人</button>
+                <button class="abs-contact-btn" onclick="absSelectContact('家族')">家族</button>
+                <button class="abs-contact-btn" onclick="absSelectContact('ケアマネ')">ケアマネ</button>
+                <button class="abs-contact-btn" onclick="absSelectContact('包括')">包括</button>
+                <button class="abs-contact-btn" onclick="absSelectContact('その他')">その他</button>
+            </div>
+            <input type="text" id="abs-contact-other" class="abs-contact-other-input"
+                placeholder="連絡者名を入力" style="display:none;" oninput="absContactOtherInput()">
+        </div>
+
+        <!-- 登録ボタン -->
+        <div class="abs-step" id="abs-step-submit" style="display:none;">
+            <div class="abs-confirm-card" id="abs-confirm-card"></div>
+            <button class="abs-submit-btn" id="abs-submit-btn" onclick="absSubmit()">この内容で登録する</button>
+        </div>
+    </div>
+
+    <!-- 今日の欠席一覧 -->
+    <div class="abs-today-card">
+        <h3 class="abs-section-title">今日の欠席一覧</h3>
+        <div id="abs-today-list"></div>
+    </div>
+
+    <!-- 今後の欠席予定 -->
+    <div class="abs-today-card" style="margin-top:16px;">
+        <h3 class="abs-section-title">今後の欠席予定（1週間）</h3>
+        <div id="abs-upcoming-list"></div>
+    </div>
+</div>
+
+<!-- ===== タスク確認タブ ===== -->
+<div id="tab-task" class="tab-content">
+    <!-- タスク登録エリア -->
+    <div class="task-register-card">
+        <h3>タスク登録</h3>
+        <div class="task-staff-grid" id="task-staff-select"></div>
+        <div class="task-templates-wrap" id="task-templates"></div>
+        <div class="task-form-row">
+            <label>タスク名</label>
+            <input type="text" id="task-name" placeholder="例: 利用者の記録整理">
+        </div>
+        <div class="task-form-row">
+            <label>急ぎ度</label>
+            <div class="task-priority-btns">
+                <button class="task-priority-btn selected" data-p="high" onclick="tbSelectPriority('high')">急ぎ</button>
+                <button class="task-priority-btn" data-p="normal" onclick="tbSelectPriority('normal')">普通</button>
+                <button class="task-priority-btn" data-p="low" onclick="tbSelectPriority('low')">余裕</button>
+            </div>
+        </div>
+        <div class="task-form-row">
+            <label>目安時間</label>
+            <select id="task-time">
+                <option value="">未設定</option>
+                <option value="5">5分</option>
+                <option value="10">10分</option>
+                <option value="15">15分</option>
+                <option value="20">20分</option>
+                <option value="30">30分</option>
+                <option value="45">45分</option>
+                <option value="60">1時間</option>
+                <option value="90">1時間30分</option>
+                <option value="120">2時間</option>
+            </select>
+        </div>
+        <button class="task-add-btn" id="task-add-btn" onclick="tbAddTask()">タスクを登録</button>
+    </div>
+
+    <!-- タスクボード -->
+    <div class="task-reset-bar">
+        <button class="task-reset-btn" onclick="tbResetDay()">今日のタスクをリセット</button>
+    </div>
+    <div class="task-board-grid" id="task-board"></div>
+    <div class="task-board-empty" id="task-board-empty" style="display:none;">
+        まだ今日のタスクがありません。上の登録フォームから登録してください。
+    </div>
+</div>
+
+<!-- ===== 配置登録タブ ===== -->
+<div id="tab-assign" class="tab-content">
+    <div class="date-selector">
+        <label>日付:</label>
+        <input type="date" id="assign-date">
+        <div class="unit-btns">
+            <button class="unit-btn active" data-unit="am">午前（1単位）</button>
+            <button class="unit-btn" data-unit="pm">午後（2単位）</button>
+        </div>
+        <button class="save-btn secondary" onclick="loadAssignment()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
+    </div>
+    <div id="busy-notice"></div>
+    <div class="floor-map" id="floor-map"></div>
+    <div class="memo-area">
+        <h3>メモ（申し送り等）</h3>
+        <textarea id="assign-memo" placeholder="例: 今日は〇〇さんに③を経験させたい"></textarea>
+    </div>
+    <div class="save-bar">
+        <button class="save-btn primary" onclick="saveAssignment()">保存する</button>
+        <button class="save-btn secondary" onclick="clearAssignment()">この枠をクリア</button>
+    </div>
+</div>
+
+<!-- ===== 集計タブ ===== -->
+<div id="tab-stats" class="tab-content">
+    <div class="stats-controls">
+        <label>期間:</label>
+        <input type="month" id="stats-month">
+        <button class="save-btn secondary" onclick="showStats()" style="padding:8px 16px; font-size:0.85rem;">集計する</button>
+    </div>
+    <div id="stats-result"></div>
+</div>
+
+<!-- ===== 履歴タブ ===== -->
+<div id="tab-history" class="tab-content">
+    <div class="stats-controls">
+        <label>月:</label>
+        <input type="month" id="history-month">
+        <button class="save-btn secondary" onclick="showHistory()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
+    </div>
+    <div id="history-result"></div>
+</div>
+
+<!-- ===== データ管理タブ ===== -->
+<div id="tab-data" class="tab-content">
+    <div class="data-section">
+        <h3>利用者データ（欠席登録用）</h3>
+        <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;">利用者台帳スプレッドシートから自動取得しています</p>
+        <div id="abs-user-manage-list"></div>
+        <div style="margin-top:10px;">
+            <button class="data-btn" onclick="absLoadUsersFromAPI().then(() => { absRenderUserManage(); showToast('利用者データを更新しました（' + absUserCache.length + '人）'); })">データを再取得</button>
+        </div>
+    </div>
+    <div class="data-section">
+        <h3>スタッフ管理</h3>
+        <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;">配置・タスクに表示するスタッフを管理できます</p>
+        <div id="staff-manage-list"></div>
+        <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input type="text" id="new-staff-name" placeholder="スタッフ名を入力" style="padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.9rem;">
+            <button class="data-btn" onclick="addStaff()">追加</button>
+        </div>
+    </div>
+    <div class="data-section">
+        <h3>タスクテンプレート</h3>
+        <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;">よく使うタスクを登録しておくと、タスク登録時にワンタップで入力できます</p>
+        <div id="tmpl-list"></div>
+        <div style="margin-top:10px; display:flex; gap:8px;">
+            <input type="text" id="new-tmpl-name" placeholder="タスク名" style="flex:2; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.85rem;">
+            <input type="number" id="new-tmpl-time" placeholder="分" min="1" style="width:70px; padding:8px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.85rem; text-align:center;">
+            <button class="data-btn" onclick="addTemplate()">追加</button>
+        </div>
+    </div>
+    <div class="data-section">
+        <h3>バックアップ</h3>
+        <div class="data-btns">
+            <button class="data-btn" onclick="exportData()">JSONエクスポート</button>
+            <button class="data-btn" onclick="document.getElementById('import-file').click()">JSONインポート</button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+        </div>
+    </div>
+    <div class="data-section">
+        <h3>データ削除</h3>
+        <div class="data-btns">
+            <button class="data-btn danger" onclick="clearAllData()">配置データを全削除</button>
+            <button class="data-btn danger" onclick="tbClearAll()">タスクデータを全削除</button>
+        </div>
+    </div>
+</div>
+
+<!-- モーダル: スタッフ選択 -->
+<div class="modal-overlay" id="staff-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span id="staff-modal-title">スタッフを選択</span>
+            <button class="modal-close" onclick="closeModal('staff-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="staff-select-grid" id="staff-select-grid"></div>
+        </div>
+    </div>
+</div>
+
+<!-- モーダル: 仕事移動先選択 -->
+<div class="modal-overlay" id="move-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span>仕事の移動</span>
+            <button class="modal-close" onclick="closeModal('move-modal')">&times;</button>
+        </div>
+        <div class="modal-body" id="move-modal-body"></div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ========== 配置管理データ定義 ==========
+const POS_COLORS = { 1: '#3182ce', 2: '#dd6b20', 3: '#38a169', 4: '#805ad5', 5: '#d69e2e' };
+
+const POSITIONS = [
+    {
+        id: 1, name: '全体サポート', color: POS_COLORS[1], equipment: [],
+        jobs: [
+            { category: 'カバー', items: ['②③⑤が休憩・退勤等の場合は①が入る', '①がいなければ④が入る'] },
+            { category: '測定', items: ['身体機能評価の実施'] },
+            { category: '連絡', items: ['送迎時間変更等の連絡'] },
+            { category: 'その他', items: ['進捗を見て横断的にサポート', '仕事が終わったらリマインダーを行う'] }
+        ]
+    },
+    {
+        id: 2, name: 'WB・足温器', color: POS_COLORS[2], equipment: ['WB×2', '足温器', '滑車・バイク'],
+        jobs: [
+            { category: '定位置対応', items: ['WB・足温器・滑車・バイクの定位置対応'] },
+            { category: '周囲サポート', items: ['進捗を見て横断的にサポート'] },
+            { category: '機能訓練', items: ['PM月次チェック'] },
+            { category: '入力', items: ['送迎日誌の入力'] },
+            { category: '撮影', items: ['インスタ・誕生日の撮影'] }
+        ]
+    },
+    {
+        id: 3, name: '干渉波', color: POS_COLORS[3], equipment: ['干渉波'],
+        jobs: [
+            { category: '対応・誘導', items: ['干渉波の対応・利用者の誘導'] },
+            { category: '他者支援', items: ['他スタッフの状況を見て支援'] },
+            { category: '準備', items: ['明日の午前の準備（名札等）'] },
+            { category: '測定', items: ['体重・身長の測定'] },
+            { category: '確認', items: ['利用者状態の確認（25日まで）'] }
+        ]
+    },
+    {
+        id: 4, name: '事務・作業', color: POS_COLORS[4], equipment: [],
+        jobs: [
+            { category: 'バックヤード', items: ['基本はバックヤード作業（籠って作業）'] },
+            { category: 'バックアップ', items: ['①が多忙・不在時は①業務へ'] },
+            { category: 'その他', items: ['④が利用者対応時は他スタッフが代わる'] }
+        ]
+    },
+    {
+        id: 5, name: 'マシン', color: POS_COLORS[5], equipment: ['マシン×4'],
+        jobs: [
+            { category: '安全確認', items: ['マシンエリアの安全確認'] },
+            { category: '見守り', items: ['入力しながら見守り'] },
+            { category: '運動', items: ['時間があればyトレを提案・実施'] },
+            { category: '入力', items: ['介護記録（連絡帳）の入力'] }
+        ]
+    }
+];
+
+function getBaseJobList(posId) {
+    const pos = POSITIONS.find(p => p.id === posId);
+    const list = [];
+    pos.jobs.forEach(cat => {
+        cat.items.forEach(item => {
+            list.push({ id: `${posId}_${list.length}`, origPos: posId, category: cat.category, text: item });
+        });
+    });
+    return list;
+}
+
+function getAllBaseJobs() {
+    const all = [];
+    for (let pid = 1; pid <= 5; pid++) { all.push(...getBaseJobList(pid)); }
+    return all;
+}
+
+function getEffectiveJobs(posId) {
+    const moves = currentAssignment.jobMoves || {};
+    const customJobs = (currentAssignment.customJobs || {})[posId] || [];
+    const jobs = [];
+    for (let pid = 1; pid <= 5; pid++) {
+        getBaseJobList(pid).forEach(j => {
+            const movedTo = moves[j.id];
+            if (pid === posId && movedTo === undefined) {
+                jobs.push({ ...j, movedFrom: null });
+            } else if (movedTo === posId) {
+                jobs.push({ ...j, movedFrom: pid });
+            }
+        });
+    }
+    customJobs.forEach(cj => {
+        jobs.push({ id: cj.id, origPos: posId, category: '追加', text: cj.text, isCustom: true });
+    });
+    return jobs;
+}
+
+const DEFAULT_STAFF = [
+    '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'
+];
+
+const STAFF_COLORS = {};
+function assignStaffColors() {
+    const staff = getStaff();
+    staff.forEach((s, i) => { STAFF_COLORS[s] = 'staff-color-' + (i % 11); });
+}
+
+// ========== 配置ストレージ ==========
+const STORAGE_KEY = 'yawaragi_haichi';
+
+function getData() {
+    try {
+        const d = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return d || { assignments: {}, staff: [...DEFAULT_STAFF] };
+    } catch { return { assignments: {}, staff: [...DEFAULT_STAFF] }; }
+}
+function saveData(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
+function getAssignmentKey(date, unit) { return date + '_' + unit; }
+
+function emptyAssignment() {
+    return { positions: {1:[], 2:[], 3:[], 4:[], 5:[]}, jobChecks: {}, jobMoves: {}, customJobs: {}, memo: '' };
+}
+
+function getAssignment(date, unit) {
+    const d = getData();
+    const a = d.assignments[getAssignmentKey(date, unit)];
+    if (!a) return emptyAssignment();
+    if (!a.jobChecks) a.jobChecks = {};
+    if (!a.jobMoves) a.jobMoves = {};
+    if (!a.customJobs) a.customJobs = {};
+    return a;
+}
+
+function setAssignment(date, unit, assignment) {
+    const d = getData();
+    d.assignments[getAssignmentKey(date, unit)] = assignment;
+    saveData(d);
+}
+
+function autoSave() {
+    currentAssignment.memo = document.getElementById('assign-memo').value;
+    setAssignment(currentDate, currentUnit, currentAssignment);
+}
+
+// ========== 配置状態管理 ==========
+let currentDate = '';
+let currentUnit = 'am';
+let currentAssignment = emptyAssignment();
+let openChecklists = {};
+let movingJobId = null;
+
+function init() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    currentDate = `${yyyy}-${mm}-${dd}`;
+    document.getElementById('assign-date').value = currentDate;
+    document.getElementById('stats-month').value = `${yyyy}-${mm}`;
+    document.getElementById('history-month').value = `${yyyy}-${mm}`;
+    const d = getData();
+    if (!d.staff) { d.staff = [...DEFAULT_STAFF]; saveData(d); }
+    assignStaffColors();
+    setupTabs();
+    setupUnitBtns();
+    renderFloorMap();
+    loadAssignment();
+    renderStaffManage();
+    // タスクボード初期化
+    tbInit();
+    // 欠席登録初期化
+    absInit();
+}
+
+function setupTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            // タブ切替時に表示を更新
+            if (btn.dataset.tab === 'task') tbRenderAll();
+            if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
+            if (btn.dataset.tab === 'data') absRenderUserManage();
+        });
+    });
+}
+
+function setupUnitBtns() {
+    document.querySelectorAll('.unit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentUnit = btn.dataset.unit;
+            loadAssignment();
+        });
+    });
+}
+
+// ========== フロアマップ ==========
+
+function renderFloorMap() {
+    const map = document.getElementById('floor-map');
+    map.innerHTML = '';
+    POSITIONS.forEach(pos => {
+        const card = document.createElement('div');
+        card.className = `position-card pos-${pos.id}`;
+        card.innerHTML = `
+            <div class="position-header">
+                <div class="position-num">${pos.id}</div>
+                <span>${pos.name}</span>
+            </div>
+            <div class="position-body">
+                ${pos.equipment.length ? `<div class="equipment-tags">${pos.equipment.map(e => `<span class="eq-tag">${e}</span>`).join('')}</div>` : ''}
+                <div class="assign-area" id="assign-${pos.id}" onclick="openStaffSelect(${pos.id})">
+                    <span class="assign-placeholder">タップしてスタッフを配置</span>
+                </div>
+                <div class="job-checklist" id="jobcl-${pos.id}"></div>
+            </div>
+        `;
+        map.appendChild(card);
+    });
+}
+
+function renderAssignments() {
+    POSITIONS.forEach(pos => {
+        const area = document.getElementById('assign-' + pos.id);
+        const staff = currentAssignment.positions[pos.id] || [];
+        if (staff.length === 0) {
+            area.innerHTML = '<span class="assign-placeholder">タップしてスタッフを配置</span>';
+            area.classList.remove('has-staff');
+        } else {
+            area.innerHTML = staff.map(s =>
+                `<span class="staff-chip ${STAFF_COLORS[s] || 'staff-color-0'}" onclick="event.stopPropagation(); removeStaff(${pos.id}, '${s}')">${s}<span class="remove-x">&times;</span></span>`
+            ).join('');
+            area.classList.add('has-staff');
+        }
+        renderJobChecklist(pos.id);
+    });
+}
+
+// ========== 仕事チェックリスト ==========
+
+function renderJobChecklist(posId) {
+    const container = document.getElementById('jobcl-' + posId);
+    const jobs = getEffectiveJobs(posId);
+    const checks = currentAssignment.jobChecks || {};
+    const doneCount = jobs.filter(j => checks[j.id]).length;
+    const totalCount = jobs.length;
+    const isOpen = openChecklists[posId] || false;
+
+    let progressCls = 'none';
+    if (doneCount === totalCount && totalCount > 0) progressCls = 'done';
+    else if (doneCount > 0) progressCls = 'partial';
+
+    const pct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0;
+    const posColor = POS_COLORS[posId];
+
+    let html = `
+        <button class="job-toggle-btn" onclick="toggleChecklist(${posId})">
+            <span>${isOpen ? '閉じる' : '仕事チェック'}</span>
+            <span class="progress-badge ${progressCls}">${doneCount}/${totalCount}</span>
+        </button>
+        <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" style="width:${pct}%; background:${posColor};"></div>
+        </div>
+        <div class="job-items ${isOpen ? 'open' : ''}">
+    `;
+
+    let currentCat = '';
+    jobs.forEach(j => {
+        if (j.category !== currentCat) {
+            currentCat = j.category;
+            html += `<div class="job-cat-label">${currentCat}</div>`;
+        }
+        const checked = checks[j.id] ? true : false;
+
+        let tags = '';
+        if (j.movedFrom) {
+            const fromName = POSITIONS.find(p => p.id === j.movedFrom).name;
+            tags = `<span class="job-moved-tag">${j.movedFrom}${fromName}から</span>`;
+        }
+        if (j.isCustom) {
+            tags = `<span class="custom-job-tag">追加</span>`;
+        }
+
+        html += `<div class="job-item ${checked ? 'checked' : ''}">
+            <input type="checkbox" ${checked ? 'checked' : ''} onclick="toggleJobCheck('${j.id}', ${posId})">
+            <span class="job-item-text" onclick="toggleJobCheck('${j.id}', ${posId})">${tags} ${j.text}</span>`;
+
+        if (j.isCustom) {
+            html += `<button class="custom-job-remove" onclick="removeCustomJob(${posId}, '${j.id}')" title="削除">&times;</button>`;
+        } else {
+            html += `<button class="job-item-move" onclick="openMoveModal('${j.id}', ${posId})" title="他のポジションへ移動">&#8644;</button>`;
+        }
+        html += `</div>`;
+    });
+
+    const moves = currentAssignment.jobMoves || {};
+    getBaseJobList(posId).forEach(j => {
+        if (moves[j.id] !== undefined && moves[j.id] !== posId) {
+            const toName = POSITIONS.find(p => p.id === moves[j.id]).name;
+            html += `<div class="job-item" style="opacity:0.4;">
+                <span class="job-item-text" style="text-decoration:line-through; font-size:0.75rem;">
+                    <span class="job-moved-tag" style="background:#fff5f5; color:#e53e3e;">${moves[j.id]}${toName}へ移動</span>
+                    ${j.text}
+                </span>
+                <button class="job-item-move" onclick="undoMoveJob('${j.id}')" title="移動を取消" style="color:#e53e3e; border-color:#fed7d7;">&#x21A9;</button>
+            </div>`;
+        }
+    });
+
+    html += `
+        <div class="add-custom-job">
+            <input type="text" id="custom-input-${posId}" placeholder="仕事を追加..." onkeydown="if(event.key==='Enter')addCustomJob(${posId})">
+            <button onclick="addCustomJob(${posId})">+追加</button>
+        </div>
+    `;
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function toggleChecklist(posId) {
+    openChecklists[posId] = !openChecklists[posId];
+    renderJobChecklist(posId);
+}
+
+function toggleJobCheck(jobId, posId) {
+    if (!currentAssignment.jobChecks) currentAssignment.jobChecks = {};
+    currentAssignment.jobChecks[jobId] = !currentAssignment.jobChecks[jobId];
+    autoSave();
+    renderJobChecklist(posId);
+}
+
+// ========== 仕事の移動 ==========
+
+function openMoveModal(jobId, currentPosId) {
+    movingJobId = jobId;
+    const allJobs = getAllBaseJobs();
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    const moves = currentAssignment.jobMoves || {};
+    const currentlyAt = moves[jobId] !== undefined ? moves[jobId] : job.origPos;
+    const origPosName = POSITIONS.find(p => p.id === job.origPos).name;
+
+    let html = `<div class="move-job-text">
+        <strong>「${job.text}」</strong><br>
+        <span style="font-size:0.8rem; color:#718096;">元のポジション: ${job.origPos} ${origPosName}</span>
+    </div>`;
+    html += '<p style="font-size:0.9rem; font-weight:600; margin-bottom:8px;">移動先を選んでください:</p>';
+    html += '<div class="move-target-grid">';
+    POSITIONS.forEach(p => {
+        if (p.id === currentlyAt) {
+            html += `<button class="move-target-btn" style="background:${p.color}; opacity:0.4; cursor:not-allowed;" disabled>${p.id} ${p.name}（今ここ）</button>`;
+        } else {
+            html += `<button class="move-target-btn" style="background:${p.color};" onclick="doMoveJob('${jobId}', ${p.id})">${p.id} ${p.name}</button>`;
+        }
+    });
+    html += '</div>';
+
+    if (moves[jobId] !== undefined) {
+        html += `<button class="move-undo-btn" onclick="undoMoveJob('${jobId}')">元のポジション（${job.origPos} ${origPosName}）に戻す</button>`;
+    }
+
+    document.getElementById('move-modal-body').innerHTML = html;
+    openModal('move-modal');
+}
+
+function doMoveJob(jobId, targetPosId) {
+    if (!currentAssignment.jobMoves) currentAssignment.jobMoves = {};
+    const allJobs = getAllBaseJobs();
+    const job = allJobs.find(j => j.id === jobId);
+    if (job && targetPosId === job.origPos) {
+        delete currentAssignment.jobMoves[jobId];
+    } else {
+        currentAssignment.jobMoves[jobId] = targetPosId;
+    }
+    autoSave();
+    closeModal('move-modal');
+    renderAssignments();
+    const targetName = POSITIONS.find(p => p.id === targetPosId).name;
+    showToast(`${targetPosId} ${targetName} に移動しました`);
+}
+
+function undoMoveJob(jobId) {
+    if (currentAssignment.jobMoves) {
+        delete currentAssignment.jobMoves[jobId];
+    }
+    autoSave();
+    closeModal('move-modal');
+    renderAssignments();
+    showToast('元に戻しました');
+}
+
+// ========== カスタム仕事追加 ==========
+
+function addCustomJob(posId) {
+    const input = document.getElementById('custom-input-' + posId);
+    const text = input.value.trim();
+    if (!text) return;
+    if (!currentAssignment.customJobs) currentAssignment.customJobs = {};
+    if (!currentAssignment.customJobs[posId]) currentAssignment.customJobs[posId] = [];
+    const id = `custom_${posId}_${Date.now()}`;
+    currentAssignment.customJobs[posId].push({ id, text });
+    autoSave();
+    renderJobChecklist(posId);
+    showToast('仕事を追加しました');
+}
+
+function removeCustomJob(posId, jobId) {
+    if (!currentAssignment.customJobs || !currentAssignment.customJobs[posId]) return;
+    currentAssignment.customJobs[posId] = currentAssignment.customJobs[posId].filter(j => j.id !== jobId);
+    if (currentAssignment.jobChecks) delete currentAssignment.jobChecks[jobId];
+    autoSave();
+    renderJobChecklist(posId);
+}
+
+// ========== 繁忙期表示 ==========
+
+function updateBusyNotice() {
+    const el = document.getElementById('busy-notice');
+    const d = new Date(currentDate);
+    const day = d.getDate();
+    let html = '';
+    if (day <= 10) {
+        html = `<div class="busy-notice busy-early"><span>&#128293;</span> 上旬: ②月次チェック・入力、④請求業務・レセプト が忙しい時期</div>`;
+    } else if (day <= 20) {
+        html = `<div class="busy-notice busy-mid"><span>&#128293;</span> 中旬: ③状態確認・モニタリング、①計画書作成・評価 が忙しい時期</div>`;
+    } else {
+        html = `<div class="busy-notice busy-late"><span>&#128293;</span> 下旬: ⑤実績入力・確認、③翌月準備・名札 が忙しい時期</div>`;
+    }
+    el.innerHTML = html;
+}
+
+// ========== 配置の読み込み・保存 ==========
+
+function loadAssignment() {
+    currentDate = document.getElementById('assign-date').value;
+    currentAssignment = getAssignment(currentDate, currentUnit);
+    openChecklists = {};
+    renderAssignments();
+    document.getElementById('assign-memo').value = currentAssignment.memo || '';
+    updateBusyNotice();
+}
+
+function saveAssignment() {
+    currentAssignment.memo = document.getElementById('assign-memo').value;
+    setAssignment(currentDate, currentUnit, currentAssignment);
+    showToast('保存しました');
+}
+
+function clearAssignment() {
+    if (!confirm('この枠の配置をクリアしますか？')) return;
+    currentAssignment = emptyAssignment();
+    renderAssignments();
+    document.getElementById('assign-memo').value = '';
+    const d = getData();
+    delete d.assignments[getAssignmentKey(currentDate, currentUnit)];
+    saveData(d);
+    showToast('クリアしました');
+}
+
+// ========== スタッフ選択 ==========
+
+function getAllAssignedStaff() {
+    const assigned = new Set();
+    for (let pid = 1; pid <= 5; pid++) {
+        (currentAssignment.positions[pid] || []).forEach(s => assigned.add(s));
+    }
+    return assigned;
+}
+
+function openStaffSelect(posId) {
+    const pos = POSITIONS.find(p => p.id === posId);
+    document.getElementById('staff-modal-title').textContent = `${pos.id} ${pos.name} にスタッフを配置`;
+    const grid = document.getElementById('staff-select-grid');
+    const assigned = getAllAssignedStaff();
+    const inThisPos = new Set(currentAssignment.positions[posId] || []);
+    const staff = getStaff();
+    grid.innerHTML = staff.map(s => {
+        const alreadyElsewhere = assigned.has(s) && !inThisPos.has(s);
+        const inThis = inThisPos.has(s);
+        return `<button class="staff-select-btn ${alreadyElsewhere ? 'already' : ''}"
+            onclick="${alreadyElsewhere ? '' : `selectStaff('${s}', ${posId})`}"
+            ${alreadyElsewhere ? 'disabled' : ''}>
+            ${s}${inThis ? ' (配置済み)' : ''}${alreadyElsewhere ? ' (他に配置中)' : ''}
+        </button>`;
+    }).join('');
+    openModal('staff-modal');
+}
+
+function selectStaff(name, posId) {
+    if (!currentAssignment.positions[posId]) currentAssignment.positions[posId] = [];
+    const arr = currentAssignment.positions[posId];
+    const idx = arr.indexOf(name);
+    if (idx >= 0) { arr.splice(idx, 1); } else { arr.push(name); }
+    renderAssignments();
+    closeModal('staff-modal');
+}
+
+function removeStaff(posId, name) {
+    const arr = currentAssignment.positions[posId] || [];
+    const idx = arr.indexOf(name);
+    if (idx >= 0) arr.splice(idx, 1);
+    renderAssignments();
+}
+
+// ========== 集計 ==========
+
+function getEffectiveJobsForAssignment(posId, assignment) {
+    const moves = assignment.jobMoves || {};
+    const customJobs = (assignment.customJobs || {})[posId] || [];
+    const jobs = [];
+    for (let pid = 1; pid <= 5; pid++) {
+        getBaseJobList(pid).forEach(j => {
+            const movedTo = moves[j.id];
+            if (pid === posId && movedTo === undefined) jobs.push(j);
+            else if (movedTo === posId) jobs.push(j);
+        });
+    }
+    customJobs.forEach(cj => jobs.push({ id: cj.id, text: cj.text }));
+    return jobs;
+}
+
+function showStats() {
+    const month = document.getElementById('stats-month').value;
+    if (!month) return;
+    const d = getData();
+    const staff = getStaff();
+    const counts = {};
+    staff.forEach(s => { counts[s] = {1:0, 2:0, 3:0, 4:0, 5:0, total:0}; });
+
+    let totalJobs = 0, totalDone = 0;
+    const posJobStats = {1:{total:0,done:0}, 2:{total:0,done:0}, 3:{total:0,done:0}, 4:{total:0,done:0}, 5:{total:0,done:0}};
+
+    Object.keys(d.assignments).forEach(key => {
+        if (!key.startsWith(month)) return;
+        const a = d.assignments[key];
+        for (let pid = 1; pid <= 5; pid++) {
+            (a.positions[pid] || []).forEach(s => {
+                if (counts[s]) { counts[s][pid]++; counts[s].total++; }
+            });
+            const jobs = getEffectiveJobsForAssignment(pid, a);
+            const checks = a.jobChecks || {};
+            jobs.forEach(j => {
+                posJobStats[pid].total++; totalJobs++;
+                if (checks[j.id]) { posJobStats[pid].done++; totalDone++; }
+            });
+        }
+    });
+
+    let html = '<div class="stats-table-wrap"><table class="stats-table"><thead><tr><th>スタッフ</th>';
+    POSITIONS.forEach(p => { html += `<th style="color:${p.color}">${p.id} ${p.name}</th>`; });
+    html += '<th class="total-col">合計</th></tr></thead><tbody>';
+    staff.forEach(s => {
+        const c = counts[s];
+        html += `<tr><td>${s}</td>`;
+        const maxPos = Math.max(c[1], c[2], c[3], c[4], c[5]);
+        for (let pid = 1; pid <= 5; pid++) {
+            const val = c[pid]; let cls = '';
+            if (val === 0) cls = 'count-zero';
+            else if (val === maxPos && c.total > 3 && maxPos > c.total * 0.6) cls = 'count-high';
+            html += `<td class="${cls}">${val}</td>`;
+        }
+        html += `<td class="total-col">${c.total}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+
+    if (totalJobs > 0) {
+        html += '<div style="margin-top:20px; background:white; border-radius:12px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,0.08);">';
+        html += '<h3 style="font-size:0.95rem; color:#2d3748; margin-bottom:12px;">仕事の完了率</h3>';
+        html += `<p style="font-size:0.9rem; margin-bottom:12px;">全体: <strong>${Math.round(totalDone/totalJobs*100)}%</strong>（${totalDone}/${totalJobs}件）</p>`;
+        html += '<div style="display:flex; flex-wrap:wrap; gap:10px;">';
+        POSITIONS.forEach(p => {
+            const s = posJobStats[p.id];
+            const pct = s.total > 0 ? Math.round(s.done / s.total * 100) : 0;
+            html += `<div style="flex:1; min-width:140px; padding:10px; background:#f7fafc; border-radius:8px;">
+                <div style="font-weight:700; color:${p.color}; font-size:0.85rem;">${p.id} ${p.name}</div>
+                <div style="font-size:1.1rem; font-weight:700;">${pct}%</div>
+                <div style="font-size:0.75rem; color:#a0aec0;">${s.done}/${s.total}件</div>
+                <div class="progress-bar-wrap" style="margin-top:4px;">
+                    <div class="progress-bar-fill" style="width:${pct}%; background:${p.color};"></div>
+                </div>
+            </div>`;
+        });
+        html += '</div></div>';
+    }
+
+    let warnings = [];
+    staff.forEach(s => {
+        const c = counts[s];
+        if (c.total < 4) return;
+        for (let pid = 1; pid <= 5; pid++) {
+            const ratio = c[pid] / c.total;
+            if (ratio >= 0.7) {
+                const posName = POSITIONS.find(p => p.id === pid).name;
+                warnings.push(`${s}さんは配置の${Math.round(ratio*100)}%が「${pid} ${posName}」に偏っています`);
+            }
+        }
+    });
+    if (warnings.length > 0) {
+        html += '<div class="bias-warnings">';
+        warnings.forEach(w => { html += `<div class="bias-item">&#9888;&#65039; ${w}</div>`; });
+        html += '</div>';
+    }
+    document.getElementById('stats-result').innerHTML = html;
+}
+
+// ========== 履歴 ==========
+
+function showHistory() {
+    const month = document.getElementById('history-month').value;
+    if (!month) return;
+    const d = getData();
+    const entries = [];
+    Object.keys(d.assignments).forEach(key => {
+        if (key.startsWith(month)) {
+            const [date, unit] = key.split('_');
+            entries.push({ date, unit, data: d.assignments[key] });
+        }
+    });
+    entries.sort((a, b) => (a.date + a.unit).localeCompare(b.date + b.unit));
+
+    if (entries.length === 0) {
+        document.getElementById('history-result').innerHTML = '<p style="color:#a0aec0; text-align:center; padding:30px;">この月のデータはありません</p>';
+        return;
+    }
+
+    let html = '<div class="history-list">';
+    entries.forEach(e => {
+        const dateObj = new Date(e.date);
+        const dayNames = ['日','月','火','水','木','金','土'];
+        const dayName = dayNames[dateObj.getDay()];
+        const unitName = e.unit === 'am' ? '午前' : '午後';
+
+        let totalJ = 0, doneJ = 0;
+        const checks = e.data.jobChecks || {};
+        for (let pid = 1; pid <= 5; pid++) {
+            getEffectiveJobsForAssignment(pid, e.data).forEach(j => { totalJ++; if (checks[j.id]) doneJ++; });
+        }
+        const jobPct = totalJ > 0 ? Math.round(doneJ / totalJ * 100) : 0;
+        let pctColor = '#a0aec0';
+        if (jobPct === 100) pctColor = '#38a169';
+        else if (jobPct > 0) pctColor = '#dd6b20';
+
+        const moveCount = Object.keys(e.data.jobMoves || {}).length;
+        const customCount = Object.values(e.data.customJobs || {}).reduce((sum, arr) => sum + arr.length, 0);
+
+        html += `<div class="history-card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="history-date">${e.date.replace(month + '-', '')}日（${dayName}） ${unitName}</div>
+                <span style="font-size:0.85rem; font-weight:700; color:${pctColor};">仕事 ${jobPct}%</span>
+            </div>
+            <div class="history-unit">${e.data.memo ? 'メモ: ' + e.data.memo : ''}
+                ${moveCount > 0 ? `<span style="margin-left:8px; font-size:0.75rem; color:#805ad5;">移動${moveCount}件</span>` : ''}
+                ${customCount > 0 ? `<span style="margin-left:8px; font-size:0.75rem; color:#2b6cb0;">追加${customCount}件</span>` : ''}
+            </div>
+            <div class="history-positions">`;
+        for (let pid = 1; pid <= 5; pid++) {
+            const staff = e.data.positions[pid] || [];
+            if (staff.length > 0) {
+                const pJobs = getEffectiveJobsForAssignment(pid, e.data);
+                const pDone = pJobs.filter(j => checks[j.id]).length;
+                const pPct = pJobs.length > 0 ? Math.round(pDone / pJobs.length * 100) : 0;
+                html += `<span class="history-pos-tag" style="background:${POS_COLORS[pid]}">
+                    ${pid} ${staff.join('・')} (${pPct}%)
+                </span>`;
+            }
+        }
+        html += '</div></div>';
+    });
+    html += '</div>';
+    document.getElementById('history-result').innerHTML = html;
+}
+
+// ========== スタッフ管理 ==========
+
+function renderStaffManage() {
+    const staff = getStaff();
+    assignStaffColors();
+    const el = document.getElementById('staff-manage-list');
+    el.innerHTML = '<div style="display:flex; flex-wrap:wrap; gap:8px;">' +
+        staff.map(s => `<span class="staff-chip ${STAFF_COLORS[s]}" style="cursor:default;">
+            ${s}
+            <span class="remove-x" style="cursor:pointer;" onclick="removeStaffFromList('${s}')">&times;</span>
+        </span>`).join('') + '</div>';
+}
+
+function addStaff() {
+    const input = document.getElementById('new-staff-name');
+    const name = input.value.trim();
+    if (!name) return;
+    const d = getData();
+    if (d.staff.includes(name)) { showToast('既に登録されています'); return; }
+    d.staff.push(name);
+    saveData(d);
+    input.value = '';
+    renderStaffManage();
+    tbRenderAll(); // タスクボードのスタッフ選択も更新
+    showToast(`${name}さんを追加しました`);
+}
+
+function removeStaffFromList(name) {
+    if (!confirm(`${name}さんを削除しますか？`)) return;
+    const d = getData();
+    d.staff = d.staff.filter(s => s !== name);
+    saveData(d);
+    renderStaffManage();
+    tbRenderAll();
+    showToast(`${name}さんを削除しました`);
+}
+
+// ========== データ管理 ==========
+
+function exportData() {
+    const d = getData();
+    const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    a.download = `現場配置データ_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('エクスポートしました');
+}
+
+function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const d = JSON.parse(e.target.result);
+            if (d.assignments) {
+                saveData(d); assignStaffColors(); renderStaffManage(); loadAssignment();
+                tbRenderAll();
+                showToast('インポートしました');
+            } else { alert('正しいデータファイルではありません'); }
+        } catch { alert('ファイルの読み込みに失敗しました'); }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+}
+
+function clearAllData() {
+    if (!confirm('配置データを全削除しますか？')) return;
+    if (!confirm('本当に削除しますか？（最終確認）')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    loadAssignment();
+    renderStaffManage();
+    showToast('配置データを全削除しました');
+}
+
+// ========== モーダル・トースト ==========
+
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', (e) => { if (e.target === o) o.classList.remove('show'); });
+});
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ================================================================
+// ========== タスクボード機能（統合） ==========
+// ================================================================
+
+const TB_STORAGE_KEY = 'yawaragi_taskboard';
+const TB_TODAY = new Date().toISOString().slice(0, 10);
+
+const TB_DEFAULT_TEMPLATES = [
+    {name:'介護請求　利用者請求表のチェック', time:60},
+    {name:'国保連請求', time:30},
+    {name:'国保連請求の明細を介護請求ファイルへ', time:15},
+    {name:'利用者請求、請求書・領収書発行', time:30},
+    {name:'介護請求　利用者請求表の作成', time:30},
+    {name:'実績用メール・FAXファイル作成', time:10},
+    {name:'来月の測定一覧表の作成', time:30},
+    {name:'新規利用者　口座登録　郵送', time:null},
+    {name:'通所モニタリング・最終評価', time:null},
+    {name:'科学的介護推進体制加算　データ入力', time:90},
+    {name:'口腔・栄養改善等の加算チェック', time:120},
+    {name:'測定結果　ケアマネ用印刷（PDF）', time:60},
+    {name:'計画書の確認とスキャンと仕分け', time:60},
+    {name:'長期休み連絡', time:null},
+    {name:'実績確定', time:null},
+    {name:'実績送付準備【メール】送信', time:60},
+    {name:'口座振替　リハブ　レセプト登録', time:15},
+    {name:'区分変更者リスト記入', time:null},
+    {name:'ケアプラン更新者リスト作成', time:30},
+    {name:'リマインダーに翌月のケアプラン更新者入力', time:15},
+];
+
+function tbLoadData() {
+    try {
+        const raw = localStorage.getItem(TB_STORAGE_KEY);
+        if (!raw) return tbGetDefault();
+        const d = JSON.parse(raw);
+        if (d.date !== TB_TODAY) {
+            d.date = TB_TODAY;
+            d.tasks = [];
+        }
+        return d;
+    } catch { return tbGetDefault(); }
+}
+
+function tbGetDefault() {
+    return { date: TB_TODAY, templates: TB_DEFAULT_TEMPLATES.map(t => ({...t})), tasks: [] };
+}
+
+function tbSaveData() {
+    localStorage.setItem(TB_STORAGE_KEY, JSON.stringify(tbData));
+}
+
+let tbData = tbLoadData();
+if (tbData.templates.length === 0) {
+    tbData.templates = TB_DEFAULT_TEMPLATES.map(t => ({...t}));
+    tbSaveData();
+}
+
+let tbSelectedStaff = null;
+let tbSelectedPriority = 'high';
+
+function tbInit() {
+    tbRenderAll();
+    // 1分ごとにボード更新（経過時間の更新用）
+    setInterval(() => {
+        const activeTab = document.querySelector('.tab-btn.active');
+        if (activeTab && activeTab.dataset.tab === 'task') tbRenderBoard();
+    }, 60000);
+}
+
+function tbRenderAll() {
+    tbRenderStaffSelect();
+    tbRenderTemplates();
+    tbRenderBoard();
+    tbRenderTemplateManage();
+}
+
+// スタッフ選択（配置管理のスタッフ名簿を共有）
+function tbRenderStaffSelect() {
+    const staff = getStaff();
+    const grid = document.getElementById('task-staff-select');
+    grid.innerHTML = staff.map(name =>
+        `<button class="task-staff-chip ${tbSelectedStaff === name ? 'selected' : ''}" onclick="tbSelectStaff('${name}')">
+            ${tbSelectedStaff === name ? '&#10003; ' : ''}${name}
+        </button>`
+    ).join('');
+    if (staff.length === 0) {
+        grid.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">「データ管理」タブでスタッフを登録してください</p>';
+    }
+}
+
+function tbSelectStaff(name) {
+    tbSelectedStaff = name;
+    tbRenderStaffSelect();
+}
+
+function tbSelectPriority(p) {
+    tbSelectedPriority = p;
+    document.querySelectorAll('.task-priority-btn').forEach(b => {
+        b.classList.toggle('selected', b.dataset.p === p);
+    });
+}
+
+// テンプレートボタン
+function tbRenderTemplates() {
+    const wrap = document.getElementById('task-templates');
+    wrap.innerHTML = tbData.templates.map(t =>
+        `<button class="task-template-btn" onclick="tbApplyTemplate('${t.name.replace(/'/g, "\\'")}', ${t.time || 0})">
+            ${t.name}${t.time ? ' (' + t.time + '分)' : ''}
+        </button>`
+    ).join('');
+}
+
+function tbApplyTemplate(name, time) {
+    document.getElementById('task-name').value = name;
+    if (time) document.getElementById('task-time').value = time;
+}
+
+// タスク登録
+function tbAddTask() {
+    const name = document.getElementById('task-name').value.trim();
+    if (!tbSelectedStaff) { alert('スタッフを選んでください'); return; }
+    if (!name) { alert('タスク名を入力してください'); return; }
+    const timeStr = document.getElementById('task-time').value;
+    const task = {
+        id: Date.now(),
+        staff: tbSelectedStaff,
+        name: name,
+        priority: tbSelectedPriority,
+        estimatedMin: timeStr ? parseInt(timeStr) : null,
+        startTime: new Date().toISOString(),
+        endTime: null,
+        done: false
+    };
+    tbData.tasks.push(task);
+    tbSaveData();
+    document.getElementById('task-name').value = '';
+    document.getElementById('task-time').value = '';
+    const btn = document.getElementById('task-add-btn');
+    btn.textContent = '登録しました！';
+    btn.style.background = '#38a169';
+    setTimeout(() => { btn.textContent = 'タスクを登録'; btn.style.background = ''; }, 1500);
+    tbRenderBoard();
+}
+
+// ボード表示
+function tbRenderBoard() {
+    const grid = document.getElementById('task-board');
+    const empty = document.getElementById('task-board-empty');
+    const staffWithTasks = [...new Set(tbData.tasks.map(t => t.staff))];
+
+    if (staffWithTasks.length === 0) {
+        grid.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+
+    const sorted = staffWithTasks.map(s => {
+        const tasks = tbData.tasks.filter(t => t.staff === s);
+        const remaining = tasks.filter(t => !t.done).length;
+        return { name: s, tasks, remaining };
+    }).sort((a, b) => b.remaining - a.remaining);
+
+    grid.innerHTML = sorted.map(s => {
+        const level = s.remaining >= 3 ? 'high' : s.remaining >= 1 ? 'mid' : 'low';
+        const levelText = s.remaining >= 3 ? '忙しい' : s.remaining >= 1 ? '対応中' : '完了';
+        const levelIcon = s.remaining >= 3 ? '&#128308;' : s.remaining >= 1 ? '&#128992;' : '&#128994;';
+        const sortedTasks = [...s.tasks].sort((a, b) => {
+            if (a.done !== b.done) return a.done ? 1 : -1;
+            const po = { high: 0, normal: 1, low: 2 };
+            return po[a.priority] - po[b.priority];
+        });
+        return `
+        <div class="task-staff-column task-busy-${level}">
+            <div class="task-col-header">
+                <span>${s.name} ${levelIcon} ${levelText}</span>
+                <span class="task-count-badge">${s.tasks.filter(t => t.done).length}/${s.tasks.length} 完了</span>
+            </div>
+            <div class="task-col-body">
+                ${sortedTasks.length === 0 ? '<div class="task-empty">タスクなし</div>' :
+                    sortedTasks.map(t => tbRenderTaskCard(t)).join('')}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function tbRenderTaskCard(t) {
+    const pLabel = { high: '急ぎ', normal: '普通', low: '余裕' };
+    let timeMeta = '';
+    if (t.estimatedMin) {
+        timeMeta += `目安 ${tbFormatMin(t.estimatedMin)}`;
+    }
+    if (t.done && t.endTime) {
+        const actual = Math.round((new Date(t.endTime) - new Date(t.startTime)) / 60000);
+        timeMeta += ` → 実績 ${tbFormatMin(actual)}`;
+        if (t.estimatedMin) {
+            const diff = actual - t.estimatedMin;
+            if (diff > 0) {
+                timeMeta += ` <span class="time-over">(+${diff}分)</span>`;
+            } else {
+                timeMeta += ` <span class="time-ok">(${diff}分)</span>`;
+            }
+        }
+    } else if (!t.done) {
+        const elapsed = Math.round((Date.now() - new Date(t.startTime)) / 60000);
+        if (t.estimatedMin && elapsed > t.estimatedMin) {
+            timeMeta += ` <span class="time-over">${elapsed - t.estimatedMin}分オーバー</span>`;
+        } else if (elapsed > 0) {
+            timeMeta += ` (経過 ${elapsed}分)`;
+        }
+    }
+
+    return `
+    <div class="task-card ${t.done ? 'task-done' : ''}">
+        <div class="task-card-top">
+            <span class="task-card-name">${tbEscapeHtml(t.name)}</span>
+            <span class="task-card-priority ${t.priority}">${pLabel[t.priority]}</span>
+        </div>
+        ${timeMeta ? `<div class="task-card-meta">${timeMeta}</div>` : ''}
+        <div class="task-card-actions">
+            ${t.done
+                ? `<button class="task-undo-btn" onclick="tbUndoTask(${t.id})">戻す</button>`
+                : `<button class="task-complete-btn" onclick="tbCompleteTask(${t.id})">完了</button>`
+            }
+            <button class="task-delete-btn" onclick="tbDeleteTask(${t.id})">削除</button>
+        </div>
+    </div>`;
+}
+
+function tbFormatMin(m) {
+    if (m >= 60) return Math.floor(m / 60) + '時間' + (m % 60 ? m % 60 + '分' : '');
+    return m + '分';
+}
+
+function tbCompleteTask(id) {
+    const t = tbData.tasks.find(t => t.id === id);
+    if (t) { t.done = true; t.endTime = new Date().toISOString(); }
+    tbSaveData();
+    tbRenderBoard();
+    showToast('タスク完了！');
+}
+
+function tbUndoTask(id) {
+    const t = tbData.tasks.find(t => t.id === id);
+    if (t) { t.done = false; t.endTime = null; }
+    tbSaveData();
+    tbRenderBoard();
+}
+
+function tbDeleteTask(id) {
+    tbData.tasks = tbData.tasks.filter(t => t.id !== id);
+    tbSaveData();
+    tbRenderBoard();
+}
+
+function tbResetDay() {
+    if (!confirm('今日のタスクをすべてリセットしますか？')) return;
+    tbData.tasks = [];
+    tbSaveData();
+    tbRenderBoard();
+    showToast('タスクをリセットしました');
+}
+
+function tbClearAll() {
+    if (!confirm('タスクデータ（テンプレート含む）を全削除しますか？')) return;
+    if (!confirm('本当に削除しますか？（最終確認）')) return;
+    localStorage.removeItem(TB_STORAGE_KEY);
+    tbData = tbGetDefault();
+    tbRenderAll();
+    showToast('タスクデータを全削除しました');
+}
+
+// テンプレート管理（データ管理タブ内）
+function tbRenderTemplateManage() {
+    const el = document.getElementById('tmpl-list');
+    el.innerHTML = tbData.templates.map((t, i) =>
+        `<div class="tmpl-item">
+            <input type="text" value="${tbEscapeHtml(t.name)}" onchange="tbUpdateTemplate(${i}, 'name', this.value)">
+            <input type="number" value="${t.time || ''}" placeholder="分" min="1" onchange="tbUpdateTemplate(${i}, 'time', this.value)">
+            <span style="font-size:0.8rem; color:#718096;">分</span>
+            <button class="tmpl-remove" onclick="tbRemoveTemplate(${i})">&times;</button>
+        </div>`
+    ).join('');
+}
+
+function tbUpdateTemplate(idx, key, val) {
+    if (key === 'name') tbData.templates[idx].name = val.trim();
+    if (key === 'time') tbData.templates[idx].time = val ? parseInt(val) : null;
+    tbSaveData();
+}
+
+function tbRemoveTemplate(idx) {
+    tbData.templates.splice(idx, 1);
+    tbSaveData();
+    tbRenderTemplateManage();
+    tbRenderTemplates();
+    showToast('テンプレートを削除しました');
+}
+
+function addTemplate() {
+    const nameInput = document.getElementById('new-tmpl-name');
+    const timeInput = document.getElementById('new-tmpl-time');
+    const name = nameInput.value.trim();
+    if (!name) { alert('タスク名を入力してください'); return; }
+    tbData.templates.push({ name, time: timeInput.value ? parseInt(timeInput.value) : null });
+    tbSaveData();
+    nameInput.value = '';
+    timeInput.value = '';
+    tbRenderTemplateManage();
+    tbRenderTemplates();
+    showToast('テンプレートを追加しました');
+}
+
+function tbEscapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+// ================================================================
+// ========== 欠席登録機能 ==========
+// ================================================================
+
+const ABS_STORAGE_KEY = 'yawaragi_absences';
+const ABS_USERS_KEY = 'yawaragi_abs_users';
+
+// 利用者台帳API（デプロイ済み）
+const ABS_USER_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPDnaVvnt2FjU798fRTws1PoDJoLPOi3AmGwcVp-dBkj2zgblVBCEFe1pQ/exec';
+
+// yawaragiボードGAS（欠席登録・伝達事項・ケアマネ通知）
+const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbxK6oZWZU6IPwLwXw04jL-dVs3fNQ6lp6g7LyVf2aySR6iPrK44LuK055O16GKq-MMqfQ/exec';
+
+// 利用者データキャッシュ
+let absUserCache = [];
+let absUserLoaded = false;
+
+// 欠席理由リスト
+const ABS_REASONS = [
+    '体調不良', '痛み（腰痛・膝痛等）', '転倒', '骨折', 'ケガ',
+    '感染症（コロナ・インフル等）', '通院', '入院', '退院後の自宅療養', 'ワクチン接種',
+    'ショートステイ中', '他サービス利用', '本人の意欲低下', '家族の都合', '家族の体調不良',
+    '冠婚葬祭', '天候不良', '外出・旅行', '私用', 'その他'
+];
+
+// 曜日名
+const DAY_NAMES = ['日','月','火','水','木','金','土'];
+
+// 欠席登録の状態
+let absState = {
+    selectedUser: null,    // { name, reading, pattern, nextDate }
+    dateType: 'today',     // 'today' | 'specific' | 'range'
+    dateFrom: '',
+    dateTo: '',
+    reason: '',
+    reasonOther: '',
+    contact: '',
+    contactOther: ''
+};
+
+// ----- 利用者データ（利用者台帳スプレッドシートからGAS経由で自動取得） -----
+function absGetUsers() {
+    return absUserCache;
+}
+
+function absLoadUsersFromAPI() {
+    const callbackName = 'absUserCallback_' + Date.now();
+    return new Promise((resolve, reject) => {
+        window[callbackName] = function(data) {
+            delete window[callbackName];
+            const scriptEl = document.getElementById('abs-user-script');
+            if (scriptEl) scriptEl.remove();
+
+            if (data.error) {
+                console.error('利用者台帳API エラー:', data.error);
+                reject(data.error);
+                return;
+            }
+
+            // APIの返すデータ形式をアプリ内形式に変換
+            absUserCache = (data.users || []).map(u => {
+                // days列（例: "月水金"）とampm列（例: "午前"）からpattern配列を作る
+                const pattern = absParsePattern(u.days, u.ampm);
+                return {
+                    name: u.name,
+                    reading: u.kana || '',
+                    pattern: pattern,
+                    care: u.care || '',
+                    cmOffice: u.cmOffice || ''
+                };
+            });
+
+            absUserLoaded = true;
+            // キャッシュにも保存（次回のオフライン起動用）
+            try {
+                localStorage.setItem(ABS_USERS_KEY, JSON.stringify(absUserCache));
+            } catch {}
+
+            resolve(absUserCache);
+        };
+
+        const script = document.createElement('script');
+        script.id = 'abs-user-script';
+        script.src = ABS_USER_API_URL + '?callback=' + callbackName;
+        script.onerror = function() {
+            delete window[callbackName];
+            // API取得失敗時はキャッシュから読む
+            try {
+                const cached = localStorage.getItem(ABS_USERS_KEY);
+                if (cached) {
+                    absUserCache = JSON.parse(cached);
+                    absUserLoaded = true;
+                }
+            } catch {}
+            resolve(absUserCache);
+        };
+        document.body.appendChild(script);
+    });
+}
+
+// 通所曜日文字列 + 午前午後文字列 → pattern配列に変換
+function absParsePattern(daysStr, ampmStr) {
+    if (!daysStr) return [];
+    const dayMap = { '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6, '日': 0 };
+    const pattern = [];
+
+    // 午前/午後の判定
+    let isAm = true, isPm = true;
+    if (ampmStr) {
+        const s = ampmStr.replace(/\s/g, '');
+        if (s.indexOf('午前') >= 0 && s.indexOf('午後') < 0) { isAm = true; isPm = false; }
+        else if (s.indexOf('午後') >= 0 && s.indexOf('午前') < 0) { isAm = false; isPm = true; }
+        else if (s === '1') { isAm = true; isPm = false; }
+        else if (s === '2') { isAm = false; isPm = true; }
+    }
+
+    for (const ch of daysStr) {
+        if (dayMap[ch] !== undefined) {
+            if (isAm) pattern.push({ day: dayMap[ch], unit: 'am' });
+            if (isPm) pattern.push({ day: dayMap[ch], unit: 'pm' });
+        }
+    }
+    return pattern;
+}
+
+// ----- 欠席データ -----
+function absGetRecords() {
+    try {
+        const raw = localStorage.getItem(ABS_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+
+function absSaveRecords(records) {
+    localStorage.setItem(ABS_STORAGE_KEY, JSON.stringify(records));
+}
+
+// ----- カタカナ→ひらがな変換 -----
+function kataToHira(str) {
+    return str.replace(/[\u30A1-\u30F6]/g, ch =>
+        String.fromCharCode(ch.charCodeAt(0) - 0x60)
+    );
+}
+
+// ----- ひらがな→カタカナ変換 -----
+function hiraToKata(str) {
+    return str.replace(/[\u3041-\u3096]/g, ch =>
+        String.fromCharCode(ch.charCodeAt(0) + 0x60)
+    );
+}
+
+// 先頭一致かどうか判定
+function absIsStartMatch(user, query, queryHira, queryKata) {
+    if (user.name && user.name.startsWith(query)) return true;
+    if (user.reading) {
+        if (user.reading.startsWith(queryKata)) return true;
+        if (user.reading.startsWith(queryHira)) return true;
+        if (kataToHira(user.reading).startsWith(queryHira)) return true;
+    }
+    return false;
+}
+
+// ----- 名前検索 -----
+function absSearchName(query) {
+    const results = document.getElementById('abs-search-results');
+    const clearBtn = document.getElementById('abs-clear-btn');
+    query = query.trim();
+
+    if (!query) {
+        results.innerHTML = '';
+        clearBtn.style.display = 'none';
+        return;
+    }
+    clearBtn.style.display = 'flex';
+
+    const users = absGetUsers();
+    if (users.length === 0) {
+        results.innerHTML = '<div class="abs-search-item" style="cursor:default; color:#718096;">' +
+            (absUserLoaded ? '利用者データがありません' : '利用者データを読み込み中...') + '</div>';
+        return;
+    }
+
+    const queryHira = kataToHira(query);
+    const queryKata = hiraToKata(query);
+    const matched = users.filter(u => {
+        const nameMatch = u.name && u.name.includes(query);
+        const readingHira = u.reading ? kataToHira(u.reading) : '';
+        const readingMatch = u.reading && (u.reading.includes(query) || u.reading.includes(queryKata) || readingHira.includes(queryHira));
+        return nameMatch || readingMatch;
+    });
+
+    if (matched.length === 0) {
+        results.innerHTML = '<div class="abs-search-item" style="cursor:default; color:#718096;">該当する利用者がいません</div>';
+        return;
+    }
+
+    // 先頭一致を上に、途中一致を下にソート
+    matched.sort((a, b) => {
+        const aStart = absIsStartMatch(a, query, queryHira, queryKata);
+        const bStart = absIsStartMatch(b, query, queryHira, queryKata);
+        if (aStart && !bStart) return -1;
+        if (!aStart && bStart) return 1;
+        return 0;
+    });
+
+    results.innerHTML = matched.map((u, i) =>
+        `<div class="abs-search-item" onclick="absSelectUser(${i}, '${u.name.replace(/'/g, "\\'")}')">
+            <span class="abs-name-main">${u.name}</span>
+            ${u.reading ? `<span class="abs-name-reading">${u.reading}</span>` : ''}
+        </div>`
+    ).join('');
+}
+
+function absSelectUser(idx, name) {
+    const users = absGetUsers();
+    const user = users.find(u => u.name === name);
+    if (!user) return;
+
+    absState.selectedUser = user;
+
+    // 入力欄に名前を表示
+    document.getElementById('abs-name-input').value = user.name;
+    document.getElementById('abs-name-input').readOnly = true;
+    document.getElementById('abs-search-results').innerHTML = '';
+    document.getElementById('abs-clear-btn').style.display = 'flex';
+
+    // 通所パターンと次回通所日を表示
+    const info = document.getElementById('abs-selected-info');
+    let patternText = '通所パターン未設定';
+    let nextDateText = '';
+
+    if (user.pattern && user.pattern.length > 0) {
+        const dayLabels = user.pattern.map(p => {
+            const dayName = DAY_NAMES[p.day];
+            const unitName = p.unit === 'am' ? '午前' : '午後';
+            return `${dayName}(${unitName})`;
+        }).join('・');
+        patternText = dayLabels;
+
+        // 次回通所日を計算
+        const today = new Date();
+        for (let i = 0; i <= 14; i++) {
+            const d = new Date(today);
+            d.setDate(d.getDate() + i);
+            const dow = d.getDay();
+            const match = user.pattern.find(p => p.day === dow);
+            if (match && i > 0) {
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                nextDateText = `次回通所日: ${d.getFullYear()}/${mm}/${dd}（${DAY_NAMES[dow]}）`;
+                break;
+            }
+        }
+    }
+
+    info.style.display = 'block';
+    info.innerHTML = `
+        <div class="abs-selected-name">${user.name}</div>
+        <div class="abs-selected-pattern">
+            通所パターン: ${patternText}<br>
+            ${nextDateText ? nextDateText : ''}
+        </div>
+    `;
+
+    // STEP2を表示
+    document.getElementById('abs-step-date').style.display = 'block';
+    absSelectDateType('today');
+}
+
+function absClearName() {
+    absState.selectedUser = null;
+    const input = document.getElementById('abs-name-input');
+    input.value = '';
+    input.readOnly = false;
+    document.getElementById('abs-clear-btn').style.display = 'none';
+    document.getElementById('abs-search-results').innerHTML = '';
+    document.getElementById('abs-selected-info').style.display = 'none';
+    // 後続ステップを隠す
+    document.getElementById('abs-step-date').style.display = 'none';
+    document.getElementById('abs-step-reason').style.display = 'none';
+    document.getElementById('abs-step-contact').style.display = 'none';
+    document.getElementById('abs-step-submit').style.display = 'none';
+    absState.reason = '';
+    absState.contact = '';
+}
+
+// ----- 日付選択 -----
+function absSelectDateType(type) {
+    absState.dateType = type;
+    document.querySelectorAll('.abs-date-type-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.type === type);
+    });
+
+    const container = document.getElementById('abs-date-inputs');
+    const warning = document.getElementById('abs-date-warning');
+    warning.style.display = 'none';
+
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+
+    if (type === 'today') {
+        absState.dateFrom = todayStr;
+        absState.dateTo = todayStr;
+        container.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
+            ${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}（${DAY_NAMES[today.getDay()]}）
+        </p>`;
+        // 通所日でない日チェック
+        absCheckNotScheduledDay(todayStr);
+        absShowReasonStep();
+    } else if (type === 'specific') {
+        absState.dateFrom = '';
+        absState.dateTo = '';
+        container.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" min="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
+        absOnDateSpecific(todayStr);
+    } else if (type === 'range') {
+        absState.dateFrom = '';
+        absState.dateTo = '';
+        container.innerHTML = `
+            <div class="abs-date-range-wrap">
+                <input type="date" id="abs-date-from" value="${todayStr}" min="${todayStr}" onchange="absOnDateRange()">
+                <span>〜</span>
+                <input type="date" id="abs-date-to" value="${todayStr}" min="${todayStr}" onchange="absOnDateRange()">
+            </div>
+        `;
+        absOnDateRange();
+    }
+}
+
+function absOnDateSpecific(val) {
+    absState.dateFrom = val;
+    absState.dateTo = val;
+    absCheckNotScheduledDay(val);
+    absShowReasonStep();
+}
+
+function absOnDateRange() {
+    absState.dateFrom = document.getElementById('abs-date-from').value;
+    absState.dateTo = document.getElementById('abs-date-to').value;
+    if (absState.dateFrom && absState.dateTo) {
+        if (absState.dateTo < absState.dateFrom) {
+            document.getElementById('abs-date-warning').style.display = 'block';
+            document.getElementById('abs-date-warning').textContent = '終了日は開始日より後にしてください';
+            return;
+        }
+        document.getElementById('abs-date-warning').style.display = 'none';
+        absShowReasonStep();
+    }
+}
+
+function absCheckNotScheduledDay(dateStr) {
+    if (!absState.selectedUser || !absState.selectedUser.pattern) return;
+    const d = new Date(dateStr);
+    const dow = d.getDay();
+    const isScheduled = absState.selectedUser.pattern.some(p => p.day === dow);
+    const warning = document.getElementById('abs-date-warning');
+    if (!isScheduled) {
+        warning.style.display = 'block';
+        warning.textContent = `${DAY_NAMES[dow]}曜日はこの利用者の通所日ではありません。確認してください。`;
+    } else {
+        warning.style.display = 'none';
+    }
+}
+
+function absShowReasonStep() {
+    const reasonGrid = document.getElementById('abs-reason-grid');
+    reasonGrid.innerHTML = ABS_REASONS.map(r =>
+        `<button class="abs-reason-btn ${absState.reason === r ? 'selected' : ''}" onclick="absSelectReason('${r.replace(/'/g, "\\'")}')">${r}</button>`
+    ).join('');
+    document.getElementById('abs-step-reason').style.display = 'block';
+}
+
+// ----- 理由選択 -----
+function absSelectReason(reason) {
+    absState.reason = reason;
+    // ボタンの選択状態を更新
+    document.querySelectorAll('.abs-reason-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent.trim() === reason);
+    });
+
+    // 「その他」の場合はテキスト入力を表示
+    let otherInput = document.querySelector('.abs-reason-other-input');
+    if (reason === 'その他') {
+        if (!otherInput) {
+            const grid = document.getElementById('abs-reason-grid');
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'abs-reason-other-input';
+            input.placeholder = '理由を入力';
+            input.oninput = function() { absState.reasonOther = this.value; absUpdateConfirm(); };
+            grid.parentElement.appendChild(input);
+            input.focus();
+        }
+    } else {
+        if (otherInput) otherInput.remove();
+        absState.reasonOther = '';
+    }
+
+    // STEP4表示
+    document.getElementById('abs-step-contact').style.display = 'block';
+    // 連絡者が既に選択されていたらsubmitも更新
+    if (absState.contact) absUpdateConfirm();
+}
+
+// ----- 連絡者選択 -----
+function absSelectContact(contact) {
+    absState.contact = contact;
+    document.querySelectorAll('.abs-contact-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent.trim() === contact);
+    });
+
+    const otherInput = document.getElementById('abs-contact-other');
+    if (contact === 'その他') {
+        otherInput.style.display = 'block';
+        otherInput.focus();
+    } else {
+        otherInput.style.display = 'none';
+        absState.contactOther = '';
+    }
+
+    absUpdateConfirm();
+}
+
+function absContactOtherInput() {
+    absState.contactOther = document.getElementById('abs-contact-other').value;
+    absUpdateConfirm();
+}
+
+// ----- 確認表示 -----
+function absUpdateConfirm() {
+    if (!absState.selectedUser || !absState.reason || !absState.contact) return;
+
+    const submitStep = document.getElementById('abs-step-submit');
+    submitStep.style.display = 'block';
+
+    const reason = absState.reason === 'その他' ? (absState.reasonOther || 'その他') : absState.reason;
+    const contact = absState.contact === 'その他' ? (absState.contactOther || 'その他') : absState.contact;
+
+    let dateText = '';
+    if (absState.dateType === 'today') {
+        const t = new Date();
+        dateText = `${t.getFullYear()}/${String(t.getMonth()+1).padStart(2,'0')}/${String(t.getDate()).padStart(2,'0')}（${DAY_NAMES[t.getDay()]}）`;
+    } else if (absState.dateType === 'specific') {
+        const d = new Date(absState.dateFrom);
+        dateText = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}（${DAY_NAMES[d.getDay()]}）`;
+    } else {
+        const df = new Date(absState.dateFrom);
+        const dt = new Date(absState.dateTo);
+        dateText = `${df.getFullYear()}/${String(df.getMonth()+1).padStart(2,'0')}/${String(df.getDate()).padStart(2,'0')} 〜 ${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}`;
+    }
+
+    document.getElementById('abs-confirm-card').innerHTML = `
+        <strong>利用者:</strong> ${absState.selectedUser.name}<br>
+        <strong>欠席日:</strong> ${dateText}<br>
+        <strong>理由:</strong> ${reason}<br>
+        <strong>連絡者:</strong> ${contact}
+    `;
+}
+
+// ----- 登録 -----
+function absSubmit() {
+    if (!absState.selectedUser || !absState.reason || !absState.contact) {
+        alert('すべての項目を入力してください');
+        return;
+    }
+
+    const reason = absState.reason === 'その他' ? (absState.reasonOther || 'その他') : absState.reason;
+    const contact = absState.contact === 'その他' ? (absState.contactOther || 'その他') : absState.contact;
+
+    // 登録ボタンを無効化（二重送信防止）
+    const btn = document.getElementById('abs-submit-btn');
+    btn.disabled = true;
+    btn.textContent = '登録中...';
+
+    // 日付リストを作成（期間指定の場合は複数日）
+    const dates = [];
+    if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
+        const start = new Date(absState.dateFrom);
+        const end = new Date(absState.dateTo);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            dates.push(d.toISOString().slice(0, 10));
+        }
+    } else {
+        dates.push(absState.dateFrom);
+    }
+
+    // 午前/午後判定
+    let unit = '午前';
+    if (absState.selectedUser.pattern && absState.selectedUser.pattern.length > 0) {
+        const hasAm = absState.selectedUser.pattern.some(p => p.unit === 'am');
+        const hasPm = absState.selectedUser.pattern.some(p => p.unit === 'pm');
+        if (hasAm && hasPm) unit = '終日';
+        else if (hasPm) unit = '午後';
+    }
+
+    // GASにPOST送信
+    const postData = {
+        action: 'absence',
+        name: absState.selectedUser.name,
+        dates: dates,
+        unit: unit,
+        reason: reason,
+        reporter: contact,
+        cmOffice: absState.selectedUser.cmOffice || '',
+        cmEmail: '', // ケアマネ連絡先シートから自動取得（GAS側で対応予定）
+        cmName: ''
+    };
+
+    fetch(ABS_BOARD_API_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(postData)
+    }).then(() => {
+        // no-corsなのでレスポンスは読めないが、送信は成功
+        console.log('GASに欠席登録を送信しました');
+    }).catch(err => {
+        console.error('GAS送信エラー:', err);
+    });
+
+    // localStorageにも保存（即座に画面反映するため）
+    const record = {
+        id: Date.now(),
+        userName: absState.selectedUser.name,
+        dateFrom: absState.dateFrom,
+        dateTo: absState.dateTo,
+        dateType: absState.dateType,
+        reason: reason,
+        contact: contact,
+        registeredAt: new Date().toISOString(),
+        registeredBy: ''
+    };
+
+    const records = absGetRecords();
+    records.push(record);
+    absSaveRecords(records);
+
+    // フォームリセット
+    absClearName();
+    showToast('欠席を登録しました');
+
+    // 一覧を更新
+    absRenderTodayList();
+    absRenderUpcomingList();
+
+    // 登録ボタンのフィードバック
+    btn.disabled = false;
+    btn.textContent = '登録しました！';
+    btn.style.background = '#38a169';
+    setTimeout(() => {
+        btn.textContent = 'この内容で登録する';
+        btn.style.background = '';
+    }, 2000);
+}
+
+// ----- 今日の欠席一覧 -----
+function absRenderTodayList() {
+    const el = document.getElementById('abs-today-list');
+    const records = absGetRecords();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const todayRecords = records.filter(r => r.dateFrom <= todayStr && r.dateTo >= todayStr);
+
+    if (todayRecords.length === 0) {
+        el.innerHTML = '<div class="abs-empty">今日の欠席はありません</div>';
+        return;
+    }
+
+    el.innerHTML = todayRecords.map(r => `
+        <div class="abs-record">
+            <div class="abs-record-main">
+                <div class="abs-record-name">${r.userName}</div>
+                <div class="abs-record-detail">
+                    理由: ${r.reason}　／　連絡者: ${r.contact}<br>
+                    ${r.dateType === 'range' ? `期間: ${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}` : ''}
+                    登録: ${absFormatTime(r.registeredAt)}
+                </div>
+            </div>
+            <button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>
+        </div>
+    `).join('');
+}
+
+// ----- 今後の欠席予定（1週間） -----
+function absRenderUpcomingList() {
+    const el = document.getElementById('abs-upcoming-list');
+    const records = absGetRecords();
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const weekLater = new Date(today);
+    weekLater.setDate(weekLater.getDate() + 7);
+    const weekStr = weekLater.toISOString().slice(0, 10);
+
+    const upcoming = records.filter(r => r.dateTo > todayStr && r.dateFrom <= weekStr)
+        .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+
+    if (upcoming.length === 0) {
+        el.innerHTML = '<div class="abs-empty">今後1週間の欠席予定はありません</div>';
+        return;
+    }
+
+    el.innerHTML = upcoming.map(r => {
+        let dateText = absFormatDate(r.dateFrom);
+        if (r.dateType === 'range') {
+            dateText = `${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}`;
+        }
+        return `
+        <div class="abs-record">
+            <div class="abs-record-main">
+                <div class="abs-record-name">${r.userName}</div>
+                <div class="abs-record-detail">
+                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}
+                </div>
+            </div>
+            <button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>
+        </div>
+        `;
+    }).join('');
+}
+
+function absDeleteRecord(id) {
+    if (!confirm('この欠席記録を取り消しますか？')) return;
+    let records = absGetRecords();
+    records = records.filter(r => r.id !== id);
+    absSaveRecords(records);
+    absRenderTodayList();
+    absRenderUpcomingList();
+    showToast('欠席を取り消しました');
+}
+
+function absFormatDate(dateStr) {
+    const d = new Date(dateStr);
+    return `${d.getMonth()+1}/${d.getDate()}（${DAY_NAMES[d.getDay()]}）`;
+}
+
+function absFormatTime(isoStr) {
+    const d = new Date(isoStr);
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+// ----- 利用者一覧表示（データ管理タブ） -----
+function absRenderUserManage() {
+    const el = document.getElementById('abs-user-manage-list');
+    if (!el) return;
+    const users = absGetUsers();
+    if (users.length === 0) {
+        el.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">' +
+            (absUserLoaded ? '利用者データがありません' : '読み込み中...') + '</p>';
+        return;
+    }
+    el.innerHTML = `<p style="font-size:0.85rem; color:#2c7a7b; font-weight:600; margin-bottom:8px;">登録人数: ${users.length}人</p>` +
+        users.map(u => {
+        const patternText = u.pattern && u.pattern.length > 0
+            ? u.pattern.map(p => `${DAY_NAMES[p.day]}${p.unit === 'am' ? '前' : '後'}`).join(' ')
+            : '未設定';
+        return `<div style="display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #edf2f7; font-size:0.85rem;">
+            <span style="font-weight:600; min-width:80px;">${u.name}</span>
+            <span style="color:#718096;">${u.reading || ''}</span>
+            <span style="color:#a0aec0; margin-left:auto; font-size:0.75rem;">${patternText}</span>
+        </div>`;
+    }).join('');
+}
+
+// ----- 欠席登録の初期化 -----
+function absInit() {
+    absRenderTodayList();
+    absRenderUpcomingList();
+
+    // 利用者台帳APIからデータ取得
+    absLoadUsersFromAPI().then(() => {
+        absRenderUserManage();
+        console.log('利用者データ取得完了:', absUserCache.length + '人');
+    }).catch(err => {
+        console.error('利用者データ取得エラー:', err);
+        absRenderUserManage();
+    });
+}
+
+// ========== 初期化 ==========
+init();
+</script>
+</body>
+</html>
