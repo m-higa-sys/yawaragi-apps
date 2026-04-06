@@ -448,6 +448,7 @@ table.schedule td.merged-block.selected-group { filter: brightness(1.4) saturate
 
     <div class="setting-row">
       <label class="check-label"><input type="checkbox" id="chkFirstWeek"> 1週目（yトレ説明あり）</label>
+      <label class="check-label" style="margin-left:16px;"><input type="checkbox" id="chkNoKan"> 干渉波なし（手動配置）</label>
     </div>
 
     <!-- 時間設定セクション -->
@@ -854,6 +855,7 @@ function saveSettings() {
       selWB: document.getElementById('selWB').value,
       selMachine: document.getElementById('selMachine').value,
       chkFirstWeek: document.getElementById('chkFirstWeek').checked,
+      chkNoKan: document.getElementById('chkNoKan').checked,
       dateMode: STATE.dateMode,
       selectedDate: STATE.selectedDate,
       trialUsers: STATE.trialUsers,
@@ -888,6 +890,9 @@ function loadSettings() {
     if (data.chkFirstWeek !== undefined) {
       document.getElementById('chkFirstWeek').checked = data.chkFirstWeek;
       updateYtreVisibility();
+    }
+    if (data.chkNoKan !== undefined) {
+      document.getElementById('chkNoKan').checked = data.chkNoKan;
     }
     if (data.trialUsers) STATE.trialUsers = data.trialUsers;
     if (data.dateMode) {
@@ -2218,6 +2223,7 @@ function scheduleGroupVideoActivity(grid, persons, activity, numSlots, videoUsed
 function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
   const n = targetUsers.length;
   const isFirstWeek = document.getElementById('chkFirstWeek').checked;
+  const noKan = document.getElementById('chkNoKan').checked;
   const wbSlots = getTimeValue('wb');
   const careTypes = targetUsers.map(u => u.care);
   const unplacedBlocks = [];
@@ -2243,7 +2249,7 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
   const wbUsed = new Array(SLOTS).fill(0);
   const kanUsed = new Array(SLOTS).fill(0);
   const machineRestBlock = Array.from({length: SLOTS}, () => new Array(n).fill(false));
-  const endLimit = SLOTS - T.bp;
+  let endLimit = SLOTS - T.bp;
   const WB_MAX = 2;
   const KAN_MAX = 3;
   const MACHINE_COUNT = 4;
@@ -2305,9 +2311,9 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     if (koukuActive.length > 0) tvFreeFrom = koukuStart + T.kouku;
   }
 
-  // Phase 6: 測定（対象者のみ・TV不要・個別/口腔の直後）
-  // 測定はスタッフ1人必要→早めに配置。TV不要なので口腔全体の終了を待たない
-  if (sokuteiPersons.length > 0) {
+  // Phase 6: 測定 → マシン配置後に実行（placeNoKanSchedule内）
+  // マシンを最優先で配置するため、測定はマシンの後の空きに入れる
+  if (false && sokuteiPersons.length > 0) {
     const sokuteiLen = T.sokutei;
     const sokuteiUsed = new Array(SLOTS).fill(false);
     for (const p of sokuteiPersons) {
@@ -2682,6 +2688,8 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     }
 
     // === Phase2: 空き時間に干渉波（1人ずつ最初の空きに入れる） ===
+    // 干渉波なしモードの場合はスキップ
+    if (noKan) return lastEnd;
     // afterTaisoから探す（WBスタートの影響でminStartが遅れていても、体操直後の空きを拾う）
     var kanPersons = groupMembers[g].filter(function(p) { return !isBanned(p, 'kan') && !isAlreadyPlaced(p, 'kan'); });
     var kanLen = T.kan;
@@ -2721,6 +2729,204 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     }
 
     return lastEnd;
+  }
+
+  // グローバルWB配置（干渉波なしモード用）: グループに関係なく2人ペアで空き時間に詰める
+  function placeAllWBGlobal() {
+    var wbQueue = [];
+    for (var p = 0; p < n; p++) {
+      if (!isBanned(p, 'wb') && !isAlreadyPlaced(p, 'wb')) wbQueue.push(p);
+    }
+    if (wbQueue.length === 0) return;
+    var placed = {};
+    var unplacedCount = wbQueue.length;
+    // Pass1: 2人ペアで最も早い空き時間から順に配置
+    for (var start = afterTaiso; start + wbSlots <= endLimit && unplacedCount >= 2; start++) {
+      if (wbUsed[start] >= WB_MAX) continue;
+      // このスロットでWBできる2人を探す
+      var pair = [];
+      for (var qi = 0; qi < wbQueue.length && pair.length < 2; qi++) {
+        var p = wbQueue[qi];
+        if (placed[p]) continue;
+        if (!canPlaceWBAt(p, start)) continue;
+        // マシン休憩時間にはWBを入れない
+        var restBlocked = false;
+        for (var s = start; s < start + wbSlots; s++) {
+          if (machineRestBlock[s][p]) { restBlocked = true; break; }
+        }
+        if (restBlocked) continue;
+        pair.push(p);
+      }
+      if (pair.length >= 2) {
+        // 2台同時チェック
+        var canFit = true;
+        for (var s = start; s < start + wbSlots; s++) {
+          if (wbUsed[s] + 2 > WB_MAX) { canFit = false; break; }
+        }
+        if (!canFit) continue;
+        for (var s = start; s < start + wbSlots; s++) {
+          grid[s][pair[0]] = 'wb'; wbUsed[s]++;
+          grid[s][pair[1]] = 'wb'; wbUsed[s]++;
+        }
+        placed[pair[0]] = true; placed[pair[1]] = true;
+        unplacedCount -= 2;
+      }
+    }
+    // Pass2: 残り（奇数の最後の1人）
+    for (var qi = 0; qi < wbQueue.length; qi++) {
+      var p = wbQueue[qi];
+      if (placed[p]) continue;
+      var found = false;
+      for (var start = afterTaiso; start + wbSlots <= endLimit; start++) {
+        if (canPlaceWBAt(p, start)) {
+          // マシン休憩時間チェック
+          var restBlocked2 = false;
+          for (var s = start; s < start + wbSlots; s++) {
+            if (machineRestBlock[s][p]) { restBlocked2 = true; break; }
+          }
+          if (restBlocked2) continue;
+          for (var s = start; s < start + wbSlots; s++) {
+            grid[s][p] = 'wb'; wbUsed[s]++;
+          }
+          found = true; break;
+        }
+      }
+      if (!found) {
+        var ubIdx = unplacedBlocks.length;
+        warnings.push('<span class="unplaced-warn" data-ub-idx="' + ubIdx + '">' + CIRCLED[p + 1] + 'のWBを配置できませんでした <span style="font-size:11px;">👆タップで配置</span></span>');
+        unplacedBlocks.push({ activity: 'wb', person: p, length: wbSlots });
+      }
+    }
+  }
+
+  // ========== 干渉波なし: 新アルゴリズム ==========
+  // 骨格: マシン均等間隔 → 動画(全員一斉 or グループごと) → WB(2人ペアで隙間に)
+  function placeNoKanSchedule() {
+    // 目標: 機器を11:40(AM)/16:10(PM)までに終了 → 動画はその後
+    var dougaLen = T.douga;
+    var targetEquipEnd = SLOTS - 20; // 終了20分前（AM=11:40, PM=16:10）
+    var maxEquipEnd = endLimit - dougaLen; // 動画の前に必ず収める上限
+
+    // マシン合計時間
+    var totalMDur = 0;
+    for (var g = 0; g < numGroups; g++) totalMDur += groupMachineSlots[g];
+
+    // Aグループの最早開始
+    var firstStart = adjustMachineStart(0, getGroupFreeFrom(0));
+
+    // 均等間隔の計算（マシンは必ず動画前に収める）
+    var numGapsCalc = Math.max(numGroups - 1, 1);
+    var availableTime = Math.min(targetEquipEnd, maxEquipEnd) - firstStart;
+    var eqGap = 0;
+
+    if (totalMDur > availableTime) {
+      // 時間不足→ギャップなし
+      eqGap = 0;
+      if (totalMDur > maxEquipEnd - firstStart) {
+        warnings.push('<span style="color:#e74c3c;">⚠ 人数が多くマシンが動画前に収まりません</span>');
+      }
+    } else if (numGroups > 1) {
+      eqGap = Math.floor((availableTime - totalMDur) / numGapsCalc);
+    }
+
+    // マシン配置（均等間隔・動画前に必ず収める）
+    var savedEndLimit = endLimit;
+    endLimit = maxEquipEnd; // マシンの上限を動画前に制限
+    var ms = firstStart;
+    for (var g = 0; g < numGroups; g++) {
+      ms = Math.max(ms, getGroupFreeFrom(g));
+      ms = adjustMachineStart(g, ms);
+      // マシンが動画前の上限を超えないようチェック
+      if (ms + groupMachineSlots[g] > maxEquipEnd) {
+        ms = Math.max(firstStart, maxEquipEnd - groupMachineSlots[g]);
+      }
+      placeMachineForGroup(g, ms);
+      groupMachineStartSlot[g] = ms;
+      groupMachineEndSlot[g] = ms + groupMachineSlots[g];
+      fillMachineIdleWithKinou(g, ms, groupMachineEndSlot[g]);
+      ms = groupMachineEndSlot[g] + eqGap;
+    }
+
+    endLimit = savedEndLimit; // endLimitを元に戻す（測定・WB・干渉波は動画後でもOK）
+
+    // 測定配置（マシンの後の空きに入れる・machineRestBlockは避ける）
+    if (sokuteiPersons.length > 0) {
+      var sokuteiLen = T.sokutei;
+      var sokuteiUsed = new Array(SLOTS).fill(false);
+      for (var si = 0; si < sokuteiPersons.length; si++) {
+        var sp = sokuteiPersons[si];
+        // その人の個別・口腔が終わった直後から配置可能
+        var minStart = afterTaiso;
+        for (var s = 0; s < SLOTS; s++) {
+          if (grid[s][sp] === 'kouku' || grid[s][sp] === 'kinou') {
+            minStart = Math.max(minStart, s + 1);
+          }
+        }
+        var placed = false;
+        for (var start = minStart; start <= SLOTS - sokuteiLen; start++) {
+          var ok = true;
+          for (var s = start; s < start + sokuteiLen; s++) {
+            if (grid[s][sp] !== 'free') { ok = false; break; }
+            if (sokuteiUsed[s]) { ok = false; break; }
+            if (machineRestBlock[s][sp]) { ok = false; break; }
+          }
+          if (ok) {
+            for (var s = start; s < start + sokuteiLen; s++) {
+              grid[s][sp] = 'sokutei';
+              sokuteiUsed[s] = true;
+            }
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          warnings.push('<span style="color:#e67e22;">' + CIRCLED[sp + 1] + 'の測定は今回入りきりませんでした（次回でもOK）</span>');
+        }
+      }
+    }
+
+    // 動画体操: まず全員一斉を試みる
+    var lastMEnd = groupMachineEndSlot[numGroups - 1];
+    var dougaPlaced = false;
+    var searchStart = Math.max(lastMEnd, tvFreeFrom);
+
+    for (var ds = searchStart; ds + dougaLen <= endLimit; ds++) {
+      var allFree = true;
+      for (var dp = 0; dp < n; dp++) {
+        for (var s = ds; s < ds + dougaLen; s++) {
+          if (grid[s][dp] !== 'free') { allFree = false; break; }
+        }
+        if (!allFree) break;
+      }
+      if (allFree) {
+        // 全員一斉OK
+        for (var dp2 = 0; dp2 < n; dp2++) {
+          for (var s = ds; s < ds + dougaLen; s++) {
+            grid[s][dp2] = 'douga';
+          }
+        }
+        dougaPlaced = true;
+        break;
+      }
+    }
+
+    if (!dougaPlaced) {
+      // 全員一斉NG → グループごとにマシン後に動画（TV制約で順番に）
+      var tvSlot = tvFreeFrom;
+      for (var g = 0; g < numGroups; g++) {
+        tvSlot = placeGroupDouga(g, Math.max(groupMachineEndSlot[g], tvSlot));
+      }
+    }
+
+    // WB配置（グローバル・2人ペアで隙間に詰める）
+    placeAllWBGlobal();
+
+    // 干渉波配置（干渉波ありモードの場合のみ）
+    if (!noKan) {
+      for (var g = 0; g < numGroups; g++) {
+        placeGroupKan(g, afterTaiso);
+      }
+    }
   }
 
   // ========== グループ別配置（新ルール 2026/3/23） ==========
@@ -2775,7 +2981,8 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
         }
       }
     }
-    // 干渉波スタートの人
+    // 干渉波スタートの人（干渉波なしモードではスキップ）
+    if (noKan) continue;
     for (const p of groupMembers[g]) {
       const sw = constraints[p].startWith;
       if (sw === 'kan' && !isBanned(p, 'kan')) {
@@ -2796,8 +3003,11 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     }
   }
 
-  if (isThreeGroups) {
-    // === 3グループ: A, B, C ===
+  // === 新アルゴリズム（2/3グループ共通・干渉波あり/なし対応） ===
+  placeNoKanSchedule();
+
+  if (false) {
+    // === 旧3グループ干渉波あり（参考用・無効化） ===
 
     // Step 1: Aマシン（個別・口腔・測定が終わった後から）
     var aMachineStart = adjustMachineStart(0, getGroupFreeFrom(0));
@@ -2806,44 +3016,44 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     groupMachineEndSlot[0] = aMachineStart + groupMachineSlots[0];
     fillMachineIdleWithKinou(0, aMachineStart, groupMachineEndSlot[0]);
 
-    // Step 2: B余暇（WB常時稼働＋隙間に干渉波）
-    var bYokaEnd = placeGroupYoka(1, afterTaiso);
+      // Step 2: B余暇（WB常時稼働＋隙間に干渉波）
+      var bYokaEnd = placeGroupYoka(1, afterTaiso);
 
-    // Step 3: C余暇（WB常時稼働＋隙間に干渉波）
-    var cFreeFrom = getGroupFreeFrom(2);
-    var cYokaEnd = placeGroupYoka(2, cFreeFrom);
+      // Step 3: C余暇（WB常時稼働＋隙間に干渉波）
+      var cFreeFrom = getGroupFreeFrom(2);
+      var cYokaEnd = placeGroupYoka(2, cFreeFrom);
 
-    // Step 4: A動画（Aマシン後 + TV空き）
-    var aDougaMinStart = Math.max(groupMachineEndSlot[0], tvFreeFrom);
-    var aDougaEnd = placeGroupDouga(0, aDougaMinStart);
+      // Step 4: A動画（Aマシン後 + TV空き）
+      var aDougaMinStart = Math.max(groupMachineEndSlot[0], tvFreeFrom);
+      var aDougaEnd = placeGroupDouga(0, aDougaMinStart);
 
-    // Step 5: Bマシン（Aマシン後・B余暇後）
-    var bMachineStart = adjustMachineStart(1, Math.max(groupMachineEndSlot[0], bYokaEnd));
-    placeMachineForGroup(1, bMachineStart);
-    groupMachineStartSlot[1] = bMachineStart;
-    groupMachineEndSlot[1] = bMachineStart + groupMachineSlots[1];
-    fillMachineIdleWithKinou(1, bMachineStart, groupMachineEndSlot[1]);
+      // Step 5: Bマシン（Aマシン後・B余暇後）
+      var bMachineStart = adjustMachineStart(1, Math.max(groupMachineEndSlot[0], bYokaEnd));
+      placeMachineForGroup(1, bMachineStart);
+      groupMachineStartSlot[1] = bMachineStart;
+      groupMachineEndSlot[1] = bMachineStart + groupMachineSlots[1];
+      fillMachineIdleWithKinou(1, bMachineStart, groupMachineEndSlot[1]);
 
-    // Step 6: A余暇（A動画後）
-    var aYokaEnd = placeGroupYoka(0, aDougaEnd);
+      // Step 6: A余暇（A動画後）
+      var aYokaEnd = placeGroupYoka(0, aDougaEnd);
 
-    // Step 7: B動画（Bマシン後 + A動画後 = TV空き）
-    var bDougaMinStart = Math.max(groupMachineEndSlot[1], aDougaEnd);
-    var bDougaEnd = placeGroupDouga(1, bDougaMinStart);
+      // Step 7: B動画（Bマシン後 + A動画後 = TV空き）
+      var bDougaMinStart = Math.max(groupMachineEndSlot[1], aDougaEnd);
+      var bDougaEnd = placeGroupDouga(1, bDougaMinStart);
 
-    // Step 8: Cマシン（Bマシン後・C余暇後）
-    var cMachineStart = adjustMachineStart(2, Math.max(groupMachineEndSlot[1], cYokaEnd));
-    placeMachineForGroup(2, cMachineStart);
-    groupMachineStartSlot[2] = cMachineStart;
-    groupMachineEndSlot[2] = cMachineStart + groupMachineSlots[2];
-    fillMachineIdleWithKinou(2, cMachineStart, groupMachineEndSlot[2]);
+      // Step 8: Cマシン（Bマシン後・C余暇後）
+      var cMachineStart = adjustMachineStart(2, Math.max(groupMachineEndSlot[1], cYokaEnd));
+      placeMachineForGroup(2, cMachineStart);
+      groupMachineStartSlot[2] = cMachineStart;
+      groupMachineEndSlot[2] = cMachineStart + groupMachineSlots[2];
+      fillMachineIdleWithKinou(2, cMachineStart, groupMachineEndSlot[2]);
 
-    // Step 9: C動画（Cマシン後 + B動画後 = TV空き）
-    var cDougaMinStart = Math.max(groupMachineEndSlot[2], bDougaEnd);
-    var cDougaEnd = placeGroupDouga(2, cDougaMinStart);
+      // Step 9: C動画（Cマシン後 + B動画後 = TV空き）
+      var cDougaMinStart = Math.max(groupMachineEndSlot[2], bDougaEnd);
+      var cDougaEnd = placeGroupDouga(2, cDougaMinStart);
 
   } else {
-    // === 2グループ: A(マシン先行), B(余暇先行) ===
+    // === 2グループ干渉波あり（従来の流れ） ===
 
     // Step 1: Aマシン（個別・口腔・測定が終わった後から）
     var g0MachineStart = adjustMachineStart(0, getGroupFreeFrom(0));
@@ -2856,35 +3066,34 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     var g1FreeFrom = getGroupFreeFrom(1);
     var g1YokaEnd = placeGroupYoka(1, g1FreeFrom);
 
-    // Step 3: Bマシン（Aマシン後・B余暇後）
-    var g1MachineStart = adjustMachineStart(1, Math.max(groupMachineEndSlot[0], g1YokaEnd));
-    placeMachineForGroup(1, g1MachineStart);
-    groupMachineStartSlot[1] = g1MachineStart;
-    groupMachineEndSlot[1] = g1MachineStart + groupMachineSlots[1];
-    fillMachineIdleWithKinou(1, g1MachineStart, groupMachineEndSlot[1]);
+      // Step 3: Bマシン（Aマシン後・B余暇後）
+      var g1MachineStart = adjustMachineStart(1, Math.max(groupMachineEndSlot[0], g1YokaEnd));
+      placeMachineForGroup(1, g1MachineStart);
+      groupMachineStartSlot[1] = g1MachineStart;
+      groupMachineEndSlot[1] = g1MachineStart + groupMachineSlots[1];
+      fillMachineIdleWithKinou(1, g1MachineStart, groupMachineEndSlot[1]);
 
-    // Step 4: A余暇（WB常時稼働＋隙間に干渉波）
-    var g0YokaEnd = placeGroupYoka(0, groupMachineEndSlot[0]);
+      // Step 4: A余暇（WB常時稼働＋隙間に干渉波）
+      var g0YokaEnd = placeGroupYoka(0, groupMachineEndSlot[0]);
 
-    // Step 5: 動画体操（14人以下は最後に全員一斉）
-    var allDougaMinStart = Math.max(g0YokaEnd, groupMachineEndSlot[1], tvFreeFrom);
-    // 全員が空いている開始位置を探す
-    var dougaLen = T.douga;
-    for (var ds = allDougaMinStart; ds + dougaLen <= endLimit; ds++) {
-      var allFree2 = true;
-      for (var dp = 0; dp < n; dp++) {
-        for (var dds = ds; dds < ds + dougaLen; dds++) {
-          if (grid[dds][dp] !== 'free') { allFree2 = false; break; }
+      // Step 5: 動画体操（14人以下は最後に全員一斉）
+      var allDougaMinStart = Math.max(g0YokaEnd, groupMachineEndSlot[1], tvFreeFrom);
+      var dougaLen = T.douga;
+      for (var ds = allDougaMinStart; ds + dougaLen <= endLimit; ds++) {
+        var allFree2 = true;
+        for (var dp = 0; dp < n; dp++) {
+          for (var dds = ds; dds < ds + dougaLen; dds++) {
+            if (grid[dds][dp] !== 'free') { allFree2 = false; break; }
+          }
+          if (!allFree2) break;
         }
-        if (!allFree2) break;
+        if (allFree2) { allDougaMinStart = ds; break; }
       }
-      if (allFree2) { allDougaMinStart = ds; break; }
-    }
-    for (var dp2 = 0; dp2 < n; dp2++) {
-      for (var dds2 = allDougaMinStart; dds2 < allDougaMinStart + dougaLen && dds2 < endLimit; dds2++) {
-        if (grid[dds2][dp2] === 'free') grid[dds2][dp2] = 'douga';
+      for (var dp2 = 0; dp2 < n; dp2++) {
+        for (var dds2 = allDougaMinStart; dds2 < allDougaMinStart + dougaLen && dds2 < endLimit; dds2++) {
+          if (grid[dds2][dp2] === 'free') grid[dds2][dp2] = 'douga';
+        }
       }
-    }
   }
 
   // ========== 最後のバイタル ==========
@@ -3413,7 +3622,8 @@ function checkCapacityWarnings(grid, n) {
 
   const machineOverlaps = findOverlaps('machine', 4);
   const wbOverlaps = findOverlaps('wb', 2);
-  const kanOverlaps = findOverlaps('kan', 3);
+  const noKanMode = document.getElementById('chkNoKan').checked;
+  const kanOverlaps = noKanMode ? [] : findOverlaps('kan', 3);
 
   const warnArea = document.getElementById('warningArea');
   const existing = warnArea.innerHTML;
@@ -4672,49 +4882,42 @@ function generate() {
     const isThreeGroups = tempGroups.length >= 3;
     const kaigoAll = [...noKoukuKaigo, ...withKoukuKaigo];
     let newOrder;
-
     if (isThreeGroups) {
-      // === 3グループ: A(口腔なし要介護→個別→マシン) → B(余暇先行) → C(残り) ===
-      // 口腔なし・測定なし要介護をA前方に配置（個別→マシンがスムーズ）
-      // 口腔あり・測定あり要介護は後のグループへ（個別+口腔+測定の後に余裕が必要）
-      const kaigoInA = noKoukuKaigo.splice(0, Math.min(noKoukuKaigo.length, aSize));
-      // 残りを要支援で埋める
-      const aFillSize = aSize - kaigoInA.length;
+      // === 3グループ新ソート ===
+      // A: 口腔あり要支援（口腔→マシン）+ Cからのあふれ → マシンが口腔直後に始まる
+      // B: 口腔なし要支援（完全フリー）→ 準備体操直後からWB開始
+      // C: 要介護(個別+口腔+測定) → 個別→口腔→測定を先に済ませる
+      const cSize = tempGroups[2];
+      // Cに入れる: 要介護 + 測定ある人
+      const cPool = [...noKoukuKaigo, ...withKoukuKaigo, ...sokuteiKaigo, ...sokuteiShien];
+      const cMembers = cPool.splice(0, Math.min(cPool.length, cSize));
+      const cOverflow = cPool;
+      // Aに入れる: 口腔あり要支援（口腔中はマシン前の空きが埋まる）+ Cのあふれ
+      const aPool = [...withKoukuShien, ...cOverflow];
+      const aFillSize = Math.max(0, aSize - aPool.length);
+      if (aFillSize > 0) {
+        aPool.push(...noKoukuShien.splice(0, aFillSize));
+      }
+      const aMembers = aPool.splice(0, aSize);
+      // B: 口腔なし要支援（完全フリー → WB即開始）
+      newOrder = [
+        ...aMembers,
+        ...aPool, ...noKoukuShien, ...yokaiStartShien,
+        ...cMembers
+      ];
+    } else {
+      // === 2グループ: A=要支援(マシン先行)、B=要介護+測定 ===
+      const allKaigoB = [...noKoukuKaigo, ...withKoukuKaigo, ...sokuteiKaigo, ...sokuteiShien];
+      const aFillSize = aSize;
       const aFill = noKoukuShien.splice(0, aFillSize);
       if (aFill.length < aFillSize) {
         aFill.push(...withKoukuShien.splice(0, aFillSize - aFill.length));
       }
-      const aMembers = [...kaigoInA, ...aFill];
+      const aMembers = [...aFill];
       newOrder = [
         ...aMembers,
-        ...yokaiStartShien, ...noKoukuShien, ...withKoukuShien, ...sokuteiShien,
-        ...noKoukuKaigo, ...withKoukuKaigo, ...sokuteiKaigo
-      ];
-    } else {
-      // === 2グループ: A(口腔なし要介護→個別→マシン + startWith右端) → B(残り) ===
-      // 口腔なし・測定なし要介護をA前方に配置（個別→マシンの流れ）
-      // 口腔あり・測定あり要介護はBグループへ
-      // kaigoAll = [...noKoukuKaigo, ...withKoukuKaigo] なので先頭がnoKouku
-      const noKoukuCount = noKoukuKaigo.length;
-      const kaigoInA = kaigoAll.splice(0, Math.min(noKoukuCount, aSize));
-      const startWithForA = yokaiStartShien.splice(0, Math.min(yokaiStartShien.length, aSize - kaigoInA.length));
-      const fillSize = Math.max(0, aSize - kaigoInA.length - startWithForA.length);
-      const aShien = noKoukuShien.splice(0, fillSize);
-      if (aShien.length < fillSize) {
-        aShien.push(...withKoukuShien.splice(0, fillSize - aShien.length));
-      }
-      const aMembers = [...kaigoInA, ...aShien, ...startWithForA];
-      // Aが足りない場合の補充
-      if (aMembers.length < aSize) {
-        aMembers.push(...noKoukuShien.splice(0, aSize - aMembers.length));
-      }
-      if (aMembers.length < aSize) {
-        aMembers.push(...withKoukuShien.splice(0, aSize - aMembers.length));
-      }
-      newOrder = [
-        ...aMembers,
-        ...yokaiStartShien, ...noKoukuShien, ...withKoukuShien, ...sokuteiShien,
-        ...kaigoAll, ...sokuteiKaigo
+        ...noKoukuShien, ...withKoukuShien, ...yokaiStartShien,
+        ...allKaigoB
       ];
     }
     // orderedDayUsersを並べ替え
