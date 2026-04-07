@@ -3145,6 +3145,21 @@ function attRender(data) {
     // データを保持（欠席登録への遷移用）
     attLastData = { am: data.am.slice(), pm: data.pm.slice() };
 
+    // 出席予定データから利用者キャッシュを構築（利用者台帳APIが遅い場合の補完）
+    if (absUserCache.length === 0) {
+        const seen = {};
+        data.am.concat(data.pm).forEach(u => {
+            if (!seen[u.name]) {
+                seen[u.name] = true;
+                absUserCache.push({
+                    name: u.name, reading: '', pattern: [],
+                    care: u.care || '', cmOffice: u.cmOffice || ''
+                });
+            }
+        });
+        if (absUserCache.length > 0) absUserLoaded = true;
+    }
+
     // ローカルの欠席データも反映（GASに未送信のもの）
     const localRecords = absGetRecords();
     const dateStr = attFormatDate(attCurrentDate);
