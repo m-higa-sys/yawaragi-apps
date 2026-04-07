@@ -3145,20 +3145,25 @@ function attRender(data) {
     // データを保持（欠席登録への遷移用）
     attLastData = { am: data.am.slice(), pm: data.pm.slice() };
 
-    // 出席予定データから利用者キャッシュを構築（利用者台帳APIが遅い場合の補完）
-    if (absUserCache.length === 0) {
-        const seen = {};
-        data.am.concat(data.pm).forEach(u => {
-            if (!seen[u.name]) {
-                seen[u.name] = true;
+    // 出席予定データから利用者キャッシュを補完
+    const seen = {};
+    data.am.concat(data.pm).forEach(u => {
+        if (!seen[u.name]) {
+            seen[u.name] = true;
+            const existing = absUserCache.find(c => c.name === u.name);
+            if (existing) {
+                if (!existing.reading && u.kana) existing.reading = u.kana;
+                if (!existing.care && u.care) existing.care = u.care;
+                if (!existing.cmOffice && u.cmOffice) existing.cmOffice = u.cmOffice;
+            } else {
                 absUserCache.push({
-                    name: u.name, reading: '', pattern: [],
+                    name: u.name, reading: u.kana || '', pattern: [],
                     care: u.care || '', cmOffice: u.cmOffice || ''
                 });
             }
-        });
-        if (absUserCache.length > 0) absUserLoaded = true;
-    }
+        }
+    });
+    if (absUserCache.length > 0) absUserLoaded = true;
 
     // ローカルの欠席データも反映（GASに未送信のもの）
     const localRecords = absGetRecords();
@@ -3311,24 +3316,32 @@ function attLoadAllUsers() {
 
         if (!data.success) return;
 
-        // patternsは { "名前": { days: "月水金", unit: "午前午後" }, ... } 形式
+        // patternsは { "名前": { days, unit, kana, care }, ... } 形式
         if (data.patterns) {
             Object.keys(data.patterns).forEach(name => {
-                if (!absUserCache.find(c => c.name === name)) {
+                const p = data.patterns[name];
+                const existing = absUserCache.find(c => c.name === name);
+                if (existing) {
+                    if (!existing.reading && p.kana) existing.reading = p.kana;
+                    if (!existing.care && p.care) existing.care = p.care;
+                } else {
                     absUserCache.push({
-                        name: name, reading: '', pattern: [],
-                        care: '', cmOffice: ''
+                        name: name, reading: p.kana || '', pattern: [],
+                        care: p.care || '', cmOffice: ''
                     });
                 }
             });
         }
 
-        // attendanceからcare情報を補完
+        // attendanceからcare/kana/cmOffice情報を補完
         if (data.attendance) {
             data.attendance.am.concat(data.attendance.pm).forEach(u => {
                 const cached = absUserCache.find(c => c.name === u.name);
-                if (cached && !cached.care && u.care) cached.care = u.care;
-                if (cached && !cached.cmOffice && u.cmOffice) cached.cmOffice = u.cmOffice;
+                if (cached) {
+                    if (!cached.care && u.care) cached.care = u.care;
+                    if (!cached.reading && u.kana) cached.reading = u.kana;
+                    if (!cached.cmOffice && u.cmOffice) cached.cmOffice = u.cmOffice;
+                }
             });
         }
 
