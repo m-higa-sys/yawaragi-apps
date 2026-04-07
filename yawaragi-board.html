@@ -3056,6 +3056,7 @@ function jisRender() {
 
 let attCurrentDate = new Date();
 const ATT_DAY_NAMES = ['日','月','火','水','木','金','土'];
+const ATT_CACHE_KEY = 'yawaragi_att_cache';
 
 function attFormatDate(d) {
     return d.getFullYear() + '-' +
@@ -3087,9 +3088,23 @@ function attGoToday() {
 function attLoad() {
     const dateStr = attFormatDate(attCurrentDate);
     const content = document.getElementById('att-content');
-    content.innerHTML = '<div class="att-loading">読み込み中...</div>';
-    document.getElementById('att-status-bar').innerHTML = '';
 
+    // キャッシュがあれば即表示
+    let cacheShown = false;
+    try {
+        const cache = JSON.parse(localStorage.getItem(ATT_CACHE_KEY) || '{}');
+        if (cache[dateStr]) {
+            attRender(cache[dateStr]);
+            cacheShown = true;
+        }
+    } catch {}
+
+    if (!cacheShown) {
+        content.innerHTML = '<div class="att-loading">読み込み中...</div>';
+        document.getElementById('att-status-bar').innerHTML = '';
+    }
+
+    // GASから最新データを取得（裏で更新）
     const cbName = 'attCallback_' + Date.now();
     window[cbName] = function(data) {
         delete window[cbName];
@@ -3097,9 +3112,19 @@ function attLoad() {
         if (scriptEl) scriptEl.remove();
 
         if (!data.success || !data.attendance) {
-            content.innerHTML = '<div class="att-loading">データを取得できませんでした</div>';
+            if (!cacheShown) content.innerHTML = '<div class="att-loading">データを取得できませんでした</div>';
             return;
         }
+
+        // キャッシュに保存（日付ごと、最大7日分保持）
+        try {
+            const cache = JSON.parse(localStorage.getItem(ATT_CACHE_KEY) || '{}');
+            cache[dateStr] = data.attendance;
+            const keys = Object.keys(cache).sort();
+            while (keys.length > 7) { delete cache[keys.shift()]; }
+            localStorage.setItem(ATT_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+
         attRender(data.attendance);
     };
 
@@ -3108,7 +3133,7 @@ function attLoad() {
     script.src = ABS_BOARD_API_URL + '?action=attendance&date=' + dateStr + '&callback=' + cbName + '&t=' + Date.now();
     script.onerror = function() {
         delete window[cbName];
-        content.innerHTML = '<div class="att-loading">通信エラー。再読み込みしてください。</div>';
+        if (!cacheShown) content.innerHTML = '<div class="att-loading">通信エラー。再読み込みしてください。</div>';
     };
     document.body.appendChild(script);
 }
