@@ -3298,6 +3298,48 @@ function attStartAbsence(name) {
 function attInit() {
     attUpdateDateLabel();
     attLoad();
+    attLoadAllUsers();
+}
+
+// 全利用者データを取得（欠席登録の検索用、patternsから全員取得）
+function attLoadAllUsers() {
+    const cbName = 'attAllUsersCallback_' + Date.now();
+    window[cbName] = function(data) {
+        delete window[cbName];
+        const scriptEl = document.getElementById('att-allusers-script');
+        if (scriptEl) scriptEl.remove();
+
+        if (!data.success) return;
+
+        // patternsは { "名前": { days: "月水金", unit: "午前午後" }, ... } 形式
+        if (data.patterns) {
+            Object.keys(data.patterns).forEach(name => {
+                if (!absUserCache.find(c => c.name === name)) {
+                    absUserCache.push({
+                        name: name, reading: '', pattern: [],
+                        care: '', cmOffice: ''
+                    });
+                }
+            });
+        }
+
+        // attendanceからcare情報を補完
+        if (data.attendance) {
+            data.attendance.am.concat(data.attendance.pm).forEach(u => {
+                const cached = absUserCache.find(c => c.name === u.name);
+                if (cached && !cached.care && u.care) cached.care = u.care;
+                if (cached && !cached.cmOffice && u.cmOffice) cached.cmOffice = u.cmOffice;
+            });
+        }
+
+        absUserLoaded = true;
+    };
+
+    const script = document.createElement('script');
+    script.id = 'att-allusers-script';
+    script.src = ABS_BOARD_API_URL + '?action=all&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() { delete window[cbName]; };
+    document.body.appendChild(script);
 }
 
 // ================================================================
