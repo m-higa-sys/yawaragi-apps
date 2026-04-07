@@ -779,6 +779,13 @@
 
 <!-- ===== 欠席登録タブ ===== -->
 <div id="tab-absence" class="tab-content">
+    <!-- 受付者選択 -->
+    <div class="abs-form-card" id="abs-receptionist-card">
+        <label class="abs-label">受付者（あなたの名前）</label>
+        <div class="abs-contact-btns" id="abs-receptionist-btns"></div>
+        <div id="abs-receptionist-selected" style="display:none; margin-top:8px; font-weight:700; color:#2c7a7b; font-size:1rem;"></div>
+    </div>
+
     <!-- 欠席登録フォーム -->
     <div class="abs-form-card">
         <h3 class="abs-section-title">欠席登録</h3>
@@ -2685,7 +2692,8 @@ function absSubmit() {
         dates: dates,
         unit: unit,
         reason: reason,
-        reporter: contact,
+        reporter: absReceptionist || contact,
+        contact: contact,
         method: absState.method,
         contactDate: absState.contactDate,
         cmOffice: absState.selectedUser.cmOffice || '',
@@ -2717,7 +2725,7 @@ function absSubmit() {
         method: absState.method,
         contactDate: absState.contactDate,
         registeredAt: new Date().toISOString(),
-        registeredBy: ''
+        registeredBy: absReceptionist
     };
 
     const records = absGetRecords();
@@ -3357,8 +3365,44 @@ function attLoadAllUsers() {
 
 // ================================================================
 
+// ===== 受付者（欠席連絡を受けたスタッフ）=====
+const ABS_RECEPTIONIST_KEY = 'yawaragi_receptionist';
+let absReceptionist = '';
+
+function absInitReceptionist() {
+    // 前回の選択を復元
+    absReceptionist = localStorage.getItem(ABS_RECEPTIONIST_KEY) || '';
+
+    const container = document.getElementById('abs-receptionist-btns');
+    const selectedEl = document.getElementById('abs-receptionist-selected');
+    const staff = getStaff();
+
+    container.innerHTML = staff.map(s =>
+        `<button class="abs-contact-btn${absReceptionist === s ? ' selected' : ''}" onclick="absSelectReceptionist('${s}', this)">${s}</button>`
+    ).join('');
+
+    if (absReceptionist) {
+        selectedEl.textContent = '受付者: ' + absReceptionist;
+        selectedEl.style.display = 'block';
+    }
+}
+
+function absSelectReceptionist(name, btn) {
+    absReceptionist = name;
+    localStorage.setItem(ABS_RECEPTIONIST_KEY, name);
+
+    // ボタンのハイライト
+    document.querySelectorAll('#abs-receptionist-btns .abs-contact-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+
+    // 表示更新
+    const selectedEl = document.getElementById('abs-receptionist-selected');
+    selectedEl.textContent = '受付者: ' + name;
+    selectedEl.style.display = 'block';
+}
+
 function absInit() {
-    absRenderTodayList();
+    absInitReceptionist();
     absRenderUpcomingList();
 
     // 利用者台帳APIからデータ取得
