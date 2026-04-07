@@ -466,6 +466,73 @@
         .abs-record-delete:hover { background: #fff5f5; }
         .abs-empty { text-align: center; color: #a0aec0; font-size: 0.9rem; padding: 20px 0; }
 
+        /* ===== 出席予定タブ ===== */
+        .att-date-bar {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            margin-bottom: 16px; background: white; padding: 14px 16px;
+            border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .att-date-bar .att-today-label {
+            font-size: 1.1rem; font-weight: 700; color: #2c7a7b;
+        }
+        .att-date-bar .att-dow { font-size: 0.95rem; color: #718096; margin-left: 4px; }
+        .att-nav-btn {
+            width: 36px; height: 36px; border: 2px solid #e2e8f0; border-radius: 8px;
+            background: white; font-size: 1.1rem; font-weight: 700; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; color: #4a5568;
+        }
+        .att-nav-btn:hover { border-color: #2c7a7b; color: #2c7a7b; }
+        .att-today-btn {
+            padding: 6px 14px; border: 2px solid #2c7a7b; border-radius: 8px;
+            background: white; color: #2c7a7b; font-size: 0.85rem; font-weight: 600;
+            cursor: pointer; font-family: inherit;
+        }
+        .att-today-btn:hover { background: #f0fff4; }
+        .att-status-bar {
+            display: flex; gap: 8px; margin-left: auto; font-size: 0.85rem; font-weight: 600;
+        }
+        .att-status-bar .att-count-present { color: #38a169; }
+        .att-status-bar .att-count-absent { color: #e53e3e; }
+        .att-unit-section {
+            background: white; border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; overflow: hidden;
+        }
+        .att-unit-header {
+            padding: 12px 16px; font-weight: 700; font-size: 1rem;
+            display: flex; align-items: center; gap: 10px; color: white;
+        }
+        .att-unit-header.am { background: linear-gradient(135deg, #3182ce, #2b6cb0); }
+        .att-unit-header.pm { background: linear-gradient(135deg, #dd6b20, #c05621); }
+        .att-unit-count {
+            margin-left: auto; font-size: 0.85rem; font-weight: 600;
+            background: rgba(255,255,255,0.25); padding: 2px 10px; border-radius: 12px;
+        }
+        .att-user-list { padding: 8px 12px; }
+        .att-user-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 8px; border-bottom: 1px solid #f0f4f8;
+        }
+        .att-user-row:last-child { border-bottom: none; }
+        .att-user-icon {
+            width: 32px; height: 32px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.75rem; font-weight: 700; color: white; flex-shrink: 0;
+        }
+        .att-user-icon.present { background: #38a169; }
+        .att-user-icon.absent { background: #e53e3e; }
+        .att-user-name {
+            font-size: 0.95rem; font-weight: 600; color: #2d3748;
+        }
+        .att-user-care {
+            font-size: 0.75rem; color: #718096; background: #edf2f7;
+            padding: 1px 8px; border-radius: 8px;
+        }
+        .att-user-reason {
+            margin-left: auto; font-size: 0.82rem; color: #e53e3e; font-weight: 600;
+        }
+        .att-loading { text-align: center; padding: 40px; color: #a0aec0; font-size: 0.9rem; }
+        .att-empty { text-align: center; padding: 20px; color: #a0aec0; font-size: 0.9rem; }
+
         /* ===== 実績確認タブ ===== */
         .jis-controls {
             display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -681,7 +748,8 @@
 </div>
 
 <div class="tab-bar">
-    <button class="tab-btn active" data-tab="absence">欠席登録</button>
+    <button class="tab-btn active" data-tab="attendance">出席予定</button>
+    <button class="tab-btn" data-tab="absence">欠席登録</button>
     <button class="tab-btn" data-tab="jisseki">実績確認</button>
     <button class="tab-btn" data-tab="task">タスク確認</button>
     <button class="tab-btn" data-tab="assign">配置登録</button>
@@ -690,8 +758,23 @@
     <button class="tab-btn" data-tab="data">データ管理</button>
 </div>
 
+<!-- ===== 出席予定タブ ===== -->
+<div id="tab-attendance" class="tab-content active">
+    <div class="att-date-bar">
+        <button class="att-nav-btn" onclick="attChangeDate(-1)">&lt;</button>
+        <span class="att-today-label" id="att-date-label"></span>
+        <span class="att-dow" id="att-dow-label"></span>
+        <button class="att-nav-btn" onclick="attChangeDate(1)">&gt;</button>
+        <button class="att-today-btn" onclick="attGoToday()">今日</button>
+        <div class="att-status-bar" id="att-status-bar"></div>
+    </div>
+    <div id="att-content">
+        <div class="att-loading">読み込み中...</div>
+    </div>
+</div>
+
 <!-- ===== 欠席登録タブ ===== -->
-<div id="tab-absence" class="tab-content active">
+<div id="tab-absence" class="tab-content">
     <!-- 欠席登録フォーム -->
     <div class="abs-form-card">
         <h3 class="abs-section-title">欠席登録</h3>
@@ -1128,6 +1211,8 @@ function init() {
     renderStaffManage();
     // タスクボード初期化
     tbInit();
+    // 出席予定初期化
+    attInit();
     // 欠席登録初期化
     absInit();
 }
@@ -1140,6 +1225,7 @@ function setupTabs() {
             btn.classList.add('active');
             document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
             // タブ切替時に表示を更新
+            if (btn.dataset.tab === 'attendance') attLoad();
             if (btn.dataset.tab === 'task') tbRenderAll();
             if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
             if (btn.dataset.tab === 'jisseki' && absUserLoaded) jisLoad();
@@ -2966,6 +3052,171 @@ function jisRender() {
 }
 
 // ----- 欠席登録の初期化 -----
+// ================================================================
+// ========== 出席予定タブ ==========
+// ================================================================
+
+let attCurrentDate = new Date();
+const ATT_DAY_NAMES = ['日','月','火','水','木','金','土'];
+
+function attFormatDate(d) {
+    return d.getFullYear() + '-' +
+        String(d.getMonth()+1).padStart(2,'0') + '-' +
+        String(d.getDate()).padStart(2,'0');
+}
+
+function attUpdateDateLabel() {
+    const d = attCurrentDate;
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+    const dow = ATT_DAY_NAMES[d.getDay()];
+    document.getElementById('att-date-label').textContent = m + '月' + day + '日';
+    document.getElementById('att-dow-label').textContent = '（' + dow + '曜日）';
+}
+
+function attChangeDate(offset) {
+    attCurrentDate.setDate(attCurrentDate.getDate() + offset);
+    attUpdateDateLabel();
+    attLoad();
+}
+
+function attGoToday() {
+    attCurrentDate = new Date();
+    attUpdateDateLabel();
+    attLoad();
+}
+
+function attLoad() {
+    const dateStr = attFormatDate(attCurrentDate);
+    const content = document.getElementById('att-content');
+    content.innerHTML = '<div class="att-loading">読み込み中...</div>';
+    document.getElementById('att-status-bar').innerHTML = '';
+
+    const cbName = 'attCallback_' + Date.now();
+    window[cbName] = function(data) {
+        delete window[cbName];
+        const scriptEl = document.getElementById('att-script');
+        if (scriptEl) scriptEl.remove();
+
+        if (!data.success || !data.attendance) {
+            content.innerHTML = '<div class="att-loading">データを取得できませんでした</div>';
+            return;
+        }
+        attRender(data.attendance);
+    };
+
+    const script = document.createElement('script');
+    script.id = 'att-script';
+    script.src = ABS_BOARD_API_URL + '?action=attendance&date=' + dateStr + '&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+        delete window[cbName];
+        content.innerHTML = '<div class="att-loading">通信エラー。再読み込みしてください。</div>';
+    };
+    document.body.appendChild(script);
+}
+
+function attRender(data) {
+    const content = document.getElementById('att-content');
+    const statusBar = document.getElementById('att-status-bar');
+
+    // ローカルの欠席データも反映（GASに未送信のもの）
+    const localRecords = absGetRecords();
+    const dateStr = attFormatDate(attCurrentDate);
+    const localAbsMap = {};
+    localRecords.forEach(r => {
+        if (r.dateFrom <= dateStr && r.dateTo >= dateStr) {
+            localAbsMap[r.userName] = r.reason;
+        }
+    });
+
+    // ローカル欠席をGASデータにマージ
+    [data.am, data.pm].forEach(list => {
+        list.forEach(u => {
+            if (u.status !== '欠席' && localAbsMap[u.name]) {
+                u.status = '欠席';
+                u.reason = localAbsMap[u.name];
+            }
+        });
+    });
+
+    const amPresent = data.am.filter(u => u.status === '出席').length;
+    const amAbsent = data.am.filter(u => u.status === '欠席').length;
+    const pmPresent = data.pm.filter(u => u.status === '出席').length;
+    const pmAbsent = data.pm.filter(u => u.status === '欠席').length;
+
+    statusBar.innerHTML =
+        '<span class="att-count-present">出席 ' + (amPresent + pmPresent) + '</span>' +
+        '<span class="att-count-absent">欠席 ' + (amAbsent + pmAbsent) + '</span>';
+
+    let html = '';
+
+    // 午前
+    html += '<div class="att-unit-section">';
+    html += '<div class="att-unit-header am">';
+    html += '<span>午前の部（9:00〜12:00）</span>';
+    html += '<span class="att-unit-count">' + amPresent + '人出席';
+    if (amAbsent > 0) html += '　' + amAbsent + '人欠席';
+    html += '</span></div>';
+    html += '<div class="att-user-list">';
+    if (data.am.length === 0) {
+        html += '<div class="att-empty">通所予定の利用者がいません</div>';
+    } else {
+        // 出席を先に、欠席を後に
+        const amSorted = data.am.slice().sort((a, b) => {
+            if (a.status === '出席' && b.status !== '出席') return -1;
+            if (a.status !== '出席' && b.status === '出席') return 1;
+            return 0;
+        });
+        amSorted.forEach(u => {
+            html += attRenderUser(u);
+        });
+    }
+    html += '</div></div>';
+
+    // 午後
+    html += '<div class="att-unit-section">';
+    html += '<div class="att-unit-header pm">';
+    html += '<span>午後の部（13:30〜16:30）</span>';
+    html += '<span class="att-unit-count">' + pmPresent + '人出席';
+    if (pmAbsent > 0) html += '　' + pmAbsent + '人欠席';
+    html += '</span></div>';
+    html += '<div class="att-user-list">';
+    if (data.pm.length === 0) {
+        html += '<div class="att-empty">通所予定の利用者がいません</div>';
+    } else {
+        const pmSorted = data.pm.slice().sort((a, b) => {
+            if (a.status === '出席' && b.status !== '出席') return -1;
+            if (a.status !== '出席' && b.status === '出席') return 1;
+            return 0;
+        });
+        pmSorted.forEach(u => {
+            html += attRenderUser(u);
+        });
+    }
+    html += '</div></div>';
+
+    content.innerHTML = html;
+}
+
+function attRenderUser(u) {
+    const isAbsent = u.status === '欠席';
+    const iconClass = isAbsent ? 'absent' : 'present';
+    const iconText = isAbsent ? '欠' : '出';
+    return '<div class="att-user-row">' +
+        '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
+        '<span class="att-user-name">' + u.name + '</span>' +
+        (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
+        (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
+        '</div>';
+}
+
+function attInit() {
+    attUpdateDateLabel();
+    attLoad();
+}
+
+// ================================================================
+
 function absInit() {
     absRenderTodayList();
     absRenderUpcomingList();
