@@ -3200,12 +3200,26 @@ function attRenderUser(u) {
     const isAbsent = u.status === '欠席';
     const iconClass = isAbsent ? 'absent' : 'present';
     const iconText = isAbsent ? '欠' : '出';
-    return '<div class="att-user-row">' +
+    const escapedName = u.name.replace(/'/g, "\\'");
+    return '<div class="att-user-row" onclick="attStartAbsence(\'' + escapedName + '\')" style="cursor:pointer;">' +
         '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
         '<span class="att-user-name">' + u.name + '</span>' +
         (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
         (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
         '</div>';
+}
+
+function attStartAbsence(name) {
+    // 欠席登録タブに切り替え
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    const absTab = document.querySelector('.tab-btn[data-tab="absence"]');
+    absTab.classList.add('active');
+    document.getElementById('tab-absence').classList.add('active');
+
+    // 名前をクリアしてから選択
+    absClearName();
+    absSelectUser(0, name);
 }
 
 function attInit() {
