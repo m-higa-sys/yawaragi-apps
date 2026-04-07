@@ -3251,29 +3251,30 @@ function attStartAbsence(name) {
     // フォームリセット
     absClearName();
 
-    // ユーザーキャッシュから検索
-    const users = absGetUsers();
-    let user = users.find(u => u.name === name);
+    // 出席予定データからユーザー情報を取得
+    const attUser = attLastData.am.concat(attLastData.pm).find(u => u.name === name);
+    const care = attUser ? (attUser.care || '') : '';
+    const cmOffice = attUser ? (attUser.cmOffice || '') : '';
 
-    if (!user) {
-        // キャッシュにない場合、出席予定データからユーザー情報を構築
-        const attUser = attLastData.am.concat(attLastData.pm).find(u => u.name === name);
-        if (attUser) {
-            user = {
-                name: attUser.name,
-                reading: '',
-                pattern: [],
-                care: attUser.care || '',
-                cmOffice: attUser.cmOffice || ''
-            };
-            // キャッシュにも追加
-            absUserCache.push(user);
-        }
-    }
+    // フォームに直接セット（absSelectUserに依存しない）
+    const user = { name: name, reading: '', pattern: [], care: care, cmOffice: cmOffice };
+    absState.selectedUser = user;
 
-    if (user) {
-        absSelectUser(0, name);
-    }
+    // 入力欄に名前を表示
+    document.getElementById('abs-name-input').value = name;
+    document.getElementById('abs-name-input').readOnly = true;
+    document.getElementById('abs-search-results').innerHTML = '';
+    document.getElementById('abs-clear-btn').style.display = 'flex';
+
+    // 選択情報を表示
+    const info = document.getElementById('abs-selected-info');
+    info.style.display = 'block';
+    info.innerHTML = '<div class="abs-selected-name">' + name + '</div>' +
+        (care ? '<div class="abs-selected-pattern">' + care + '</div>' : '');
+
+    // 日付選択ステップを表示
+    document.getElementById('abs-step-date').style.display = 'block';
+    absSelectDateType('today');
 
     // 画面上部にスクロール
     document.getElementById('tab-absence').scrollIntoView({ behavior: 'smooth' });
