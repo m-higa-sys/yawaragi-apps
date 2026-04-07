@@ -3117,6 +3117,9 @@ function attRender(data) {
     const content = document.getElementById('att-content');
     const statusBar = document.getElementById('att-status-bar');
 
+    // データを保持（欠席登録への遷移用）
+    attLastData = { am: data.am.slice(), pm: data.pm.slice() };
+
     // ローカルの欠席データも反映（GASに未送信のもの）
     const localRecords = absGetRecords();
     const dateStr = attFormatDate(attCurrentDate);
@@ -3209,6 +3212,9 @@ function attRenderUser(u) {
         '</div>';
 }
 
+// 出席予定タブから取得したデータを保持
+let attLastData = { am: [], pm: [] };
+
 function attStartAbsence(name) {
     // 欠席登録タブに切り替え
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -3222,15 +3228,26 @@ function attStartAbsence(name) {
 
     // ユーザーキャッシュから検索
     const users = absGetUsers();
-    const user = users.find(u => u.name === name);
+    let user = users.find(u => u.name === name);
+
+    if (!user) {
+        // キャッシュにない場合、出席予定データからユーザー情報を構築
+        const attUser = attLastData.am.concat(attLastData.pm).find(u => u.name === name);
+        if (attUser) {
+            user = {
+                name: attUser.name,
+                reading: '',
+                pattern: [],
+                care: attUser.care || '',
+                cmOffice: attUser.cmOffice || ''
+            };
+            // キャッシュにも追加
+            absUserCache.push(user);
+        }
+    }
 
     if (user) {
-        // キャッシュにあればそのまま選択
         absSelectUser(0, name);
-    } else {
-        // キャッシュにない場合は名前を入力欄にセットして検索を実行
-        document.getElementById('abs-name-input').value = name;
-        absSearchName(name);
     }
 
     // 画面上部にスクロール
