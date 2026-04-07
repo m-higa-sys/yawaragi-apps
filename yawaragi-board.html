@@ -2788,11 +2788,48 @@ function absRenderUpcomingList() {
 function absDeleteRecord(id) {
     if (!confirm('この欠席記録を取り消しますか？')) return;
     let records = absGetRecords();
+    const target = records.find(r => r.id === id);
+
+    // GAS側のデータも削除
+    if (target) {
+        const dates = [];
+        if (target.dateType === 'range' && target.dateFrom && target.dateTo) {
+            const start = new Date(target.dateFrom);
+            const end = new Date(target.dateTo);
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                dates.push(d.toISOString().slice(0, 10));
+            }
+        } else {
+            dates.push(target.dateFrom);
+        }
+        // 各日付のGASデータを削除
+        dates.forEach(dateStr => {
+            fetch(ABS_BOARD_API_URL, {
+                method: 'POST', mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'cancel_absence',
+                    name: target.userName,
+                    date: dateStr,
+                    unit: '終日'
+                })
+            }).catch(() => {});
+        });
+    }
+
+    // ローカルデータ削除
     records = records.filter(r => r.id !== id);
     absSaveRecords(records);
+
+    // 出席予定キャッシュもクリア（次回GASから再取得）
+    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+
     absRenderTodayList();
     absRenderUpcomingList();
     showToast('欠席を取り消しました');
+
+    // 出席予定タブを再読み込み
+    attLoad();
 }
 
 function absFormatDate(dateStr) {
