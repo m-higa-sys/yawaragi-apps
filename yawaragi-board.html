@@ -864,9 +864,9 @@
         </div>
     </div>
 
-    <!-- 今後の欠席予定 -->
+    <!-- 登録済みの欠席一覧 -->
     <div class="abs-today-card" style="margin-top:16px;">
-        <h3 class="abs-section-title">今後の欠席予定（1週間）</h3>
+        <h3 class="abs-section-title">登録済みの欠席一覧</h3>
         <div id="abs-upcoming-list"></div>
     </div>
 </div>
@@ -2750,48 +2750,19 @@ function absSubmit() {
     }, 2000);
 }
 
-// ----- 今日の欠席一覧 -----
-function absRenderTodayList() {
-    const el = document.getElementById('abs-today-list');
-    const records = absGetRecords();
-    const todayStr = new Date().toISOString().slice(0, 10);
+// ----- 今日の欠席一覧（HTML削除済み・互換用） -----
+function absRenderTodayList() { return; }
 
-    const todayRecords = records.filter(r => r.dateFrom <= todayStr && r.dateTo >= todayStr);
-
-    if (todayRecords.length === 0) {
-        el.innerHTML = '<div class="abs-empty">今日の欠席はありません</div>';
-        return;
-    }
-
-    el.innerHTML = todayRecords.map(r => `
-        <div class="abs-record">
-            <div class="abs-record-main">
-                <div class="abs-record-name">${r.userName}</div>
-                <div class="abs-record-detail">
-                    理由: ${r.reason}　／　連絡者: ${r.contact}（${r.method || ''}）<br>
-                    ${r.contactDate ? `連絡日: ${absFormatDate(r.contactDate)}　` : ''}${r.dateType === 'range' ? `期間: ${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}　` : ''}登録: ${absFormatTime(r.registeredAt)}
-                </div>
-            </div>
-            <button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>
-        </div>
-    `).join('');
-}
-
-// ----- 今後の欠席予定（1週間） -----
+// ----- 登録済みの欠席一覧 -----
 function absRenderUpcomingList() {
     const el = document.getElementById('abs-upcoming-list');
     const records = absGetRecords();
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-    const weekLater = new Date(today);
-    weekLater.setDate(weekLater.getDate() + 7);
-    const weekStr = weekLater.toISOString().slice(0, 10);
 
-    const upcoming = records.filter(r => r.dateTo > todayStr && r.dateFrom <= weekStr)
+    const upcoming = records.slice()
         .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
 
     if (upcoming.length === 0) {
-        el.innerHTML = '<div class="abs-empty">今後1週間の欠席予定はありません</div>';
+        el.innerHTML = '<div class="abs-empty">登録済みの欠席はありません</div>';
         return;
     }
 
@@ -2805,7 +2776,7 @@ function absRenderUpcomingList() {
             <div class="abs-record-main">
                 <div class="abs-record-name">${r.userName}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}（${r.method || ''}）
+                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}（${r.method || ''}）${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
             </div>
             <button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>
