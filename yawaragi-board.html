@@ -516,6 +516,7 @@
         .att-user-row {
             display: flex; align-items: center; gap: 10px;
             padding: 10px 8px; border-bottom: 1px solid #f0f4f8;
+            flex-wrap: wrap; overflow: hidden;
         }
         .att-user-icon {
             width: 32px; height: 32px; border-radius: 50%;
@@ -532,7 +533,7 @@
             padding: 1px 8px; border-radius: 8px;
         }
         .att-user-reason {
-            margin-left: auto; font-size: 0.82rem; color: #e53e3e; font-weight: 600;
+            width: 100%; margin-left: 42px; font-size: 0.78rem; color: #e53e3e; font-weight: 600;
         }
         .att-loading { text-align: center; padding: 40px; color: #a0aec0; font-size: 0.9rem; }
         .att-empty { text-align: center; padding: 20px; color: #a0aec0; font-size: 0.9rem; }
@@ -749,6 +750,7 @@
         <h1>yawaragiボード</h1>
         <div class="header-sub">リハビリデイサービス yawaragi</div>
     </div>
+    <a href="https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit" target="_blank" style="background:#4299e1;color:white;padding:8px 16px;border-radius:8px;font-size:0.85rem;font-weight:600;text-decoration:none;white-space:nowrap;">利用者台帳</a>
 </div>
 
 <div class="tab-bar">
@@ -1826,8 +1828,14 @@ function showToast(msg) {
 // ========== タスクボード機能（統合） ==========
 // ================================================================
 
+// ローカル日付を yyyy-MM-dd 形式で返す（UTC変換しない）
+function toLocalDateStr(d) {
+    const dt = d || new Date();
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+
 const TB_STORAGE_KEY = 'yawaragi_taskboard';
-const TB_TODAY = new Date().toISOString().slice(0, 10);
+const TB_TODAY = toLocalDateStr();
 
 const TB_DEFAULT_TEMPLATES = [
     {name:'介護請求　利用者請求表のチェック', time:60},
@@ -2445,7 +2453,7 @@ function absSelectDateType(type) {
     warning.style.display = 'none';
 
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = toLocalDateStr(today);
 
     if (type === 'today') {
         absState.dateFrom = todayStr;
@@ -2453,9 +2461,10 @@ function absSelectDateType(type) {
         container.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
             ${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}（${DAY_NAMES[today.getDay()]}）
         </p>`;
-        // 通所日でない日チェック
-        absCheckNotScheduledDay(todayStr);
-        absShowReasonStep();
+        // 通所日でない日チェック → falseなら先に進まない
+        if (absCheckNotScheduledDay(todayStr)) {
+            absShowReasonStep();
+        }
     } else if (type === 'specific') {
         absState.dateFrom = '';
         absState.dateTo = '';
@@ -2478,8 +2487,9 @@ function absSelectDateType(type) {
 function absOnDateSpecific(val) {
     absState.dateFrom = val;
     absState.dateTo = val;
-    absCheckNotScheduledDay(val);
-    absShowReasonStep();
+    if (absCheckNotScheduledDay(val)) {
+        absShowReasonStep();
+    }
 }
 
 function absOnDateRange() {
@@ -2497,16 +2507,24 @@ function absOnDateRange() {
 }
 
 function absCheckNotScheduledDay(dateStr) {
-    if (!absState.selectedUser || !absState.selectedUser.pattern) return;
+    if (!absState.selectedUser || !absState.selectedUser.pattern) return false;
     const d = new Date(dateStr);
     const dow = d.getDay();
     const isScheduled = absState.selectedUser.pattern.some(p => p.day === dow);
     const warning = document.getElementById('abs-date-warning');
     if (!isScheduled) {
         warning.style.display = 'block';
-        warning.textContent = `${DAY_NAMES[dow]}曜日はこの利用者の通所日ではありません。確認してください。`;
+        warning.textContent = `${DAY_NAMES[dow]}曜日はこの利用者の通所日ではありません。登録できません。`;
+        // 後続ステップを隠す
+        document.getElementById('abs-step-reason').style.display = 'none';
+        document.getElementById('abs-step-contact').style.display = 'none';
+        document.getElementById('abs-step-method').style.display = 'none';
+        document.getElementById('abs-step-contactdate').style.display = 'none';
+        document.getElementById('abs-step-submit').style.display = 'none';
+        return false;
     } else {
         warning.style.display = 'none';
+        return true;
     }
 }
 
@@ -2596,7 +2614,7 @@ function absSelectContactDate(type) {
         b.classList.toggle('active', b.dataset.cd === type);
     });
     const container = document.getElementById('abs-contactdate-input');
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = toLocalDateStr();
 
     if (type === 'today') {
         absState.contactDate = todayStr;
@@ -2670,7 +2688,7 @@ function absSubmit() {
         const start = new Date(absState.dateFrom);
         const end = new Date(absState.dateTo);
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            dates.push(d.toISOString().slice(0, 10));
+            dates.push(toLocalDateStr(d));
         }
     } else {
         dates.push(absState.dateFrom);
@@ -2754,32 +2772,95 @@ function absSubmit() {
 function absRenderTodayList() { return; }
 
 // ----- 登録済みの欠席一覧 -----
+// GAS（スプレッドシート）とlocalStorageの両方から取得して統合表示
 function absRenderUpcomingList() {
     const el = document.getElementById('abs-upcoming-list');
-    const records = absGetRecords();
+    el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
 
-    const upcoming = records.slice()
-        .sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+    // GASからJSONPで取得
+    const cbName = '_absUpCb_' + Date.now();
+    const script = document.createElement('script');
+    script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
 
-    if (upcoming.length === 0) {
+    const timeout = setTimeout(() => {
+        delete window[cbName];
+        // GAS取得失敗 → localStorageだけで表示
+        absRenderUpcomingListFromData([]);
+    }, 5000);
+
+    window[cbName] = function(data) {
+        clearTimeout(timeout);
+        delete window[cbName];
+        const gasAbsences = (data && data.absences) ? data.absences : [];
+        absRenderUpcomingListFromData(gasAbsences);
+    };
+    script.onerror = () => {
+        clearTimeout(timeout);
+        delete window[cbName];
+        absRenderUpcomingListFromData([]);
+    };
+    document.body.appendChild(script);
+}
+
+function absRenderUpcomingListFromData(gasAbsences) {
+    const el = document.getElementById('abs-upcoming-list');
+    const localRecords = absGetRecords();
+
+    // 統合リストを作る（重複排除はキーで管理）
+    const seen = new Set();
+    const merged = [];
+
+    // localStorageのレコード（取消ボタン付き）
+    localRecords.forEach(r => {
+        const key = r.dateFrom + '_' + r.userName;
+        seen.add(key);
+        merged.push({
+            type: 'local', id: r.id,
+            userName: r.userName, dateFrom: r.dateFrom, dateTo: r.dateTo,
+            dateType: r.dateType, reason: r.reason,
+            contact: r.contact, method: r.method,
+            registeredBy: r.registeredBy
+        });
+    });
+
+    // GASのレコード（localにない分を追加）
+    gasAbsences.forEach(g => {
+        const key = g.date + '_' + g.name;
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push({
+            type: 'gas',
+            userName: g.name, dateFrom: g.date, dateTo: g.date,
+            dateType: 'single', reason: g.reason || '',
+            contact: g.reporter || '', method: '',
+            registeredBy: ''
+        });
+    });
+
+    merged.sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+
+    if (merged.length === 0) {
         el.innerHTML = '<div class="abs-empty">登録済みの欠席はありません</div>';
         return;
     }
 
-    el.innerHTML = upcoming.map(r => {
+    el.innerHTML = merged.map(r => {
         let dateText = absFormatDate(r.dateFrom);
-        if (r.dateType === 'range') {
+        if (r.dateType === 'range' && r.dateTo && r.dateTo !== r.dateFrom) {
             dateText = `${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}`;
         }
+        const deleteBtn = r.type === 'local'
+            ? `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`
+            : '';
         return `
         <div class="abs-record">
             <div class="abs-record-main">
                 <div class="abs-record-name">${r.userName}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}（${r.method || ''}）${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
+                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}${r.method ? '（' + r.method + '）' : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
             </div>
-            <button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>
+            ${deleteBtn}
         </div>
         `;
     }).join('');
@@ -2797,7 +2878,7 @@ function absDeleteRecord(id) {
             const start = new Date(target.dateFrom);
             const end = new Date(target.dateTo);
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                dates.push(d.toISOString().slice(0, 10));
+                dates.push(toLocalDateStr(d));
             }
         } else {
             dates.push(target.dateFrom);
@@ -2954,7 +3035,7 @@ function jisRender() {
         const from = new Date(r.dateFrom);
         const to = new Date(r.dateTo);
         for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-            const key = d.toISOString().slice(0, 10) + '_' + r.userName;
+            const key = toLocalDateStr(d) + '_' + r.userName;
             absMap[key] = r.reason;
         }
     });
