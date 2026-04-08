@@ -885,6 +885,10 @@
                 <input type="date" id="abs-resume-date" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;margin-top:4px;">
             </div>
             <div style="margin-bottom:12px;">
+                <label style="font-weight:600;font-size:0.85rem;">受付者（誰が受けた？）</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;" id="abs-resume-staff-btns"></div>
+            </div>
+            <div style="margin-bottom:12px;">
                 <label style="font-weight:600;font-size:0.85rem;">誰から連絡？</label>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
                     <button class="abs-contact-btn abs-resume-contact-btn" onclick="absResumeSelectContact('本人')">本人</button>
@@ -3045,16 +3049,28 @@ function absLoadLongTermList() {
 let absResumeState = { name: '', contact: '', method: '' };
 
 function absStartResume(name) {
-    absResumeState = { name: name, contact: '', method: '' };
+    absResumeState = { name: name, contact: '', method: '', staff: '' };
     document.getElementById('abs-resume-name').textContent = name + ' 様の再開登録';
     document.getElementById('abs-resume-date').value = toLocalDateStr();
     document.getElementById('abs-resume-form').style.display = 'block';
     document.getElementById('abs-resume-empty').style.display = 'none';
+    // スタッフボタン生成
+    const staffBtns = document.getElementById('abs-resume-staff-btns');
+    staffBtns.innerHTML = DEFAULT_STAFF.map(s =>
+        `<button class="abs-contact-btn abs-resume-staff-btn" onclick="absResumeSelectStaff('${s}')">${s}</button>`
+    ).join('');
     // ボタンリセット
     document.querySelectorAll('.abs-resume-contact-btn').forEach(b => b.classList.remove('selected'));
     document.querySelectorAll('.abs-resume-method-btn').forEach(b => b.classList.remove('selected'));
     // スクロール
     document.getElementById('abs-resume-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function absResumeSelectStaff(val) {
+    absResumeState.staff = val;
+    document.querySelectorAll('.abs-resume-staff-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent === val);
+    });
 }
 
 function absResumeSelectContact(val) {
@@ -3072,8 +3088,8 @@ function absResumeSelectMethod(val) {
 }
 
 function absSubmitResume() {
-    if (!absResumeState.name || !absResumeState.contact || !absResumeState.method) {
-        alert('連絡者と連絡方法を選んでください');
+    if (!absResumeState.name || !absResumeState.staff || !absResumeState.contact || !absResumeState.method) {
+        alert('受付者・連絡者・連絡方法をすべて選んでください');
         return;
     }
     const resumeDate = document.getElementById('abs-resume-date').value;
@@ -3089,7 +3105,7 @@ function absSubmitResume() {
         resumeDate: resumeDate,
         contact: absResumeState.contact,
         method: absResumeState.method,
-        reporter: absReceptionist || ''
+        reporter: absResumeState.staff
     };
 
     fetch(ABS_BOARD_API_URL, {
@@ -3105,7 +3121,7 @@ function absSubmitResume() {
     document.getElementById('abs-resume-form').style.display = 'none';
     document.getElementById('abs-resume-empty').style.display = 'block';
     showToast(absResumeState.name + '様の再開を登録しました');
-    absResumeState = { name: '', contact: '', method: '' };
+    absResumeState = { name: '', contact: '', method: '', staff: '' };
 
     // 長期休み一覧を更新（少し待ってからGAS取得）
     setTimeout(() => absLoadLongTermList(), 2000);
