@@ -2513,8 +2513,11 @@ function absCheckNotScheduledDay(dateStr) {
     const isScheduled = absState.selectedUser.pattern.some(p => p.day === dow);
     const warning = document.getElementById('abs-date-warning');
     if (!isScheduled) {
+        const patternText = absState.selectedUser.pattern.map(p => {
+            return DAY_NAMES[p.day] + '（' + (p.unit === 'am' ? '午前' : '午後') + '）';
+        }).join('・');
         warning.style.display = 'block';
-        warning.textContent = `${DAY_NAMES[dow]}曜日はこの利用者の通所日ではありません。登録できません。`;
+        warning.innerHTML = `${DAY_NAMES[dow]}曜日はこの利用者の通所日ではありません。<br><span style="color:#2d3748;font-weight:700;">通所日：${patternText || '未登録'}</span>`;
         // 後続ステップを隠す
         document.getElementById('abs-step-reason').style.display = 'none';
         document.getElementById('abs-step-contact').style.display = 'none';
