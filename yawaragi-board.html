@@ -812,6 +812,7 @@
                 <button class="abs-date-type-btn active" data-type="today" onclick="absSelectDateType('today')">今日</button>
                 <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
                 <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
+                <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')" style="background:#e53e3e;color:white;border-color:#e53e3e;">長期休み</button>
             </div>
             <div class="abs-date-inputs" id="abs-date-inputs"></div>
             <div class="abs-date-warning" id="abs-date-warning" style="display:none;"></div>
@@ -864,6 +865,46 @@
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
             <button class="abs-submit-btn" id="abs-submit-btn" onclick="absSubmit()">この内容で登録する</button>
         </div>
+    </div>
+
+    <!-- 長期休み中の利用者 -->
+    <div class="abs-today-card" style="margin-top:16px; border-left:4px solid #e53e3e;">
+        <h3 class="abs-section-title" style="color:#e53e3e;">長期休み中の利用者</h3>
+        <div id="abs-longterm-list"><span style="color:#a0aec0;font-size:0.85rem;">長期休み中の利用者はいません</span></div>
+    </div>
+
+    <!-- 再開登録 -->
+    <div class="abs-today-card" style="margin-top:16px; border-left:4px solid #38a169;">
+        <h3 class="abs-section-title" style="color:#38a169;">再開登録（長期休みからの復帰）</h3>
+        <div id="abs-resume-form" style="display:none;">
+            <div style="margin-bottom:12px;">
+                <span style="font-weight:700;font-size:1rem;" id="abs-resume-name"></span>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:600;font-size:0.85rem;">再開日</label>
+                <input type="date" id="abs-resume-date" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;margin-top:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:600;font-size:0.85rem;">誰から連絡？</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+                    <button class="abs-contact-btn abs-resume-contact-btn" onclick="absResumeSelectContact('本人')">本人</button>
+                    <button class="abs-contact-btn abs-resume-contact-btn" onclick="absResumeSelectContact('家族')">家族</button>
+                    <button class="abs-contact-btn abs-resume-contact-btn" onclick="absResumeSelectContact('ケアマネ')">ケアマネ</button>
+                    <button class="abs-contact-btn abs-resume-contact-btn" onclick="absResumeSelectContact('その他')">その他</button>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:600;font-size:0.85rem;">連絡方法</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+                    <button class="abs-contact-btn abs-resume-method-btn" onclick="absResumeSelectMethod('電話')">電話</button>
+                    <button class="abs-contact-btn abs-resume-method-btn" onclick="absResumeSelectMethod('LINE')">LINE</button>
+                    <button class="abs-contact-btn abs-resume-method-btn" onclick="absResumeSelectMethod('ケアマネ経由')">ケアマネ経由</button>
+                    <button class="abs-contact-btn abs-resume-method-btn" onclick="absResumeSelectMethod('その他')">その他</button>
+                </div>
+            </div>
+            <button class="abs-submit-btn" id="abs-resume-submit-btn" onclick="absSubmitResume()" style="background:#38a169;">再開を登録する</button>
+        </div>
+        <div id="abs-resume-empty"><span style="color:#a0aec0;font-size:0.85rem;">上の「長期休み中の利用者」から再開する人を選んでください</span></div>
     </div>
 
     <!-- 登録済みの欠席一覧 -->
@@ -2481,6 +2522,17 @@ function absSelectDateType(type) {
             </div>
         `;
         absOnDateRange();
+    } else if (type === 'longterm') {
+        absState.dateFrom = todayStr;
+        absState.dateTo = '';
+        container.innerHTML = `
+            <div style="margin-bottom:8px;">
+                <label style="font-weight:600;font-size:0.85rem;">開始日</label>
+                <input type="date" id="abs-lt-start" value="${todayStr}" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;margin-top:4px;" onchange="absState.dateFrom=this.value">
+            </div>
+            <p style="font-size:0.85rem;color:#718096;padding:4px 0;">終了日は未定（再開連絡が来たら「再開登録」で登録）</p>
+        `;
+        absShowReasonStep();
     }
 }
 
@@ -2706,6 +2758,31 @@ function absSubmit() {
         else if (hasPm) unit = '午後';
     }
 
+    // 長期休みの場合は別アクション
+    if (absState.dateType === 'longterm') {
+        const ltData = {
+            action: 'long_term_absence',
+            name: absState.selectedUser.name,
+            startDate: absState.dateFrom,
+            reason: reason,
+            reporter: absReceptionist || '',
+            contact: contact,
+            method: absState.method
+        };
+        fetch(ABS_BOARD_API_URL, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ltData)
+        }).then(() => console.log('長期休み登録送信')).catch(err => console.error(err));
+
+        absClearName();
+        btn.disabled = false;
+        btn.textContent = 'この内容で登録する';
+        showToast('長期休みを登録しました');
+        absLoadLongTermList();
+        return;
+    }
+
     // GASにPOST送信
     const postData = {
         action: 'absence',
@@ -2794,8 +2871,19 @@ function absRenderUpcomingList() {
     window[cbName] = function(data) {
         clearTimeout(timeout);
         delete window[cbName];
-        const gasAbsences = (data && data.absences) ? data.absences : [];
+        // GAS側が新しい形式（{absences, longTerm}）か旧形式（配列）か対応
+        let gasAbsences = [];
+        let longTermData = [];
+        if (data && data.absences) {
+            if (Array.isArray(data.absences)) {
+                gasAbsences = data.absences;
+            } else if (data.absences.absences) {
+                gasAbsences = data.absences.absences;
+                longTermData = data.absences.longTerm || [];
+            }
+        }
         absRenderUpcomingListFromData(gasAbsences);
+        absRenderLongTermList(longTermData);
     };
     script.onerror = () => {
         clearTimeout(timeout);
@@ -2914,6 +3002,113 @@ function absDeleteRecord(id) {
 
     // 出席予定タブを再読み込み
     attLoad();
+}
+
+// ===== 長期休み一覧 =====
+function absRenderLongTermList(longTermData) {
+    const el = document.getElementById('abs-longterm-list');
+    if (!longTermData || longTermData.length === 0) {
+        el.innerHTML = '<span style="color:#a0aec0;font-size:0.85rem;">長期休み中の利用者はいません</span>';
+        return;
+    }
+    let html = '';
+    longTermData.forEach(lt => {
+        const startDate = absFormatDate(lt.date);
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 8px;border-bottom:1px solid #f0f4f8;">
+            <div>
+                <span style="font-weight:700;font-size:0.95rem;">${lt.name}</span>
+                <span style="font-size:0.82rem;color:#e53e3e;margin-left:8px;">${lt.reason}</span>
+                <span style="font-size:0.78rem;color:#718096;margin-left:8px;">${startDate}〜</span>
+            </div>
+            <button onclick="absStartResume('${lt.name.replace(/'/g, "\\'")}')" style="background:#38a169;color:white;border:none;padding:8px 16px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;">再開登録</button>
+        </div>`;
+    });
+    el.innerHTML = html;
+}
+
+function absLoadLongTermList() {
+    const cbName = '_absLtCb_' + Date.now();
+    const script = document.createElement('script');
+    script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
+    window[cbName] = function(data) {
+        delete window[cbName];
+        let longTermData = [];
+        if (data && data.absences) {
+            if (data.absences.longTerm) longTermData = data.absences.longTerm;
+        }
+        absRenderLongTermList(longTermData);
+    };
+    document.body.appendChild(script);
+}
+
+// ===== 再開登録 =====
+let absResumeState = { name: '', contact: '', method: '' };
+
+function absStartResume(name) {
+    absResumeState = { name: name, contact: '', method: '' };
+    document.getElementById('abs-resume-name').textContent = name + ' 様の再開登録';
+    document.getElementById('abs-resume-date').value = toLocalDateStr();
+    document.getElementById('abs-resume-form').style.display = 'block';
+    document.getElementById('abs-resume-empty').style.display = 'none';
+    // ボタンリセット
+    document.querySelectorAll('.abs-resume-contact-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('.abs-resume-method-btn').forEach(b => b.classList.remove('selected'));
+    // スクロール
+    document.getElementById('abs-resume-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function absResumeSelectContact(val) {
+    absResumeState.contact = val;
+    document.querySelectorAll('.abs-resume-contact-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent === val);
+    });
+}
+
+function absResumeSelectMethod(val) {
+    absResumeState.method = val;
+    document.querySelectorAll('.abs-resume-method-btn').forEach(b => {
+        b.classList.toggle('selected', b.textContent === val);
+    });
+}
+
+function absSubmitResume() {
+    if (!absResumeState.name || !absResumeState.contact || !absResumeState.method) {
+        alert('連絡者と連絡方法を選んでください');
+        return;
+    }
+    const resumeDate = document.getElementById('abs-resume-date').value;
+    if (!resumeDate) { alert('再開日を選んでください'); return; }
+
+    const btn = document.getElementById('abs-resume-submit-btn');
+    btn.disabled = true;
+    btn.textContent = '登録中...';
+
+    const postData = {
+        action: 'resume',
+        name: absResumeState.name,
+        resumeDate: resumeDate,
+        contact: absResumeState.contact,
+        method: absResumeState.method,
+        reporter: absReceptionist || ''
+    };
+
+    fetch(ABS_BOARD_API_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(postData)
+    }).then(() => {
+        console.log('再開登録送信');
+    }).catch(err => console.error(err));
+
+    btn.disabled = false;
+    btn.textContent = '再開を登録する';
+    document.getElementById('abs-resume-form').style.display = 'none';
+    document.getElementById('abs-resume-empty').style.display = 'block';
+    showToast(absResumeState.name + '様の再開を登録しました');
+    absResumeState = { name: '', contact: '', method: '' };
+
+    // 長期休み一覧を更新（少し待ってからGAS取得）
+    setTimeout(() => absLoadLongTermList(), 2000);
 }
 
 function absFormatDate(dateStr) {
