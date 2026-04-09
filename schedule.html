@@ -127,8 +127,6 @@ select { padding: 6px 10px; border: 2px solid #ccc; border-radius: 6px; font-siz
 .option-check .oname { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 60px; }
 .option-check.oral-done { border-color: #4CAF50; background: #e8f5e9; opacity: 0.5; }
 .option-check.oral-done .oname { text-decoration: line-through; }
-.option-check.sokutei-done { border-color: #4CAF50; background: #e8f5e9; opacity: 0.5; }
-.option-check.sokutei-done .oname { text-decoration: line-through; }
 .option-check.sokutei-target { border-color: #e67e22; background: #fff8f0; }
 .option-check.sokutei-kaigo { border-color: #e74c3c; background: #FFE8E8; }
 .option-check.sokutei-kaigo.checked-s { border-color: #c0392b; background: #FFD0D0; }
@@ -434,6 +432,7 @@ table.schedule td.merged-block.selected-group { filter: brightness(1.4) saturate
       <button id="schedDatePrev" style="display:none;padding:4px 10px;border:1px solid #999;border-radius:4px;cursor:pointer;background:#fff;margin-left:4px" onclick="changeSchedDate(-1)">◀</button>
       <button id="schedDateNext" style="display:none;padding:4px 10px;border:1px solid #999;border-radius:4px;cursor:pointer;background:#fff" onclick="changeSchedDate(1)">▶</button>
       <span id="dateModeInfo" style="display:none;font-size:12px;color:#2e7d32;margin-left:8px;font-weight:bold"></span>
+      <span id="boardSyncStatus" style="display:none;font-size:12px;margin-left:8px;font-weight:600"></span>
     </div>
 
     <div class="setting-row" id="dayRowWrap">
@@ -591,6 +590,8 @@ const DAILY_OPS_KEY = 'yawaragi_daily_ops';
 const SAVE_FILE_NAME = 'schedule_data.json';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxoE1Mg6-MFeL3tPoizhKr5nOPUtom0eRcXaeLqQ2efbjJPX0U2nOWawSFCeF89-GS7Pg/exec';
 const SPREADSHEET_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPDnaVvnt2FjU798fRTws1PoDJoLPOi3AmGwcVp-dBkj2zgblVBCEFe1pQ/exec';
+// 出勤＆送迎表GAS（dailyOpsをJSONPで取得・2026/4/9追加）
+const OPS_GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
 const SLOTS = 180; // 3 hours / 1 min
 const CIRCLED = ['','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱'];
 const GROUP_NAMES = ['A', 'B', 'C'];
@@ -1467,12 +1468,67 @@ function toggleDateMode() {
     dayWrap.style.pointerEvents = '';
     STATE.orderedDayUsers = [];
     STATE.benchUsers = [];
+    setBoardSyncStatus('', '');
     updateScheduleTab();
   }
   saveSettings();
 }
 
-function onScheduleDateChange() {
+// 出勤＆送迎表GASからdailyOpsを取得してlocalStorageに保存（JSONP・2026/4/9追加）
+function fetchDailyOpsFromGas() {
+  return new Promise(function(resolve) {
+    const cbName = '_opsDailyCb_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    const script = document.createElement('script');
+    let resolved = false;
+
+    function cleanup() {
+      try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    const timeout = setTimeout(function() {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      console.warn('☁️ dailyOps取得タイムアウト');
+      resolve(false);
+    }, 10000);
+
+    window[cbName] = function(data) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      cleanup();
+      if (data && data.dailyOps) {
+        try {
+          localStorage.setItem(DAILY_OPS_KEY, JSON.stringify(data.dailyOps));
+          console.log('☁️ dailyOps取得成功（' + Object.keys(data.dailyOps).length + '日分）');
+          resolve(true);
+        } catch(e) {
+          console.warn('☁️ localStorage保存エラー:', e);
+          resolve(false);
+        }
+      } else {
+        console.warn('☁️ dailyOpsが空');
+        resolve(false);
+      }
+    };
+
+    script.onerror = function() {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
+      cleanup();
+      console.warn('☁️ dailyOps取得エラー');
+      resolve(false);
+    };
+
+    script.src = OPS_GAS_URL + '?action=getOps&callback=' + cbName + '&t=' + Date.now();
+    document.head.appendChild(script);
+  });
+}
+
+async function onScheduleDateChange() {
   const dateInput = document.getElementById('schedDateInput');
   STATE.selectedDate = dateInput.value;
   if (!STATE.selectedDate) return;
@@ -1483,6 +1539,16 @@ function onScheduleDateChange() {
   if (dayIdx >= 1 && dayIdx <= 6) {
     STATE.currentDay = DAYS[dayIdx - 1];
   }
+
+  // 「読み込み中」を表示
+  const infoLoading = document.getElementById('dateModeInfo');
+  if (infoLoading) {
+    infoLoading.textContent = '☁️ 出勤＆送迎表から読み込み中...';
+    infoLoading.style.color = '#1976d2';
+  }
+
+  // 出勤＆送迎表GASから最新dailyOpsを取得（JSONP）
+  await fetchDailyOpsFromGas();
 
   // daily_opsにデータがあるか確認
   const allOps = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
@@ -1529,6 +1595,13 @@ function onScheduleDateChange() {
   STATE._sokuteiAutoApplied = false;
   updateScheduleTab();
   saveSettings();
+
+  // yawaragiボードからの欠席連動（キャッシュ表示＋裏で取得）
+  if (STATE.dateMode && STATE.selectedDate) {
+    applyBoardAbsences(STATE.selectedDate);
+  } else {
+    setBoardSyncStatus('', '');
+  }
 }
 
 function changeSchedDate(offset) {
@@ -1537,6 +1610,148 @@ function changeSchedDate(offset) {
   STATE.selectedDate = d.toISOString().slice(0, 10);
   document.getElementById('schedDateInput').value = STATE.selectedDate;
   onScheduleDateChange();
+}
+
+// ===========================
+//  yawaragiボード欠席連動（GAS JSONP取得）
+// ===========================
+const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const BOARD_ABSENCE_CACHE_KEY = 'yawaragi_board_absences_cache';
+const BOARD_ABSENCE_CACHE_TTL = 6 * 60 * 60 * 1000; // 6時間
+
+function getCachedBoardAbsences(dateStr) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(BOARD_ABSENCE_CACHE_KEY) || '{}');
+    const entry = cache[dateStr];
+    if (!entry) return null;
+    if (Date.now() - entry.fetchedAt > BOARD_ABSENCE_CACHE_TTL) return null;
+    return entry.absences;
+  } catch(e) { return null; }
+}
+
+function setCachedBoardAbsences(dateStr, absences) {
+  try {
+    const cache = JSON.parse(localStorage.getItem(BOARD_ABSENCE_CACHE_KEY) || '{}');
+    cache[dateStr] = { absences: absences, fetchedAt: Date.now() };
+    // 30日以上前の古いキャッシュをクリーンアップ
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    Object.keys(cache).forEach(k => {
+      if (cache[k].fetchedAt < cutoff) delete cache[k];
+    });
+    localStorage.setItem(BOARD_ABSENCE_CACHE_KEY, JSON.stringify(cache));
+  } catch(e) {}
+}
+
+function fetchBoardAbsences(dateStr, onSuccess, onError) {
+  const cbName = '_boardAbsCb_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+  const script = document.createElement('script');
+  let timeout = setTimeout(() => {
+    cleanup();
+    if (onError) onError('タイムアウト');
+  }, 10000);
+
+  function cleanup() {
+    clearTimeout(timeout);
+    try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+    if (script.parentNode) script.parentNode.removeChild(script);
+  }
+
+  window[cbName] = function(data) {
+    cleanup();
+    if (data && data.success && data.absences) {
+      const targetDate = dateStr;
+      // GASの getUpcomingAbsences は { absences: [...], longTerm: [...] } を返す
+      const absencesList = (data.absences && data.absences.absences) || [];
+      const longTermList = (data.absences && data.absences.longTerm) || [];
+
+      const namesForDay = [];
+      // 通常欠席（指定日と一致）
+      absencesList.forEach(item => {
+        if (item.date === targetDate && item.name) {
+          if (namesForDay.indexOf(item.name) < 0) namesForDay.push(item.name);
+        }
+      });
+      // 長期休み中（開始日 <= 指定日、終了日が空 or 終了日 > 指定日）
+      longTermList.forEach(item => {
+        if (!item.name) return;
+        const start = item.date;
+        const resume = item.resumeDate || '';
+        if (start <= targetDate && (!resume || resume > targetDate)) {
+          if (namesForDay.indexOf(item.name) < 0) namesForDay.push(item.name);
+        }
+      });
+
+      onSuccess(namesForDay);
+    } else if (onError) {
+      onError('取得失敗');
+    }
+  };
+
+  script.src = ABS_BOARD_API_URL + '?action=absences&date=' + encodeURIComponent(dateStr) + '&callback=' + cbName + '&t=' + Date.now();
+  script.onerror = function() {
+    cleanup();
+    if (onError) onError('スクリプト読み込み失敗');
+  };
+  document.head.appendChild(script);
+}
+
+function mergeBoardAbsences(boardAbsentNames) {
+  if (!Array.isArray(boardAbsentNames) || boardAbsentNames.length === 0) return false;
+  let added = false;
+  boardAbsentNames.forEach(name => {
+    if (name && STATE.absentNames.indexOf(name) < 0) {
+      STATE.absentNames.push(name);
+      added = true;
+    }
+  });
+  return added;
+}
+
+function setBoardSyncStatus(text, color) {
+  const el = document.getElementById('boardSyncStatus');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = color || '#64748b';
+  el.style.display = text ? '' : 'none';
+}
+
+function applyBoardAbsences(dateStr) {
+  if (!dateStr) return;
+
+  // 1. キャッシュから即適用（高速表示）
+  const cached = getCachedBoardAbsences(dateStr);
+  if (cached) {
+    if (mergeBoardAbsences(cached)) {
+      if (typeof renderCareButtons === 'function') renderCareButtons();
+      if (typeof renderOptionChecks === 'function') renderOptionChecks();
+    }
+    setBoardSyncStatus('📋 ' + cached.length + '人の欠席を反映済み（キャッシュ）', '#64748b');
+  } else {
+    setBoardSyncStatus('📡 yawaragiボードから欠席取得中...', '#1976d2');
+  }
+
+  // 2. 裏でGAS取得して更新
+  fetchBoardAbsences(dateStr, function(names) {
+    setCachedBoardAbsences(dateStr, names);
+    const added = mergeBoardAbsences(names);
+    if (added || (cached && cached.length !== names.length)) {
+      if (typeof renderCareButtons === 'function') renderCareButtons();
+      if (typeof renderOptionChecks === 'function') renderOptionChecks();
+    }
+    if (names.length > 0) {
+      setBoardSyncStatus('✅ yawaragiボードから ' + names.length + '人の欠席を反映', '#2e7d32');
+    } else {
+      setBoardSyncStatus('✅ yawaragiボード: この日の欠席なし', '#2e7d32');
+    }
+    // 5秒後にステータスを薄く表示
+    setTimeout(() => setBoardSyncStatus('📋 yawaragiボード連動済み', '#94a3b8'), 5000);
+  }, function(err) {
+    if (cached) {
+      setBoardSyncStatus('⚠ yawaragiボード取得失敗（キャッシュ表示中）', '#e65100');
+    } else {
+      setBoardSyncStatus('⚠ yawaragiボード取得失敗（手動で休み入力してください）', '#e65100');
+    }
+  });
 }
 
 function updateScheduleTab() {
@@ -1755,62 +1970,6 @@ function getOralCompletionStatus(userName, userCare) {
 }
 
 // ===========================
-//  体重データをクラウドから取得（測定完了判定用）
-// ===========================
-function fetchWeightFromCloud() {
-  return new Promise(function(resolve) {
-    try {
-      var cbName = '_weightCb_' + Date.now();
-      var script = document.createElement('script');
-      var done = false;
-      var timeout = setTimeout(function() {
-        if (!done) { done = true; delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); resolve(false); }
-      }, 5000);
-      window[cbName] = function(cloud) {
-        if (done) return;
-        done = true;
-        clearTimeout(timeout);
-        if (cloud && cloud.weights) {
-          var existing = {};
-          try { existing = JSON.parse(localStorage.getItem('yawaragi_weight_check') || '{}'); } catch(e) {}
-          existing.weights = cloud.weights;
-          if (cloud.users && cloud.users.length > 0) existing.users = cloud.users;
-          localStorage.setItem('yawaragi_weight_check', JSON.stringify(existing));
-        }
-        delete window[cbName];
-        if (script.parentNode) script.parentNode.removeChild(script);
-        resolve(true);
-      };
-      script.src = ORAL_SYNC_URL + '?action=getWeight&callback=' + cbName + '&t=' + Date.now();
-      script.onerror = function() { if (!done) { done = true; clearTimeout(timeout); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); resolve(false); } };
-      document.head.appendChild(script);
-    } catch(e) { resolve(false); }
-  });
-}
-
-// ===========================
-//  測定完了チェック（体重データから今月の測定状態を取得）
-// ===========================
-function getWeightCompletionStatus(userName) {
-  try {
-    const weightData = JSON.parse(localStorage.getItem('yawaragi_weight_check') || '{}');
-    const now = new Date();
-    const fy = (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
-    const ml = (now.getMonth() + 1) + '月';
-    const weights = (weightData.weights || {})[fy] || {};
-    const uw = weights[userName] || {};
-    const val = uw[ml];
-    // 値が存在し、数値として有効であれば測定完了
-    if (val !== undefined && val !== null && val !== '' && !isNaN(Number(val))) {
-      return { complete: true, label: '✓' };
-    }
-    return { complete: false, label: '' };
-  } catch (e) {
-    return { complete: false, label: '' };
-  }
-}
-
-// ===========================
 //  口腔・測定チェックエリア
 // ===========================
 function renderOptionChecks() {
@@ -1868,17 +2027,13 @@ function renderOptionChecks() {
     return careA - careB;
   });
 
-  let weightCompletedCount = 0;
   for (const i of sokuteiOrder) {
     const nm = users[i].name || ('No.' + (i + 1));
     const isKaigo = users[i].care === 'kaigo';
     const origUser = STATE.users.find(u => u.name === users[i].name);
     const mStatus = origUser ? getMeasurementStatus(origUser) : { target: false, label: '' };
-    const wStatus = getWeightCompletionStatus(nm);
-    const isWeightDone = mStatus.target && wStatus.complete;
-    if (isWeightDone) weightCompletedCount++;
 
-    if (needAutoApply && mStatus.target && !isWeightDone && !STATE.sokuteiChecked.includes(i)) {
+    if (needAutoApply && mStatus.target && !STATE.sokuteiChecked.includes(i)) {
       STATE.sokuteiChecked.push(i);
     }
     if (mStatus.target) autoCount++;
@@ -1886,20 +2041,15 @@ function renderOptionChecks() {
     const checked = STATE.sokuteiChecked.includes(i);
     const kaigoCls = isKaigo ? ' sokutei-kaigo' : '';
     const targetCls = mStatus.target ? ' sokutei-target' : '';
-    const doneCls = isWeightDone ? ' sokutei-done' : '';
     const careLabel = '<span class="sokutei-care-label ' + (isKaigo ? 'kaigo' : 'shien') + '">' + (isKaigo ? '介護' : '支援') + '</span>';
-    const wMarkHtml = wStatus.label ? '<span class="sokutei-mark">⚖️' + wStatus.label + '</span>' : '';
     const markHtml = mStatus.label ? '<span class="sokutei-mark">📏' + mStatus.label + '</span>' : '';
-    shtml += '<label class="option-check' + (checked ? ' checked-s' : '') + kaigoCls + targetCls + doneCls + '">' +
-      '<input type="checkbox" ' + (checked ? 'checked' : '') + (isWeightDone ? ' disabled' : '') + ' onchange="toggleSokutei(' + i + ')">' +
-      CIRCLED[i + 1] + careLabel + '<span class="oname">' + escHtml(nm) + '</span>' + wMarkHtml + markHtml + '</label>';
+    shtml += '<label class="option-check' + (checked ? ' checked-s' : '') + kaigoCls + targetCls + '">' +
+      '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleSokutei(' + i + ')">' +
+      CIRCLED[i + 1] + careLabel + '<span class="oname">' + escHtml(nm) + '</span>' + markHtml + '</label>';
   }
   if (needAutoApply) {
     STATE._sokuteiAutoApplied = true;
     saveSettings();
-  }
-  if (weightCompletedCount > 0) {
-    shtml += '<div style="font-size:11px;color:#2E7D32;margin-top:4px">※ 今月測定済み ' + weightCompletedCount + '人（自動除外）</div>';
   }
   if (autoCount > 0) {
     shtml += '<div class="sokutei-auto-info">📏 今月測定対象: ' + autoCount + '人（自動チェック済み。手動で変更もできます）</div>';
@@ -1922,14 +2072,6 @@ function toggleKouku(idx) {
 }
 
 function toggleSokutei(idx) {
-  // 測定完了者はトグル不可
-  const users = STATE.orderedDayUsers.length > 0 ? STATE.orderedDayUsers : getDayUsers(STATE.currentDay, STATE.unit);
-  if (users[idx]) {
-    const wStatus = getWeightCompletionStatus(users[idx].name);
-    const origUser = STATE.users.find(u => u.name === users[idx].name);
-    const mStatus = origUser ? getMeasurementStatus(origUser) : { target: false };
-    if (mStatus.target && wStatus.complete) return;
-  }
   const pos = STATE.sokuteiChecked.indexOf(idx);
   if (pos >= 0) STATE.sokuteiChecked.splice(pos, 1);
   else STATE.sokuteiChecked.push(idx);
@@ -2419,8 +2561,7 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
   const afterTaiso = slot;
   let tvFreeFrom = afterTaiso; // テレビモニターが空くスロット
 
-  // 個別機能訓練は準備体操直後ではなく、マシン休憩時間に配置（⑤の位置）
-  // → fillMachineIdleWithKinou() で処理
+  // Phase 4: 個別機能訓練（要介護のみ・TV使用）※要支援は対象外
   const kinouAll = [];
   for (let p = 0; p < n; p++) {
     if (careTypes[p] === 'kaigo' && !isBanned(p, 'kinou')) kinouAll.push(p);
@@ -2429,9 +2570,16 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
   for (let p = 0; p < n; p++) {
     if (careTypes[p] === 'kaigo') kaigoPersons.push(p);
   }
-  // tvFreeFrom = afterTaiso のまま（個別をここに入れないので口腔がすぐ始まる）
+  if (kinouAll.length > 0) {
+    for (const p of kinouAll) {
+      for (let s = afterTaiso; s < afterTaiso + T.kinou && s < SLOTS; s++) {
+        grid[s][p] = 'kinou';
+      }
+    }
+    tvFreeFrom = afterTaiso + T.kinou;
+  }
 
-  // Phase 5: 口腔体操（対象者のみ・TV使用・準備体操の後すぐ）
+  // Phase 5: 口腔体操（対象者のみ・TV使用・個別の後）
   if (koukuPersons.length > 0) {
     const koukuStart = tvFreeFrom;
     const koukuActive = koukuPersons.filter(p => !isBanned(p, 'kouku'));
@@ -2563,39 +2711,40 @@ function generateSchedule(targetUsers, koukuPersons, sokuteiPersons) {
     }
   }
 
-  // マシン休憩時間に個別機能訓練を配置
+  // マシン最初の休憩時間に個別機能訓練を配置
   // 全グループ: 要介護のみ（個別機能訓練は要介護の加算）
-  // ルール: マシン期間中の空きスロット（休憩から入る人含む）に個別を配置
+  // ルール: マシンの最初のスタート前の休憩のみ。途中の休憩には入れない
   function fillMachineIdleWithKinou(g, machineStart, machineEnd) {
     const kinouLen = T.kinou;
     if (kinouLen <= 0) return;
+    const M = machinePerPerson;
+    const rotSlot = machineRotationSlot;
     const N_g = groups[g];
     for (let j = 0; j < N_g; j++) {
       const p = groupMembers[g][j];
       if (careTypes[p] !== 'kaigo') continue;
       if (isBanned(p, 'kinou')) continue;
-      // 既に個別が配置済みならスキップ
+      // 既に個別が配置済みならスキップ（Phase 4で配置済みの場合）
       var alreadyHasKinou = false;
       for (let s = 0; s < SLOTS; s++) {
         if (grid[s][p] === 'kinou') { alreadyHasKinou = true; break; }
       }
       if (alreadyHasKinou) continue;
-      // マシン期間中のどこかに kinouLen 連続の free スロットを見つけて個別を入れる
-      var bestStart = -1;
-      var runLen = 0;
-      for (let s = machineStart; s < machineEnd && s < endLimit; s++) {
-        if (grid[s][p] === 'free') {
-          if (runLen === 0) bestStart = s;
-          runLen++;
-          if (runLen >= kinouLen) break;
-        } else {
-          runLen = 0;
-          bestStart = -1;
+      // この人の最初のマシン開始スロットを計算
+      var firstMachineSlot = machineEnd; // デフォルト=見つからない
+      for (let r = 0; r < N_g; r++) {
+        if ((j + r) % N_g < MACHINE_COUNT) {
+          firstMachineSlot = machineStart + r * rotSlot;
+          break;
         }
       }
-      if (bestStart >= 0 && runLen >= kinouLen) {
-        for (let s = bestStart; s < bestStart + kinouLen && s < endLimit; s++) {
+      // 最初のマシン開始前の空きスロットにのみ個別を入れる
+      if (firstMachineSlot <= machineStart) continue; // 最初からマシン→休憩なし
+      let placed = 0;
+      for (let s = machineStart; s < firstMachineSlot && s < endLimit; s++) {
+        if (grid[s][p] === 'free' && placed < kinouLen) {
           grid[s][p] = 'kinou';
+          placed++;
         }
       }
     }
@@ -5797,8 +5946,8 @@ function resetConstraint(userName) {
 async function init() {
   // クラウドから最新データを自動読み込み（施設のPCでも自動反映）
   const cloudLoaded = await autoLoadFromCloud();
-  // 口腔・体重チェックデータをクラウドから取得（iPadでもカウント反映）
-  await Promise.all([fetchOralFromCloud(), fetchWeightFromCloud()]);
+  // 口腔チェックデータをクラウドから取得（iPadでもカウント反映）
+  await fetchOralFromCloud();
   loadUsers();
   // 利用者台帳スプレッドシートから最新データを自動同期（中止・終了・休止を除外）
   const syncResult = await autoSyncFromSpreadsheet();
