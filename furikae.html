@@ -59,6 +59,16 @@
   .memo-input { border: 1px solid #ddd; border-radius: 6px; padding: 4px 8px; width: 140px; font-size: 12px; }
   .memo-input:focus { border-color: #3498db; outline: none; }
 
+  .detail-input { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; width: 280px; min-height: 50px; font-size: 12px; font-family: inherit; resize: vertical; line-height: 1.4; }
+  .detail-input:focus { border-color: #3498db; outline: none; min-height: 80px; }
+  .detail-filled { border: 1px solid #f39c12; background: #fef9e7; }
+  .detail-empty { border: 2px dashed #e74c3c; background: #fdeaea; animation: pulse 2s infinite; }
+  .detail-empty::placeholder { color: #c0392b; font-weight: bold; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+    50% { box-shadow: 0 0 0 4px rgba(231, 76, 60, 0.2); }
+  }
+
   .date-input { border: 1px solid #ddd; border-radius: 6px; padding: 3px 5px; width: 120px; font-size: 11px; }
   .date-input:focus { border-color: #3498db; outline: none; }
   .date-filled { border-color: #27ae60; background: #eafaf1; }
@@ -104,11 +114,42 @@
   .drop-zone input[type="file"] { display: none; }
   .import-result { background: #eafaf1; border: 1px solid #27ae60; border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; font-size: 14px; color: #1e7e34; display: none; }
   .import-result.error { background: #fdeaea; border-color: #e74c3c; color: #c0392b; }
+
+  /* 引落予定日別 請求合計セクション */
+  .upcoming-group { margin-bottom: 20px; border: 2px solid #3498db; border-radius: 12px; overflow: hidden; }
+  .upcoming-group-header { color: white; padding: 14px 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .upcoming-group-header .total { font-size: 18px; }
+  .upcoming-table { width: 100%; border-collapse: collapse; background: white; }
+  .upcoming-table th { background: #ecf0f1; color: #34495e; padding: 10px 8px; font-size: 13px; text-align: center; }
+  .upcoming-table td { padding: 12px 8px; border-bottom: 1px solid #eee; font-size: 14px; text-align: center; vertical-align: middle; }
+  .upcoming-table tfoot td { background: #fef5e7; }
+  .contacted-checkbox { transform: scale(1.4); cursor: pointer; }
+  .copy-btn { background: #27ae60; color: white; border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-size: 12px; font-weight: bold; }
+  .copy-btn:hover { background: #219a52; }
+  .view-mode-btn { padding: 6px 14px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; }
+  .view-mode-btn.active { background: #3498db; color: white; }
+  .view-mode-btn:not(.active) { background: #ecf0f1; color: #7f8c8d; }
+  .contacted-info { font-size: 11px; color: #27ae60; margin-top: 4px; font-weight: bold; }
+  .row-not-contacted { background: #fffbea; }
+  .row-contacted { background: #f0fff4; opacity: 0.7; }
+  .back-link-btn { background: #ecf0f1; color: #34495e; border: 1px solid #bdc3c7; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; }
+  .back-link-btn:hover { background: #d5dbdb; }
+  .print-meeting-btn { background: #e74c3c; color: white; border: none; border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: bold; cursor: pointer; }
+  .print-meeting-btn:hover { background: #c0392b; }
+
+  @media print {
+    #upcomingPanel { page-break-inside: avoid; }
+    .upcoming-group-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 </head>
 <body>
 
-<div class="header">
+<div class="no-print" style="margin-bottom:12px;">
+  <a href="yawaragiボード.html" class="back-link-btn">← yawaragiボードに戻る</a>
+</div>
+
+<div class="header" style="position:relative;">
   <h1>💰 振替不能管理ツール</h1>
   <p>口座振替不能の管理・対応状況を追跡します</p>
   <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="position:absolute;right:20px;top:12px;padding:6px 12px;background:#e3f2fd;color:#1565c0;border:1px solid #1976d2;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;">📋 利用者台帳</button>
@@ -143,6 +184,7 @@
       <th>金額</th>
       <th>顧客番号</th>
       <th>不能理由</th>
+      <th>詳細理由・経緯</th>
       <th>対応状況</th>
       <th>依頼書郵送日</th>
       <th>引落開始予定日</th>
@@ -151,6 +193,47 @@
   </thead>
   <tbody id="tableBody"></tbody>
 </table>
+
+<!-- 引落予定日別 請求合計セクション（事前連絡用） -->
+<div id="upcomingPanel" style="display:none; background:white; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.08); margin-bottom:20px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+    <h3 style="font-size:18px; color:#c0392b;">📅 事前連絡が必要な利用者</h3>
+    <button class="print-meeting-btn no-print" onclick="window.print()">🖨 印刷</button>
+  </div>
+
+  <div class="no-print" style="background:#f8f9fa; border-radius:8px; padding:12px 16px; margin-bottom:14px; display:flex; flex-wrap:wrap; gap:14px; align-items:center;">
+    <div>
+      <label style="font-size:12px; color:#666; font-weight:bold; margin-right:6px;">連絡担当:</label>
+      <select id="contactStaffSelect" onchange="saveContactStaff()" style="padding:6px 10px; border-radius:6px; border:1px solid #bdc3c7; font-size:13px;">
+        <option value="勝又">勝又</option>
+        <option value="比嘉">比嘉</option>
+        <option value="星野">星野</option>
+        <option value="下浦">下浦</option>
+        <option value="工藤">工藤</option>
+        <option value="髙山">髙山</option>
+        <option value="春山">春山</option>
+        <option value="大久保">大久保</option>
+        <option value="石井">石井</option>
+        <option value="田村">田村</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:12px; color:#666; font-weight:bold; margin-right:6px;">表示:</label>
+      <button class="view-mode-btn active" id="filterAllBtn" onclick="setFilterMode('all')">全て</button>
+      <button class="view-mode-btn" id="filterPendingBtn" onclick="setFilterMode('pending')">未連絡のみ</button>
+    </div>
+    <div>
+      <label style="font-size:12px; color:#666; font-weight:bold; margin-right:6px;">表示モード:</label>
+      <button class="view-mode-btn active" id="viewModeABtn" onclick="setViewMode('A')">利用者ごと合算</button>
+      <button class="view-mode-btn" id="viewModeBBtn" onclick="setViewMode('B')">月ごとに表示</button>
+    </div>
+  </div>
+
+  <div style="font-size:12px; color:#888; margin-bottom:12px;">
+    💡 過去の未納分を含めた合計金額です。引落しは「予定」のため、口座情報や手続き状況により変動する場合があります。
+  </div>
+  <div id="upcomingList"></div>
+</div>
 
 <!-- 新規手続き進捗パネル -->
 <div id="pendingPanel" style="display:none; background:white; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.08); margin-bottom:20px;">
@@ -219,6 +302,11 @@
         <option value="残高不足">残高不足</option>
         <option value="その他">その他</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>詳細理由・経緯（任意）</label>
+      <textarea id="formDetailReason" rows="3" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;" placeholder="例: ゆうちょ末尾1漏れで電算で再登録、4/27に1〜3月分まとめ引落予定"></textarea>
+      <div class="help-text">特殊なケースの経緯や原因を自由記入</div>
     </div>
     <div class="form-group">
       <label>依頼書郵送日（任意・新規の方向け）</label>
@@ -354,6 +442,7 @@ function processExcelFile(file) {
           amount: f.amount,
           customerId: f.customerId,
           reason: f.reason,
+          detailReason: '',
           status: '未対応',
           memo: '',
           formSentDate: '',
@@ -403,7 +492,16 @@ const STORAGE_KEY = 'yawaragi_furikae_funou';
 
 function loadData() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return JSON.parse(saved);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    // マイグレーション: 既存データに detailReason フィールドを補完
+    if (parsed.records) {
+      parsed.records.forEach(r => {
+        if (r.detailReason === undefined) r.detailReason = '';
+      });
+    }
+    return parsed;
+  }
   // 初期データ: 2026年2月分（2/27引落）
   return {
     records: [
@@ -495,6 +593,7 @@ function renderMonth() {
   const collectedAmount = collected.reduce((s, r) => s + r.amount, 0);
   const pendingCount = records.filter(r => r.expectedStartDate || r.expectedStartMonth).length;
   const uncollected = totalAmount - collectedAmount;
+  const detailEmptyCount = records.filter(r => !r.detailReason).length;
 
   document.getElementById('summaryCards').innerHTML = `
     <div class="card"><div class="label">不能件数</div><div class="value red">${total}件</div></div>
@@ -502,12 +601,13 @@ function renderMonth() {
     <div class="card"><div class="label">回収済</div><div class="value green">${collectedAmount.toLocaleString()}円</div></div>
     <div class="card"><div class="label">未回収</div><div class="value orange">${uncollected.toLocaleString()}円</div></div>
     ${pendingCount > 0 ? `<div class="card"><div class="label">手続中（新規）</div><div class="value blue">${pendingCount}件</div></div>` : ''}
+    ${detailEmptyCount > 0 ? `<div class="card" style="border:2px solid #e74c3c;background:#fdeaea;"><div class="label" style="color:#c0392b;font-weight:bold;">⚠️ 詳細理由 未入力</div><div class="value red">${detailEmptyCount}件</div></div>` : ''}
   `;
 
   // テーブル
   const tbody = document.getElementById('tableBody');
   if (records.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="12" style="padding:30px;color:#888;">この月のデータはありません</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" style="padding:30px;color:#888;">この月のデータはありません</td></tr>';
   } else {
     tbody.innerHTML = records.map(r => {
       const reasonClass = r.reason.includes('依頼書') ? '依頼書なし' :
@@ -515,6 +615,15 @@ function renderMonth() {
                           r.reason.includes('残高') ? '残高不足' : 'その他';
       const nameClass = r.name ? 'name-input name-filled' : 'name-input';
       const sentDateClass = r.formSentDate ? 'date-input date-filled' : 'date-input';
+      const detailClass = r.detailReason ? 'detail-input detail-filled' : 'detail-input detail-empty';
+
+      // この利用者の全月累計（未回収のみ）を計算
+      const sameCustomerRecords = data.records.filter(rec =>
+        rec.customerId && rec.customerId === r.customerId && rec.status !== '回収済'
+      );
+      const customerTotal = sameCustomerRecords.reduce((s, rec) => s + rec.amount, 0);
+      const monthCount = sameCustomerRecords.length;
+      const hasAccumulated = monthCount > 1;
       // expectedStartMonth（旧：月）とexpectedStartDate（新：日付）の両方に対応
       const expectedDate = r.expectedStartDate || r.expectedStartMonth || '';
       const expectedClass = expectedDate ? 'expected-input expected-filled' : 'expected-input';
@@ -555,9 +664,14 @@ function renderMonth() {
         <td>${escapeHtml(r.bank)}</td>
         <td>${escapeHtml(r.branch)}</td>
         <td>${r.account}</td>
-        <td style="font-weight:bold;">${r.amount.toLocaleString()}円</td>
+        <td style="font-weight:bold;">${r.amount.toLocaleString()}円
+          ${hasAccumulated ? `<br><span style="display:inline-block;margin-top:4px;padding:2px 8px;background:#fdeaea;color:#c0392b;border-radius:10px;font-size:11px;font-weight:bold;">累計 ${customerTotal.toLocaleString()}円<br>(${monthCount}ヶ月分)</span>` : ''}
+        </td>
         <td>${r.customerId}</td>
         <td><span class="reason-badge reason-${reasonClass}">${r.reason}</span></td>
+        <td><textarea class="${detailClass}"
+            placeholder="不能の経緯を記入" onchange="updateDetailReason(${r.id}, this.value)"
+            title="${escapeHtml(r.detailReason || 'ゆうちょ末尾1漏れ等、不能になった具体的な理由')}">${escapeHtml(r.detailReason || '')}</textarea></td>
         <td>
           <select onchange="updateStatus(${r.id}, this.value)" style="font-size:12px;padding:4px;border-radius:6px;">
             ${['未対応','連絡済','回収済','再提出済','手続中'].map(s =>
@@ -583,6 +697,7 @@ function renderMonth() {
   }
 
   renderPendingPanel();
+  renderUpcomingDebits();
 
   renderHistory();
 }
@@ -623,12 +738,28 @@ function updateName(id, value) {
 
 function updateStatus(id, value) {
   const rec = data.records.find(r => r.id === id);
-  if (rec) { rec.status = value; saveData(data); renderMonth(); }
+  if (!rec) return;
+  // 詳細理由が空のまま「未対応」以外に変えようとしたら警告
+  if (value !== '未対応' && !rec.detailReason) {
+    const ok = confirm('⚠️ 詳細理由・経緯が未入力です！\n\n何で振替不能だったか記録しないと後で困ります。\n\n「OK」= このまま変更（後で必ず入力）\n「キャンセル」= 戻る');
+    if (!ok) {
+      renderMonth(); // セレクトを元に戻すため再描画
+      return;
+    }
+  }
+  rec.status = value;
+  saveData(data);
+  renderMonth();
 }
 
 function updateMemo(id, value) {
   const rec = data.records.find(r => r.id === id);
   if (rec) { rec.memo = value; saveData(data); }
+}
+
+function updateDetailReason(id, value) {
+  const rec = data.records.find(r => r.id === id);
+  if (rec) { rec.detailReason = value; saveData(data); renderMonth(); }
 }
 
 function updateFormSentDate(id, value) {
@@ -740,6 +871,298 @@ function renderPendingPanel() {
     }).join('') + '</table>';
 }
 
+// ============ 引落予定日別 請求合計（事前連絡用） ============
+let viewMode = 'A'; // 'A' = 利用者ごと合算, 'B' = 月ごとに表示
+let filterMode = 'all'; // 'all' = 全て, 'pending' = 未連絡のみ
+const CONTACT_STAFF_KEY = 'yawaragi_furikae_contact_staff';
+
+function saveContactStaff() {
+  const sel = document.getElementById('contactStaffSelect');
+  localStorage.setItem(CONTACT_STAFF_KEY, sel.value);
+}
+
+function loadContactStaff() {
+  const saved = localStorage.getItem(CONTACT_STAFF_KEY);
+  return saved || '勝又';
+}
+
+function getCurrentContactStaff() {
+  const sel = document.getElementById('contactStaffSelect');
+  return sel ? sel.value : loadContactStaff();
+}
+
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById('viewModeABtn').classList.toggle('active', mode === 'A');
+  document.getElementById('viewModeBBtn').classList.toggle('active', mode === 'B');
+  renderUpcomingDebits();
+}
+
+function setFilterMode(mode) {
+  filterMode = mode;
+  document.getElementById('filterAllBtn').classList.toggle('active', mode === 'all');
+  document.getElementById('filterPendingBtn').classList.toggle('active', mode === 'pending');
+  renderUpcomingDebits();
+}
+
+function renderUpcomingDebits() {
+  // 引落予定日があり、未回収のレコードを抽出
+  let upcoming = data.records.filter(r => {
+    const expDate = r.expectedStartDate || r.expectedStartMonth;
+    return expDate && r.status !== '回収済';
+  });
+
+  // 未連絡フィルター
+  if (filterMode === 'pending') {
+    upcoming = upcoming.filter(r => !r.contactedDate);
+  }
+
+  const panel = document.getElementById('upcomingPanel');
+  const list = document.getElementById('upcomingList');
+
+  if (upcoming.length === 0) {
+    if (filterMode === 'pending') {
+      // フィルター時はメッセージだけ出して、パネル自体は表示
+      panel.style.display = 'block';
+      list.innerHTML = '<div style="text-align:center;padding:30px;background:#f0fff4;border-radius:8px;color:#27ae60;font-weight:bold;font-size:15px;">✅ 全員に連絡済みです！素晴らしい！</div>';
+      return;
+    }
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+
+  // 引落予定日でグループ化
+  const groups = {};
+  upcoming.forEach(r => {
+    const expDate = r.expectedStartDate || r.expectedStartMonth;
+    const dateKey = expDate.length <= 7 ? expDate + '-27' : expDate;
+    if (!groups[dateKey]) groups[dateKey] = [];
+    groups[dateKey].push(r);
+  });
+
+  const sortedDates = Object.keys(groups).sort();
+  const now = new Date();
+  now.setHours(0,0,0,0);
+
+  list.innerHTML = sortedDates.map(dateKey => {
+    const records = groups[dateKey];
+    const targetDate = new Date(dateKey);
+    const diffDays = Math.ceil((targetDate - now) / (1000*60*60*24));
+    const [y, m, d] = dateKey.split('-');
+    const dateStr = `${y}年${parseInt(m)}月${parseInt(d)}日`;
+    let countdownStr;
+    if (diffDays > 0) countdownStr = `あと${diffDays}日`;
+    else if (diffDays === 0) countdownStr = '本日';
+    else countdownStr = `${Math.abs(diffDays)}日前（要確認）`;
+
+    const totalAmt = records.reduce((s, r) => s + r.amount, 0);
+
+    // 期日が近いほど赤
+    const borderColor = diffDays < 0 ? '#e74c3c' : diffDays <= 7 ? '#f39c12' : '#3498db';
+    const headerBg = diffDays < 0 ? 'linear-gradient(135deg, #e74c3c, #c0392b)' :
+                     diffDays <= 7 ? 'linear-gradient(135deg, #f39c12, #d68910)' :
+                     'linear-gradient(135deg, #3498db, #2980b9)';
+
+    let bodyHtml;
+    if (viewMode === 'A') {
+      // パターンA: 利用者ごとに合算
+      const byCustomer = {};
+      records.forEach(r => {
+        const key = r.customerId || ('id-' + r.id);
+        if (!byCustomer[key]) {
+          byCustomer[key] = {
+            customerId: r.customerId,
+            name: r.name,
+            months: [],
+            monthAmountMap: {},
+            totalAmount: 0,
+            ids: [],
+            allContacted: true,
+            contactedDates: [],
+            contactedBys: []
+          };
+        }
+        byCustomer[key].months.push(r.month);
+        // 月ごとの金額を集計（同月複数件にも対応して合算）
+        byCustomer[key].monthAmountMap[r.month] = (byCustomer[key].monthAmountMap[r.month] || 0) + r.amount;
+        byCustomer[key].totalAmount += r.amount;
+        byCustomer[key].ids.push(r.id);
+        if (!r.contactedDate) {
+          byCustomer[key].allContacted = false;
+        } else {
+          byCustomer[key].contactedDates.push(r.contactedDate);
+          if (r.contactedBy) byCustomer[key].contactedBys.push(r.contactedBy);
+        }
+        // 名前は最初に見つかったものを優先（同じ顧客なので同じはず）
+        if (!byCustomer[key].name && r.name) byCustomer[key].name = r.name;
+      });
+
+      bodyHtml = `<table class="upcoming-table">
+        <thead><tr>
+          <th>利用者名</th><th>顧客番号</th><th>月数</th><th>合計金額</th><th>事前連絡済</th><th class="no-print">連絡用テキスト</th>
+        </tr></thead>
+        <tbody>
+        ${Object.values(byCustomer).map(c => {
+          // 月ごとの金額を「2月 741円<br>3月 3,302円」形式で表示
+          const sortedMonths = Object.keys(c.monthAmountMap).sort();
+          const monthsBreakdown = sortedMonths.map(mm => {
+            const [, mo2] = mm.split('-');
+            const amt = c.monthAmountMap[mm];
+            return `${parseInt(mo2)}月 ${amt.toLocaleString()}円`;
+          }).join('<br>');
+          const safeName = (c.name || '').replace(/'/g, "\\'");
+          const rowClass = c.allContacted ? 'row-contacted' : 'row-not-contacted';
+          let contactInfo = '';
+          if (c.allContacted && c.contactedDates.length > 0) {
+            const latestDate = c.contactedDates.sort().reverse()[0];
+            const byStr = c.contactedBys.length > 0 ? c.contactedBys[c.contactedBys.length - 1] : '';
+            contactInfo = `<div class="contacted-info">✓ ${latestDate}${byStr ? ' (' + byStr + ')' : ''}</div>`;
+          }
+          return `<tr class="${rowClass}">
+            <td><strong>${escapeHtml(c.name) || '<span style="color:#aaa;">（名前未入力）</span>'}</strong></td>
+            <td>${c.customerId}</td>
+            <td><strong>${sortedMonths.length}ヶ月分</strong><br><span style="font-size:12px;color:#555;line-height:1.7;">${monthsBreakdown}</span></td>
+            <td style="font-weight:bold;color:#c0392b;font-size:16px;">${c.totalAmount.toLocaleString()}円</td>
+            <td>
+              <input type="checkbox" class="contacted-checkbox" ${c.allContacted ? 'checked' : ''}
+                onchange="toggleContactedBatch([${c.ids.join(',')}], this.checked)">
+              ${contactInfo}
+            </td>
+            <td class="no-print">
+              <button class="copy-btn" onclick="copyContactText('${safeName}', '${dateStr}', ${c.totalAmount}, ${c.months.length})">📋 コピー</button>
+            </td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align:right;font-weight:bold;">この日の合計</td>
+            <td style="font-weight:bold;color:#c0392b;font-size:17px;">${totalAmt.toLocaleString()}円</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>`;
+    } else {
+      // パターンB: 月ごとに表示
+      bodyHtml = `<table class="upcoming-table">
+        <thead><tr>
+          <th>利用者名</th><th>顧客番号</th><th>振替元月</th><th>金額</th><th>事前連絡済</th>
+        </tr></thead>
+        <tbody>
+        ${records.slice().sort((a,b) => (a.customerId || '').localeCompare(b.customerId || '') || a.month.localeCompare(b.month)).map(r => {
+          const [, mo2] = r.month.split('-');
+          const rowClass = r.contactedDate ? 'row-contacted' : 'row-not-contacted';
+          let contactInfo = '';
+          if (r.contactedDate) {
+            contactInfo = `<div class="contacted-info">✓ ${r.contactedDate}${r.contactedBy ? ' (' + r.contactedBy + ')' : ''}</div>`;
+          }
+          return `<tr class="${rowClass}">
+            <td>${escapeHtml(r.name) || '<span style="color:#aaa;">（名前未入力）</span>'}</td>
+            <td>${r.customerId}</td>
+            <td>${parseInt(mo2)}月分</td>
+            <td style="font-weight:bold;">${r.amount.toLocaleString()}円</td>
+            <td>
+              <input type="checkbox" class="contacted-checkbox" ${r.contactedDate ? 'checked' : ''}
+                onchange="toggleContacted(${r.id}, this.checked)">
+              ${contactInfo}
+            </td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align:right;font-weight:bold;">この日の合計</td>
+            <td style="font-weight:bold;color:#c0392b;font-size:17px;">${totalAmt.toLocaleString()}円</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>`;
+    }
+
+    return `<div class="upcoming-group" style="border-color:${borderColor};">
+      <div class="upcoming-group-header" style="background:${headerBg};">
+        <div>📅 ${dateStr}（${countdownStr}）に引き落とし予定</div>
+        <div class="total">💰 合計 ${totalAmt.toLocaleString()}円</div>
+      </div>
+      ${bodyHtml}
+    </div>`;
+  }).join('');
+}
+
+function toggleContacted(id, checked) {
+  const rec = data.records.find(r => r.id === id);
+  if (rec) {
+    if (checked) {
+      rec.contactedDate = new Date().toISOString().split('T')[0];
+      rec.contactedBy = getCurrentContactStaff();
+    } else {
+      rec.contactedDate = '';
+      rec.contactedBy = '';
+    }
+    saveData(data);
+    renderUpcomingDebits();
+  }
+}
+
+function toggleContactedBatch(ids, checked) {
+  const today = new Date().toISOString().split('T')[0];
+  const staff = getCurrentContactStaff();
+  ids.forEach(id => {
+    const rec = data.records.find(r => r.id === id);
+    if (rec) {
+      if (checked) {
+        rec.contactedDate = today;
+        rec.contactedBy = staff;
+      } else {
+        rec.contactedDate = '';
+        rec.contactedBy = '';
+      }
+    }
+  });
+  saveData(data);
+  renderUpcomingDebits();
+}
+
+function copyContactText(name, dateStr, amount, monthsCount) {
+  const displayName = name || '◯◯';
+  const text = `${displayName}様
+
+お世話になっております、リハビリデイサービスyawaragiです。
+ご利用料のお支払いについてご連絡です。
+
+過去${monthsCount}ヶ月分の未収金、合計${amount.toLocaleString()}円を
+${dateStr}に口座から引き落とす予定です。
+
+ご準備のほど、よろしくお願いいたします。`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      alert('✅ クリップボードにコピーしました！\n\n以下の内容です:\n\n' + text);
+    }, () => {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    alert('✅ クリップボードにコピーしました！\n\n以下の内容です:\n\n' + text);
+  } catch (e) {
+    alert('コピーに失敗しました。手動でコピーしてください:\n\n' + text);
+  }
+  document.body.removeChild(ta);
+}
+
 // ============ 追加モーダル ============
 function openAddModal() {
   document.getElementById('addModal').classList.add('active');
@@ -778,6 +1201,7 @@ function addRecord() {
     amount: amount,
     customerId: document.getElementById('formCustomerId').value.trim(),
     reason: document.getElementById('formReason').value,
+    detailReason: document.getElementById('formDetailReason').value.trim(),
     status: autoStatus,
     memo: '',
     formSentDate: sentDate,
@@ -790,7 +1214,7 @@ function addRecord() {
   saveData(data);
 
   // フォームリセット
-  ['formNo','formName','formBank','formBranch','formAccount','formAmount','formCustomerId','formSentDate','formExpectedStart'].forEach(id => {
+  ['formNo','formName','formBank','formBranch','formAccount','formAmount','formCustomerId','formSentDate','formExpectedStart','formDetailReason'].forEach(id => {
     document.getElementById(id).value = '';
   });
 
@@ -805,9 +1229,13 @@ function exportCSV() {
   const month = document.getElementById('monthSelect').value;
   const records = data.records.filter(r => r.month === month);
   const bom = '\uFEFF';
-  const header = '連番,利用者名,金融機関,支店,口座番号,金額,顧客番号,不能理由,対応状況,依頼書郵送日,引落開始予定日,メモ\n';
+  const header = '連番,利用者名,金融機関,支店,口座番号,金額,顧客番号,不能理由,詳細理由・経緯,対応状況,依頼書郵送日,引落開始予定日,メモ\n';
+  const csvEscape = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
   const rows = records.map(r =>
-    `${r.no},${r.name},${r.bank},${r.branch},${r.account},${r.amount},${r.customerId},${r.reason},${r.status},${r.formSentDate || ''},${r.expectedStartDate || r.expectedStartMonth || ''},${r.memo}`
+    [r.no, r.name, r.bank, r.branch, r.account, r.amount, r.customerId, r.reason, r.detailReason || '', r.status, r.formSentDate || '', r.expectedStartDate || r.expectedStartMonth || '', r.memo].map(csvEscape).join(',')
   ).join('\n');
 
   const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' });
@@ -829,6 +1257,10 @@ function escapeHtml(str) {
 // ============ 初期化 ============
 setupDropZone();
 initMonthSelect();
+// 担当者をlocalStorageから復元
+const savedStaff = loadContactStaff();
+const staffSel = document.getElementById('contactStaffSelect');
+if (staffSel) staffSel.value = savedStaff;
 renderMonth();
 </script>
 </body>
