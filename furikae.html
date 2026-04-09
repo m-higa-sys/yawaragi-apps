@@ -487,6 +487,84 @@ function showImportResult(msg, isError) {
   setTimeout(() => { div.style.display = 'none'; }, 15000);
 }
 
+// ============ クラウド同期 ============
+// ⚠️ ここにApps ScriptのデプロイURLを貼り付け
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbwT5wX9EsPnE6tQEPMIAzojDfb6YpxthVxlkX7t7B2phfFKkV5btF5dkXEtjEQDwfgr7A/exec';
+let _syncTimer = null;
+let _isSyncing = false;
+let _initialLoadDone = false;
+
+function cloudSync() {
+  if (!SYNC_URL || SYNC_URL.indexOf('__') === 0) return; // URL未設定
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(function() {
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      const payload = JSON.stringify({
+        type: 'furikae',
+        data: { records: data.records, nextId: data.nextId }
+      });
+      fetch(SYNC_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      }).then(function() { _isSyncing = false; })
+        .catch(function() { _isSyncing = false; });
+    } catch(e) { _isSyncing = false; }
+  }, 2000);
+}
+
+function cloudLoad() {
+  if (!SYNC_URL || SYNC_URL.indexOf('__') === 0) return; // URL未設定
+  try {
+    const script = document.createElement('script');
+    const cbName = '_furikaeCb_' + Date.now();
+    let loaded = false;
+    window[cbName] = function(cloud) {
+      loaded = true;
+      if (cloud && cloud.records && cloud.records.length > 0) {
+        // クラウドにデータあり → 取り込む
+        data.records = cloud.records;
+        if (cloud.nextId) data.nextId = cloud.nextId;
+        // detailReason マイグレーション
+        data.records.forEach(function(r) {
+          if (r.detailReason === undefined) r.detailReason = '';
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        initMonthSelect();
+        renderMonth();
+      } else if (data.records && data.records.length > 0 && !_initialLoadDone) {
+        // クラウドが空でローカルにデータあり → 初回プッシュ
+        cloudSync();
+      }
+      _initialLoadDone = true;
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+    script.src = SYNC_URL + '?action=getFurikae&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+      if (!loaded) { delete window[cbName]; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+    document.head.appendChild(script);
+  } catch(e) { console.warn('☁️ クラウド取得エラー:', e); }
+}
+
+// ============ 自動更新（30秒ごと＋画面復帰時） ============
+let _autoRefreshTimer = null;
+function startAutoRefresh() {
+  if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+  _autoRefreshTimer = setInterval(function() {
+    if (document.hidden || _isSyncing) return;
+    cloudLoad();
+  }, 30000);
+}
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && !_isSyncing) cloudLoad();
+});
+
 // ============ データ管理 ============
 const STORAGE_KEY = 'yawaragi_furikae_funou';
 
@@ -560,6 +638,7 @@ function loadData() {
 
 function saveData(data) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  cloudSync();
 }
 
 let data = loadData();
@@ -1262,6 +1341,10 @@ const savedStaff = loadContactStaff();
 const staffSel = document.getElementById('contactStaffSelect');
 if (staffSel) staffSel.value = savedStaff;
 renderMonth();
+
+// クラウドから初回ロード＋自動同期開始
+cloudLoad();
+startAutoRefresh();
 </script>
 </body>
 </html>
