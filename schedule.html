@@ -590,8 +590,9 @@ const DAILY_OPS_KEY = 'yawaragi_daily_ops';
 const SAVE_FILE_NAME = 'schedule_data.json';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxoE1Mg6-MFeL3tPoizhKr5nOPUtom0eRcXaeLqQ2efbjJPX0U2nOWawSFCeF89-GS7Pg/exec';
 const SPREADSHEET_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPDnaVvnt2FjU798fRTws1PoDJoLPOi3AmGwcVp-dBkj2zgblVBCEFe1pQ/exec';
-// 出勤＆送迎表GAS（dailyOpsをJSONPで取得・2026/4/9追加）
-const OPS_GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+// 出勤＆送迎表GAS（dailyOpsを取得・2026/4/9追加）
+// このURLは出勤＆送迎表のクラウド同期で使われている本物のGAS
+const OPS_GAS_URL = 'https://script.google.com/a/keepfitlife.com/macros/s/AKfycbyh_h7qB93S17_9mI52uTcCfUfBjeX9K4Xaq6LIX3d8Bae4w0lqKY-Gsqnw173atAvm7Q/exec';
 const SLOTS = 180; // 3 hours / 1 min
 const CIRCLED = ['','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱'];
 const GROUP_NAMES = ['A', 'B', 'C'];
@@ -1474,58 +1475,31 @@ function toggleDateMode() {
   saveSettings();
 }
 
-// 出勤＆送迎表GASからdailyOpsを取得してlocalStorageに保存（JSONP・2026/4/9追加）
-function fetchDailyOpsFromGas() {
-  return new Promise(function(resolve) {
-    const cbName = '_opsDailyCb_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
-    const script = document.createElement('script');
-    let resolved = false;
-
-    function cleanup() {
-      try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
-      if (script.parentNode) script.parentNode.removeChild(script);
+// 出勤＆送迎表GASからdailyOpsを取得してlocalStorageに保存（fetch・2026/4/9追加）
+async function fetchDailyOpsFromGas() {
+  try {
+    const sep = OPS_GAS_URL.includes('?') ? '&' : '?';
+    const res = await fetch(OPS_GAS_URL + sep + 'action=getOps&t=' + Date.now(), {
+      method: 'GET',
+      cache: 'no-store'
+    });
+    if (!res.ok) {
+      console.warn('☁️ dailyOps取得エラー: HTTP ' + res.status);
+      return false;
     }
-
-    const timeout = setTimeout(function() {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      console.warn('☁️ dailyOps取得タイムアウト');
-      resolve(false);
-    }, 10000);
-
-    window[cbName] = function(data) {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
-      cleanup();
-      if (data && data.dailyOps) {
-        try {
-          localStorage.setItem(DAILY_OPS_KEY, JSON.stringify(data.dailyOps));
-          console.log('☁️ dailyOps取得成功（' + Object.keys(data.dailyOps).length + '日分）');
-          resolve(true);
-        } catch(e) {
-          console.warn('☁️ localStorage保存エラー:', e);
-          resolve(false);
-        }
-      } else {
-        console.warn('☁️ dailyOpsが空');
-        resolve(false);
-      }
-    };
-
-    script.onerror = function() {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timeout);
-      cleanup();
-      console.warn('☁️ dailyOps取得エラー');
-      resolve(false);
-    };
-
-    script.src = OPS_GAS_URL + '?action=getOps&callback=' + cbName + '&t=' + Date.now();
-    document.head.appendChild(script);
-  });
+    const data = await res.json();
+    if (data && data.dailyOps) {
+      localStorage.setItem(DAILY_OPS_KEY, JSON.stringify(data.dailyOps));
+      console.log('☁️ dailyOps取得成功（' + Object.keys(data.dailyOps).length + '日分）');
+      return true;
+    } else {
+      console.warn('☁️ dailyOpsが空');
+      return false;
+    }
+  } catch (e) {
+    console.warn('☁️ dailyOps取得例外:', e);
+    return false;
+  }
 }
 
 async function onScheduleDateChange() {
