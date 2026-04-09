@@ -707,9 +707,9 @@ function renderMonth() {
       const expectedDate = r.expectedStartDate || r.expectedStartMonth || '';
       const expectedClass = expectedDate ? 'expected-input expected-filled' : 'expected-input';
 
-      // 引落開始予定の進捗ラベル
+      // 引落開始予定の進捗ラベル（回収済の場合は表示しない）
       let progressHtml = '';
-      if (expectedDate) {
+      if (expectedDate && r.status !== '回収済') {
         const now = new Date();
         now.setHours(0,0,0,0);
         // 日付形式（2026-04-27）か月形式（2026-04）かを判定
@@ -733,6 +733,10 @@ function renderMonth() {
         } else {
           progressHtml = `<div class="progress-label overdue">予定超過（${Math.abs(diffDays)}日前）</div>`;
         }
+      } else if (expectedDate && r.status === '回収済') {
+        // 回収済なら緑のチェックマーク表示
+        const [ey, em, ed] = expectedDate.length <= 7 ? [...expectedDate.split('-'), '27'] : expectedDate.split('-');
+        progressHtml = `<div class="progress-label" style="background:#eafaf1;color:#27ae60;">✓ ${parseInt(em)}/${parseInt(ed)} 引落完了</div>`;
       }
 
       return `<tr class="${r.status === '未対応' && !r.expectedStartMonth ? 'highlight-row' : ''}">
