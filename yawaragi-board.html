@@ -1049,28 +1049,35 @@
             <div class="abs-selected-info" id="trm-selected-info" style="display:none;"></div>
         </div>
 
-        <!-- STEP2: 中止日 -->
-        <div class="abs-step" id="trm-step-date" style="display:none;">
-            <label class="abs-label">2. 中止日（最後の利用日の翌日が一般的）</label>
-            <input type="date" id="trm-date-input" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;">
+        <!-- STEP2: 最終利用日 -->
+        <div class="abs-step" id="trm-step-lastuse" style="display:none;">
+            <label class="abs-label">2. 最終利用日（最後に来た日 ※翌日が中止日になります）</label>
+            <input type="date" id="trm-lastuse-input" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;">
+            <div id="trm-terminate-preview" style="margin-top:6px;font-size:0.85rem;color:#c0392b;font-weight:600;"></div>
         </div>
 
-        <!-- STEP3: 中止理由 -->
+        <!-- STEP3: 連絡日 -->
+        <div class="abs-step" id="trm-step-contact" style="display:none;">
+            <label class="abs-label">3. 連絡日（中止連絡を受けた日）</label>
+            <input type="date" id="trm-contact-input" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;">
+        </div>
+
+        <!-- STEP4: 中止理由 -->
         <div class="abs-step" id="trm-step-reason" style="display:none;">
-            <label class="abs-label">3. 中止理由</label>
+            <label class="abs-label">4. 中止理由</label>
             <div class="trm-reason-grid" id="trm-reason-grid"></div>
         </div>
 
-        <!-- STEP4: 補足 -->
+        <!-- STEP5: 補足 -->
         <div class="abs-step" id="trm-step-supplement" style="display:none;">
-            <label class="abs-label">4. 補足（任意）</label>
+            <label class="abs-label">5. 補足（任意）</label>
             <textarea id="trm-supplement-input" placeholder="例: 入院先の病院名、家族の連絡先等"
                 style="width:100%;min-height:60px;padding:10px;border:2px solid #e2e8f0;border-radius:10px;font-size:0.95rem;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
         </div>
 
-        <!-- STEP5: 受付者 -->
+        <!-- STEP6: 受付者 -->
         <div class="abs-step" id="trm-step-reporter" style="display:none;">
-            <label class="abs-label">5. 受付者（あなたの名前）</label>
+            <label class="abs-label">6. 受付者（あなたの名前）</label>
             <div class="abs-contact-btns" id="trm-reporter-btns"></div>
         </div>
 
@@ -4063,7 +4070,8 @@ const TRM_REASONS = [
 
 let trmState = {
     selectedUser: null,    // { name, reading, ... }
-    terminateDate: '',
+    lastUseDate: '',       // 最終利用日
+    contactDate: '',       // 連絡日
     reason: '',
     supplement: '',
     reporter: '',
@@ -4072,14 +4080,15 @@ let trmState = {
 };
 
 function trmInit() {
-    // 中止日のデフォルトを今日にセット
-    const dateInput = document.getElementById('trm-date-input');
-    if (dateInput && !dateInput.value) {
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        dateInput.value = yyyy + '-' + mm + '-' + dd;
+    // 最終利用日のデフォルトを今日にセット
+    const lastUseInput = document.getElementById('trm-lastuse-input');
+    if (lastUseInput && !lastUseInput.value) {
+        lastUseInput.value = trmTodayStr();
+    }
+    // 連絡日のデフォルトを今日にセット
+    const contactInput = document.getElementById('trm-contact-input');
+    if (contactInput && !contactInput.value) {
+        contactInput.value = trmTodayStr();
     }
 
     // 理由ボタンを生成
@@ -4139,12 +4148,31 @@ function trmSearchName(query) {
     }).join('');
 }
 
+// 今日の日付文字列（yyyy-MM-dd）
+function trmTodayStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+
+// 日付文字列に1日加算
+function trmAddOneDay(dateStr) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]) + 1);
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+
 function trmClearName() {
     document.getElementById('trm-name-input').value = '';
     document.getElementById('trm-search-results').innerHTML = '';
     document.getElementById('trm-clear-btn').style.display = 'none';
     document.getElementById('trm-selected-info').style.display = 'none';
-    document.getElementById('trm-step-date').style.display = 'none';
+    document.getElementById('trm-step-lastuse').style.display = 'none';
+    document.getElementById('trm-step-contact').style.display = 'none';
     document.getElementById('trm-step-reason').style.display = 'none';
     document.getElementById('trm-step-supplement').style.display = 'none';
     document.getElementById('trm-step-reporter').style.display = 'none';
@@ -4170,7 +4198,8 @@ function trmSelectUser(idx) {
         (user.care ? ' <span style="background:#edf2f7;padding:2px 8px;border-radius:10px;font-size:0.75rem;margin-left:8px;">' + user.care + '</span>' : '');
     info.style.display = 'block';
 
-    document.getElementById('trm-step-date').style.display = 'block';
+    document.getElementById('trm-step-lastuse').style.display = 'block';
+    document.getElementById('trm-step-contact').style.display = 'block';
     document.getElementById('trm-step-reason').style.display = 'block';
     document.getElementById('trm-step-supplement').style.display = 'block';
     document.getElementById('trm-step-reporter').style.display = 'block';
@@ -4193,21 +4222,37 @@ function trmSelectReporter(name, btn) {
 }
 
 function trmUpdateConfirm() {
-    trmState.terminateDate = document.getElementById('trm-date-input').value;
+    trmState.lastUseDate = document.getElementById('trm-lastuse-input').value;
+    trmState.contactDate = document.getElementById('trm-contact-input').value;
     trmState.supplement = document.getElementById('trm-supplement-input').value;
 
-    if (!trmState.selectedUser || !trmState.reason || !trmState.reporter || !trmState.terminateDate) {
+    // 中止日プレビュー（最終利用日の翌日）
+    const preview = document.getElementById('trm-terminate-preview');
+    if (preview) {
+        if (trmState.lastUseDate) {
+            const termDate = trmAddOneDay(trmState.lastUseDate);
+            preview.textContent = '→ 中止日: ' + trmFormatDateJP(termDate);
+        } else {
+            preview.textContent = '';
+        }
+    }
+
+    if (!trmState.selectedUser || !trmState.reason || !trmState.reporter ||
+        !trmState.lastUseDate || !trmState.contactDate) {
         document.getElementById('trm-step-submit').style.display = 'none';
         return;
     }
 
+    const termDateJP = trmFormatDateJP(trmAddOneDay(trmState.lastUseDate));
     const card = document.getElementById('trm-confirm-card');
     card.innerHTML =
-        '<div style="font-weight:700;font-size:1rem;margin-bottom:6px;">' + trmState.selectedUser.name + '様を中止登録します</div>' +
-        '<div style="font-size:0.85rem;color:#4a5568;">中止日: ' + trmState.terminateDate + '</div>' +
-        '<div style="font-size:0.85rem;color:#4a5568;">理由: ' + trmState.reason + '</div>' +
-        (trmState.supplement ? '<div style="font-size:0.85rem;color:#4a5568;">補足: ' + trmState.supplement + '</div>' : '') +
-        '<div style="font-size:0.85rem;color:#4a5568;">受付者: ' + trmState.reporter + '</div>' +
+        '<div style="font-weight:700;font-size:1rem;margin-bottom:6px;">' + escapeHtml(trmState.selectedUser.name) + '様を中止登録します</div>' +
+        '<div style="font-size:0.85rem;color:#4a5568;">最終利用日: ' + trmFormatDateJP(trmState.lastUseDate) + '</div>' +
+        '<div style="font-size:0.85rem;color:#c0392b;font-weight:600;">中止日: ' + termDateJP + '（最終利用日の翌日）</div>' +
+        '<div style="font-size:0.85rem;color:#4a5568;">連絡日: ' + trmFormatDateJP(trmState.contactDate) + '</div>' +
+        '<div style="font-size:0.85rem;color:#4a5568;">理由: ' + escapeHtml(trmState.reason) + '</div>' +
+        (trmState.supplement ? '<div style="font-size:0.85rem;color:#4a5568;">補足: ' + escapeHtml(trmState.supplement) + '</div>' : '') +
+        '<div style="font-size:0.85rem;color:#4a5568;">受付者: ' + escapeHtml(trmState.reporter) + '</div>' +
         '<div style="margin-top:8px;padding:8px;background:#fff5f5;border-radius:6px;font-size:0.8rem;color:#c0392b;">' +
         '⚠️ 利用者台帳のステータスが「中止」に変わります。' +
         '<br>送迎・出席予定・口腔チェック等の全アプリから自動的に外れます。' +
@@ -4215,20 +4260,29 @@ function trmUpdateConfirm() {
     document.getElementById('trm-step-submit').style.display = 'block';
 }
 
-// 補足の入力イベントを監視
+// 日付・補足の入力イベントを監視
 document.addEventListener('input', function(e) {
-    if (e.target && (e.target.id === 'trm-supplement-input' || e.target.id === 'trm-date-input')) {
+    if (e.target && (
+        e.target.id === 'trm-supplement-input' ||
+        e.target.id === 'trm-lastuse-input' ||
+        e.target.id === 'trm-contact-input'
+    )) {
         trmUpdateConfirm();
     }
 });
 
 function trmSubmit() {
-    if (!trmState.selectedUser || !trmState.reason || !trmState.reporter) {
-        alert('利用者・理由・受付者をすべて選択してください');
+    if (!trmState.selectedUser || !trmState.reason || !trmState.reporter ||
+        !trmState.lastUseDate || !trmState.contactDate) {
+        alert('利用者・最終利用日・連絡日・理由・受付者をすべて入力してください');
         return;
     }
 
+    const termDateJP = trmFormatDateJP(trmAddOneDay(trmState.lastUseDate));
     const confirmMsg = trmState.selectedUser.name + '様を中止登録します。\n\n' +
+        '最終利用日: ' + trmFormatDateJP(trmState.lastUseDate) + '\n' +
+        '中止日: ' + termDateJP + '（自動計算）\n' +
+        '連絡日: ' + trmFormatDateJP(trmState.contactDate) + '\n\n' +
         '・利用者台帳のステータスが「中止」になります\n' +
         '・全アプリから自動的に外れます\n' +
         '・取消は中止者一覧から可能です\n\n' +
@@ -4242,7 +4296,8 @@ function trmSubmit() {
     const payload = {
         action: 'terminate',
         name: trmState.selectedUser.name,
-        terminateDate: trmState.terminateDate,
+        lastUseDate: trmState.lastUseDate,
+        contactDate: trmState.contactDate,
         reason: trmState.reason,
         supplement: trmState.supplement,
         reporter: trmState.reporter
@@ -4258,6 +4313,9 @@ function trmSubmit() {
         // フォームをリセット
         trmClearName();
         document.getElementById('trm-supplement-input').value = '';
+        // 日付は今日に戻す
+        document.getElementById('trm-lastuse-input').value = trmTodayStr();
+        document.getElementById('trm-contact-input').value = trmTodayStr();
         // 中止者一覧を再読み込み
         setTimeout(() => trmLoadList(), 800);
     }).catch(err => {
@@ -4328,7 +4386,9 @@ function trmRenderCard(t) {
     const stage3Done = stage2Done && t.tasks.adl;
     const allDone = stage3Done;
 
-    const fmtDate = trmFormatDateJP(t.terminateDate);
+    const lastUseJP = trmFormatDateJP(t.lastUseDate);
+    const terminateJP = trmFormatDateJP(t.terminateDate);
+    const contactJP = trmFormatDateJP(t.contactDate);
 
     return '<div class="trm-card">' +
         '<div class="trm-card-header">' +
@@ -4336,7 +4396,12 @@ function trmRenderCard(t) {
                 '<div class="trm-card-name">' + escapeHtml(t.name) + '様' +
                     (allDone ? '<span class="trm-all-done-badge">✓ 全完了</span>' : '') +
                 '</div>' +
-                '<div class="trm-card-meta">中止日: ' + fmtDate + ' ／ 受付: ' + escapeHtml(t.reporter || '未記入') + '</div>' +
+                '<div class="trm-card-meta">' +
+                    '最終利用日: <strong>' + lastUseJP + '</strong>' +
+                    ' ／ 中止日: <strong style="color:#c0392b;">' + terminateJP + '</strong>' +
+                    (contactJP ? ' ／ 連絡日: ' + contactJP : '') +
+                '</div>' +
+                '<div class="trm-card-meta">受付: ' + escapeHtml(t.reporter || '未記入') + '</div>' +
                 '<div class="trm-card-reason">' + escapeHtml(t.reason) + '</div>' +
             '</div>' +
         '</div>' +
@@ -4365,27 +4430,27 @@ function trmRenderCard(t) {
         '</div>' +
 
         '<div class="trm-card-actions">' +
-            '<button class="trm-cancel-btn" onclick="trmCancelTermination(\'' + t.terminateDate + '\', \'' + escapeAttr(t.name) + '\')">↩ 中止を取消す</button>' +
+            '<button class="trm-cancel-btn" onclick="trmCancelTermination(\'' + t.lastUseDate + '\', \'' + escapeAttr(t.name) + '\')">↩ 中止を取消す</button>' +
         '</div>' +
     '</div>';
 }
 
 function trmTaskItem(t, key, label, disabled) {
     const checked = t.tasks[key];
-    const id = 'trm-task-' + key + '-' + t.terminateDate + '-' + t.name;
+    const id = 'trm-task-' + key + '-' + t.lastUseDate + '-' + t.name;
     return '<div class="trm-task-item' + (disabled ? ' disabled' : '') + '">' +
         '<input type="checkbox" id="' + id + '" ' +
             (checked ? 'checked' : '') + ' ' +
             (disabled ? 'disabled' : '') + ' ' +
-            'onchange="trmToggleTask(\'' + t.terminateDate + '\', \'' + escapeAttr(t.name) + '\', \'' + key + '\', this.checked)">' +
+            'onchange="trmToggleTask(\'' + t.lastUseDate + '\', \'' + escapeAttr(t.name) + '\', \'' + key + '\', this.checked)">' +
         '<label for="' + id + '" class="trm-task-label' + (checked ? ' checked' : '') + '">' + escapeHtml(label) + '</label>' +
     '</div>';
 }
 
-function trmToggleTask(terminateDate, name, task, checked) {
+function trmToggleTask(lastUseDate, name, task, checked) {
     const payload = {
         action: 'update_terminate_task',
-        terminateDate: terminateDate,
+        lastUseDate: lastUseDate,
         name: name,
         task: task,
         checked: checked
@@ -4398,7 +4463,7 @@ function trmToggleTask(terminateDate, name, task, checked) {
         body: JSON.stringify(payload)
     }).then(() => {
         // ローカル状態を更新
-        const t = trmState.list.find(x => x.terminateDate === terminateDate && x.name === name);
+        const t = trmState.list.find(x => x.lastUseDate === lastUseDate && x.name === name);
         if (t) {
             t.tasks[task] = checked;
             trmRenderList();
@@ -4408,7 +4473,7 @@ function trmToggleTask(terminateDate, name, task, checked) {
     });
 }
 
-function trmCancelTermination(terminateDate, name) {
+function trmCancelTermination(lastUseDate, name) {
     if (!confirm(name + '様の中止登録を取消します。\n\n' +
         '・利用者台帳のステータスが元に戻ります\n' +
         '・中止履歴から削除されます\n\n' +
@@ -4416,7 +4481,7 @@ function trmCancelTermination(terminateDate, name) {
 
     const payload = {
         action: 'cancel_terminate',
-        terminateDate: terminateDate,
+        lastUseDate: lastUseDate,
         name: name
     };
 
