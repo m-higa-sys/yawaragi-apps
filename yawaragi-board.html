@@ -1243,7 +1243,7 @@
         <h3>📂 居宅別フォルダ状態 <span id="js-preview-month" style="font-weight:400; color:#718096;"></span></h3>
         <div id="js-preview-list"></div>
         <div style="margin-top:16px; text-align:center;">
-            <button class="js-create-btn" id="js-create-btn" onclick="jsCreateDrafts()">📧 Gmailに下書き作成</button>
+            <button class="js-create-btn" id="js-create-btn" onclick="jsCreateDrafts()">📧 メール下書き＋FAX送信</button>
         </div>
         <div class="js-result-box" id="js-result-box"></div>
     </div>
@@ -4882,7 +4882,7 @@ async function jsFetchStatus() {
     loading.style.display = 'inline';
 
     try {
-        const url = JS_API_URL + '?action=getJissekiFolderStatus&yearMonth=' + jsSelectedMonth;
+        const url = JS_API_URL + '?action=folder_status&yearMonth=' + jsSelectedMonth;
         const res = await fetch(url);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
@@ -4905,51 +4905,93 @@ function jsRenderPreview() {
     monthLabel.textContent = '（' + parseInt(parts[0]) + '年' + parseInt(parts[1]) + '月分）';
     section.style.display = 'block';
 
-    const kyotakuList = jsStatusData.kyotakuList || [];
-    if (kyotakuList.length === 0) {
+    const folders = jsStatusData.folders || [];
+    if (folders.length === 0) {
         list.innerHTML = '<p style="text-align:center; color:#a0aec0; padding:20px;">フォルダが見つかりません。先にGoogleドライブにフォルダを作成してPDFを置いてください。</p>';
         document.getElementById('js-create-btn').disabled = true;
         document.getElementById('js-jisan-section').style.display = 'none';
         return;
     }
 
-    // 持参リストとメール対象を分離
-    const mailTargets = [];
+    // メール・FAX・持参・未設定に分類
+    const emailTargets = [];
+    const faxTargets = [];
     const jisanTargets = [];
-    kyotakuList.forEach(k => {
-        if (JS_JISAN_LIST.some(j => k.name.includes(j))) {
+    const unknownTargets = [];
+    folders.forEach(k => {
+        const m = k.method || '';
+        if (JS_JISAN_LIST.some(j => k.kyotaku.includes(j)) || m === '持参') {
             jisanTargets.push(k);
+        } else if (m === 'メール') {
+            emailTargets.push(k);
+        } else if (m === 'FAX') {
+            faxTargets.push(k);
         } else {
-            mailTargets.push(k);
+            unknownTargets.push(k);
         }
     });
 
-    // メール対象の表示
     let html = '';
     let canCreate = false;
-    mailTargets.forEach(k => {
-        const hasPdf = k.pdfCount > 0;
-        const hasEmail = k.hasEmail;
-        const cls = !hasEmail ? 'no-email' : '';
-        if (hasPdf && hasEmail) canCreate = true;
-        html += '<div class="js-status-card ' + cls + '">';
-        html += '<div class="js-kyotaku-name">' + escapeHtml(k.name) + '</div>';
-        html += '<span class="js-pdf-count ' + (hasPdf ? 'has' : 'none') + '">';
-        html += 'PDF: ' + k.pdfCount + '件</span>';
-        html += '<span class="js-email-badge ' + (hasEmail ? 'ok' : 'ng') + '">';
-        html += hasEmail ? '✉️ メールアドレスあり' : '❌ メールアドレス未登録';
-        html += '</span>';
-        if (k.pdfs && k.pdfs.length > 0) {
-            html += '<div class="js-pdf-list">';
-            k.pdfs.forEach(p => { html += '・' + escapeHtml(p) + '<br>'; });
-            html += '</div>';
-        }
-        html += '</div>';
-    });
 
-    if (mailTargets.length === 0) {
-        html = '<p style="text-align:center; color:#a0aec0; padding:20px;">メール送信対象の居宅がありません</p>';
+    // サマリー
+    html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">';
+    html += '<div style="background:#ebf8ff;padding:8px 16px;border-radius:8px;font-weight:600;color:#3182ce;">✉️ メール ' + emailTargets.length + '件</div>';
+    html += '<div style="background:#fefcbf;padding:8px 16px;border-radius:8px;font-weight:600;color:#975a16;">📠 FAX ' + faxTargets.length + '件</div>';
+    html += '<div style="background:#f0fff4;padding:8px 16px;border-radius:8px;font-weight:600;color:#276749;">🚗 持参 ' + jisanTargets.length + '件</div>';
+    if (unknownTargets.length > 0) html += '<div style="background:#fff5f5;padding:8px 16px;border-radius:8px;font-weight:600;color:#c53030;">❓ 未設定 ' + unknownTargets.length + '件</div>';
+    html += '</div>';
+
+    // メール対象
+    if (emailTargets.length > 0) {
+        html += '<h4 style="color:#3182ce;margin:12px 0 8px;font-size:0.9rem;">✉️ メール送信</h4>';
+        emailTargets.forEach(k => {
+            const hasPdf = k.pdfCount > 0;
+            if (hasPdf && k.hasEmail) canCreate = true;
+            html += '<div class="js-status-card">';
+            html += '<div class="js-kyotaku-name">' + escapeHtml(k.kyotaku) + '</div>';
+            html += '<span class="js-pdf-count ' + (hasPdf ? 'has' : 'none') + '">PDF: ' + k.pdfCount + '件</span>';
+            html += '<span class="js-email-badge ok">✉️ ' + escapeHtml(k.email) + '</span>';
+            if (k.fileNames && k.fileNames.length > 0) {
+                html += '<div class="js-pdf-list">';
+                k.fileNames.forEach(p => { html += '・' + escapeHtml(p) + '<br>'; });
+                html += '</div>';
+            }
+            html += '</div>';
+        });
     }
+
+    // FAX対象
+    if (faxTargets.length > 0) {
+        html += '<h4 style="color:#975a16;margin:12px 0 8px;font-size:0.9rem;">📠 FAX送信</h4>';
+        faxTargets.forEach(k => {
+            const hasPdf = k.pdfCount > 0;
+            if (hasPdf && k.hasFax) canCreate = true;
+            html += '<div class="js-status-card" style="border-left-color:#d69e2e;">';
+            html += '<div class="js-kyotaku-name">' + escapeHtml(k.kyotaku) + '</div>';
+            html += '<span class="js-pdf-count ' + (hasPdf ? 'has' : 'none') + '">PDF: ' + k.pdfCount + '件</span>';
+            html += '<span class="js-email-badge jisan">📠 ' + escapeHtml(k.fax || 'FAX番号未登録') + '</span>';
+            if (k.fileNames && k.fileNames.length > 0) {
+                html += '<div class="js-pdf-list">';
+                k.fileNames.forEach(p => { html += '・' + escapeHtml(p) + '<br>'; });
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+    }
+
+    // 未設定
+    if (unknownTargets.length > 0) {
+        html += '<h4 style="color:#c53030;margin:12px 0 8px;font-size:0.9rem;">❓ 送付方法が未設定</h4>';
+        unknownTargets.forEach(k => {
+            html += '<div class="js-status-card no-email">';
+            html += '<div class="js-kyotaku-name">' + escapeHtml(k.kyotaku) + '</div>';
+            html += '<span class="js-pdf-count ' + (k.pdfCount > 0 ? 'has' : 'none') + '">PDF: ' + k.pdfCount + '件</span>';
+            html += '<span class="js-email-badge ng">❌ ケアマネ連絡先シートに登録してください</span>';
+            html += '</div>';
+        });
+    }
+
     list.innerHTML = html;
     document.getElementById('js-create-btn').disabled = !canCreate;
 
@@ -4963,10 +5005,10 @@ function jsRenderPreview() {
         let jhtml = '';
         jisanTargets.forEach(k => {
             jhtml += '<div class="js-jisan-card">';
-            jhtml += '<div class="js-jisan-name">🚗 ' + escapeHtml(k.name) + '</div>';
+            jhtml += '<div class="js-jisan-name">🚗 ' + escapeHtml(k.kyotaku) + '</div>';
             if (k.pdfCount > 0) {
                 jhtml += '<div class="js-jisan-pdfs">PDF ' + k.pdfCount + '件:';
-                if (k.pdfs) k.pdfs.forEach(p => { jhtml += ' ' + escapeHtml(p); });
+                if (k.fileNames) k.fileNames.forEach(p => { jhtml += ' ' + escapeHtml(p); });
                 jhtml += '</div>';
             } else {
                 jhtml += '<div class="js-jisan-pdfs" style="color:#e53e3e;">⚠️ PDFがまだ入っていません</div>';
@@ -4995,40 +5037,52 @@ async function jsCreateDrafts() {
         const res = await fetch(JS_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify({ action: 'createJissekiDrafts', yearMonth: jsSelectedMonth })
+            body: JSON.stringify({ action: 'create_drafts', yearMonth: jsSelectedMonth })
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
-        const results = data.results || [];
-        const success = results.filter(r => r.status === 'ok');
-        const skipped = results.filter(r => r.status === 'skipped');
-        const failed = results.filter(r => r.status === 'error');
+        const details = data.details || [];
+        const summary = data.summary || {};
+        const emailOk = details.filter(r => r.status === '成功' && r.method === 'メール');
+        const faxOk = details.filter(r => r.status === '成功' && r.method === 'FAX');
+        const skipped = details.filter(r => r.status === 'スキップ');
+        const failed = details.filter(r => r.status === 'エラー');
 
-        let msg = '✅ 下書き作成完了！\n\n';
-        msg += '成功: ' + success.length + '件';
-        if (skipped.length > 0) msg += ' / スキップ: ' + skipped.length + '件';
-        if (failed.length > 0) msg += ' / 失敗: ' + failed.length + '件';
-        msg += '\n\n';
-        if (success.length > 0) {
-            msg += '【下書き作成済み】\n';
-            success.forEach(r => { msg += '・' + r.kyotaku + '（PDF ' + r.pdfCount + '件）\n'; });
+        let msg = '✅ 送信処理完了！\n\n';
+        if (emailOk.length > 0) msg += '✉️ メール下書き: ' + emailOk.length + '件\n';
+        if (faxOk.length > 0) msg += '📠 FAX送信: ' + faxOk.length + '件\n';
+        if (skipped.length > 0) msg += '⏭️ スキップ: ' + skipped.length + '件\n';
+        if (failed.length > 0) msg += '❌ 失敗: ' + failed.length + '件\n';
+        msg += '\n';
+        if (emailOk.length > 0) {
+            msg += '【✉️ メール下書き作成済み】\n';
+            emailOk.forEach(r => { msg += '・' + r.kyotaku + ' → ' + r.dest + '（PDF ' + r.fileCount + '件）\n'; });
+            msg += '\n';
+        }
+        if (faxOk.length > 0) {
+            msg += '【📠 FAX送信済み】\n';
+            faxOk.forEach(r => { msg += '・' + r.kyotaku + ' → ' + r.dest + '（PDF ' + r.fileCount + '件）\n'; });
+            msg += '\n';
         }
         if (skipped.length > 0) {
-            msg += '\n【スキップ】\n';
+            msg += '【⏭️ スキップ】\n';
             skipped.forEach(r => { msg += '・' + r.kyotaku + '（' + r.reason + '）\n'; });
+            msg += '\n';
         }
         if (failed.length > 0) {
-            msg += '\n【失敗】\n';
+            msg += '【❌ 失敗】\n';
             failed.forEach(r => { msg += '・' + r.kyotaku + '（' + r.reason + '）\n'; });
+            msg += '\n';
         }
-        msg += '\n→ Gmailを開いて下書きを確認・送信してください';
+        if (emailOk.length > 0) msg += '→ Gmailを開いて下書きを確認・送信してください\n';
 
         resultBox.className = 'js-result-box success';
         resultBox.style.display = 'block';
         resultBox.style.whiteSpace = 'pre-wrap';
         resultBox.textContent = msg;
-        showToast('下書き ' + success.length + '件作成しました');
+        const total = emailOk.length + faxOk.length;
+        showToast('メール' + emailOk.length + '件 / FAX' + faxOk.length + '件 処理しました');
     } catch (e) {
         resultBox.className = 'js-result-box error';
         resultBox.style.display = 'block';
@@ -5036,7 +5090,7 @@ async function jsCreateDrafts() {
         showToast('下書き作成に失敗しました');
     } finally {
         btn.disabled = false;
-        btn.textContent = '📧 Gmailに下書き作成';
+        btn.textContent = '📧 メール下書き＋FAX送信';
     }
 }
 
@@ -5045,28 +5099,31 @@ async function jsFetchHistory() {
     wrap.innerHTML = '<p style="text-align:center; color:#718096; padding:20px;">読み込み中...</p>';
 
     try {
-        const url = JS_API_URL + '?action=getSendHistory';
+        const url = JS_API_URL + '?action=send_history';
         const res = await fetch(url);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
-        const rows = data.history || [];
+        const rows = data.sendHistory || [];
         if (rows.length === 0) {
             wrap.innerHTML = '<p style="text-align:center; color:#a0aec0; padding:20px;">送信記録はまだありません</p>';
             return;
         }
 
         let html = '<table class="js-history-table">';
-        html += '<thead><tr><th>日時</th><th>対象月</th><th>居宅名</th><th>PDF数</th><th>状態</th></tr></thead>';
+        html += '<thead><tr><th>日時</th><th>対象月</th><th>居宅名</th><th>方法</th><th>宛先</th><th>PDF数</th><th>状態</th></tr></thead>';
         html += '<tbody>';
         rows.forEach(r => {
-            const statusClass = r.status === 'ok' ? 'color:#38a169' : 'color:#e53e3e';
-            const statusText = r.status === 'ok' ? '✅ 成功' : (r.status === 'skipped' ? '⏭️ スキップ' : '❌ 失敗');
+            const statusClass = r.status === '成功' ? 'color:#38a169' : 'color:#e53e3e';
+            const statusText = r.status === '成功' ? '✅ 成功' : '❌ ' + r.status;
+            const methodIcon = r.method === 'FAX' ? '📠' : '✉️';
             html += '<tr>';
-            html += '<td>' + escapeHtml(r.timestamp || '') + '</td>';
+            html += '<td>' + escapeHtml(r.sentAt || '') + '</td>';
             html += '<td>' + escapeHtml(r.yearMonth || '') + '</td>';
             html += '<td>' + escapeHtml(r.kyotaku || '') + '</td>';
-            html += '<td>' + (r.pdfCount || 0) + '</td>';
+            html += '<td>' + methodIcon + ' ' + escapeHtml(r.method || '') + '</td>';
+            html += '<td style="font-size:0.8rem;">' + escapeHtml(r.email || '') + '</td>';
+            html += '<td>' + (r.fileCount || 0) + '</td>';
             html += '<td style="' + statusClass + '; font-weight:600;">' + statusText + '</td>';
             html += '</tr>';
         });
