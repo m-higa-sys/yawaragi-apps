@@ -396,6 +396,7 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <button class="btn-primary" onclick="saveData()">💾 保存</button>
   <button onclick="undo()" id="btn-undo" disabled>↩ 元に戻す</button>
   <button onclick="window.print()">🖨 印刷</button>
+  <button onclick="toggleConfirm()" id="btn-confirm" style="padding:3px 14px;font-size:12px;font-weight:900;border-radius:5px;cursor:pointer;font-family:inherit;border:2px solid #1976d2;background:#e3f2fd;color:#1565c0">📢 確定して公開</button>
   <button onclick="refreshUsers()" style="background:#e8f5e9;border-color:#4caf50;color:#2e7d32">🔄 利用者を更新</button>
   <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="background:#e3f2fd;border-color:#1976d2;color:#1565c0">📋 利用者台帳</button>
   <button onclick="restoreBackup()" style="background:#ffebee;border-color:#d32f2f;color:#b71c1c">🔙 復元</button>
@@ -915,6 +916,7 @@ function render(){
   app.innerHTML=h;
   autoSave();
   if(IS_READONLY) readonlyCleanup();
+  if(!IS_READONLY) updateConfirmBtn();
   }catch(e){
     console.error('render error:',e);
     document.getElementById('app').innerHTML='<div style="color:red;padding:20px;font-size:16px;font-weight:bold">⚠ 表示エラーが発生しました<br><br>エラー内容: '+e.message+'<br><br><button onclick="clearDay()" style="font-size:14px;padding:8px 16px">この日のデータをリセット</button></div>';
@@ -5197,9 +5199,58 @@ function selectCalDay(dateStr){
 // ═══════════════════════════════════════════════
 let _roCloudData = {}; // 閲覧専用モード用のクラウドデータキャッシュ
 
+// ═══════════════════════════════════════════════
+// 確定ボタン（スタッフへの公開制御）
+// ═══════════════════════════════════════════════
+function toggleConfirm(){
+  if(!D.date) return;
+  if(D.confirmed){
+    // 確定解除
+    if(!confirm(D.date+' の確定を解除しますか？\nスタッフの閲覧ページに表示されなくなります。')) return;
+    D.confirmed=false;
+  } else {
+    // 確定
+    D.confirmed=true;
+  }
+  autoSave();
+  updateConfirmBtn();
+  // 確定フラグを即クラウド同期
+  if(getOpsGasUrl()){
+    if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
+    cloudSyncOps();
+  }
+}
+
+function updateConfirmBtn(){
+  const btn=document.getElementById('btn-confirm');
+  if(!btn) return;
+  if(D.confirmed){
+    btn.textContent='✅ 確定済み（公開中）';
+    btn.style.background='#2e7d32';
+    btn.style.color='#fff';
+    btn.style.borderColor='#1b5e20';
+  } else {
+    btn.textContent='📢 確定して公開';
+    btn.style.background='#e3f2fd';
+    btn.style.color='#1565c0';
+    btn.style.borderColor='#1976d2';
+  }
+}
+
 function readonlyCleanup(){
   const app=document.getElementById('app');
   if(!app) return;
+  // 未確定の場合はデータを非表示にしてメッセージを出す
+  if(!D.confirmed){
+    app.innerHTML='<div style="text-align:center;padding:60px 20px;color:#666;font-size:16px">'
+      +'<div style="font-size:48px;margin-bottom:16px">📋</div>'
+      +'<div style="font-weight:900;font-size:18px;margin-bottom:8px">'
+      +(D.date?D.date.replace(/^\d{4}-/,'').replace('-','月')+'日':'')
+      +' のデータはまだ確定されていません</div>'
+      +'<div>社長が確定するまでお待ちください</div></div>';
+    roUpdateStatus('未確定');
+    return;
+  }
   // select → 選択中のテキストに置換
   app.querySelectorAll('select').forEach(sel=>{
     const span=document.createElement('span');
