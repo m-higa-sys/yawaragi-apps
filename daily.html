@@ -5435,14 +5435,11 @@ window.addEventListener('beforeprint',function(){
     inp.parentNode.insertBefore(span,inp.nextSibling);
     window._printSpans.push({el:inp,span:span});
   });
-  // ③ A4 1枚に収める自動縮小（iPad Safari対応）
-  // transform:scaleは崩れるのでzoomを使用（WebKit系で安定）
+  // ③ iPad Safari用：A4 1枚に収める自動縮小
+  // PCには影響なし（タッチデバイスのみ適用）
   window._printZoom=false;
-  var pageH=287*3.78; // A4(297mm)-余白(10mm)=287mm → px換算(≒1085px)
-  var h=app.scrollHeight;
-  if(h>pageH){
-    var z=Math.max(pageH/h,0.7); // 最小70%まで
-    app.style.zoom=z;
+  if(navigator.maxTouchPoints>1){
+    app.style.zoom='0.85';
     window._printZoom=true;
   }
 });
