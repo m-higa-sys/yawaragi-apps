@@ -5435,8 +5435,16 @@ window.addEventListener('beforeprint',function(){
     inp.parentNode.insertBefore(span,inp.nextSibling);
     window._printSpans.push({el:inp,span:span});
   });
-  // ③ transform:scaleは崩れの原因なので使わない
-  // CSS側でフォント・余白を圧縮して収める方式
+  // ③ A4 1枚に収める自動縮小（iPad Safari対応）
+  // transform:scaleは崩れるのでzoomを使用（WebKit系で安定）
+  window._printZoom=false;
+  var pageH=287*3.78; // A4(297mm)-余白(10mm)=287mm → px換算(≒1085px)
+  var h=app.scrollHeight;
+  if(h>pageH){
+    var z=Math.max(pageH/h,0.7); // 最小70%まで
+    app.style.zoom=z;
+    window._printZoom=true;
+  }
 });
 window.addEventListener('afterprint',function(){
   // span除去・元のselect/inputを復元
@@ -5445,6 +5453,11 @@ window.addEventListener('afterprint',function(){
     if(item.span.parentNode) item.span.parentNode.removeChild(item.span);
   });
   window._printSpans=[];
+  // zoom復元
+  if(window._printZoom){
+    document.getElementById('app').style.zoom='';
+    window._printZoom=false;
+  }
 });
 </script>
 </body>
