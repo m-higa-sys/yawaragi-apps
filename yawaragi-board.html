@@ -2090,6 +2090,9 @@ function toLocalDateStr(d) {
 const TB_STORAGE_KEY = 'yawaragi_taskboard';
 const TB_TODAY = toLocalDateStr();
 
+// GASから取得したタスク（スプレッドシート経由＝クロコ等から登録されたもの）
+let tbGasTasks = [];
+
 const TB_DEFAULT_TEMPLATES = [
     {name:'介護請求　利用者請求表のチェック', time:60},
     {name:'国保連請求', time:30},
@@ -2144,12 +2147,33 @@ let tbSelectedStaff = null;
 let tbSelectedPriority = 'high';
 
 function tbInit() {
+    tbFetchGasTasks(); // GASからタスクを取得
     tbRenderAll();
     // 1分ごとにボード更新（経過時間の更新用）
     setInterval(() => {
         const activeTab = document.querySelector('.tab-btn.active');
         if (activeTab && activeTab.dataset.tab === 'task') tbRenderBoard();
     }, 60000);
+    // 5分ごとにGASタスクを再取得
+    setInterval(() => tbFetchGasTasks(), 300000);
+}
+
+// GASからタスクを取得
+function tbFetchGasTasks() {
+    const url = ABS_BOARD_API_URL + '?callback=tbOnGasTasksLoaded&action=board_tasks&date=' + TB_TODAY;
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = () => { script.remove(); };
+    document.body.appendChild(script);
+}
+
+function tbOnGasTasksLoaded(resp) {
+    // JSONP callbackからscript要素を除去
+    document.querySelectorAll('script[src*="board_tasks"]').forEach(s => s.remove());
+    if (resp && resp.success && resp.boardTasks) {
+        tbGasTasks = resp.boardTasks;
+        tbRenderBoard();
+    }
 }
 
 function tbRenderAll() {
@@ -2227,11 +2251,36 @@ function tbAddTask() {
     tbRenderBoard();
 }
 
-// ボード表示
+// ボード表示（localStorage + GASタスクをマージ）
 function tbRenderBoard() {
     const grid = document.getElementById('task-board');
     const empty = document.getElementById('task-board-empty');
-    const staffWithTasks = [...new Set(tbData.tasks.map(t => t.staff))];
+
+    // localStorageタスクを統一形式に変換
+    const localTasks = tbData.tasks.map(t => ({
+        ...t,
+        done: !!t.done,
+        fromGas: false
+    }));
+
+    // GASタスクを統一形式に変換
+    const gasTasks = tbGasTasks.map(t => ({
+        id: t.id,
+        staff: t.staff,
+        name: t.name,
+        priority: t.priority || 'normal',
+        estimatedMin: t.estimatedMin,
+        startTime: t.registeredAt,
+        endTime: t.completedAt || null,
+        done: t.status === '完了',
+        source: t.source || 'クロコ',
+        fromGas: true,
+        gasRow: t.row
+    }));
+
+    // マージ（重複除去: GAS側IDとlocal側IDは形式が違うので重複しない）
+    const allTasks = [...localTasks, ...gasTasks];
+    const staffWithTasks = [...new Set(allTasks.map(t => t.staff))];
 
     if (staffWithTasks.length === 0) {
         grid.innerHTML = '';
@@ -2241,7 +2290,7 @@ function tbRenderBoard() {
     empty.style.display = 'none';
 
     const sorted = staffWithTasks.map(s => {
-        const tasks = tbData.tasks.filter(t => t.staff === s);
+        const tasks = allTasks.filter(t => t.staff === s);
         const remaining = tasks.filter(t => !t.done).length;
         return { name: s, tasks, remaining };
     }).sort((a, b) => b.remaining - a.remaining);
@@ -2277,16 +2326,18 @@ function tbRenderTaskCard(t) {
     }
     if (t.done && t.endTime) {
         const actual = Math.round((new Date(t.endTime) - new Date(t.startTime)) / 60000);
-        timeMeta += ` → 実績 ${tbFormatMin(actual)}`;
-        if (t.estimatedMin) {
-            const diff = actual - t.estimatedMin;
-            if (diff > 0) {
-                timeMeta += ` <span class="time-over">(+${diff}分)</span>`;
-            } else {
-                timeMeta += ` <span class="time-ok">(${diff}分)</span>`;
+        if (!isNaN(actual) && actual > 0) {
+            timeMeta += ` → 実績 ${tbFormatMin(actual)}`;
+            if (t.estimatedMin) {
+                const diff = actual - t.estimatedMin;
+                if (diff > 0) {
+                    timeMeta += ` <span class="time-over">(+${diff}分)</span>`;
+                } else {
+                    timeMeta += ` <span class="time-ok">(${diff}分)</span>`;
+                }
             }
         }
-    } else if (!t.done) {
+    } else if (!t.done && t.startTime) {
         const elapsed = Math.round((Date.now() - new Date(t.startTime)) / 60000);
         if (t.estimatedMin && elapsed > t.estimatedMin) {
             timeMeta += ` <span class="time-over">${elapsed - t.estimatedMin}分オーバー</span>`;
@@ -2295,19 +2346,30 @@ function tbRenderTaskCard(t) {
         }
     }
 
+    // GASタスク（クロコ等から登録）のバッジ
+    const sourceBadge = t.fromGas
+        ? `<span style="background:#805ad5;color:#fff;font-size:0.7rem;padding:1px 6px;border-radius:8px;margin-left:4px;">${tbEscapeHtml(t.source || 'クロコ')}</span>`
+        : '';
+
+    // GASタスクの操作はGAS経由
+    const idArg = t.fromGas ? `'${t.id}'` : t.id;
+    const completeFunc = t.fromGas ? 'tbCompleteGasTask' : 'tbCompleteTask';
+    const undoFunc = t.fromGas ? 'tbUndoGasTask' : 'tbUndoTask';
+    const deleteFunc = t.fromGas ? 'tbDeleteGasTask' : 'tbDeleteTask';
+
     return `
     <div class="task-card ${t.done ? 'task-done' : ''}">
         <div class="task-card-top">
-            <span class="task-card-name">${tbEscapeHtml(t.name)}</span>
-            <span class="task-card-priority ${t.priority}">${pLabel[t.priority]}</span>
+            <span class="task-card-name">${tbEscapeHtml(t.name)}${sourceBadge}</span>
+            <span class="task-card-priority ${t.priority}">${pLabel[t.priority] || '普通'}</span>
         </div>
         ${timeMeta ? `<div class="task-card-meta">${timeMeta}</div>` : ''}
         <div class="task-card-actions">
             ${t.done
-                ? `<button class="task-undo-btn" onclick="tbUndoTask(${t.id})">戻す</button>`
-                : `<button class="task-complete-btn" onclick="tbCompleteTask(${t.id})">完了</button>`
+                ? `<button class="task-undo-btn" onclick="${undoFunc}(${idArg})">戻す</button>`
+                : `<button class="task-complete-btn" onclick="${completeFunc}(${idArg})">完了</button>`
             }
-            <button class="task-delete-btn" onclick="tbDeleteTask(${t.id})">削除</button>
+            <button class="task-delete-btn" onclick="${deleteFunc}(${idArg})">削除</button>
         </div>
     </div>`;
 }
@@ -2353,6 +2415,44 @@ function tbClearAll() {
     tbData = tbGetDefault();
     tbRenderAll();
     showToast('タスクデータを全削除しました');
+}
+
+// ===== GASタスクの操作（スプレッドシート経由） =====
+function tbCompleteGasTask(id) {
+    fetch(ABS_BOARD_API_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete_board_task', id: id })
+    });
+    // 即座にローカル表示を更新
+    const t = tbGasTasks.find(t => t.id === id);
+    if (t) { t.status = '完了'; t.completedAt = new Date().toISOString(); }
+    tbRenderBoard();
+    showToast('タスク完了！');
+    // 数秒後にGASから再取得して同期
+    setTimeout(() => tbFetchGasTasks(), 3000);
+}
+
+function tbUndoGasTask(id) {
+    // GAS側にはundo APIがないのでローカルのみ更新 + 再取得で同期
+    const t = tbGasTasks.find(t => t.id === id);
+    if (t) { t.status = '未完了'; t.completedAt = ''; }
+    tbRenderBoard();
+    // 注: GAS側のステータスは変わらない。本格運用時は別途APIを追加
+    showToast('戻しました（画面のみ）');
+}
+
+function tbDeleteGasTask(id) {
+    fetch(ABS_BOARD_API_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_board_task', id: id })
+    });
+    tbGasTasks = tbGasTasks.filter(t => t.id !== id);
+    tbRenderBoard();
+    showToast('タスクを削除しました');
 }
 
 // テンプレート管理（データ管理タブ内）
