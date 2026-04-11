@@ -947,6 +947,47 @@
             #tab-jisseki-send { display: block !important; }
             .js-jisan-section { box-shadow: none; border: 1px solid #ccc; }
         }
+        /* ===== 今日のリマインドタブ ===== */
+        .rmd-header { padding: 12px 16px; background: #fffbeb; border-bottom: 2px solid #f6e05e; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .rmd-header h2 { font-size: 1.1rem; color: #744210; margin: 0; }
+        .rmd-header .rmd-date { font-size: 0.85rem; color: #975a16; }
+        .rmd-summary { display: flex; gap: 12px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
+        .rmd-summary-item { font-size: 0.85rem; padding: 4px 12px; border-radius: 20px; font-weight: 600; }
+        .rmd-summary-item.pending { background: #fed7d7; color: #c53030; }
+        .rmd-summary-item.done { background: #c6f6d5; color: #276749; }
+        .rmd-unit-section { margin: 8px 0; }
+        .rmd-unit-header { padding: 8px 16px; font-weight: 700; font-size: 0.9rem; border-left: 4px solid; }
+        .rmd-unit-header.am { background: #ebf8ff; border-color: #3182ce; color: #2a4365; }
+        .rmd-unit-header.pm { background: #faf5ff; border-color: #805ad5; color: #44337a; }
+        .rmd-user-row { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid #edf2f7; flex-wrap: wrap; gap: 6px; background: #fff; }
+        .rmd-user-row:hover { background: #f7fafc; }
+        .rmd-user-name { font-weight: 700; font-size: 0.95rem; min-width: 80px; margin-right: 8px; }
+        .rmd-user-care { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-right: 8px; }
+        .rmd-user-care.kaigo { background: #fed7d7; color: #c53030; }
+        .rmd-user-care.shien { background: #bee3f8; color: #2a4365; }
+        .rmd-tasks { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .rmd-task { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+        .rmd-task.pending { background: #fefcbf; color: #744210; border: 1.5px solid #ecc94b; }
+        .rmd-task.pending:hover { background: #fefce8; transform: scale(1.03); }
+        .rmd-task.done { background: #c6f6d5; color: #276749; border: 1.5px solid #68d391; }
+        .rmd-task.birthday { background: #fce4ec; color: #c62828; border: 1.5px solid #ef9a9a; }
+        .rmd-task.birthday.done { background: #c6f6d5; color: #276749; border: 1.5px solid #68d391; }
+        .rmd-empty { text-align: center; padding: 40px 16px; color: #a0aec0; font-size: 0.95rem; }
+        .rmd-no-task { text-align: center; padding: 24px 16px; color: #38a169; font-size: 1rem; font-weight: 700; }
+        /* リマインド入力ダイアログ */
+        .rmd-dialog-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 9999; justify-content: center; align-items: center; }
+        .rmd-dialog-overlay.show { display: flex; }
+        .rmd-dialog { background: #fff; border-radius: 16px; padding: 24px; width: 90%; max-width: 340px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .rmd-dialog h3 { font-size: 1rem; margin-bottom: 16px; color: #2d3748; }
+        .rmd-dialog input[type="number"] { width: 100%; padding: 12px; font-size: 1.2rem; border: 2px solid #e2e8f0; border-radius: 8px; text-align: center; margin-bottom: 12px; }
+        .rmd-dialog input[type="number"]:focus { border-color: #3182ce; outline: none; }
+        .rmd-dialog-btns { display: flex; gap: 8px; }
+        .rmd-dialog-btns button { flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
+        .rmd-dialog-btns .rmd-btn-ok { background: #38a169; color: #fff; }
+        .rmd-dialog-btns .rmd-btn-cancel { background: #e2e8f0; color: #4a5568; }
+        .rmd-filter-bar { display: flex; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e2e8f0; align-items: center; }
+        .rmd-filter-btn { padding: 4px 12px; border-radius: 16px; font-size: 0.8rem; font-weight: 600; border: 1.5px solid #cbd5e0; background: #fff; color: #4a5568; cursor: pointer; }
+        .rmd-filter-btn.active { background: #2c7a7b; color: #fff; border-color: #2c7a7b; }
     </style>
 </head>
 <body>
@@ -961,6 +1002,7 @@
 
 <div class="tab-bar">
     <button class="tab-btn active" data-tab="attendance">出席予定</button>
+    <button class="tab-btn" data-tab="remind" style="color:#d69e2e;">📋リマインド</button>
     <button class="tab-btn" data-tab="absence">欠席登録</button>
     <button class="tab-btn" data-tab="terminate" style="color:#c0392b;">中止管理</button>
     <button class="tab-btn" data-tab="jisseki">実績確認</button>
@@ -984,6 +1026,36 @@
     </div>
     <div id="att-content">
         <div class="att-loading">読み込み中...</div>
+    </div>
+</div>
+
+<!-- ===== 今日のリマインドタブ ===== -->
+<div id="tab-remind" class="tab-content">
+    <div class="rmd-header">
+        <h2>📋 今日のリマインド</h2>
+        <span class="rmd-date" id="rmd-date-label"></span>
+    </div>
+    <div class="rmd-summary" id="rmd-summary"></div>
+    <div class="rmd-filter-bar" id="rmd-filter-bar">
+        <span style="font-size:0.8rem;color:#718096;font-weight:600;">表示:</span>
+        <button class="rmd-filter-btn active" onclick="rmdSetFilter('all',this)">すべて</button>
+        <button class="rmd-filter-btn" onclick="rmdSetFilter('pending',this)">未実施のみ</button>
+    </div>
+    <div id="rmd-content">
+        <div class="rmd-empty">出席予定データを読み込んでから表示されます</div>
+    </div>
+</div>
+
+<!-- 数値入力ダイアログ -->
+<div class="rmd-dialog-overlay" id="rmd-dialog">
+    <div class="rmd-dialog">
+        <h3 id="rmd-dialog-title">体重を入力</h3>
+        <input type="number" id="rmd-dialog-input" step="0.1" placeholder="0.0">
+        <div id="rmd-dialog-hint" style="font-size:0.8rem;color:#718096;margin-bottom:12px;text-align:center;"></div>
+        <div class="rmd-dialog-btns">
+            <button class="rmd-btn-cancel" onclick="rmdCloseDialog()">キャンセル</button>
+            <button class="rmd-btn-ok" onclick="rmdSubmitDialog()">登録</button>
+        </div>
     </div>
 </div>
 
@@ -1623,6 +1695,7 @@ function setupTabs() {
                 // 長期休み一覧も再取得（再開予定日が更新されているかも）
                 if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
             }
+            if (btn.dataset.tab === 'remind') rmdLoad();
             if (btn.dataset.tab === 'task') tbRenderAll();
             if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
             if (btn.dataset.tab === 'jisseki' && absUserLoaded) jisLoad();
@@ -5132,6 +5205,529 @@ async function jsFetchHistory() {
     } catch (e) {
         wrap.innerHTML = '<p style="text-align:center; color:#e53e3e; padding:20px;">エラー: ' + e.message + '</p>';
     }
+}
+
+// ================================================================
+// ===== 今日のリマインド =====
+// ================================================================
+
+// 測定一覧GAS URL（誕生日・計画書開始月・利用開始日を取得）
+const RMD_MEASURE_GAS_URL = 'https://script.google.com/macros/s/AKfycbwqfudNXAiZ3E1RoD3MP0s2cjFajKk_94MvjnWoLUElYNEM32BUPbpGLEyVxUSDmjyW/exec';
+
+// localStorage キー
+const RMD_WEIGHT_KEY = 'yawaragi_weight_check';
+const RMD_ORAL_KEY = 'yawaragi_oral_check';
+const RMD_MEASURE_CHECK_KEY = 'yawaragi_monthly_checks';
+const RMD_BIRTHDAY_PHOTO_KEY = 'yawaragi_birthday_photo';
+
+// 状態
+let rmdMemberData = [];  // 測定一覧GASから取得した全利用者データ
+let rmdMemberLoaded = false;
+let rmdFilter = 'all'; // 'all' | 'pending'
+let rmdDialogState = { type: '', name: '', unit: '' };
+
+const RMD_MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
+const RMD_HEIGHT_MONTHS = ['4月', '7月', '10月', '1月'];
+
+function rmdGetFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function rmdGetMonthKey() {
+    return (new Date().getMonth() + 1) + '月';
+}
+
+function rmdGetYearMonth() {
+    const now = new Date();
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
+
+// 測定月判定（測定一覧アプリと同じロジック）
+function rmdIsMeasurementMonth(planStartStr, startDateStr) {
+    if (!planStartStr) return false;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const [pYear, pMonth] = planStartStr.split('-').map(Number);
+    const planStart = pYear * 12 + (pMonth - 1);
+    const selected = year * 12 + (month - 1);
+
+    if (startDateStr) {
+        const [sYear, sMonth] = startDateStr.split('-').map(Number);
+        if (!isNaN(sYear) && !isNaN(sMonth)) {
+            const startMonth = sYear * 12 + (sMonth - 1);
+            if (selected < startMonth) return false;
+            return (selected - startMonth) % 3 === 0;
+        }
+    }
+    const diff = selected - (planStart - 1);
+    if (diff < 0) return false;
+    return diff % 3 === 0;
+}
+
+// 各アプリのlocalStorageからデータを読み取り
+function rmdReadWeightData() {
+    try {
+        const raw = localStorage.getItem(RMD_WEIGHT_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch {}
+    return { weights: {}, heights: {} };
+}
+
+function rmdReadOralData() {
+    try {
+        const raw = localStorage.getItem(RMD_ORAL_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch {}
+    return { checks: {} };
+}
+
+function rmdReadMeasureChecks() {
+    try {
+        const raw = localStorage.getItem(RMD_MEASURE_CHECK_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+}
+
+function rmdReadBirthdayPhotos() {
+    try {
+        const raw = localStorage.getItem(RMD_BIRTHDAY_PHOTO_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+}
+
+function rmdSaveBirthdayPhotos(data) {
+    localStorage.setItem(RMD_BIRTHDAY_PHOTO_KEY, JSON.stringify(data));
+}
+
+// 利用者データを取得（測定一覧GASから）
+function rmdLoadMemberData(callback) {
+    if (rmdMemberLoaded && rmdMemberData.length > 0) {
+        callback();
+        return;
+    }
+    // キャッシュ確認
+    try {
+        const cached = localStorage.getItem('yawaragi_rmd_members_cache');
+        if (cached) {
+            rmdMemberData = JSON.parse(cached);
+            rmdMemberLoaded = true;
+            callback();
+            // 裏で最新データも取得
+        }
+    } catch {}
+
+    const cbName = 'rmdMemberCallback_' + Date.now();
+    window[cbName] = function(data) {
+        delete window[cbName];
+        const s = document.getElementById('rmd-member-script');
+        if (s) s.remove();
+        if (data && Array.isArray(data)) {
+            rmdMemberData = data;
+            rmdMemberLoaded = true;
+            try { localStorage.setItem('yawaragi_rmd_members_cache', JSON.stringify(data)); } catch {}
+            callback();
+        } else if (!rmdMemberLoaded) {
+            callback();
+        }
+    };
+    const script = document.createElement('script');
+    script.id = 'rmd-member-script';
+    script.src = RMD_MEASURE_GAS_URL + '?callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+        delete window[cbName];
+        if (!rmdMemberLoaded) callback();
+    };
+    document.body.appendChild(script);
+}
+
+// 利用者ごとのタスク判定
+function rmdGetUserTasks(userName, userCare) {
+    const fy = rmdGetFiscalYear();
+    const monthKey = rmdGetMonthKey();
+    const yearMonth = rmdGetYearMonth();
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const tasks = [];
+
+    // 利用者の追加情報を取得
+    const memberInfo = rmdMemberData.find(m => m.name === userName) || {};
+    const isKaigo = (userCare && userCare.includes('介護')) || (memberInfo.care && String(memberInfo.care).includes('介護'));
+
+    // ① 体重測定（毎月）
+    const weightData = rmdReadWeightData();
+    const hasWeight = weightData.weights && weightData.weights[fy] && weightData.weights[fy][userName] && weightData.weights[fy][userName][monthKey];
+    tasks.push({
+        type: 'weight',
+        label: '体重',
+        icon: '⚖️',
+        done: !!hasWeight,
+        value: hasWeight || null
+    });
+
+    // ② 身長測定（4,7,10,1月のみ）
+    if (RMD_HEIGHT_MONTHS.includes(monthKey)) {
+        const hasHeight = weightData.heights && weightData.heights[fy] && weightData.heights[fy][userName] && weightData.heights[fy][userName][monthKey];
+        tasks.push({
+            type: 'height',
+            label: '身長',
+            icon: '📏',
+            done: !!hasHeight,
+            value: hasHeight || null
+        });
+    }
+
+    // ③ 口腔チェック（毎月）
+    const oralData = rmdReadOralData();
+    const oralKey = monthKey + '_1回目';
+    const hasOral = oralData.checks && oralData.checks[fy] && oralData.checks[fy][userName] && oralData.checks[fy][userName][oralKey];
+    tasks.push({
+        type: 'oral',
+        label: '口腔',
+        icon: '🦷',
+        done: !!hasOral,
+        value: hasOral || null
+    });
+
+    // ④ 体力測定（3ヶ月サイクル）
+    if (memberInfo.planStart && rmdIsMeasurementMonth(memberInfo.planStart, memberInfo.startDate)) {
+        const nameKey = userName.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+        const unitPrefix = (memberInfo.unit === 'PM' ? 'measure_pm' : 'measure_am');
+        const checkKey = yearMonth + '_' + unitPrefix + '_' + nameKey + '_input';
+        const measureChecks = rmdReadMeasureChecks();
+        const hasMeasure = !!measureChecks[checkKey];
+        tasks.push({
+            type: 'measure',
+            label: '体力測定',
+            icon: '💪',
+            done: hasMeasure,
+            value: hasMeasure ? measureChecks[checkKey] : null
+        });
+    }
+
+    // ⑤ 誕生日の写真撮影（誕生月）
+    if (memberInfo.birthday) {
+        const bParts = String(memberInfo.birthday).match(/(\d{1,2})\//);
+        if (bParts && parseInt(bParts[1]) === currentMonth) {
+            const photoData = rmdReadBirthdayPhotos();
+            const photoKey = now.getFullYear() + '_' + userName;
+            tasks.push({
+                type: 'birthday',
+                label: '誕生日📸',
+                icon: '🎂',
+                done: !!photoData[photoKey],
+                value: photoData[photoKey] || null,
+                birthdayDate: memberInfo.birthday
+            });
+        }
+    }
+
+    return tasks;
+}
+
+function rmdSetFilter(filter, btn) {
+    rmdFilter = filter;
+    document.querySelectorAll('#rmd-filter-bar .rmd-filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    rmdRender();
+}
+
+// メイン読み込み
+function rmdLoad() {
+    const content = document.getElementById('rmd-content');
+
+    // 出席予定データがなければ先に取得
+    if (!attLastData || (attLastData.am.length === 0 && attLastData.pm.length === 0)) {
+        content.innerHTML = '<div class="rmd-empty">出席予定タブを一度開いてデータを読み込んでください</div>';
+        return;
+    }
+
+    content.innerHTML = '<div class="rmd-empty">リマインドデータを読み込み中...</div>';
+
+    // 測定一覧GASからメンバーデータを取得してからレンダリング
+    rmdLoadMemberData(function() {
+        rmdRender();
+    });
+}
+
+function rmdRender() {
+    const content = document.getElementById('rmd-content');
+    const summaryEl = document.getElementById('rmd-summary');
+    const dateLabel = document.getElementById('rmd-date-label');
+
+    const now = new Date();
+    const dow = ['日','月','火','水','木','金','土'][now.getDay()];
+    dateLabel.textContent = (now.getMonth()+1) + '月' + now.getDate() + '日（' + dow + '）';
+
+    if (!attLastData || (attLastData.am.length === 0 && attLastData.pm.length === 0)) {
+        content.innerHTML = '<div class="rmd-empty">今日の出席予定がありません</div>';
+        summaryEl.innerHTML = '';
+        return;
+    }
+
+    // 出席者のみ対象（欠席者は除外）
+    const amPresent = attLastData.am.filter(u => u.status === '出席');
+    const pmPresent = attLastData.pm.filter(u => u.status === '出席');
+
+    let totalPending = 0;
+    let totalDone = 0;
+    let html = '';
+
+    // 午前
+    if (amPresent.length > 0) {
+        html += '<div class="rmd-unit-section">';
+        html += '<div class="rmd-unit-header am">午前の部（' + amPresent.length + '名）</div>';
+        amPresent.forEach(u => {
+            const result = rmdRenderUserRow(u);
+            html += result.html;
+            totalPending += result.pending;
+            totalDone += result.done;
+        });
+        html += '</div>';
+    }
+
+    // 午後
+    if (pmPresent.length > 0) {
+        html += '<div class="rmd-unit-section">';
+        html += '<div class="rmd-unit-header pm">午後の部（' + pmPresent.length + '名）</div>';
+        pmPresent.forEach(u => {
+            const result = rmdRenderUserRow(u);
+            html += result.html;
+            totalPending += result.pending;
+            totalDone += result.done;
+        });
+        html += '</div>';
+    }
+
+    // サマリー
+    if (totalPending === 0 && totalDone > 0) {
+        summaryEl.innerHTML = '<span class="rmd-summary-item done">✅ 今日のタスクはすべて完了！</span>';
+    } else {
+        summaryEl.innerHTML =
+            '<span class="rmd-summary-item pending">未実施: ' + totalPending + '件</span>' +
+            '<span class="rmd-summary-item done">完了: ' + totalDone + '件</span>';
+    }
+
+    if (html === '') {
+        html = '<div class="rmd-empty">今日出席する利用者がいません</div>';
+    }
+
+    content.innerHTML = html;
+}
+
+function rmdRenderUserRow(u) {
+    const tasks = rmdGetUserTasks(u.name, u.care);
+    let pending = 0;
+    let done = 0;
+
+    const taskHtmlArr = [];
+    tasks.forEach(t => {
+        if (t.done) {
+            done++;
+            if (rmdFilter === 'pending') return; // フィルタで非表示
+            if (t.type === 'weight' || t.type === 'height') {
+                taskHtmlArr.push('<span class="rmd-task done">' + t.icon + ' ' + t.label + ' ' + t.value + (t.type === 'weight' ? 'kg' : 'cm') + '</span>');
+            } else {
+                taskHtmlArr.push('<span class="rmd-task done">' + t.icon + ' ' + t.label + ' ✅</span>');
+            }
+        } else {
+            pending++;
+            if (t.type === 'weight') {
+                taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdOpenWeightDialog(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
+            } else if (t.type === 'height') {
+                taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdOpenHeightDialog(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
+            } else if (t.type === 'oral') {
+                taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdToggleOral(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
+            } else if (t.type === 'measure') {
+                taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdToggleMeasure(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
+            } else if (t.type === 'birthday') {
+                taskHtmlArr.push('<button class="rmd-task birthday" onclick="rmdToggleBirthday(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.birthdayDate + '</button>');
+            }
+        }
+    });
+
+    // フィルター: 未実施のみモードで未実施がない場合は行ごと非表示
+    if (rmdFilter === 'pending' && pending === 0) {
+        return { html: '', pending: 0, done: done };
+    }
+
+    // タスクがそもそも0個の場合（全部対象外）
+    if (tasks.length === 0) {
+        return { html: '', pending: 0, done: 0 };
+    }
+
+    const careClass = (u.care && u.care.includes('介護')) ? 'kaigo' : 'shien';
+    const careLabel = (u.care && u.care.includes('介護')) ? '介護' : '支援';
+
+    let html = '<div class="rmd-user-row">';
+    html += '<span class="rmd-user-name">' + u.name + '</span>';
+    if (u.care) html += '<span class="rmd-user-care ' + careClass + '">' + careLabel + '</span>';
+    html += '<div class="rmd-tasks">' + taskHtmlArr.join('') + '</div>';
+    html += '</div>';
+
+    return { html: html, pending: pending, done: done };
+}
+
+// ========== 入力アクション ==========
+
+// 体重入力ダイアログ
+function rmdOpenWeightDialog(name) {
+    rmdDialogState = { type: 'weight', name: name };
+    document.getElementById('rmd-dialog-title').textContent = name + 'さんの体重';
+    document.getElementById('rmd-dialog-input').value = '';
+    document.getElementById('rmd-dialog-input').placeholder = '例: 55.5';
+    document.getElementById('rmd-dialog-input').step = '0.1';
+    // 前回値をヒントに
+    const fy = rmdGetFiscalYear();
+    const monthKey = rmdGetMonthKey();
+    const wData = rmdReadWeightData();
+    let hint = '';
+    if (wData.weights && wData.weights[fy] && wData.weights[fy][name]) {
+        const mi = RMD_MONTHS.indexOf(monthKey);
+        for (let i = mi - 1; i >= 0; i--) {
+            const prev = wData.weights[fy][name][RMD_MONTHS[i]];
+            if (prev) { hint = '前回（' + RMD_MONTHS[i] + '）: ' + prev + 'kg'; break; }
+        }
+    }
+    document.getElementById('rmd-dialog-hint').textContent = hint;
+    document.getElementById('rmd-dialog').classList.add('show');
+    setTimeout(() => document.getElementById('rmd-dialog-input').focus(), 100);
+}
+
+// 身長入力ダイアログ
+function rmdOpenHeightDialog(name) {
+    rmdDialogState = { type: 'height', name: name };
+    document.getElementById('rmd-dialog-title').textContent = name + 'さんの身長';
+    document.getElementById('rmd-dialog-input').value = '';
+    document.getElementById('rmd-dialog-input').placeholder = '例: 155.0';
+    document.getElementById('rmd-dialog-input').step = '0.1';
+    const fy = rmdGetFiscalYear();
+    const hData = rmdReadWeightData();
+    let hint = '';
+    if (hData.heights && hData.heights[fy] && hData.heights[fy][name]) {
+        const vals = hData.heights[fy][name];
+        for (const mk of RMD_HEIGHT_MONTHS) {
+            if (vals[mk]) { hint = '前回（' + mk + '）: ' + vals[mk] + 'cm'; break; }
+        }
+    }
+    document.getElementById('rmd-dialog-hint').textContent = hint;
+    document.getElementById('rmd-dialog').classList.add('show');
+    setTimeout(() => document.getElementById('rmd-dialog-input').focus(), 100);
+}
+
+function rmdCloseDialog() {
+    document.getElementById('rmd-dialog').classList.remove('show');
+}
+
+function rmdSubmitDialog() {
+    const val = parseFloat(document.getElementById('rmd-dialog-input').value);
+    if (isNaN(val) || val <= 0) {
+        alert('正しい数値を入力してください');
+        return;
+    }
+    const name = rmdDialogState.name;
+    const fy = rmdGetFiscalYear();
+    const monthKey = rmdGetMonthKey();
+
+    if (rmdDialogState.type === 'weight') {
+        rmdSaveWeight(name, fy, monthKey, val);
+    } else if (rmdDialogState.type === 'height') {
+        rmdSaveHeight(name, fy, monthKey, val);
+    }
+    rmdCloseDialog();
+    rmdRender();
+}
+
+// 体重を保存（体重チェックアプリと同じlocalStorage＋クラウド同期）
+function rmdSaveWeight(name, fy, monthKey, val) {
+    const data = rmdReadWeightData();
+    if (!data.weights) data.weights = {};
+    if (!data.weights[fy]) data.weights[fy] = {};
+    if (!data.weights[fy][name]) data.weights[fy][name] = {};
+    data.weights[fy][name][monthKey] = val;
+    localStorage.setItem(RMD_WEIGHT_KEY, JSON.stringify(data));
+    // クラウド同期
+    rmdSyncWeight(data);
+}
+
+// 身長を保存
+function rmdSaveHeight(name, fy, monthKey, val) {
+    const data = rmdReadWeightData();
+    if (!data.heights) data.heights = {};
+    if (!data.heights[fy]) data.heights[fy] = {};
+    if (!data.heights[fy][name]) data.heights[fy][name] = {};
+    data.heights[fy][name][monthKey] = val;
+    localStorage.setItem(RMD_WEIGHT_KEY, JSON.stringify(data));
+    rmdSyncWeight(data);
+}
+
+// 体重チェックアプリのクラウド同期
+const RMD_WEIGHT_SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+
+function rmdSyncWeight(data) {
+    try {
+        fetch(RMD_WEIGHT_SYNC_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'weight', data: { users: data.users || [], weights: data.weights, heights: data.heights } })
+        }).catch(function() {});
+    } catch {}
+}
+
+// 口腔チェックを保存
+function rmdToggleOral(name) {
+    const fy = rmdGetFiscalYear();
+    const monthKey = rmdGetMonthKey();
+    const oralKey = monthKey + '_1回目';
+    const data = rmdReadOralData();
+    if (!data.checks) data.checks = {};
+    if (!data.checks[fy]) data.checks[fy] = {};
+    if (!data.checks[fy][name]) data.checks[fy][name] = {};
+    const now = new Date();
+    data.checks[fy][name][oralKey] = (now.getMonth() + 1) + '/' + now.getDate();
+    localStorage.setItem(RMD_ORAL_KEY, JSON.stringify(data));
+    // クラウド同期
+    try {
+        fetch(RMD_WEIGHT_SYNC_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'oral', data: { users: data.users || [], checks: data.checks } })
+        }).catch(function() {});
+    } catch {}
+    rmdRender();
+}
+
+// 体力測定チェックを保存
+function rmdToggleMeasure(name) {
+    const yearMonth = rmdGetYearMonth();
+    const memberInfo = rmdMemberData.find(m => m.name === name) || {};
+    const nameKey = name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const unitPrefix = (memberInfo.unit === 'PM' ? 'measure_pm' : 'measure_am');
+    const checkKey = yearMonth + '_' + unitPrefix + '_' + nameKey + '_input';
+    const checks = rmdReadMeasureChecks();
+    const now = new Date();
+    checks[checkKey] = (now.getMonth() + 1) + '/' + now.getDate();
+    localStorage.setItem(RMD_MEASURE_CHECK_KEY, JSON.stringify(checks));
+    rmdRender();
+}
+
+// 誕生日写真チェック
+function rmdToggleBirthday(name) {
+    const data = rmdReadBirthdayPhotos();
+    const key = new Date().getFullYear() + '_' + name;
+    if (data[key]) {
+        delete data[key];
+    } else {
+        const now = new Date();
+        data[key] = (now.getMonth() + 1) + '/' + now.getDate();
+    }
+    rmdSaveBirthdayPhotos(data);
+    rmdRender();
 }
 
 // ========== 初期化 ==========
