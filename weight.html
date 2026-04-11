@@ -429,6 +429,7 @@
         <div class="legend-item"><div class="legend-color" style="background:#e3f2fd;">kg</div> 入力済</div>
         <div class="legend-item"><div class="legend-color" style="background:#ffebee;"></div> 今月未入力</div>
         <div class="legend-item"><div class="legend-color"><span style="color:#f44336;">↑</span></div> ±2kg以上</div>
+        <div class="legend-item"><div class="legend-color"><span style="font-size:11px;">📏</span></div> 身長入力済</div>
     </div>
 </div>
 
@@ -468,6 +469,14 @@
         <h2 id="weightModalTitle">体重入力</h2>
         <p id="weightModalInfo"></p>
         <input type="number" class="weight-input" id="weightInput" placeholder="例: 65.5" step="0.1" min="20" max="200" inputmode="decimal">
+        <div id="heightSection" style="margin-top:12px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                <span style="font-weight:bold; color:#4CAF50; font-size:15px;">📏 身長（3ヶ月に1回）</span>
+                <span id="heightMonthBadge" style="background:#4CAF50; color:white; padding:2px 8px; border-radius:10px; font-size:12px;">測定月</span>
+            </div>
+            <input type="number" class="weight-input" id="heightInput" placeholder="例: 155.0" step="0.1" min="100" max="220" inputmode="decimal" style="border-color:#4CAF50; font-size:24px; padding:12px;">
+            <div id="bmiDisplay" style="margin-top:6px; text-align:center; font-size:16px; color:#666;"></div>
+        </div>
         <div class="btn-group">
             <button class="btn btn-blue" onclick="saveWeight()">保存</button>
             <button class="btn btn-red" onclick="clearWeight()">削除</button>
@@ -524,8 +533,12 @@ const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月
 let appData = {
     users: [],       // [{name, furigana, days:'', ampm:''}]
     weights: {},     // { "年度": { "ユーザー名": { "4月": 65.5, ... } } }
+    heights: {},     // { "年度": { "ユーザー名": { "4月": 155.0, ... } } }
     currentYear: getCurrentFiscalYear()
 };
+
+// 身長測定月（3ヶ月ごと：4月・7月・10月・1月）
+const HEIGHT_MONTHS = ['4月', '7月', '10月', '1月'];
 
 let editingUser = '';
 let editingMonth = '';
@@ -591,7 +604,7 @@ function cloudSync() {
         try {
             await fetch(SYNC_URL, {
                 method: 'POST', mode: 'no-cors',
-                body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: appData.weights } }),
+                body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: appData.weights, heights: appData.heights } }),
                 keepalive: true
             });
             console.log('☁️ 体重データ同期完了');
@@ -619,6 +632,22 @@ async function cloudLoad() {
                 });
             });
         }
+        // 身長データもマージ
+        if (cloud && cloud.heights) {
+            Object.keys(cloud.heights).forEach(function(fy) {
+                if (!appData.heights[fy]) appData.heights[fy] = {};
+                Object.keys(cloud.heights[fy]).forEach(function(name) {
+                    if (!appData.heights[fy][name]) appData.heights[fy][name] = {};
+                    Object.keys(cloud.heights[fy][name]).forEach(function(mk) {
+                        var val = cloud.heights[fy][name][mk];
+                        if (val !== undefined && val !== null && val !== '' &&
+                            (appData.heights[fy][name][mk] === undefined || appData.heights[fy][name][mk] === null || appData.heights[fy][name][mk] === '')) {
+                            appData.heights[fy][name][mk] = val;
+                        }
+                    });
+                });
+            });
+        }
         if (cloud && cloud.users && cloud.users.length > 0 && appData.users.length === 0) {
             appData.users = cloud.users;
         }
@@ -635,13 +664,14 @@ function loadData() {
             const p = JSON.parse(saved);
             appData.users = p.users || [];
             appData.weights = p.weights || {};
+            appData.heights = p.heights || {};
         }
     } catch(e) { console.error('読込エラー:', e); }
 }
 
 function saveData() {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, weights: appData.weights }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, weights: appData.weights, heights: appData.heights }));
         cloudSync();
     } catch(e) { console.error('保存エラー:', e); }
 }
@@ -848,9 +878,15 @@ function renderTable() {
         html += `<td class="group-cell"></td>`;
         html += `<td class="name-cell clickable" onclick="openGraph('${escapeAttr(user.name)}')">${escapeHtml(user.name)}</td>`;
 
+        // 身長データ準備
+        if (!appData.heights[year]) appData.heights[year] = {};
+        if (!appData.heights[year][user.name]) appData.heights[year][user.name] = {};
+        const heightData = appData.heights[year][user.name];
+
         for (let mi = 0; mi < MONTHS.length; mi++) {
             const m = MONTHS[mi];
             const weight = yearData[user.name][m];
+            const height = heightData[m];
             let cls = 'weight-cell month-border';
             let content = '';
 
@@ -878,8 +914,21 @@ function renderTable() {
                     else if (parseFloat(diff) < 0) { arrow = '↓' + diff; changeClass = absDiff >= 2 ? 'alert' : 'down'; }
                     content += `<span class="weight-change ${changeClass}">${arrow}kg</span>`;
                 }
+
+                // BMI表示（身長データがあれば）
+                const nearestHeight = height || getNearestHeight(user.name, year, mi);
+                if (nearestHeight) {
+                    const hm = nearestHeight / 100;
+                    const bmi = (weight / (hm * hm)).toFixed(1);
+                    content += `<span style="font-size:10px; display:block; color:#888;">BMI ${bmi}</span>`;
+                }
             } else {
                 if (m === currentMonthLabel && isCurrentYear) cls += ' highlight-undone';
+            }
+
+            // 身長が入力されている月は緑のドットを表示
+            if (height) {
+                content += `<span style="position:absolute; top:2px; right:3px; font-size:9px; color:#4CAF50;" title="${height}cm">📏</span>`;
             }
 
             html += `<td class="${cls}" onclick="openWeightInput('${escapeAttr(user.name)}','${m}')">${content}</td>`;
@@ -920,8 +969,93 @@ function openWeightInput(userName, month) {
     }
     document.getElementById('weightModalInfo').textContent = prevInfo;
 
+    // 身長セクション
+    const isHeightMonth = HEIGHT_MONTHS.includes(month);
+    const heightSection = document.getElementById('heightSection');
+    const heightInput = document.getElementById('heightInput');
+    const badge = document.getElementById('heightMonthBadge');
+
+    if (isHeightMonth) {
+        heightSection.style.display = 'block';
+        badge.textContent = '今月は測定月！';
+        badge.style.background = '#4CAF50';
+    } else {
+        // 測定月以外でも入力は可能（表示はするが目立たせない）
+        heightSection.style.display = 'block';
+        badge.textContent = '測定月以外';
+        badge.style.background = '#9e9e9e';
+    }
+
+    // 身長の既存データを表示
+    if (!appData.heights[year]) appData.heights[year] = {};
+    if (!appData.heights[year][userName]) appData.heights[year][userName] = {};
+    const currentHeight = appData.heights[year][userName][month];
+    heightInput.value = (currentHeight !== undefined && currentHeight !== null && currentHeight !== '') ? currentHeight : '';
+
+    // 直近の身長を参考表示
+    const lastHeight = getLastHeight(userName, year, mi);
+    if (lastHeight.value) {
+        heightInput.placeholder = `前回: ${lastHeight.value}cm（${lastHeight.month}）`;
+    } else {
+        heightInput.placeholder = '例: 155.0';
+    }
+
+    updateBmiDisplay();
+
     document.getElementById('weightModal').classList.add('active');
     setTimeout(() => input.focus(), 100);
+}
+
+// 直近の身長を取得
+function getLastHeight(userName, year, currentMi) {
+    // 現在年度の前の月から探す
+    for (let i = currentMi - 1; i >= 0; i--) {
+        const h = appData.heights[year]?.[userName]?.[MONTHS[i]];
+        if (h) return { value: h, month: MONTHS[i] };
+    }
+    // 前年度の3月から遡る
+    const prevYear = year - 1;
+    for (let i = MONTHS.length - 1; i >= 0; i--) {
+        const h = appData.heights[prevYear]?.[userName]?.[MONTHS[i]];
+        if (h) return { value: h, month: MONTHS[i] + '(前年度)' };
+    }
+    return { value: null, month: '' };
+}
+
+// 直近の身長を数値で取得（テーブル表示用）
+function getNearestHeight(userName, year, currentMi) {
+    // 同年度の前の月から
+    for (let i = currentMi - 1; i >= 0; i--) {
+        const h = appData.heights[year]?.[userName]?.[MONTHS[i]];
+        if (h) return h;
+    }
+    // 前年度
+    for (let i = MONTHS.length - 1; i >= 0; i--) {
+        const h = appData.heights[year - 1]?.[userName]?.[MONTHS[i]];
+        if (h) return h;
+    }
+    return null;
+}
+
+// BMIリアルタイム計算
+function updateBmiDisplay() {
+    const w = parseFloat(document.getElementById('weightInput').value);
+    const h = parseFloat(document.getElementById('heightInput').value);
+    const display = document.getElementById('bmiDisplay');
+
+    if (!isNaN(w) && !isNaN(h) && h > 0) {
+        const hm = h / 100;
+        const bmi = (w / (hm * hm)).toFixed(1);
+        let label = '';
+        let color = '#666';
+        if (bmi < 18.5) { label = '低体重'; color = '#2196F3'; }
+        else if (bmi < 25) { label = '普通体重'; color = '#4CAF50'; }
+        else if (bmi < 30) { label = '肥満(1度)'; color = '#FF9800'; }
+        else { label = '肥満(2度以上)'; color = '#f44336'; }
+        display.innerHTML = `<strong style="color:${color}; font-size:20px;">BMI: ${bmi}</strong> <span style="font-size:14px;">(${label})</span>`;
+    } else {
+        display.innerHTML = '';
+    }
 }
 
 function closeWeightModal() {
@@ -929,25 +1063,59 @@ function closeWeightModal() {
 }
 
 function saveWeight() {
-    const val = parseFloat(document.getElementById('weightInput').value);
-    if (isNaN(val) || val < 20 || val > 200) {
+    const weightVal = parseFloat(document.getElementById('weightInput').value);
+    const heightVal = parseFloat(document.getElementById('heightInput').value);
+    const hasWeight = !isNaN(weightVal);
+    const hasHeight = !isNaN(heightVal);
+
+    if (!hasWeight && !hasHeight) {
+        alert('体重または身長を入力してください');
+        return;
+    }
+    if (hasWeight && (weightVal < 20 || weightVal > 200)) {
         alert('体重は20〜200kgの範囲で入力してください');
         return;
     }
+    if (hasHeight && (heightVal < 100 || heightVal > 220)) {
+        alert('身長は100〜220cmの範囲で入力してください');
+        return;
+    }
+
     const year = appData.currentYear;
-    if (!appData.weights[year]) appData.weights[year] = {};
-    if (!appData.weights[year][editingUser]) appData.weights[year][editingUser] = {};
-    appData.weights[year][editingUser][editingMonth] = val;
+
+    // 体重保存
+    if (hasWeight) {
+        if (!appData.weights[year]) appData.weights[year] = {};
+        if (!appData.weights[year][editingUser]) appData.weights[year][editingUser] = {};
+        appData.weights[year][editingUser][editingMonth] = weightVal;
+    }
+
+    // 身長保存
+    if (hasHeight) {
+        if (!appData.heights[year]) appData.heights[year] = {};
+        if (!appData.heights[year][editingUser]) appData.heights[year][editingUser] = {};
+        appData.heights[year][editingUser][editingMonth] = heightVal;
+    }
+
     saveData();
     closeWeightModal();
     renderTable();
 }
 
 function clearWeight() {
-    if (!confirm('この月の体重データを削除しますか？')) return;
     const year = appData.currentYear;
+    const hasWeight = appData.weights[year]?.[editingUser]?.[editingMonth];
+    const hasHeight = appData.heights[year]?.[editingUser]?.[editingMonth];
+    const msg = hasWeight && hasHeight ? 'この月の体重・身長データを削除しますか？' :
+                hasHeight ? 'この月の身長データを削除しますか？' :
+                'この月の体重データを削除しますか？';
+    if (!confirm(msg)) return;
+
     if (appData.weights[year]?.[editingUser]) {
         delete appData.weights[year][editingUser][editingMonth];
+    }
+    if (appData.heights[year]?.[editingUser]) {
+        delete appData.heights[year][editingUser][editingMonth];
     }
     saveData();
     closeWeightModal();
@@ -955,6 +1123,12 @@ function clearWeight() {
 }
 
 document.getElementById('weightInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') saveWeight();
+    if (e.key === 'Escape') closeWeightModal();
+});
+document.getElementById('weightInput').addEventListener('input', updateBmiDisplay);
+document.getElementById('heightInput').addEventListener('input', updateBmiDisplay);
+document.getElementById('heightInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') saveWeight();
     if (e.key === 'Escape') closeWeightModal();
 });
@@ -1013,7 +1187,7 @@ function exportJson() {
     const data = {
         type: 'yawaragi_weight_check', version: 1,
         exportDate: new Date().toISOString(),
-        users: appData.users, weights: appData.weights
+        users: appData.users, weights: appData.weights, heights: appData.heights
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1037,6 +1211,7 @@ function handleJsonFile(file) {
             if (confirm('現在のデータを復元データで上書きします。よろしいですか？')) {
                 appData.users = data.users || [];
                 appData.weights = data.weights || {};
+                appData.heights = data.heights || {};
                 saveData(); renderTable();
                 showToast('✅ データを復元しました', '#4CAF50');
             }
@@ -1159,6 +1334,25 @@ function openGraph(userName) {
         }
     });
 
+    // 身長・BMIデータ準備
+    const heightYearData = appData.heights[year]?.[userName] || {};
+    const heightValues = [];
+    const bmiValues = [];
+    for (let mi = 0; mi < MONTHS.length; mi++) {
+        const m = MONTHS[mi];
+        const h = heightYearData[m];
+        heightValues.push(h || null);
+        // BMI計算（身長があるか、直近の身長を使用）
+        const w = values[mi];
+        const nearH = h || getNearestHeight(userName, year, mi);
+        if (w !== null && nearH) {
+            const hm = nearH / 100;
+            bmiValues.push(parseFloat((w / (hm * hm)).toFixed(1)));
+        } else {
+            bmiValues.push(null);
+        }
+    }
+
     // データテーブル
     let tableHtml = '<thead><tr><th>月</th>';
     for (const m of MONTHS) tableHtml += `<th>${m}</th>`;
@@ -1174,6 +1368,23 @@ function openGraph(userName) {
             const cls = d > 0 ? 'change-up' : d < 0 ? 'change-down' : '';
             const sign = d > 0 ? '+' : '';
             tableHtml += `<td class="${cls}">${sign}${changes[i]}kg</td>`;
+        } else {
+            tableHtml += '<td>-</td>';
+        }
+    }
+    tableHtml += '</tr><tr><td style="font-weight:bold; color:#4CAF50;">身長</td>';
+    for (let i = 0; i < MONTHS.length; i++) {
+        tableHtml += `<td>${heightValues[i] !== null ? heightValues[i] + 'cm' : '-'}</td>`;
+    }
+    tableHtml += '</tr><tr><td style="font-weight:bold; color:#FF9800;">BMI</td>';
+    for (let i = 0; i < MONTHS.length; i++) {
+        if (bmiValues[i] !== null) {
+            let color = '#666';
+            if (bmiValues[i] < 18.5) color = '#2196F3';
+            else if (bmiValues[i] < 25) color = '#4CAF50';
+            else if (bmiValues[i] < 30) color = '#FF9800';
+            else color = '#f44336';
+            tableHtml += `<td style="color:${color}; font-weight:bold;">${bmiValues[i]}</td>`;
         } else {
             tableHtml += '<td>-</td>';
         }
