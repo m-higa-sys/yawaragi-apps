@@ -2070,11 +2070,100 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
     o.addEventListener('click', (e) => { if (e.target === o) o.classList.remove('show'); });
 });
 
-function showToast(msg) {
+function showToast(msg, duration) {
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2000);
+    setTimeout(() => t.classList.remove('show'), duration || 2000);
+}
+
+// ===== リトライ付きGAS POST送信 =====
+// 3回まで再試行。失敗時はスタッフに警告表示
+async function gasPost(data, label) {
+    const maxRetries = 3;
+    for (let i = 1; i <= maxRetries; i++) {
+        try {
+            await fetch(ABS_BOARD_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return true; // ネットワーク送信成功
+        } catch (err) {
+            console.error('GAS送信エラー (' + i + '/' + maxRetries + '): ' + (label || ''), err);
+            if (i < maxRetries) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+    }
+    showToast('⚠️ 送信失敗！ネットワークを確認してください', 5000);
+    return false;
+}
+
+// ===== 欠席登録の検証付きPOST =====
+// POST後にJSONPで実際に記録されたか確認。未記録なら再試行
+async function gasPostAbsenceWithVerify(data, label) {
+    const maxRetries = 3;
+    for (let i = 1; i <= maxRetries; i++) {
+        // POST送信
+        try {
+            await fetch(ABS_BOARD_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        } catch (err) {
+            console.error('GAS送信エラー (' + i + '/' + maxRetries + ')', err);
+            if (i < maxRetries) { await new Promise(r => setTimeout(r, 2000)); continue; }
+            showToast('❌ 送信に失敗しました。ネットワークを確認してください', 5000);
+            return false;
+        }
+
+        // 3秒待ってからGASに記録されたか検証
+        await new Promise(r => setTimeout(r, 3000));
+        const verified = await verifyAbsenceInGAS(data.name, data.dates ? data.dates[0] : data.startDate);
+        if (verified) {
+            showToast('✅ ' + (label || '送信') + ' 完了（通知も送信済み）', 3000);
+            return true;
+        }
+        console.warn('検証失敗 (' + i + '/' + maxRetries + '): GASに記録が見つからない → 再送信');
+    }
+    showToast('❌ 送信できませんでした。もう一度登録してください', 5000);
+    return false;
+}
+
+// JSONP検証: GASスプレッドシートに欠席記録が存在するか確認
+function verifyAbsenceInGAS(name, date) {
+    return new Promise(resolve => {
+        const cbName = '_verifyAbs_' + Date.now();
+        const script = document.createElement('script');
+        script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
+
+        const timeout = setTimeout(() => {
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve(false);
+        }, 8000);
+
+        window[cbName] = function(data) {
+            clearTimeout(timeout);
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+
+            if (!data || !data.success || !data.absences) { resolve(false); return; }
+            const found = data.absences.some(a => a.name === name && a.date === date);
+            resolve(found);
+        };
+
+        script.onerror = () => {
+            clearTimeout(timeout);
+            delete window[cbName];
+            resolve(false);
+        };
+        document.body.appendChild(script);
+    });
 }
 
 // ================================================================
@@ -2419,12 +2508,7 @@ function tbClearAll() {
 
 // ===== GASタスクの操作（スプレッドシート経由） =====
 function tbCompleteGasTask(id) {
-    fetch(ABS_BOARD_API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'complete_board_task', id: id })
-    });
+    gasPost({ action: 'complete_board_task', id: id }, 'タスク完了');
     // 即座にローカル表示を更新
     const t = tbGasTasks.find(t => t.id === id);
     if (t) { t.status = '完了'; t.completedAt = new Date().toISOString(); }
@@ -2444,12 +2528,7 @@ function tbUndoGasTask(id) {
 }
 
 function tbDeleteGasTask(id) {
-    fetch(ABS_BOARD_API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete_board_task', id: id })
-    });
+    gasPost({ action: 'delete_board_task', id: id }, 'タスク削除');
     tbGasTasks = tbGasTasks.filter(t => t.id !== id);
     tbRenderBoard();
     showToast('タスクを削除しました');
@@ -3109,16 +3188,7 @@ function absSubmit() {
 
             // 古いGASレコードも削除（重複日ごとにキャンセル送信）
             dupDates.forEach(dateStr => {
-                fetch(ABS_BOARD_API_URL, {
-                    method: 'POST', mode: 'no-cors',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        action: 'cancel_absence',
-                        name: targetName,
-                        date: dateStr,
-                        unit: '終日'
-                    })
-                }).catch(() => {});
+                gasPost({ action: 'cancel_absence', name: targetName, date: dateStr, unit: '終日' }, '重複取消');
             });
         }
     }
@@ -3148,17 +3218,15 @@ function absSubmit() {
             contact: contact,
             method: absState.method
         };
-        fetch(ABS_BOARD_API_URL, {
-            method: 'POST', mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(ltData)
-        }).then(() => console.log('長期休み登録送信')).catch(err => console.error(err));
+        gasPostAbsenceWithVerify(ltData, absState.selectedUser.name + '様の長期休み登録').then(ok => {
+            if (!ok) console.error('長期休み登録: GAS送信失敗');
+        });
 
         absClearName();
         btn.disabled = false;
         btn.textContent = 'この内容で登録する';
-        showToast('長期休みを登録しました');
-        absLoadLongTermList();
+        showToast('長期休みを登録中...', 3000);
+        setTimeout(() => absLoadLongTermList(), 4000);
         return;
     }
 
@@ -3178,16 +3246,9 @@ function absSubmit() {
         cmName: ''
     };
 
-    fetch(ABS_BOARD_API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(postData)
-    }).then(() => {
-        // no-corsなのでレスポンスは読めないが、送信は成功
-        console.log('GASに欠席登録を送信しました');
-    }).catch(err => {
-        console.error('GAS送信エラー:', err);
+    // GAS送信（検証付きリトライ・バックグラウンドで実行）
+    gasPostAbsenceWithVerify(postData, absState.selectedUser.name + '様の欠席登録').then(ok => {
+        if (!ok) console.error('欠席登録: GAS送信失敗（' + absState.selectedUser.name + '）');
     });
 
     // localStorageにも保存（即座に画面反映するため）
@@ -3358,16 +3419,7 @@ function absDeleteRecord(id) {
         }
         // 各日付のGASデータを削除
         dates.forEach(dateStr => {
-            fetch(ABS_BOARD_API_URL, {
-                method: 'POST', mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'cancel_absence',
-                    name: target.userName,
-                    date: dateStr,
-                    unit: '終日'
-                })
-            }).catch(() => {});
+            gasPost({ action: 'cancel_absence', name: target.userName, date: dateStr, unit: '終日' }, '欠席取消');
         });
     }
 
@@ -3509,23 +3561,20 @@ function absSubmitResume() {
         reporter: absResumeState.staff
     };
 
-    fetch(ABS_BOARD_API_URL, {
-        method: 'POST', mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(postData)
-    }).then(() => {
-        console.log('再開登録送信');
-    }).catch(err => console.error(err));
+    const resumeName = absResumeState.name;
+    gasPost(postData, '再開登録').then(ok => {
+        if (ok) showToast('✅ ' + resumeName + '様の再開を登録しました', 3000);
+    });
 
     btn.disabled = false;
     btn.textContent = '再開を登録する';
     document.getElementById('abs-resume-form').style.display = 'none';
     document.getElementById('abs-resume-empty').style.display = 'block';
-    showToast(absResumeState.name + '様の再開を登録しました');
+    showToast(absResumeState.name + '様の再開を登録中...', 3000);
     absResumeState = { name: '', contact: '', method: '', staff: '' };
 
     // 長期休み一覧を更新（少し待ってからGAS取得）
-    setTimeout(() => absLoadLongTermList(), 2000);
+    setTimeout(() => absLoadLongTermList(), 4000);
 }
 
 function absFormatDate(dateStr) {
@@ -4058,6 +4107,12 @@ function attInit() {
     attLoadAllUsers();
     // 長期休み一覧も読み込み（再開予定日の表示用）
     if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
+    // 30秒ごとに出席予定を自動更新（欠席登録のリアルタイム反映）
+    setInterval(() => {
+        // キャッシュをクリアしてGASから最新データを取得
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+        attLoad();
+    }, 30000);
 }
 
 // 全利用者データを取得（欠席登録の検索用、patternsから全員取得）
@@ -4417,13 +4472,11 @@ function trmSubmit() {
         reporter: trmState.reporter
     };
 
-    fetch(ABS_BOARD_API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-    }).then(() => {
-        showToast('✅ ' + trmState.selectedUser.name + '様を中止登録しました');
+    const trmName = trmState.selectedUser.name;
+    gasPost(payload, '中止登録').then(ok => {
+        if (ok) {
+            showToast('✅ ' + trmName + '様を中止登録しました', 3000);
+        }
         // フォームをリセット
         trmClearName();
         document.getElementById('trm-supplement-input').value = '';
@@ -4432,9 +4485,6 @@ function trmSubmit() {
         document.getElementById('trm-contact-input').value = trmTodayStr();
         // 中止者一覧を再読み込み
         setTimeout(() => trmLoadList(), 800);
-    }).catch(err => {
-        alert('登録に失敗しました: ' + err.message);
-    }).finally(() => {
         submitBtn.disabled = false;
         submitBtn.textContent = 'この内容で中止登録する';
     });
@@ -4570,20 +4620,13 @@ function trmToggleTask(lastUseDate, name, task, checked) {
         checked: checked
     };
 
-    fetch(ABS_BOARD_API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-    }).then(() => {
+    gasPost(payload, 'チェック更新').then(ok => {
         // ローカル状態を更新
         const t = trmState.list.find(x => x.lastUseDate === lastUseDate && x.name === name);
         if (t) {
             t.tasks[task] = checked;
             trmRenderList();
         }
-    }).catch(err => {
-        alert('チェック更新に失敗: ' + err.message);
     });
 }
 
@@ -4599,16 +4642,9 @@ function trmCancelTermination(lastUseDate, name) {
         name: name
     };
 
-    fetch(ABS_BOARD_API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-    }).then(() => {
-        showToast('✅ ' + name + '様の中止を取消しました');
+    gasPost(payload, '中止取消').then(ok => {
+        if (ok) showToast('✅ ' + name + '様の中止を取消しました', 3000);
         setTimeout(() => trmLoadList(), 800);
-    }).catch(err => {
-        alert('取消に失敗: ' + err.message);
     });
 }
 
