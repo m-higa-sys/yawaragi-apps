@@ -278,8 +278,8 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   @page{size:A4 portrait!important;margin:5mm!important;}
 
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box!important;}
-  html,body{margin:0!important;padding:0!important;width:100%!important;font-size:9pt!important;line-height:1.1!important;overflow:hidden!important;}
-  #app{margin:0!important;padding:0!important;width:100%!important;}
+  html,body{margin:0!important;padding:0!important;width:100%!important;font-size:var(--pfs,9pt)!important;line-height:1.1!important;overflow:hidden!important;}
+  #app{margin:0!important;padding:0!important;width:100%!important;display:flex!important;flex-direction:column!important;}
 
   /* 非表示 */
   body>*:not(#app),#sandbar-container,.sandbar,.userscript-banner,
@@ -304,10 +304,10 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 
   /* テーブル共通：9pt・紙幅99%・隙間ゼロ・右端収め */
   table{width:99%!important;margin:0 auto!important;padding:0!important;table-layout:fixed!important;border-collapse:collapse;box-sizing:border-box!important;}
-  td,th{font-size:9pt!important;font-weight:700!important;line-height:1.1!important;padding:1px 2px!important;border:1px solid #333!important;white-space:nowrap!important;vertical-align:middle;overflow:hidden!important;text-overflow:ellipsis;}
+  td,th{font-size:var(--pfs,9pt)!important;font-weight:700!important;line-height:1.1!important;padding:1px 2px!important;border:1px solid #333!important;white-space:nowrap!important;vertical-align:middle;overflow:hidden!important;text-overflow:ellipsis;}
   th{font-weight:900!important;}
-  select,input[type="text"],input[type="time"]{appearance:none;-webkit-appearance:none;border:none!important;background:transparent!important;font-size:9pt!important;font-weight:700!important;line-height:1.1!important;padding:0!important;color:#000!important;width:100%;}
-  .sel-driver,.sel-time,.sel-vehicle,.sel-staff{appearance:none;-webkit-appearance:none;border:none!important;background:transparent!important;font-size:9pt!important;font-weight:700!important;padding:0!important;color:#000!important;}
+  select,input[type="text"],input[type="time"]{appearance:none;-webkit-appearance:none;border:none!important;background:transparent!important;font-size:var(--pfs,9pt)!important;font-weight:700!important;line-height:1.1!important;padding:0!important;color:#000!important;width:100%;}
+  .sel-driver,.sel-time,.sel-vehicle,.sel-staff{appearance:none;-webkit-appearance:none;border:none!important;background:transparent!important;font-size:var(--pfs,9pt)!important;font-weight:700!important;padding:0!important;color:#000!important;}
 
   /* 出勤テーブル：auto配分で名前を切らない */
   .attendance-area{width:100%!important;margin:0!important;gap:0!important;}
@@ -348,9 +348,9 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 
   /* TEL */
   .tel-table{width:auto!important;table-layout:auto!important;}
-  .tel-table td,.tel-table th{font-size:9pt!important;}
+  .tel-table td,.tel-table th{font-size:var(--pfs,9pt)!important;}
   .tel-name-input{appearance:none;-webkit-appearance:none;border:none!important;background:transparent!important;font-weight:700!important;padding:0!important;}
-  .tel-check{font-size:9pt!important;}
+  .tel-check{font-size:var(--pfs,9pt)!important;}
 
   /* ステータス */
   .st-new{background:#ff8a65!important;color:#fff!important;font-weight:900;border:2px solid #e64a19!important;}
@@ -387,6 +387,22 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 .readonly .attendance-area{display:flex!important;}
 .readonly .sticky-top{position:static;border-bottom:none;padding:0;}
 @media print{.readonly-bar{display:none!important;}}
+
+/* ── レイアウト調整パネル ── */
+.layout-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:600;justify-content:center;align-items:flex-start;padding-top:40px;}
+.layout-overlay.show{display:flex;}
+.layout-panel{background:#fff;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.3);padding:16px;min-width:340px;max-width:95%;max-height:80vh;overflow-y:auto;font-size:13px;}
+.layout-panel h3{margin:0 0 10px;font-size:16px;}
+.lp-section{margin-bottom:10px;padding:8px;background:#f8f8f8;border-radius:6px;}
+.lp-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-weight:700;}
+.lp-label{flex:1;white-space:nowrap;font-size:12px;}
+.lp-btn{width:28px;height:28px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center;font-family:inherit;}
+.lp-btn:hover{background:#e0e0e0;}
+.lp-btn:disabled{opacity:.3;cursor:default;}
+.lp-val{min-width:36px;text-align:center;font-size:12px;font-weight:900;}
+.lp-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;}
+.lp-footer button{padding:6px 16px;border:1px solid #ccc;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;}
+@media print{.layout-overlay{display:none!important;}}
 </style>
 </head>
 <body>
@@ -396,6 +412,7 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <button class="btn-primary" onclick="saveData()">💾 保存</button>
   <button onclick="undo()" id="btn-undo" disabled>↩ 元に戻す</button>
   <button onclick="window.print()">🖨 印刷</button>
+  <button onclick="openLayoutPanel()" style="background:#f3e5f5;border-color:#9c27b0;color:#6a1b9a">⚙ レイアウト</button>
   <button onclick="toggleConfirm()" id="btn-confirm" style="padding:3px 14px;font-size:12px;font-weight:900;border-radius:5px;cursor:pointer;font-family:inherit;border:2px solid #1976d2;background:#e3f2fd;color:#1565c0">📢 確定して公開</button>
   <button onclick="refreshUsers()" style="background:#e8f5e9;border-color:#4caf50;color:#2e7d32">🔄 利用者を更新</button>
   <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="background:#e3f2fd;border-color:#1976d2;color:#1565c0">📋 利用者台帳</button>
@@ -409,6 +426,7 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <div class="week-nav" id="week-nav"></div>
   <button onclick="openCalendar()" style="margin-left:4px">📅 カレンダー</button>
   <button onclick="setupCloudSync()" id="btn-cloud" style="background:#e3f2fd;border-color:#1976d2;color:#1565c0">☁️</button>
+  <button onclick="syncSchedTimesToStaff()" style="background:#e8f5e9;border-color:#43a047;color:#2e7d32;font-weight:bold" title="今日の送迎時間をスタッフ用ページに共有">📤 送迎時間を共有</button>
   <a class="back-link" href="送迎管理システム.html">← 送迎管理へ戻る</a>
 </div>
 <div class="readonly-bar">
@@ -418,6 +436,7 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <button onclick="roChangeDay(1)">次日 ▶</button>
   <button onclick="roGoToday()">今日</button>
   <button class="btn-print" onclick="window.print()">🖨 印刷</button>
+  <button onclick="openLayoutPanel()" style="background:#f3e5f5;border-color:#9c27b0;color:#6a1b9a;font-size:13px">⚙ レイアウト</button>
   <span class="ro-status" id="ro-status">読み込み中...</span>
 </div>
 <div class="cal-overlay" id="cal-overlay" onclick="if(event.target===this)closeCalendar()">
@@ -785,7 +804,7 @@ function render(){
   let h='';
 
   // ── 固定エリア開始 ──
-  h+='<div class="sticky-top">';
+  h+='<div class="sticky-top" data-pblock="top">';
 
   // ── ヘッダー ──
   h+='<div class="header">';
@@ -879,6 +898,7 @@ function render(){
   h+=renderWagePanel();
 
   // ── AM（迎え＋休憩＋清掃＋送り） ──
+  h+='<div data-pblock="am">';
   h+=renderUnit('AM','am');
 
   // AM送り⇔PM迎え 同じドライバーで車両が違う場合の警告（AMとPMの間に表示）
@@ -908,8 +928,12 @@ function render(){
     });
   }
 
+  h+='</div>'; // data-pblock="am"
+
   // ── PM ──
+  h+='<div data-pblock="pm">';
   h+=renderUnit('PM','pm');
+  h+='</div>'; // data-pblock="pm"
 
   // ── 退社（PMセクション内に統合） ──
 
@@ -1207,7 +1231,7 @@ function renderUnit(title,key){
   }
   {
   // 送り（全ルート7列に統一）
-  h+='<div class="route-block"><h4>送り</h4><table class="route-table">';
+  h+='<div class="route-block" data-pspace="'+key+'-drop"><h4>送り</h4><table class="route-table">';
   unit.drop.forEach((route,ri)=>{
     if(!route.rider) route.rider='';
     const riderCount=route.rider?1:0;
@@ -1652,7 +1676,7 @@ function renderBreakClean(){
     if(!b.time) return -1;
     return a.time.localeCompare(b.time);
   });
-  let h='<div class="break-clean">';
+  let h='<div class="break-clean" data-pspace="am-break">';
   // 休憩
   h+='<div><table class="break-table"><tr><th colspan="4">休憩時間</th></tr>';
   D.breaks.forEach((b,i)=>{
@@ -1762,7 +1786,7 @@ function renderLeave(){
     if(oa||ob) return (oa||0)-(ob||0)||(oa?1:-1);
     return a.time.localeCompare(b.time);
   });
-  let h='<div class="leave-area"><div class="break-clean">';
+  let h='<div class="leave-area" data-pspace="leave"><div class="break-clean">';
   h+='<div><table class="break-table"><tr><th colspan="3">退社時間</th></tr>';
   D.leave.forEach((l,i)=>{
     h+='<tr>';
@@ -4349,6 +4373,74 @@ function syncToTransport(allData){
   }catch(e){console.warn('syncToTransport error:',e);}
 }
 
+// ═══════════════════════════════════════════════
+// 送迎時間をスタッフに共有（GAS経由）
+// ═══════════════════════════════════════════════
+function syncSchedTimesToStaff(){
+  if(!D.date){alert('日付が選択されていません');return;}
+  const dayMap={0:'日',1:'月',2:'火',3:'水',4:'木',5:'金',6:'土'};
+  const dt=new Date(D.date+'T00:00:00');
+  const dayOfWeek=dayMap[dt.getDay()];
+  if(!dayOfWeek||dayOfWeek==='日'){alert('日曜日のデータは共有できません');return;}
+
+  // AM迎えの利用者と時間を取得
+  const schedTime={};
+  const userDays={};
+  const transport={};
+
+  (D.am.pick||[]).forEach(function(route){
+    (route.stops||[]).forEach(function(s){
+      if(!s.user) return;
+      var st=D.am.userStatus||{};
+      var status=st[s.user]||'';
+      if(status==='absent'||status==='longabsent') return;
+      if(!schedTime[s.user]) schedTime[s.user]={};
+      if(s.time) schedTime[s.user][dayOfWeek]=s.time;
+      if(!userDays[s.user]) userDays[s.user]={schedule:{}};
+      userDays[s.user].schedule[dayOfWeek]='am';
+      transport[s.user]=status==='walk'?'walk':status==='family'?'family':'shuttle';
+    });
+  });
+
+  // PM迎えの利用者と時間を取得
+  (D.pm.pick||[]).forEach(function(route){
+    (route.stops||[]).forEach(function(s){
+      if(!s.user) return;
+      var st=D.pm.userStatus||{};
+      var status=st[s.user]||'';
+      if(status==='absent'||status==='longabsent') return;
+      if(!schedTime[s.user]) schedTime[s.user]={};
+      if(s.time) schedTime[s.user][dayOfWeek]=s.time;
+      if(!userDays[s.user]) userDays[s.user]={schedule:{}};
+      userDays[s.user].schedule[dayOfWeek]='pm';
+      transport[s.user]=status==='walk'?'walk':status==='family'?'family':'shuttle';
+    });
+  });
+
+  var userCount=Object.keys(schedTime).length;
+  if(userCount===0){alert('迎えルートに利用者がいません');return;}
+
+  var payload=JSON.stringify({
+    action:'saveSchedTimes',
+    merge:true,
+    day:dayOfWeek,
+    data:{
+      schedTime:schedTime,
+      userDays:userDays,
+      transport:transport,
+      lastSync:new Date().toISOString()
+    }
+  });
+
+  var url=getOpsGasUrl()||READONLY_GAS_URL;
+  try{
+    navigator.sendBeacon(url, payload);
+  }catch(e){
+    fetch(url,{method:'POST',mode:'no-cors',body:payload,keepalive:true}).catch(function(){});
+  }
+  alert('📤 '+dayOfWeek+'曜日の送迎時間を共有しました（'+userCount+'名）\nスタッフ用「送迎時間一覧」ページに反映されます');
+}
+
 function saveData(){
   if(!D.date) return;
   autoSave();
@@ -5404,8 +5496,101 @@ async function initApp(){
 }
 initApp();
 
+// ═══════════════════════════════════════════════
+// 印刷レイアウト調整パネル
+// ═══════════════════════════════════════════════
+const LAYOUT_BLOCKS=[
+  {id:'top',label:'ヘッダー＋出勤',fixed:true},
+  {id:'am',label:'AM（迎え＋休憩＋送り）'},
+  {id:'pm',label:'PM（迎え＋送り＋退社）'}
+];
+const LAYOUT_SPACES=[
+  {id:'am',label:'出勤エリア → AM'},
+  {id:'am-break',label:'AM迎え → 休憩'},
+  {id:'am-drop',label:'休憩 → AM送り'},
+  {id:'pm',label:'AM → PM'},
+  {id:'pm-drop',label:'PM迎え → PM送り'},
+  {id:'leave',label:'PM送り → 退社'}
+];
+const DEFAULT_PRINT_LAYOUT={order:['top','am','pm'],spacing:{am:0,'am-break':0,'am-drop':0,pm:0,'pm-drop':0,leave:0},fontSize:9};
+
+function loadPrintLayout(){
+  try{var s=localStorage.getItem('yawaragi_print_layout');if(!s)return JSON.parse(JSON.stringify(DEFAULT_PRINT_LAYOUT));var d=JSON.parse(s);if(!d.order)d.order=DEFAULT_PRINT_LAYOUT.order.slice();if(!d.spacing)d.spacing={};LAYOUT_SPACES.forEach(function(sp){if(d.spacing[sp.id]===undefined)d.spacing[sp.id]=0;});if(!d.fontSize)d.fontSize=9;return d;}
+  catch(e){return JSON.parse(JSON.stringify(DEFAULT_PRINT_LAYOUT));}
+}
+function savePrintLayout(l){localStorage.setItem('yawaragi_print_layout',JSON.stringify(l));}
+
+function openLayoutPanel(){
+  var ov=document.getElementById('layout-overlay');
+  if(!ov){ov=document.createElement('div');ov.id='layout-overlay';ov.className='layout-overlay';ov.onclick=function(e){if(e.target===ov)closeLayoutPanel();};document.body.appendChild(ov);}
+  renderLayoutPanel();ov.classList.add('show');
+}
+function closeLayoutPanel(){var ov=document.getElementById('layout-overlay');if(ov)ov.classList.remove('show');}
+
+function renderLayoutPanel(){
+  var ov=document.getElementById('layout-overlay');if(!ov)return;
+  var L=loadPrintLayout();
+  var h='<div class="layout-panel">';
+  h+='<h3>⚙ 印刷レイアウト調整</h3>';
+  h+='<div style="font-size:11px;color:#666;margin-bottom:8px">設定は印刷時のみ反映されます。画面表示は変わりません。</div>';
+  // ブロック順
+  h+='<div class="lp-section"><div style="font-size:11px;color:#888;margin-bottom:4px;font-weight:700">ブロックの順番</div>';
+  L.order.forEach(function(id,i){
+    var b=LAYOUT_BLOCKS.find(function(x){return x.id===id;});if(!b)return;
+    h+='<div class="lp-row"><span style="color:#999;cursor:grab">☰</span><span class="lp-label">'+b.label+'</span>';
+    if(!b.fixed){
+      h+='<button class="lp-btn" onclick="layoutMoveBlock(\''+id+'\',-1)"'+(i<=1?' disabled':'')+'>▲</button>';
+      h+='<button class="lp-btn" onclick="layoutMoveBlock(\''+id+'\',1)"'+(i>=L.order.length-1?' disabled':'')+'>▼</button>';
+    } else {h+='<span style="font-size:10px;color:#aaa">固定</span>';}
+    h+='</div>';
+  });
+  h+='</div>';
+  // 余白
+  h+='<div class="lp-section"><div style="font-size:11px;color:#888;margin-bottom:4px;font-weight:700">セクション間の余白</div>';
+  LAYOUT_SPACES.forEach(function(sp){
+    var val=L.spacing[sp.id]||0;
+    h+='<div class="lp-row"><span class="lp-label">'+sp.label+'</span>';
+    h+='<button class="lp-btn" onclick="layoutAdjustSpace(\''+sp.id+'\',-1)"'+(val<=0?' disabled':'')+'>−</button>';
+    h+='<span class="lp-val">'+val+'px</span>';
+    h+='<button class="lp-btn" onclick="layoutAdjustSpace(\''+sp.id+'\',1)">＋</button>';
+    h+='</div>';
+  });
+  h+='</div>';
+  // 文字サイズ
+  h+='<div class="lp-section"><div class="lp-row"><span class="lp-label">印刷文字サイズ</span>';
+  h+='<button class="lp-btn" onclick="layoutAdjustFont(-0.5)">−</button>';
+  h+='<span class="lp-val">'+L.fontSize+'pt</span>';
+  h+='<button class="lp-btn" onclick="layoutAdjustFont(0.5)">＋</button>';
+  h+='</div></div>';
+  // フッター
+  h+='<div class="lp-footer">';
+  h+='<button onclick="layoutReset()" style="background:#ffebee;color:#c62828;border-color:#ef9a9a">リセット</button>';
+  h+='<button onclick="closeLayoutPanel()" style="background:#e3f2fd;color:#1565c0;border-color:#90caf9">閉じる</button>';
+  h+='</div></div>';
+  ov.innerHTML=h;
+}
+
+function layoutMoveBlock(id,dir){
+  var L=loadPrintLayout();var i=L.order.indexOf(id);if(i<0)return;
+  var ni=i+dir;if(ni<0||ni>=L.order.length)return;
+  var tb=LAYOUT_BLOCKS.find(function(x){return x.id===L.order[ni];});
+  if(tb&&tb.fixed)return;
+  var tmp=L.order[i];L.order[i]=L.order[ni];L.order[ni]=tmp;
+  savePrintLayout(L);renderLayoutPanel();
+}
+function layoutAdjustSpace(id,delta){
+  var L=loadPrintLayout();L.spacing[id]=Math.max(0,Math.min(20,(L.spacing[id]||0)+delta));
+  savePrintLayout(L);renderLayoutPanel();
+}
+function layoutAdjustFont(delta){
+  var L=loadPrintLayout();L.fontSize=Math.max(6,Math.min(14,L.fontSize+delta));
+  savePrintLayout(L);renderLayoutPanel();
+}
+function layoutReset(){localStorage.removeItem('yawaragi_print_layout');renderLayoutPanel();}
+
 // ── 印刷（A4横1枚に自動縮小＋select/inputをspan化） ──
 window._printSpans=[];
+window._printLayoutEls=[];
 window.addEventListener('beforeprint',function(){
   const app=document.getElementById('app');
   // ① select→span（印刷時に値を表示するため）
@@ -5436,13 +5621,28 @@ window.addEventListener('beforeprint',function(){
     window._printSpans.push({el:inp,span:span});
   });
   // ③ iPad Safari用：A4 1枚に収める自動縮小
-  // PCには影響なし（タッチデバイスのみ適用）
   window._printZoom=false;
   if(navigator.maxTouchPoints>1){
     document.body.style.zoom='0.85';
-    document.body.style.width='117.6%'; // 100%/0.85≒117.6% でzoom後に紙幅ピッタリ
+    document.body.style.width='117.6%';
     window._printZoom=true;
   }
+  // ④ レイアウト設定を適用（印刷時のみ）
+  window._printLayoutEls=[];
+  var L=loadPrintLayout();
+  // フォントサイズ
+  document.documentElement.style.setProperty('--pfs',L.fontSize+'pt');
+  // ブロック順（CSS order）
+  L.order.forEach(function(id,i){
+    var el=app.querySelector('[data-pblock="'+id+'"]');
+    if(el){el.style.order=i;window._printLayoutEls.push(el);}
+  });
+  // 余白
+  Object.keys(L.spacing).forEach(function(id){
+    var val=L.spacing[id];if(!val)return;
+    var el=app.querySelector('[data-pblock="'+id+'"]')||app.querySelector('[data-pspace="'+id+'"]');
+    if(el){el.style.marginTop=val+'px';window._printLayoutEls.push(el);}
+  });
 });
 window.addEventListener('afterprint',function(){
   // span除去・元のselect/inputを復元
@@ -5457,6 +5657,10 @@ window.addEventListener('afterprint',function(){
     document.body.style.width='';
     window._printZoom=false;
   }
+  // レイアウト設定を復元
+  document.documentElement.style.removeProperty('--pfs');
+  window._printLayoutEls.forEach(function(el){el.style.order='';el.style.marginTop='';});
+  window._printLayoutEls=[];
 });
 </script>
 </body>
