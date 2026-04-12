@@ -898,10 +898,9 @@ function render(){
   h+=renderWagePanel();
 
   // ── AM（迎え＋休憩＋清掃＋送り） ──
-  h+='<div data-pblock="am">';
   h+=renderUnit('AM','am');
 
-  // AM送り⇔PM迎え 同じドライバーで車両が違う場合の警告（AMとPMの間に表示）
+  // AM送り⇔PM迎え 同じドライバーで車両が違う場合の警告
   if(!D.vehicleMismatchOk) D.vehicleMismatchOk={};
   if(D.am&&D.am.drop&&D.pm&&D.pm.pick){
     D.am.drop.forEach(ad=>{
@@ -910,12 +909,11 @@ function render(){
         if(pp.driver===ad.driver&&pp.vehicle&&ad.vehicle!==pp.vehicle){
           const wk='vm_'+ad.driver;
           if(!D.vehicleMismatchOk[wk]){
-            h+='<div style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:13px;padding:8px 10px;font-weight:700;margin:4px 0;border-radius:4px">⚠ '+ad.driver+'：AM送り（'+ad.vehicle+'）→ PM迎え（'+pp.vehicle+'）車両が違います！ <button class="no-print" style="margin-left:8px;padding:2px 12px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px;font-weight:700" onclick="if(!D.vehicleMismatchOk)D.vehicleMismatchOk={};D.vehicleMismatchOk[\''+wk+'\']=true;autoSave();render()">OK</button></div>';
+            h+='<div class="no-print" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:13px;padding:8px 10px;font-weight:700;margin:4px 0;border-radius:4px">⚠ '+ad.driver+'：AM送り（'+ad.vehicle+'）→ PM迎え（'+pp.vehicle+'）車両が違います！ <button style="margin-left:8px;padding:2px 12px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px;font-weight:700" onclick="if(!D.vehicleMismatchOk)D.vehicleMismatchOk={};D.vehicleMismatchOk[\''+wk+'\']=true;autoSave();render()">OK</button></div>';
           }
         }
       });
     });
-    // 車両が揃ったらOKフラグをリセット
     const activeKeys=new Set();
     D.am.drop.forEach(ad=>{
       if(!ad.driver||!ad.vehicle) return;
@@ -928,12 +926,8 @@ function render(){
     });
   }
 
-  h+='</div>'; // data-pblock="am"
-
   // ── PM ──
-  h+='<div data-pblock="pm">';
   h+=renderUnit('PM','pm');
-  h+='</div>'; // data-pblock="pm"
 
   // ── 退社（PMセクション内に統合） ──
 
@@ -950,7 +944,7 @@ function render(){
 function renderUnit(title,key){
   const unit=D[key];
   let h='';
-  h+='<div class="section '+(key==='pm'?'pm-section':'')+'">';
+  h+='<div class="section '+(key==='pm'?'pm-section':'')+'" data-pblock="'+key+'-pick">';
   h+='<div class="section-title">'+title+'</div>';
   h+='<div class="section-body">';
 
@@ -1231,7 +1225,7 @@ function renderUnit(title,key){
   }
   {
   // 送り（全ルート7列に統一）
-  h+='<div class="route-block" data-pspace="'+key+'-drop"><h4>送り</h4><table class="route-table">';
+  h+='<div class="route-block" data-pblock="'+key+'-drop"><h4>送り</h4><table class="route-table">';
   unit.drop.forEach((route,ri)=>{
     if(!route.rider) route.rider='';
     const riderCount=route.rider?1:0;
@@ -1676,9 +1670,9 @@ function renderBreakClean(){
     if(!b.time) return -1;
     return a.time.localeCompare(b.time);
   });
-  let h='<div class="break-clean" data-pspace="am-break">';
+  let h='<div class="break-clean">';
   // 休憩
-  h+='<div><table class="break-table"><tr><th colspan="4">休憩時間</th></tr>';
+  h+='<div data-pblock="break"><table class="break-table"><tr><th colspan="4">休憩時間</th></tr>';
   D.breaks.forEach((b,i)=>{
     h+='<tr>';
     h+='<td>'+breakTimeSelect(i,b.time)+'</td>';
@@ -1735,7 +1729,7 @@ function renderBreakClean(){
   // 清掃
   if(!D.clean.first) D.clean.first=D.clean.am||[];
   if(!D.clean.remain) D.clean.remain=[];
-  h+='<div><table class="clean-table">';
+  h+='<div data-pblock="clean"><table class="clean-table">';
   h+='<tr><th colspan="2">清掃・片付け</th></tr>';
   h+='<tr><td style="font-weight:700;font-size:10px;white-space:nowrap">清掃</td><td>'+cleanStaffSelect('D.clean.first',D.clean.first)+'</td></tr>';
   h+='<tr><td style="font-weight:700;font-size:10px;white-space:nowrap;color:#d32f2f">残りお願い</td><td>'+cleanStaffSelect('D.clean.remain',D.clean.remain)+'</td></tr>';
@@ -1786,7 +1780,7 @@ function renderLeave(){
     if(oa||ob) return (oa||0)-(ob||0)||(oa?1:-1);
     return a.time.localeCompare(b.time);
   });
-  let h='<div class="leave-area" data-pspace="leave"><div class="break-clean">';
+  let h='<div class="leave-area" data-pblock="leave"><div class="break-clean">';
   h+='<div><table class="break-table"><tr><th colspan="3">退社時間</th></tr>';
   D.leave.forEach((l,i)=>{
     h+='<tr>';
@@ -5501,22 +5495,42 @@ initApp();
 // ═══════════════════════════════════════════════
 const LAYOUT_BLOCKS=[
   {id:'top',label:'ヘッダー＋出勤',fixed:true},
-  {id:'am',label:'AM（迎え＋休憩＋送り）'},
-  {id:'pm',label:'PM（迎え＋送り＋退社）'}
+  {id:'am-pick',label:'AM迎え'},
+  {id:'break',label:'休憩'},
+  {id:'clean',label:'清掃'},
+  {id:'am-drop',label:'AM送り'},
+  {id:'pm-pick',label:'PM迎え'},
+  {id:'pm-drop',label:'PM送り'},
+  {id:'leave',label:'退社'}
 ];
 const LAYOUT_SPACES=[
-  {id:'am',label:'出勤エリア → AM'},
-  {id:'am-break',label:'AM迎え → 休憩'},
-  {id:'am-drop',label:'休憩 → AM送り'},
-  {id:'pm',label:'AM → PM'},
+  {id:'am-pick',label:'出勤 → AM迎え'},
+  {id:'break',label:'AM迎え → 休憩'},
+  {id:'clean',label:'休憩 → 清掃'},
+  {id:'am-drop',label:'清掃 → AM送り'},
+  {id:'pm-pick',label:'AM送り → PM迎え'},
   {id:'pm-drop',label:'PM迎え → PM送り'},
   {id:'leave',label:'PM送り → 退社'}
 ];
-const DEFAULT_PRINT_LAYOUT={order:['top','am','pm'],spacing:{am:0,'am-break':0,'am-drop':0,pm:0,'pm-drop':0,leave:0},fontSize:9};
+const DEFAULT_PRINT_LAYOUT={
+  order:['top','am-pick','break','clean','am-drop','pm-pick','pm-drop','leave'],
+  spacing:{'am-pick':0,'break':0,'clean':0,'am-drop':0,'pm-pick':0,'pm-drop':0,'leave':0},
+  fontSize:9
+};
 
 function loadPrintLayout(){
-  try{var s=localStorage.getItem('yawaragi_print_layout');if(!s)return JSON.parse(JSON.stringify(DEFAULT_PRINT_LAYOUT));var d=JSON.parse(s);if(!d.order)d.order=DEFAULT_PRINT_LAYOUT.order.slice();if(!d.spacing)d.spacing={};LAYOUT_SPACES.forEach(function(sp){if(d.spacing[sp.id]===undefined)d.spacing[sp.id]=0;});if(!d.fontSize)d.fontSize=9;return d;}
-  catch(e){return JSON.parse(JSON.stringify(DEFAULT_PRINT_LAYOUT));}
+  try{
+    var s=localStorage.getItem('yawaragi_print_layout');
+    if(!s) return JSON.parse(JSON.stringify(DEFAULT_PRINT_LAYOUT));
+    var d=JSON.parse(s);
+    // 旧フォーマット(3ブロック)からの移行
+    if(d.order&&d.order.length<8){d.order=DEFAULT_PRINT_LAYOUT.order.slice();}
+    if(!d.order)d.order=DEFAULT_PRINT_LAYOUT.order.slice();
+    if(!d.spacing)d.spacing={};
+    LAYOUT_SPACES.forEach(function(sp){if(d.spacing[sp.id]===undefined)d.spacing[sp.id]=0;});
+    if(!d.fontSize)d.fontSize=9;
+    return d;
+  }catch(e){return JSON.parse(JSON.stringify(DEFAULT_PRINT_LAYOUT));}
 }
 function savePrintLayout(l){localStorage.setItem('yawaragi_print_layout',JSON.stringify(l));}
 
@@ -5532,13 +5546,17 @@ function renderLayoutPanel(){
   var L=loadPrintLayout();
   var h='<div class="layout-panel">';
   h+='<h3>⚙ 印刷レイアウト調整</h3>';
-  h+='<div style="font-size:11px;color:#666;margin-bottom:8px">設定は印刷時のみ反映されます。画面表示は変わりません。</div>';
+  h+='<div style="font-size:11px;color:#666;margin-bottom:8px;line-height:1.5">▲▼でブロックの順番を入替え、[＋][−]で余白を調整できます。<br>変更は<b>印刷プレビュー（Ctrl+P）</b>で確認してください。</div>';
   // ブロック順
-  h+='<div class="lp-section"><div style="font-size:11px;color:#888;margin-bottom:4px;font-weight:700">ブロックの順番</div>';
+  h+='<div class="lp-section"><div style="font-size:11px;color:#888;margin-bottom:4px;font-weight:700">印刷時のブロック順</div>';
   L.order.forEach(function(id,i){
     var b=LAYOUT_BLOCKS.find(function(x){return x.id===id;});if(!b)return;
-    h+='<div class="lp-row"><span style="color:#999;cursor:grab">☰</span><span class="lp-label">'+b.label+'</span>';
+    var num=i+1;
+    h+='<div class="lp-row">';
+    h+='<span style="color:#1565c0;font-size:14px;font-weight:900;min-width:20px;text-align:center">'+num+'</span>';
+    h+='<span class="lp-label">'+b.label+'</span>';
     if(!b.fixed){
+      var canUp=i>1||(i===1&&!LAYOUT_BLOCKS.find(function(x){return x.id===L.order[0];}).fixed);
       h+='<button class="lp-btn" onclick="layoutMoveBlock(\''+id+'\',-1)"'+(i<=1?' disabled':'')+'>▲</button>';
       h+='<button class="lp-btn" onclick="layoutMoveBlock(\''+id+'\',1)"'+(i>=L.order.length-1?' disabled':'')+'>▼</button>';
     } else {h+='<span style="font-size:10px;color:#aaa">固定</span>';}
@@ -5565,6 +5583,7 @@ function renderLayoutPanel(){
   // フッター
   h+='<div class="lp-footer">';
   h+='<button onclick="layoutReset()" style="background:#ffebee;color:#c62828;border-color:#ef9a9a">リセット</button>';
+  h+='<button onclick="closeLayoutPanel();window.print()" style="background:#1976d2;color:#fff;border-color:#0d47a1">印刷プレビュー</button>';
   h+='<button onclick="closeLayoutPanel()" style="background:#e3f2fd;color:#1565c0;border-color:#90caf9">閉じる</button>';
   h+='</div></div>';
   ov.innerHTML=h;
@@ -5588,13 +5607,14 @@ function layoutAdjustFont(delta){
 }
 function layoutReset(){localStorage.removeItem('yawaragi_print_layout');renderLayoutPanel();}
 
-// ── 印刷（A4横1枚に自動縮小＋select/inputをspan化） ──
-window._printSpans=[];
-window._printLayoutEls=[];
+// ── 印刷（A4自動縮小＋select/inputをspan化＋レイアウト適用） ──
+window._printOrigHTML='';
 window.addEventListener('beforeprint',function(){
-  const app=document.getElementById('app');
+  var app=document.getElementById('app');
+  // 元のHTMLを保存（afterprintで復元用）
+  window._printOrigHTML=app.innerHTML;
+
   // ① select→span（印刷時に値を表示するため）
-  window._printSpans=[];
   app.querySelectorAll('select').forEach(function(sel){
     if(sel.classList.contains('no-print')) return;
     var span=document.createElement('span');
@@ -5605,7 +5625,6 @@ window.addEventListener('beforeprint',function(){
     span.className=sel.className;
     sel.style.display='none';
     sel.parentNode.insertBefore(span,sel.nextSibling);
-    window._printSpans.push({el:sel,span:span});
   });
   // ② input→span
   app.querySelectorAll('input').forEach(function(inp){
@@ -5618,8 +5637,8 @@ window.addEventListener('beforeprint',function(){
     span.className=inp.className;
     inp.style.display='none';
     inp.parentNode.insertBefore(span,inp.nextSibling);
-    window._printSpans.push({el:inp,span:span});
   });
+
   // ③ iPad Safari用：A4 1枚に収める自動縮小
   window._printZoom=false;
   if(navigator.maxTouchPoints>1){
@@ -5627,40 +5646,46 @@ window.addEventListener('beforeprint',function(){
     document.body.style.width='117.6%';
     window._printZoom=true;
   }
-  // ④ レイアウト設定を適用（印刷時のみ）
-  window._printLayoutEls=[];
+
+  // ④ レイアウト設定を適用
   var L=loadPrintLayout();
-  // フォントサイズ
   document.documentElement.style.setProperty('--pfs',L.fontSize+'pt');
+
+  // サブブロックを#appの直接子要素にフラット化（印刷用）
+  ['break','clean','am-drop','pm-drop','leave'].forEach(function(id){
+    var el=app.querySelector('[data-pblock="'+id+'"]');
+    if(el) app.appendChild(el);
+  });
+
   // ブロック順（CSS order）
   L.order.forEach(function(id,i){
     var el=app.querySelector('[data-pblock="'+id+'"]');
-    if(el){el.style.order=i;window._printLayoutEls.push(el);}
+    if(el) el.style.order=i;
   });
+
   // 余白
   Object.keys(L.spacing).forEach(function(id){
     var val=L.spacing[id];if(!val)return;
-    var el=app.querySelector('[data-pblock="'+id+'"]')||app.querySelector('[data-pspace="'+id+'"]');
-    if(el){el.style.marginTop=val+'px';window._printLayoutEls.push(el);}
+    var el=app.querySelector('[data-pblock="'+id+'"]');
+    if(el) el.style.marginTop=val+'px';
   });
 });
+
 window.addEventListener('afterprint',function(){
-  // span除去・元のselect/inputを復元
-  window._printSpans.forEach(function(item){
-    item.el.style.display='';
-    if(item.span.parentNode) item.span.parentNode.removeChild(item.span);
-  });
-  window._printSpans=[];
+  // すべて元に戻す（innerHTML復元で一発リセット）
+  var app=document.getElementById('app');
+  if(window._printOrigHTML){
+    app.innerHTML=window._printOrigHTML;
+    window._printOrigHTML='';
+  }
   // zoom復元
   if(window._printZoom){
     document.body.style.zoom='';
     document.body.style.width='';
     window._printZoom=false;
   }
-  // レイアウト設定を復元
+  // font-size復元
   document.documentElement.style.removeProperty('--pfs');
-  window._printLayoutEls.forEach(function(el){el.style.order='';el.style.marginTop='';});
-  window._printLayoutEls=[];
 });
 </script>
 </body>
