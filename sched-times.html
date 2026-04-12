@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>送迎時間一覧 - yawaragi</title>
+<style>
+:root {
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --text: #1a202c;
+  --text2: #4a5568;
+  --am: #3182ce;
+  --am-bg: #ebf8ff;
+  --pm: #805ad5;
+  --pm-bg: #faf5ff;
+  --accent: #38a169;
+  --tab-active: #2d3748;
+  --tab-inactive: #a0aec0;
+  --shuttle: #38a169;
+  --walk: #d69e2e;
+  --family: #e53e3e;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-text-size-adjust: 100%;
+}
+.header {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: white;
+  padding: 16px 20px;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.header .subtitle {
+  font-size: 13px;
+  color: rgba(255,255,255,.6);
+  margin-top: 2px;
+}
+.search-bar {
+  padding: 12px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 60px;
+  z-index: 99;
+}
+.search-bar input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+  outline: none;
+  transition: border-color .2s;
+}
+.search-bar input:focus {
+  border-color: var(--am);
+}
+.search-bar input::placeholder {
+  color: #a0aec0;
+}
+.day-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  background: var(--card);
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 108px;
+  z-index: 98;
+}
+.day-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--tab-inactive);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all .2s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.day-tab:hover { color: var(--tab-active); }
+.day-tab.active {
+  color: var(--tab-active);
+  border-bottom-color: var(--am);
+}
+.day-tab .count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text2);
+  display: block;
+  margin-top: 1px;
+}
+.content {
+  padding: 16px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+.section {
+  margin-bottom: 20px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.section-header.am {
+  background: var(--am-bg);
+  color: var(--am);
+}
+.section-header.pm {
+  background: var(--pm-bg);
+  color: var(--pm);
+}
+.section-header .badge {
+  background: currentColor;
+  color: white;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.user-row {
+  display: flex;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  gap: 12px;
+  transition: box-shadow .15s;
+}
+.user-row:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,.08);
+}
+.user-name {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-time {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  min-width: 60px;
+  text-align: right;
+}
+.user-time.am { color: var(--am); }
+.user-time.pm { color: var(--pm); }
+.user-time.no-time {
+  font-size: 14px;
+  color: #a0aec0;
+  font-weight: 400;
+}
+.transport-badge {
+  font-size: 13px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.transport-badge.shuttle { background: #e6fffa; color: var(--shuttle); }
+.transport-badge.walk { background: #fefcbf; color: var(--walk); }
+.transport-badge.family { background: #fed7d7; color: var(--family); }
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text2);
+  font-size: 15px;
+}
+.empty-state .icon { font-size: 40px; margin-bottom: 8px; }
+.sync-info {
+  text-align: center;
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.sync-info .time { font-weight: 600; }
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text2);
+  font-size: 16px;
+}
+.loading .spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--am);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-msg {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--family);
+  font-size: 15px;
+}
+.summary-bar {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text2);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.summary-bar span { font-weight: 600; }
+
+/* 印刷用 */
+@media print {
+  .header, .search-bar, .day-tabs, .sync-info { position: static; }
+  .user-row { break-inside: avoid; }
+  body { background: white; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>送迎時間一覧</h1>
+  <div class="subtitle">リハビリデイサービス yawaragi</div>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="searchInput" placeholder="利用者名で検索..." oninput="renderCurrentDay()">
+</div>
+
+<div class="day-tabs" id="dayTabs"></div>
+
+<div class="summary-bar" id="summaryBar"></div>
+
+<div class="content" id="mainContent">
+  <div class="loading">
+    <div class="spinner"></div>
+    <div>送迎時間データを読み込み中...</div>
+  </div>
+</div>
+
+<div class="sync-info" id="syncInfo"></div>
+
+<script>
+// === 設定 ===
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+const DAYS = ['月','火','水','木','金','土'];
+const TRANSPORT_LABELS = { shuttle: '🚐 送迎', walk: '🚶 徒歩', family: '🚗 家族送迎' };
+
+let DATA = null; // { schedTime, userDays, transport, lastSync }
+let currentDay = '';
+
+// === 今日の曜日を取得 ===
+function getTodayDay(){
+  const d = new Date().getDay(); // 0=日, 1=月, ...
+  const map = {1:'月',2:'火',3:'水',4:'木',5:'金',6:'土'};
+  return map[d] || '月';
+}
+
+// === データ取得 ===
+async function loadData(){
+  try {
+    const res = await fetch(GAS_URL + '?action=getSchedTimes&t=' + Date.now());
+    if(!res.ok) throw new Error('取得失敗');
+    DATA = await res.json();
+    if(!DATA || !DATA.schedTime){
+      document.getElementById('mainContent').innerHTML =
+        '<div class="empty-state"><div class="icon">📋</div>送迎時間データがまだ登録されていません。<br>送迎管理システムで「送迎時間を同期」ボタンを押してください。</div>';
+      return;
+    }
+    currentDay = getTodayDay();
+    renderDayTabs();
+    renderCurrentDay();
+    if(DATA.lastSync){
+      const d = new Date(DATA.lastSync);
+      document.getElementById('syncInfo').innerHTML =
+        '最終同期: <span class="time">' + d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + '</span>';
+    }
+  } catch(e){
+    console.error('データ取得エラー:', e);
+    document.getElementById('mainContent').innerHTML =
+      '<div class="error-msg">データの取得に失敗しました。<br>しばらくしてからページを再読み込みしてください。</div>';
+  }
+}
+
+// === 曜日タブ描画 ===
+function renderDayTabs(){
+  const tabs = document.getElementById('dayTabs');
+  tabs.innerHTML = DAYS.map(d => {
+    const users = getUsersForDay(d);
+    const count = users.length;
+    return '<div class="day-tab' + (d===currentDay?' active':'') + '" onclick="switchDay(\'' + d + '\')">'
+      + d + '<span class="count">' + count + '名</span></div>';
+  }).join('');
+}
+
+// === 曜日切替 ===
+function switchDay(d){
+  currentDay = d;
+  renderDayTabs();
+  renderCurrentDay();
+}
+
+// === 指定曜日の利用者を取得 ===
+function getUsersForDay(day){
+  if(!DATA) return [];
+  const result = [];
+  const ud = DATA.userDays || {};
+  const st = DATA.schedTime || {};
+  const tp = DATA.transport || {};
+
+  Object.keys(ud).forEach(name => {
+    const info = ud[name];
+    if(!info || !info.schedule) return;
+    const sched = info.schedule[day];
+    if(!sched) return; // この曜日は利用なし
+
+    const ampm = sched; // 'am' or 'pm'
+    const time = (st[name] && typeof st[name] === 'object') ? (st[name][day] || '') : (typeof st[name] === 'string' ? st[name] : '');
+    const transport = tp[name] || 'shuttle';
+
+    result.push({ name, ampm, time, transport });
+  });
+
+  return result;
+}
+
+// === メイン描画 ===
+function renderCurrentDay(){
+  const users = getUsersForDay(currentDay);
+  const searchVal = (document.getElementById('searchInput').value || '').trim();
+
+  // 検索フィルター
+  const filtered = searchVal
+    ? users.filter(u => u.name.includes(searchVal))
+    : users;
+
+  const amUsers = filtered.filter(u => u.ampm === 'am').sort(timeSorter);
+  const pmUsers = filtered.filter(u => u.ampm === 'pm').sort(timeSorter);
+
+  const content = document.getElementById('mainContent');
+
+  if(filtered.length === 0){
+    content.innerHTML = searchVal
+      ? '<div class="empty-state"><div class="icon">🔍</div>「' + escHtml(searchVal) + '」に一致する利用者はいません</div>'
+      : '<div class="empty-state"><div class="icon">📅</div>' + currentDay + '曜日の利用者はいません</div>';
+    document.getElementById('summaryBar').innerHTML = '';
+    return;
+  }
+
+  let html = '';
+
+  if(amUsers.length > 0){
+    html += '<div class="section">';
+    html += '<div class="section-header am">🌅 午前の部 <span class="badge" style="background:var(--am)">' + amUsers.length + '名</span></div>';
+    html += '<div class="user-list">' + amUsers.map(u => userRowHtml(u, 'am')).join('') + '</div>';
+    html += '</div>';
+  }
+
+  if(pmUsers.length > 0){
+    html += '<div class="section">';
+    html += '<div class="section-header pm">🌇 午後の部 <span class="badge" style="background:var(--pm)">' + pmUsers.length + '名</span></div>';
+    html += '<div class="user-list">' + pmUsers.map(u => userRowHtml(u, 'pm')).join('') + '</div>';
+    html += '</div>';
+  }
+
+  content.innerHTML = html;
+
+  // サマリー
+  const shuttleCount = filtered.filter(u => u.transport === 'shuttle').length;
+  document.getElementById('summaryBar').innerHTML =
+    currentDay + '曜日: <span>' + filtered.length + '名</span>'
+    + ' (午前<span>' + amUsers.length + '</span> / 午後<span>' + pmUsers.length + '</span>)'
+    + ' | 送迎車: <span>' + shuttleCount + '名</span>';
+}
+
+// === 時間でソート ===
+function timeSorter(a, b){
+  if(!a.time && !b.time) return a.name.localeCompare(b.name, 'ja');
+  if(!a.time) return 1;
+  if(!b.time) return -1;
+  return a.time.localeCompare(b.time);
+}
+
+// === 利用者行HTML ===
+function userRowHtml(u, ampm){
+  const timeClass = u.time ? ampm : 'no-time';
+  const timeText = u.time || '未設定';
+  const tpClass = u.transport || 'shuttle';
+  const tpLabel = TRANSPORT_LABELS[u.transport] || TRANSPORT_LABELS.shuttle;
+
+  return '<div class="user-row">'
+    + '<div class="user-name">' + escHtml(u.name) + '</div>'
+    + '<div class="user-time ' + timeClass + '">' + escHtml(timeText) + '</div>'
+    + '<div class="transport-badge ' + tpClass + '">' + tpLabel + '</div>'
+    + '</div>';
+}
+
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// === 自動更新（5分ごと） ===
+setInterval(loadData, 5 * 60 * 1000);
+
+// === 起動 ===
+loadData();
+</script>
+</body>
+</html>
