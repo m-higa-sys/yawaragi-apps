@@ -141,6 +141,32 @@
     #upcomingPanel { page-break-inside: avoid; }
     .upcoming-group-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
+
+  /* ===== 注意事項バナー（要注意フラグが立ってる事例を上部表示） ===== */
+  .alert-banner { background: linear-gradient(135deg, #fff3e0, #ffe0b2); border-left: 8px solid #ef6c00; border-radius: 10px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(239, 108, 0, 0.15); }
+  .alert-banner-title { font-size: 16px; font-weight: bold; color: #e65100; margin-bottom: 10px; }
+  .alert-item { background: white; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; border-left: 4px solid #ef6c00; font-size: 14px; }
+  .alert-item-title { font-weight: bold; color: #e65100; margin-bottom: 4px; }
+  .alert-item-desc { color: #555; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+  .alert-item-meta { font-size: 11px; color: #888; margin-top: 4px; }
+
+  /* ===== 事例ノート（時系列の記録） ===== */
+  .notes-section { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; margin-top: 30px; }
+  .notes-section h2 { font-size: 18px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #34495e; display: flex; justify-content: space-between; align-items: center; }
+  .notes-header-right { font-size: 13px; font-weight: normal; }
+  .note-card { background: #f8f9fa; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; border-left: 4px solid #7f8c8d; position: relative; }
+  .note-card.pinned { border-left-color: #ef6c00; background: #fff8e1; }
+  .note-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px; }
+  .note-title { font-weight: bold; font-size: 15px; color: #2c3e50; }
+  .note-pin-badge { background: #ef6c00; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+  .note-meta { font-size: 12px; color: #888; }
+  .note-category { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-left: 6px; }
+  .note-cat-エラー { background: #fdeaea; color: #c0392b; }
+  .note-cat-手順 { background: #eaf2fe; color: #2471a3; }
+  .note-cat-その他 { background: #f0f0f0; color: #666; }
+  .note-desc { font-size: 13px; color: #444; line-height: 1.6; white-space: pre-wrap; margin-top: 4px; }
+  .note-actions { display: flex; gap: 6px; }
+  .note-empty { text-align: center; color: #999; padding: 20px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -154,6 +180,9 @@
   <p>口座振替不能の管理・対応状況を追跡します</p>
   <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="position:absolute;right:20px;top:12px;padding:6px 12px;background:#e3f2fd;color:#1565c0;border:1px solid #1976d2;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;">📋 利用者台帳</button>
 </div>
+
+<!-- 要注意バナー（ピン留めされた事例を表示・自動非表示） -->
+<div id="alertBanner" class="alert-banner no-print" style="display:none;"></div>
 
 <!-- Excel取込エリア -->
 <div class="drop-zone no-print" id="dropZone" onclick="document.getElementById('excelFileInput').click()">
@@ -1349,6 +1378,222 @@ renderMonth();
 // クラウドから初回ロード＋自動同期開始
 cloudLoad();
 startAutoRefresh();
+
+// ============ 事例ノート機能セットアップ ============
+// 事例ノートセクションを動的に追加（既存HTML構造を壊さないため）
+(function setupNotesSection() {
+  const notesHtml = `
+    <div class="notes-section no-print" id="notesSection">
+      <h2>
+        📝 事例ノート（過去のミス・対策記録）
+        <span class="notes-header-right">
+          <button class="btn btn-primary" onclick="openNoteModal()">＋ 事例追加</button>
+        </span>
+      </h2>
+      <div id="notesBody"></div>
+    </div>
+
+    <!-- 事例追加・編集モーダル -->
+    <div class="modal-overlay" id="noteModal">
+      <div class="modal" style="max-width:600px;">
+        <h3 id="noteModalTitle">事例を追加</h3>
+        <input type="hidden" id="noteEditId">
+        <div class="form-group">
+          <label>タイトル <span style="color:#e74c3c;">*</span></label>
+          <input type="text" id="noteTitle" placeholder="例: 預金種目「その他」でE0410エラー">
+        </div>
+        <div class="form-group">
+          <label>カテゴリ</label>
+          <select id="noteCategory">
+            <option value="エラー">エラー</option>
+            <option value="手順">手順</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>発生日</label>
+          <input type="date" id="noteDate">
+        </div>
+        <div class="form-group">
+          <label>詳細（原因・対処・再発防止）</label>
+          <textarea id="noteDescription" rows="8" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;"></textarea>
+        </div>
+        <div class="form-group">
+          <label>登録者</label>
+          <input type="text" id="noteAuthor" placeholder="名前">
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="notePinned" style="width:auto;">
+            <span>📌 要注意フラグ（上部バナーに表示・請求作業前に必ず確認）</span>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-secondary" onclick="closeNoteModal()">キャンセル</button>
+          <button class="btn btn-success" onclick="saveNote()">保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', notesHtml);
+})();
+
+// ============ 事例ノート機能 ============
+const NOTES_KEY = 'yawaragi_furikae_notes';
+
+function loadNotes() {
+  try {
+    return JSON.parse(localStorage.getItem(NOTES_KEY)) || [];
+  } catch(e) { return []; }
+}
+
+function saveNotes(notes) {
+  localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+}
+
+function renderNotes() {
+  const notes = loadNotes();
+  // ピン留め → 新しい順
+  const sorted = [...notes].sort((a, b) => {
+    if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
+    return (b.date || '').localeCompare(a.date || '');
+  });
+
+  const body = document.getElementById('notesBody');
+  if (!body) return;
+
+  if (sorted.length === 0) {
+    body.innerHTML = '<div class="note-empty">📝 まだ事例が登録されていません。「＋事例追加」から記録してください。</div>';
+  } else {
+    body.innerHTML = sorted.map(n => {
+      const cat = n.category || 'その他';
+      return `
+        <div class="note-card ${n.pinned ? 'pinned' : ''}">
+          <div class="note-card-header">
+            <div>
+              <span class="note-title">${escapeHtml(n.title)}</span>
+              <span class="note-category note-cat-${cat}">${cat}</span>
+              ${n.pinned ? '<span class="note-pin-badge">📌 要注意</span>' : ''}
+            </div>
+            <div class="note-actions">
+              <button class="btn btn-small btn-secondary" onclick="togglePinNote('${n.id}')">${n.pinned ? '📌解除' : '📌要注意'}</button>
+              <button class="btn btn-small btn-primary" onclick="editNote('${n.id}')">編集</button>
+              <button class="btn btn-small btn-danger" onclick="deleteNote('${n.id}')">削除</button>
+            </div>
+          </div>
+          <div class="note-meta">📅 ${n.date || '-'} ／ 登録: ${n.author || '-'}</div>
+          <div class="note-desc">${escapeHtml(n.description || '')}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // バナーも更新
+  renderAlertBanner(sorted);
+}
+
+function renderAlertBanner(sortedNotes) {
+  const pinned = sortedNotes.filter(n => n.pinned);
+  const banner = document.getElementById('alertBanner');
+  if (!banner) return;
+
+  if (pinned.length === 0) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <div class="alert-banner-title">⚠️ 請求作業前に必ず確認してください（${pinned.length}件）</div>
+    ${pinned.map(n => `
+      <div class="alert-item">
+        <div class="alert-item-title">${escapeHtml(n.title)}</div>
+        <div class="alert-item-desc">${escapeHtml(n.description || '')}</div>
+        <div class="alert-item-meta">📅 ${n.date || '-'}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+function openNoteModal(editId) {
+  const modal = document.getElementById('noteModal');
+  const notes = loadNotes();
+  const editing = editId ? notes.find(n => n.id === editId) : null;
+  document.getElementById('noteModalTitle').textContent = editing ? '事例を編集' : '事例を追加';
+  document.getElementById('noteEditId').value = editId || '';
+  document.getElementById('noteTitle').value = editing?.title || '';
+  document.getElementById('noteCategory').value = editing?.category || 'エラー';
+  document.getElementById('noteDate').value = editing?.date || new Date().toISOString().slice(0,10);
+  document.getElementById('noteDescription').value = editing?.description || '';
+  document.getElementById('notePinned').checked = editing?.pinned || false;
+  document.getElementById('noteAuthor').value = editing?.author || loadContactStaff() || '';
+  modal.classList.add('active');
+}
+
+function closeNoteModal() {
+  document.getElementById('noteModal').classList.remove('active');
+}
+
+function saveNote() {
+  const id = document.getElementById('noteEditId').value || ('n_' + Date.now());
+  const title = document.getElementById('noteTitle').value.trim();
+  if (!title) { alert('タイトルを入力してください'); return; }
+  const note = {
+    id: id,
+    title: title,
+    category: document.getElementById('noteCategory').value,
+    date: document.getElementById('noteDate').value,
+    description: document.getElementById('noteDescription').value.trim(),
+    pinned: document.getElementById('notePinned').checked,
+    author: document.getElementById('noteAuthor').value.trim()
+  };
+  let notes = loadNotes();
+  const idx = notes.findIndex(n => n.id === id);
+  if (idx >= 0) notes[idx] = note;
+  else notes.push(note);
+  saveNotes(notes);
+  closeNoteModal();
+  renderNotes();
+}
+
+function editNote(id) { openNoteModal(id); }
+
+function deleteNote(id) {
+  if (!confirm('この事例を削除しますか？')) return;
+  saveNotes(loadNotes().filter(n => n.id !== id));
+  renderNotes();
+}
+
+function togglePinNote(id) {
+  const notes = loadNotes();
+  const n = notes.find(x => x.id === id);
+  if (!n) return;
+  n.pinned = !n.pinned;
+  saveNotes(notes);
+  renderNotes();
+}
+
+// 初回事例を1件プリセット（過去の事例が空なら登録）
+(function seedInitialNote() {
+  const existing = loadNotes();
+  if (existing.length > 0) return;
+  const seed = {
+    id: 'n_seed_20260412',
+    title: '預金種目「その他」でE0410エラー',
+    category: 'エラー',
+    date: '2026-04-12',
+    description: '【発生】4月分の電算アップロードで E0410「預金種目が違います」エラー。110件全件が処理されず。\n\n【原因】3月新規利用者（中村さん）の口座登録時、預金種目を「その他」で登録していた。電算/全銀フォーマットは「その他(9)」を受け付けない。\n\n【対処】\n1. リハブクラウドで該当者の口座情報を「普通預金」に修正\n2. 振替依頼確定解除 → 請求書削除 → 請求書再作成（スナップショット更新のため）\n3. 振替依頼の再確定 → 全銀ファイル再出力 → 電算再アップロード\n\n【再発防止】新規利用者の口座登録時は預金種目を普通/当座/貯蓄のみ選択。「その他」は絶対NG。既存者の口座情報変更時も要注意。',
+    pinned: true,
+    author: ''
+  };
+  saveNotes([seed]);
+})();
+
+renderNotes();
 </script>
 </body>
 </html>
