@@ -4300,13 +4300,96 @@ function attRenderUser(u) {
         } catch(e) {}
     }
 
-    return '<div class="att-user-row" onclick="attStartAbsence(\'' + escapedName + '\')" style="cursor:pointer;">' +
+    return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
         '<span class="att-user-name">' + u.name + '</span>' +
         (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
         (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
         resumeText +
         '</div>';
+}
+
+// 出席予定タブで利用者クリック時の分岐
+function attUserClick(name, isAbsent) {
+    if (!isAbsent) {
+        // 出席状態 → 欠席登録タブへ
+        attStartAbsence(name);
+        return;
+    }
+    // 欠席状態 → 訂正メニュー表示
+    attShowAbsentMenu(name);
+}
+
+function attShowAbsentMenu(name) {
+    const dateStr = attFormatDate(attCurrentDate);
+    const dateLabel = absFormatDate(dateStr);
+    const menu = document.createElement('div');
+    menu.id = 'att-absent-menu';
+    menu.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    menu.innerHTML =
+        '<div style="background:#fff;border-radius:12px;padding:20px;min-width:280px;max-width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
+        '<div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">' + name + '様</div>' +
+        '<div style="font-size:0.9rem;color:#666;margin-bottom:14px;">' + dateLabel + ' 欠席登録済み</div>' +
+        '<button onclick="attCancelAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #e53e3e;color:#e53e3e;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✕ 欠席を取消（出席に戻す）</button>' +
+        '<button onclick="attMoveAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #3182ce;color:#3182ce;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">→ 別の日に移動</button>' +
+        '<button onclick="document.getElementById(\'att-absent-menu\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
+        '</div>';
+    menu.addEventListener('click', function(e) {
+        if (e.target === menu) menu.remove();
+    });
+    document.body.appendChild(menu);
+}
+
+function attCancelAbsence(name, dateStr) {
+    if (!confirm(name + '様 ' + absFormatDate(dateStr) + ' の欠席を取り消しますか？')) return;
+
+    // GASに取消送信
+    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席取消');
+
+    // ローカル欠席記録からも削除
+    let records = absGetRecords();
+    const before = records.length;
+    records = records.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+    if (records.length !== before) absSaveRecords(records);
+
+    // キャッシュクリア
+    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+    if (window._cachedGasAbsences) {
+        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+    }
+
+    // メニュー閉じる
+    const m = document.getElementById('att-absent-menu');
+    if (m) m.remove();
+
+    showToast('欠席を取り消しました');
+
+    // 再読込
+    setTimeout(function() { attLoad(); }, 300);
+}
+
+function attMoveAbsence(name, dateStr) {
+    // 先に現在の欠席を取消
+    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席移動:旧日取消');
+
+    // ローカルからも削除
+    let records = absGetRecords();
+    records = records.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+    absSaveRecords(records);
+
+    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+    if (window._cachedGasAbsences) {
+        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+    }
+
+    // メニュー閉じる
+    const m = document.getElementById('att-absent-menu');
+    if (m) m.remove();
+
+    showToast('旧日付の欠席を取消しました。新しい日付を登録してください');
+
+    // 欠席登録タブに切替（新規登録画面）
+    attStartAbsence(name);
 }
 
 // 出席予定タブから取得したデータを保持
