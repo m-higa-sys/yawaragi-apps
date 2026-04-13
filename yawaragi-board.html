@@ -956,6 +956,7 @@
         .rmd-summary-item.pending { background: #fed7d7; color: #c53030; }
         .rmd-summary-item.done { background: #c6f6d5; color: #276749; }
         .rmd-unit-section { margin: 8px 0; }
+        @media (max-width: 720px) { .rmd-two-col { grid-template-columns: 1fr !important; } }
         .rmd-unit-header { padding: 8px 16px; font-weight: 700; font-size: 0.9rem; border-left: 4px solid; }
         .rmd-unit-header.am { background: #ebf8ff; border-color: #3182ce; color: #2a4365; }
         .rmd-unit-header.pm { background: #faf5ff; border-color: #805ad5; color: #44337a; }
@@ -5892,7 +5893,11 @@ function rmdRender() {
     let totalDone = 0;
     let html = '';
 
+    // 午前/午後を左右2カラム表示（狭い画面では自動的に縦積み）
+    html += '<div class="rmd-two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:flex-start;">';
+
     // 午前
+    html += '<div>';
     if (amPresent.length > 0) {
         html += '<div class="rmd-unit-section">';
         html += '<div class="rmd-unit-header am">午前の部（' + amPresent.length + '名）</div>';
@@ -5904,8 +5909,10 @@ function rmdRender() {
         });
         html += '</div>';
     }
+    html += '</div>';
 
     // 午後
+    html += '<div>';
     if (pmPresent.length > 0) {
         html += '<div class="rmd-unit-section">';
         html += '<div class="rmd-unit-header pm">午後の部（' + pmPresent.length + '名）</div>';
@@ -5917,6 +5924,8 @@ function rmdRender() {
         });
         html += '</div>';
     }
+    html += '</div>';
+    html += '</div>';
 
     // サマリー
     if (totalPending === 0 && totalDone > 0) {
