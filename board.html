@@ -3564,26 +3564,40 @@ function absChangeMonth(delta) {
 }
 
 // GAS（スプレッドシート）とlocalStorageの両方から取得して統合表示
+const ABS_CACHE_KEY = 'yawaragi_abs_cache_v1';
+
 function absRenderUpcomingList() {
     const el = document.getElementById('abs-upcoming-list');
-    el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
     absUpdateMonthLabel();
 
-    // GASからJSONPで取得（表示中の月を指定）
+    // キャッシュがあれば即表示（体感ラグを消す）
+    let cacheShown = false;
+    try {
+        const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+        const c = cache[absCurrentMonth];
+        if (c && c.absences) {
+            absRenderUpcomingListFromData(c.absences);
+            absRenderLongTermList(c.longTerm || []);
+            cacheShown = true;
+        }
+    } catch {}
+    if (!cacheShown) {
+        el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
+    }
+
+    // GASからJSONPで取得（裏で最新取得→差し替え）
     const cbName = '_absUpCb_' + Date.now();
     const script = document.createElement('script');
     script.src = ABS_BOARD_API_URL + '?action=absences&month=' + absCurrentMonth + '&callback=' + cbName + '&t=' + Date.now();
 
     const timeout = setTimeout(() => {
         delete window[cbName];
-        // GAS取得失敗 → localStorageだけで表示
-        absRenderUpcomingListFromData([]);
+        if (!cacheShown) absRenderUpcomingListFromData([]);
     }, 5000);
 
     window[cbName] = function(data) {
         clearTimeout(timeout);
         delete window[cbName];
-        // GAS側が新しい形式（{absences, longTerm}）か旧形式（配列）か対応
         let gasAbsences = [];
         let longTermData = [];
         if (data && data.absences) {
@@ -3596,11 +3610,19 @@ function absRenderUpcomingList() {
         }
         absRenderUpcomingListFromData(gasAbsences);
         absRenderLongTermList(longTermData);
+        // キャッシュ保存（月ごと、最大6か月分）
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            cache[absCurrentMonth] = { absences: gasAbsences, longTerm: longTermData, savedAt: Date.now() };
+            const months = Object.keys(cache).sort();
+            while (months.length > 6) { delete cache[months.shift()]; }
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
     };
     script.onerror = () => {
         clearTimeout(timeout);
         delete window[cbName];
-        absRenderUpcomingListFromData([]);
+        if (!cacheShown) absRenderUpcomingListFromData([]);
     };
     document.body.appendChild(script);
 }
