@@ -4379,6 +4379,7 @@ function attShowAbsentMenu(name) {
         '<div style="font-size:0.9rem;color:#666;margin-bottom:14px;">' + dateLabel + ' 欠席登録済み</div>' +
         '<button onclick="attCancelAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #e53e3e;color:#e53e3e;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✕ 欠席を取消（出席に戻す）</button>' +
         '<button onclick="attMoveAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #3182ce;color:#3182ce;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">→ 別の日に移動</button>' +
+        '<button onclick="attEditAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #38a169;color:#38a169;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✎ 編集（理由・連絡者・種別など）</button>' +
         '<button onclick="document.getElementById(\'att-absent-menu\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
         '</div>';
     menu.addEventListener('click', function(e) {
@@ -4513,6 +4514,151 @@ function attMoveAbsence(name, dateStr) {
         showToast('欠席を ' + absFormatDate(newDate) + ' に移動しました');
 
         setTimeout(function() { attLoad(); absRenderRecordList && absRenderRecordList(); }, 400);
+    };
+}
+
+// 欠席の編集（理由・連絡者・方法・種別・受付日）
+function attEditAbsence(name, dateStr) {
+    // 既存データ取得
+    let existing = null;
+    const localRecs = absGetRecords();
+    const lr = localRecs.find(r => r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr);
+    if (lr) {
+        existing = {
+            reason: lr.reason || '', contact: lr.contact || '',
+            method: lr.method || '', reporter: lr.registeredBy || '',
+            contactDate: lr.contactDate || '', type: 'normal'
+        };
+    } else if (window._cachedGasAbsences) {
+        const gr = window._cachedGasAbsences.find(g => g.name === name && g.date === dateStr);
+        if (gr) existing = {
+            reason: gr.reason || '', contact: gr.reporter || '',
+            method: '', reporter: gr.reporter || '',
+            contactDate: gr.contactDate || '', type: 'normal'
+        };
+    }
+    if (!existing) {
+        const all = (attLastData.am || []).concat(attLastData.pm || []);
+        const u = all.find(x => x.name === name);
+        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '', type: 'normal' };
+    }
+
+    // 長期休みか判定
+    if (absLongTermMap && absLongTermMap[name]) existing.type = 'longterm';
+
+    // 今開いてるメニュー閉じる
+    const m = document.getElementById('att-absent-menu');
+    if (m) m.remove();
+
+    // 編集モーダル
+    const modal = document.createElement('div');
+    modal.id = 'att-edit-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const methods = ['電話','留守電','直接','メール','LINE'];
+    const reasons = ['体調不良','通院','私用','家族都合','その他'];
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:12px;padding:22px;min-width:320px;max-width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
+        '<div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">' + name + '様 欠席の編集</div>' +
+        '<div style="font-size:0.85rem;color:#666;margin-bottom:14px;">' + absFormatDate(dateStr) + '</div>' +
+
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">種別：</div>' +
+        '<select id="att-edit-type" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:12px;">' +
+        '<option value="normal"' + (existing.type === 'normal' ? ' selected' : '') + '>通常欠席</option>' +
+        '<option value="longterm"' + (existing.type === 'longterm' ? ' selected' : '') + '>長期休み</option>' +
+        '</select>' +
+
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">理由：</div>' +
+        '<select id="att-edit-reason" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:12px;">' +
+        reasons.map(r => '<option value="' + r + '"' + (existing.reason === r ? ' selected' : '') + '>' + r + '</option>').join('') +
+        (reasons.indexOf(existing.reason) < 0 && existing.reason ? '<option value="' + existing.reason + '" selected>' + existing.reason + '</option>' : '') +
+        '</select>' +
+
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">連絡者：</div>' +
+        '<input type="text" id="att-edit-contact" value="' + existing.contact.replace(/"/g,'&quot;') + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:12px;" placeholder="例: 本人・家族・ケアマネ">' +
+
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">連絡方法：</div>' +
+        '<select id="att-edit-method" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:12px;">' +
+        '<option value="">--</option>' +
+        methods.map(m => '<option value="' + m + '"' + (existing.method === m ? ' selected' : '') + '>' + m + '</option>').join('') +
+        '</select>' +
+
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">受付日：</div>' +
+        '<input type="date" id="att-edit-contact-date" value="' + (existing.contactDate || dateStr) + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:16px;">' +
+
+        '<button id="att-edit-submit" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#38a169;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">この内容で保存</button>' +
+        '<button onclick="document.getElementById(\'att-edit-modal\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">キャンセル</button>' +
+        '</div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+
+    document.getElementById('att-edit-submit').onclick = function() {
+        const newType = document.getElementById('att-edit-type').value;
+        const newReason = document.getElementById('att-edit-reason').value;
+        const newContact = document.getElementById('att-edit-contact').value.trim();
+        const newMethod = document.getElementById('att-edit-method').value;
+        const newContactDate = document.getElementById('att-edit-contact-date').value || dateStr;
+
+        // 1) 旧記録を取消
+        gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '編集:旧記録取消');
+
+        let recs = absGetRecords();
+        recs = recs.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+
+        // 2) 新記録を登録（種別により分岐）
+        const userCache = absUserCache.find(u => u.name === name) || {};
+        if (newType === 'longterm') {
+            gasPost({
+                action: 'long_term_absence',
+                name: name,
+                date: dateStr,
+                reason: newReason,
+                reporter: newContact,
+                contact: newContact,
+                method: newMethod,
+                contactDate: newContactDate,
+                cmOffice: userCache.cmOffice || '',
+                cmEmail: '', cmName: ''
+            }, '編集:長期休み登録');
+        } else {
+            gasPost({
+                action: 'absence',
+                name: name,
+                dates: [dateStr],
+                unit: '終日',
+                reason: newReason,
+                reporter: newContact,
+                contact: newContact,
+                method: newMethod,
+                contactDate: newContactDate,
+                cmOffice: userCache.cmOffice || '',
+                cmEmail: '', cmName: ''
+            }, '編集:通常欠席登録');
+        }
+
+        // ローカル更新
+        recs.push({
+            id: Date.now(),
+            userName: name,
+            dateFrom: dateStr, dateTo: dateStr,
+            dateType: 'single',
+            reason: newReason,
+            contact: newContact,
+            method: newMethod,
+            contactDate: newContactDate,
+            registeredBy: existing.reporter,
+            registeredAt: new Date().toISOString()
+        });
+        absSaveRecords(recs);
+
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+        if (window._cachedGasAbsences) {
+            window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+        }
+
+        document.getElementById('att-edit-modal').remove();
+        showToast('欠席内容を更新しました');
+
+        setTimeout(function() { attLoad(); if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList(); }, 500);
     };
 }
 
