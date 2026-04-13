@@ -1690,28 +1690,50 @@ function init() {
     absInit();
 }
 
+const TAB_STATE_KEY = 'yawaragi_board_active_tab';
+
+function activateTab(tabName) {
+    const btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+    if (!btn) return false;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    const content = document.getElementById('tab-' + tabName);
+    if (content) content.classList.add('active');
+    // 保存
+    try { localStorage.setItem(TAB_STATE_KEY, tabName); } catch {}
+    // タブ切替時に表示を更新
+    if (tabName === 'attendance') {
+        if (typeof attLoad === 'function') attLoad();
+        if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
+    }
+    if (tabName === 'remind' && typeof rmdLoad === 'function') rmdLoad();
+    if (tabName === 'task' && typeof tbRenderAll === 'function') tbRenderAll();
+    if (tabName === 'absence') {
+        if (typeof absRenderTodayList === 'function') absRenderTodayList();
+        if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+    }
+    if (tabName === 'jisseki' && typeof absUserLoaded !== 'undefined' && absUserLoaded && typeof jisLoad === 'function') jisLoad();
+    if (tabName === 'data' && typeof absRenderUserManage === 'function') absRenderUserManage();
+    if (tabName === 'terminate') {
+        if (typeof trmInit === 'function') trmInit();
+        if (typeof trmLoadList === 'function') trmLoadList();
+    }
+    if (tabName === 'jisseki-send' && typeof jsInitTab === 'function') jsInitTab();
+    return true;
+}
+
 function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-            // タブ切替時に表示を更新
-            if (btn.dataset.tab === 'attendance') {
-                attLoad();
-                // 長期休み一覧も再取得（再開予定日が更新されているかも）
-                if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
-            }
-            if (btn.dataset.tab === 'remind') rmdLoad();
-            if (btn.dataset.tab === 'task') tbRenderAll();
-            if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
-            if (btn.dataset.tab === 'jisseki' && absUserLoaded) jisLoad();
-            if (btn.dataset.tab === 'data') absRenderUserManage();
-            if (btn.dataset.tab === 'terminate') { trmInit(); trmLoadList(); }
-            if (btn.dataset.tab === 'jisseki-send') jsInitTab();
+            activateTab(btn.dataset.tab);
         });
     });
+    // リロード後に前回のタブを復元
+    try {
+        const saved = localStorage.getItem(TAB_STATE_KEY);
+        if (saved) activateTab(saved);
+    } catch {}
 }
 
 function setupUnitBtns() {
