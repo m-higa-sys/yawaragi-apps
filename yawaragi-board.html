@@ -5856,9 +5856,24 @@ function rmdSetFilter(filter, btn) {
 function rmdLoad() {
     const content = document.getElementById('rmd-content');
 
-    // 出席予定データがなければ先に取得
+    // 出席予定データがなければ自動で取得してからリトライ
     if (!attLastData || (attLastData.am.length === 0 && attLastData.pm.length === 0)) {
-        content.innerHTML = '<div class="rmd-empty">出席予定タブを一度開いてデータを読み込んでください</div>';
+        content.innerHTML = '<div class="rmd-empty">出席予定を読み込み中...</div>';
+        if (typeof attLoad === 'function') {
+            attLoad();
+            // 出席予定データが来るのを待ってリトライ（最大5秒）
+            let tries = 0;
+            const waitInt = setInterval(function() {
+                tries++;
+                if (attLastData && (attLastData.am.length > 0 || attLastData.pm.length > 0)) {
+                    clearInterval(waitInt);
+                    rmdLoad();
+                } else if (tries >= 10) {
+                    clearInterval(waitInt);
+                    content.innerHTML = '<div class="rmd-empty">出席予定データを取得できませんでした。出席予定タブを開いてから戻ってください</div>';
+                }
+            }, 500);
+        }
         return;
     }
 
