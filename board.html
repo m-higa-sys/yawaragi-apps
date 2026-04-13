@@ -968,11 +968,13 @@
         .rmd-user-care.shien { background: #bee3f8; color: #2a4365; }
         .rmd-tasks { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
         .rmd-task { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
-        .rmd-task.pending { background: #fefcbf; color: #744210; border: 1.5px solid #ecc94b; }
-        .rmd-task.pending:hover { background: #fefce8; transform: scale(1.03); }
-        .rmd-task.done { background: #c6f6d5; color: #276749; border: 1.5px solid #68d391; }
+        .rmd-task.pending { background: #fff7ed; color: #9a3412; border: 1.5px solid #fb923c; }
+        .rmd-task.pending:hover { background: #ffedd5; transform: scale(1.03); }
+        .rmd-task.partial { background: #fefcbf; color: #744210; border: 1.5px solid #ecc94b; }
+        .rmd-task.partial:hover { background: #fefce8; transform: scale(1.03); }
+        .rmd-task.done { background: #edf2f7; color: #a0aec0; border: 1.5px solid #cbd5e0; opacity: 0.7; }
         .rmd-task.birthday { background: #fce4ec; color: #c62828; border: 1.5px solid #ef9a9a; }
-        .rmd-task.birthday.done { background: #c6f6d5; color: #276749; border: 1.5px solid #68d391; }
+        .rmd-task.birthday.done { background: #edf2f7; color: #a0aec0; border: 1.5px solid #cbd5e0; opacity: 0.7; }
         .rmd-empty { text-align: center; padding: 40px 16px; color: #a0aec0; font-size: 0.95rem; }
         .rmd-no-task { text-align: center; padding: 24px 16px; color: #38a169; font-size: 1rem; font-weight: 700; }
         /* リマインド入力ダイアログ */
@@ -5797,16 +5799,21 @@ function rmdGetUserTasks(userName, userCare) {
         });
     }
 
-    // ③ 口腔チェック（毎月）
+    // ③ 口腔チェック（要介護=月2回、要支援=月1回）
     const oralData = rmdReadOralData();
-    const oralKey = monthKey + '_1回目';
-    const hasOral = oralData.checks && oralData.checks[fy] && oralData.checks[fy][userName] && oralData.checks[fy][userName][oralKey];
+    const oralRequired = isKaigo ? 2 : 1;
+    const userOral = oralData.checks && oralData.checks[fy] && oralData.checks[fy][userName] || {};
+    const oral1 = !!userOral[monthKey + '_1回目'];
+    const oral2 = !!userOral[monthKey + '_2回目'];
+    const oralCount = (oral1 ? 1 : 0) + (oral2 ? 1 : 0);
     tasks.push({
         type: 'oral',
         label: '口腔',
         icon: '🦷',
-        done: !!hasOral,
-        value: hasOral || null
+        done: oralCount >= oralRequired,
+        count: oralCount,
+        required: oralRequired,
+        value: null
     });
 
     // ④ 体力測定（3ヶ月サイクル）
@@ -5965,13 +5972,22 @@ function rmdRenderUserRow(u) {
 
     const taskHtmlArr = [];
     tasks.forEach(t => {
+        // 口腔は count/required を持ち、3状態（未実施/途中/完了）
+        if (t.type === 'oral') {
+            const cls = t.done ? 'done' : (t.count > 0 ? 'partial' : 'pending');
+            const progress = t.count + '/' + t.required;
+            if (t.done) { done++; } else { pending++; }
+            if (t.done && rmdFilter === 'pending') return;
+            taskHtmlArr.push('<button class="rmd-task ' + cls + '" onclick="rmdToggleOral(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + ' ' + progress + '</button>');
+            return;
+        }
         if (t.done) {
             done++;
             if (rmdFilter === 'pending') return; // フィルタで非表示
             if (t.type === 'weight' || t.type === 'height') {
                 taskHtmlArr.push('<span class="rmd-task done">' + t.icon + ' ' + t.label + ' ' + t.value + (t.type === 'weight' ? 'kg' : 'cm') + '</span>');
             } else {
-                taskHtmlArr.push('<span class="rmd-task done">' + t.icon + ' ' + t.label + ' ✅</span>');
+                taskHtmlArr.push('<span class="rmd-task done">' + t.icon + ' ' + t.label + '</span>');
             }
         } else {
             pending++;
@@ -5979,8 +5995,6 @@ function rmdRenderUserRow(u) {
                 taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdOpenWeightDialog(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
             } else if (t.type === 'height') {
                 taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdOpenHeightDialog(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
-            } else if (t.type === 'oral') {
-                taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdToggleOral(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
             } else if (t.type === 'measure') {
                 taskHtmlArr.push('<button class="rmd-task pending" onclick="rmdToggleMeasure(\'' + escapeAttr(u.name) + '\')">' + t.icon + ' ' + t.label + '</button>');
             } else if (t.type === 'birthday') {
