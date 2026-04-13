@@ -490,7 +490,7 @@ body {
       <span id="syncText">接続中</span>
     </div>
     <button class="header-btn" id="btnSettings" onclick="toggleSettings()">設定</button>
-    <button class="header-btn" onclick="window.open('https://docs.google.com/spreadsheets/d/1sFrr5ScSoAcOzvxEs1QtV2qdM_v4OdXe3W5bJJm25G0/edit','_blank')" style="background:rgba(52,168,83,.85);color:#fff">+ タスク編集</button>
+    <button class="header-btn" onclick="window.open('https://docs.google.com/spreadsheets/d/1sFrr5ScSoAcOzvxEs1QtV2qdM_v4OdXe3W5bJJm25G0/edit','_blank')" style="background:rgba(52,168,83,.85);color:#fff">清掃内容変更</button>
   </div>
 </div>
 
@@ -556,6 +556,8 @@ body {
         <option value="前半終了後">前半終了後</option>
         <option value="午前利用中（後半）">午前後半</option>
         <option value="午前終了後">午前終了後</option>
+        <option value="昼清掃・準備">昼清掃・準備</option>
+        <option value="利用中">利用中</option>
         <option value="午後準備">午後準備</option>
       </select>
       <button onclick="addNewTask()">追加</button>
@@ -782,6 +784,8 @@ function renderTasks() {
     '前半終了後',
     '午前利用中（後半）',
     '午前終了後',
+    '昼清掃・準備',
+    '利用中',
     '午後準備'
   ];
 
@@ -791,6 +795,8 @@ function renderTasks() {
     '前半終了後': '前半終了後',
     '午前利用中（後半）': '午前利用中（後半）',
     '午前終了後': '午前終了後',
+    '昼清掃・準備': '昼清掃・準備',
+    '利用中': '利用中',
     '午後準備': '午後準備'
   };
 
@@ -813,16 +819,32 @@ function renderTasks() {
     let slotChecked = 0;
     let taskHtml = '';
 
+    // サマリータスク判定: 名前に「全ての確認チェック」「すべての確認チェック」を含む
+    function isSummaryTask(t) {
+      return /(全て|すべて)の確認チェック/.test(t.name);
+    }
+    // このセクションの非サマリータスクが全部チェック済みか
+    const nonSummaryTasks = filteredTasks.filter(function(t){ return !isSummaryTask(t); });
+    const allOthersChecked = nonSummaryTasks.length > 0 && nonSummaryTasks.every(function(t) {
+      return STATE.log.some(function(l) { return l.taskNo == t.no; });
+    });
+
     filteredTasks.forEach(function(task) {
       const logEntry = STATE.log.find(function(l) { return l.taskNo == task.no; });
       const isChecked = !!logEntry;
       if (isChecked) { checkedTasks++; slotChecked++; }
       totalTasks++;
 
+      const locked = isSummaryTask(task) && !isChecked && !allOthersChecked;
+      const clickAttr = locked
+        ? 'onclick="showToast(\'このセクションの全項目をチェックしてから押してください\')"'
+        : 'onclick="toggleTask(' + task.no + ',\'' + escHtml(task.name) + '\',' + isChecked + ')"';
+      const lockedStyle = locked ? ' style="opacity:0.45;cursor:not-allowed;"' : '';
+
       taskHtml += '<div class="task-item' + (isChecked ? ' checked' : '') + '" '
-        + 'onclick="toggleTask(' + task.no + ',\'' + escHtml(task.name) + '\',' + isChecked + ')" '
+        + clickAttr + lockedStyle + ' '
         + 'data-no="' + task.no + '">'
-        + '<div class="task-check">' + (isChecked ? '&#10003;' : '') + '</div>'
+        + '<div class="task-check">' + (isChecked ? '&#10003;' : (locked ? '🔒' : '')) + '</div>'
         + '<div class="task-info">'
         + '<div class="task-name">' + escHtml(task.name)
         + (task.dayLimit ? '<span class="task-day-limit">' + escHtml(task.dayLimit) + '</span>' : '')
