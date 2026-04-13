@@ -1027,6 +1027,19 @@
     <div id="att-content">
         <div class="att-loading">読み込み中...</div>
     </div>
+
+    <!-- 登録済みの欠席一覧（欠席登録タブから移動：2026/4/14） -->
+    <div class="abs-today-card" style="margin-top:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h3 class="abs-section-title" style="margin:0;">登録済みの欠席一覧</h3>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button type="button" id="abs-month-prev" onclick="absChangeMonth(-1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">◀</button>
+                <span id="abs-month-label" style="font-weight:bold;min-width:90px;text-align:center;"></span>
+                <button type="button" id="abs-month-next" onclick="absChangeMonth(1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">▶</button>
+            </div>
+        </div>
+        <div id="abs-upcoming-list"></div>
+    </div>
 </div>
 
 <!-- ===== 今日のリマインドタブ ===== -->
@@ -1191,18 +1204,6 @@
         <div id="abs-resume-empty"><span style="color:#a0aec0;font-size:0.85rem;">上の「長期休み中の利用者」から再開する人を選んでください</span></div>
     </div>
 
-    <!-- 登録済みの欠席一覧 -->
-    <div class="abs-today-card" style="margin-top:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <h3 class="abs-section-title" style="margin:0;">登録済みの欠席一覧</h3>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <button type="button" id="abs-month-prev" onclick="absChangeMonth(-1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">◀</button>
-                <span id="abs-month-label" style="font-weight:bold;min-width:90px;text-align:center;"></span>
-                <button type="button" id="abs-month-next" onclick="absChangeMonth(1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">▶</button>
-            </div>
-        </div>
-        <div id="abs-upcoming-list"></div>
-    </div>
 </div>
 
 <!-- ===== 中止管理タブ（2026/4/10追加）===== -->
@@ -1689,28 +1690,50 @@ function init() {
     absInit();
 }
 
+const TAB_STATE_KEY = 'yawaragi_board_active_tab';
+
+function activateTab(tabName) {
+    const btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+    if (!btn) return false;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    const content = document.getElementById('tab-' + tabName);
+    if (content) content.classList.add('active');
+    // 保存
+    try { localStorage.setItem(TAB_STATE_KEY, tabName); } catch {}
+    // タブ切替時に表示を更新
+    if (tabName === 'attendance') {
+        if (typeof attLoad === 'function') attLoad();
+        if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
+    }
+    if (tabName === 'remind' && typeof rmdLoad === 'function') rmdLoad();
+    if (tabName === 'task' && typeof tbRenderAll === 'function') tbRenderAll();
+    if (tabName === 'absence') {
+        if (typeof absRenderTodayList === 'function') absRenderTodayList();
+        if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+    }
+    if (tabName === 'jisseki' && typeof absUserLoaded !== 'undefined' && absUserLoaded && typeof jisLoad === 'function') jisLoad();
+    if (tabName === 'data' && typeof absRenderUserManage === 'function') absRenderUserManage();
+    if (tabName === 'terminate') {
+        if (typeof trmInit === 'function') trmInit();
+        if (typeof trmLoadList === 'function') trmLoadList();
+    }
+    if (tabName === 'jisseki-send' && typeof jsInitTab === 'function') jsInitTab();
+    return true;
+}
+
 function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-            // タブ切替時に表示を更新
-            if (btn.dataset.tab === 'attendance') {
-                attLoad();
-                // 長期休み一覧も再取得（再開予定日が更新されているかも）
-                if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
-            }
-            if (btn.dataset.tab === 'remind') rmdLoad();
-            if (btn.dataset.tab === 'task') tbRenderAll();
-            if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
-            if (btn.dataset.tab === 'jisseki' && absUserLoaded) jisLoad();
-            if (btn.dataset.tab === 'data') absRenderUserManage();
-            if (btn.dataset.tab === 'terminate') { trmInit(); trmLoadList(); }
-            if (btn.dataset.tab === 'jisseki-send') jsInitTab();
+            activateTab(btn.dataset.tab);
         });
     });
+    // リロード後に前回のタブを復元
+    try {
+        const saved = localStorage.getItem(TAB_STATE_KEY);
+        if (saved) activateTab(saved);
+    } catch {}
 }
 
 function setupUnitBtns() {
@@ -3541,26 +3564,40 @@ function absChangeMonth(delta) {
 }
 
 // GAS（スプレッドシート）とlocalStorageの両方から取得して統合表示
+const ABS_CACHE_KEY = 'yawaragi_abs_cache_v1';
+
 function absRenderUpcomingList() {
     const el = document.getElementById('abs-upcoming-list');
-    el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
     absUpdateMonthLabel();
 
-    // GASからJSONPで取得（表示中の月を指定）
+    // キャッシュがあれば即表示（体感ラグを消す）
+    let cacheShown = false;
+    try {
+        const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+        const c = cache[absCurrentMonth];
+        if (c && c.absences) {
+            absRenderUpcomingListFromData(c.absences);
+            absRenderLongTermList(c.longTerm || []);
+            cacheShown = true;
+        }
+    } catch {}
+    if (!cacheShown) {
+        el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
+    }
+
+    // GASからJSONPで取得（裏で最新取得→差し替え）
     const cbName = '_absUpCb_' + Date.now();
     const script = document.createElement('script');
     script.src = ABS_BOARD_API_URL + '?action=absences&month=' + absCurrentMonth + '&callback=' + cbName + '&t=' + Date.now();
 
     const timeout = setTimeout(() => {
         delete window[cbName];
-        // GAS取得失敗 → localStorageだけで表示
-        absRenderUpcomingListFromData([]);
+        if (!cacheShown) absRenderUpcomingListFromData([]);
     }, 5000);
 
     window[cbName] = function(data) {
         clearTimeout(timeout);
         delete window[cbName];
-        // GAS側が新しい形式（{absences, longTerm}）か旧形式（配列）か対応
         let gasAbsences = [];
         let longTermData = [];
         if (data && data.absences) {
@@ -3573,11 +3610,19 @@ function absRenderUpcomingList() {
         }
         absRenderUpcomingListFromData(gasAbsences);
         absRenderLongTermList(longTermData);
+        // キャッシュ保存（月ごと、最大6か月分）
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            cache[absCurrentMonth] = { absences: gasAbsences, longTerm: longTermData, savedAt: Date.now() };
+            const months = Object.keys(cache).sort();
+            while (months.length > 6) { delete cache[months.shift()]; }
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
     };
     script.onerror = () => {
         clearTimeout(timeout);
         delete window[cbName];
-        absRenderUpcomingListFromData([]);
+        if (!cacheShown) absRenderUpcomingListFromData([]);
     };
     document.body.appendChild(script);
 }
@@ -3607,7 +3652,8 @@ function absRenderUpcomingListFromData(gasAbsences) {
             userName: r.userName, dateFrom: r.dateFrom, dateTo: r.dateTo,
             dateType: r.dateType, reason: r.reason,
             contact: r.contact, method: r.method,
-            registeredBy: r.registeredBy
+            registeredBy: r.registeredBy,
+            contactDate: r.contactDate || ''
         });
     });
 
@@ -3622,7 +3668,8 @@ function absRenderUpcomingListFromData(gasAbsences) {
             userName: g.name, dateFrom: g.date, dateTo: g.date,
             dateType: 'single', reason: g.reason || '',
             contact: g.reporter || '', method: '',
-            registeredBy: ''
+            registeredBy: '',
+            contactDate: g.contactDate || ''
         });
     });
 
@@ -3640,13 +3687,13 @@ function absRenderUpcomingListFromData(gasAbsences) {
         }
         const deleteBtn = r.type === 'local'
             ? `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`
-            : '';
+            : `<button class="abs-record-delete" onclick="absDeleteGasRecord('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">取消</button>`;
         return `
         <div class="abs-record">
             <div class="abs-record-main">
                 <div class="abs-record-name">${r.userName}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}${r.method ? '（' + r.method + '）' : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
+                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
             </div>
             ${deleteBtn}
@@ -3690,6 +3737,26 @@ function absDeleteRecord(id) {
     showToast('欠席を取り消しました');
 
     // 出席予定タブを再読み込み
+    attLoad();
+}
+
+// GAS登録済み（ローカルに無い）欠席の取消
+function absDeleteGasRecord(userName, dateFrom) {
+    if (!confirm(userName + '様 ' + absFormatDate(dateFrom) + ' の欠席を取り消しますか？')) return;
+    gasPost({ action: 'cancel_absence', name: userName, date: dateFrom, unit: '終日' }, '欠席取消');
+
+    // 出席予定キャッシュもクリア（次回GASから再取得）
+    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+
+    // UIから即座に削除（楽観的更新）
+    if (window._cachedGasAbsences) {
+        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === userName && g.date === dateFrom));
+        absRenderUpcomingListFromData(window._cachedGasAbsences);
+    } else {
+        absRenderUpcomingList();
+    }
+    absRenderTodayList();
+    showToast('欠席を取り消しました');
     attLoad();
 }
 
@@ -4280,13 +4347,173 @@ function attRenderUser(u) {
         } catch(e) {}
     }
 
-    return '<div class="att-user-row" onclick="attStartAbsence(\'' + escapedName + '\')" style="cursor:pointer;">' +
+    return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
         '<span class="att-user-name">' + u.name + '</span>' +
         (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
         (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
         resumeText +
         '</div>';
+}
+
+// 出席予定タブで利用者クリック時の分岐
+function attUserClick(name, isAbsent) {
+    if (!isAbsent) {
+        // 出席状態 → 欠席登録タブへ
+        attStartAbsence(name);
+        return;
+    }
+    // 欠席状態 → 訂正メニュー表示
+    attShowAbsentMenu(name);
+}
+
+function attShowAbsentMenu(name) {
+    const dateStr = attFormatDate(attCurrentDate);
+    const dateLabel = absFormatDate(dateStr);
+    const menu = document.createElement('div');
+    menu.id = 'att-absent-menu';
+    menu.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    menu.innerHTML =
+        '<div style="background:#fff;border-radius:12px;padding:20px;min-width:280px;max-width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
+        '<div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">' + name + '様</div>' +
+        '<div style="font-size:0.9rem;color:#666;margin-bottom:14px;">' + dateLabel + ' 欠席登録済み</div>' +
+        '<button onclick="attCancelAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #e53e3e;color:#e53e3e;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✕ 欠席を取消（出席に戻す）</button>' +
+        '<button onclick="attMoveAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #3182ce;color:#3182ce;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">→ 別の日に移動</button>' +
+        '<button onclick="document.getElementById(\'att-absent-menu\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
+        '</div>';
+    menu.addEventListener('click', function(e) {
+        if (e.target === menu) menu.remove();
+    });
+    document.body.appendChild(menu);
+}
+
+function attCancelAbsence(name, dateStr) {
+    if (!confirm(name + '様 ' + absFormatDate(dateStr) + ' の欠席を取り消しますか？')) return;
+
+    // GASに取消送信
+    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席取消');
+
+    // ローカル欠席記録からも削除
+    let records = absGetRecords();
+    const before = records.length;
+    records = records.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+    if (records.length !== before) absSaveRecords(records);
+
+    // キャッシュクリア
+    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+    if (window._cachedGasAbsences) {
+        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+    }
+
+    // メニュー閉じる
+    const m = document.getElementById('att-absent-menu');
+    if (m) m.remove();
+
+    showToast('欠席を取り消しました');
+
+    // 再読込
+    setTimeout(function() { attLoad(); }, 300);
+}
+
+function attMoveAbsence(name, dateStr) {
+    // 既存データを探す（ローカル → GASキャッシュ → attLastData の順）
+    let existing = null;
+    const localRecs = absGetRecords();
+    const lr = localRecs.find(r => r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr);
+    if (lr) {
+        existing = {
+            reason: lr.reason || '', contact: lr.contact || '',
+            method: lr.method || '', reporter: lr.registeredBy || lr.contact || '',
+            contactDate: lr.contactDate || ''
+        };
+    } else if (window._cachedGasAbsences) {
+        const gr = window._cachedGasAbsences.find(g => g.name === name && g.date === dateStr);
+        if (gr) existing = { reason: gr.reason || '', contact: gr.reporter || '', method: '', reporter: gr.reporter || '', contactDate: gr.contactDate || '' };
+    }
+    if (!existing) {
+        const all = (attLastData.am || []).concat(attLastData.pm || []);
+        const u = all.find(x => x.name === name);
+        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '' };
+    }
+
+    // 今開いてるメニュー閉じる
+    const m = document.getElementById('att-absent-menu');
+    if (m) m.remove();
+
+    // 日付ピッカーモーダル表示
+    const modal = document.createElement('div');
+    modal.id = 'att-move-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:12px;padding:22px;min-width:300px;max-width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
+        '<div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">' + name + '様 欠席日の訂正</div>' +
+        '<div style="font-size:0.85rem;color:#666;margin-bottom:14px;">旧: ' + absFormatDate(dateStr) + '（この日は取消されます）</div>' +
+        '<div style="font-size:0.85rem;color:#333;margin-bottom:4px;font-weight:700;">正しい日付：</div>' +
+        '<input type="date" id="att-move-date" value="' + dateStr + '" style="width:100%;padding:10px;border:1px solid #cbd5e0;border-radius:6px;font-size:1rem;margin-bottom:8px;">' +
+        '<div style="font-size:0.8rem;color:#666;margin-bottom:16px;">理由・連絡者は元の内容をそのまま引き継ぎます（理由：' + (existing.reason || '-') + '）</div>' +
+        '<button id="att-move-submit" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#3182ce;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">この日付に移動</button>' +
+        '<button onclick="document.getElementById(\'att-move-modal\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">キャンセル</button>' +
+        '</div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+
+    document.getElementById('att-move-submit').onclick = function() {
+        const newDate = document.getElementById('att-move-date').value;
+        if (!newDate) { alert('日付を選んでください'); return; }
+        if (newDate === dateStr) { alert('同じ日付です'); return; }
+
+        // 1) 旧日取消
+        gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席移動:旧日取消');
+
+        // ローカル欠席記録からも旧日削除
+        let recs = absGetRecords();
+        recs = recs.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+
+        // 2) 新日登録（元のデータ引き継ぎ）
+        const userCache = absUserCache.find(u => u.name === name) || {};
+        const postData = {
+            action: 'absence',
+            name: name,
+            dates: [newDate],
+            unit: '終日',
+            reason: existing.reason,
+            reporter: existing.reporter || existing.contact,
+            contact: existing.contact,
+            method: existing.method,
+            contactDate: newDate,
+            cmOffice: userCache.cmOffice || '',
+            cmEmail: '',
+            cmName: ''
+        };
+        gasPost(postData, '欠席移動:新日登録');
+
+        // ローカルにも新日追加（受付日は元データ引き継ぎ or 今日）
+        const todayStr = (function(){ const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+        recs.push({
+            id: Date.now(),
+            userName: name,
+            dateFrom: newDate, dateTo: newDate,
+            dateType: 'single',
+            reason: existing.reason,
+            contact: existing.contact,
+            method: existing.method,
+            contactDate: existing.contactDate || todayStr,
+            registeredBy: existing.reporter,
+            registeredAt: new Date().toISOString()
+        });
+        absSaveRecords(recs);
+
+        // キャッシュクリア
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+        if (window._cachedGasAbsences) {
+            window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+        }
+
+        document.getElementById('att-move-modal').remove();
+        showToast('欠席を ' + absFormatDate(newDate) + ' に移動しました');
+
+        setTimeout(function() { attLoad(); absRenderRecordList && absRenderRecordList(); }, 400);
+    };
 }
 
 // 出席予定タブから取得したデータを保持
