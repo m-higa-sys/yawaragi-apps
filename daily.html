@@ -5645,12 +5645,27 @@ window.addEventListener('beforeprint',function(){
     inp.parentNode.insertBefore(span,inp.nextSibling);
   });
 
-  // ③ iPad Safari用：A4 1枚に収める自動縮小
+  // ③ A4 1枚に収める自動縮小（iPad固定・PCは動的計算）
   window._printZoom=false;
   if(navigator.maxTouchPoints>1){
+    // iPad Safari: 固定ズーム
     document.body.style.zoom='0.85';
     document.body.style.width='117.6%';
     window._printZoom=true;
+  } else {
+    // PC: 実際の高さを測って自動縮小
+    try{
+      var _app=document.getElementById('app');
+      _app.offsetHeight; // reflow強制
+      var actualH=_app.scrollHeight;
+      var pageHeightPx=1100; // A4 portrait(297mm) - 上下余白 ≒ 1100px @96dpi
+      if(actualH>pageHeightPx){
+        var scale=Math.max(0.70,(pageHeightPx/actualH)*0.98);
+        document.body.style.zoom=scale;
+        document.body.style.width=(100/scale)+'%';
+        window._printZoom=true;
+      }
+    }catch(e){}
   }
 
   // ④ レイアウト設定を適用
