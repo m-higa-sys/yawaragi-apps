@@ -3556,8 +3556,12 @@ function absRenderUpcomingListFromData(gasAbsences) {
     const seen = new Set();
     const merged = [];
 
-    // localStorageのレコード（取消ボタン付き）
+    // 今日の日付（yyyy-mm-dd）- 過去日の欠席を除外するため
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // localStorageのレコード（取消ボタン付き・過去日は除外）
     localRecords.forEach(r => {
+        if (r.dateFrom < todayStr) return;  // 過去日はスキップ
         const key = r.dateFrom + '_' + r.userName;
         seen.add(key);
         merged.push({
