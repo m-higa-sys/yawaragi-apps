@@ -2698,26 +2698,7 @@ function closeStatusMenu(){
   if(old) old.remove();
 }
 
-// yawaragiボードGAS（欠席取消用）
-const ABS_BOARD_API_URL='https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
-function postCancelAbsenceToGas(name,dateStr){
-  try{
-    fetch(ABS_BOARD_API_URL,{
-      method:'POST',mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'cancel_absence',name:name,date:dateStr,unit:'終日'})
-    });
-  }catch(e){console.error('GAS欠席取消失敗',e);}
-}
-
 function applyUserStatus(key,name,oldSt,newSt){
-  // 休み→利用に戻す時、yawaragiボード側のGAS欠席も取消するか確認
-  if(isAbsentStatus(oldSt)&&!newSt&&D.date){
-    const ok=confirm(name+'様の'+D.date+'の欠席を取り消します。\n\nyawaragiボード側の欠席連絡も一緒に取り消しますか？\n\n【OK】両方取消（推奨）\n【キャンセル】送迎表だけ戻す');
-    if(ok){
-      postCancelAbsenceToGas(name,D.date);
-    }
-  }
   pushUndo();
   if(newSt){
     D[key].userStatus[name]=newSt;
