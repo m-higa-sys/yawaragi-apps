@@ -5907,9 +5907,14 @@ function rmdRender() {
         return;
     }
 
-    // 出席者のみ対象（欠席者は除外）
-    const amPresent = attLastData.am.filter(u => u.status === '出席');
-    const pmPresent = attLastData.pm.filter(u => u.status === '出席');
+    // 出席者を先、欠席者を後に（欠席者も名前グレーで表示）
+    const sortAbsent = list => list.slice().sort((a, b) => {
+        if (a.status === '出席' && b.status !== '出席') return -1;
+        if (a.status !== '出席' && b.status === '出席') return 1;
+        return 0;
+    });
+    const amPresent = sortAbsent(attLastData.am);
+    const pmPresent = sortAbsent(attLastData.pm);
 
     let totalPending = 0;
     let totalDone = 0;
@@ -6015,9 +6020,12 @@ function rmdRenderUserRow(u) {
 
     const careClass = (u.care && u.care.includes('介護')) ? 'kaigo' : 'shien';
     const careLabel = (u.care && u.care.includes('介護')) ? '介護' : '支援';
+    const isAbsent = u.status === '欠席';
+    const nameStyle = isAbsent ? 'color:#a0aec0;text-decoration:line-through;' : '';
+    const absentTag = isAbsent ? '<span style="background:#e2e8f0;color:#4a5568;font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:4px;">休</span>' : '';
 
     let html = '<div class="rmd-user-row">';
-    html += '<span class="rmd-user-name">' + u.name + '</span>';
+    html += '<span class="rmd-user-name" style="' + nameStyle + '">' + u.name + '</span>' + absentTag;
     if (u.care) html += '<span class="rmd-user-care ' + careClass + '">' + careLabel + '</span>';
     html += '<div class="rmd-tasks">' + taskHtmlArr.join('') + '</div>';
     html += '</div>';
