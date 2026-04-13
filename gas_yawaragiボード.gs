@@ -451,7 +451,12 @@ function getUpcomingAbsences(ss, todayStr, monthStr) {
       if (data[i][8]) {
         contactDate = fmtDate(data[i][8]);
       } else if (data[i][6]) {
-        contactDate = String(data[i][6]).substring(0, 10);
+        // G列はDate型 or 'yyyy-MM-dd HH:mm'形式の文字列
+        if (data[i][6] instanceof Date) {
+          contactDate = Utilities.formatDate(data[i][6], 'Asia/Tokyo', 'yyyy-MM-dd');
+        } else {
+          contactDate = String(data[i][6]).substring(0, 10);
+        }
       }
       list.push({
         date: d,
