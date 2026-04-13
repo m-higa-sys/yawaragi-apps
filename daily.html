@@ -275,10 +275,10 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 
 /* ══ 印刷：A4縦・1枚・9pt・PDF安定・隙間ゼロ ══ */
 @media print{
-  @page{size:A4 portrait!important;margin:5mm!important;}
+  @page{size:A4 portrait!important;margin:3mm!important;}
 
   *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box!important;}
-  html,body{margin:0!important;padding:0!important;width:100%!important;font-size:var(--pfs,9pt)!important;line-height:1.1!important;overflow:hidden!important;}
+  html,body{margin:0!important;padding:0!important;width:100%!important;font-size:var(--pfs,8.5pt)!important;line-height:1.05!important;overflow:hidden!important;}
   #app{margin:0!important;padding:0!important;width:100%!important;display:flex!important;flex-direction:column!important;}
 
   /* 非表示 */
@@ -4426,13 +4426,14 @@ function syncSchedTimesToStaff(){
     }
   });
 
-  var url=getOpsGasUrl()||READONLY_GAS_URL;
-  try{
-    navigator.sendBeacon(url, payload);
-  }catch(e){
-    fetch(url,{method:'POST',mode:'no-cors',body:payload,keepalive:true}).catch(function(){});
-  }
-  alert('📤 '+dayOfWeek+'曜日の送迎時間を共有しました（'+userCount+'名）\nスタッフ用「送迎時間一覧」ページに反映されます');
+  var url=READONLY_GAS_URL;
+  fetch(url,{method:"POST",mode:"no-cors",body:payload,keepalive:true})
+    .then(function(){
+      alert("📤 "+dayOfWeek+"曜日の送迎時間を共有しました（"+userCount+"名）\nスタッフ用「送迎時間一覧」ページに反映されます");
+    })
+    .catch(function(err){
+      alert("❌ 送信エラー: "+err.message);
+    });
 }
 
 function saveData(){
