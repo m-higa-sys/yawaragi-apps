@@ -1193,7 +1193,14 @@
 
     <!-- 登録済みの欠席一覧 -->
     <div class="abs-today-card" style="margin-top:16px;">
-        <h3 class="abs-section-title">登録済みの欠席一覧</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <h3 class="abs-section-title" style="margin:0;">登録済みの欠席一覧</h3>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button type="button" id="abs-month-prev" onclick="absChangeMonth(-1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">◀</button>
+                <span id="abs-month-label" style="font-weight:bold;min-width:90px;text-align:center;"></span>
+                <button type="button" id="abs-month-next" onclick="absChangeMonth(1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">▶</button>
+            </div>
+        </div>
         <div id="abs-upcoming-list"></div>
     </div>
 </div>
@@ -3504,15 +3511,45 @@ function absSubmit() {
 function absRenderTodayList() { return; }
 
 // ----- 登録済みの欠席一覧 -----
+// 表示中の月（yyyy-MM）。初期値は今月
+let absCurrentMonth = (function() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+})();
+
+function absMonthEndStr(yyyyMM) {
+    const parts = yyyyMM.split('-');
+    const y = parseInt(parts[0]);
+    const m = parseInt(parts[1]);
+    const lastDay = new Date(y, m, 0).getDate();
+    return yyyyMM + '-' + String(lastDay).padStart(2, '0');
+}
+
+function absUpdateMonthLabel() {
+    const el = document.getElementById('abs-month-label');
+    if (!el) return;
+    const parts = absCurrentMonth.split('-');
+    el.textContent = parts[0] + '年' + parseInt(parts[1]) + '月';
+}
+
+function absChangeMonth(delta) {
+    const parts = absCurrentMonth.split('-');
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1 + delta, 1);
+    absCurrentMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    absUpdateMonthLabel();
+    absRenderUpcomingList();
+}
+
 // GAS（スプレッドシート）とlocalStorageの両方から取得して統合表示
 function absRenderUpcomingList() {
     const el = document.getElementById('abs-upcoming-list');
     el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
+    absUpdateMonthLabel();
 
-    // GASからJSONPで取得
+    // GASからJSONPで取得（表示中の月を指定）
     const cbName = '_absUpCb_' + Date.now();
     const script = document.createElement('script');
-    script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
+    script.src = ABS_BOARD_API_URL + '?action=absences&month=' + absCurrentMonth + '&callback=' + cbName + '&t=' + Date.now();
 
     const timeout = setTimeout(() => {
         delete window[cbName];
@@ -3556,12 +3593,13 @@ function absRenderUpcomingListFromData(gasAbsences) {
     const seen = new Set();
     const merged = [];
 
-    // 今日の日付（yyyy-mm-dd）- 過去日の欠席を除外するため
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // 表示中の月の範囲（1日〜月末）
+    const monthStart = absCurrentMonth + '-01';
+    const monthEnd = absMonthEndStr(absCurrentMonth);
 
-    // localStorageのレコード（取消ボタン付き・過去日は除外）
+    // localStorageのレコード（取消ボタン付き・表示中の月のみ）
     localRecords.forEach(r => {
-        if (r.dateFrom < todayStr) return;  // 過去日はスキップ
+        if (r.dateFrom < monthStart || r.dateFrom > monthEnd) return;
         const key = r.dateFrom + '_' + r.userName;
         seen.add(key);
         merged.push({
