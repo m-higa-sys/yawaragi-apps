@@ -770,12 +770,29 @@ function setSyncStatus(status) {
   }
 }
 
+// --- 高坂地区（あずま町）ゴミ収集判定 ---
+// 可燃物: 毎週月・木 / プラ: 毎週金 / 紙類・布類: 第1・3火
+// びん・かん・ペットボトル: 第1・3・5水 / 不燃物: 第2・4水
+function getTakasakaGarbageItem(date) {
+  const day = date.getDay();
+  const nth = Math.ceil(date.getDate() / 7);
+  if (day === 1 || day === 4) return '可燃物';
+  if (day === 5) return 'プラスチック類';
+  if (day === 2 && (nth === 1 || nth === 3)) return '紙類・布類';
+  if (day === 3) {
+    if (nth === 1 || nth === 3 || nth === 5) return 'びん・かん・ペットボトル';
+    if (nth === 2 || nth === 4) return '不燃物';
+  }
+  return null;
+}
+
 // --- タスク描画 ---
 function renderTasks() {
   const container = document.getElementById('taskContainer');
   const today = new Date();
   const days = ['日','月','火','水','木','金','土'];
   const todayDay = days[today.getDay()];
+  const todayGarbage = getTakasakaGarbageItem(today);
 
   // 時間帯でグループ化
   const timeSlots = [
@@ -808,11 +825,17 @@ function renderTasks() {
     const slotTasks = STATE.tasks.filter(function(t) { return t.timeSlot === slot; });
     if (slotTasks.length === 0) return;
 
-    // 今日の曜日でフィルタ
+    // 今日の曜日でフィルタ + ゴミ出しタスクの動的リネーム/非表示
     const filteredTasks = slotTasks.filter(function(t) {
       if (!t.dayLimit) return true;
       return t.dayLimit.indexOf(todayDay) >= 0;
-    });
+    }).map(function(t) {
+      if (/^ゴミ出し($|（)/.test(t.name)) {
+        if (!todayGarbage) return null;
+        return Object.assign({}, t, { name: 'ゴミ出し（' + todayGarbage + '）' });
+      }
+      return t;
+    }).filter(function(t) { return t !== null; });
 
     if (filteredTasks.length === 0) return;
 
