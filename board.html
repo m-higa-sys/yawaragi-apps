@@ -4369,27 +4369,102 @@ function attCancelAbsence(name, dateStr) {
 }
 
 function attMoveAbsence(name, dateStr) {
-    // 先に現在の欠席を取消
-    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席移動:旧日取消');
-
-    // ローカルからも削除
-    let records = absGetRecords();
-    records = records.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
-    absSaveRecords(records);
-
-    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
-    if (window._cachedGasAbsences) {
-        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+    // 既存データを探す（ローカル → GASキャッシュ → attLastData の順）
+    let existing = null;
+    const localRecs = absGetRecords();
+    const lr = localRecs.find(r => r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr);
+    if (lr) {
+        existing = {
+            reason: lr.reason || '', contact: lr.contact || '',
+            method: lr.method || '', reporter: lr.registeredBy || lr.contact || ''
+        };
+    } else if (window._cachedGasAbsences) {
+        const gr = window._cachedGasAbsences.find(g => g.name === name && g.date === dateStr);
+        if (gr) existing = { reason: gr.reason || '', contact: gr.reporter || '', method: '', reporter: gr.reporter || '' };
+    }
+    if (!existing) {
+        // フォールバック: 出席予定データから理由のみ取得
+        const all = (attLastData.am || []).concat(attLastData.pm || []);
+        const u = all.find(x => x.name === name);
+        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '' };
     }
 
-    // メニュー閉じる
+    // 今開いてるメニュー閉じる
     const m = document.getElementById('att-absent-menu');
     if (m) m.remove();
 
-    showToast('旧日付の欠席を取消しました。新しい日付を登録してください');
+    // 日付ピッカーモーダル表示
+    const modal = document.createElement('div');
+    modal.id = 'att-move-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:12px;padding:22px;min-width:300px;max-width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
+        '<div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">' + name + '様 欠席日の訂正</div>' +
+        '<div style="font-size:0.85rem;color:#666;margin-bottom:14px;">旧: ' + absFormatDate(dateStr) + '（この日は取消されます）</div>' +
+        '<div style="font-size:0.85rem;color:#333;margin-bottom:4px;font-weight:700;">正しい日付：</div>' +
+        '<input type="date" id="att-move-date" value="' + dateStr + '" style="width:100%;padding:10px;border:1px solid #cbd5e0;border-radius:6px;font-size:1rem;margin-bottom:8px;">' +
+        '<div style="font-size:0.8rem;color:#666;margin-bottom:16px;">理由・連絡者は元の内容をそのまま引き継ぎます（理由：' + (existing.reason || '-') + '）</div>' +
+        '<button id="att-move-submit" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#3182ce;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">この日付に移動</button>' +
+        '<button onclick="document.getElementById(\'att-move-modal\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">キャンセル</button>' +
+        '</div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
 
-    // 欠席登録タブに切替（新規登録画面）
-    attStartAbsence(name);
+    document.getElementById('att-move-submit').onclick = function() {
+        const newDate = document.getElementById('att-move-date').value;
+        if (!newDate) { alert('日付を選んでください'); return; }
+        if (newDate === dateStr) { alert('同じ日付です'); return; }
+
+        // 1) 旧日取消
+        gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席移動:旧日取消');
+
+        // ローカル欠席記録からも旧日削除
+        let recs = absGetRecords();
+        recs = recs.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+
+        // 2) 新日登録（元のデータ引き継ぎ）
+        const userCache = absUserCache.find(u => u.name === name) || {};
+        const postData = {
+            action: 'absence',
+            name: name,
+            dates: [newDate],
+            unit: '終日',
+            reason: existing.reason,
+            reporter: existing.reporter || existing.contact,
+            contact: existing.contact,
+            method: existing.method,
+            contactDate: newDate,
+            cmOffice: userCache.cmOffice || '',
+            cmEmail: '',
+            cmName: ''
+        };
+        gasPost(postData, '欠席移動:新日登録');
+
+        // ローカルにも新日追加
+        recs.push({
+            id: Date.now(),
+            userName: name,
+            dateFrom: newDate, dateTo: newDate,
+            dateType: 'single',
+            reason: existing.reason,
+            contact: existing.contact,
+            method: existing.method,
+            registeredBy: existing.reporter,
+            createdAt: new Date().toISOString()
+        });
+        absSaveRecords(recs);
+
+        // キャッシュクリア
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+        if (window._cachedGasAbsences) {
+            window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+        }
+
+        document.getElementById('att-move-modal').remove();
+        showToast('欠席を ' + absFormatDate(newDate) + ' に移動しました');
+
+        setTimeout(function() { attLoad(); absRenderRecordList && absRenderRecordList(); }, 400);
+    };
 }
 
 // 出席予定タブから取得したデータを保持
