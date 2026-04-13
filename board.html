@@ -3607,7 +3607,8 @@ function absRenderUpcomingListFromData(gasAbsences) {
             userName: r.userName, dateFrom: r.dateFrom, dateTo: r.dateTo,
             dateType: r.dateType, reason: r.reason,
             contact: r.contact, method: r.method,
-            registeredBy: r.registeredBy
+            registeredBy: r.registeredBy,
+            contactDate: r.contactDate || ''
         });
     });
 
@@ -3622,7 +3623,8 @@ function absRenderUpcomingListFromData(gasAbsences) {
             userName: g.name, dateFrom: g.date, dateTo: g.date,
             dateType: 'single', reason: g.reason || '',
             contact: g.reporter || '', method: '',
-            registeredBy: ''
+            registeredBy: '',
+            contactDate: g.contactDate || ''
         });
     });
 
@@ -3646,7 +3648,7 @@ function absRenderUpcomingListFromData(gasAbsences) {
             <div class="abs-record-main">
                 <div class="abs-record-name">${r.userName}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}${r.method ? '（' + r.method + '）' : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
+                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
             </div>
             ${deleteBtn}
@@ -4376,17 +4378,17 @@ function attMoveAbsence(name, dateStr) {
     if (lr) {
         existing = {
             reason: lr.reason || '', contact: lr.contact || '',
-            method: lr.method || '', reporter: lr.registeredBy || lr.contact || ''
+            method: lr.method || '', reporter: lr.registeredBy || lr.contact || '',
+            contactDate: lr.contactDate || ''
         };
     } else if (window._cachedGasAbsences) {
         const gr = window._cachedGasAbsences.find(g => g.name === name && g.date === dateStr);
-        if (gr) existing = { reason: gr.reason || '', contact: gr.reporter || '', method: '', reporter: gr.reporter || '' };
+        if (gr) existing = { reason: gr.reason || '', contact: gr.reporter || '', method: '', reporter: gr.reporter || '', contactDate: gr.contactDate || '' };
     }
     if (!existing) {
-        // フォールバック: 出席予定データから理由のみ取得
         const all = (attLastData.am || []).concat(attLastData.pm || []);
         const u = all.find(x => x.name === name);
-        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '' };
+        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '' };
     }
 
     // 今開いてるメニュー閉じる
@@ -4440,7 +4442,8 @@ function attMoveAbsence(name, dateStr) {
         };
         gasPost(postData, '欠席移動:新日登録');
 
-        // ローカルにも新日追加
+        // ローカルにも新日追加（受付日は元データ引き継ぎ or 今日）
+        const todayStr = (function(){ const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
         recs.push({
             id: Date.now(),
             userName: name,
@@ -4449,8 +4452,9 @@ function attMoveAbsence(name, dateStr) {
             reason: existing.reason,
             contact: existing.contact,
             method: existing.method,
+            contactDate: existing.contactDate || todayStr,
             registeredBy: existing.reporter,
-            createdAt: new Date().toISOString()
+            registeredAt: new Date().toISOString()
         });
         absSaveRecords(recs);
 
