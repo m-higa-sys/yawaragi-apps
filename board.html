@@ -3881,6 +3881,18 @@ function absDeleteGasRecord(userName, dateFrom) {
 let absLongTermMap = {};
 
 function absRenderLongTermList(longTermData) {
+    // 重複排除（名前単位で最新レコードのみ残す＝開始日が一番新しいもの）
+    if (Array.isArray(longTermData)) {
+        const byName = {};
+        longTermData.forEach(lt => {
+            if (!lt.name) return;
+            const cur = byName[lt.name];
+            if (!cur || (lt.date && cur.date && lt.date > cur.date) || (lt.date && !cur.date)) {
+                byName[lt.name] = lt;
+            }
+        });
+        longTermData = Object.values(byName);
+    }
     // マップを更新（出席予定タブで参照する用）
     absLongTermMap = {};
     if (longTermData) {
@@ -4832,33 +4844,35 @@ function attEditAbsence(name, dateStr) {
         // 2) 新記録を登録（種別により分岐）
         const userCache = absUserCache.find(u => u.name === name) || {};
         if (newType === 'longterm') {
-            // 長期休みは新しい開始日で登録
-            gasPost({
-                action: 'long_term_absence',
-                name: name,
-                startDate: newStartDate,
-                date: newStartDate,
-                reason: newReason,
-                reporter: newContact,
-                contact: newContact,
-                method: newMethod,
-                contactDate: newContactDate,
-                cmOffice: userCache.cmOffice || '',
-                cmEmail: '', cmName: ''
-            }, '編集:長期休み登録');
-            // 再開予定日が指定されていれば resume アクションで設定
-            if (newResumeDate) {
-                setTimeout(function() {
-                    gasPost({
-                        action: 'resume',
-                        name: name,
-                        resumeDate: newResumeDate,
-                        contact: newContact,
-                        method: newMethod,
-                        reporter: newContact
-                    }, '編集:再開予定日設定');
-                }, 1500);
-            }
+            // 長期休みは 旧取消 → 2秒待って登録 → さらに2秒待って再開予定日設定
+            // (GAS側の処理順を確実にして重複を防ぐ)
+            setTimeout(function() {
+                gasPost({
+                    action: 'long_term_absence',
+                    name: name,
+                    startDate: newStartDate,
+                    date: newStartDate,
+                    reason: newReason,
+                    reporter: newContact,
+                    contact: newContact,
+                    method: newMethod,
+                    contactDate: newContactDate,
+                    cmOffice: userCache.cmOffice || '',
+                    cmEmail: '', cmName: ''
+                }, '編集:長期休み登録');
+                if (newResumeDate) {
+                    setTimeout(function() {
+                        gasPost({
+                            action: 'resume',
+                            name: name,
+                            resumeDate: newResumeDate,
+                            contact: newContact,
+                            method: newMethod,
+                            reporter: newContact
+                        }, '編集:再開予定日設定');
+                    }, 2000);
+                }
+            }, 2000);
         } else {
             gasPost({
                 action: 'absence',
