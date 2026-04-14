@@ -1031,11 +1031,15 @@
         <div class="att-loading">読み込み中...</div>
     </div>
 
-    <!-- 登録済みの欠席一覧（欠席登録タブから移動：2026/4/14） -->
+    <!-- 登録済みの欠席一覧（欠席登録タブから移動：2026/4/14・折りたたみ対応） -->
     <div class="abs-today-card" style="margin-top:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <h3 class="abs-section-title" style="margin:0;">登録済みの欠席一覧</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="absToggleUpcomingList()">
             <div style="display:flex;align-items:center;gap:8px;">
+                <span id="abs-upcoming-arrow" style="font-size:12px;color:#666;">▼</span>
+                <h3 class="abs-section-title" style="margin:0;">登録済みの欠席一覧</h3>
+                <span id="abs-upcoming-count" style="font-size:0.8rem;color:#718096;font-weight:600;"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;" onclick="event.stopPropagation();">
                 <button type="button" id="abs-month-prev" onclick="absChangeMonth(-1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">◀</button>
                 <span id="abs-month-label" style="font-weight:bold;min-width:90px;text-align:center;"></span>
                 <button type="button" id="abs-month-next" onclick="absChangeMonth(1)" style="padding:4px 12px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:16px;">▶</button>
@@ -3582,6 +3586,17 @@ function absChangeMonth(delta) {
     absRenderUpcomingList();
 }
 
+// 折りたたみトグル
+function absToggleUpcomingList() {
+    const list = document.getElementById('abs-upcoming-list');
+    const arrow = document.getElementById('abs-upcoming-arrow');
+    if (!list || !arrow) return;
+    const isHidden = list.style.display === 'none';
+    list.style.display = isHidden ? 'block' : 'none';
+    arrow.textContent = isHidden ? '▼' : '▶';
+    try { localStorage.setItem('yawaragi_abs_upcoming_collapsed', isHidden ? '0' : '1'); } catch {}
+}
+
 // GAS（スプレッドシート）とlocalStorageの両方から取得して統合表示
 const ABS_CACHE_KEY = 'yawaragi_abs_cache_v1';
 
@@ -3595,7 +3610,7 @@ function absRenderUpcomingList() {
         const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
         const c = cache[absCurrentMonth];
         if (c && c.absences) {
-            absRenderUpcomingListFromData(c.absences);
+            absRenderUpcomingListFromData(c.absences, c.longTerm || []);
             absRenderLongTermList(c.longTerm || []);
             cacheShown = true;
         }
@@ -3627,7 +3642,7 @@ function absRenderUpcomingList() {
                 longTermData = data.absences.longTerm || [];
             }
         }
-        absRenderUpcomingListFromData(gasAbsences);
+        absRenderUpcomingListFromData(gasAbsences, longTermData);
         absRenderLongTermList(longTermData);
         // キャッシュ保存（月ごと、最大6か月分）
         try {
@@ -3646,7 +3661,7 @@ function absRenderUpcomingList() {
     document.body.appendChild(script);
 }
 
-function absRenderUpcomingListFromData(gasAbsences) {
+function absRenderUpcomingListFromData(gasAbsences, longTermData) {
     // 重複チェック用にGASデータをキャッシュ（absSubmitで参照）
     window._cachedGasAbsences = gasAbsences || [];
 
@@ -3673,7 +3688,8 @@ function absRenderUpcomingListFromData(gasAbsences) {
             contact: r.contact, method: r.method,
             registeredBy: r.registeredBy,
             contactDate: r.contactDate || '',
-            needsDetail: !!r.needsDetail
+            needsDetail: !!r.needsDetail,
+            isLongTerm: false
         });
     });
 
@@ -3689,11 +3705,56 @@ function absRenderUpcomingListFromData(gasAbsences) {
             dateType: 'single', reason: g.reason || '',
             contact: g.reporter || '', method: '',
             registeredBy: '',
-            contactDate: g.contactDate || ''
+            contactDate: g.contactDate || '',
+            isLongTerm: false
+        });
+    });
+
+    // 長期休みも統合（開始日が表示月内 or 再開予定日未達）
+    (longTermData || []).forEach(lt => {
+        const startDate = lt.date || '';
+        const resumeDate = lt.resumeDate || '';
+        // この月に「継続中」なら表示：開始日<=月末 かつ (再開予定なし or 再開予定>月初)
+        if (startDate && startDate > monthEnd) return;
+        if (resumeDate && resumeDate < monthStart) return;
+        const key = 'longterm_' + lt.name + '_' + startDate;
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push({
+            type: 'longterm',
+            userName: lt.name, dateFrom: startDate || monthStart, dateTo: resumeDate || '',
+            dateType: 'longterm',
+            reason: (lt.reason || '').replace(/^長期休み[（(]|[）)]$/g, '') || '長期休み',
+            contact: lt.reporter || '', method: '',
+            registeredBy: '',
+            contactDate: '',
+            isLongTerm: true,
+            resumeDate: resumeDate
         });
     });
 
     merged.sort((a, b) => b.dateFrom.localeCompare(a.dateFrom));
+
+    // 件数表示を更新
+    const countEl = document.getElementById('abs-upcoming-count');
+    if (countEl) {
+        const normalCount = merged.filter(r => !r.isLongTerm).length;
+        const ltCount = merged.filter(r => r.isLongTerm).length;
+        countEl.textContent = '（全' + merged.length + '件' + (ltCount > 0 ? '：欠席' + normalCount + '／長期休み' + ltCount : '') + '）';
+    }
+
+    // 折りたたみ状態を復元
+    try {
+        const collapsed = localStorage.getItem('yawaragi_abs_upcoming_collapsed') === '1';
+        const arrow = document.getElementById('abs-upcoming-arrow');
+        if (collapsed) {
+            el.style.display = 'none';
+            if (arrow) arrow.textContent = '▶';
+        } else {
+            el.style.display = 'block';
+            if (arrow) arrow.textContent = '▼';
+        }
+    } catch {}
 
     if (merged.length === 0) {
         el.innerHTML = '<div class="abs-empty">登録済みの欠席はありません</div>';
@@ -3702,21 +3763,32 @@ function absRenderUpcomingListFromData(gasAbsences) {
 
     el.innerHTML = merged.map(r => {
         let dateText = absFormatDate(r.dateFrom);
-        if (r.dateType === 'range' && r.dateTo && r.dateTo !== r.dateFrom) {
+        if (r.isLongTerm) {
+            dateText = absFormatDate(r.dateFrom) + '〜' + (r.resumeDate ? absFormatDate(r.resumeDate) + '再開予定' : '未定');
+        } else if (r.dateType === 'range' && r.dateTo && r.dateTo !== r.dateFrom) {
             dateText = `${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}`;
         }
-        const deleteBtn = r.type === 'local'
-            ? `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`
-            : `<button class="abs-record-delete" onclick="absDeleteGasRecord('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">取消</button>`;
-        const needsDetail = r.needsDetail || (!r.contact && !r.method);
+        let deleteBtn = '';
+        if (r.isLongTerm) {
+            // 長期休みは「再開登録」ボタン
+            deleteBtn = `<button class="abs-record-delete" style="background:#f0fdf4;color:#276749;border-color:#68d391;" onclick="absStartResume('${r.userName.replace(/'/g,"\\'")}')">再開登録</button>`;
+        } else if (r.type === 'local') {
+            deleteBtn = `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`;
+        } else {
+            deleteBtn = `<button class="abs-record-delete" onclick="absDeleteGasRecord('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">取消</button>`;
+        }
+        const needsDetail = !r.isLongTerm && (r.needsDetail || (!r.contact && !r.method));
         const warnTag = needsDetail ? '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">⚠ 詳細未入力</span>' : '';
-        const rowStyle = needsDetail ? 'border-left:4px solid #fb923c;background:#fff7ed;' : '';
+        const ltTag = r.isLongTerm ? '<span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">長期休み</span>' : '';
+        let rowStyle = '';
+        if (r.isLongTerm) rowStyle = 'border-left:4px solid #e53e3e;background:#fff5f5;';
+        else if (needsDetail) rowStyle = 'border-left:4px solid #fb923c;background:#fff7ed;';
         return `
         <div class="abs-record" style="${rowStyle}">
             <div class="abs-record-main">
-                <div class="abs-record-name">${r.userName}${warnTag}</div>
+                <div class="abs-record-name">${r.userName}${ltTag}${warnTag}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact || '<span style="color:#c05621;">未入力</span>'}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
+                    ${dateText}　理由: ${r.reason}${r.contact ? '　連絡者: ' + r.contact : ''}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
             </div>
             ${deleteBtn}
