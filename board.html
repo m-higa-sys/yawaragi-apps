@@ -4635,6 +4635,14 @@ function attMoveAbsence(name, dateStr) {
     };
 }
 
+// 編集モーダルの種別切替で長期休み期間フィールドの表示/非表示
+function attEditToggleLongTermFields() {
+    const t = document.getElementById('att-edit-type');
+    const f = document.getElementById('att-edit-longterm-fields');
+    if (!t || !f) return;
+    f.style.display = (t.value === 'longterm') ? 'block' : 'none';
+}
+
 // 編集モーダル内からの削除
 function attEditDelete(name, dateStr) {
     if (!confirm(name + '様 ' + absFormatDate(dateStr) + ' の欠席記録を削除しますか？\n\nこの操作は取り消せません。')) return;
@@ -4693,9 +4701,16 @@ function attEditAbsence(name, dateStr) {
 
     // 長期休みか判定（そのレコード自体が長期休みかで判断。人単位ではなく）
     existing.type = 'normal';
+    existing.startDate = dateStr;
+    existing.resumeDate = '';
     if (window._cachedLongTerm) {
         const ltHit = window._cachedLongTerm.find(lt => lt.name === name && lt.date === dateStr);
-        if (ltHit) existing.type = 'longterm';
+        if (ltHit) {
+            existing.type = 'longterm';
+            existing.startDate = ltHit.date || dateStr;
+            existing.resumeDate = ltHit.resumeDate || '';
+            existing.reason = (ltHit.reason || existing.reason).replace(/^長期休み[（(]|[）)]$/g, '') || existing.reason;
+        }
     }
 
     // 今開いてるメニュー閉じる
@@ -4714,10 +4729,18 @@ function attEditAbsence(name, dateStr) {
         '<div style="font-size:0.85rem;color:#666;margin-bottom:14px;">' + absFormatDate(dateStr) + '</div>' +
 
         '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">種別：</div>' +
-        '<select id="att-edit-type" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:12px;">' +
+        '<select id="att-edit-type" onchange="attEditToggleLongTermFields()" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:12px;">' +
         '<option value="normal"' + (existing.type === 'normal' ? ' selected' : '') + '>通常欠席</option>' +
         '<option value="longterm"' + (existing.type === 'longterm' ? ' selected' : '') + '>長期休み</option>' +
         '</select>' +
+
+        // 長期休み用の期間フィールド
+        '<div id="att-edit-longterm-fields" style="display:' + (existing.type === 'longterm' ? 'block' : 'none') + ';background:#fff5f5;border:1px solid #fed7d7;border-radius:6px;padding:10px;margin-bottom:12px;">' +
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;color:#c53030;">開始日：</div>' +
+        '<input type="date" id="att-edit-start-date" value="' + (existing.startDate || dateStr) + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:10px;">' +
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;color:#c53030;">再開予定日（未定なら空欄）：</div>' +
+        '<input type="date" id="att-edit-resume-date" value="' + (existing.resumeDate || '') + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;">' +
+        '</div>' +
 
         '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">理由：</div>' +
         '<select id="att-edit-reason" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:12px;">' +
@@ -4752,6 +4775,10 @@ function attEditAbsence(name, dateStr) {
         const newContact = document.getElementById('att-edit-contact').value.trim();
         const newMethod = document.getElementById('att-edit-method').value;
         const newContactDate = document.getElementById('att-edit-contact-date').value || dateStr;
+        const startDateInput = document.getElementById('att-edit-start-date');
+        const resumeDateInput = document.getElementById('att-edit-resume-date');
+        const newStartDate = startDateInput ? (startDateInput.value || dateStr) : dateStr;
+        const newResumeDate = resumeDateInput ? resumeDateInput.value : '';
 
         // 1) 旧記録を取消
         gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '編集:旧記録取消');
@@ -4762,10 +4789,12 @@ function attEditAbsence(name, dateStr) {
         // 2) 新記録を登録（種別により分岐）
         const userCache = absUserCache.find(u => u.name === name) || {};
         if (newType === 'longterm') {
+            // 長期休みは新しい開始日で登録
             gasPost({
                 action: 'long_term_absence',
                 name: name,
-                date: dateStr,
+                startDate: newStartDate,
+                date: newStartDate,
                 reason: newReason,
                 reporter: newContact,
                 contact: newContact,
@@ -4774,6 +4803,19 @@ function attEditAbsence(name, dateStr) {
                 cmOffice: userCache.cmOffice || '',
                 cmEmail: '', cmName: ''
             }, '編集:長期休み登録');
+            // 再開予定日が指定されていれば resume アクションで設定
+            if (newResumeDate) {
+                setTimeout(function() {
+                    gasPost({
+                        action: 'resume',
+                        name: name,
+                        resumeDate: newResumeDate,
+                        contact: newContact,
+                        method: newMethod,
+                        reporter: newContact
+                    }, '編集:再開予定日設定');
+                }, 1500);
+            }
         } else {
             gasPost({
                 action: 'absence',
