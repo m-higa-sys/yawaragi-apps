@@ -3778,14 +3778,9 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             deleteBtn =
                 `<button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;margin-right:4px;" onclick="attEditAbsence('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">編集</button>` +
                 `<button class="abs-record-delete" style="background:#f0fdf4;color:#276749;border-color:#68d391;" onclick="absStartResume('${r.userName.replace(/'/g,"\\'")}')">再開登録</button>`;
-        } else if (r.type === 'local') {
-            deleteBtn =
-                `<button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;margin-right:4px;" onclick="attEditAbsence('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">編集</button>` +
-                `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`;
         } else {
-            deleteBtn =
-                `<button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;margin-right:4px;" onclick="attEditAbsence('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">編集</button>` +
-                `<button class="abs-record-delete" onclick="absDeleteGasRecord('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">取消</button>`;
+            // 通常欠席（local/gas共通）: 編集ボタンのみ（削除は編集モーダル内）
+            deleteBtn = `<button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;" onclick="attEditAbsence('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">編集</button>`;
         }
         const needsDetail = !r.isLongTerm && (r.needsDetail || (!r.contact && !r.method));
         const warnTag = needsDetail ? '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">⚠ 詳細未入力</span>' : '';
@@ -4622,6 +4617,36 @@ function attMoveAbsence(name, dateStr) {
     };
 }
 
+// 編集モーダル内からの削除
+function attEditDelete(name, dateStr) {
+    if (!confirm(name + '様 ' + absFormatDate(dateStr) + ' の欠席記録を削除しますか？\n\nこの操作は取り消せません。')) return;
+
+    // GASに取消送信
+    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席削除');
+
+    // ローカル欠席記録からも削除
+    let records = absGetRecords();
+    records = records.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+    absSaveRecords(records);
+
+    // キャッシュクリア
+    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+    if (window._cachedGasAbsences) {
+        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+    }
+
+    // モーダル閉じる
+    const m = document.getElementById('att-edit-modal');
+    if (m) m.remove();
+
+    showToast('欠席記録を削除しました');
+
+    setTimeout(function() {
+        if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+        if (typeof attLoad === 'function') attLoad();
+    }, 400);
+}
+
 // 欠席の編集（理由・連絡者・方法・種別・受付日）
 function attEditAbsence(name, dateStr) {
     // 既存データ取得
@@ -4691,7 +4716,10 @@ function attEditAbsence(name, dateStr) {
         '<input type="date" id="att-edit-contact-date" value="' + (existing.contactDate || dateStr) + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:16px;">' +
 
         '<button id="att-edit-submit" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#38a169;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">この内容で保存</button>' +
-        '<button onclick="document.getElementById(\'att-edit-modal\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">キャンセル</button>' +
+        '<button onclick="document.getElementById(\'att-edit-modal\').remove()" style="display:block;width:100%;padding:10px;margin-bottom:14px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">キャンセル</button>' +
+        '<div style="border-top:1px solid #e2e8f0;padding-top:12px;">' +
+        '<button onclick="attEditDelete(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:10px;background:#fff;border:1.5px solid #fc8181;color:#c53030;border-radius:8px;font-size:0.9rem;font-weight:700;cursor:pointer;">✕ この欠席記録を削除</button>' +
+        '</div>' +
         '</div>';
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
