@@ -4640,6 +4640,29 @@ function attMoveAbsence(name, dateStr) {
     };
 }
 
+// 削除の二段階確認モーダル
+function yawaragiConfirmDelete(title, detail, onConfirm) {
+    const modal = document.createElement('div');
+    modal.id = 'yawaragi-confirm-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:14px;padding:24px;width:min(400px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);">' +
+        '<div style="font-size:2rem;text-align:center;margin-bottom:8px;">⚠️</div>' +
+        '<div style="font-size:1.1rem;font-weight:800;text-align:center;color:#c53030;margin-bottom:8px;">' + title + '</div>' +
+        '<div style="font-size:0.9rem;color:#4a5568;text-align:center;margin-bottom:6px;">' + detail + '</div>' +
+        '<div style="font-size:0.85rem;color:#e53e3e;text-align:center;font-weight:700;margin-bottom:18px;">この操作は取り消せません</div>' +
+        '<button id="yawaragi-confirm-yes" style="display:block;width:100%;padding:14px;background:#e53e3e;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:800;cursor:pointer;margin-bottom:8px;">はい、削除します</button>' +
+        '<button id="yawaragi-confirm-no" style="display:block;width:100%;padding:12px;background:#f7fafc;border:1.5px solid #cbd5e0;color:#2d3748;border-radius:10px;font-size:0.95rem;font-weight:700;cursor:pointer;">キャンセル</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+    document.getElementById('yawaragi-confirm-yes').onclick = function() {
+        modal.remove();
+        onConfirm();
+    };
+    document.getElementById('yawaragi-confirm-no').onclick = function() { modal.remove(); };
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
 // 編集モーダルの種別切替で長期休み期間フィールドの表示/非表示
 function attEditToggleLongTermFields() {
     const t = document.getElementById('att-edit-type');
@@ -4650,32 +4673,36 @@ function attEditToggleLongTermFields() {
 
 // 編集モーダル内からの削除
 function attEditDelete(name, dateStr) {
-    if (!confirm(name + '様 ' + absFormatDate(dateStr) + ' の欠席記録を削除しますか？\n\nこの操作は取り消せません。')) return;
+    yawaragiConfirmDelete(
+        '欠席記録を削除',
+        name + '様（' + absFormatDate(dateStr) + '）の欠席記録を削除します',
+        function() {
+            // GASに取消送信
+            gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席削除');
 
-    // GASに取消送信
-    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席削除');
+            // ローカル欠席記録からも削除
+            let records = absGetRecords();
+            records = records.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
+            absSaveRecords(records);
 
-    // ローカル欠席記録からも削除
-    let records = absGetRecords();
-    records = records.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
-    absSaveRecords(records);
+            // キャッシュクリア
+            try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+            if (window._cachedGasAbsences) {
+                window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
+            }
 
-    // キャッシュクリア
-    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
-    if (window._cachedGasAbsences) {
-        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === name && g.date === dateStr));
-    }
+            // 編集モーダル閉じる
+            const m = document.getElementById('att-edit-modal');
+            if (m) m.remove();
 
-    // モーダル閉じる
-    const m = document.getElementById('att-edit-modal');
-    if (m) m.remove();
+            showToast('欠席記録を削除しました');
 
-    showToast('欠席記録を削除しました');
-
-    setTimeout(function() {
-        if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
-        if (typeof attLoad === 'function') attLoad();
-    }, 400);
+            setTimeout(function() {
+                if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+                if (typeof attLoad === 'function') attLoad();
+            }, 400);
+        }
+    );
 }
 
 // 欠席の編集（理由・連絡者・方法・種別・受付日）
