@@ -1084,9 +1084,21 @@
         <div id="abs-receptionist-selected" style="display:none; margin-top:8px; font-weight:700; color:#2c7a7b; font-size:1rem;"></div>
     </div>
 
+    <!-- 登録モード選択 -->
+    <div class="abs-form-card" style="display:flex;gap:12px;padding:16px;">
+        <button onclick="absQuickOpen()" style="flex:1;padding:18px 12px;background:#fff7ed;border:2px solid #fb923c;border-radius:10px;cursor:pointer;font-weight:700;color:#9a3412;">
+            <div style="font-size:1.1rem;margin-bottom:4px;">⚡ とりあえず登録</div>
+            <div style="font-size:0.78rem;font-weight:500;color:#c05621;">急ぎの時用（最短3タップ）</div>
+        </button>
+        <button onclick="document.getElementById('abs-full-form').scrollIntoView({behavior:'smooth'})" style="flex:1;padding:18px 12px;background:#f0fdf4;border:2px solid #68d391;border-radius:10px;cursor:pointer;font-weight:700;color:#276749;">
+            <div style="font-size:1.1rem;margin-bottom:4px;">📝 しっかり登録</div>
+            <div style="font-size:0.78rem;font-weight:500;color:#2f855a;">時間がある時用（全項目入力）</div>
+        </button>
+    </div>
+
     <!-- 欠席登録フォーム -->
-    <div class="abs-form-card">
-        <h3 class="abs-section-title">欠席登録</h3>
+    <div class="abs-form-card" id="abs-full-form">
+        <h3 class="abs-section-title">しっかり登録（全項目入力）</h3>
 
         <!-- STEP1: 名前検索 -->
         <div class="abs-step">
@@ -3656,7 +3668,8 @@ function absRenderUpcomingListFromData(gasAbsences) {
             dateType: r.dateType, reason: r.reason,
             contact: r.contact, method: r.method,
             registeredBy: r.registeredBy,
-            contactDate: r.contactDate || ''
+            contactDate: r.contactDate || '',
+            needsDetail: !!r.needsDetail
         });
     });
 
@@ -3691,12 +3704,15 @@ function absRenderUpcomingListFromData(gasAbsences) {
         const deleteBtn = r.type === 'local'
             ? `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`
             : `<button class="abs-record-delete" onclick="absDeleteGasRecord('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">取消</button>`;
+        const needsDetail = r.needsDetail || (!r.contact && !r.method);
+        const warnTag = needsDetail ? '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">⚠ 詳細未入力</span>' : '';
+        const rowStyle = needsDetail ? 'border-left:4px solid #fb923c;background:#fff7ed;' : '';
         return `
-        <div class="abs-record">
+        <div class="abs-record" style="${rowStyle}">
             <div class="abs-record-main">
-                <div class="abs-record-name">${r.userName}</div>
+                <div class="abs-record-name">${r.userName}${warnTag}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
+                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact || '<span style="color:#c05621;">未入力</span>'}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
             </div>
             ${deleteBtn}
@@ -4796,6 +4812,164 @@ function attLoadAllUsers() {
 }
 
 // ================================================================
+
+// ===== とりあえず登録（急ぎ・最短3タップ）=====
+let absQuickState = { name: '', date: '', reason: '' };
+
+function absQuickOpen() {
+    // 受付者未設定なら先に選んでもらう
+    if (!absReceptionist) {
+        alert('先に画面上部の「受付者」を選んでください');
+        document.getElementById('abs-receptionist-card').scrollIntoView({ behavior: 'smooth' });
+        return;
+    }
+
+    absQuickState = { name: '', date: '', reason: '' };
+    const todayStr = (function(){
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    })();
+    absQuickState.date = todayStr;
+
+    const modal = document.createElement('div');
+    modal.id = 'abs-quick-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;overflow-y:auto;';
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:14px;padding:20px;width:min(400px,92%);max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
+        '<div style="font-size:1.1rem;font-weight:800;color:#9a3412;margin-bottom:4px;">⚡ とりあえず登録</div>' +
+        '<div style="font-size:0.8rem;color:#666;margin-bottom:14px;">受付: ' + absReceptionist + '／日付: 今日（' + absFormatDate(todayStr) + '）</div>' +
+
+        '<div style="font-size:0.9rem;font-weight:700;margin-bottom:6px;">1. 利用者名</div>' +
+        '<input type="text" id="abs-quick-name" placeholder="名前を入力" oninput="absQuickSearchName(this.value)" style="width:100%;padding:10px;border:1px solid #cbd5e0;border-radius:8px;font-size:1rem;margin-bottom:6px;" autocomplete="off">' +
+        '<div id="abs-quick-results" style="max-height:160px;overflow-y:auto;margin-bottom:12px;"></div>' +
+        '<div id="abs-quick-selected" style="display:none;padding:8px 12px;background:#f0fff4;border:1px solid #68d391;border-radius:6px;margin-bottom:12px;font-weight:700;color:#276749;"></div>' +
+
+        '<div style="font-size:0.9rem;font-weight:700;margin-bottom:6px;">2. 理由</div>' +
+        '<div id="abs-quick-reasons" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;">' +
+        ['体調不良','通院','私用','家族都合','その他'].map(r =>
+            '<button class="abs-quick-reason" data-r="' + r + '" onclick="absQuickSelectReason(\'' + r + '\',this)" style="padding:12px 8px;border:1.5px solid #cbd5e0;background:#fff;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer;">' + r + '</button>'
+        ).join('') +
+        '</div>' +
+
+        '<button id="abs-quick-submit" onclick="absQuickSubmit()" disabled style="display:block;width:100%;padding:14px;background:#cbd5e0;color:#fff;border:none;border-radius:10px;font-size:1.05rem;font-weight:800;cursor:not-allowed;margin-bottom:8px;">登録する</button>' +
+        '<button onclick="document.getElementById(\'abs-quick-modal\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">キャンセル</button>' +
+        '<div style="font-size:0.7rem;color:#999;margin-top:10px;text-align:center;">※連絡者・連絡方法は「詳細未入力」として登録されます。後で一覧から補完してください。</div>' +
+        '</div>';
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+
+    setTimeout(function() { document.getElementById('abs-quick-name').focus(); }, 100);
+}
+
+function absQuickSearchName(q) {
+    const el = document.getElementById('abs-quick-results');
+    q = q.trim();
+    if (!q) { el.innerHTML = ''; return; }
+    // absUserCache利用
+    const norm = s => (s || '').toLowerCase().replace(/\s/g,'');
+    const qn = norm(q);
+    const hits = (absUserCache || []).filter(u =>
+        norm(u.name).indexOf(qn) >= 0 ||
+        norm(u.reading || '').indexOf(qn) >= 0
+    ).slice(0, 8);
+    if (hits.length === 0) {
+        el.innerHTML = '<div style="padding:8px;color:#999;font-size:0.85rem;">該当なし</div>';
+        return;
+    }
+    el.innerHTML = hits.map(u =>
+        '<button onclick="absQuickSelectUser(\'' + u.name.replace(/'/g,"\\'") + '\')" style="display:block;width:100%;text-align:left;padding:10px 12px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:4px;cursor:pointer;font-size:0.95rem;">' + u.name + (u.reading ? ' <span style="color:#888;font-size:0.8rem;">(' + u.reading + ')</span>' : '') + '</button>'
+    ).join('');
+}
+
+function absQuickSelectUser(name) {
+    absQuickState.name = name;
+    document.getElementById('abs-quick-name').value = name;
+    document.getElementById('abs-quick-results').innerHTML = '';
+    const sel = document.getElementById('abs-quick-selected');
+    sel.style.display = 'block';
+    sel.textContent = '✓ ' + name + '様';
+    absQuickCheckReady();
+}
+
+function absQuickSelectReason(r, btn) {
+    absQuickState.reason = r;
+    document.querySelectorAll('.abs-quick-reason').forEach(b => {
+        b.style.background = '#fff';
+        b.style.borderColor = '#cbd5e0';
+        b.style.color = '#333';
+    });
+    btn.style.background = '#fff7ed';
+    btn.style.borderColor = '#fb923c';
+    btn.style.color = '#9a3412';
+    absQuickCheckReady();
+}
+
+function absQuickCheckReady() {
+    const btn = document.getElementById('abs-quick-submit');
+    const ready = absQuickState.name && absQuickState.reason;
+    if (ready) {
+        btn.disabled = false;
+        btn.style.background = '#fb923c';
+        btn.style.cursor = 'pointer';
+    } else {
+        btn.disabled = true;
+        btn.style.background = '#cbd5e0';
+        btn.style.cursor = 'not-allowed';
+    }
+}
+
+function absQuickSubmit() {
+    if (!absQuickState.name || !absQuickState.reason) return;
+
+    const name = absQuickState.name;
+    const date = absQuickState.date;
+    const reason = absQuickState.reason;
+
+    // GAS送信
+    const userCache = absUserCache.find(u => u.name === name) || {};
+    gasPost({
+        action: 'absence',
+        name: name,
+        dates: [date],
+        unit: '終日',
+        reason: reason,
+        reporter: absReceptionist,
+        contact: '',
+        method: '',
+        contactDate: date,
+        cmOffice: userCache.cmOffice || '',
+        cmEmail: '', cmName: '',
+        needsDetail: true  // 詳細未入力フラグ
+    }, 'とりあえず登録');
+
+    // ローカルにも保存（needsDetail=trueで）
+    const records = absGetRecords();
+    records.push({
+        id: Date.now(),
+        userName: name,
+        dateFrom: date, dateTo: date,
+        dateType: 'single',
+        reason: reason,
+        contact: '',
+        method: '',
+        contactDate: date,
+        registeredBy: absReceptionist,
+        registeredAt: new Date().toISOString(),
+        needsDetail: true
+    });
+    absSaveRecords(records);
+
+    // キャッシュクリア
+    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+
+    document.getElementById('abs-quick-modal').remove();
+    showToast('⚡ とりあえず登録完了（後で詳細を補完してください）', 4000);
+
+    setTimeout(function() {
+        if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+        if (typeof attLoad === 'function') attLoad();
+    }, 400);
+}
 
 // ===== 受付者（欠席連絡を受けたスタッフ）=====
 const ABS_RECEPTIONIST_KEY = 'yawaragi_receptionist';
