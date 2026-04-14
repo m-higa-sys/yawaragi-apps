@@ -3666,6 +3666,23 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
     window._cachedGasAbsences = gasAbsences || [];
 
     const el = document.getElementById('abs-upcoming-list');
+
+    // 同じデータなら再描画しない（画面のチラつき防止）
+    const fingerprint = JSON.stringify({
+        g: (gasAbsences || []).map(x => x.name + '|' + x.date + '|' + (x.reason || '')),
+        l: (longTermData || []).map(x => x.name + '|' + x.date + '|' + (x.resumeDate || ''))
+    });
+    if (el.dataset.lastFp === fingerprint) return;
+    el.dataset.lastFp = fingerprint;
+
+    // 折りたたみ状態は描画前に適用（チラつき防止）
+    try {
+        const collapsed = localStorage.getItem('yawaragi_abs_upcoming_collapsed') === '1';
+        const arrow = document.getElementById('abs-upcoming-arrow');
+        el.style.display = collapsed ? 'none' : 'block';
+        if (arrow) arrow.textContent = collapsed ? '▶' : '▼';
+    } catch {}
+
     const localRecords = absGetRecords();
 
     // 統合リストを作る（重複排除はキーで管理）
@@ -3742,19 +3759,6 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         const ltCount = merged.filter(r => r.isLongTerm).length;
         countEl.textContent = '（全' + merged.length + '件' + (ltCount > 0 ? '：欠席' + normalCount + '／長期休み' + ltCount : '') + '）';
     }
-
-    // 折りたたみ状態を復元
-    try {
-        const collapsed = localStorage.getItem('yawaragi_abs_upcoming_collapsed') === '1';
-        const arrow = document.getElementById('abs-upcoming-arrow');
-        if (collapsed) {
-            el.style.display = 'none';
-            if (arrow) arrow.textContent = '▶';
-        } else {
-            el.style.display = 'block';
-            if (arrow) arrow.textContent = '▼';
-        }
-    } catch {}
 
     if (merged.length === 0) {
         el.innerHTML = '<div class="abs-empty">登録済みの欠席はありません</div>';
