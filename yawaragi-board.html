@@ -3664,6 +3664,8 @@ function absRenderUpcomingList() {
 function absRenderUpcomingListFromData(gasAbsences, longTermData) {
     // 重複チェック用にGASデータをキャッシュ（absSubmitで参照）
     window._cachedGasAbsences = gasAbsences || [];
+    // 長期休みデータもキャッシュ（編集時の種別判定用）
+    window._cachedLongTerm = longTermData || [];
 
     const el = document.getElementById('abs-upcoming-list');
 
@@ -3693,9 +3695,23 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
     const monthStart = absCurrentMonth + '-01';
     const monthEnd = absMonthEndStr(absCurrentMonth);
 
+    // 長期休み期間の判定用マップ（長期休み期間内の通常欠席は重複として非表示）
+    const longTermRanges = {};
+    (longTermData || []).forEach(lt => {
+        if (!lt.name) return;
+        if (!longTermRanges[lt.name]) longTermRanges[lt.name] = [];
+        longTermRanges[lt.name].push({ start: lt.date || '', end: lt.resumeDate || '' });
+    });
+    function isWithinLongTerm(name, date) {
+        const ranges = longTermRanges[name] || [];
+        return ranges.some(r => r.start && date >= r.start && (!r.end || date < r.end));
+    }
+
     // localStorageのレコード（取消ボタン付き・表示中の月のみ）
     localRecords.forEach(r => {
         if (r.dateFrom < monthStart || r.dateFrom > monthEnd) return;
+        // 長期休み期間内の通常欠席は隠す（重複解消）
+        if (isWithinLongTerm(r.userName, r.dateFrom)) return;
         const key = r.dateFrom + '_' + r.userName;
         seen.add(key);
         merged.push({
@@ -3713,6 +3729,8 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
     // GASのレコード（localにない分を追加・表示中の月のみ）
     gasAbsences.forEach(g => {
         if (g.date < monthStart || g.date > monthEnd) return;
+        // 長期休み期間内の通常欠席は隠す（重複解消）
+        if (isWithinLongTerm(g.name, g.date)) return;
         const key = g.date + '_' + g.name;
         if (seen.has(key)) return;
         seen.add(key);
@@ -4673,8 +4691,12 @@ function attEditAbsence(name, dateStr) {
         existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '', type: 'normal' };
     }
 
-    // 長期休みか判定
-    if (absLongTermMap && absLongTermMap[name]) existing.type = 'longterm';
+    // 長期休みか判定（そのレコード自体が長期休みかで判断。人単位ではなく）
+    existing.type = 'normal';
+    if (window._cachedLongTerm) {
+        const ltHit = window._cachedLongTerm.find(lt => lt.name === name && lt.date === dateStr);
+        if (ltHit) existing.type = 'longterm';
+    }
 
     // 今開いてるメニュー閉じる
     const m = document.getElementById('att-absent-menu');
