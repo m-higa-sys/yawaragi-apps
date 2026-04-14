@@ -4479,7 +4479,14 @@ function attUserClick(name, isAbsent) {
         attStartAbsence(name);
         return;
     }
-    // 欠席状態 → 訂正メニュー表示
+    // 長期休み中の人は直接編集モーダルへ（メニューはスキップ）
+    if (absLongTermMap && absLongTermMap[name]) {
+        const lt = absLongTermMap[name];
+        const ltStart = lt.startDate || attFormatDate(attCurrentDate);
+        attEditAbsence(name, ltStart);
+        return;
+    }
+    // 通常欠席 → 訂正メニュー表示
     attShowAbsentMenu(name);
 }
 
@@ -4697,10 +4704,11 @@ function attEditAbsence(name, dateStr) {
         existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '', type: 'normal' };
     }
 
-    // 長期休みか判定（そのレコード自体が長期休みかで判断。人単位ではなく）
+    // 長期休みか判定
     existing.type = 'normal';
     existing.startDate = dateStr;
     existing.resumeDate = '';
+    // その日付の長期休みレコードを探す
     if (window._cachedLongTerm) {
         const ltHit = window._cachedLongTerm.find(lt => lt.name === name && lt.date === dateStr);
         if (ltHit) {
@@ -4708,6 +4716,16 @@ function attEditAbsence(name, dateStr) {
             existing.startDate = ltHit.date || dateStr;
             existing.resumeDate = ltHit.resumeDate || '';
             existing.reason = (ltHit.reason || existing.reason).replace(/^長期休み[（(]|[）)]$/g, '') || existing.reason;
+        }
+    }
+    // 日付マッチしなくても、その人が長期休み中ならlongterm扱い
+    if (existing.type === 'normal' && absLongTermMap && absLongTermMap[name]) {
+        const ltInfo = absLongTermMap[name];
+        existing.type = 'longterm';
+        existing.startDate = ltInfo.startDate || dateStr;
+        existing.resumeDate = ltInfo.resumeDate || '';
+        if (ltInfo.reason) {
+            existing.reason = (ltInfo.reason).replace(/^長期休み[（(]|[）)]$/g, '') || existing.reason;
         }
     }
 
