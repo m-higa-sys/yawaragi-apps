@@ -1084,25 +1084,22 @@
         <div id="abs-receptionist-selected" style="display:none; margin-top:8px; font-weight:700; color:#2c7a7b; font-size:1rem;"></div>
     </div>
 
-    <!-- 登録モード選択 -->
-    <div class="abs-form-card" id="abs-mode-card" style="padding:16px;">
-        <div id="abs-mode-locked-msg" style="padding:10px;background:#fff5f5;border:1px solid #feb2b2;color:#c53030;border-radius:8px;font-size:0.9rem;font-weight:700;margin-bottom:12px;text-align:center;">
-            ⬆ まず「受付者」を選んでください
-        </div>
+    <!-- 登録モード選択（受付者選択後に表示） -->
+    <div class="abs-form-card" id="abs-mode-card" style="padding:16px;display:none;">
         <div style="display:flex;gap:12px;">
-            <button id="abs-mode-quick" onclick="absQuickOpen()" disabled style="flex:1;padding:18px 12px;background:#edf2f7;border:2px solid #cbd5e0;border-radius:10px;cursor:not-allowed;font-weight:700;color:#a0aec0;opacity:0.5;">
+            <button id="abs-mode-quick" onclick="absQuickOpen()" style="flex:1;padding:18px 12px;background:#fff7ed;border:2px solid #fb923c;border-radius:10px;cursor:pointer;font-weight:700;color:#9a3412;">
                 <div style="font-size:1.1rem;margin-bottom:4px;">⚡ とりあえず登録</div>
-                <div style="font-size:0.78rem;font-weight:500;">急ぎの時用（最短3タップ）</div>
+                <div style="font-size:0.78rem;font-weight:500;color:#c05621;">急ぎの時用（最短3タップ）</div>
             </button>
-            <button id="abs-mode-full" onclick="document.getElementById('abs-full-form').scrollIntoView({behavior:'smooth'})" disabled style="flex:1;padding:18px 12px;background:#edf2f7;border:2px solid #cbd5e0;border-radius:10px;cursor:not-allowed;font-weight:700;color:#a0aec0;opacity:0.5;">
+            <button id="abs-mode-full" onclick="absShowFullForm()" style="flex:1;padding:18px 12px;background:#f0fdf4;border:2px solid #68d391;border-radius:10px;cursor:pointer;font-weight:700;color:#276749;">
                 <div style="font-size:1.1rem;margin-bottom:4px;">📝 しっかり登録</div>
-                <div style="font-size:0.78rem;font-weight:500;">時間がある時用（全項目入力）</div>
+                <div style="font-size:0.78rem;font-weight:500;color:#2f855a;">時間がある時用（全項目入力）</div>
             </button>
         </div>
     </div>
 
-    <!-- 欠席登録フォーム -->
-    <div class="abs-form-card" id="abs-full-form">
+    <!-- 欠席登録フォーム（「しっかり登録」ボタン押下で表示） -->
+    <div class="abs-form-card" id="abs-full-form" style="display:none;">
         <h3 class="abs-section-title">しっかり登録（全項目入力）</h3>
 
         <!-- STEP1: 名前検索 -->
@@ -4978,11 +4975,64 @@ function absQuickSubmit() {
 
 // ===== 受付者（欠席連絡を受けたスタッフ）=====
 const ABS_RECEPTIONIST_KEY = 'yawaragi_receptionist';
+const ABS_RECEPTIONIST_TS_KEY = 'yawaragi_receptionist_ts';
+const ABS_RECEPTIONIST_TIMEOUT_MS = 10 * 60 * 1000; // 10分
 let absReceptionist = '';
+let absReceptionistTimer = null;
+
+function absCheckReceptionistExpiry() {
+    const stored = localStorage.getItem(ABS_RECEPTIONIST_KEY);
+    const tsRaw = localStorage.getItem(ABS_RECEPTIONIST_TS_KEY);
+    if (!stored || !tsRaw) return false;
+    const ts = parseInt(tsRaw, 10);
+    if (isNaN(ts)) return false;
+    const now = Date.now();
+    const storedDate = new Date(ts);
+    const nowDate = new Date(now);
+    // 日付が変わったらリセット
+    if (storedDate.getFullYear() !== nowDate.getFullYear() ||
+        storedDate.getMonth() !== nowDate.getMonth() ||
+        storedDate.getDate() !== nowDate.getDate()) {
+        return false;
+    }
+    // 10分以上経過ならリセット
+    if (now - ts > ABS_RECEPTIONIST_TIMEOUT_MS) return false;
+    return true;
+}
+
+function absResetReceptionistTimer() {
+    if (absReceptionistTimer) clearTimeout(absReceptionistTimer);
+    if (!absReceptionist) return;
+    // アクティビティごとにタイムスタンプ更新
+    localStorage.setItem(ABS_RECEPTIONIST_TS_KEY, String(Date.now()));
+    absReceptionistTimer = setTimeout(function() {
+        absClearReceptionist(true);
+    }, ABS_RECEPTIONIST_TIMEOUT_MS);
+}
+
+function absClearReceptionist(silent) {
+    absReceptionist = '';
+    localStorage.removeItem(ABS_RECEPTIONIST_KEY);
+    localStorage.removeItem(ABS_RECEPTIONIST_TS_KEY);
+    // ボタンのハイライト解除
+    document.querySelectorAll('#abs-receptionist-btns .abs-contact-btn').forEach(b => b.classList.remove('selected'));
+    const selectedEl = document.getElementById('abs-receptionist-selected');
+    if (selectedEl) { selectedEl.textContent = ''; selectedEl.style.display = 'none'; }
+    absUpdateModeButtons();
+    if (!silent) return;
+    // 無操作タイムアウト時のトースト
+    if (typeof showToast === 'function') showToast('10分間操作がなかったため受付者をリセットしました', 4000);
+}
 
 function absInitReceptionist() {
-    // 前回の選択を復元
-    absReceptionist = localStorage.getItem(ABS_RECEPTIONIST_KEY) || '';
+    // 日付変更 or 10分経過ならリセット
+    if (!absCheckReceptionistExpiry()) {
+        localStorage.removeItem(ABS_RECEPTIONIST_KEY);
+        localStorage.removeItem(ABS_RECEPTIONIST_TS_KEY);
+        absReceptionist = '';
+    } else {
+        absReceptionist = localStorage.getItem(ABS_RECEPTIONIST_KEY) || '';
+    }
 
     const container = document.getElementById('abs-receptionist-btns');
     const selectedEl = document.getElementById('abs-receptionist-selected');
@@ -4995,13 +5045,23 @@ function absInitReceptionist() {
     if (absReceptionist) {
         selectedEl.textContent = '受付者: ' + absReceptionist;
         selectedEl.style.display = 'block';
+        absResetReceptionistTimer();
     }
     absUpdateModeButtons();
+
+    // 欠席登録タブ内のアクティビティでタイマーリセット
+    const tabEl = document.getElementById('tab-absence');
+    if (tabEl && !tabEl.dataset.receptionistActivityHooked) {
+        tabEl.addEventListener('click', function() { if (absReceptionist) absResetReceptionistTimer(); });
+        tabEl.addEventListener('input', function() { if (absReceptionist) absResetReceptionistTimer(); });
+        tabEl.dataset.receptionistActivityHooked = '1';
+    }
 }
 
 function absSelectReceptionist(name, btn) {
     absReceptionist = name;
     localStorage.setItem(ABS_RECEPTIONIST_KEY, name);
+    localStorage.setItem(ABS_RECEPTIONIST_TS_KEY, String(Date.now()));
 
     // ボタンのハイライト
     document.querySelectorAll('#abs-receptionist-btns .abs-contact-btn').forEach(b => b.classList.remove('selected'));
@@ -5012,44 +5072,28 @@ function absSelectReceptionist(name, btn) {
     selectedEl.textContent = '受付者: ' + name;
     selectedEl.style.display = 'block';
 
-    // 登録モードボタンを有効化
+    // 登録モードを表示＋タイマー開始
     absUpdateModeButtons();
+    absResetReceptionistTimer();
 }
 
 function absUpdateModeButtons() {
-    const lockedMsg = document.getElementById('abs-mode-locked-msg');
-    const quickBtn = document.getElementById('abs-mode-quick');
-    const fullBtn = document.getElementById('abs-mode-full');
-    if (!quickBtn || !fullBtn) return;
+    const modeCard = document.getElementById('abs-mode-card');
+    const fullForm = document.getElementById('abs-full-form');
+    if (!modeCard) return;
     if (absReceptionist) {
-        if (lockedMsg) lockedMsg.style.display = 'none';
-        quickBtn.disabled = false;
-        quickBtn.style.background = '#fff7ed';
-        quickBtn.style.borderColor = '#fb923c';
-        quickBtn.style.color = '#9a3412';
-        quickBtn.style.cursor = 'pointer';
-        quickBtn.style.opacity = '1';
-        fullBtn.disabled = false;
-        fullBtn.style.background = '#f0fdf4';
-        fullBtn.style.borderColor = '#68d391';
-        fullBtn.style.color = '#276749';
-        fullBtn.style.cursor = 'pointer';
-        fullBtn.style.opacity = '1';
+        modeCard.style.display = 'block';
     } else {
-        if (lockedMsg) lockedMsg.style.display = 'block';
-        quickBtn.disabled = true;
-        quickBtn.style.background = '#edf2f7';
-        quickBtn.style.borderColor = '#cbd5e0';
-        quickBtn.style.color = '#a0aec0';
-        quickBtn.style.cursor = 'not-allowed';
-        quickBtn.style.opacity = '0.5';
-        fullBtn.disabled = true;
-        fullBtn.style.background = '#edf2f7';
-        fullBtn.style.borderColor = '#cbd5e0';
-        fullBtn.style.color = '#a0aec0';
-        fullBtn.style.cursor = 'not-allowed';
-        fullBtn.style.opacity = '0.5';
+        modeCard.style.display = 'none';
+        if (fullForm) fullForm.style.display = 'none';
     }
+}
+
+function absShowFullForm() {
+    const fullForm = document.getElementById('abs-full-form');
+    if (!fullForm) return;
+    fullForm.style.display = 'block';
+    setTimeout(function() { fullForm.scrollIntoView({behavior:'smooth',block:'start'}); }, 50);
 }
 
 function absInit() {
