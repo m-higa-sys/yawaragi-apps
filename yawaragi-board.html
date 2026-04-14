@@ -4105,7 +4105,16 @@ function jisLoad() {
     const cbAbs = '_jisAbsCb_' + Date.now();
     window[cbAbs] = function(data) {
         delete window[cbAbs];
-        if (data && data.absences) jisAbsenceData = data.absences;
+        // GASレスポンスは配列 or {absences:[], longTerm:[]} の2形式に対応
+        if (data && data.absences) {
+            if (Array.isArray(data.absences)) {
+                jisAbsenceData = data.absences;
+            } else if (data.absences.absences) {
+                jisAbsenceData = data.absences.absences;
+            } else {
+                jisAbsenceData = [];
+            }
+        }
         checkDone();
     };
     const scriptAbs = document.createElement('script');
