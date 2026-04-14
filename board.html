@@ -1085,15 +1085,20 @@
     </div>
 
     <!-- 登録モード選択 -->
-    <div class="abs-form-card" style="display:flex;gap:12px;padding:16px;">
-        <button onclick="absQuickOpen()" style="flex:1;padding:18px 12px;background:#fff7ed;border:2px solid #fb923c;border-radius:10px;cursor:pointer;font-weight:700;color:#9a3412;">
-            <div style="font-size:1.1rem;margin-bottom:4px;">⚡ とりあえず登録</div>
-            <div style="font-size:0.78rem;font-weight:500;color:#c05621;">急ぎの時用（最短3タップ）</div>
-        </button>
-        <button onclick="document.getElementById('abs-full-form').scrollIntoView({behavior:'smooth'})" style="flex:1;padding:18px 12px;background:#f0fdf4;border:2px solid #68d391;border-radius:10px;cursor:pointer;font-weight:700;color:#276749;">
-            <div style="font-size:1.1rem;margin-bottom:4px;">📝 しっかり登録</div>
-            <div style="font-size:0.78rem;font-weight:500;color:#2f855a;">時間がある時用（全項目入力）</div>
-        </button>
+    <div class="abs-form-card" id="abs-mode-card" style="padding:16px;">
+        <div id="abs-mode-locked-msg" style="padding:10px;background:#fff5f5;border:1px solid #feb2b2;color:#c53030;border-radius:8px;font-size:0.9rem;font-weight:700;margin-bottom:12px;text-align:center;">
+            ⬆ まず「受付者」を選んでください
+        </div>
+        <div style="display:flex;gap:12px;">
+            <button id="abs-mode-quick" onclick="absQuickOpen()" disabled style="flex:1;padding:18px 12px;background:#edf2f7;border:2px solid #cbd5e0;border-radius:10px;cursor:not-allowed;font-weight:700;color:#a0aec0;opacity:0.5;">
+                <div style="font-size:1.1rem;margin-bottom:4px;">⚡ とりあえず登録</div>
+                <div style="font-size:0.78rem;font-weight:500;">急ぎの時用（最短3タップ）</div>
+            </button>
+            <button id="abs-mode-full" onclick="document.getElementById('abs-full-form').scrollIntoView({behavior:'smooth'})" disabled style="flex:1;padding:18px 12px;background:#edf2f7;border:2px solid #cbd5e0;border-radius:10px;cursor:not-allowed;font-weight:700;color:#a0aec0;opacity:0.5;">
+                <div style="font-size:1.1rem;margin-bottom:4px;">📝 しっかり登録</div>
+                <div style="font-size:0.78rem;font-weight:500;">時間がある時用（全項目入力）</div>
+            </button>
+        </div>
     </div>
 
     <!-- 欠席登録フォーム -->
@@ -4991,6 +4996,7 @@ function absInitReceptionist() {
         selectedEl.textContent = '受付者: ' + absReceptionist;
         selectedEl.style.display = 'block';
     }
+    absUpdateModeButtons();
 }
 
 function absSelectReceptionist(name, btn) {
@@ -5005,6 +5011,45 @@ function absSelectReceptionist(name, btn) {
     const selectedEl = document.getElementById('abs-receptionist-selected');
     selectedEl.textContent = '受付者: ' + name;
     selectedEl.style.display = 'block';
+
+    // 登録モードボタンを有効化
+    absUpdateModeButtons();
+}
+
+function absUpdateModeButtons() {
+    const lockedMsg = document.getElementById('abs-mode-locked-msg');
+    const quickBtn = document.getElementById('abs-mode-quick');
+    const fullBtn = document.getElementById('abs-mode-full');
+    if (!quickBtn || !fullBtn) return;
+    if (absReceptionist) {
+        if (lockedMsg) lockedMsg.style.display = 'none';
+        quickBtn.disabled = false;
+        quickBtn.style.background = '#fff7ed';
+        quickBtn.style.borderColor = '#fb923c';
+        quickBtn.style.color = '#9a3412';
+        quickBtn.style.cursor = 'pointer';
+        quickBtn.style.opacity = '1';
+        fullBtn.disabled = false;
+        fullBtn.style.background = '#f0fdf4';
+        fullBtn.style.borderColor = '#68d391';
+        fullBtn.style.color = '#276749';
+        fullBtn.style.cursor = 'pointer';
+        fullBtn.style.opacity = '1';
+    } else {
+        if (lockedMsg) lockedMsg.style.display = 'block';
+        quickBtn.disabled = true;
+        quickBtn.style.background = '#edf2f7';
+        quickBtn.style.borderColor = '#cbd5e0';
+        quickBtn.style.color = '#a0aec0';
+        quickBtn.style.cursor = 'not-allowed';
+        quickBtn.style.opacity = '0.5';
+        fullBtn.disabled = true;
+        fullBtn.style.background = '#edf2f7';
+        fullBtn.style.borderColor = '#cbd5e0';
+        fullBtn.style.color = '#a0aec0';
+        fullBtn.style.cursor = 'not-allowed';
+        fullBtn.style.opacity = '0.5';
+    }
 }
 
 function absInit() {
