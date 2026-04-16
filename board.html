@@ -1439,6 +1439,7 @@
         <button class="save-btn secondary" onclick="loadAssignment()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
     </div>
     <div id="busy-notice"></div>
+    <div id="bias-alert"></div>
     <div class="floor-map" id="floor-map"></div>
     <div class="memo-area">
         <h3>メモ（申し送り等）</h3>
@@ -1456,6 +1457,7 @@
         <label>期間:</label>
         <input type="month" id="stats-month">
         <button class="save-btn secondary" onclick="showStats()" style="padding:8px 16px; font-size:0.85rem;">集計する</button>
+        <button id="stats-mode-btn" class="save-btn secondary" onclick="toggleStatsMode()" style="padding:8px 16px; font-size:0.85rem;">📊 %表示に切替</button>
     </div>
     <div id="stats-result"></div>
 </div>
@@ -2005,6 +2007,85 @@ function updateBusyNotice() {
         html = `<div class="busy-notice busy-late"><span>&#128293;</span> 下旬: ⑤実績入力・確認、③翌月準備・名札 が忙しい時期</div>`;
     }
     el.innerHTML = html;
+    updateBiasAlert();
+}
+
+// ========== 偏り分析 ==========
+// 現在日付の月について、各スタッフのポジション別配置回数と%を計算
+function calcMonthBias() {
+    if (!currentDate) return null;
+    const month = currentDate.substring(0, 7); // yyyy-MM
+    const d = getData();
+    const staff = getStaff().filter(s => s !== '比嘉'); // 社長除外
+    const counts = {};
+    staff.forEach(s => { counts[s] = {1:0, 2:0, 3:0, 4:0, 5:0, total:0}; });
+    Object.keys(d.assignments).forEach(key => {
+        if (!key.startsWith(month)) return;
+        const a = d.assignments[key];
+        for (let pid = 1; pid <= 5; pid++) {
+            (a.positions[pid] || []).forEach(s => {
+                if (counts[s]) { counts[s][pid]++; counts[s].total++; }
+            });
+        }
+    });
+    return { counts, staff, month };
+}
+
+function updateBiasAlert() {
+    const el = document.getElementById('bias-alert');
+    if (!el) return;
+    const bias = calcMonthBias();
+    if (!bias) { el.innerHTML = ''; return; }
+    const { counts, staff } = bias;
+
+    const heavy = []; // 偏って入りすぎている: {staff, pid, pct}
+    const zero = [];  // 全く入っていない: {staff, pid}
+
+    staff.forEach(s => {
+        const c = counts[s];
+        if (c.total < 3) return; // 配置が少なすぎるスタッフは判定対象外
+        for (let pid = 1; pid <= 5; pid++) {
+            const pct = Math.round(c[pid] / c.total * 100);
+            if (pct >= 50) heavy.push({ staff: s, pid, pct });
+            else if (c[pid] === 0) zero.push({ staff: s, pid });
+        }
+    });
+
+    if (heavy.length === 0 && zero.length === 0) {
+        el.innerHTML = `<div style="padding:10px 14px;margin-bottom:14px;background:#e6fffa;border:1px solid #b2f5ea;border-radius:10px;color:#234e52;font-size:0.85rem;">✅ 今月の配置バランスは良好です</div>`;
+        return;
+    }
+
+    let html = `<div style="padding:12px 14px;margin-bottom:14px;background:#fffaf0;border:1px solid #feb2b2;border-radius:10px;">`;
+    html += `<div style="font-weight:700;color:#c05621;font-size:0.9rem;margin-bottom:8px;">⚠ 今月の配置の偏り状況</div>`;
+
+    if (heavy.length > 0) {
+        html += `<div style="font-size:0.85rem;line-height:1.7;">`;
+        heavy.sort((a,b) => b.pct - a.pct).forEach(h => {
+            const p = POSITIONS.find(x => x.id === h.pid);
+            const icon = h.pct >= 65 ? '🔴' : '🟡';
+            html += `<div>${icon} <strong>${h.staff}</strong> → ${h.pid} ${p.name} <strong>${h.pct}%</strong></div>`;
+        });
+        html += `</div>`;
+    }
+
+    if (zero.length > 0) {
+        html += `<div style="font-size:0.8rem;color:#718096;margin-top:8px;padding-top:8px;border-top:1px dashed #feb2b2;">`;
+        html += `<div style="font-weight:600;margin-bottom:4px;">⭐ 今月まだ入っていない人（要バランス）:</div>`;
+        const byPos = {};
+        zero.forEach(z => {
+            if (!byPos[z.pid]) byPos[z.pid] = [];
+            byPos[z.pid].push(z.staff);
+        });
+        Object.keys(byPos).forEach(pid => {
+            const p = POSITIONS.find(x => x.id === parseInt(pid));
+            html += `<div>${p.id} ${p.name}: ${byPos[pid].join('・')}</div>`;
+        });
+        html += `</div>`;
+    }
+
+    html += `</div>`;
+    el.innerHTML = html;
 }
 
 // ========== 配置の読み込み・保存 ==========
@@ -2052,13 +2133,47 @@ function openStaffSelect(posId) {
     const assigned = getAllAssignedStaff();
     const inThisPos = new Set(currentAssignment.positions[posId] || []);
     const staff = getStaff();
-    grid.innerHTML = staff.map(s => {
+
+    // 今月のバイアス情報を取得（推奨マーク用）
+    const bias = calcMonthBias();
+    const staffStats = {};
+    if (bias) {
+        staff.forEach(s => {
+            const c = bias.counts[s];
+            if (c) {
+                staffStats[s] = {
+                    pct: c.total > 0 ? Math.round(c[posId] / c.total * 100) : 0,
+                    count: c[posId] || 0,
+                    total: c.total
+                };
+            }
+        });
+    }
+
+    // 並び順: 社長以外で、今月このポジション未経験→少ない→多いの順
+    const sortedStaff = staff.slice().sort((a, b) => {
+        if (a === '比嘉') return 1;
+        if (b === '比嘉') return -1;
+        const sa = staffStats[a] || { pct: 0, count: 0, total: 0 };
+        const sb = staffStats[b] || { pct: 0, count: 0, total: 0 };
+        return sa.pct - sb.pct;
+    });
+
+    grid.innerHTML = sortedStaff.map(s => {
         const alreadyElsewhere = assigned.has(s) && !inThisPos.has(s);
         const inThis = inThisPos.has(s);
+        const st = staffStats[s];
+        let badge = '';
+        if (st && st.total >= 3 && s !== '比嘉') {
+            if (st.count === 0) badge = ' ⭐未経験';
+            else if (st.pct < 15) badge = ` ⭐${st.pct}%`;
+            else if (st.pct >= 50) badge = ` 🔴${st.pct}%`;
+            else badge = ` ${st.pct}%`;
+        }
         return `<button class="staff-select-btn ${alreadyElsewhere ? 'already' : ''}"
             onclick="${alreadyElsewhere ? '' : `selectStaff('${s}', ${posId})`}"
             ${alreadyElsewhere ? 'disabled' : ''}>
-            ${s}${inThis ? ' (配置済み)' : ''}${alreadyElsewhere ? ' (他に配置中)' : ''}
+            ${s}${badge}${inThis ? ' (配置済み)' : ''}${alreadyElsewhere ? ' (他に配置中)' : ''}
         </button>`;
     }).join('');
     openModal('staff-modal');
@@ -2071,6 +2186,7 @@ function selectStaff(name, posId) {
     if (idx >= 0) { arr.splice(idx, 1); } else { arr.push(name); }
     renderAssignments();
     autoSave();
+    updateBiasAlert();
     closeModal('staff-modal');
 }
 
@@ -2080,6 +2196,7 @@ function removeStaff(posId, name) {
     if (idx >= 0) arr.splice(idx, 1);
     renderAssignments();
     autoSave();
+    updateBiasAlert();
 }
 
 // ========== 集計 ==========
@@ -2097,6 +2214,15 @@ function getEffectiveJobsForAssignment(posId, assignment) {
     }
     customJobs.forEach(cj => jobs.push({ id: cj.id, text: cj.text }));
     return jobs;
+}
+
+let statsMode = 'count'; // 'count' or 'percent'
+
+function toggleStatsMode() {
+    statsMode = statsMode === 'count' ? 'percent' : 'count';
+    const btn = document.getElementById('stats-mode-btn');
+    if (btn) btn.textContent = statsMode === 'count' ? '📊 %表示に切替' : '📊 回数表示に切替';
+    showStats();
 }
 
 function showStats() {
@@ -2127,7 +2253,9 @@ function showStats() {
         }
     });
 
-    let html = '<div class="stats-table-wrap"><table class="stats-table"><thead><tr><th>スタッフ</th>';
+    const modeLabel = statsMode === 'percent' ? '（%表示）' : '（回数表示）';
+    let html = `<div style="font-size:0.85rem;color:#718096;margin-bottom:8px;">${modeLabel}</div>`;
+    html += '<div class="stats-table-wrap"><table class="stats-table"><thead><tr><th>スタッフ</th>';
     POSITIONS.forEach(p => { html += `<th style="color:${p.color}">${p.id} ${p.name}</th>`; });
     html += '<th class="total-col">合計</th></tr></thead><tbody>';
     staff.forEach(s => {
@@ -2138,9 +2266,16 @@ function showStats() {
             const val = c[pid]; let cls = '';
             if (val === 0) cls = 'count-zero';
             else if (val === maxPos && c.total > 3 && maxPos > c.total * 0.6) cls = 'count-high';
-            html += `<td class="${cls}">${val}</td>`;
+            let display;
+            if (statsMode === 'percent') {
+                const pct = c.total > 0 ? Math.round(val / c.total * 100) : 0;
+                display = c.total > 0 ? pct + '%' : '-';
+            } else {
+                display = val;
+            }
+            html += `<td class="${cls}">${display}</td>`;
         }
-        html += `<td class="total-col">${c.total}</td></tr>`;
+        html += `<td class="total-col">${c.total}${statsMode === 'percent' ? '回' : ''}</td></tr>`;
     });
     html += '</tbody></table></div>';
 
