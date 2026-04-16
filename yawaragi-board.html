@@ -2038,52 +2038,39 @@ function updateBiasAlert() {
     if (!bias) { el.innerHTML = ''; return; }
     const { counts, staff } = bias;
 
-    const heavy = []; // 偏って入りすぎている: {staff, pid, pct}
-    const zero = [];  // 全く入っていない: {staff, pid}
+    // データが全くない月は非表示
+    const hasAnyData = staff.some(s => counts[s].total > 0);
+    if (!hasAnyData) { el.innerHTML = ''; return; }
+
+    let html = `<div style="padding:12px 14px;margin-bottom:14px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:10px;">`;
+    html += `<div style="font-weight:700;color:#2d3748;font-size:0.9rem;margin-bottom:10px;">📊 今月の配置状況</div>`;
+    html += `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.82rem;">`;
+    html += `<thead><tr style="background:#edf2f7;"><th style="padding:6px 8px;text-align:left;border:1px solid #e2e8f0;">スタッフ</th>`;
+    POSITIONS.forEach(p => {
+        html += `<th style="padding:6px 8px;text-align:center;border:1px solid #e2e8f0;color:${p.color};">${p.id}</th>`;
+    });
+    html += `<th style="padding:6px 8px;text-align:center;border:1px solid #e2e8f0;color:#718096;">計</th></tr></thead><tbody>`;
 
     staff.forEach(s => {
         const c = counts[s];
-        if (c.total < 3) return; // 配置が少なすぎるスタッフは判定対象外
+        if (c.total === 0) return;
+        html += `<tr><td style="padding:6px 8px;border:1px solid #e2e8f0;font-weight:600;">${s}</td>`;
         for (let pid = 1; pid <= 5; pid++) {
             const pct = Math.round(c[pid] / c.total * 100);
-            if (pct >= 50) heavy.push({ staff: s, pid, pct });
-            else if (c[pid] === 0) zero.push({ staff: s, pid });
+            let cellStyle = 'padding:6px 8px;text-align:center;border:1px solid #e2e8f0;';
+            let display;
+            if (c[pid] === 0) {
+                cellStyle += 'color:#a0aec0;background:#fef5e7;';
+                display = '⭐ 0%';
+            } else {
+                display = pct + '%';
+            }
+            html += `<td style="${cellStyle}">${display}</td>`;
         }
+        html += `<td style="padding:6px 8px;text-align:center;border:1px solid #e2e8f0;color:#718096;font-size:0.75rem;">${c.total}回</td></tr>`;
     });
-
-    if (heavy.length === 0 && zero.length === 0) {
-        el.innerHTML = `<div style="padding:10px 14px;margin-bottom:14px;background:#e6fffa;border:1px solid #b2f5ea;border-radius:10px;color:#234e52;font-size:0.85rem;">✅ 今月の配置バランスは良好です</div>`;
-        return;
-    }
-
-    let html = `<div style="padding:12px 14px;margin-bottom:14px;background:#fffaf0;border:1px solid #feb2b2;border-radius:10px;">`;
-    html += `<div style="font-weight:700;color:#c05621;font-size:0.9rem;margin-bottom:8px;">⚠ 今月の配置の偏り状況</div>`;
-
-    if (heavy.length > 0) {
-        html += `<div style="font-size:0.85rem;line-height:1.7;">`;
-        heavy.sort((a,b) => b.pct - a.pct).forEach(h => {
-            const p = POSITIONS.find(x => x.id === h.pid);
-            const icon = h.pct >= 65 ? '🔴' : '🟡';
-            html += `<div>${icon} <strong>${h.staff}</strong> → ${h.pid} ${p.name} <strong>${h.pct}%</strong></div>`;
-        });
-        html += `</div>`;
-    }
-
-    if (zero.length > 0) {
-        html += `<div style="font-size:0.8rem;color:#718096;margin-top:8px;padding-top:8px;border-top:1px dashed #feb2b2;">`;
-        html += `<div style="font-weight:600;margin-bottom:4px;">⭐ 今月まだ入っていない人（要バランス）:</div>`;
-        const byPos = {};
-        zero.forEach(z => {
-            if (!byPos[z.pid]) byPos[z.pid] = [];
-            byPos[z.pid].push(z.staff);
-        });
-        Object.keys(byPos).forEach(pid => {
-            const p = POSITIONS.find(x => x.id === parseInt(pid));
-            html += `<div>${p.id} ${p.name}: ${byPos[pid].join('・')}</div>`;
-        });
-        html += `</div>`;
-    }
-
+    html += `</tbody></table></div>`;
+    html += `<div style="font-size:0.72rem;color:#a0aec0;margin-top:6px;">⭐ = 今月まだ入っていないポジション</div>`;
     html += `</div>`;
     el.innerHTML = html;
 }
@@ -2166,8 +2153,6 @@ function openStaffSelect(posId) {
         let badge = '';
         if (st && st.total >= 3 && s !== '比嘉') {
             if (st.count === 0) badge = ' ⭐未経験';
-            else if (st.pct < 15) badge = ` ⭐${st.pct}%`;
-            else if (st.pct >= 50) badge = ` 🔴${st.pct}%`;
             else badge = ` ${st.pct}%`;
         }
         return `<button class="staff-select-btn ${alreadyElsewhere ? 'already' : ''}"
