@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>月次業務トラッカー - yawaragi</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f0f4f8; color: #333; min-height: 100vh; }
+
+  .header { background: linear-gradient(135deg, #0f766e, #115e59); color: white; padding: 20px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+
+  .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+
+  .month-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .month-selector select { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; }
+  .month-selector select:focus { outline: none; border-color: #0d9488; }
+  .month-nav { display: flex; gap: 4px; }
+  .month-nav button { padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 8px; background: white; cursor: pointer; font-size: 14px; }
+  .month-nav button:hover { background: #f0fdfa; border-color: #0d9488; }
+
+  .tabs { display: flex; gap: 4px; background: white; border-radius: 12px 12px 0 0; padding: 8px 8px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .tab { padding: 10px 24px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; border: 1px solid transparent; border-bottom: none; transition: all 0.2s; }
+  .tab:hover { color: #0f766e; background: #f0fdfa; }
+  .tab.active { color: #0f766e; background: #f0fdfa; border-color: #e2e8f0; font-weight: 600; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .card h2 { font-size: 16px; color: #0f766e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #ccfbf1; }
+  .card h3 { font-size: 14px; color: #475569; margin: 16px 0 10px; }
+
+  .btn { padding: 8px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+  .btn-primary { background: #0f766e; color: white; }
+  .btn-primary:hover { background: #115e59; }
+  .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #d1d5db; }
+  .btn-secondary:hover { background: #e2e8f0; }
+  .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-size: 12px; padding: 4px 10px; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-sm { font-size: 12px; padding: 4px 12px; }
+
+  /* チェックリスト */
+  .checklist { list-style: none; }
+  .checklist li { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li:hover { background: #f8fafc; }
+  .checklist li.done { background: #f0fdf4; }
+  .checklist li.done .task-name { color: #16a34a; }
+
+  .task-check { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #cbd5e1; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s; margin-top: 2px; }
+  .task-check:hover { border-color: #0d9488; }
+  .task-check.checked { background: #0f766e; border-color: #0f766e; }
+  .task-check.checked::after { content: '\2713'; color: white; font-size: 14px; font-weight: bold; }
+
+  .task-info { flex: 1; min-width: 0; }
+  .task-name { font-size: 14px; font-weight: 500; color: #334155; }
+  .task-desc { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .task-date { font-size: 11px; color: #0d9488; margin-top: 4px; font-weight: 500; }
+  .task-memo { width: 100%; margin-top: 6px; padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; font-family: inherit; resize: none; min-height: 32px; }
+  .task-memo:focus { outline: none; border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.1); }
+  .task-memo::placeholder { color: #cbd5e1; }
+
+  /* 提出先ごとの色分け */
+  .section-sharoushi { border-left: 4px solid #3b82f6; }
+  .section-zeirishi { border-left: 4px solid #8b5cf6; }
+  .section-densan { border-left: 4px solid #f59e0b; }
+  .section-keazo { border-left: 4px solid #ef4444; }
+  .section-rehabcloud { border-left: 4px solid #22c55e; }
+
+  /* ダウンロードログ */
+  .dl-log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .dl-log-table th { text-align: left; padding: 10px 12px; background: #f8fafc; color: #475569; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
+  .dl-log-table td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  .dl-log-table tr:hover { background: #f8fafc; }
+  .dl-log-table .source-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-densan { background: #fef3c7; color: #92400e; }
+  .badge-keazo { background: #fee2e2; color: #991b1b; }
+  .badge-rehab { background: #dcfce7; color: #166534; }
+
+  .dl-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; padding: 16px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; }
+  .dl-form .field { display: flex; flex-direction: column; gap: 4px; }
+  .dl-form label { font-size: 12px; color: #64748b; font-weight: 500; }
+  .dl-form input, .dl-form select, .dl-form textarea { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  .dl-form input:focus, .dl-form select:focus, .dl-form textarea:focus { outline: none; border-color: #0d9488; }
+
+  /* 進捗バー */
+  .progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #0f766e, #14b8a6); border-radius: 4px; transition: width 0.3s; }
+  .progress-text { font-size: 12px; color: #64748b; margin-top: 4px; text-align: right; }
+
+  /* サマリーカード */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .summary-card { padding: 16px; border-radius: 10px; text-align: center; }
+  .summary-card .s-label { font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+  .summary-card .s-value { font-size: 24px; font-weight: 700; }
+  .summary-card .s-sub { font-size: 11px; margin-top: 2px; opacity: 0.7; }
+  .s-green { background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .s-green .s-label { color: #16a34a; } .s-green .s-value { color: #15803d; }
+  .s-blue { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .s-blue .s-label { color: #2563eb; } .s-blue .s-value { color: #1d4ed8; }
+  .s-purple { background: #faf5ff; border: 1px solid #e9d5ff; }
+  .s-purple .s-label { color: #7c3aed; } .s-purple .s-value { color: #6d28d9; }
+  .s-orange { background: #fff7ed; border: 1px solid #fed7aa; }
+  .s-orange .s-label { color: #ea580c; } .s-orange .s-value { color: #c2410c; }
+
+  .empty-msg { text-align: center; color: #94a3b8; padding: 40px 20px; font-size: 14px; }
+
+  @media (max-width: 768px) {
+    .dl-form { flex-direction: column; }
+    .dl-form .field { width: 100%; }
+    .summary-grid { grid-template-columns: 1fr 1fr; }
+    .tabs { overflow-x: auto; }
+    .tab { white-space: nowrap; padding: 10px 16px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>月次業務トラッカー</h1>
+  <p>社労士・税理士への提出 / 電算・けあ蔵・リハブクラウドのダウンロード管理</p>
+</div>
+
+<div class="container">
+  <!-- 月選択 -->
+  <div class="month-selector">
+    <div class="month-nav">
+      <button onclick="changeMonth(-1)">&lt; 前月</button>
+    </div>
+    <select id="monthSelect" onchange="loadMonth()"></select>
+    <div class="month-nav">
+      <button onclick="changeMonth(1)">翌月 &gt;</button>
+    </div>
+  </div>
+
+  <!-- サマリー -->
+  <div class="summary-grid" id="summaryGrid"></div>
+
+  <!-- タブ -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('submit')">提出チェック</div>
+    <div class="tab" onclick="switchTab('download')">ダウンロード管理</div>
+    <div class="tab" onclick="switchTab('history')">過去の履歴</div>
+  </div>
+
+  <!-- タブ1: 提出チェック -->
+  <div id="tab-submit" class="tab-content active">
+    <!-- 社労士 -->
+    <div class="card section-sharoushi">
+      <h2>社労士（タスクマン）に渡すもの</h2>
+      <ul class="checklist" id="list-sharoushi"></ul>
+    </div>
+
+    <!-- 税理士 -->
+    <div class="card section-zeirishi">
+      <h2>税理士に渡すもの <span style="font-size:12px; color:#94a3b8; font-weight:400;">翌月25日を目標に提出</span></h2>
+      <ul class="checklist" id="list-zeirishi"></ul>
+    </div>
+  </div>
+
+  <!-- タブ2: ダウンロード管理 -->
+  <div id="tab-download" class="tab-content">
+    <!-- 取るべきデータチェック -->
+    <div class="card">
+      <h2>今月取るべきデータ</h2>
+      <ul class="checklist" id="list-downloads"></ul>
+    </div>
+
+    <!-- ダウンロードログ -->
+    <div class="card">
+      <h2>ダウンロード記録</h2>
+      <p style="font-size:13px; color:#64748b; margin-bottom:12px;">ダウンロードしたファイルを記録しておくと「これ何だっけ？」がなくなります</p>
+
+      <div class="dl-form">
+        <div class="field">
+          <label>取得元</label>
+          <select id="dlSource">
+            <option value="電算">電算システム</option>
+            <option value="けあ蔵">けあ蔵</option>
+            <option value="リハブクラウド">リハブクラウド</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1; min-width: 160px;">
+          <label>ファイル名</label>
+          <input type="text" id="dlFileName" placeholder="例: GPXCS440_20260304.pdf">
+        </div>
+        <div class="field" style="flex:2; min-width: 200px;">
+          <label>内容メモ（これは何のファイル？）</label>
+          <input type="text" id="dlMemo" placeholder="例: 2月分の口座振替結果一覧表">
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" onclick="addDownloadLog()">記録する</button>
+        </div>
+      </div>
+
+      <table class="dl-log-table">
+        <thead>
+          <tr>
+            <th style="width:70px;">取得元</th>
+            <th style="width:160px;">ファイル名</th>
+            <th>内容メモ</th>
+            <th style="width:100px;">記録日</th>
+            <th style="width:50px;"></th>
+          </tr>
+        </thead>
+        <tbody id="dlLogBody"></tbody>
+      </table>
+      <div id="dlLogEmpty" class="empty-msg" style="display:none;">まだ記録がありません</div>
+    </div>
+  </div>
+
+  <!-- タブ3: 過去の履歴 -->
+  <div id="tab-history" class="tab-content">
+    <div class="card">
+      <h2>月別の完了状況</h2>
+      <table class="dl-log-table" id="historyTable">
+        <thead>
+          <tr>
+            <th>年月</th>
+            <th>社労士</th>
+            <th>税理士</th>
+            <th>ダウンロード</th>
+            <th>ファイル記録</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ データ定義 ============
+
+// 社労士に毎月渡すもののテンプレート
+const SHAROUSHI_TEMPLATE = [
+  { id: 'sh1', name: '給与データの確認結果', desc: 'タスクマンから届いた給与データをチェックして返す' },
+  { id: 'sh2', name: '入退社の報告', desc: '新しい入社・退社があればチャットワークで連絡' },
+  { id: 'sh3', name: '勤怠データ', desc: '出勤簿・タイムカード等' },
+  { id: 'sh4', name: 'その他連絡事項', desc: '労務関連で伝えること（有給・産休・傷病等）' },
+];
+
+// 税理士に毎月渡すもののテンプレート（翌月25日目標）
+const ZEIRISHI_TEMPLATE = [
+  { id: 'ze1', name: '埼玉りそな 通帳コピー', desc: '毎月提出' },
+  { id: 'ze2', name: '埼玉信金 通帳コピー', desc: '毎月提出' },
+  { id: 'ze3', name: '東和銀行 通帳コピー', desc: '毎月提出' },
+  { id: 'ze4', name: '現金出納帳Excel', desc: '毎月提出' },
+  { id: 'ze5', name: '給与台帳', desc: '毎月提出' },
+  { id: 'ze6', name: '国保連請求書', desc: '毎月提出' },
+  { id: 'ze7', name: '現金で支払った領収書等', desc: '3ヶ月に一度（区分けして原本を郵送or手渡し）', quarterly: true },
+  { id: 'ze8', name: 'クレカで支払った領収書等', desc: '3ヶ月に一度（区分けして原本を郵送or手渡し）', quarterly: true },
+  { id: 'ze9', name: '通帳から支払った領収書等', desc: '3ヶ月に一度（区分けして原本を郵送or手渡し）', quarterly: true },
+  { id: 'ze10', name: '入退社の報告', desc: '新しい入社・退社があればチャットワークで連絡' },
+];
+
+// 毎月取るべきダウンロードデータのテンプレート
+const DOWNLOAD_TEMPLATE = [
+  { id: 'dl1', name: '請求CSV出力（リハブクラウド）', desc: '国保連請求用のCSVデータを出力', source: 'リハブクラウド' },
+  { id: 'dl2', name: '集計情報CSV（リハブクラウド）', desc: '国保連請求額・利用者請求額の集計データ', source: 'リハブクラウド' },
+  { id: 'dl3', name: '利用者請求書PDF（リハブクラウド）', desc: '利用者向けの請求書・領収書PDF', source: 'リハブクラウド' },
+  { id: 'dl4', name: '口座振替ファイル（リハブクラウド）', desc: '全銀協フォーマットの振替ファイル→電算にアップ', source: 'リハブクラウド' },
+  { id: 'dl5', name: 'けあ蔵でCSV取込・伝送', desc: '請求CSVをけあ蔵に取込んで国保連に伝送', source: 'けあ蔵' },
+  { id: 'dl6', name: '審査状況一覧（けあ蔵）', desc: '返戻・査定の結果確認', source: 'けあ蔵' },
+  { id: 'dl7', name: '支払決定額通知書（けあ蔵）', desc: '国保連からの実際の振込額', source: 'けあ蔵' },
+  { id: 'dl8', name: '口座振替結果一覧（電算）', desc: '振替結果（不能件数・金額）のPDF', source: '電算' },
+  { id: 'dl9', name: '口座振替データ登録（電算）', desc: '振替ファイルを電算にアップロード', source: '電算' },
+];
+
+// ============ ストレージ ============
+const STORAGE_KEY = 'yawaragi_monthly_tracker';
+
+function loadAllData() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  } catch { return {}; }
+}
+
+function saveAllData(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function getMonthData(monthKey) {
+  const all = loadAllData();
+  if (!all[monthKey]) {
+    all[monthKey] = { sharoushi: {}, zeirishi: {}, downloads: {}, dlLog: [] };
+    saveAllData(all);
+  }
+  return all[monthKey];
+}
+
+function updateMonthData(monthKey, updater) {
+  const all = loadAllData();
+  if (!all[monthKey]) all[monthKey] = { sharoushi: {}, zeirishi: {}, downloads: {}, dlLog: [] };
+  updater(all[monthKey]);
+  saveAllData(all);
+}
+
+// ============ 月選択 ============
+let currentMonth = '';
+
+function initMonthSelector() {
+  const sel = document.getElementById('monthSelect');
+  const now = new Date();
+  const months = [];
+  // 過去6ヶ月 + 今月 + 来月
+  for (let i = -6; i <= 1; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const label = d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+    months.push({ key, label });
+  }
+  sel.innerHTML = months.map(m => `<option value="${m.key}">${m.label}</option>`).join('');
+  // 今月を選択
+  const thisKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  sel.value = thisKey;
+  currentMonth = thisKey;
+}
+
+function loadMonth() {
+  currentMonth = document.getElementById('monthSelect').value;
+  renderAll();
+}
+
+function changeMonth(delta) {
+  const sel = document.getElementById('monthSelect');
+  const idx = sel.selectedIndex + delta;
+  if (idx >= 0 && idx < sel.options.length) {
+    sel.selectedIndex = idx;
+    loadMonth();
+  }
+}
+
+// ============ レンダリング ============
+function renderAll() {
+  renderChecklist('list-sharoushi', SHAROUSHI_TEMPLATE, 'sharoushi');
+  renderChecklist('list-zeirishi', ZEIRISHI_TEMPLATE, 'zeirishi');
+  renderChecklist('list-downloads', DOWNLOAD_TEMPLATE, 'downloads');
+  renderDlLog();
+  renderSummary();
+  renderHistory();
+}
+
+function renderChecklist(containerId, template, category) {
+  const container = document.getElementById(containerId);
+  const data = getMonthData(currentMonth);
+  const catData = data[category] || {};
+
+  container.innerHTML = template.map(item => {
+    const saved = catData[item.id] || {};
+    const done = saved.done || false;
+    const memo = saved.memo || '';
+    const doneDate = saved.doneDate || '';
+    const sourceTag = item.source ? `<span class="source-badge badge-${item.source === '電算' ? 'densan' : item.source === 'けあ蔵' ? 'keazo' : 'rehab'}">${item.source}</span> ` : '';
+    const quarterlyTag = item.quarterly ? '<span class="source-badge" style="background:#e0e7ff; color:#3730a3;">3ヶ月に一度</span> ' : '';
+
+    return `
+      <li class="${done ? 'done' : ''}">
+        <div class="task-check ${done ? 'checked' : ''}" onclick="toggleCheck('${category}','${item.id}')"></div>
+        <div class="task-info">
+          <div class="task-name">${sourceTag}${quarterlyTag}${item.name}</div>
+          <div class="task-desc">${item.desc}</div>
+          ${doneDate ? `<div class="task-date">${doneDate} に完了</div>` : ''}
+          <textarea class="task-memo" placeholder="メモ（例：○○も一緒に渡した）" rows="1"
+            oninput="autoResize(this)" onblur="saveMemo('${category}','${item.id}',this.value)">${memo}</textarea>
+        </div>
+      </li>`;
+  }).join('');
+
+  // auto resize textareas
+  container.querySelectorAll('.task-memo').forEach(ta => autoResize(ta));
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.max(32, el.scrollHeight) + 'px';
+}
+
+function toggleCheck(category, itemId) {
+  updateMonthData(currentMonth, d => {
+    if (!d[category]) d[category] = {};
+    if (!d[category][itemId]) d[category][itemId] = {};
+    const cur = d[category][itemId].done || false;
+    d[category][itemId].done = !cur;
+    d[category][itemId].doneDate = !cur ? formatDate(new Date()) : '';
+  });
+  renderAll();
+}
+
+function saveMemo(category, itemId, value) {
+  updateMonthData(currentMonth, d => {
+    if (!d[category]) d[category] = {};
+    if (!d[category][itemId]) d[category][itemId] = {};
+    d[category][itemId].memo = value;
+  });
+}
+
+// ============ ダウンロードログ ============
+function addDownloadLog() {
+  const source = document.getElementById('dlSource').value;
+  const fileName = document.getElementById('dlFileName').value.trim();
+  const memo = document.getElementById('dlMemo').value.trim();
+
+  if (!memo) {
+    alert('内容メモを入力してください（「これは何のファイル？」）');
+    return;
+  }
+
+  updateMonthData(currentMonth, d => {
+    if (!d.dlLog) d.dlLog = [];
+    d.dlLog.push({
+      id: Date.now().toString(),
+      source,
+      fileName: fileName || '（ファイル名なし）',
+      memo,
+      date: formatDate(new Date())
+    });
+  });
+
+  document.getElementById('dlFileName').value = '';
+  document.getElementById('dlMemo').value = '';
+  renderAll();
+}
+
+function deleteDownloadLog(logId) {
+  if (!confirm('この記録を削除しますか？')) return;
+  updateMonthData(currentMonth, d => {
+    d.dlLog = (d.dlLog || []).filter(l => l.id !== logId);
+  });
+  renderAll();
+}
+
+function renderDlLog() {
+  const data = getMonthData(currentMonth);
+  const logs = data.dlLog || [];
+  const body = document.getElementById('dlLogBody');
+  const empty = document.getElementById('dlLogEmpty');
+
+  if (logs.length === 0) {
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  body.innerHTML = logs.map(log => {
+    const badgeClass = log.source === '電算' ? 'badge-densan' : log.source === 'けあ蔵' ? 'badge-keazo' : 'badge-rehab';
+    return `
+      <tr>
+        <td><span class="source-badge ${badgeClass}">${log.source}</span></td>
+        <td style="font-family:monospace; font-size:12px; word-break:break-all;">${escapeHtml(log.fileName)}</td>
+        <td>${escapeHtml(log.memo)}</td>
+        <td style="font-size:12px; color:#64748b;">${log.date}</td>
+        <td><button class="btn-danger" onclick="deleteDownloadLog('${log.id}')">削除</button></td>
+      </tr>`;
+  }).join('');
+}
+
+// ============ サマリー ============
+function renderSummary() {
+  const data = getMonthData(currentMonth);
+
+  const shCount = countDone(data.sharoushi, SHAROUSHI_TEMPLATE);
+  const zeCount = countDone(data.zeirishi, ZEIRISHI_TEMPLATE);
+  const dlCount = countDone(data.downloads, DOWNLOAD_TEMPLATE);
+  const logCount = (data.dlLog || []).length;
+
+  document.getElementById('summaryGrid').innerHTML = `
+    <div class="summary-card s-blue">
+      <div class="s-label">社労士</div>
+      <div class="s-value">${shCount.done}/${shCount.total}</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${shCount.pct}%"></div></div>
+    </div>
+    <div class="summary-card s-purple">
+      <div class="s-label">税理士</div>
+      <div class="s-value">${zeCount.done}/${zeCount.total}</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${zeCount.pct}%"></div></div>
+    </div>
+    <div class="summary-card s-green">
+      <div class="s-label">データ取得</div>
+      <div class="s-value">${dlCount.done}/${dlCount.total}</div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${dlCount.pct}%"></div></div>
+    </div>
+    <div class="summary-card s-orange">
+      <div class="s-label">ファイル記録</div>
+      <div class="s-value">${logCount}件</div>
+      <div class="s-sub">ダウンロード済みファイル</div>
+    </div>
+  `;
+}
+
+function countDone(catData, template) {
+  const total = template.length;
+  let done = 0;
+  template.forEach(item => {
+    if (catData && catData[item.id] && catData[item.id].done) done++;
+  });
+  return { done, total, pct: total > 0 ? Math.round(done / total * 100) : 0 };
+}
+
+// ============ 履歴 ============
+function renderHistory() {
+  const all = loadAllData();
+  const months = Object.keys(all).sort().reverse();
+  const body = document.getElementById('historyBody');
+
+  if (months.length === 0) {
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:30px;">データがありません</td></tr>';
+    return;
+  }
+
+  body.innerHTML = months.map(monthKey => {
+    const d = all[monthKey];
+    const sh = countDone(d.sharoushi, SHAROUSHI_TEMPLATE);
+    const ze = countDone(d.zeirishi, ZEIRISHI_TEMPLATE);
+    const dl = countDone(d.downloads, DOWNLOAD_TEMPLATE);
+    const logCnt = (d.dlLog || []).length;
+    const [y, m] = monthKey.split('-');
+    const label = y + '年' + parseInt(m) + '月';
+    const isCurrent = monthKey === currentMonth;
+
+    return `
+      <tr style="${isCurrent ? 'background:#f0fdfa; font-weight:500;' : ''}">
+        <td>${label}${isCurrent ? ' (表示中)' : ''}</td>
+        <td>${makeMiniBar(sh)}</td>
+        <td>${makeMiniBar(ze)}</td>
+        <td>${makeMiniBar(dl)}</td>
+        <td>${logCnt}件</td>
+      </tr>`;
+  }).join('');
+}
+
+function makeMiniBar(counts) {
+  const color = counts.pct === 100 ? '#16a34a' : counts.pct > 0 ? '#f59e0b' : '#cbd5e1';
+  return `<span style="color:${color}; font-weight:600;">${counts.done}/${counts.total}</span>`;
+}
+
+// ============ タブ切替 ============
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['submit', 'download', 'history'];
+    t.classList.toggle('active', names[i] === tabName);
+  });
+  document.querySelectorAll('.tab-content').forEach(tc => {
+    tc.classList.toggle('active', tc.id === 'tab-' + tabName);
+  });
+}
+
+// ============ ユーティリティ ============
+function formatDate(d) {
+  return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ============ 初期化 ============
+initMonthSelector();
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>請求業務タイムラインチェッカー - yawaragi</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+    background: #f0f4f8;
+    color: #333;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #2c5282, #2b6cb0);
+    color: white;
+    padding: 20px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .header h1 {
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .header-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .today-badge {
+    background: rgba(255,255,255,0.2);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .countdown {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 20px;
+  }
+  .countdown.urgent { background: #fc8181; color: #742a2a; }
+  .countdown.warning { background: #fbd38d; color: #744210; }
+  .countdown.safe { background: #9ae6b4; color: #22543d; }
+  .countdown.done { background: rgba(255,255,255,0.2); }
+
+  .month-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .month-selector button {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+  .month-selector button:hover { background: rgba(255,255,255,0.35); }
+  .month-label {
+    font-size: 16px;
+    font-weight: 600;
+    min-width: 160px;
+    text-align: center;
+  }
+
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px 16px 100px;
+  }
+
+  /* プログレスバー */
+  .progress-section {
+    background: white;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .progress-label { font-size: 14px; font-weight: 600; color: #4a5568; }
+  .progress-count { font-size: 14px; color: #718096; }
+  .progress-bar {
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #48bb78, #38a169);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+
+  /* 担当者フィルター */
+  .filter-section {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 2px solid #cbd5e0;
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .filter-btn.active { border-color: #2b6cb0; background: #ebf4ff; color: #2b6cb0; }
+  .filter-btn:hover { border-color: #a0aec0; }
+
+  /* フェーズ */
+  .phase {
+    margin-bottom: 16px;
+  }
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 10px 10px 0 0;
+    font-weight: 700;
+    font-size: 14px;
+    color: white;
+  }
+  .phase-header.rehabcloud { background: #5a67d8; }
+  .phase-header.keazo { background: #d69e2e; }
+  .phase-header.densan { background: #38a169; }
+  .phase-header.other { background: #718096; }
+  .phase-header .phase-icon { font-size: 18px; }
+  .phase-header .phase-period {
+    margin-left: auto;
+    font-weight: 500;
+    font-size: 12px;
+    opacity: 0.9;
+  }
+  .phase-status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.25);
+    margin-left: 8px;
+  }
+
+  /* タスク */
+  .task-list {
+    background: white;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #edf2f7;
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+  .task-item:last-child { border-bottom: none; }
+  .task-item:hover { background: #f7fafc; }
+  .task-item.checked { opacity: 0.6; }
+  .task-item.checked .task-text { text-decoration: line-through; }
+  .task-item.current { background: #fffff0; border-left: 4px solid #d69e2e; }
+  .task-item.overdue { background: #fff5f5; border-left: 4px solid #e53e3e; }
+  .task-item.overdue .task-date { color: #e53e3e; font-weight: 700; }
+  .task-item.hidden { display: none; }
+
+  .task-checkbox {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #cbd5e0;
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 1px;
+  }
+  .task-checkbox.checked {
+    background: #48bb78;
+    border-color: #48bb78;
+    color: white;
+  }
+  .task-checkbox svg {
+    width: 14px;
+    height: 14px;
+    display: none;
+  }
+  .task-checkbox.checked svg { display: block; }
+
+  .task-content { flex: 1; min-width: 0; }
+  .task-top-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .task-text { font-size: 14px; font-weight: 500; }
+  .task-date {
+    font-size: 11px;
+    color: #a0aec0;
+    white-space: nowrap;
+  }
+  .task-badge {
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 8px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-part { background: #e9d8fd; color: #6b46c1; }
+  .badge-boss { background: #bee3f8; color: #2b6cb0; }
+  .badge-important { background: #fed7d7; color: #c53030; }
+
+  /* メモ */
+  .task-memo-area {
+    margin-top: 6px;
+    display: none;
+  }
+  .task-memo-area.open { display: block; }
+  .task-memo {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 32px;
+    color: #4a5568;
+  }
+  .task-memo:focus { outline: none; border-color: #90cdf4; }
+  .memo-toggle {
+    font-size: 11px;
+    color: #a0aec0;
+    cursor: pointer;
+    margin-top: 4px;
+    display: inline-block;
+  }
+  .memo-toggle:hover { color: #718096; }
+  .memo-has-content { color: #4299e1; }
+
+  /* 連絡先 */
+  .contacts-section {
+    background: white;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .contacts-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #4a5568;
+    margin-bottom: 10px;
+  }
+  .contact-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #edf2f7;
+    font-size: 13px;
+  }
+  .contact-item:last-child { border-bottom: none; }
+  .contact-name { font-weight: 600; color: #4a5568; }
+  .contact-tel {
+    display: inline-block;
+    background: #ebf4ff;
+    color: #2b6cb0;
+    padding: 4px 12px;
+    border-radius: 16px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .contact-tel:hover { background: #bee3f8; }
+
+  /* 振り返り */
+  .review-section {
+    background: white;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .review-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #4a5568;
+    margin-bottom: 12px;
+  }
+  .review-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .review-card {
+    background: #f7fafc;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+  }
+  .review-card-label {
+    font-size: 11px;
+    color: #a0aec0;
+    margin-bottom: 4px;
+  }
+  .review-card-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2d3748;
+  }
+  .review-card input {
+    width: 60px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #2d3748;
+    border: none;
+    border-bottom: 2px solid #e2e8f0;
+    text-align: center;
+    background: transparent;
+    padding: 2px 0;
+  }
+  .review-card input:focus { outline: none; border-color: #90cdf4; }
+  .review-memo {
+    margin-top: 10px;
+  }
+  .review-memo textarea {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 50px;
+    color: #4a5568;
+  }
+  .review-memo textarea:focus { outline: none; border-color: #90cdf4; }
+  .review-memo label {
+    font-size: 11px;
+    color: #a0aec0;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  /* リセットボタン */
+  .reset-section {
+    margin-top: 20px;
+    text-align: center;
+    padding-bottom: 20px;
+  }
+  .reset-btn {
+    background: #e53e3e;
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .reset-btn:hover { background: #c53030; }
+
+  /* レスポンシブ */
+  @media (max-width: 600px) {
+    .header h1 { font-size: 17px; }
+    .review-grid { grid-template-columns: 1fr 1fr; }
+    .task-top-row { gap: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <h1>請求業務チェッカー</h1>
+    <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="padding:6px 12px;background:#e3f2fd;color:#1565c0;border:1px solid #1976d2;border-radius:6px;font-size:12px;font-weight:bold;cursor:pointer;">📋 利用者台帳</button>
+    <div class="header-info">
+      <span class="today-badge" id="todayBadge"></span>
+      <span class="countdown" id="countdown"></span>
+    </div>
+  </div>
+  <div class="month-selector">
+    <button onclick="changeMonth(-1)">◀</button>
+    <span class="month-label" id="monthLabel"></span>
+    <button onclick="changeMonth(1)">▶</button>
+  </div>
+</div>
+
+<div class="container">
+  <div class="progress-section">
+    <div class="progress-header">
+      <span class="progress-label">進捗</span>
+      <span class="progress-count" id="progressCount">0 / 0</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+    </div>
+  </div>
+
+  <div class="filter-section">
+    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">すべて</button>
+    <button class="filter-btn" data-filter="boss" onclick="setFilter('boss')">社長</button>
+    <button class="filter-btn" data-filter="part" onclick="setFilter('part')">パートさん</button>
+    <button class="filter-btn" data-filter="overdue" onclick="setFilter('overdue')">遅延のみ</button>
+  </div>
+
+  <div id="taskContainer"></div>
+
+  <!-- 連絡先 -->
+  <div class="contacts-section">
+    <div class="contacts-title">連絡先クイックリンク</div>
+    <div class="contact-item">
+      <span class="contact-name">けあ蔵サポート</span>
+      <a href="tel:0120984785" class="contact-tel">0120-984-785</a>
+    </div>
+    <div class="contact-item">
+      <span class="contact-name">国保連 埼玉</span>
+      <a href="tel:0488241324" class="contact-tel">048-824-1324</a>
+    </div>
+    <div class="contact-item">
+      <span class="contact-name">電算システム</span>
+      <a href="tel:0120480753" class="contact-tel">0120-480-753</a>
+    </div>
+    <div class="contact-item">
+      <span class="contact-name">リハブクラウド</span>
+      <a href="tel:0368047525" class="contact-tel">03-6804-7525</a>
+    </div>
+  </div>
+
+  <!-- 先月の振り返り -->
+  <div class="review-section">
+    <div class="review-title" id="reviewTitle">先月の振り返り</div>
+    <div class="review-grid">
+      <div class="review-card">
+        <div class="review-card-label">返戻件数</div>
+        <input type="number" id="reviewHenrei" min="0" value="0" onchange="saveReview()">
+        <div class="review-card-label">件</div>
+      </div>
+      <div class="review-card">
+        <div class="review-card-label">エラー件数</div>
+        <input type="number" id="reviewError" min="0" value="0" onchange="saveReview()">
+        <div class="review-card-label">件</div>
+      </div>
+    </div>
+    <div class="review-memo">
+      <label>メモ（返戻の理由、改善点など）</label>
+      <textarea id="reviewMemo" placeholder="例：○○さん 負担割合変更の反映漏れ → CMに連絡済み" onchange="saveReview()"></textarea>
+    </div>
+  </div>
+
+  <div class="reset-section">
+    <button class="reset-btn" onclick="resetMonth()">この月のデータをリセット</button>
+  </div>
+</div>
+
+<script>
+// ===== データ定義 =====
+const TASK_TEMPLATES = [
+  // Phase 1: リハブクラウド（前月25日〜末日）
+  {
+    phase: 'rehabcloud',
+    phaseLabel: 'リハブクラウド',
+    phaseIcon: '💻',
+    tasks: [
+      { id: 'rc1', text: '実績の入力完了・未確定ゼロ件を確認', who: 'part', startDay: -6, endDay: -1, important: false },
+      { id: 'rc2', text: '請求CSVデータを出力（半角英数8文字以内）', who: 'part', startDay: -6, endDay: -1, important: false },
+      { id: 'rc3', text: 'CSVファイルを「年月_確定版」として保存', who: 'part', startDay: -6, endDay: -1, important: false },
+      { id: 'rc4', text: 'CSV出力完了をLINEで代表へ報告', who: 'part', startDay: -6, endDay: -1, important: false },
+      { id: 'rc5', text: '月遅れ請求の確認', who: 'boss', startDay: -6, endDay: -1, important: false },
+      { id: 'rc6', text: '加算の漏れがないか確認（個機訓I-ロ/II、ADL維持、口腔II、科学的介護、提供体制I、処遇改善）', who: 'boss', startDay: -6, endDay: -1, important: true },
+    ]
+  },
+  // Phase 2: けあ蔵（1日〜5日）
+  {
+    phase: 'keazo',
+    phaseLabel: 'けあ蔵（検証）',
+    phaseIcon: '📋',
+    tasks: [
+      { id: 'kz1', text: 'けあ蔵にログイン → 伝送ファイル登録でCSV取込', who: 'boss', startDay: 1, endDay: 5, important: false },
+      { id: 'kz2', text: 'エラーチェック → エラー0件を確認', who: 'boss', startDay: 1, endDay: 5, important: true },
+      { id: 'kz3', text: 'エラーがあればリハブクラウドで修正→CSV再出力→再取込', who: 'boss', startDay: 1, endDay: 5, important: false },
+      { id: 'kz4', text: '前月分の返戻を「通知文書」で確認', who: 'boss', startDay: 1, endDay: 5, important: true },
+      { id: 'kz5', text: '返戻があれば国保連・CMへ電話', who: 'boss', startDay: 1, endDay: 5, important: false },
+    ]
+  },
+  // Phase 3: けあ蔵 本番伝送（6日〜10日）
+  {
+    phase: 'keazo',
+    phaseLabel: 'けあ蔵（本番伝送）',
+    phaseIcon: '🚀',
+    tasks: [
+      { id: 'kz6', text: '国保連へ伝送実行', who: 'boss', startDay: 6, endDay: 10, important: true },
+      { id: 'kz7', text: '「伝送状況検索」で「受付完了」を確認', who: 'boss', startDay: 6, endDay: 10, important: true },
+      { id: 'kz8', text: '★10日 17:00 締切厳守★ 13:00までに登録完了が目標', who: 'boss', startDay: 10, endDay: 10, important: true },
+    ]
+  },
+  // Phase 4: 電算システム（10日〜12日）
+  {
+    phase: 'densan',
+    phaseLabel: '電算システム（請求書）',
+    phaseIcon: '🏦',
+    tasks: [
+      { id: 'ds1', text: '利用者請求書の発行', who: 'boss', startDay: 10, endDay: 12, important: false },
+      { id: 'ds2', text: '口座振替データの作成・登録', who: 'boss', startDay: 10, endDay: 12, important: false },
+    ]
+  },
+  // Phase 5: 電算システム（27日）
+  {
+    phase: 'densan',
+    phaseLabel: '電算システム（引落）',
+    phaseIcon: '💰',
+    tasks: [
+      { id: 'ds3', text: '口座引き落とし日（土日なら翌営業日）', who: 'boss', startDay: 27, endDay: 27, important: false },
+    ]
+  },
+  // Phase 6: 翌月確認
+  {
+    phase: 'other',
+    phaseLabel: '翌月初 確認',
+    phaseIcon: '✅',
+    tasks: [
+      { id: 'ot1', text: '入金消込の確認', who: 'boss', startDay: 32, endDay: 37, important: false },
+      { id: 'ot2', text: '未収がないか確認（振替不能リスト）', who: 'boss', startDay: 32, endDay: 37, important: true },
+    ]
+  },
+  // LIFE提出
+  {
+    phase: 'other',
+    phaseLabel: 'LIFE提出',
+    phaseIcon: '📊',
+    tasks: [
+      { id: 'lf1', text: 'LIFE提出（個別機能訓練）締切10日', who: 'boss', startDay: 1, endDay: 10, important: true },
+    ]
+  },
+];
+
+// ===== 状態管理 =====
+let currentYear, currentMonth; // 対象月（請求対象の月）
+let currentFilter = 'all';
+
+function init() {
+  const today = new Date();
+  const d = today.getDate();
+  // 1日〜10日頃 → 前月分の請求作業中と判断
+  if (d <= 15) {
+    currentYear = today.getMonth() === 0 ? today.getFullYear() - 1 : today.getFullYear();
+    currentMonth = today.getMonth() === 0 ? 12 : today.getMonth(); // 1-indexed
+  } else {
+    currentYear = today.getFullYear();
+    currentMonth = today.getMonth() + 1;
+  }
+  render();
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+  if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+  render();
+}
+
+function storageKey(suffix) {
+  return `seikyu_${currentYear}_${String(currentMonth).padStart(2,'0')}_${suffix}`;
+}
+
+// ===== 日付計算 =====
+function getTaskDateRange(task) {
+  // startDay/endDayが負の場合は前月末からの相対日
+  // 正の場合はtargetMonthの翌月の日付
+  const targetYear = currentYear;
+  const targetMonth = currentMonth; // 1-indexed, 請求対象月
+
+  // 翌月
+  let nextMonth = targetMonth + 1;
+  let nextYear = targetYear;
+  if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+
+  let startDate, endDate;
+
+  if (task.startDay < 0) {
+    // 対象月の末日 + startDay (負数なので引かれる)
+    const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+    const sd = lastDay + task.startDay + 1;
+    startDate = new Date(targetYear, targetMonth - 1, sd);
+  } else if (task.startDay > 31) {
+    // 翌々月（入金消込等）
+    let nm2 = nextMonth + 1, ny2 = nextYear;
+    if (nm2 > 12) { nm2 = 1; ny2++; }
+    startDate = new Date(ny2, nm2 - 1, task.startDay - 31);
+  } else {
+    startDate = new Date(nextYear, nextMonth - 1, task.startDay);
+  }
+
+  if (task.endDay < 0) {
+    const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+    const ed = lastDay + task.endDay + 1;
+    endDate = new Date(targetYear, targetMonth - 1, ed);
+  } else if (task.endDay > 31) {
+    let nm2 = nextMonth + 1, ny2 = nextYear;
+    if (nm2 > 12) { nm2 = 1; ny2++; }
+    endDate = new Date(ny2, nm2 - 1, task.endDay - 31);
+  } else {
+    endDate = new Date(nextYear, nextMonth - 1, task.endDay);
+  }
+
+  return { startDate, endDate };
+}
+
+function formatDateShort(d) {
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+// ===== 描画 =====
+function render() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  // ヘッダー
+  const jpWeekdays = ['日','月','火','水','木','金','土'];
+  document.getElementById('todayBadge').textContent =
+    `今日: ${today.getMonth()+1}/${today.getDate()}(${jpWeekdays[today.getDay()]})`;
+
+  const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  document.getElementById('monthLabel').textContent =
+    `${currentYear}年${monthNames[currentMonth-1]}分 請求`;
+
+  // 締切カウントダウン（翌月10日17:00）
+  let nextMonth = currentMonth + 1, nextYear = currentYear;
+  if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+  const deadline = new Date(nextYear, nextMonth - 1, 10, 17, 0, 0);
+  const diffMs = deadline - new Date();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const cdEl = document.getElementById('countdown');
+
+  if (diffMs < 0) {
+    cdEl.textContent = '締切済み';
+    cdEl.className = 'countdown done';
+  } else if (diffDays <= 1) {
+    const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+    cdEl.textContent = `締切まで ${diffHours}時間`;
+    cdEl.className = 'countdown urgent';
+  } else if (diffDays <= 3) {
+    cdEl.textContent = `締切まで あと${diffDays}日`;
+    cdEl.className = 'countdown warning';
+  } else {
+    cdEl.textContent = `締切まで あと${diffDays}日`;
+    cdEl.className = 'countdown safe';
+  }
+
+  // タスク描画
+  const container = document.getElementById('taskContainer');
+  container.innerHTML = '';
+
+  const checks = JSON.parse(localStorage.getItem(storageKey('checks')) || '{}');
+  const memos = JSON.parse(localStorage.getItem(storageKey('memos')) || '{}');
+
+  let totalTasks = 0, checkedTasks = 0;
+  let foundCurrent = false;
+
+  TASK_TEMPLATES.forEach(phase => {
+    const phaseDiv = document.createElement('div');
+    phaseDiv.className = 'phase';
+
+    const header = document.createElement('div');
+    header.className = `phase-header ${phase.phase}`;
+    const dateRange = getPhaseRange(phase);
+    header.innerHTML = `
+      <span class="phase-icon">${phase.phaseIcon}</span>
+      ${phase.phaseLabel}
+      <span class="phase-period">${dateRange}</span>
+    `;
+    phaseDiv.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'task-list';
+
+    phase.tasks.forEach(task => {
+      totalTasks++;
+      const isChecked = checks[task.id] || false;
+      if (isChecked) checkedTasks++;
+
+      const { startDate, endDate } = getTaskDateRange(task);
+      const isOverdue = !isChecked && today > endDate;
+      const isCurrent = !isChecked && !foundCurrent && today >= startDate && today <= endDate;
+      if (isCurrent) foundCurrent = true;
+      // まだcurrentが見つかっていなくて、未来のタスクで未チェックならcurrentに
+      const isNext = !isChecked && !foundCurrent && today < startDate;
+      if (isNext && !foundCurrent) foundCurrent = true;
+
+      const statusClass = isChecked ? 'checked' : isOverdue ? 'overdue' : (isCurrent || isNext) ? 'current' : '';
+      const filterHidden = shouldHide(task, isOverdue);
+
+      const item = document.createElement('div');
+      item.className = `task-item ${statusClass} ${filterHidden ? 'hidden' : ''}`;
+      item.dataset.who = task.who;
+      item.dataset.id = task.id;
+      item.dataset.overdue = isOverdue ? '1' : '0';
+
+      const memo = memos[task.id] || '';
+      const hasMemo = memo.length > 0;
+
+      item.innerHTML = `
+        <div class="task-checkbox ${isChecked ? 'checked' : ''}" onclick="toggleCheck('${task.id}', event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <path d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <div class="task-content">
+          <div class="task-top-row">
+            <span class="task-text">${task.text}</span>
+            ${task.important ? '<span class="task-badge badge-important">重要</span>' : ''}
+            <span class="task-badge ${task.who === 'part' ? 'badge-part' : 'badge-boss'}">${task.who === 'part' ? 'パートさん' : '社長'}</span>
+            <span class="task-date">${formatDateShort(startDate)}〜${formatDateShort(endDate)}</span>
+          </div>
+          <span class="memo-toggle ${hasMemo ? 'memo-has-content' : ''}" onclick="toggleMemo('${task.id}', event)">${hasMemo ? '📝 メモあり' : '＋メモ'}</span>
+          <div class="task-memo-area" id="memo-area-${task.id}">
+            <textarea class="task-memo" id="memo-${task.id}" placeholder="メモを入力..." onchange="saveMemo('${task.id}')">${memo}</textarea>
+          </div>
+        </div>
+      `;
+
+      list.appendChild(item);
+    });
+
+    phaseDiv.appendChild(list);
+    container.appendChild(phaseDiv);
+  });
+
+  // プログレス
+  document.getElementById('progressCount').textContent = `${checkedTasks} / ${totalTasks}`;
+  const pct = totalTasks > 0 ? (checkedTasks / totalTasks * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  // 振り返り
+  loadReview();
+}
+
+function getPhaseRange(phase) {
+  if (phase.tasks.length === 0) return '';
+  const first = getTaskDateRange(phase.tasks[0]);
+  const last = getTaskDateRange(phase.tasks[phase.tasks.length - 1]);
+  return `${formatDateShort(first.startDate)}〜${formatDateShort(last.endDate)}`;
+}
+
+// ===== フィルター =====
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === f);
+  });
+  document.querySelectorAll('.task-item').forEach(item => {
+    item.classList.toggle('hidden', shouldHideEl(item));
+  });
+}
+
+function shouldHide(task, isOverdue) {
+  if (currentFilter === 'all') return false;
+  if (currentFilter === 'boss') return task.who !== 'boss';
+  if (currentFilter === 'part') return task.who !== 'part';
+  if (currentFilter === 'overdue') return !isOverdue;
+  return false;
+}
+
+function shouldHideEl(el) {
+  if (currentFilter === 'all') return false;
+  if (currentFilter === 'boss') return el.dataset.who !== 'boss';
+  if (currentFilter === 'part') return el.dataset.who !== 'part';
+  if (currentFilter === 'overdue') return el.dataset.overdue !== '1';
+  return false;
+}
+
+// ===== チェック =====
+function toggleCheck(id, e) {
+  e.stopPropagation();
+  const checks = JSON.parse(localStorage.getItem(storageKey('checks')) || '{}');
+  checks[id] = !checks[id];
+  localStorage.setItem(storageKey('checks'), JSON.stringify(checks));
+  render();
+}
+
+// ===== メモ =====
+function toggleMemo(id, e) {
+  e.stopPropagation();
+  const area = document.getElementById('memo-area-' + id);
+  area.classList.toggle('open');
+  if (area.classList.contains('open')) {
+    document.getElementById('memo-' + id).focus();
+  }
+}
+
+function saveMemo(id) {
+  const memos = JSON.parse(localStorage.getItem(storageKey('memos')) || '{}');
+  const val = document.getElementById('memo-' + id).value;
+  if (val) {
+    memos[id] = val;
+  } else {
+    delete memos[id];
+  }
+  localStorage.setItem(storageKey('memos'), JSON.stringify(memos));
+  // メモトグルの表示更新
+  const toggle = document.querySelector(`[data-id="${id}"] .memo-toggle`);
+  if (toggle) {
+    toggle.textContent = val ? '📝 メモあり' : '＋メモ';
+    toggle.classList.toggle('memo-has-content', !!val);
+  }
+}
+
+// ===== 振り返り =====
+function loadReview() {
+  // 前月のデータを表示
+  let prevMonth = currentMonth - 1, prevYear = currentYear;
+  if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+  const key = `seikyu_${prevYear}_${String(prevMonth).padStart(2,'0')}_review`;
+  const data = JSON.parse(localStorage.getItem(key) || '{"henrei":0,"error":0,"memo":""}');
+
+  document.getElementById('reviewTitle').textContent =
+    `先月（${prevYear}年${prevMonth}月分）の振り返り`;
+  document.getElementById('reviewHenrei').value = data.henrei || 0;
+  document.getElementById('reviewError').value = data.error || 0;
+  document.getElementById('reviewMemo').value = data.memo || '';
+}
+
+function saveReview() {
+  let prevMonth = currentMonth - 1, prevYear = currentYear;
+  if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+  const key = `seikyu_${prevYear}_${String(prevMonth).padStart(2,'0')}_review`;
+  const data = {
+    henrei: parseInt(document.getElementById('reviewHenrei').value) || 0,
+    error: parseInt(document.getElementById('reviewError').value) || 0,
+    memo: document.getElementById('reviewMemo').value
+  };
+  localStorage.setItem(key, JSON.stringify(data));
+}
+
+// ===== リセット =====
+function resetMonth() {
+  if (!confirm(`${currentYear}年${currentMonth}月分のチェック・メモをすべてリセットしますか？`)) return;
+  localStorage.removeItem(storageKey('checks'));
+  localStorage.removeItem(storageKey('memos'));
+  render();
+}
+
+// ===== 起動 =====
+init();
+</script>
+</body>
+</html>

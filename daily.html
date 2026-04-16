@@ -433,6 +433,7 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <button onclick="setupCloudSync()" id="btn-cloud" style="background:#e3f2fd;border-color:#1976d2;color:#1565c0">☁️</button>
   <button onclick="syncSchedTimesToStaff()" style="background:#e8f5e9;border-color:#43a047;color:#2e7d32;font-weight:bold" title="今日の送迎時間をスタッフ用ページに共有">📤 送迎時間を共有</button>
   <a class="back-link" href="送迎管理システム.html">← 送迎管理へ戻る</a>
+  <span id="board-sync-status" style="font-size:11px;margin-left:6px;color:#64748b;display:none"></span>
 </div>
 <div class="readonly-bar">
   <span class="ro-title">出勤＆送迎表（閲覧専用）</span>
@@ -1694,7 +1695,7 @@ function renderBreakClean(){
   breakWarns.forEach((w,wi)=>{
     const bwk='bw_'+wi;
     if(!D.breakWarnOk[bwk]){
-      h+='<tr><td colspan="4" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:11px;padding:4px;font-weight:700">'+w+' <button class="no-print" style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.breakWarnOk)D.breakWarnOk={};D.breakWarnOk[\''+bwk+'\']=true;autoSave();render()">OK</button></td></tr>';
+      h+='<tr class="no-print"><td colspan="4" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:11px;padding:4px;font-weight:700">'+w+' <button class="no-print" style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.breakWarnOk)D.breakWarnOk={};D.breakWarnOk[\''+bwk+'\']=true;autoSave();render()">OK</button></td></tr>';
     }
   });
   // 担会・契約と休憩の競合チェック（出発〜戻りの全時間帯）
@@ -1715,7 +1716,7 @@ function renderBreakClean(){
         if(!D.eventBreakOk[wk]){
           const dH=Math.floor(departMin/60);const dM=String(departMin%60).padStart(2,'0');
           const rH=Math.floor(backMin/60);const rM=String(backMin%60).padStart(2,'0');
-          h+='<tr><td colspan="4" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:11px;padding:4px;font-weight:700">⚠ '+ev.staff+'の休憩（'+staffBreak.time+'～'+bDur+'分間）が外出（'+dH+':'+dM+'～'+rH+':'+rM+'）と重なります <button class="no-print" style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.eventBreakOk)D.eventBreakOk={};D.eventBreakOk[\''+wk+'\']=true;autoSave();render()">OK</button></td></tr>';
+          h+='<tr class="no-print"><td colspan="4" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:11px;padding:4px;font-weight:700">⚠ '+ev.staff+'の休憩（'+staffBreak.time+'～'+bDur+'分間）が外出（'+dH+':'+dM+'～'+rH+':'+rM+'）と重なります <button class="no-print" style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.eventBreakOk)D.eventBreakOk={};D.eventBreakOk[\''+wk+'\']=true;autoSave();render()">OK</button></td></tr>';
         }
       } else {
         delete D.eventBreakOk[wk];
@@ -1728,7 +1729,7 @@ function renderBreakClean(){
   floorWarns.forEach((w,fi)=>{
     const fwk='fw_'+fi;
     if(!D.floorWarnOk[fwk]){
-      h+='<tr><td colspan="4" style="color:#fff;background:#d32f2f;border-left:4px solid #b71c1c;font-size:12px;padding:6px;font-weight:900">'+w+' <button class="no-print" style="margin-left:8px;padding:2px 12px;background:#fff;color:#d32f2f;border:none;border-radius:3px;cursor:pointer;font-size:11px;font-weight:700" onclick="if(!D.floorWarnOk)D.floorWarnOk={};D.floorWarnOk[\''+fwk+'\']=true;autoSave();render()">OK</button></td></tr>';
+      h+='<tr class="no-print"><td colspan="4" style="color:#fff;background:#d32f2f;border-left:4px solid #b71c1c;font-size:12px;padding:6px;font-weight:900">'+w+' <button class="no-print" style="margin-left:8px;padding:2px 12px;background:#fff;color:#d32f2f;border:none;border-radius:3px;cursor:pointer;font-size:11px;font-weight:700" onclick="if(!D.floorWarnOk)D.floorWarnOk={};D.floorWarnOk[\''+fwk+'\']=true;autoSave();render()">OK</button></td></tr>';
     }
   });
   h+='</table></div>';
@@ -4670,6 +4671,9 @@ function changeDate(dateStr){
   if(IS_READONLY && document.getElementById('ro-date')) document.getElementById('ro-date').value=dateStr;
   render();
 
+  // yawaragiボードから欠席連動
+  applyBoardAbsences(dateStr);
+
   // 新規日で前週同曜日にデータがあれば提案
   if(isNew){
     const d=new Date(dateStr+'T00:00:00');
@@ -5402,6 +5406,147 @@ function roUpdateStatus(msg){
 }
 
 // ═══════════════════════════════════════════════
+//  yawaragiボード欠席連動（GAS JSONP取得）
+// ═══════════════════════════════════════════════
+const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const BOARD_ABSENCE_CACHE_KEY = 'yawaragi_board_absences_cache';
+const BOARD_ABSENCE_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+function getCachedBoardAbsences(dateStr){
+  try{
+    const cache=JSON.parse(localStorage.getItem(BOARD_ABSENCE_CACHE_KEY)||'{}');
+    const entry=cache[dateStr];
+    if(!entry) return null;
+    if(Date.now()-entry.fetchedAt>BOARD_ABSENCE_CACHE_TTL) return null;
+    return entry.absences;
+  }catch(e){ return null; }
+}
+function setCachedBoardAbsences(dateStr, absences){
+  try{
+    const cache=JSON.parse(localStorage.getItem(BOARD_ABSENCE_CACHE_KEY)||'{}');
+    cache[dateStr]={absences:absences, fetchedAt:Date.now()};
+    const cutoff=Date.now()-30*24*60*60*1000;
+    Object.keys(cache).forEach(k=>{ if(cache[k].fetchedAt<cutoff) delete cache[k]; });
+    localStorage.setItem(BOARD_ABSENCE_CACHE_KEY, JSON.stringify(cache));
+  }catch(e){}
+}
+function fetchBoardAbsences(dateStr, onSuccess, onError){
+  const cbName='_boardAbsCb_'+Date.now()+'_'+Math.floor(Math.random()*10000);
+  const script=document.createElement('script');
+  let timeout=setTimeout(()=>{ cleanup(); if(onError) onError('タイムアウト'); },10000);
+  function cleanup(){
+    clearTimeout(timeout);
+    try{ delete window[cbName]; }catch(e){ window[cbName]=undefined; }
+    if(script.parentNode) script.parentNode.removeChild(script);
+  }
+  window[cbName]=function(data){
+    cleanup();
+    if(data && data.success && data.absences){
+      const targetDate=dateStr;
+      const absencesList=(data.absences && data.absences.absences)||[];
+      const longTermList=(data.absences && data.absences.longTerm)||[];
+      // 理由で分類: 家族送迎/徒歩送迎は来所扱い、それ以外は欠席扱い
+      const absentItems=[]; // [{name, reason}]
+      const longTermItems=[];
+      const seen={};
+      absencesList.forEach(item=>{
+        if(item.date===targetDate && item.name && !seen[item.name]){
+          seen[item.name]=true;
+          absentItems.push({name:item.name, reason:item.reason||''});
+        }
+      });
+      longTermList.forEach(item=>{
+        if(!item.name) return;
+        const start=item.date;
+        const resume=item.resumeDate||'';
+        if(start<=targetDate && (!resume || resume>targetDate)){
+          if(!longTermItems.find(x=>x.name===item.name)){
+            longTermItems.push({name:item.name, reason:item.reason||''});
+          }
+        }
+      });
+      onSuccess(absentItems, longTermItems);
+    } else if(onError){
+      onError('取得失敗');
+    }
+  };
+  script.src=ABS_BOARD_API_URL+'?action=absences&date='+encodeURIComponent(dateStr)+'&callback='+cbName+'&t='+Date.now();
+  script.onerror=function(){ cleanup(); if(onError) onError('スクリプト読み込み失敗'); };
+  document.head.appendChild(script);
+}
+// 理由から目的のstatusを判定
+function statusFromReason(reason){
+  const r=reason||'';
+  if(r.indexOf('家族送迎')>=0) return 'family';
+  if(r.indexOf('徒歩送迎')>=0) return 'walk';
+  return 'absent';
+}
+// ボードの欠席/送迎変更をD.am/D.pmのuserStatusに反映。既存のlongabsentは尊重。
+function mergeBoardAbsencesToD(absentItems, longTermItems){
+  if(!D || !D.date) return false;
+  let changed=false;
+  const apply=(unitKey)=>{
+    const unit=D[unitKey]; if(!unit || !Array.isArray(unit.users)) return;
+    if(!unit.userStatus) unit.userStatus={};
+    (longTermItems||[]).forEach(it=>{
+      const name=it.name||it;
+      if(unit.users.indexOf(name)<0) return;
+      if(unit.userStatus[name]!=='longabsent'){ unit.userStatus[name]='longabsent'; changed=true; }
+    });
+    (absentItems||[]).forEach(it=>{
+      const name=it.name||it;
+      const reason=it.reason||'';
+      if(unit.users.indexOf(name)<0) return;
+      const cur=unit.userStatus[name]||'';
+      if(cur==='longabsent') return;
+      const target=statusFromReason(reason);
+      if(cur!==target){ unit.userStatus[name]=target; changed=true; }
+    });
+  };
+  apply('am'); apply('pm');
+  return changed;
+}
+function setBoardSyncStatus(text, color){
+  const el=document.getElementById('board-sync-status');
+  if(!el) return;
+  el.textContent=text||'';
+  el.style.color=color||'#64748b';
+  el.style.display=text?'':'none';
+}
+function applyBoardAbsences(dateStr){
+  if(!dateStr) return;
+  // 1. キャッシュから即適用
+  const cached=getCachedBoardAbsences(dateStr);
+  if(cached){
+    const changed=mergeBoardAbsencesToD(cached.absent, cached.longTerm);
+    if(changed){ if(!IS_READONLY) autoSave(); render(); }
+    const total=(cached.absent||[]).length+(cached.longTerm||[]).length;
+    setBoardSyncStatus('📋 ボード欠席 '+total+'人 反映済（キャッシュ）', '#64748b');
+  } else {
+    setBoardSyncStatus('📡 yawaragiボードから欠席取得中...', '#1976d2');
+  }
+  // 2. 裏でGAS取得
+  fetchBoardAbsences(dateStr, function(names, longTermNames){
+    setCachedBoardAbsences(dateStr, {absent:names, longTerm:longTermNames});
+    const changed=mergeBoardAbsencesToD(names, longTermNames);
+    if(changed){ if(!IS_READONLY) autoSave(); render(); }
+    const total=names.length+longTermNames.length;
+    if(total>0){
+      setBoardSyncStatus('✅ ボード欠席 '+total+'人 反映（通常'+names.length+'・長期'+longTermNames.length+'）', '#2e7d32');
+    } else {
+      setBoardSyncStatus('✅ yawaragiボード: この日の欠席なし', '#2e7d32');
+    }
+    setTimeout(()=>setBoardSyncStatus('📋 yawaragiボード連動済み', '#94a3b8'), 5000);
+  }, function(err){
+    if(cached){
+      setBoardSyncStatus('⚠ ボード取得失敗（キャッシュ表示中）', '#e65100');
+    } else {
+      setBoardSyncStatus('⚠ ボード取得失敗（手動で休み設定してください）', '#e65100');
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
 // 初期化
 // ═══════════════════════════════════════════════
 const defaultDate=getDefaultDate();
@@ -5492,6 +5637,7 @@ async function initApp(){
   try { await fetchTaicho(); } catch(e){}
   loadDay(defaultDate);
   render();
+  applyBoardAbsences(defaultDate);
   if(!IS_READONLY) opsAutoBackup();
   if(IS_READONLY) roUpdateStatus('最終更新: '+new Date().toLocaleTimeString('ja-JP'));
 }

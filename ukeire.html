@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>担会・契約・体験 受入判断 - yawaragi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Yu Gothic', 'Meiryo', sans-serif;
+            background: #f5f5f5;
+            padding: 16px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 16pt;
+            margin-bottom: 4px;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 9pt;
+            color: #888;
+            margin-bottom: 16px;
+        }
+
+        /* エラー表示 */
+        .error-box {
+            background: #fff0f0;
+            border: 2px solid #c00;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin: 20px auto;
+            max-width: 500px;
+        }
+        .error-box h2 { color: #c00; margin-bottom: 8px; }
+
+        /* カレンダー */
+        .calendar-area {
+            max-width: 600px;
+            margin: 0 auto 20px;
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        .cal-header {
+            text-align: center;
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 12px;
+        }
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .cal-dow {
+            text-align: center;
+            font-size: 9pt;
+            font-weight: bold;
+            padding: 4px;
+            color: #555;
+        }
+        .cal-dow.sat { color: #0055cc; }
+        .cal-dow.sun { color: #cc0000; }
+        .cal-cell {
+            text-align: center;
+            padding: 8px 4px;
+            border-radius: 6px;
+            font-size: 11pt;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .cal-cell:hover { background: #e0e8ff; }
+        .cal-cell.selected { background: #3366cc; color: #fff; font-weight: bold; }
+        .cal-cell.off { color: #ccc; cursor: default; background: #f8f8f8; }
+        .cal-cell.off:hover { background: #f8f8f8; }
+        .cal-cell.sat { color: #0055cc; }
+        .cal-cell.sun { color: #cc0000; }
+        .cal-cell.hol { color: #cc0000; }
+
+        /* スタッフ表示 */
+        .staff-area {
+            max-width: 600px;
+            margin: 0 auto 20px;
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .staff-area h3 {
+            font-size: 12pt;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #3366cc;
+            padding-bottom: 4px;
+        }
+        .staff-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .staff-tag {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 9pt;
+            font-weight: bold;
+        }
+        .tag-boss { background: #e0d5f0; }
+        .tag-nurse { background: #c0ddf0; }
+        .tag-nurse16 { background: #80b8e0; color: #fff; }
+        .tag-counselor { background: #f0e0c0; }
+        .tag-employee { background: #d5f0d5; }
+        .tag-driver { background: #dde8d0; }
+        .tag-off { background: #f0f0f0; color: #bbb; text-decoration: line-through; }
+
+        /* 判断パネル */
+        .judge-area {
+            max-width: 600px;
+            margin: 0 auto 20px;
+            display: none;
+        }
+        .judge-panel {
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        .judge-panel h3 {
+            font-size: 12pt;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .judge-panel h3 .icon {
+            font-size: 16pt;
+        }
+
+        /* 担会・契約 */
+        .who-select {
+            margin-bottom: 12px;
+        }
+        .who-select label {
+            font-size: 10pt;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .who-select select {
+            font-size: 11pt;
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        /* 体験 */
+        .taiken-input {
+            margin-bottom: 12px;
+        }
+        .taiken-input label {
+            font-size: 10pt;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .taiken-input input {
+            font-size: 14pt;
+            width: 80px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            text-align: center;
+        }
+        .taiken-input .unit-label {
+            margin-top: 8px;
+            font-size: 9pt;
+            color: #666;
+        }
+        .checkbox-row {
+            margin-top: 10px;
+        }
+        .checkbox-row label {
+            font-size: 10pt;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .checkbox-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* 結果 */
+        .result-box {
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 11pt;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .result-ok {
+            background: #d5f5d5;
+            border: 2px solid #2a2;
+            color: #060;
+        }
+        .result-ng {
+            background: #fdd;
+            border: 2px solid #c33;
+            color: #900;
+        }
+        .result-warn {
+            background: #fff3cd;
+            border: 2px solid #e6a800;
+            color: #856404;
+        }
+        .result-detail {
+            font-weight: normal;
+            font-size: 9pt;
+            margin-top: 6px;
+            line-height: 1.6;
+        }
+
+        /* 基準表 */
+        .kijun-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 9pt;
+        }
+        .kijun-table th, .kijun-table td {
+            border: 1px solid #ddd;
+            padding: 4px 8px;
+            text-align: center;
+        }
+        .kijun-table th {
+            background: #f0f0f0;
+        }
+        .kijun-ok { color: #060; font-weight: bold; }
+        .kijun-ng { color: #c00; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>担会・契約・体験 受入判断</h1>
+    <div class="subtitle">シフト表のデータを参照して自動判断します</div>
+
+    <div id="app"></div>
+
+    <script>
+    // ========== シフトデータ読み込み ==========
+    const raw = localStorage.getItem('yawaragi_shift');
+    if (!raw) {
+        document.getElementById('app').innerHTML =
+            '<div class="error-box">' +
+            '<h2>シフトデータが見つかりません</h2>' +
+            '<p>先に <b>シフト表</b> を開いてください。<br>シフト表を開くとデータが自動保存されます。</p>' +
+            '</div>';
+        throw new Error('No shift data');
+    }
+
+    const data = JSON.parse(raw);
+    const YEAR = data.year;
+    const MONTH = data.month;
+    const DAYS_IN_MONTH = data.daysInMonth;
+    const EIGYO = data.eigyo;
+    const STAFF = data.staff;
+    const NURSES = data.nurses;
+    const FLOOR_MEMBERS = data.floorMembers;
+    const SHIFT = {};
+    // JSONのキーは文字列になるので数値に戻す
+    for (const [k, v] of Object.entries(data.shift)) {
+        SHIFT[Number(k)] = v;
+    }
+
+    // 曜日計算
+    function getDow(day) {
+        const d = new Date(YEAR, MONTH - 1, day);
+        return d.getDay(); // 0=日, 6=土
+    }
+    const DOW_NAMES = ['日','月','火','水','木','金','土'];
+
+    // 役職の日本語名
+    const ROLE_NAMES = {
+        boss: '管理者',
+        nurse: '看護師',
+        counselor: '生活相談員',
+        employee: '介護職員',
+        driver: '送迎ドライバー'
+    };
+
+    // 生活相談員として機能するスタッフ（下浦→工藤→勝又→星野の優先順）
+    const COUNSELOR_CAPABLE = ['下浦','工藤','勝又','星野'];
+
+    let selectedDay = null;
+
+    // ========== カレンダー描画 ==========
+    function renderCalendar() {
+        let html = '<div class="calendar-area">';
+        html += '<div class="cal-header">' + YEAR + '年' + MONTH + '月</div>';
+        html += '<div class="cal-grid">';
+
+        // 曜日ヘッダー
+        const dowLabels = ['月','火','水','木','金','土','日'];
+        for (const dl of dowLabels) {
+            let cls = 'cal-dow';
+            if (dl === '土') cls += ' sat';
+            if (dl === '日') cls += ' sun';
+            html += '<div class="' + cls + '">' + dl + '</div>';
+        }
+
+        // 1日の曜日（月曜=0始まり）
+        const firstDow = getDow(1);
+        const offset = (firstDow === 0) ? 6 : firstDow - 1; // 月曜始まりに変換
+
+        // 空白セル
+        for (let i = 0; i < offset; i++) {
+            html += '<div class="cal-cell off"></div>';
+        }
+
+        // 日付セル
+        for (let d = 1; d <= DAYS_IN_MONTH; d++) {
+            const dow = getDow(d);
+            const isEigyo = EIGYO.includes(d);
+            let cls = 'cal-cell';
+            if (!isEigyo) {
+                cls += ' off';
+            } else {
+                if (dow === 6) cls += ' sat';
+                if (dow === 0) cls += ' sun';
+            }
+            const onclick = isEigyo ? ' onclick="selectDay(' + d + ')"' : '';
+            html += '<div class="' + cls + '" id="day-' + d + '"' + onclick + '>' + d + '</div>';
+        }
+
+        html += '</div></div>';
+        return html;
+    }
+
+    // ========== 人員基準チェック ==========
+    function checkKijun(day, excludeStaff) {
+        const row = SHIFT[day];
+        if (!row) return null;
+
+        // 出勤中のスタッフリスト（除外者を除く）
+        const working = [];
+        for (const s of STAFF) {
+            if (s.id === excludeStaff) continue;
+            if (row[s.id] >= 1) working.push(s);
+        }
+
+        // 生活相談員チェック（下浦→工藤→勝又→星野）
+        let soudanCount = 0;
+        let soudanWho = [];
+        for (const cid of COUNSELOR_CAPABLE) {
+            if (cid === excludeStaff) continue;
+            if (row[cid] >= 1) {
+                soudanCount++;
+                soudanWho.push(cid);
+            }
+        }
+
+        // 看護職員チェック
+        let nurseCount = 0;
+        let nurseWho = [];
+        for (const nid of NURSES) {
+            if (nid === excludeStaff) continue;
+            if (row[nid] >= 1) {
+                nurseCount++;
+                nurseWho.push(nid);
+            }
+        }
+
+        // 介護職員チェック（工藤は生活相談員なので除く）
+        let kaigoCount = 0;
+        let kaigoWho = [];
+        for (const s of ['勝又','星野','下浦','大久保']) {
+            if (s === excludeStaff) continue;
+            if (row[s] >= 1) {
+                kaigoCount++;
+                kaigoWho.push(s);
+            }
+        }
+
+        // 機能訓練指導員チェック（比嘉＋看護師）
+        let kinouCount = 0;
+        let kinouWho = [];
+        if (excludeStaff !== '比嘉' && row['比嘉'] >= 1) {
+            kinouCount++;
+            kinouWho.push('比嘉');
+        }
+        for (const nid of NURSES) {
+            if (nid === excludeStaff) continue;
+            if (row[nid] >= 1) {
+                kinouCount++;
+                kinouWho.push(nid);
+            }
+        }
+
+        const results = [
+            { name: '生活相談員', need: 1, count: soudanCount, who: soudanWho },
+            { name: '看護職員', need: 1, count: nurseCount, who: nurseWho },
+            { name: '介護職員', need: 2, count: kaigoCount, who: kaigoWho },
+            { name: '機能訓練指導員', need: 2, count: kinouCount, who: kinouWho }
+        ];
+
+        const allOk = results.every(r => r.count >= r.need);
+        return { allOk, results };
+    }
+
+    // ========== 日付選択 ==========
+    function selectDay(day) {
+        // 前の選択を解除
+        if (selectedDay) {
+            const prev = document.getElementById('day-' + selectedDay);
+            if (prev) prev.classList.remove('selected');
+        }
+        selectedDay = day;
+        document.getElementById('day-' + day).classList.add('selected');
+
+        renderStaff(day);
+        renderJudge(day);
+    }
+
+    // ========== スタッフ表示 ==========
+    function renderStaff(day) {
+        const area = document.getElementById('staffArea');
+        area.style.display = 'block';
+        const row = SHIFT[day];
+        if (!row) { area.innerHTML = ''; return; }
+
+        const dow = DOW_NAMES[getDow(day)];
+        let html = '<h3>' + MONTH + '月' + day + '日（' + dow + '）の出勤スタッフ</h3>';
+        html += '<div class="staff-list">';
+
+        for (const s of STAFF) {
+            const v = row[s.id];
+            if (v >= 1) {
+                let cls = 'tag-' + s.role;
+                let label = s.name;
+                if (v === 16) {
+                    cls = 'tag-nurse16';
+                    label += '(16時)';
+                }
+                html += '<span class="staff-tag ' + cls + '">' + label + '</span>';
+            } else {
+                html += '<span class="staff-tag tag-off">' + s.name + '</span>';
+            }
+        }
+
+        html += '</div>';
+
+        // フロア人数サマリ
+        let floorCount = 0;
+        for (const s of FLOOR_MEMBERS) { if (row[s] >= 1) floorCount++; }
+        for (const s of NURSES) { if (row[s] >= 1) floorCount++; }
+        let leave15 = 0;
+        for (const s of NURSES) { if (row[s] === 1) leave15++; }
+        const after15 = floorCount - leave15;
+
+        html += '<div style="font-size:9pt;color:#555">フロア: <b>' + floorCount + '人</b>（15時以降: <b>' + after15 + '人</b>）</div>';
+
+        area.innerHTML = html;
+    }
+
+    // ========== 判断パネル ==========
+    function renderJudge(day) {
+        const area = document.getElementById('judgeArea');
+        area.style.display = 'block';
+
+        const row = SHIFT[day];
+        // 出勤中の生活相談員リスト
+        const workingCounselors = [];
+        for (const cid of COUNSELOR_CAPABLE) {
+            if (row[cid] >= 1) {
+                const staff = STAFF.find(s => s.id === cid);
+                workingCounselors.push({ id: cid, name: staff ? staff.name : cid });
+            }
+        }
+
+        let html = '';
+
+        // ===== 担当者会議パネル =====
+        html += '<div class="judge-panel">';
+        html += '<h3><span class="icon">📋</span>担当者会議（担会）</h3>';
+        html += '<div class="who-select">';
+        html += '<label>担会に行く生活相談員：</label>';
+        html += '<select id="tankai-who" onchange="judgeTankai(' + day + ')">';
+        html += '<option value="">-- 選択してください --</option>';
+        for (const c of workingCounselors) {
+            html += '<option value="' + c.id + '">' + c.name + '</option>';
+        }
+        html += '</select>';
+        html += '</div>';
+        html += '<div id="tankai-result"></div>';
+        html += '</div>';
+
+        // ===== 契約パネル =====
+        html += '<div class="judge-panel">';
+        html += '<h3><span class="icon">📝</span>契約</h3>';
+        html += '<div class="who-select">';
+        html += '<label>契約対応する生活相談員：</label>';
+        html += '<select id="keiyaku-who" onchange="judgeKeiyaku(' + day + ')">';
+        html += '<option value="">-- 選択してください --</option>';
+        for (const c of workingCounselors) {
+            html += '<option value="' + c.id + '">' + c.name + '</option>';
+        }
+        html += '</select>';
+        html += '</div>';
+        html += '<div id="keiyaku-result"></div>';
+        html += '</div>';
+
+        // ===== 体験パネル =====
+        html += '<div class="judge-panel">';
+        html += '<h3><span class="icon">🏠</span>体験利用</h3>';
+        html += '<div class="taiken-input">';
+        html += '<label>1単位目（午前）の利用者数：</label>';
+        html += '<input type="number" id="taiken-am" min="0" max="30" value="" placeholder="0" oninput="judgeTaiken(' + day + ')">';
+        html += '<div class="unit-label">9:00〜12:00</div>';
+        html += '</div>';
+        html += '<div class="taiken-input">';
+        html += '<label>2単位目（午後）の利用者数：</label>';
+        html += '<input type="number" id="taiken-pm" min="0" max="30" value="" placeholder="0" oninput="judgeTaiken(' + day + ')">';
+        html += '<div class="unit-label">13:30〜16:30</div>';
+        html += '</div>';
+        html += '<div class="checkbox-row">';
+        html += '<label><input type="checkbox" id="taiken-confirmed" onchange="judgeTaiken(' + day + ')"> 休みの利用者が確定している</label>';
+        html += '</div>';
+        html += '<div id="taiken-result"></div>';
+        html += '</div>';
+
+        area.innerHTML = html;
+    }
+
+    // ========== 担会判定 ==========
+    function judgeTankai(day) {
+        const who = document.getElementById('tankai-who').value;
+        const el = document.getElementById('tankai-result');
+        if (!who) { el.innerHTML = ''; return; }
+
+        const check = checkKijun(day, who);
+        const staffName = STAFF.find(s => s.id === who)?.name || who;
+
+        if (check.allOk) {
+            el.innerHTML = '<div class="result-box result-ok">' +
+                '⭕ 担会OK — ' + staffName + 'が抜けても人員基準を満たします' +
+                renderKijunTable(check.results) +
+                '</div>';
+        } else {
+            let ng = check.results.filter(r => r.count < r.need).map(r => r.name + '（' + r.count + '/' + r.need + '人）').join('、');
+            el.innerHTML = '<div class="result-box result-ng">' +
+                '❌ 担会NG — ' + staffName + 'が抜けると人員基準を満たせません' +
+                '<div class="result-detail">不足: ' + ng + '</div>' +
+                renderKijunTable(check.results) +
+                '</div>';
+        }
+    }
+
+    // ========== 契約判定 ==========
+    function judgeKeiyaku(day) {
+        const who = document.getElementById('keiyaku-who').value;
+        const el = document.getElementById('keiyaku-result');
+        if (!who) { el.innerHTML = ''; return; }
+
+        const check = checkKijun(day, who);
+        const staffName = STAFF.find(s => s.id === who)?.name || who;
+
+        if (check.allOk) {
+            el.innerHTML = '<div class="result-box result-ok">' +
+                '⭕ 契約OK — ' + staffName + 'が契約対応しても人員基準を満たします' +
+                renderKijunTable(check.results) +
+                '</div>';
+        } else {
+            let ng = check.results.filter(r => r.count < r.need).map(r => r.name + '（' + r.count + '/' + r.need + '人）').join('、');
+            el.innerHTML = '<div class="result-box result-ng">' +
+                '❌ 契約NG — ' + staffName + 'が契約対応すると人員基準を満たせません' +
+                '<div class="result-detail">不足: ' + ng + '</div>' +
+                renderKijunTable(check.results) +
+                '</div>';
+        }
+    }
+
+    // ========== 体験判定 ==========
+    function judgeTaiken(day) {
+        const amVal = document.getElementById('taiken-am').value;
+        const pmVal = document.getElementById('taiken-pm').value;
+        const confirmed = document.getElementById('taiken-confirmed').checked;
+        const el = document.getElementById('taiken-result');
+
+        if (amVal === '' && pmVal === '') { el.innerHTML = ''; return; }
+
+        const am = parseInt(amVal) || 0;
+        const pm = parseInt(pmVal) || 0;
+        const CAPACITY = 18;
+
+        let results = [];
+
+        // 午前チェック
+        if (amVal !== '') {
+            if (am >= CAPACITY) {
+                results.push({ unit: '1単位目（午前）', ok: false, msg: '定員18人に達しています（現在' + am + '人）。体験受入不可。' });
+            } else if (!confirmed) {
+                results.push({ unit: '1単位目（午前）', ok: null, msg: '空き' + (CAPACITY - am) + '人分あり（' + am + '/18人）。ただし休みが確定していません。' });
+            } else {
+                results.push({ unit: '1単位目（午前）', ok: true, msg: '空き' + (CAPACITY - am) + '人分あり（' + am + '/18人）。休み確定済み。' });
+            }
+        }
+
+        // 午後チェック
+        if (pmVal !== '') {
+            if (pm >= CAPACITY) {
+                results.push({ unit: '2単位目（午後）', ok: false, msg: '定員18人に達しています（現在' + pm + '人）。体験受入不可。' });
+            } else if (!confirmed) {
+                results.push({ unit: '2単位目（午後）', ok: null, msg: '空き' + (CAPACITY - pm) + '人分あり（' + pm + '/18人）。ただし休みが確定していません。' });
+            } else {
+                results.push({ unit: '2単位目（午後）', ok: true, msg: '空き' + (CAPACITY - pm) + '人分あり（' + pm + '/18人）。休み確定済み。' });
+            }
+        }
+
+        let html = '';
+        for (const r of results) {
+            if (r.ok === true) {
+                html += '<div class="result-box result-ok">⭕ ' + r.unit + ': 体験OK<div class="result-detail">' + r.msg + '</div></div>';
+            } else if (r.ok === false) {
+                html += '<div class="result-box result-ng">❌ ' + r.unit + ': 体験NG<div class="result-detail">' + r.msg + '</div></div>';
+            } else {
+                html += '<div class="result-box result-warn">⚠ ' + r.unit + ': 要確認<div class="result-detail">' + r.msg + '<br>「休みの利用者が確定している」にチェックを入れてください。</div></div>';
+            }
+        }
+
+        // 送迎の注意
+        html += '<div style="margin-top:8px;font-size:9pt;color:#666;padding:8px;background:#f8f8f8;border-radius:4px">';
+        html += '※ 送迎が可能かどうかも別途確認してください（車両の空き・ルート）';
+        html += '</div>';
+
+        el.innerHTML = html;
+    }
+
+    // ========== 基準テーブル ==========
+    function renderKijunTable(results) {
+        let html = '<table class="kijun-table">';
+        html += '<tr><th>職種</th><th>基準</th><th>残り人数</th><th>担当者</th><th>判定</th></tr>';
+        for (const r of results) {
+            const ok = r.count >= r.need;
+            html += '<tr>';
+            html += '<td>' + r.name + '</td>';
+            html += '<td>' + r.need + '人以上</td>';
+            html += '<td class="' + (ok ? 'kijun-ok' : 'kijun-ng') + '">' + r.count + '人</td>';
+            html += '<td style="font-size:8pt">' + (r.who.length > 0 ? r.who.join('・') : '-') + '</td>';
+            html += '<td class="' + (ok ? 'kijun-ok' : 'kijun-ng') + '">' + (ok ? '✓' : '✕') + '</td>';
+            html += '</tr>';
+        }
+        html += '</table>';
+        return html;
+    }
+
+    // ========== 初期描画 ==========
+    let appHtml = renderCalendar();
+    appHtml += '<div class="staff-area" id="staffArea"></div>';
+    appHtml += '<div class="judge-area" id="judgeArea"></div>';
+    document.getElementById('app').innerHTML = appHtml;
+    </script>
+</body>
+</html>

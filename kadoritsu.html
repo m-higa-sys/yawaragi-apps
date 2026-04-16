@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>稼働率計算ツール - yawaragi</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f0f4f8; color: #333; min-height: 100vh; }
+
+  .header { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; padding: 20px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .card h2 { font-size: 16px; color: #1e40af; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #dbeafe; }
+
+  /* ドロップエリア */
+  .drop-zone { border: 2px dashed #93c5fd; border-radius: 12px; padding: 40px 20px; text-align: center; cursor: pointer; transition: all 0.2s; background: #f8fafc; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #2563eb; background: #eff6ff; }
+  .drop-zone .icon { font-size: 40px; margin-bottom: 10px; }
+  .drop-zone p { font-size: 15px; color: #64748b; }
+  .drop-zone .sub { font-size: 12px; color: #94a3b8; margin-top: 6px; }
+  input[type="file"] { display: none; }
+
+  /* 設定 */
+  .settings { display: flex; gap: 20px; flex-wrap: wrap; align-items: end; }
+  .setting-item { display: flex; flex-direction: column; gap: 4px; }
+  .setting-item label { font-size: 13px; color: #64748b; font-weight: 500; }
+  .setting-item input, .setting-item select { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; width: 140px; }
+  .setting-item input:focus, .setting-item select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+  /* 稼働率メイン表示 */
+  .rate-display { text-align: center; padding: 30px; }
+  .rate-number { font-size: 72px; font-weight: 700; color: #1e40af; line-height: 1; }
+  .rate-number .unit { font-size: 28px; color: #64748b; }
+  .rate-label { font-size: 14px; color: #64748b; margin-top: 8px; }
+  .rate-sub { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+
+  .rate-bar-wrap { margin-top: 16px; }
+  .rate-bar-bg { height: 20px; background: #e2e8f0; border-radius: 10px; overflow: hidden; }
+  .rate-bar { height: 100%; border-radius: 10px; transition: width 0.6s ease; }
+  .rate-bar.green { background: linear-gradient(90deg, #22c55e, #16a34a); }
+  .rate-bar.yellow { background: linear-gradient(90deg, #eab308, #ca8a04); }
+  .rate-bar.red { background: linear-gradient(90deg, #ef4444, #dc2626); }
+
+  /* 予定vs実績 */
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .compare-box { padding: 16px; border-radius: 10px; text-align: center; }
+  .compare-box.actual { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .compare-box.planned { background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .compare-box .num { font-size: 32px; font-weight: 700; }
+  .compare-box.actual .num { color: #1e40af; }
+  .compare-box.planned .num { color: #16a34a; }
+  .compare-box .lbl { font-size: 13px; color: #64748b; margin-top: 2px; }
+
+  /* サービス種類別 */
+  .service-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .service-box { padding: 16px; border-radius: 10px; text-align: center; }
+  .service-box.kaigo { background: #fef3c7; border: 1px solid #fde68a; }
+  .service-box.shien { background: #e0e7ff; border: 1px solid #c7d2fe; }
+  .service-box .num { font-size: 28px; font-weight: 700; }
+  .service-box.kaigo .num { color: #b45309; }
+  .service-box.shien .num { color: #4338ca; }
+  .service-box .lbl { font-size: 13px; color: #64748b; margin-top: 2px; }
+
+  /* テーブル */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: #f1f5f9; padding: 10px 12px; text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
+  tr:hover { background: #f8fafc; }
+  .text-right { text-align: right; }
+
+  /* グラフ */
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart-box { position: relative; height: 280px; }
+  .trend-chart-box { height: 320px; position: relative; }
+
+  /* ファイルタグ */
+  .file-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .file-tag { background: #eff6ff; color: #1e40af; padding: 4px 12px; border-radius: 20px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .file-tag .remove { cursor: pointer; color: #94a3b8; font-size: 16px; line-height: 1; }
+  .file-tag .remove:hover { color: #ef4444; }
+
+  /* 月タブ */
+  .month-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .month-tab { padding: 6px 16px; border-radius: 20px; border: 1px solid #d1d5db; background: white; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+  .month-tab.active { background: #2563eb; color: white; border-color: #2563eb; }
+  .month-tab:hover:not(.active) { background: #f1f5f9; }
+
+  .hidden { display: none; }
+
+  /* ボタン */
+  .btn { padding: 8px 18px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-export { background: #2563eb; color: white; }
+  .btn-export:hover:not(:disabled) { background: #1d4ed8; }
+  .btn-import { background: #f1f5f9; color: #334155; border: 1px solid #d1d5db; }
+  .btn-import:hover { background: #e2e8f0; }
+  .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .btn-danger:hover:not(:disabled) { background: #fee2e2; }
+
+  /* 年間サマリ */
+  .annual-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; margin-top: 12px; }
+  .annual-cell { padding: 10px 8px; border-radius: 8px; text-align: center; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+  .annual-cell:hover { transform: scale(1.05); }
+  .annual-cell .month-name { font-weight: 500; color: #64748b; }
+  .annual-cell .month-rate { font-size: 20px; font-weight: 700; margin-top: 2px; }
+  .annual-cell .month-count { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .annual-cell.green { background: #f0fdf4; }
+  .annual-cell.green .month-rate { color: #16a34a; }
+  .annual-cell.yellow { background: #fefce8; }
+  .annual-cell.yellow .month-rate { color: #ca8a04; }
+  .annual-cell.red { background: #fef2f2; }
+  .annual-cell.red .month-rate { color: #dc2626; }
+  .annual-cell.nodata { background: #f8fafc; opacity: 0.5; }
+  .annual-cell.nodata .month-rate { color: #cbd5e1; }
+  .annual-cell.selected { outline: 3px solid #2563eb; }
+
+  .info-text { font-size: 13px; color: #64748b; margin-top: 8px; padding: 10px; background: #f8fafc; border-radius: 8px; line-height: 1.6; }
+
+  @media (max-width: 768px) {
+    .chart-row, .compare-grid, .service-grid { grid-template-columns: 1fr; }
+    .settings { flex-direction: column; }
+    .annual-summary { grid-template-columns: repeat(4, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>稼働率計算ツール</h1>
+  <p>リハブクラウドのCSVから自動計算（「要介護度別」「サービス提供時間別」両方対応）</p>
+</div>
+
+<div class="container">
+  <!-- CSV読み込み -->
+  <div class="card">
+    <h2>CSVファイルを読み込む</h2>
+    <div class="drop-zone" id="dropZone">
+      <div class="icon">📂</div>
+      <p>ここにCSVをドラッグ＆ドロップ</p>
+      <p class="sub">「要介護度別延べ利用者数」または「サービス提供時間別延べ利用者数」のCSV</p>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" multiple>
+    <div class="file-list" id="fileList"></div>
+  </div>
+
+  <!-- 設定 -->
+  <div class="card">
+    <h2>設定</h2>
+    <div class="settings">
+      <div class="setting-item">
+        <label>定員（1単位あたり）</label>
+        <input type="number" id="capacity" value="18" min="1">
+      </div>
+      <div class="setting-item">
+        <label>単位数（午前＋午後）</label>
+        <input type="number" id="units" value="2" min="1">
+      </div>
+      <div class="setting-item">
+        <label>定休日</label>
+        <select id="closedDay">
+          <option value="06">土日</option>
+          <option value="0">日曜のみ</option>
+          <option value="6">土曜のみ</option>
+          <option value="none">なし</option>
+        </select>
+      </div>
+    </div>
+    <div class="info-text">
+      営業日数は定休日と祝日から自動計算されます（祝日は2025〜2027年対応）
+    </div>
+  </div>
+
+  <!-- データ管理 -->
+  <div class="card">
+    <h2>保存データ</h2>
+    <div id="storageStatus" class="info-text">データなし</div>
+    <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+      <button class="btn btn-export" id="btnExport" disabled>バックアップ保存</button>
+      <button class="btn btn-import" id="btnImport">バックアップ読込</button>
+      <button class="btn btn-danger" id="btnClear" disabled>全データ削除</button>
+      <input type="file" id="importInput" accept=".json" style="display:none">
+    </div>
+  </div>
+
+  <!-- 結果表示エリア -->
+  <div id="resultArea" class="hidden">
+
+    <!-- 年間サマリ一覧 -->
+    <div class="card" id="annualCard">
+      <h2 id="annualTitle">年間 稼働率サマリ</h2>
+      <div class="annual-summary" id="annualSummary"></div>
+    </div>
+
+    <!-- 月タブ -->
+    <div class="month-tabs" id="monthTabs"></div>
+
+    <!-- メイン稼働率 -->
+    <div class="card">
+      <h2>稼働率</h2>
+      <div class="rate-display">
+        <div class="rate-number"><span id="rateValue">0</span><span class="unit">%</span></div>
+        <div class="rate-label" id="rateLabel"></div>
+        <div class="rate-sub" id="rateSub"></div>
+        <div class="rate-bar-wrap">
+          <div class="rate-bar-bg"><div class="rate-bar" id="rateBar" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="compare-grid">
+        <div class="compare-box actual">
+          <div class="num" id="actualTotal">-</div>
+          <div class="lbl">実績（延べ利用者数）</div>
+        </div>
+        <div class="compare-box planned">
+          <div class="num" id="plannedTotal">-</div>
+          <div class="lbl">予定（延べ利用者数）</div>
+        </div>
+      </div>
+      <!-- サービス種類別内訳 -->
+      <div class="service-grid" id="serviceGrid" style="display:none;">
+        <div class="service-box kaigo">
+          <div class="num" id="kaigoTotal">-</div>
+          <div class="lbl">要介護（サービス種類78）</div>
+        </div>
+        <div class="service-box shien">
+          <div class="num" id="shienTotal">-</div>
+          <div class="lbl">要支援・事業対象者（A6）</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- グラフ（要介護度別CSVの場合） -->
+    <div class="card" id="kaidoCard" style="display:none;">
+      <h2>要介護度別の構成</h2>
+      <div class="chart-row">
+        <div class="chart-box"><canvas id="pieChart"></canvas></div>
+        <div class="chart-box"><canvas id="barChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 保険者別（要介護度別CSVの場合） -->
+    <div class="card" id="insurerCard" style="display:none;">
+      <h2>保険者別 内訳</h2>
+      <table id="insurerTable">
+        <thead><tr><th>保険者</th><th class="text-right">実績</th><th class="text-right">予定</th><th class="text-right">達成率</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- 男女別（要介護度別CSVの場合） -->
+    <div class="card" id="genderCard" style="display:none;">
+      <h2>男女別</h2>
+      <table id="genderTable">
+        <thead><tr><th>性別</th><th class="text-right">実績</th><th class="text-right">予定</th><th class="text-right">割合</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- 月別推移グラフ -->
+    <div class="card" id="trendCard" style="display:none;">
+      <h2>月別推移</h2>
+      <div class="trend-chart-box"><canvas id="trendChart"></canvas></div>
+    </div>
+
+    <!-- 年間集計テーブル -->
+    <div class="card" id="annualTableCard" style="display:none;">
+      <h2 id="annualTableTitle">年間集計</h2>
+      <div style="overflow-x:auto;">
+        <table id="annualTable"></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===========================================
+// データ管理
+// ===========================================
+const STORAGE_KEY = 'yawaragi_kadoritsu_data';
+// monthStore: { "2026/2": { actual78, actualA6, planned78, plannedA6, yearMonth, label, csvType, kaigoData?, ... } }
+const monthStore = {};
+let currentMonthKey = null;
+let pieChart = null, barChart = null, trendChart = null;
+
+// 祝日
+const holidays = new Set([
+  '2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-03-21',
+  '2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06',
+  '2025-07-21','2025-08-11','2025-09-15','2025-09-23',
+  '2025-10-13','2025-11-03','2025-11-23','2025-11-24',
+  '2026-01-01','2026-01-02','2026-01-12','2026-02-11','2026-02-23',
+  '2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06',
+  '2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23',
+  '2026-10-12','2026-11-03','2026-11-23',
+  '2027-01-01','2027-01-11','2027-02-11','2027-02-23',
+  '2027-03-21','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05',
+  '2027-07-19','2027-08-11','2027-09-20','2027-09-23',
+  '2027-10-11','2027-11-03','2027-11-23',
+]);
+
+// ===========================================
+// ファイル読み込み
+// ===========================================
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const decoder = new TextDecoder('shift-jis');
+      const text = decoder.decode(e.target.result);
+      detectAndParse(text, file.name);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+// ===========================================
+// CSV自動判別・解析
+// ===========================================
+function detectAndParse(text, fileName) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  const title = lines[0];
+
+  if (title.includes('サービス提供時間別')) {
+    parseJikanCSV(lines, fileName);
+  } else if (title.includes('要介護度別')) {
+    parseKaidoCSV(lines, fileName);
+  } else {
+    alert('対応していないCSV形式です。\n「要介護度別延べ利用者数」または「サービス提供時間別延べ利用者数」のCSVを使ってください。');
+  }
+}
+
+// --- サービス提供時間別CSV（年度ファイル・12ヶ月分） ---
+function parseJikanCSV(lines, fileName) {
+  // ヘッダーから月リストを取得
+  const headerCols = parseCSVLine(lines[1]);
+  // headerCols: 予定実績区分, サービス種類, 事業所番号, 保険者番号, 保険者名, サービス提供時間, 2025/4, 2025/5, ...
+  const monthCols = headerCols.slice(6); // ["2025/4", "2025/5", ...]
+
+  // タイトルから年度を取得
+  const yearMatch = lines[0].match(/(\d{4})年度/);
+  const fiscalLabel = yearMatch ? yearMatch[1] + '年度' : fileName;
+
+  // データ行を処理
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('※') || line.startsWith('　')) continue;
+    const cols = parseCSVLine(line);
+    if (cols.length < 7) continue;
+
+    const [type, service, jigyosho, insurerNo, insurerName, timeRange] = cols;
+    const values = cols.slice(6).map(v => parseInt(v) || 0);
+
+    // 事業所合計の5時間未満合計だけ集める（yawaragiの全利用はここに入る）
+    const isTotal = service.startsWith('事業所合計');
+    const is78 = service.includes('78');
+    const isA6 = service.includes('A6');
+    const isSub5 = timeRange === '5時間未満合計';
+
+    if (!isTotal || !isSub5) continue;
+
+    monthCols.forEach((mc, idx) => {
+      if (idx >= values.length) return;
+      const val = values[idx];
+      // mc = "2025/4" → year=2025, month=4
+      const parts = mc.split('/');
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]);
+      const key = `${year}/${month}`;
+
+      if (!monthStore[key]) {
+        monthStore[key] = {
+          actual78: 0, actualA6: 0, planned78: 0, plannedA6: 0,
+          yearMonth: { year, month },
+          label: `${year}年${month}月`,
+          csvType: 'jikan',
+          fiscalYear: fiscalLabel
+        };
+      }
+      const d = monthStore[key];
+      if (type === '実績') {
+        if (is78) d.actual78 += val;
+        else if (isA6) d.actualA6 += val;
+      } else if (type === '予定') {
+        if (is78) d.planned78 += val;
+        else if (isA6) d.plannedA6 += val;
+      }
+    });
+  }
+
+  // 不明も加算（A6に含める）
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('※') || line.startsWith('　')) continue;
+    const cols = parseCSVLine(line);
+    if (cols.length < 7) continue;
+    const [type, service, , , , timeRange] = cols;
+    const values = cols.slice(6).map(v => parseInt(v) || 0);
+    if (!service.startsWith('事業所合計') || timeRange !== '不明') continue;
+
+    monthCols.forEach((mc, idx) => {
+      if (idx >= values.length) return;
+      const parts = mc.split('/');
+      const key = `${parseInt(parts[0])}/${parseInt(parts[1])}`;
+      if (!monthStore[key]) return;
+      if (type === '実績') monthStore[key].actualA6 += values[idx];
+      else if (type === '予定') monthStore[key].plannedA6 += values[idx];
+    });
+  }
+
+  saveToStorage();
+  updateFileList();
+  // 最新の実績がある月を選択
+  const keys = getSortedKeys();
+  const lastWithData = keys.filter(k => (monthStore[k].actual78 + monthStore[k].actualA6) > 0);
+  currentMonthKey = lastWithData.length > 0 ? lastWithData[lastWithData.length - 1] : keys[keys.length - 1];
+  showResults();
+}
+
+// --- 要介護度別CSV（単月ファイル） ---
+function parseKaidoCSV(lines, fileName) {
+  const titleMatch = lines[0].match(/令和(\d+)年(\d+)月/);
+  let year, month;
+  if (titleMatch) {
+    year = 2018 + parseInt(titleMatch[1]);
+    month = parseInt(titleMatch[2]);
+  } else {
+    alert('年月を読み取れませんでした');
+    return;
+  }
+  const key = `${year}/${month}`;
+
+  const kaigoData = { actual: { total: {}, insurers: [], genderRows: [] }, planned: { total: {}, insurers: [], genderRows: [] } };
+
+  for (let i = 2; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('※') || line.startsWith('　')) continue;
+    const cols = parseCSVLine(line);
+    if (cols.length < 15) continue;
+
+    const [type, service, jigyosho, insurerNo, insurerName, gender, jigyoTaisho, yoshien1, yoshien2, yokaigo1, yokaigo2, yokaigo3, yokaigo4, yokaigo5, total] = cols;
+    const row = {
+      service, insurerNo, insurerName, gender,
+      jigyoTaisho: parseInt(jigyoTaisho) || 0,
+      yoshien1: parseInt(yoshien1) || 0, yoshien2: parseInt(yoshien2) || 0,
+      yokaigo1: parseInt(yokaigo1) || 0, yokaigo2: parseInt(yokaigo2) || 0,
+      yokaigo3: parseInt(yokaigo3) || 0, yokaigo4: parseInt(yokaigo4) || 0,
+      yokaigo5: parseInt(yokaigo5) || 0,
+      total: parseInt(total) || 0
+    };
+
+    const target = type === '実績' ? kaigoData.actual : type === '予定' ? kaigoData.planned : null;
+    if (!target) continue;
+
+    if (service === '事業所合計') {
+      if (gender === '合計') target.total = row;
+      else target.genderRows.push(row);
+    } else if (gender === '合計' && insurerName !== '-') {
+      target.insurers.push(row);
+    }
+  }
+
+  const actualTotal = kaigoData.actual.total.total || 0;
+  const plannedTotal = kaigoData.planned.total.total || 0;
+
+  if (!monthStore[key]) {
+    monthStore[key] = {
+      actual78: 0, actualA6: 0, planned78: 0, plannedA6: 0,
+      yearMonth: { year, month }, label: `${year}年${month}月`, csvType: 'kaido'
+    };
+  }
+  const d = monthStore[key];
+  d.csvType = 'kaido';
+  d.kaigoData = kaigoData;
+  // 合計を上書き（要介護度別の方が正確）
+  d.actual78 = actualTotal; // ここでは78/A6の区別なく合計
+  d.actualA6 = 0;
+  d.planned78 = plannedTotal;
+  d.plannedA6 = 0;
+  d.actualTotalOverride = actualTotal;
+  d.plannedTotalOverride = plannedTotal;
+
+  saveToStorage();
+  updateFileList();
+  currentMonthKey = key;
+  showResults();
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuote) {
+      if (c === '"' && line[i+1] === '"') { current += '"'; i++; }
+      else if (c === '"') { inQuote = false; }
+      else { current += c; }
+    } else {
+      if (c === '"') { inQuote = true; }
+      else if (c === ',') { result.push(current); current = ''; }
+      else { current += c; }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// ===========================================
+// ユーティリティ
+// ===========================================
+function getSortedKeys() {
+  return Object.keys(monthStore).sort((a, b) => {
+    const [ay, am] = a.split('/').map(Number);
+    const [by, bm] = b.split('/').map(Number);
+    return ay !== by ? ay - by : am - bm;
+  });
+}
+
+function calcBusinessDays(year, month) {
+  const closedDayVal = document.getElementById('closedDay').value;
+  const closedDays = new Set();
+  if (closedDayVal === '06') { closedDays.add(0); closedDays.add(6); }
+  else if (closedDayVal !== 'none') { closedDays.add(parseInt(closedDayVal)); }
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month - 1, d);
+    const dow = date.getDay();
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if (!closedDays.has(dow) && !holidays.has(dateStr)) count++;
+  }
+  return count;
+}
+
+function getActualTotal(d) {
+  if (d.actualTotalOverride !== undefined) return d.actualTotalOverride;
+  return d.actual78 + d.actualA6;
+}
+function getPlannedTotal(d) {
+  if (d.plannedTotalOverride !== undefined) return d.plannedTotalOverride;
+  return d.planned78 + d.plannedA6;
+}
+
+// 設定変更時
+['capacity', 'units'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => { if (currentMonthKey) showResults(); });
+});
+document.getElementById('closedDay').addEventListener('change', () => { if (currentMonthKey) showResults(); });
+
+// ===========================================
+// ファイルリスト
+// ===========================================
+function updateFileList() {
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  const keys = getSortedKeys();
+  // ファイル種類でまとめて表示
+  const seen = new Set();
+  keys.forEach(k => {
+    const d = monthStore[k];
+    const tagLabel = d.fiscalYear ? `${d.fiscalYear}（時間別）` : `${d.label}（介護度別）`;
+    if (d.fiscalYear && seen.has(d.fiscalYear)) return;
+    if (d.fiscalYear) seen.add(d.fiscalYear);
+
+    const tag = document.createElement('span');
+    tag.className = 'file-tag';
+    tag.innerHTML = `${tagLabel} <span class="remove" data-type="${d.csvType}" data-fy="${d.fiscalYear || ''}" data-key="${k}">&times;</span>`;
+    list.appendChild(tag);
+  });
+  list.querySelectorAll('.remove').forEach(el => {
+    el.addEventListener('click', () => {
+      if (!confirm('このデータを削除しますか？')) return;
+      if (el.dataset.type === 'jikan' && el.dataset.fy) {
+        Object.keys(monthStore).forEach(k => {
+          if (monthStore[k].fiscalYear === el.dataset.fy && monthStore[k].csvType === 'jikan') delete monthStore[k];
+        });
+      } else {
+        delete monthStore[el.dataset.key];
+      }
+      saveToStorage();
+      updateFileList();
+      const keys = getSortedKeys();
+      if (keys.length > 0) { currentMonthKey = keys[keys.length - 1]; showResults(); }
+      else { document.getElementById('resultArea').classList.add('hidden'); currentMonthKey = null; }
+    });
+  });
+}
+
+// ===========================================
+// 結果表示
+// ===========================================
+function showResults() {
+  const area = document.getElementById('resultArea');
+  area.classList.remove('hidden');
+  const keys = getSortedKeys();
+  const data = monthStore[currentMonthKey];
+  if (!data) return;
+
+  const capacity = parseInt(document.getElementById('capacity').value) || 18;
+  const units = parseInt(document.getElementById('units').value) || 2;
+  const bd = calcBusinessDays(data.yearMonth.year, data.yearMonth.month);
+  const maxCap = capacity * units * bd;
+
+  const actualTotal = getActualTotal(data);
+  const plannedTotal = getPlannedTotal(data);
+  const rate = maxCap > 0 ? (actualTotal / maxCap * 100) : 0;
+
+  // 年間サマリ
+  renderAnnualSummary(keys, capacity, units);
+
+  // 月タブ
+  renderMonthTabs(keys);
+
+  // メイン稼働率
+  document.getElementById('rateValue').textContent = rate.toFixed(1);
+  document.getElementById('rateLabel').textContent = data.label;
+  document.getElementById('rateSub').textContent = `${actualTotal}回 ÷ (${capacity}名 × ${units}単位 × ${bd}日) = ${actualTotal} ÷ ${maxCap}`;
+
+  const bar = document.getElementById('rateBar');
+  bar.style.width = Math.min(rate, 100) + '%';
+  bar.className = 'rate-bar ' + (rate >= 80 ? 'green' : rate >= 60 ? 'yellow' : 'red');
+
+  document.getElementById('actualTotal').textContent = actualTotal + '回';
+  document.getElementById('plannedTotal').textContent = plannedTotal + '回';
+
+  // サービス種類別（時間別CSVの場合）
+  const sg = document.getElementById('serviceGrid');
+  if (data.csvType === 'jikan') {
+    sg.style.display = '';
+    document.getElementById('kaigoTotal').textContent = data.actual78 + '回';
+    document.getElementById('shienTotal').textContent = data.actualA6 + '回';
+  } else {
+    sg.style.display = 'none';
+  }
+
+  // 要介護度別グラフ（介護度別CSVの場合）
+  const hasKaido = data.kaigoData;
+  document.getElementById('kaidoCard').style.display = hasKaido ? '' : 'none';
+  document.getElementById('insurerCard').style.display = hasKaido ? '' : 'none';
+  document.getElementById('genderCard').style.display = hasKaido ? '' : 'none';
+  if (hasKaido) {
+    renderKaidoCharts(data.kaigoData);
+    renderInsurerTable(data.kaigoData);
+    renderGenderTable(data.kaigoData);
+  }
+
+  // 推移グラフ
+  renderTrendChart(keys, capacity, units);
+
+  // 年間テーブル
+  renderAnnualTable(keys, capacity, units);
+}
+
+// ===========================================
+// 年間サマリカード
+// ===========================================
+function renderAnnualSummary(keys, capacity, units) {
+  const container = document.getElementById('annualSummary');
+  container.innerHTML = '';
+  if (keys.length <= 1) { document.getElementById('annualCard').style.display = 'none'; return; }
+  document.getElementById('annualCard').style.display = '';
+
+  // 年度タイトル
+  const firstData = monthStore[keys[0]];
+  document.getElementById('annualTitle').textContent = firstData.fiscalYear ? `${firstData.fiscalYear} 稼働率サマリ` : '稼働率サマリ';
+
+  keys.forEach(k => {
+    const d = monthStore[k];
+    const bd = calcBusinessDays(d.yearMonth.year, d.yearMonth.month);
+    const maxCap = capacity * units * bd;
+    const actual = getActualTotal(d);
+    const rate = maxCap > 0 ? (actual / maxCap * 100) : 0;
+    const hasData = actual > 0;
+
+    const cell = document.createElement('div');
+    const colorClass = !hasData ? 'nodata' : rate >= 80 ? 'green' : rate >= 60 ? 'yellow' : 'red';
+    cell.className = `annual-cell ${colorClass} ${k === currentMonthKey ? 'selected' : ''}`;
+    cell.innerHTML = `
+      <div class="month-name">${d.yearMonth.month}月</div>
+      <div class="month-rate">${hasData ? rate.toFixed(1) + '%' : '-'}</div>
+      <div class="month-count">${hasData ? actual + '回' : 'データなし'}</div>
+    `;
+    if (hasData) {
+      cell.style.cursor = 'pointer';
+      cell.addEventListener('click', () => { currentMonthKey = k; showResults(); });
+    }
+    container.appendChild(cell);
+  });
+}
+
+// ===========================================
+// 月タブ
+// ===========================================
+function renderMonthTabs(keys) {
+  const tabs = document.getElementById('monthTabs');
+  if (keys.length <= 1) { tabs.innerHTML = ''; return; }
+  tabs.innerHTML = keys.map(k => {
+    const d = monthStore[k];
+    return `<div class="month-tab ${k === currentMonthKey ? 'active' : ''}" data-key="${k}">${d.yearMonth.month}月</div>`;
+  }).join('');
+  tabs.querySelectorAll('.month-tab').forEach(el => {
+    el.addEventListener('click', () => { currentMonthKey = el.dataset.key; showResults(); });
+  });
+}
+
+// ===========================================
+// 要介護度別グラフ
+// ===========================================
+function renderKaidoCharts(kd) {
+  const t = kd.actual.total;
+  const labels = ['事業対象者','要支援1','要支援2','要介護1','要介護2','要介護3','要介護4','要介護5'];
+  const values = [t.jigyoTaisho, t.yoshien1, t.yoshien2, t.yokaigo1, t.yokaigo2, t.yokaigo3, t.yokaigo4, t.yokaigo5];
+  const colors = ['#94a3b8','#38bdf8','#22d3ee','#34d399','#a3e635','#facc15','#fb923c','#f87171'];
+
+  if (pieChart) pieChart.destroy();
+  pieChart = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 12 }, padding: 8 } },
+        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.raw}回 (${(ctx.raw / (t.total||1) * 100).toFixed(1)}%)` } }
+      }
+    }
+  });
+
+  const pt = kd.planned.total;
+  const pv = [pt.jigyoTaisho, pt.yoshien1, pt.yoshien2, pt.yokaigo1, pt.yokaigo2, pt.yokaigo3, pt.yokaigo4, pt.yokaigo5];
+
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: '実績', data: values, backgroundColor: '#3b82f6' }, { label: '予定', data: pv, backgroundColor: '#86efac' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: '延べ人数' } } }
+    }
+  });
+}
+
+function renderInsurerTable(kd) {
+  const tbody = document.querySelector('#insurerTable tbody');
+  tbody.innerHTML = '';
+  const aMap = {}, pMap = {};
+  kd.actual.insurers.forEach(r => { aMap[r.insurerName] = (aMap[r.insurerName] || 0) + r.total; });
+  kd.planned.insurers.forEach(r => { pMap[r.insurerName] = (pMap[r.insurerName] || 0) + r.total; });
+  const all = [...new Set([...Object.keys(aMap), ...Object.keys(pMap)])];
+  all.forEach(n => {
+    const a = aMap[n] || 0, p = pMap[n] || 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${n}</td><td class="text-right">${a}回</td><td class="text-right">${p}回</td><td class="text-right">${p > 0 ? (a/p*100).toFixed(1)+'%' : '-'}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderGenderTable(kd) {
+  const tbody = document.querySelector('#genderTable tbody');
+  tbody.innerHTML = '';
+  const total = kd.actual.total.total || 1;
+  kd.actual.genderRows.forEach(row => {
+    const planned = kd.planned.genderRows.find(r => r.gender === row.gender);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${row.gender}</td><td class="text-right">${row.total}回</td><td class="text-right">${planned ? planned.total+'回' : '-'}</td><td class="text-right">${(row.total/total*100).toFixed(1)}%</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ===========================================
+// 推移グラフ
+// ===========================================
+function renderTrendChart(keys, capacity, units) {
+  const card = document.getElementById('trendCard');
+  if (keys.length < 2) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const labels = [], rates = [], actuals = [], planneds = [], kaigo78 = [], shienA6 = [];
+  const hasServiceBreakdown = keys.some(k => monthStore[k].csvType === 'jikan');
+
+  keys.forEach(k => {
+    const d = monthStore[k];
+    const bd = calcBusinessDays(d.yearMonth.year, d.yearMonth.month);
+    const maxCap = capacity * units * bd;
+    const actual = getActualTotal(d);
+    const planned = getPlannedTotal(d);
+
+    labels.push(d.yearMonth.month + '月');
+    rates.push(maxCap > 0 ? +(actual / maxCap * 100).toFixed(1) : 0);
+    actuals.push(actual);
+    planneds.push(planned);
+    kaigo78.push(d.actual78 || 0);
+    shienA6.push(d.actualA6 || 0);
+  });
+
+  if (trendChart) trendChart.destroy();
+
+  const datasets = [
+    { type: 'line', label: '稼働率(%)', data: rates, borderColor: '#ef4444', backgroundColor: '#ef444433', yAxisID: 'y1', tension: 0.3, pointRadius: 5, pointBackgroundColor: '#ef4444', order: 0 }
+  ];
+
+  if (hasServiceBreakdown) {
+    datasets.push(
+      { label: '要介護(78)', data: kaigo78, backgroundColor: '#f59e0b', yAxisID: 'y', stack: 'actual', order: 1 },
+      { label: '要支援(A6)', data: shienA6, backgroundColor: '#6366f1', yAxisID: 'y', stack: 'actual', order: 2 },
+      { label: '予定', data: planneds, backgroundColor: '#86efac88', yAxisID: 'y', order: 3 }
+    );
+  } else {
+    datasets.push(
+      { label: '実績', data: actuals, backgroundColor: '#3b82f6', yAxisID: 'y', order: 1 },
+      { label: '予定', data: planneds, backgroundColor: '#86efac', yAxisID: 'y', order: 2 }
+    );
+  }
+
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        y: { beginAtZero: true, stacked: hasServiceBreakdown, title: { display: true, text: '延べ人数' } },
+        y1: { position: 'right', beginAtZero: true, max: 100, title: { display: true, text: '稼働率(%)' }, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+}
+
+// ===========================================
+// 年間集計テーブル
+// ===========================================
+function renderAnnualTable(keys, capacity, units) {
+  const card = document.getElementById('annualTableCard');
+  if (keys.length < 2) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const firstData = monthStore[keys[0]];
+  document.getElementById('annualTableTitle').textContent = firstData.fiscalYear ? `${firstData.fiscalYear} 集計` : '集計';
+
+  const hasService = keys.some(k => monthStore[k].csvType === 'jikan');
+
+  let html = '<thead><tr><th></th>';
+  keys.forEach(k => html += `<th class="text-right">${monthStore[k].yearMonth.month}月</th>`);
+  html += '<th class="text-right">年間</th></tr></thead><tbody>';
+
+  // 実績
+  let yearActual = 0;
+  html += '<tr><td><strong>実績</strong></td>';
+  keys.forEach(k => { const v = getActualTotal(monthStore[k]); yearActual += v; html += `<td class="text-right">${v || '-'}</td>`; });
+  html += `<td class="text-right"><strong>${yearActual}</strong></td></tr>`;
+
+  // 予定
+  let yearPlanned = 0;
+  html += '<tr><td><strong>予定</strong></td>';
+  keys.forEach(k => { const v = getPlannedTotal(monthStore[k]); yearPlanned += v; html += `<td class="text-right">${v || '-'}</td>`; });
+  html += `<td class="text-right"><strong>${yearPlanned}</strong></td></tr>`;
+
+  // 要介護・要支援
+  if (hasService) {
+    let y78 = 0, yA6 = 0;
+    html += '<tr style="color:#b45309"><td>　要介護(78)</td>';
+    keys.forEach(k => { const v = monthStore[k].actual78||0; y78+=v; html += `<td class="text-right">${v||'-'}</td>`; });
+    html += `<td class="text-right"><strong>${y78}</strong></td></tr>`;
+
+    html += '<tr style="color:#4338ca"><td>　要支援(A6)</td>';
+    keys.forEach(k => { const v = monthStore[k].actualA6||0; yA6+=v; html += `<td class="text-right">${v||'-'}</td>`; });
+    html += `<td class="text-right"><strong>${yA6}</strong></td></tr>`;
+  }
+
+  // 営業日数
+  html += '<tr><td>営業日数</td>';
+  let yearBd = 0;
+  keys.forEach(k => { const bd = calcBusinessDays(monthStore[k].yearMonth.year, monthStore[k].yearMonth.month); yearBd += bd; html += `<td class="text-right">${bd}</td>`; });
+  html += `<td class="text-right"><strong>${yearBd}</strong></td></tr>`;
+
+  // 稼働率
+  html += '<tr><td><strong>稼働率</strong></td>';
+  let yearMaxCap = 0;
+  keys.forEach(k => {
+    const d = monthStore[k];
+    const bd = calcBusinessDays(d.yearMonth.year, d.yearMonth.month);
+    const maxCap = capacity * units * bd;
+    yearMaxCap += maxCap;
+    const actual = getActualTotal(d);
+    const rate = maxCap > 0 ? (actual / maxCap * 100).toFixed(1) : '-';
+    const color = rate === '-' ? '' : parseFloat(rate) >= 80 ? 'color:#16a34a' : parseFloat(rate) >= 60 ? 'color:#ca8a04' : 'color:#dc2626';
+    html += `<td class="text-right" style="${color};font-weight:700">${rate}%</td>`;
+  });
+  const yearRate = yearMaxCap > 0 ? (yearActual / yearMaxCap * 100).toFixed(1) : '-';
+  html += `<td class="text-right" style="font-weight:700">${yearRate}%</td></tr>`;
+
+  html += '</tbody>';
+  document.getElementById('annualTable').innerHTML = html;
+}
+
+// ===========================================
+// localStorage 保存・復元
+// ===========================================
+function saveToStorage() {
+  try {
+    const data = {};
+    Object.keys(monthStore).forEach(k => {
+      // kaigoDataは大きいので必要な部分だけ保存
+      const d = monthStore[k];
+      data[k] = {
+        actual78: d.actual78, actualA6: d.actualA6,
+        planned78: d.planned78, plannedA6: d.plannedA6,
+        yearMonth: d.yearMonth, label: d.label,
+        csvType: d.csvType, fiscalYear: d.fiscalYear || null,
+        actualTotalOverride: d.actualTotalOverride,
+        plannedTotalOverride: d.plannedTotalOverride,
+        kaigoData: d.kaigoData || null
+      };
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    updateStorageStatus();
+  } catch (e) {
+    console.error('保存エラー:', e);
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    Object.keys(data).forEach(k => { monthStore[k] = data[k]; });
+    return Object.keys(data).length > 0;
+  } catch (e) {
+    console.error('読み込みエラー:', e);
+    return false;
+  }
+}
+
+function updateStorageStatus() {
+  const keys = getSortedKeys();
+  const el = document.getElementById('storageStatus');
+  const btnExport = document.getElementById('btnExport');
+  const btnClear = document.getElementById('btnClear');
+
+  if (keys.length === 0) {
+    el.textContent = 'データなし — CSVを読み込むと自動で保存されます';
+    btnExport.disabled = true;
+    btnClear.disabled = true;
+  } else {
+    const months = keys.map(k => monthStore[k].label).join('、');
+    const dataWithActual = keys.filter(k => getActualTotal(monthStore[k]) > 0).length;
+    el.textContent = `${keys.length}ヶ月分のデータを保存中（実績あり: ${dataWithActual}ヶ月） — ブラウザを閉じても残ります`;
+    btnExport.disabled = false;
+    btnClear.disabled = false;
+  }
+}
+
+// ===========================================
+// バックアップ（エクスポート / インポート）
+// ===========================================
+document.getElementById('btnExport').addEventListener('click', () => {
+  const data = {};
+  Object.keys(monthStore).forEach(k => {
+    const d = monthStore[k];
+    data[k] = {
+      actual78: d.actual78, actualA6: d.actualA6,
+      planned78: d.planned78, plannedA6: d.plannedA6,
+      yearMonth: d.yearMonth, label: d.label,
+      csvType: d.csvType, fiscalYear: d.fiscalYear || null,
+      actualTotalOverride: d.actualTotalOverride,
+      plannedTotalOverride: d.plannedTotalOverride,
+      kaigoData: d.kaigoData || null
+    };
+  });
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const now = new Date();
+  a.href = url;
+  a.download = `稼働率バックアップ_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btnImport').addEventListener('click', () => {
+  document.getElementById('importInput').click();
+});
+
+document.getElementById('importInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const count = Object.keys(data).length;
+      if (count === 0) { alert('データが空です'); return; }
+      if (!confirm(`${count}ヶ月分のデータを読み込みます。既存データは上書きされます。よろしいですか？`)) return;
+      // クリアして読み込み
+      Object.keys(monthStore).forEach(k => delete monthStore[k]);
+      Object.keys(data).forEach(k => { monthStore[k] = data[k]; });
+      saveToStorage();
+      updateFileList();
+      const keys = getSortedKeys();
+      const lastWithData = keys.filter(k => getActualTotal(monthStore[k]) > 0);
+      currentMonthKey = lastWithData.length > 0 ? lastWithData[lastWithData.length - 1] : keys[keys.length - 1];
+      showResults();
+      alert('バックアップを読み込みました');
+    } catch (err) {
+      alert('ファイルの読み込みに失敗しました。正しいバックアップファイルか確認してください。');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = ''; // リセット
+});
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (!confirm('すべてのデータを削除します。この操作は元に戻せません。\n\n先にバックアップ保存することをお勧めします。\n\n本当に削除しますか？')) return;
+  Object.keys(monthStore).forEach(k => delete monthStore[k]);
+  localStorage.removeItem(STORAGE_KEY);
+  updateFileList();
+  updateStorageStatus();
+  document.getElementById('resultArea').classList.add('hidden');
+  currentMonthKey = null;
+});
+
+// ===========================================
+// ページ読み込み時：保存データの復元
+// ===========================================
+(function init() {
+  const hasData = loadFromStorage();
+  updateStorageStatus();
+  if (hasData) {
+    updateFileList();
+    const keys = getSortedKeys();
+    const lastWithData = keys.filter(k => getActualTotal(monthStore[k]) > 0);
+    currentMonthKey = lastWithData.length > 0 ? lastWithData[lastWithData.length - 1] : keys[keys.length - 1];
+    if (currentMonthKey) showResults();
+  }
+})();
+</script>
+</body>
+</html>

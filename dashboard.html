@@ -1,0 +1,2334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>経営ダッシュボード - yawaragi</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f0f4f8; color: #333; min-height: 100vh; }
+
+  .header { background: linear-gradient(135deg, #0f766e, #115e59); color: white; padding: 20px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  .tabs { display: flex; gap: 4px; background: white; border-radius: 12px 12px 0 0; padding: 8px 8px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .tab { padding: 10px 24px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; font-weight: 500; color: #64748b; border: 1px solid transparent; border-bottom: none; transition: all 0.2s; }
+  .tab:hover { color: #0f766e; background: #f0fdfa; }
+  .tab.active { color: #0f766e; background: #f0fdfa; border-color: #e2e8f0; font-weight: 600; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .card h2 { font-size: 16px; color: #0f766e; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #ccfbf1; }
+  .card h3 { font-size: 14px; color: #475569; margin: 16px 0 10px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .kpi-card { padding: 20px; border-radius: 12px; text-align: center; }
+  .kpi-card .kpi-label { font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+  .kpi-card .kpi-value { font-size: 28px; font-weight: 700; }
+  .kpi-card .kpi-sub { font-size: 11px; margin-top: 4px; opacity: 0.7; }
+  .kpi-green { background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .kpi-green .kpi-label { color: #16a34a; } .kpi-green .kpi-value { color: #15803d; }
+  .kpi-blue { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .kpi-blue .kpi-label { color: #2563eb; } .kpi-blue .kpi-value { color: #1d4ed8; }
+  .kpi-orange { background: #fff7ed; border: 1px solid #fed7aa; }
+  .kpi-orange .kpi-label { color: #ea580c; } .kpi-orange .kpi-value { color: #c2410c; }
+  .kpi-red { background: #fef2f2; border: 1px solid #fecaca; }
+  .kpi-red .kpi-label { color: #dc2626; } .kpi-red .kpi-value { color: #b91c1c; }
+  .kpi-teal { background: #f0fdfa; border: 1px solid #99f6e4; }
+  .kpi-teal .kpi-label { color: #0d9488; } .kpi-teal .kpi-value { color: #0f766e; }
+  .kpi-purple { background: #faf5ff; border: 1px solid #e9d5ff; }
+  .kpi-purple .kpi-label { color: #7c3aed; } .kpi-purple .kpi-value { color: #6d28d9; }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-section { padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; }
+  .form-section h3 { margin: 0 0 12px; font-size: 14px; padding: 0; }
+  .form-section.sec-sales { border-left: 4px solid #22c55e; }
+  .form-section.sec-cost { border-left: 4px solid #ef4444; }
+  .form-section.sec-shoguu { border-left: 4px solid #8b5cf6; }
+  .form-section.sec-users { border-left: 4px solid #3b82f6; }
+  .form-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .form-row label { font-size: 13px; color: #475569; min-width: 120px; }
+  .form-row input { flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; text-align: right; }
+  .form-row input:focus { outline: none; border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.1); }
+  .form-row .unit { font-size: 13px; color: #94a3b8; min-width: 24px; }
+
+  .month-selector { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .month-selector select, .month-selector input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; }
+  .month-selector select:focus, .month-selector input:focus { outline: none; border-color: #0d9488; }
+
+  .btn { padding: 8px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: #0f766e; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #115e59; }
+  .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #d1d5db; }
+  .btn-secondary:hover { background: #e2e8f0; }
+  .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .btn-danger:hover:not(:disabled) { background: #fee2e2; }
+  .btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+  .chart-container { position: relative; height: 320px; margin: 16px 0; }
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart-half { position: relative; height: 300px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f1f5f9; padding: 10px 8px; text-align: right; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+  th:first-child { text-align: left; }
+  td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; text-align: right; white-space: nowrap; }
+  td:first-child { text-align: left; font-weight: 500; }
+  tr:hover { background: #f8fafc; }
+  .row-header { background: #f8fafc; font-weight: 600; }
+  .row-total { background: #f0fdfa; font-weight: 700; }
+  .text-danger { color: #dc2626; }
+  .text-warn { color: #ca8a04; }
+  .text-ok { color: #16a34a; }
+
+  .drop-zone { border: 2px dashed #99f6e4; border-radius: 12px; padding: 40px 20px; text-align: center; cursor: pointer; transition: all 0.2s; background: #f8fafc; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #0d9488; background: #f0fdfa; }
+  .drop-zone .icon { font-size: 40px; margin-bottom: 10px; }
+  .drop-zone p { font-size: 15px; color: #64748b; }
+  .drop-zone .sub { font-size: 12px; color: #94a3b8; margin-top: 6px; }
+  input[type="file"] { display: none; }
+
+  .file-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .file-tag { background: #f0fdfa; color: #0f766e; padding: 4px 12px; border-radius: 20px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .file-tag .remove { cursor: pointer; color: #94a3b8; font-size: 16px; line-height: 1; }
+  .file-tag .remove:hover { color: #ef4444; }
+
+  .info-text { font-size: 13px; color: #64748b; margin-top: 8px; padding: 10px; background: #f8fafc; border-radius: 8px; line-height: 1.6; }
+  .success-msg { color: #16a34a; font-size: 13px; margin-top: 8px; padding: 8px; background: #f0fdf4; border-radius: 8px; display: none; }
+
+  .alert-box { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+  .alert-warn { background: #fefce8; border: 1px solid #fde68a; color: #854d0e; }
+  .alert-danger { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+  .hidden { display: none; }
+
+  .salary-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  .salary-table th { background: #f1f5f9; padding: 8px; text-align: right; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
+  .salary-table th:first-child, .salary-table th:nth-child(2) { text-align: left; }
+  .salary-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: right; }
+  .salary-table td:first-child, .salary-table td:nth-child(2) { text-align: left; }
+  .salary-table tr:hover { background: #f8fafc; }
+  .salary-table .row-total { background: #f0fdfa; font-weight: 700; }
+
+  .fuyou-bar { height: 24px; border-radius: 12px; background: #e2e8f0; overflow: hidden; position: relative; margin: 4px 0; }
+  .fuyou-bar-fill { height: 100%; border-radius: 12px; transition: width 0.3s; }
+  .fuyou-bar-text { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: 600; }
+
+  .fuyou-card { padding: 16px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 12px; }
+  .fuyou-ok { border-left: 4px solid #22c55e; }
+  .fuyou-warn { border-left: 4px solid #eab308; background: #fefce8; }
+  .fuyou-danger { border-left: 4px solid #ef4444; background: #fef2f2; }
+
+  .parse-preview { max-height: 400px; overflow-y: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-top: 12px; }
+  .parse-staff { display: inline-block; margin: 4px; padding: 6px 12px; border-radius: 8px; background: #e0f2fe; font-size: 13px; cursor: pointer; }
+  .parse-staff.selected { background: #0f766e; color: white; }
+  .parse-staff input[type="checkbox"] { margin-right: 4px; }
+
+  @media (max-width: 768px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .chart-grid { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .form-row label { min-width: 100px; }
+    .tabs { flex-wrap: wrap; }
+    .tab { padding: 8px 14px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header" style="display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <h1>経営ダッシュボード</h1>
+    <p>リハビリデイサービス yawaragi ｜ 稼働率（CSV自動）＋ 売上・コスト・利用者（手入力）</p>
+  </div>
+  <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="padding:8px 14px;background:#e3f2fd;color:#1565c0;border:1px solid #1976d2;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;white-space:nowrap;">📋 利用者台帳</button>
+</div>
+
+<div class="container">
+  <div class="tabs">
+    <div class="tab active" data-tab="dashboard">ダッシュボード</div>
+    <div class="tab" data-tab="input">データ入力</div>
+    <div class="tab" data-tab="csv">CSV読み込み（稼働率）</div>
+    <div class="tab" data-tab="salary">給与管理</div>
+    <div class="tab" data-tab="kokuho">国保連通知</div>
+    <div class="tab" data-tab="settings">設定・管理</div>
+  </div>
+
+  <!-- ==================== ダッシュボード ==================== -->
+  <div class="tab-content active" id="tab-dashboard">
+    <div class="card">
+      <div class="month-selector">
+        <label style="font-size:14px;font-weight:600;color:#0f766e;">表示年度:</label>
+        <select id="dashFiscalYear"></select>
+        <span style="font-size:13px;color:#94a3b8;">（4月〜翌3月）</span>
+      </div>
+    </div>
+    <div id="alertArea"></div>
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="card">
+      <h2>売上・利益の推移</h2>
+      <div class="chart-container"><canvas id="chartRevenue"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>経営指標</h2>
+      <div class="chart-grid">
+        <div>
+          <h3>人件費率の推移</h3>
+          <div class="chart-half"><canvas id="chartJinkenhi"></canvas></div>
+        </div>
+        <div>
+          <h3>稼働率と売上の相関</h3>
+          <div class="chart-half"><canvas id="chartCorrelation"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>処遇改善加算 累計管理</h2>
+      <div class="chart-container" style="height:260px;"><canvas id="chartShoguu"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2>登録者数の推移</h2>
+      <div class="chart-container" style="height:280px;"><canvas id="chartUsers"></canvas></div>
+    </div>
+
+    <div class="card">
+      <h2 id="annualTableTitle">年間集計</h2>
+      <div style="overflow-x:auto;">
+        <table id="annualTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== データ入力 ==================== -->
+  <div class="tab-content" id="tab-input">
+    <div class="card">
+      <h2>月次データ入力</h2>
+      <div class="month-selector">
+        <div>
+          <label style="font-size:13px;color:#64748b;">年</label>
+          <select id="inputYear"></select>
+        </div>
+        <div>
+          <label style="font-size:13px;color:#64748b;">月</label>
+          <select id="inputMonth">
+            <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option>
+            <option value="4">4月</option><option value="5">5月</option><option value="6">6月</option>
+            <option value="7">7月</option><option value="8">8月</option><option value="9">9月</option>
+            <option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary" id="btnLoadMonth">読み込み</button>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-section sec-sales">
+          <h3>売上</h3>
+          <div class="form-row"><label>国保連請求額</label><input type="number" id="fKokuhoren" min="0"><span class="unit">円</span></div>
+          <div class="form-row"><label>利用者請求額</label><input type="number" id="fRiyosha" min="0"><span class="unit">円</span></div>
+          <div class="form-row"><label>未収金</label><input type="number" id="fMishukin" min="0"><span class="unit">円</span></div>
+        </div>
+        <div class="form-section sec-cost">
+          <h3>コスト</h3>
+          <div class="form-row"><label>人件費</label><input type="number" id="fJinkenhi" min="0"><span class="unit">円</span></div>
+          <div class="form-row"><label>その他経費</label><input type="number" id="fSonota" min="0"><span class="unit">円</span></div>
+        </div>
+        <div class="form-section sec-shoguu">
+          <h3>処遇改善加算</h3>
+          <div class="form-row"><label>加算収入額</label><input type="number" id="fShoguuIn" min="0"><span class="unit">円</span></div>
+          <div class="form-row"><label>支給額</label><input type="number" id="fShoguuOut" min="0"><span class="unit">円</span></div>
+          <div class="info-text" id="shoguuInfo">年度累計残は自動計算されます</div>
+        </div>
+        <div class="form-section sec-users">
+          <h3>利用者</h3>
+          <div class="form-row"><label>新規数</label><input type="number" id="fShinki" min="0"><span class="unit">人</span></div>
+          <div class="form-row"><label>終了数</label><input type="number" id="fShuryo" min="0"><span class="unit">人</span></div>
+          <div class="form-row"><label>キャンセル数</label><input type="number" id="fCancel" min="0"><span class="unit">回</span></div>
+          <div class="form-row"><label>返戻件数</label><input type="number" id="fHenrei" min="0"><span class="unit">件</span></div>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btnSave">この月のデータを保存</button>
+        <button class="btn btn-danger" id="btnDeleteMonth">この月を削除</button>
+      </div>
+      <div class="success-msg" id="saveMsg">保存しました</div>
+    </div>
+
+    <div class="card">
+      <h2>入力済みデータ一覧</h2>
+      <div id="inputDataList" class="info-text">データなし</div>
+    </div>
+  </div>
+
+  <!-- ==================== CSV読み込み ==================== -->
+  <div class="tab-content" id="tab-csv">
+    <div class="card">
+      <h2>稼働率CSV読み込み</h2>
+      <div class="drop-zone" id="dropZone">
+        <div class="icon">📂</div>
+        <p>ここにCSVをドラッグ＆ドロップ</p>
+        <p class="sub">「要介護度別延べ利用者数」または「サービス提供時間別延べ利用者数」のCSV</p>
+      </div>
+      <input type="file" id="fileInput" accept=".csv" multiple>
+      <div class="file-list" id="fileList"></div>
+    </div>
+    <div class="card">
+      <h2>稼働率設定</h2>
+      <div class="month-selector">
+        <div><label style="font-size:13px;color:#64748b;">定員（1単位あたり）</label><input type="number" id="capacity" value="18" min="1" style="width:80px"></div>
+        <div><label style="font-size:13px;color:#64748b;">単位数</label><input type="number" id="units" value="2" min="1" style="width:80px"></div>
+        <div>
+          <label style="font-size:13px;color:#64748b;">定休日</label>
+          <select id="closedDay"><option value="06">土日</option><option value="0">日曜のみ</option><option value="6">土曜のみ</option><option value="none">なし</option></select>
+        </div>
+      </div>
+      <div class="info-text">営業日数は定休日と祝日から自動計算されます</div>
+    </div>
+    <div id="kadoritsuResult" class="hidden">
+      <div class="card">
+        <h2>稼働率データ</h2>
+        <div style="overflow-x:auto;"><table id="kadoritsuTable"></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 給与管理 ==================== -->
+  <div class="tab-content" id="tab-salary">
+    <div class="card">
+      <h2>給与PDF読み込み</h2>
+      <p style="font-size:13px;color:#64748b;margin-bottom:12px;">タスクマンの「給与支給控除一覧表」PDFをドラッグ＆ドロップしてください。<br>データはこのPC内（ブラウザ）だけに保存されます。外部には一切送信されません。</p>
+      <div class="drop-zone" id="salaryDropZone">
+        <div class="icon">📄</div>
+        <p>給与支給控除一覧表のPDFをここにドロップ</p>
+        <p class="sub">または、クリックしてファイルを選択</p>
+      </div>
+      <input type="file" id="salaryFileInput" accept=".pdf">
+      <div id="salaryParseStatus" style="margin-top:12px;"></div>
+      <div id="salaryPreview" class="hidden"></div>
+    </div>
+
+    <div class="card">
+      <h2>処遇賞与PDF読み込み</h2>
+      <p style="font-size:13px;color:#64748b;margin-bottom:12px;">タスクマンの「処遇賞与支給控除一覧表」PDFをドラッグ＆ドロップしてください。<br>処遇改善の支給額（賞与分）がダッシュボードに自動反映されます。</p>
+      <div class="drop-zone" id="bonusDropZone">
+        <div class="icon">🎁</div>
+        <p>処遇賞与支給控除一覧表のPDFをここにドロップ</p>
+        <p class="sub">または、クリックしてファイルを選択</p>
+      </div>
+      <input type="file" id="bonusFileInput" accept=".pdf">
+      <div id="bonusParseStatus" style="margin-top:12px;"></div>
+      <div id="bonusPreview" class="hidden"></div>
+    </div>
+
+    <div class="card">
+      <h2>扶養内チェック（130万の壁）</h2>
+      <div class="month-selector">
+        <label style="font-size:14px;font-weight:600;color:#0f766e;">表示年:</label>
+        <select id="fuyouFiscalYear"></select>
+        <span style="font-size:13px;color:#94a3b8;">（1月〜12月）</span>
+      </div>
+      <div id="fuyouCheckArea" class="info-text">給与PDFを読み込むとここに表示されます</div>
+    </div>
+
+    <div class="card">
+      <h2>処遇改善手当の推移</h2>
+      <div class="chart-container" style="height:260px;"><canvas id="chartShoguuTeate"></canvas></div>
+      <div id="shoguuTeateDetail"></div>
+    </div>
+
+    <div class="card">
+      <h2>読み込み済みデータ</h2>
+      <div id="salaryDataList" class="info-text">データなし</div>
+    </div>
+  </div>
+
+  <!-- ==================== 国保連通知PDF ==================== -->
+  <div class="tab-content" id="tab-kokuho">
+    <div class="card">
+      <h2>支払決定額通知書 PDF読み込み</h2>
+      <p style="font-size:13px;color:#64748b;margin-bottom:12px;">けあ蔵からダウンロードした「介護給付費等支払決定額通知書」のPDFをドラッグ＆ドロップしてください。<br>国保連からの入金額がダッシュボードの「国保連請求額」に自動反映されます。<br>データはこのPC内（ブラウザ）だけに保存されます。外部には一切送信されません。</p>
+      <div class="drop-zone" id="kokuhoDropZone">
+        <div class="icon">📄</div>
+        <p>支払決定額通知書のPDFをここにドロップ</p>
+        <p class="sub">または、クリックしてファイルを選択（複数可）</p>
+      </div>
+      <input type="file" id="kokuhoFileInput" accept=".pdf" multiple>
+      <div id="kokuhoParseStatus" style="margin-top:12px;"></div>
+      <div id="kokuhoPreview" class="hidden"></div>
+    </div>
+
+    <div class="card">
+      <h2>読み込み済みデータ</h2>
+      <div id="kokuhoDataList" class="info-text">データなし</div>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+      <h2>処遇改善加算 Excel読み込み</h2>
+      <p style="font-size:13px;color:#64748b;margin-bottom:12px;">けあ蔵からダウンロードした「処遇改善加算等総額のお知らせ」のExcelをドラッグ＆ドロップしてください。<br>加算収入額がダッシュボードの「処遇改善 加算収入額」に自動反映されます。<br>データはこのPC内（ブラウザ）だけに保存されます。外部には一切送信されません。</p>
+      <div class="drop-zone" id="shoguuDropZone">
+        <div class="icon">📊</div>
+        <p>処遇改善加算等総額のお知らせ（Excel）をここにドロップ</p>
+        <p class="sub">または、クリックしてファイルを選択（複数可）</p>
+      </div>
+      <input type="file" id="shoguuFileInput" accept=".xlsx,.xls" multiple>
+      <div id="shoguuParseStatus" style="margin-top:12px;"></div>
+      <div id="shoguuPreview" class="hidden"></div>
+    </div>
+
+    <div class="card">
+      <h2>処遇改善加算 読み込み済みデータ</h2>
+      <div id="shoguuDataList" class="info-text">データなし</div>
+    </div>
+  </div>
+
+  <!-- ==================== 設定・管理 ==================== -->
+  <div class="tab-content" id="tab-settings">
+    <div class="card">
+      <h2>初期設定</h2>
+      <div class="form-row">
+        <label>初期登録者数</label>
+        <input type="number" id="initialUsers" min="0" style="width:120px">
+        <span class="unit">人</span>
+        <span style="font-size:12px;color:#94a3b8;margin-left:8px;">（データ入力を始める前月時点の登録者数）</span>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <label>基準年月</label>
+        <select id="initialUsersBase"></select>
+        <span style="font-size:12px;color:#94a3b8;margin-left:8px;">（この月から新規・終了を加減算します）</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btnSaveSettings">設定を保存</button>
+      </div>
+      <div class="success-msg" id="settingsMsg">保存しました</div>
+    </div>
+    <div class="card">
+      <h2>バックアップ</h2>
+      <div class="info-text" id="storageStatus">データなし</div>
+      <div class="btn-group">
+        <button class="btn btn-primary" id="btnExport">バックアップ保存（JSON）</button>
+        <button class="btn btn-secondary" id="btnImport">バックアップ読込</button>
+        <button class="btn btn-danger" id="btnClearAll">全データ削除</button>
+        <input type="file" id="importInput" accept=".json" style="display:none">
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===========================================
+// 定数・グローバル
+// ===========================================
+const KADORITSU_KEY = 'yawaragi_kadoritsu_data';
+const DASHBOARD_KEY = 'yawaragi_dashboard_data';
+const SETTINGS_KEY = 'yawaragi_dashboard_settings';
+const SALARY_KEY = 'yawaragi_salary_data';
+const FUYOU_KEY = 'yawaragi_fuyou_staff';
+const KOKUHO_KEY = 'yawaragi_kokuho_data';
+const SHOGUU_KEY = 'yawaragi_shoguu_data';
+const BONUS_KEY = 'yawaragi_bonus_data';
+
+const kadoritsuStore = {};
+const dashStore = {};
+const salaryStore = {};
+const kokuhoStore = {};
+const shoguuStore = {};
+const bonusStore = {};
+let appSettings = { initialUsers: 0, initialUsersBase: '' };
+let fuyouStaffList = [];
+let chartShoguuTeate = null;
+
+// pdf.js worker設定
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+let chartRevenue = null, chartJinkenhi = null, chartCorrelation = null, chartShoguu = null, chartUsers = null;
+
+const holidays = new Set([
+  '2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24','2025-03-20','2025-03-21',
+  '2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06',
+  '2025-07-21','2025-08-11','2025-09-15','2025-09-23',
+  '2025-10-13','2025-11-03','2025-11-23','2025-11-24',
+  '2026-01-01','2026-01-02','2026-01-12','2026-02-11','2026-02-23',
+  '2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06',
+  '2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23',
+  '2026-10-12','2026-11-03','2026-11-23',
+  '2027-01-01','2027-01-11','2027-02-11','2027-02-23',
+  '2027-03-21','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05',
+  '2027-07-19','2027-08-11','2027-09-20','2027-09-23',
+  '2027-10-11','2027-11-03','2027-11-23',
+]);
+
+// ===========================================
+// ユーティリティ
+// ===========================================
+function getFiscalYear(y, m) { return m >= 4 ? y : y - 1; }
+function getFiscalMonths(fy) {
+  const r = [];
+  for (let m = 4; m <= 12; m++) r.push({ year: fy, month: m });
+  for (let m = 1; m <= 3; m++) r.push({ year: fy + 1, month: m });
+  return r;
+}
+function toKey(y, m) { return y + '/' + m; }
+function parseKey(k) { const p = k.split('/').map(Number); return { year: p[0], month: p[1] }; }
+function sortedKeys(store) {
+  return Object.keys(store).sort((a, b) => {
+    const pa = parseKey(a), pb = parseKey(b);
+    return pa.year !== pb.year ? pa.year - pb.year : pa.month - pb.month;
+  });
+}
+function calcBusinessDays(year, month) {
+  const cv = document.getElementById('closedDay').value;
+  const closed = new Set();
+  if (cv === '06') { closed.add(0); closed.add(6); }
+  else if (cv !== 'none') closed.add(parseInt(cv));
+  const days = new Date(year, month, 0).getDate();
+  let c = 0;
+  for (let d = 1; d <= days; d++) {
+    const dt = new Date(year, month - 1, d);
+    const ds = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if (!closed.has(dt.getDay()) && !holidays.has(ds)) c++;
+  }
+  return c;
+}
+function kadoritsuActual(d) {
+  if (!d) return 0;
+  return d.actualTotalOverride !== undefined ? d.actualTotalOverride : (d.actual78 + d.actualA6);
+}
+function kadoritsuRate(key) {
+  const d = kadoritsuStore[key];
+  if (!d) return null;
+  const cap = (parseInt(document.getElementById('capacity').value) || 18) * (parseInt(document.getElementById('units').value) || 2);
+  const bd = calcBusinessDays(d.yearMonth.year, d.yearMonth.month);
+  const max = cap * bd;
+  const actual = kadoritsuActual(d);
+  return max > 0 ? +(actual / max * 100).toFixed(1) : 0;
+}
+function fmtYen(n) { return n == null || isNaN(n) ? '-' : n.toLocaleString(); }
+function showMsg(id) { const e = document.getElementById(id); e.style.display = 'block'; setTimeout(() => e.style.display = 'none', 2000); }
+
+// ===========================================
+// タブ切り替え
+// ===========================================
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+    if (t.dataset.tab === 'dashboard') renderDashboard();
+    if (t.dataset.tab === 'csv') renderKadoritsuTab();
+    if (t.dataset.tab === 'salary') renderSalaryTab();
+    if (t.dataset.tab === 'kokuho') renderKokuhoTab();
+  });
+});
+
+// ===========================================
+// localStorage
+// ===========================================
+function saveDash() { try { localStorage.setItem(DASHBOARD_KEY, JSON.stringify(dashStore)); } catch(e){} }
+function loadDash() { try { const r = localStorage.getItem(DASHBOARD_KEY); if (r) { const d = JSON.parse(r); Object.keys(d).forEach(k => dashStore[k] = d[k]); } } catch(e){} }
+function saveKado() {
+  try {
+    const d = {};
+    Object.keys(kadoritsuStore).forEach(k => {
+      const s = kadoritsuStore[k];
+      d[k] = { actual78: s.actual78, actualA6: s.actualA6, planned78: s.planned78, plannedA6: s.plannedA6, yearMonth: s.yearMonth, label: s.label, csvType: s.csvType, fiscalYear: s.fiscalYear||null, actualTotalOverride: s.actualTotalOverride, plannedTotalOverride: s.plannedTotalOverride, kaigoData: s.kaigoData||null };
+    });
+    localStorage.setItem(KADORITSU_KEY, JSON.stringify(d));
+  } catch(e){}
+}
+function loadKado() { try { const r = localStorage.getItem(KADORITSU_KEY); if (r) { const d = JSON.parse(r); Object.keys(d).forEach(k => kadoritsuStore[k] = d[k]); } } catch(e){} }
+function saveSets() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings)); } catch(e){} }
+function loadSets() { try { const r = localStorage.getItem(SETTINGS_KEY); if (r) appSettings = JSON.parse(r); } catch(e){} }
+function saveSalary() { try { localStorage.setItem(SALARY_KEY, JSON.stringify(salaryStore)); } catch(e){} }
+function loadSalary() { try { const r = localStorage.getItem(SALARY_KEY); if (r) { const d = JSON.parse(r); Object.keys(d).forEach(k => salaryStore[k] = d[k]); } } catch(e){} }
+function saveFuyou() { try { localStorage.setItem(FUYOU_KEY, JSON.stringify(fuyouStaffList)); } catch(e){} }
+function loadFuyou() { try { const r = localStorage.getItem(FUYOU_KEY); if (r) fuyouStaffList = JSON.parse(r); } catch(e){} }
+function saveKokuho() { try { localStorage.setItem(KOKUHO_KEY, JSON.stringify(kokuhoStore)); } catch(e){} }
+function loadKokuho() { try { const r = localStorage.getItem(KOKUHO_KEY); if (r) { const d = JSON.parse(r); Object.keys(d).forEach(k => kokuhoStore[k] = d[k]); } } catch(e){} }
+function saveShoguu() { try { localStorage.setItem(SHOGUU_KEY, JSON.stringify(shoguuStore)); } catch(e){} }
+function loadShoguu() { try { const r = localStorage.getItem(SHOGUU_KEY); if (r) { const d = JSON.parse(r); Object.keys(d).forEach(k => shoguuStore[k] = d[k]); } } catch(e){} }
+function saveBonus() { try { localStorage.setItem(BONUS_KEY, JSON.stringify(bonusStore)); } catch(e){} }
+function loadBonus() { try { const r = localStorage.getItem(BONUS_KEY); if (r) { const d = JSON.parse(r); Object.keys(d).forEach(k => bonusStore[k] = d[k]); } } catch(e){} }
+
+// ===========================================
+// データ入力タブ
+// ===========================================
+function initInputTab() {
+  const ys = document.getElementById('inputYear');
+  const now = new Date();
+  ys.innerHTML = '';
+  for (let y = now.getFullYear() - 2; y <= now.getFullYear() + 1; y++) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y + '年';
+    if (y === now.getFullYear()) o.selected = true;
+    ys.appendChild(o);
+  }
+  document.getElementById('inputMonth').value = now.getMonth() + 1;
+  updateBaseSelect();
+}
+
+function updateBaseSelect() {
+  const sel = document.getElementById('initialUsersBase');
+  const now = new Date();
+  sel.innerHTML = '';
+  for (let y = now.getFullYear() - 2; y <= now.getFullYear() + 1; y++) {
+    for (let m = 1; m <= 12; m++) {
+      const o = document.createElement('option');
+      o.value = y + '/' + m; o.textContent = y + '年' + m + '月';
+      sel.appendChild(o);
+    }
+  }
+  if (appSettings.initialUsersBase) sel.value = appSettings.initialUsersBase;
+}
+
+function loadMonthForm() {
+  const y = parseInt(document.getElementById('inputYear').value);
+  const m = parseInt(document.getElementById('inputMonth').value);
+  const d = dashStore[toKey(y, m)] || {};
+  document.getElementById('fKokuhoren').value = d.kokuhoren || '';
+  document.getElementById('fRiyosha').value = d.riyosha || '';
+  document.getElementById('fMishukin').value = d.mishukin || '';
+  document.getElementById('fJinkenhi').value = d.jinkenhi || '';
+  document.getElementById('fSonota').value = d.sonota || '';
+  document.getElementById('fShoguuIn').value = d.shoguuIn || '';
+  document.getElementById('fShoguuOut').value = d.shoguuOut || '';
+  document.getElementById('fShinki').value = d.shinki || '';
+  document.getElementById('fShuryo').value = d.shuryo || '';
+  document.getElementById('fCancel').value = d.cancel || '';
+  document.getElementById('fHenrei').value = d.henrei || '';
+  updateShoguuInfo(y, m);
+}
+
+function updateShoguuInfo(y, m) {
+  const fy = getFiscalYear(y, m);
+  let tIn = 0, tOut = 0;
+  getFiscalMonths(fy).forEach(fm => {
+    const d = dashStore[toKey(fm.year, fm.month)];
+    if (d) { tIn += (d.shoguuIn || 0); tOut += (d.shoguuOut || 0); }
+  });
+  const rem = tIn - tOut;
+  const el = document.getElementById('shoguuInfo');
+  el.textContent = `${fy}年度 累計: 収入 ${fmtYen(tIn)}円 − 支給 ${fmtYen(tOut)}円 ＝ 残 ${fmtYen(rem)}円`;
+  el.style.color = rem > 0 ? '#ca8a04' : rem === 0 ? '#16a34a' : '#dc2626';
+}
+
+document.getElementById('btnLoadMonth').addEventListener('click', loadMonthForm);
+
+document.getElementById('btnSave').addEventListener('click', () => {
+  const y = parseInt(document.getElementById('inputYear').value);
+  const m = parseInt(document.getElementById('inputMonth').value);
+  dashStore[toKey(y, m)] = {
+    kokuhoren: parseInt(document.getElementById('fKokuhoren').value) || 0,
+    riyosha: parseInt(document.getElementById('fRiyosha').value) || 0,
+    mishukin: parseInt(document.getElementById('fMishukin').value) || 0,
+    jinkenhi: parseInt(document.getElementById('fJinkenhi').value) || 0,
+    sonota: parseInt(document.getElementById('fSonota').value) || 0,
+    shoguuIn: parseInt(document.getElementById('fShoguuIn').value) || 0,
+    shoguuOut: parseInt(document.getElementById('fShoguuOut').value) || 0,
+    shinki: parseInt(document.getElementById('fShinki').value) || 0,
+    shuryo: parseInt(document.getElementById('fShuryo').value) || 0,
+    cancel: parseInt(document.getElementById('fCancel').value) || 0,
+    henrei: parseInt(document.getElementById('fHenrei').value) || 0,
+    yearMonth: { year: y, month: m }
+  };
+  saveDash(); showMsg('saveMsg'); updateShoguuInfo(y, m); updateInputList(); updateStorageStatus();
+});
+
+document.getElementById('btnDeleteMonth').addEventListener('click', () => {
+  const y = parseInt(document.getElementById('inputYear').value);
+  const m = parseInt(document.getElementById('inputMonth').value);
+  const k = toKey(y, m);
+  if (!dashStore[k]) { alert('この月のデータはありません'); return; }
+  if (!confirm(y + '年' + m + '月のデータを削除しますか？')) return;
+  delete dashStore[k]; saveDash(); loadMonthForm(); updateInputList(); updateStorageStatus();
+});
+
+function updateInputList() {
+  const el = document.getElementById('inputDataList');
+  const keys = sortedKeys(dashStore);
+  if (!keys.length) { el.textContent = 'データなし'; return; }
+  el.innerHTML = keys.map(k => {
+    const d = dashStore[k];
+    const rev = (d.kokuhoren || 0) + (d.riyosha || 0);
+    return `<span style="display:inline-block;margin:2px 6px;padding:2px 10px;background:#e0f2fe;border-radius:12px;cursor:pointer;font-size:13px;" data-key="${k}">${d.yearMonth.year}年${d.yearMonth.month}月（売上: ${fmtYen(rev)}円）</span>`;
+  }).join('');
+  el.querySelectorAll('span[data-key]').forEach(s => {
+    s.addEventListener('click', () => {
+      const p = parseKey(s.dataset.key);
+      document.getElementById('inputYear').value = p.year;
+      document.getElementById('inputMonth').value = p.month;
+      loadMonthForm();
+    });
+  });
+}
+
+// ===========================================
+// ダッシュボード
+// ===========================================
+function renderDashboard() {
+  const fySel = document.getElementById('dashFiscalYear');
+  const allKeys = [...new Set([...sortedKeys(dashStore), ...sortedKeys(kadoritsuStore)])];
+  const fySet = new Set();
+  allKeys.forEach(k => { const p = parseKey(k); fySet.add(getFiscalYear(p.year, p.month)); });
+  const now = new Date();
+  fySet.add(getFiscalYear(now.getFullYear(), now.getMonth() + 1));
+  const fyList = [...fySet].sort();
+  const curFy = fySel.value ? parseInt(fySel.value) : fyList[fyList.length - 1];
+  fySel.innerHTML = fyList.map(f => `<option value="${f}" ${f===curFy?'selected':''}>${f}年度（${f}年4月〜${f+1}年3月）</option>`).join('');
+  const fy = parseInt(fySel.value) || curFy;
+  const fm = getFiscalMonths(fy);
+  renderAlerts(fy, fm);
+  renderKPI(fy, fm);
+  renderRevenueChart(fy, fm);
+  renderJinkenhiChart(fy, fm);
+  renderCorrelationChart(fy, fm);
+  renderShoguuChart(fy, fm);
+  renderUsersChart(fy, fm);
+  renderAnnualTable(fy, fm);
+}
+document.getElementById('dashFiscalYear').addEventListener('change', renderDashboard);
+
+function renderAlerts(fy, months) {
+  const el = document.getElementById('alertArea');
+  el.innerHTML = '';
+  const alerts = [];
+  months.forEach(fm => {
+    const d = dashStore[toKey(fm.year, fm.month)];
+    if (!d) return;
+    const rev = (d.kokuhoren||0)+(d.riyosha||0);
+    if (rev > 0 && d.jinkenhi > 0) {
+      const r = d.jinkenhi / rev * 100;
+      if (r >= 75) alerts.push({ type:'danger', text: fm.year+'年'+fm.month+'月の人件費率が '+r.toFixed(1)+'% です（75%超 = 危険水準）' });
+    }
+    if ((d.mishukin||0) > 0) alerts.push({ type:'warn', text: fm.year+'年'+fm.month+'月に未収金 '+fmtYen(d.mishukin)+'円 があります' });
+  });
+  // 処遇改善チェック（過去年度）
+  const _now = new Date();
+  const nowFy = getFiscalYear(_now.getFullYear(), _now.getMonth()+1);
+  if (fy < nowFy) {
+    let tIn=0, tOut=0;
+    months.forEach(fm => { const d = dashStore[toKey(fm.year,fm.month)]; if(d){tIn+=(d.shoguuIn||0);tOut+=(d.shoguuOut||0);} });
+    if (tIn - tOut > 0) alerts.push({ type:'danger', text: fy+'年度の処遇改善加算に未支給残 '+fmtYen(tIn-tOut)+'円 があります' });
+  }
+  alerts.forEach(a => { const d = document.createElement('div'); d.className='alert-box alert-'+a.type; d.textContent=a.text; el.appendChild(d); });
+}
+
+function renderKPI(fy, months) {
+  const g = document.getElementById('kpiGrid'); g.innerHTML = '';
+  let tRev=0,tCost=0,tJink=0,tSIn=0,tSOut=0,tShinki=0,tShuryo=0,mc=0;
+  months.forEach(fm => {
+    const d = dashStore[toKey(fm.year,fm.month)]; if(!d) return;
+    const rev=(d.kokuhoren||0)+(d.riyosha||0);
+    if(rev>0||d.jinkenhi>0) mc++;
+    tRev+=rev; tCost+=(d.jinkenhi||0)+(d.sonota||0); tJink+=(d.jinkenhi||0);
+    tSIn+=(d.shoguuIn||0); tSOut+=(d.shoguuOut||0); tShinki+=(d.shinki||0); tShuryo+=(d.shuryo||0);
+  });
+  const profit=tRev-tCost;
+  const jr=tRev>0?(tJink/tRev*100).toFixed(1):'-';
+  let rSum=0,rCnt=0;
+  months.forEach(fm=>{const r=kadoritsuRate(toKey(fm.year,fm.month));if(r!==null&&r>0){rSum+=r;rCnt++;}});
+  const avgR=rCnt>0?(rSum/rCnt).toFixed(1):'-';
+  const sRem=tSIn-tSOut;
+
+  const kpis = [
+    {l:'年間売上',v:fmtYen(tRev)+'円',s:mc+'ヶ月分',c:'kpi-green'},
+    {l:'年間利益',v:fmtYen(profit)+'円',s:tRev>0?'利益率 '+(profit/tRev*100).toFixed(1)+'%':'',c:profit>=0?'kpi-blue':'kpi-red'},
+    {l:'人件費率',v:jr==='-'?'-':jr+'%',s:'目安: 60〜70%',c:jr!=='-'&&parseFloat(jr)>=75?'kpi-red':jr!=='-'&&parseFloat(jr)>=70?'kpi-orange':'kpi-teal'},
+    {l:'平均稼働率',v:avgR==='-'?'-':avgR+'%',s:'',c:avgR!=='-'&&parseFloat(avgR)>=80?'kpi-green':avgR!=='-'&&parseFloat(avgR)>=60?'kpi-orange':'kpi-red'},
+    {l:'処遇改善 残',v:fmtYen(sRem)+'円',s:'収入 '+fmtYen(tSIn)+'円',c:sRem>0?'kpi-purple':'kpi-teal'},
+    {l:'新規 − 終了',v:'+'+tShinki+' / -'+tShuryo,s:'純増減 '+(tShinki-tShuryo>=0?'+':'')+(tShinki-tShuryo)+'人',c:'kpi-blue'},
+  ];
+  kpis.forEach(k=>{const d=document.createElement('div');d.className='kpi-card '+k.c;d.innerHTML=`<div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v}</div><div class="kpi-sub">${k.s}</div>`;g.appendChild(d);});
+}
+
+function renderRevenueChart(fy, months) {
+  const labels=[],revs=[],costs=[],profits=[];
+  months.forEach(fm=>{
+    labels.push(fm.month+'月');
+    const d=dashStore[toKey(fm.year,fm.month)];
+    if(d){const r=(d.kokuhoren||0)+(d.riyosha||0),c=(d.jinkenhi||0)+(d.sonota||0);revs.push(r);costs.push(c);profits.push(r-c);}
+    else{revs.push(null);costs.push(null);profits.push(null);}
+  });
+  if(chartRevenue)chartRevenue.destroy();
+  chartRevenue=new Chart(document.getElementById('chartRevenue'),{
+    type:'bar',data:{labels,datasets:[
+      {label:'売上',data:revs,backgroundColor:'#22c55e88',borderColor:'#22c55e',borderWidth:1,order:2},
+      {label:'コスト',data:costs,backgroundColor:'#ef444488',borderColor:'#ef4444',borderWidth:1,order:3},
+      {type:'line',label:'利益',data:profits,borderColor:'#2563eb',backgroundColor:'#2563eb22',tension:.3,pointRadius:5,pointBackgroundColor:'#2563eb',order:1,fill:true}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmtYen(c.raw)}円`}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>(v/10000).toFixed(0)+'万'}}}}
+  });
+}
+
+function renderJinkenhiChart(fy, months) {
+  const labels=[],ratios=[];
+  months.forEach(fm=>{
+    labels.push(fm.month+'月');
+    const d=dashStore[toKey(fm.year,fm.month)];
+    if(d){const r=(d.kokuhoren||0)+(d.riyosha||0);ratios.push(r>0?+((d.jinkenhi||0)/r*100).toFixed(1):null);}
+    else ratios.push(null);
+  });
+  if(chartJinkenhi)chartJinkenhi.destroy();
+  chartJinkenhi=new Chart(document.getElementById('chartJinkenhi'),{
+    type:'line',data:{labels,datasets:[{label:'人件費率(%)',data:ratios,borderColor:'#ea580c',backgroundColor:'#ea580c22',tension:.3,pointRadius:5,pointBackgroundColor:'#ea580c',fill:true}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'人件費率: '+c.raw+'%'}}},scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}}}},
+    plugins:[{id:'zones',beforeDraw(chart){
+      const{ctx,chartArea:{left,right},scales:{y}}=chart;
+      const y75=y.getPixelForValue(75),y70=y.getPixelForValue(70),y60=y.getPixelForValue(60),y100=y.getPixelForValue(100);
+      ctx.fillStyle='rgba(239,68,68,0.08)';ctx.fillRect(left,y100,right-left,y75-y100);
+      ctx.fillStyle='rgba(234,179,8,0.08)';ctx.fillRect(left,y75,right-left,y70-y75);
+      ctx.fillStyle='rgba(34,197,94,0.06)';ctx.fillRect(left,y70,right-left,y60-y70);
+      ctx.setLineDash([5,5]);
+      ctx.strokeStyle='#ef4444';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,y75);ctx.lineTo(right,y75);ctx.stroke();
+      ctx.strokeStyle='#eab308';ctx.beginPath();ctx.moveTo(left,y70);ctx.lineTo(right,y70);ctx.stroke();
+      ctx.strokeStyle='#22c55e';ctx.beginPath();ctx.moveTo(left,y60);ctx.lineTo(right,y60);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font='11px Meiryo';ctx.textAlign='left';
+      ctx.fillStyle='#ef4444';ctx.fillText('危険 75%',left+4,y75-4);
+      ctx.fillStyle='#ca8a04';ctx.fillText('注意 70%',left+4,y70-4);
+      ctx.fillStyle='#16a34a';ctx.fillText('適正 60%',left+4,y60-4);
+    }}]
+  });
+}
+
+function renderCorrelationChart(fy, months) {
+  const data=[];
+  months.forEach(fm=>{
+    const k=toKey(fm.year,fm.month),d=dashStore[k],r=kadoritsuRate(k);
+    if(d&&r!==null&&r>0){const rev=(d.kokuhoren||0)+(d.riyosha||0);if(rev>0)data.push({x:r,y:rev,label:fm.month+'月'});}
+  });
+  if(chartCorrelation)chartCorrelation.destroy();
+  chartCorrelation=new Chart(document.getElementById('chartCorrelation'),{
+    type:'scatter',data:{datasets:[{label:'稼働率 × 売上',data,backgroundColor:'#0d9488',pointRadius:8,pointHoverRadius:12}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const p=c.raw;return p.label+': 稼働率 '+p.x+'%, 売上 '+fmtYen(p.y)+'円';}}}},scales:{x:{title:{display:true,text:'稼働率(%)'},min:0,max:100},y:{title:{display:true,text:'売上'},beginAtZero:true,ticks:{callback:v=>(v/10000).toFixed(0)+'万'}}}}
+  });
+}
+
+function renderShoguuChart(fy, months) {
+  const labels=[],cIn=[],cOut=[],rem=[];
+  let rIn=0,rOut=0;
+  months.forEach(fm=>{
+    labels.push(fm.month+'月');
+    const d=dashStore[toKey(fm.year,fm.month)];
+    if(d){rIn+=(d.shoguuIn||0);rOut+=(d.shoguuOut||0);}
+    cIn.push(rIn);cOut.push(rOut);rem.push(rIn-rOut);
+  });
+  if(chartShoguu)chartShoguu.destroy();
+  chartShoguu=new Chart(document.getElementById('chartShoguu'),{
+    type:'bar',data:{labels,datasets:[
+      {label:'累計収入',data:cIn,backgroundColor:'#8b5cf688',borderColor:'#8b5cf6',borderWidth:1},
+      {label:'累計支給',data:cOut,backgroundColor:'#22c55e88',borderColor:'#22c55e',borderWidth:1},
+      {type:'line',label:'未支給残',data:rem,borderColor:'#ef4444',backgroundColor:'#ef444422',tension:.3,pointRadius:5,pointBackgroundColor:'#ef4444',fill:true}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmtYen(c.raw)+'円'}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>(v/10000).toFixed(0)+'万'}}}}
+  });
+}
+
+function renderUsersChart(fy, months) {
+  const labels=[],counts=[],shinkiA=[],shuryoA=[];
+  let cur=0;
+  // 初期値
+  if(appSettings.initialUsersBase&&appSettings.initialUsers>0){
+    cur=appSettings.initialUsers;
+    const base=parseKey(appSettings.initialUsersBase);
+    // 基準月から年度開始月までの増減を反映
+    sortedKeys(dashStore).forEach(k=>{
+      const p=parseKey(k);
+      if(k>=appSettings.initialUsersBase){
+        const kfy=getFiscalYear(p.year,p.month);
+        if(kfy<fy||(p.year<fy||(p.year===fy&&p.month<4))){
+          const d=dashStore[k];
+          if(d) cur+=(d.shinki||0)-(d.shuryo||0);
+        }
+      }
+    });
+  }
+  months.forEach(fm=>{
+    labels.push(fm.month+'月');
+    const d=dashStore[toKey(fm.year,fm.month)];
+    const s=d?(d.shinki||0):0, e=d?(d.shuryo||0):0;
+    cur+=s-e;
+    counts.push(cur>0||appSettings.initialUsers>0?cur:null);
+    shinkiA.push(s||null); shuryoA.push(e||null);
+  });
+  if(chartUsers)chartUsers.destroy();
+  chartUsers=new Chart(document.getElementById('chartUsers'),{
+    type:'bar',data:{labels,datasets:[
+      {type:'line',label:'登録者数',data:counts,borderColor:'#2563eb',backgroundColor:'#2563eb22',tension:.3,pointRadius:5,pointBackgroundColor:'#2563eb',fill:true,order:0,yAxisID:'y'},
+      {label:'新規',data:shinkiA,backgroundColor:'#22c55e88',order:1,yAxisID:'y1'},
+      {label:'終了',data:shuryoA,backgroundColor:'#ef444488',order:2,yAxisID:'y1'}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true,title:{display:true,text:'登録者数'},position:'left'},y1:{beginAtZero:true,title:{display:true,text:'新規/終了'},position:'right',grid:{drawOnChartArea:false}}}}
+  });
+}
+
+function renderAnnualTable(fy, months) {
+  document.getElementById('annualTableTitle').textContent=fy+'年度 年間集計';
+  let html='<thead><tr><th></th>';
+  months.forEach(fm=>html+='<th>'+fm.month+'月</th>');
+  html+='<th>年間計</th></tr></thead><tbody>';
+
+  const rows=[
+    {l:'国保連請求額',k:'kokuhoren',f:'yen'},{l:'利用者請求額',k:'riyosha',f:'yen'},
+    {l:'売上合計',calc:d=>(d.kokuhoren||0)+(d.riyosha||0),f:'yen',cls:'row-header'},
+    {l:'人件費',k:'jinkenhi',f:'yen'},{l:'その他経費',k:'sonota',f:'yen'},
+    {l:'コスト合計',calc:d=>(d.jinkenhi||0)+(d.sonota||0),f:'yen',cls:'row-header'},
+    {l:'利益',calc:d=>(d.kokuhoren||0)+(d.riyosha||0)-(d.jinkenhi||0)-(d.sonota||0),f:'yen',cls:'row-total'},
+    {l:'人件費率',f:'jinkenhi_pct'},
+    {l:'未収金',k:'mishukin',f:'yen'},
+    {l:'処遇改善収入',k:'shoguuIn',f:'yen'},{l:'処遇改善支給',k:'shoguuOut',f:'yen'},
+    {l:'処遇改善 残',f:'shoguu_rem'},
+    {l:'稼働率',f:'rate'},
+    {l:'新規',k:'shinki',f:'num'},{l:'終了',k:'shuryo',f:'num'},
+    {l:'キャンセル',k:'cancel',f:'num'},{l:'返戻',k:'henrei',f:'num'},
+  ];
+
+  rows.forEach(row=>{
+    html+='<tr class="'+(row.cls||'')+'"><td>'+row.l+'</td>';
+    let yTotal=0,yCnt=0;
+    // 処遇改善残の累計用
+    let sRunIn=0,sRunOut=0;
+
+    months.forEach(fm=>{
+      const key=toKey(fm.year,fm.month), d=dashStore[key];
+
+      if(row.f==='rate'){
+        const r=kadoritsuRate(key);
+        const cls=r!==null&&r>0?(r>=80?'text-ok':r>=60?'text-warn':'text-danger'):'';
+        html+='<td class="'+cls+'" style="font-weight:600">'+(r!==null&&r>0?r+'%':'-')+'</td>';
+        if(r!==null&&r>0){yTotal+=r;yCnt++;}
+        return;
+      }
+      if(row.f==='jinkenhi_pct'){
+        if(!d){html+='<td>-</td>';return;}
+        const rev=(d.kokuhoren||0)+(d.riyosha||0);
+        const v=rev>0?((d.jinkenhi||0)/rev*100):null;
+        const cls=v!==null?(v>=75?'text-danger':v>=70?'text-warn':'text-ok'):'';
+        html+='<td class="'+cls+'">'+(v!==null?v.toFixed(1)+'%':'-')+'</td>';
+        return;
+      }
+      if(row.f==='shoguu_rem'){
+        if(d){sRunIn+=(d.shoguuIn||0);sRunOut+=(d.shoguuOut||0);}
+        const rem=sRunIn-sRunOut;
+        const hasData=sRunIn>0||sRunOut>0;
+        const cls=hasData?(rem>0?'text-warn':'text-ok'):'';
+        html+='<td class="'+cls+'">'+(hasData?fmtYen(rem):'-')+'</td>';
+        return;
+      }
+
+      let v=null;
+      if(d) v=row.calc?row.calc(d):(d[row.k]||0);
+      if(v!==null&&!isNaN(v)){yTotal+=v;yCnt++;}
+
+      if(row.f==='yen') html+='<td>'+(v!==null?fmtYen(v):'-')+'</td>';
+      else html+='<td>'+(v!==null&&v>0?v:'-')+'</td>';
+    });
+
+    // 年間計
+    if(row.f==='rate'){
+      html+='<td style="font-weight:700">'+(yCnt>0?(yTotal/yCnt).toFixed(1)+'%':'-')+'</td>';
+    } else if(row.f==='jinkenhi_pct'){
+      let tRev=0,tJink=0;
+      months.forEach(fm=>{const d=dashStore[toKey(fm.year,fm.month)];if(d){tRev+=(d.kokuhoren||0)+(d.riyosha||0);tJink+=(d.jinkenhi||0);}});
+      const r=tRev>0?(tJink/tRev*100):null;
+      const cls=r!==null?(r>=75?'text-danger':r>=70?'text-warn':'text-ok'):'';
+      html+='<td class="'+cls+'" style="font-weight:700">'+(r!==null?r.toFixed(1)+'%':'-')+'</td>';
+    } else if(row.f==='shoguu_rem'){
+      const rem=sRunIn-sRunOut;
+      const cls=(sRunIn>0||sRunOut>0)?(rem>0?'text-warn':'text-ok'):'';
+      html+='<td class="'+cls+'" style="font-weight:700">'+((sRunIn>0||sRunOut>0)?fmtYen(rem):'-')+'</td>';
+    } else if(row.f==='yen'){
+      html+='<td style="font-weight:700">'+(yCnt>0?fmtYen(yTotal):'-')+'</td>';
+    } else {
+      html+='<td style="font-weight:700">'+(yTotal>0?yTotal:'-')+'</td>';
+    }
+    html+='</tr>';
+  });
+
+  html+='</tbody>';
+  document.getElementById('annualTable').innerHTML=html;
+}
+
+// ===========================================
+// CSV読み込み（稼働率）
+// ===========================================
+const dropZone=document.getElementById('dropZone'), fileInput=document.getElementById('fileInput');
+dropZone.addEventListener('click',()=>fileInput.click());
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('drag-over');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop',e=>{e.preventDefault();dropZone.classList.remove('drag-over');handleFiles(e.dataTransfer.files);});
+fileInput.addEventListener('change',e=>handleFiles(e.target.files));
+
+function handleFiles(files){for(const f of files){const r=new FileReader();r.onload=e=>{detectAndParse(new TextDecoder('shift-jis').decode(e.target.result),f.name);};r.readAsArrayBuffer(f);}}
+
+function detectAndParse(text,fn){
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+  if(lines[0].includes('サービス提供時間別'))parseJikanCSV(lines,fn);
+  else if(lines[0].includes('要介護度別'))parseKaidoCSV(lines,fn);
+  else alert('対応していないCSV形式です。');
+}
+
+function parseCSVLine(line){const r=[];let c='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch==='"'&&line[i+1]==='"'){c+='"';i++;}else if(ch==='"')q=false;else c+=ch;}else{if(ch==='"')q=true;else if(ch===','){r.push(c);c='';}else c+=ch;}}r.push(c);return r;}
+
+function parseJikanCSV(lines,fn){
+  const hc=parseCSVLine(lines[1]),mc=hc.slice(6);
+  const ym=lines[0].match(/(\d{4})年度/),fl=ym?ym[1]+'年度':fn;
+  for(let i=2;i<lines.length;i++){
+    const l=lines[i];if(l.startsWith('※')||l.startsWith('　'))continue;
+    const cols=parseCSVLine(l);if(cols.length<7)continue;
+    const[type,svc,,,,tr]=cols,vals=cols.slice(6).map(v=>parseInt(v)||0);
+    const isT=svc.startsWith('事業所合計'),is78=svc.includes('78'),isA6=svc.includes('A6'),is5=tr==='5時間未満合計';
+    if(!isT||!is5)continue;
+    mc.forEach((m,idx)=>{if(idx>=vals.length)return;const p=m.split('/'),y=parseInt(p[0]),mo=parseInt(p[1]),k=y+'/'+mo;
+      if(!kadoritsuStore[k])kadoritsuStore[k]={actual78:0,actualA6:0,planned78:0,plannedA6:0,yearMonth:{year:y,month:mo},label:y+'年'+mo+'月',csvType:'jikan',fiscalYear:fl};
+      const d=kadoritsuStore[k];
+      if(type==='実績'){if(is78)d.actual78+=vals[idx];else if(isA6)d.actualA6+=vals[idx];}
+      else if(type==='予定'){if(is78)d.planned78+=vals[idx];else if(isA6)d.plannedA6+=vals[idx];}
+    });
+  }
+  // 不明行
+  for(let i=2;i<lines.length;i++){const l=lines[i];if(l.startsWith('※')||l.startsWith('　'))continue;const cols=parseCSVLine(l);if(cols.length<7)continue;const[type,svc,,,,tr]=cols,vals=cols.slice(6).map(v=>parseInt(v)||0);if(!svc.startsWith('事業所合計')||tr!=='不明')continue;
+    mc.forEach((m,idx)=>{if(idx>=vals.length)return;const p=m.split('/'),k=parseInt(p[0])+'/'+parseInt(p[1]);if(!kadoritsuStore[k])return;if(type==='実績')kadoritsuStore[k].actualA6+=vals[idx];else if(type==='予定')kadoritsuStore[k].plannedA6+=vals[idx];});
+  }
+  saveKado();renderKadoritsuTab();alert('CSV（サービス提供時間別）を読み込みました');
+}
+
+function parseKaidoCSV(lines,fn){
+  const tm=lines[0].match(/令和(\d+)年(\d+)月/);if(!tm){alert('年月を読み取れませんでした');return;}
+  const y=2018+parseInt(tm[1]),m=parseInt(tm[2]),k=y+'/'+m;
+  const kd={actual:{total:{},insurers:[],genderRows:[]},planned:{total:{},insurers:[],genderRows:[]}};
+  for(let i=2;i<lines.length;i++){const l=lines[i];if(l.startsWith('※')||l.startsWith('　'))continue;const cols=parseCSVLine(l);if(cols.length<15)continue;
+    const[type,svc,,iNo,iName,gender,jt,y1,y2,k1,k2,k3,k4,k5,total]=cols;
+    const row={service:svc,insurerNo:iNo,insurerName:iName,gender,jigyoTaisho:parseInt(jt)||0,yoshien1:parseInt(y1)||0,yoshien2:parseInt(y2)||0,yokaigo1:parseInt(k1)||0,yokaigo2:parseInt(k2)||0,yokaigo3:parseInt(k3)||0,yokaigo4:parseInt(k4)||0,yokaigo5:parseInt(k5)||0,total:parseInt(total)||0};
+    const tgt=type==='実績'?kd.actual:type==='予定'?kd.planned:null;if(!tgt)continue;
+    if(svc==='事業所合計'){if(gender==='合計')tgt.total=row;else tgt.genderRows.push(row);}
+    else if(gender==='合計'&&iName!=='-')tgt.insurers.push(row);
+  }
+  if(!kadoritsuStore[k])kadoritsuStore[k]={actual78:0,actualA6:0,planned78:0,plannedA6:0,yearMonth:{year:y,month:m},label:y+'年'+m+'月',csvType:'kaido'};
+  const d=kadoritsuStore[k];d.csvType='kaido';d.kaigoData=kd;
+  d.actual78=kd.actual.total.total||0;d.actualA6=0;d.planned78=kd.planned.total.total||0;d.plannedA6=0;
+  d.actualTotalOverride=d.actual78;d.plannedTotalOverride=d.planned78;
+  saveKado();renderKadoritsuTab();alert('CSV（要介護度別 '+y+'年'+m+'月）を読み込みました');
+}
+
+function renderKadoritsuTab(){
+  const keys=sortedKeys(kadoritsuStore),res=document.getElementById('kadoritsuResult'),fl=document.getElementById('fileList');
+  fl.innerHTML='';const seen=new Set();
+  keys.forEach(k=>{const d=kadoritsuStore[k];const tl=d.fiscalYear?d.fiscalYear+'（時間別）':d.label+'（介護度別）';if(d.fiscalYear&&seen.has(d.fiscalYear))return;if(d.fiscalYear)seen.add(d.fiscalYear);
+    const t=document.createElement('span');t.className='file-tag';t.innerHTML=tl+' <span class="remove" data-type="'+d.csvType+'" data-fy="'+(d.fiscalYear||'')+'" data-key="'+k+'">&times;</span>';fl.appendChild(t);});
+  fl.querySelectorAll('.remove').forEach(el=>{el.addEventListener('click',()=>{if(!confirm('このデータを削除しますか？'))return;if(el.dataset.type==='jikan'&&el.dataset.fy)Object.keys(kadoritsuStore).forEach(k=>{if(kadoritsuStore[k].fiscalYear===el.dataset.fy&&kadoritsuStore[k].csvType==='jikan')delete kadoritsuStore[k];});else delete kadoritsuStore[el.dataset.key];saveKado();renderKadoritsuTab();});});
+  if(!keys.length){res.classList.add('hidden');return;}
+  res.classList.remove('hidden');
+  const cap=(parseInt(document.getElementById('capacity').value)||18)*(parseInt(document.getElementById('units').value)||2);
+  let html='<thead><tr><th>月</th><th>実績</th><th>予定</th><th>営業日数</th><th>最大枠</th><th>稼働率</th></tr></thead><tbody>';
+  keys.forEach(k=>{const d=kadoritsuStore[k],a=kadoritsuActual(d),p=d.plannedTotalOverride!==undefined?d.plannedTotalOverride:(d.planned78+d.plannedA6),bd=calcBusinessDays(d.yearMonth.year,d.yearMonth.month),mx=cap*bd,r=mx>0?(a/mx*100).toFixed(1):'-',cls=r!=='-'?(parseFloat(r)>=80?'text-ok':parseFloat(r)>=60?'text-warn':'text-danger'):'';
+    html+='<tr><td>'+d.label+'</td><td>'+a+'回</td><td>'+p+'回</td><td>'+bd+'日</td><td>'+mx+'回</td><td class="'+cls+'" style="font-weight:700">'+r+'%</td></tr>';});
+  html+='</tbody>';document.getElementById('kadoritsuTable').innerHTML=html;
+}
+
+['capacity','units'].forEach(id=>{document.getElementById(id).addEventListener('input',()=>renderKadoritsuTab());});
+document.getElementById('closedDay').addEventListener('change',()=>renderKadoritsuTab());
+
+// ===========================================
+// 給与PDF管理
+// ===========================================
+const salaryDrop = document.getElementById('salaryDropZone');
+const salaryFileInput = document.getElementById('salaryFileInput');
+salaryDrop.addEventListener('click', () => salaryFileInput.click());
+salaryDrop.addEventListener('dragover', e => { e.preventDefault(); salaryDrop.classList.add('drag-over'); });
+salaryDrop.addEventListener('dragleave', () => salaryDrop.classList.remove('drag-over'));
+salaryDrop.addEventListener('drop', e => { e.preventDefault(); salaryDrop.classList.remove('drag-over'); handleSalaryFile(e.dataTransfer.files[0]); });
+salaryFileInput.addEventListener('change', e => { if (e.target.files[0]) handleSalaryFile(e.target.files[0]); e.target.value = ''; });
+
+async function handleSalaryFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.pdf')) { alert('PDFファイルを選択してください'); return; }
+  const status = document.getElementById('salaryParseStatus');
+  status.innerHTML = '<span style="color:#0f766e;">読み込み中...</span>';
+  try {
+    const buf = await file.arrayBuffer();
+    const result = await parseSalaryPDF(buf);
+    showSalaryPreview(result);
+    status.innerHTML = '<span style="color:#16a34a;">✓ 読み取り完了 — 下の内容を確認して「保存」を押してください</span>';
+  } catch (err) {
+    status.innerHTML = '<span style="color:#dc2626;">読み取りエラー: ' + err.message + '</span>';
+    console.error('PDF parse error:', err);
+  }
+}
+
+async function parseSalaryPDF(arrayBuffer) {
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const allItems = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    for (const item of tc.items) {
+      const text = item.str.trim();
+      if (!text) continue;
+      allItems.push({
+        text,
+        x: Math.round(item.transform[4] * 10) / 10,
+        y: Math.round(item.transform[5] * 10) / 10,
+        w: item.width,
+        page: p
+      });
+    }
+  }
+
+  if (!allItems.length) throw new Error('PDFからテキストを読み取れませんでした');
+
+  // 年月を取得（「令和X年Y月分」）
+  const fullText = allItems.map(i => i.text).join('');
+  let year, month;
+  const rMatch = fullText.match(/令和(\d+)年(\d+)月分/);
+  if (rMatch) {
+    year = 2018 + parseInt(rMatch[1]);
+    month = parseInt(rMatch[2]);
+  }
+  if (!year || !month) {
+    const rMatch2 = fullText.match(/R(\d+)\.(\d+)\.\d+/);
+    if (rMatch2) { year = 2018 + parseInt(rMatch2[1]); month = parseInt(rMatch2[2]) - 1; }
+    if (month === 0) { month = 12; year--; }
+  }
+  if (!year || !month) throw new Error('年月を読み取れませんでした。「令和X年Y月分」の記載があるPDFを使用してください');
+
+  // Y座標でグループ化（同じ行のアイテムをまとめる）
+  const Y_TOL = 3;
+  allItems.sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+    return b.y - a.y;
+  });
+
+  const rows = [];
+  let curRow = { y: allItems[0].y, page: allItems[0].page, items: [allItems[0]] };
+  for (let i = 1; i < allItems.length; i++) {
+    const it = allItems[i];
+    if (it.page === curRow.page && Math.abs(it.y - curRow.y) <= Y_TOL) {
+      curRow.items.push(it);
+    } else {
+      curRow.items.sort((a, b) => a.x - b.x);
+      rows.push(curRow);
+      curRow = { y: it.y, page: it.page, items: [it] };
+    }
+  }
+  curRow.items.sort((a, b) => a.x - b.x);
+  rows.push(curRow);
+
+  // ラベル列のX範囲を特定（「氏名」「氏」を含む行から判断）
+  let nameRowIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const rowText = rows[i].items.map(it => it.text).join('');
+    if (rowText.includes('氏') && rowText.includes('名')) {
+      nameRowIdx = i;
+      break;
+    }
+  }
+  if (nameRowIdx < 0) throw new Error('「氏名」行が見つかりません');
+
+  const nameRow = rows[nameRowIdx];
+  // ラベル列は最も左のアイテム。それ以降がスタッフ名
+  let labelMaxX = 0;
+  const staffCols = [];
+
+  // 「氏」「名」が分かれている場合を考慮
+  let labelEndIdx = 0;
+  for (let i = 0; i < nameRow.items.length; i++) {
+    const t = nameRow.items[i].text;
+    if (t === '氏' || t === '名' || t === '氏名' || t === '氏　名') {
+      labelMaxX = Math.max(labelMaxX, nameRow.items[i].x + (nameRow.items[i].w || 20));
+      labelEndIdx = i;
+    }
+  }
+
+  // ラベル列以降のアイテムがスタッフ名
+  for (let i = labelEndIdx + 1; i < nameRow.items.length; i++) {
+    const t = nameRow.items[i].text;
+    if (t && t !== '名' && t.length > 0) {
+      staffCols.push({ name: t, x: nameRow.items[i].x });
+    }
+  }
+
+  if (!staffCols.length) throw new Error('スタッフ名を読み取れませんでした');
+
+  // 各行のラベルとデータを抽出
+  const LABEL_X_THRESHOLD = labelMaxX + 30; // ラベル列の右端
+
+  function getRowLabel(row) {
+    // 最初のスタッフ列の手前までをラベル領域とする（長いラベル「処遇改善手当」等に対応）
+    const labelBoundary = staffCols.length > 0 ? Math.max(LABEL_X_THRESHOLD, staffCols[0].x - 10) : LABEL_X_THRESHOLD;
+    return row.items.filter(it => it.x < labelBoundary).map(it => it.text).join('').replace(/\s/g, '');
+  }
+
+  function getValuesForRow(row) {
+    const dataItems = row.items.filter(it => it.x >= LABEL_X_THRESHOLD);
+    const vals = [];
+    for (const col of staffCols) {
+      let best = null, bestDist = Infinity;
+      for (const it of dataItems) {
+        const dist = Math.abs(it.x - col.x);
+        if (dist < bestDist) { bestDist = dist; best = it; }
+      }
+      // 同じアイテムが複数カラムに割り当てられないよう距離制限
+      const colSpacing = staffCols.length > 1 ? Math.abs(staffCols[1].x - staffCols[0].x) : 100;
+      const maxDist = colSpacing * 0.6;
+      vals.push(best && bestDist < maxDist ? best.text : '');
+    }
+    return vals;
+  }
+
+  function parseNum(s) {
+    if (!s) return 0;
+    return parseInt(s.replace(/[,，\s]/g, '')) || 0;
+  }
+
+  // 抽出対象のラベルマッピング
+  const FIELDS = {
+    '基本給': 'basicPay',
+    '処遇改善手当': 'shoguuTeate',
+    '資格手当': 'shikakuTeate',
+    '役員報酬': 'yakuinHoshu',
+    '残業手当': 'zangyoTeate',
+    '総支給額': 'totalPay',
+    '差引支給額': 'netPay',
+    '健康保険': 'kenkoHoken',
+    '介護保険': 'kaigoHoken',
+    '厚生年金': 'koseiNenkin',
+    '雇用保険': 'koyoHoken',
+    '社会保険計': 'shakaihokenTotal',
+    '源泉所得税': 'gensenZei',
+    '住民税': 'juminZei',
+  };
+
+  // 初期化
+  const staffData = staffCols.map(col => ({ name: col.name }));
+
+  // 各行を走査
+  const _debugLabels = [];
+  for (const row of rows) {
+    const label = getRowLabel(row);
+    // 行全体のテキストも取得（PDFの文字化け対策：ラベル領域だけでは文字が欠けることがある）
+    const fullRowText = row.items.map(it => it.text).join('').replace(/\s/g, '');
+    if (!label && !fullRowText) continue;
+    _debugLabels.push(label);
+
+    for (const [key, field] of Object.entries(FIELDS)) {
+      if (label.includes(key) || fullRowText.includes(key)) {
+        // 「基本給」が2回出る可能性（支給欄と参照欄）→ 最初のみ
+        if (staffData[0][field] !== undefined) continue;
+        const vals = getValuesForRow(row);
+        vals.forEach((v, idx) => {
+          if (idx < staffData.length) staffData[idx][field] = parseNum(v);
+        });
+        break;
+      }
+    }
+  }
+
+  // デバッグ: 読み取ったラベル一覧を保存（プレビューで表示する）
+  window._salaryDebugLabels = _debugLabels;
+  window._salaryDebugThreshold = LABEL_X_THRESHOLD;
+  window._salaryDebugFirstStaffX = staffCols.length > 0 ? staffCols[0].x : 0;
+
+  // フォールバック: 処遇改善手当がPDF文字化けで見つからない場合の特別処理
+  if (staffData[0].shoguuTeate === undefined) {
+    const keyChars = ['処', '改', '善', '手', '当'];
+    for (const row of rows) {
+      const rowText = row.items.map(it => it.text).join('').replace(/\s/g, '');
+      const matchCount = keyChars.filter(ch => rowText.includes(ch)).length;
+      if (matchCount >= 4) {
+        // 既に別のフィールドとして取得済みの行はスキップ
+        const label = getRowLabel(row);
+        let alreadyUsed = false;
+        for (const [k2, f2] of Object.entries(FIELDS)) {
+          if (f2 !== 'shoguuTeate' && staffData[0][f2] !== undefined && (label.includes(k2) || rowText.includes(k2))) {
+            alreadyUsed = true; break;
+          }
+        }
+        if (alreadyUsed) continue;
+        const vals = getValuesForRow(row);
+        vals.forEach((v, idx) => {
+          if (idx < staffData.length) staffData[idx].shoguuTeate = parseNum(v);
+        });
+        break;
+      }
+    }
+  }
+
+  // 合計行を探す（最後のスタッフが「合計」かどうか）
+  const lastStaff = staffData[staffData.length - 1];
+  let totalRow = null;
+  if (lastStaff.name === '合計' || lastStaff.name === '計') {
+    totalRow = staffData.pop();
+    staffCols.pop();
+  }
+
+  const totalPay = totalRow ? (totalRow.totalPay || 0) : staffData.reduce((s, d) => s + (d.totalPay || 0), 0);
+  const totalShoguuTeate = totalRow ? (totalRow.shoguuTeate || 0) : staffData.reduce((s, d) => s + (d.shoguuTeate || 0), 0);
+
+  return {
+    year, month,
+    staff: staffData,
+    totalPay,
+    totalShoguuTeate,
+    staffCount: staffData.length
+  };
+}
+
+function showSalaryPreview(result) {
+  const el = document.getElementById('salaryPreview');
+  el.classList.remove('hidden');
+
+  let html = '<div class="parse-preview">';
+  html += '<h3 style="margin-bottom:12px;color:#0f766e;">' + result.year + '年' + result.month + '月分（' + result.staffCount + '名）</h3>';
+
+  // スタッフ一覧テーブル
+  html += '<table class="salary-table"><thead><tr><th>氏名</th><th>基本給</th><th>処遇改善手当</th><th>総支給額</th></tr></thead><tbody>';
+  for (const s of result.staff) {
+    html += '<tr><td>' + s.name + '</td><td>' + fmtYen(s.basicPay) + '</td><td>' + fmtYen(s.shoguuTeate) + '</td><td style="font-weight:600">' + fmtYen(s.totalPay) + '</td></tr>';
+  }
+  html += '<tr class="row-total"><td>合計</td><td></td><td>' + fmtYen(result.totalShoguuTeate) + '</td><td>' + fmtYen(result.totalPay) + '</td></tr>';
+  html += '</tbody></table>';
+
+  // デバッグ情報表示
+  if (window._salaryDebugLabels) {
+    html += '<details style="margin-top:12px;"><summary style="font-size:12px;color:#64748b;cursor:pointer;">デバッグ: 読み取ったラベル一覧</summary>';
+    html += '<div style="font-size:11px;background:#f8fafc;padding:8px;border-radius:4px;margin-top:4px;max-height:200px;overflow-y:auto;">';
+    html += '<p>ラベル境界X: ' + (window._salaryDebugThreshold||0).toFixed(0) + ' / 最初のスタッフX: ' + (window._salaryDebugFirstStaffX||0).toFixed(0) + '</p>';
+    html += window._salaryDebugLabels.map(l => '<div>' + l + '</div>').join('');
+    html += '</div></details>';
+  }
+
+  // 扶養内スタッフ選択
+  html += '<div style="margin-top:16px;"><h3 style="margin-bottom:8px;">扶養内チェック対象のスタッフを選択:</h3>';
+  for (const s of result.staff) {
+    const checked = fuyouStaffList.includes(s.name) ? 'checked' : '';
+    html += '<label class="parse-staff"><input type="checkbox" value="' + s.name + '" ' + checked + ' class="fuyouCheck">' + s.name + '</label>';
+  }
+  html += '</div>';
+
+  html += '<div class="btn-group" style="margin-top:16px;">';
+  html += '<button class="btn btn-primary" id="btnSaveSalary">この月のデータを保存</button>';
+
+  const key = result.year + '/' + result.month;
+  if (salaryStore[key]) {
+    html += '<span style="color:#ca8a04;font-size:13px;margin-left:8px;">※ ' + result.year + '年' + result.month + '月のデータは既に存在します。保存すると上書きされます。</span>';
+  }
+
+  html += '</div></div>';
+  el.innerHTML = html;
+
+  // 保存ボタン
+  document.getElementById('btnSaveSalary').addEventListener('click', () => {
+    // 扶養内リスト更新
+    fuyouStaffList = [...document.querySelectorAll('.fuyouCheck:checked')].map(cb => cb.value);
+    saveFuyou();
+
+    // 給与データ保存
+    salaryStore[key] = {
+      yearMonth: { year: result.year, month: result.month },
+      staff: result.staff,
+      totalPay: result.totalPay,
+      totalShoguuTeate: result.totalShoguuTeate
+    };
+    saveSalary();
+
+    // ダッシュボードの人件費・処遇改善に自動連携
+    syncSalaryToDashboard(key);
+
+    el.classList.add('hidden');
+    document.getElementById('salaryParseStatus').innerHTML = '<span style="color:#16a34a;">✓ ' + result.year + '年' + result.month + '月のデータを保存しました（人件費・処遇改善もダッシュボードに反映済み）</span>';
+    renderSalaryTab();
+  });
+}
+
+function syncSalaryToDashboard(key) {
+  const sal = salaryStore[key];
+  if (!sal) return;
+  const dk = toKey(sal.yearMonth.year, sal.yearMonth.month);
+  if (!dashStore[dk]) {
+    dashStore[dk] = { yearMonth: sal.yearMonth, kokuhoren: 0, riyosha: 0, mishukin: 0, jinkenhi: 0, sonota: 0, shoguuIn: 0, shoguuOut: 0, shinki: 0, shuryo: 0, cancel: 0, henrei: 0 };
+  }
+  dashStore[dk].jinkenhi = sal.totalPay;
+  // 処遇改善支給額 = 月次の処遇改善手当 + 同月の処遇賞与
+  const bonusAmount = getBonusForMonth(sal.yearMonth.year, sal.yearMonth.month);
+  dashStore[dk].shoguuOut = sal.totalShoguuTeate + bonusAmount;
+  saveDash();
+}
+
+// 指定月の処遇賞与合計を取得
+function getBonusForMonth(year, month) {
+  let total = 0;
+  for (const k of Object.keys(bonusStore)) {
+    const b = bonusStore[k];
+    if (b.yearMonth.year === year && b.yearMonth.month === month) {
+      total += b.totalAmount;
+    }
+  }
+  return total;
+}
+
+function renderSalaryTab() {
+  renderSalaryDataList();
+  renderFuyouCheck();
+  renderShoguuTeateChart();
+}
+
+function renderSalaryDataList() {
+  const el = document.getElementById('salaryDataList');
+  const keys = Object.keys(salaryStore).sort((a,b)=>{const [ay,am]=a.split('/').map(Number),[by,bm]=b.split('/').map(Number);return ay-by||am-bm;});
+  if (!keys.length) { el.innerHTML = 'データなし'; return; }
+
+  let html = '<table class="salary-table"><thead><tr><th>年月</th><th>人数</th><th>総支給額合計</th><th>処遇改善手当合計</th><th>操作</th></tr></thead><tbody>';
+  for (const k of keys) {
+    const d = salaryStore[k];
+    html += '<tr><td>' + d.yearMonth.year + '年' + d.yearMonth.month + '月</td>';
+    html += '<td>' + d.staff.length + '名</td>';
+    html += '<td style="font-weight:600">' + fmtYen(d.totalPay) + '円</td>';
+    html += '<td>' + fmtYen(d.totalShoguuTeate) + '円</td>';
+    html += '<td><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" data-delkey="' + k + '">削除</button></td></tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-delkey]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!confirm(btn.dataset.delkey.replace('/', '年') + '月の給与データを削除しますか？')) return;
+      delete salaryStore[btn.dataset.delkey];
+      saveSalary();
+      renderSalaryTab();
+      updateStorageStatus();
+    });
+  });
+}
+
+function renderFuyouCheck() {
+  const el = document.getElementById('fuyouCheckArea');
+  const fySel = document.getElementById('fuyouFiscalYear');
+
+  // 暦年セレクタ更新（扶養は1月〜12月の暦年で判定）
+  const salKeys = Object.keys(salaryStore);
+  if (!salKeys.length) { el.innerHTML = '給与PDFを読み込むとここに表示されます'; return; }
+
+  const yearSet = new Set();
+  salKeys.forEach(k => { const p = parseKey(k); yearSet.add(p.year); });
+  const now = new Date();
+  yearSet.add(now.getFullYear());
+  const yearList = [...yearSet].sort();
+  const curYear = fySel.value ? parseInt(fySel.value) : yearList[yearList.length - 1];
+  fySel.innerHTML = yearList.map(y => '<option value="' + y + '" ' + (y === curYear ? 'selected' : '') + '>' + y + '年</option>').join('');
+  const fy = parseInt(fySel.value) || curYear;
+
+  // 全スタッフ名を収集
+  const allStaff = new Set();
+  salKeys.forEach(k => salaryStore[k].staff.forEach(s => allStaff.add(s.name)));
+
+  // 扶養内スタッフのみ表示（未設定なら全員表示）
+  const targetStaff = fuyouStaffList.length ? fuyouStaffList.filter(n => allStaff.has(n)) : [...allStaff];
+  if (!targetStaff.length) {
+    el.innerHTML = '<p>扶養内チェック対象のスタッフが設定されていません。<br>給与PDFを読み込む際に対象スタッフを選択してください。</p>';
+    return;
+  }
+
+  const LIMIT = 1300000;
+  const months = [];
+  for (let m = 1; m <= 12; m++) months.push({ year: fy, month: m });
+  let html = '';
+
+  for (const name of targetStaff) {
+    let cumulative = 0;
+    const monthlyData = [];
+    for (const fm of months) {
+      const k = toKey(fm.year, fm.month);
+      const sal = salaryStore[k];
+      let pay = 0;
+      if (sal) {
+        const s = sal.staff.find(st => st.name === name);
+        if (s) pay = s.totalPay || 0;
+      }
+      cumulative += pay;
+      monthlyData.push({ month: fm.month, pay, cumulative });
+    }
+
+    const pct = Math.min((cumulative / LIMIT) * 100, 100);
+    const cls = pct >= 90 ? 'fuyou-danger' : pct >= 70 ? 'fuyou-warn' : 'fuyou-ok';
+    const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#eab308' : '#22c55e';
+    const remaining = LIMIT - cumulative;
+
+    html += '<div class="fuyou-card ' + cls + '">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+    html += '<span style="font-weight:600;font-size:15px;">' + name + '</span>';
+    html += '<span style="font-size:14px;font-weight:600;">' + fmtYen(cumulative) + '円 / 130万円</span>';
+    html += '</div>';
+    html += '<div class="fuyou-bar"><div class="fuyou-bar-fill" style="width:' + pct + '%;background:' + barColor + ';"></div>';
+    html += '<div class="fuyou-bar-text">' + pct.toFixed(0) + '%</div></div>';
+    html += '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:#64748b;">';
+    html += '<span>残り: ' + fmtYen(remaining) + '円</span>';
+
+    // 月平均で推定
+    const dataMonths = monthlyData.filter(m => m.pay > 0);
+    if (dataMonths.length > 0 && cumulative < LIMIT) {
+      const avgPay = cumulative / dataMonths.length;
+      const remainingMonths = Math.floor(remaining / avgPay);
+      html += '<span>月平均 ' + fmtYen(Math.round(avgPay)) + '円 → あと約' + remainingMonths + 'ヶ月で到達</span>';
+    } else if (cumulative >= LIMIT) {
+      html += '<span style="color:#dc2626;font-weight:600;">130万円を超過しています！</span>';
+    }
+    html += '</div>';
+
+    // 月別内訳（折りたたみ）
+    html += '<details style="margin-top:8px;"><summary style="font-size:12px;color:#64748b;cursor:pointer;">月別内訳</summary>';
+    html += '<table class="salary-table" style="font-size:12px;margin-top:4px;"><thead><tr><th>月</th><th>支給額</th><th>累計</th></tr></thead><tbody>';
+    for (const md of monthlyData) {
+      if (md.pay > 0 || md.cumulative > 0) {
+        html += '<tr><td>' + md.month + '月</td><td>' + fmtYen(md.pay) + '</td><td style="font-weight:600">' + fmtYen(md.cumulative) + '</td></tr>';
+      }
+    }
+    html += '</tbody></table></details>';
+    html += '</div>';
+  }
+
+  // 扶養内スタッフ編集ボタン
+  html += '<div style="margin-top:12px;"><details><summary style="font-size:13px;color:#64748b;cursor:pointer;">扶養内チェック対象の変更</summary>';
+  html += '<div style="margin-top:8px;">';
+  for (const name of allStaff) {
+    const checked = fuyouStaffList.includes(name) ? 'checked' : '';
+    html += '<label style="display:inline-block;margin:4px 8px;font-size:13px;"><input type="checkbox" class="fuyouEdit" value="' + name + '" ' + checked + '> ' + name + '</label>';
+  }
+  html += '<br><button class="btn btn-primary" style="margin-top:8px;padding:4px 14px;font-size:13px;" id="btnUpdateFuyou">更新</button>';
+  html += '</div></details></div>';
+
+  el.innerHTML = html;
+
+  const updateBtn = document.getElementById('btnUpdateFuyou');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', () => {
+      fuyouStaffList = [...document.querySelectorAll('.fuyouEdit:checked')].map(cb => cb.value);
+      saveFuyou();
+      renderFuyouCheck();
+    });
+  }
+}
+
+document.getElementById('fuyouFiscalYear').addEventListener('change', renderFuyouCheck);
+
+function renderShoguuTeateChart() {
+  const keys = Object.keys(salaryStore).sort((a,b)=>{const [ay,am]=a.split('/').map(Number),[by,bm]=b.split('/').map(Number);return ay-by||am-bm;});
+  if (!keys.length) return;
+
+  const labels = [], amounts = [], cumAmounts = [];
+  let cum = 0;
+  let html = '<table class="salary-table" style="margin-top:12px;"><thead><tr><th>月</th><th>処遇改善手当合計</th><th>累計</th><th>スタッフ内訳</th></tr></thead><tbody>';
+
+  for (const k of keys) {
+    const d = salaryStore[k];
+    labels.push(d.yearMonth.month + '月');
+    amounts.push(d.totalShoguuTeate);
+    cum += d.totalShoguuTeate;
+    cumAmounts.push(cum);
+
+    const breakdown = d.staff.filter(s => (s.shoguuTeate || 0) > 0).map(s => s.name + ': ' + fmtYen(s.shoguuTeate)).join(', ');
+    html += '<tr><td>' + d.yearMonth.year + '年' + d.yearMonth.month + '月</td>';
+    html += '<td>' + fmtYen(d.totalShoguuTeate) + '円</td>';
+    html += '<td style="font-weight:600">' + fmtYen(cum) + '円</td>';
+    html += '<td style="font-size:11px;color:#64748b;">' + (breakdown || '-') + '</td></tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('shoguuTeateDetail').innerHTML = html;
+
+  // グラフ
+  if (chartShoguuTeate) chartShoguuTeate.destroy();
+  chartShoguuTeate = new Chart(document.getElementById('chartShoguuTeate'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '処遇改善手当', data: amounts, backgroundColor: '#8b5cf688', borderColor: '#8b5cf6', borderWidth: 1, order: 2 },
+        { type: 'line', label: '累計', data: cumAmounts, borderColor: '#0f766e', backgroundColor: '#0f766e22', tension: .3, pointRadius: 5, pointBackgroundColor: '#0f766e', fill: true, order: 1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtYen(c.raw) + '円' } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => (v / 10000).toFixed(0) + '万' } } }
+    }
+  });
+}
+
+// ===========================================
+// 国保連通知PDF管理
+// ===========================================
+const kokuhoDropZone = document.getElementById('kokuhoDropZone');
+const kokuhoFileInput = document.getElementById('kokuhoFileInput');
+kokuhoDropZone.addEventListener('click', () => kokuhoFileInput.click());
+kokuhoDropZone.addEventListener('dragover', e => { e.preventDefault(); kokuhoDropZone.classList.add('drag-over'); });
+kokuhoDropZone.addEventListener('dragleave', () => kokuhoDropZone.classList.remove('drag-over'));
+kokuhoDropZone.addEventListener('drop', e => { e.preventDefault(); kokuhoDropZone.classList.remove('drag-over'); handleKokuhoFiles(e.dataTransfer.files); });
+kokuhoFileInput.addEventListener('change', e => { if (e.target.files.length) handleKokuhoFiles(e.target.files); e.target.value = ''; });
+
+async function handleKokuhoFiles(files) {
+  const status = document.getElementById('kokuhoParseStatus');
+  const results = [];
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) continue;
+    status.innerHTML = '<span style="color:#0f766e;">読み込み中: ' + file.name + '...</span>';
+    try {
+      const buf = await file.arrayBuffer();
+      const result = await parseKokuhoPDF(buf);
+      result.fileName = file.name;
+      results.push(result);
+    } catch (err) {
+      status.innerHTML = '<span style="color:#dc2626;">読み取りエラー (' + file.name + '): ' + err.message + '</span>';
+      console.error('Kokuho PDF parse error:', err);
+      return;
+    }
+  }
+  if (!results.length) { status.innerHTML = '<span style="color:#dc2626;">PDFファイルが見つかりません</span>'; return; }
+  showKokuhoPreview(results);
+  status.innerHTML = '<span style="color:#16a34a;">読み取り完了 — 下の内容を確認して「ダッシュボードに反映」を押してください</span>';
+}
+
+async function parseKokuhoPDF(arrayBuffer) {
+  const pdf = await pdfjsLib.getDocument({
+    data: arrayBuffer,
+    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+    cMapPacked: true
+  }).promise;
+  const allItems = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    for (const item of tc.items) {
+      const text = item.str.trim();
+      if (!text) continue;
+      allItems.push({ text, x: Math.round(item.transform[4]), y: Math.round(item.transform[5]) });
+    }
+  }
+
+  if (!allItems.length) throw new Error('PDFからテキストを読み取れませんでした');
+
+  // Y座標でグループ化（近い座標をまとめる）
+  const rows = {};
+  allItems.forEach(it => {
+    const yk = Math.round(it.y / 3) * 3;
+    if (!rows[yk]) rows[yk] = [];
+    rows[yk].push(it);
+  });
+
+  // 各行のテキストをまとめる
+  const lines = {};
+  Object.keys(rows).forEach(y => {
+    lines[y] = rows[y].sort((a, b) => a.x - b.x).map(c => c.text).join(' ');
+  });
+
+  // 審査年月を取得
+  let year = null, month = null;
+  for (const y in lines) {
+    const m = lines[y].match(/令和\s*(\d+)\s*年\s*(\d+)\s*月\s*審査分/);
+    if (m) {
+      year = parseInt(m[1]) + 2018; // 令和→西暦
+      month = parseInt(m[2]);
+      break;
+    }
+  }
+  if (!year || !month) throw new Error('審査年月が見つかりません');
+
+  // 金額を取得する関数
+  function findAmount(keyword) {
+    for (const y in lines) {
+      const line = lines[y];
+      if (line.includes(keyword)) {
+        const nums = line.match(/[\d,]+/g);
+        if (nums) {
+          // 最後の数値（金額は右端に配置されるため）
+          const val = parseInt(nums[nums.length - 1].replace(/,/g, ''));
+          if (!isNaN(val)) return val;
+        }
+      }
+    }
+    return 0;
+  }
+
+  const totalAmount = findAmount('介護給付費等合計');
+  const kaigoAmount = findAmount('介護給付費支払額');
+  const sougouAmount = findAmount('総合事業費支払額');
+
+  // 合計金額（金額行からも取得して検証）
+  const headerAmount = findAmount('金額');
+
+  // 事業所番号の検証
+  let jigyosho = '';
+  for (const y in lines) {
+    const m = lines[y].match(/事業所番号\s*(\d{10})/);
+    if (m) { jigyosho = m[1]; break; }
+  }
+
+  // 振込日を取得
+  let payDate = '';
+  for (const y in lines) {
+    const m = lines[y].match(/令和\s*(\d+)\s*年\s*(\d+)\s*月\s*(\d+)\s*日/);
+    if (m && !lines[y].includes('審査分')) {
+      payDate = (parseInt(m[1]) + 2018) + '年' + m[2] + '月' + m[3] + '日';
+      break;
+    }
+  }
+
+  return { year, month, totalAmount, kaigoAmount, sougouAmount, headerAmount, jigyosho, payDate };
+}
+
+function showKokuhoPreview(results) {
+  const el = document.getElementById('kokuhoPreview');
+  let html = '<div style="margin-top:16px;">';
+
+  for (const r of results) {
+    const warn = r.jigyosho && r.jigyosho !== '1173300995' ? '<div style="color:#dc2626;font-weight:600;margin:8px 0;">⚠ 事業所番号が一致しません（' + r.jigyosho + '）</div>' : '';
+    const amountCheck = r.totalAmount === r.headerAmount ? '✓ 一致' : '⚠ 不一致';
+
+    html += '<div class="form-section sec-sales" style="margin-bottom:12px;">';
+    html += '<h3>' + r.year + '年' + r.month + '月審査分' + (r.payDate ? '（振込日: ' + r.payDate + '）' : '') + '</h3>';
+    html += warn;
+    html += '<table style="font-size:14px;width:100%;">';
+    html += '<tr><td style="text-align:left;padding:6px 8px;">介護給付費支払額</td><td style="text-align:right;padding:6px 8px;font-weight:600;">' + fmtYen(r.kaigoAmount) + '円</td></tr>';
+    html += '<tr><td style="text-align:left;padding:6px 8px;">総合事業費支払額</td><td style="text-align:right;padding:6px 8px;font-weight:600;">' + fmtYen(r.sougouAmount) + '円</td></tr>';
+    html += '<tr style="border-top:2px solid #22c55e;"><td style="text-align:left;padding:6px 8px;font-weight:700;">合計（国保連入金額）</td><td style="text-align:right;padding:6px 8px;font-weight:700;font-size:18px;color:#15803d;">' + fmtYen(r.totalAmount) + '円</td></tr>';
+    html += '</table>';
+
+    // 既存データとの比較
+    const dk = toKey(r.year, r.month);
+    const existing = dashStore[dk];
+    if (existing && existing.kokuhoren > 0) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fff7ed;border-radius:6px;font-size:13px;color:#ca8a04;">';
+      html += '※ ' + r.year + '年' + r.month + '月は既に国保連請求額 ' + fmtYen(existing.kokuhoren) + '円 が入力されています。上書きされます。';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '<div class="btn-group" style="margin-top:16px;">';
+  html += '<button class="btn btn-primary" id="btnKokuhoSave">ダッシュボードに反映</button>';
+  html += '<button class="btn btn-secondary" id="btnKokuhoCancel">キャンセル</button>';
+  html += '</div></div>';
+
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+
+  document.getElementById('btnKokuhoSave').addEventListener('click', () => {
+    for (const r of results) {
+      const key = toKey(r.year, r.month);
+      // 国保連通知ストアに保存
+      kokuhoStore[key] = {
+        yearMonth: { year: r.year, month: r.month },
+        totalAmount: r.totalAmount,
+        kaigoAmount: r.kaigoAmount,
+        sougouAmount: r.sougouAmount,
+        payDate: r.payDate,
+        jigyosho: r.jigyosho,
+        savedAt: new Date().toISOString()
+      };
+      // ダッシュボードに反映
+      syncKokuhoToDashboard(key);
+    }
+    saveKokuho();
+    el.classList.add('hidden');
+    const months = results.map(r => r.year + '年' + r.month + '月').join('、');
+    document.getElementById('kokuhoParseStatus').innerHTML = '<span style="color:#16a34a;">✓ ' + months + ' のデータを保存しました（国保連請求額もダッシュボードに反映済み）</span>';
+    renderKokuhoTab();
+    updateStorageStatus();
+  });
+
+  document.getElementById('btnKokuhoCancel').addEventListener('click', () => {
+    el.classList.add('hidden');
+    document.getElementById('kokuhoParseStatus').innerHTML = '';
+  });
+}
+
+function syncKokuhoToDashboard(key) {
+  const kd = kokuhoStore[key];
+  if (!kd) return;
+  const dk = toKey(kd.yearMonth.year, kd.yearMonth.month);
+  if (!dashStore[dk]) {
+    dashStore[dk] = { yearMonth: kd.yearMonth, kokuhoren: 0, riyosha: 0, mishukin: 0, jinkenhi: 0, sonota: 0, shoguuIn: 0, shoguuOut: 0, shinki: 0, shuryo: 0, cancel: 0, henrei: 0 };
+  }
+  dashStore[dk].kokuhoren = kd.totalAmount;
+  saveDash();
+}
+
+function renderKokuhoTab() {
+  const el = document.getElementById('kokuhoDataList');
+  const keys = Object.keys(kokuhoStore).sort((a,b)=>{const [ay,am]=a.split('/').map(Number),[by,bm]=b.split('/').map(Number);return ay-by||am-bm;});
+  if (!keys.length) { el.innerHTML = 'データなし'; return; }
+
+  let html = '<table><thead><tr><th style="text-align:left;">審査年月</th><th>介護給付費</th><th>総合事業費</th><th>合計（入金額）</th><th>振込日</th><th>操作</th></tr></thead><tbody>';
+  for (const k of keys) {
+    const d = kokuhoStore[k];
+    html += '<tr>';
+    html += '<td style="text-align:left;font-weight:600;">' + d.yearMonth.year + '年' + d.yearMonth.month + '月</td>';
+    html += '<td>' + fmtYen(d.kaigoAmount) + '円</td>';
+    html += '<td>' + fmtYen(d.sougouAmount) + '円</td>';
+    html += '<td style="font-weight:700;color:#15803d;">' + fmtYen(d.totalAmount) + '円</td>';
+    html += '<td>' + (d.payDate || '-') + '</td>';
+    html += '<td><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" data-kokuho-del="' + k + '">削除</button></td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-kokuho-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.kokuhoDel;
+      const d = kokuhoStore[key];
+      if (!confirm(d.yearMonth.year + '年' + d.yearMonth.month + '月のデータを削除しますか？')) return;
+      delete kokuhoStore[key];
+      saveKokuho();
+      renderKokuhoTab();
+      updateStorageStatus();
+    });
+  });
+}
+
+// ===========================================
+// 処遇賞与PDF読み込み
+// ===========================================
+const bonusDrop = document.getElementById('bonusDropZone');
+const bonusFileInput = document.getElementById('bonusFileInput');
+bonusDrop.addEventListener('click', () => bonusFileInput.click());
+bonusDrop.addEventListener('dragover', e => { e.preventDefault(); bonusDrop.classList.add('drag-over'); });
+bonusDrop.addEventListener('dragleave', () => bonusDrop.classList.remove('drag-over'));
+bonusDrop.addEventListener('drop', e => { e.preventDefault(); bonusDrop.classList.remove('drag-over'); handleBonusFile(e.dataTransfer.files[0]); });
+bonusFileInput.addEventListener('change', e => { if (e.target.files[0]) handleBonusFile(e.target.files[0]); e.target.value = ''; });
+
+async function handleBonusFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.pdf')) { alert('PDFファイルを選択してください'); return; }
+  const status = document.getElementById('bonusParseStatus');
+  status.innerHTML = '<span style="color:#0f766e;">読み込み中...</span>';
+  try {
+    const buf = await file.arrayBuffer();
+    const result = await parseBonusPDF(buf, file.name);
+    showBonusPreview(result);
+    status.innerHTML = '<span style="color:#16a34a;">✓ 読み取り完了 — 下の内容を確認して「保存」を押してください</span>';
+  } catch (err) {
+    status.innerHTML = '<span style="color:#dc2626;">読み取りエラー: ' + err.message + '</span>';
+    console.error('Bonus PDF parse error:', err);
+  }
+}
+
+async function parseBonusPDF(arrayBuffer, fileName) {
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const allItems = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    for (const item of tc.items) {
+      const text = item.str.trim();
+      if (!text) continue;
+      allItems.push({
+        text,
+        x: Math.round(item.transform[4] * 10) / 10,
+        y: Math.round(item.transform[5] * 10) / 10,
+        w: item.width,
+        page: p
+      });
+    }
+  }
+
+  if (!allItems.length) throw new Error('PDFからテキストを読み取れませんでした');
+
+  const fullText = allItems.map(i => i.text).join('');
+
+  // 年月を取得
+  let year, month;
+  const rMatch = fullText.match(/(\d{4})年(\d+)月度?/);
+  if (rMatch) { year = parseInt(rMatch[1]); month = parseInt(rMatch[2]); }
+  if (!year) {
+    const rMatch2 = fullText.match(/令和(\d+)年(\d+)月/);
+    if (rMatch2) { year = 2018 + parseInt(rMatch2[1]); month = parseInt(rMatch2[2]); }
+  }
+  // ファイル名からフォールバック
+  if (!year && fileName) {
+    const fm = fileName.match(/(\d{4})年(\d+)月/);
+    if (fm) { year = parseInt(fm[1]); month = parseInt(fm[2]); }
+  }
+  if (!year || !month) throw new Error('年月を読み取れませんでした');
+
+  // Y座標でグループ化
+  const Y_TOL = 3;
+  allItems.sort((a, b) => { if (a.page !== b.page) return a.page - b.page; return b.y - a.y; });
+  const rows = [];
+  let curRow = { y: allItems[0].y, page: allItems[0].page, items: [allItems[0]] };
+  for (let i = 1; i < allItems.length; i++) {
+    const it = allItems[i];
+    if (it.page === curRow.page && Math.abs(it.y - curRow.y) <= Y_TOL) {
+      curRow.items.push(it);
+    } else {
+      curRow.items.sort((a, b) => a.x - b.x);
+      rows.push(curRow);
+      curRow = { y: it.y, page: it.page, items: [it] };
+    }
+  }
+  curRow.items.sort((a, b) => a.x - b.x);
+  rows.push(curRow);
+
+  // 各行のテキストを結合して検索
+  function rt(row) { return row.items.map(it => it.text).join(''); }
+  function parseNum(s) { return s ? (parseInt(s.replace(/[,，\s]/g, '')) || 0) : 0; }
+  function rowNums(row) {
+    const nums = [];
+    for (const it of row.items) { const n = parseNum(it.text); if (n > 0) nums.push(n); }
+    return nums;
+  }
+
+  // 処遇賞与額と総支給額を探す
+  let bonusAmount = 0, totalPay = 0, staffCount = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const text = rt(rows[i]);
+
+    // 処遇改善賞与の金額
+    if (text.includes('処遇') && text.includes('賞与') && !text.includes('支給控除') && !text.includes('一覧')) {
+      let nums = rowNums(rows[i]);
+      if (nums.length > 0) {
+        bonusAmount = nums[nums.length - 1];
+      } else if (i + 1 < rows.length) {
+        nums = rowNums(rows[i + 1]);
+        if (nums.length > 0) bonusAmount = nums[nums.length - 1];
+      }
+    }
+
+    // 総支給額（1文字ずつバラバラの場合も対応）
+    if (text.includes('総') && text.includes('給') && text.includes('額')) {
+      let nums = rowNums(rows[i]);
+      if (nums.length > 0) {
+        totalPay = nums[nums.length - 1];
+      } else if (i + 1 < rows.length) {
+        nums = rowNums(rows[i + 1]);
+        if (nums.length > 0) totalPay = nums[nums.length - 1];
+      }
+    }
+
+    // 支給人数
+    if (text.includes('支給人数')) {
+      const m = text.match(/(\d+)\s*名/);
+      if (m) staffCount = parseInt(m[1]);
+    }
+  }
+
+  if (!bonusAmount && totalPay) bonusAmount = totalPay;
+  if (!totalPay && bonusAmount) totalPay = bonusAmount;
+  if (!totalPay) throw new Error('金額を読み取れませんでした');
+
+  return { year, month, staff: [], totalAmount: totalPay, bonusAmount, staffCount: staffCount || 1 };
+}
+
+function showBonusPreview(result) {
+  const el = document.getElementById('bonusPreview');
+  el.classList.remove('hidden');
+
+  let html = '<div class="parse-preview">';
+  html += '<h3 style="margin-bottom:12px;color:#7c3aed;">' + result.year + '年' + result.month + '月度 処遇賞与（' + result.staffCount + '名）</h3>';
+
+  html += '<table class="salary-table"><thead><tr><th style="text-align:left;">項目</th><th>金額</th></tr></thead><tbody>';
+  if (result.bonusAmount) html += '<tr><td style="text-align:left;">処遇改善賞与</td><td style="font-weight:600;">' + fmtYen(result.bonusAmount) + '円</td></tr>';
+  html += '<tr style="border-top:2px solid #8b5cf6;"><td style="text-align:left;font-weight:700;">総支給額</td><td style="font-weight:700;font-size:18px;color:#6d28d9;">' + fmtYen(result.totalAmount) + '円</td></tr>';
+  html += '</tbody></table>';
+  if (result.staffCount > 0) html += '<p style="font-size:13px;color:#64748b;margin-top:8px;">支給人数: ' + result.staffCount + '名</p>';
+  html += '</tbody></table>';
+
+  html += '<div class="btn-group" style="margin-top:16px;">';
+  html += '<button class="btn btn-primary" id="btnSaveBonus">この処遇賞与を保存</button>';
+  html += '</div></div>';
+  el.innerHTML = html;
+
+  document.getElementById('btnSaveBonus').addEventListener('click', () => {
+    const key = result.year + '/' + result.month + '/bonus';
+    bonusStore[key] = {
+      yearMonth: { year: result.year, month: result.month },
+      staff: result.staff,
+      totalAmount: result.totalAmount,
+      savedAt: new Date().toISOString()
+    };
+    saveBonus();
+
+    // ダッシュボードのshoguuOutに反映（月次給与 + 賞与）
+    const salKey = result.year + '/' + result.month;
+    if (salaryStore[salKey]) {
+      syncSalaryToDashboard(salKey);
+    } else {
+      // 月次給与がまだなくてもshoguuOutだけ反映
+      const dk = toKey(result.year, result.month);
+      if (!dashStore[dk]) {
+        dashStore[dk] = { yearMonth: { year: result.year, month: result.month }, kokuhoren: 0, riyosha: 0, mishukin: 0, jinkenhi: 0, sonota: 0, shoguuIn: 0, shoguuOut: 0, shinki: 0, shuryo: 0, cancel: 0, henrei: 0 };
+      }
+      dashStore[dk].shoguuOut = (dashStore[dk].shoguuOut || 0) + result.totalAmount;
+      saveDash();
+    }
+
+    el.classList.add('hidden');
+    document.getElementById('bonusParseStatus').innerHTML = '<span style="color:#16a34a;">✓ ' + result.year + '年' + result.month + '月の処遇賞与を保存しました（処遇改善支給額に反映済み）</span>';
+    renderBonusTab();
+    updateStorageStatus();
+  });
+}
+
+function renderBonusTab() {
+  // 処遇賞与データを給与管理タブの読み込み済みデータエリアに追記
+  const salaryList = document.getElementById('salaryDataList');
+  const keys = Object.keys(bonusStore).sort((a,b)=>{const [ay,am]=a.split('/').map(Number),[by,bm]=b.split('/').map(Number);return ay-by||am-bm;});
+  if (!keys.length) return;
+
+  // 既存の給与データリストの後に処遇賞与セクションを追加
+  let bonusEl = document.getElementById('bonusDataList');
+  if (!bonusEl) {
+    bonusEl = document.createElement('div');
+    bonusEl.id = 'bonusDataList';
+    bonusEl.style.marginTop = '16px';
+    salaryList.parentNode.appendChild(bonusEl);
+  }
+
+  let html = '<h3 style="color:#7c3aed;margin-bottom:8px;">処遇賞与データ</h3>';
+  html += '<table><thead><tr><th style="text-align:left;">年月</th><th>人数</th><th>支給額合計</th><th>操作</th></tr></thead><tbody>';
+  for (const k of keys) {
+    const d = bonusStore[k];
+    html += '<tr>';
+    html += '<td style="text-align:left;font-weight:600;">' + d.yearMonth.year + '年' + d.yearMonth.month + '月</td>';
+    html += '<td>' + d.staff.length + '名</td>';
+    html += '<td style="font-weight:700;color:#6d28d9;">' + fmtYen(d.totalAmount) + '円</td>';
+    html += '<td><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" data-bonus-del="' + k + '">削除</button></td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  bonusEl.innerHTML = html;
+
+  bonusEl.querySelectorAll('[data-bonus-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.bonusDel;
+      const d = bonusStore[key];
+      if (!confirm(d.yearMonth.year + '年' + d.yearMonth.month + '月の処遇賞与を削除しますか？')) return;
+      delete bonusStore[key];
+      saveBonus();
+      // ダッシュボードも再計算
+      const salKey = d.yearMonth.year + '/' + d.yearMonth.month;
+      if (salaryStore[salKey]) syncSalaryToDashboard(salKey);
+      renderBonusTab();
+      updateStorageStatus();
+    });
+  });
+}
+
+// ===========================================
+// 処遇改善加算 Excel読み込み
+// ===========================================
+const shoguuDropZone = document.getElementById('shoguuDropZone');
+const shoguuFileInput = document.getElementById('shoguuFileInput');
+shoguuDropZone.addEventListener('click', () => shoguuFileInput.click());
+shoguuDropZone.addEventListener('dragover', e => { e.preventDefault(); shoguuDropZone.classList.add('drag-over'); });
+shoguuDropZone.addEventListener('dragleave', () => shoguuDropZone.classList.remove('drag-over'));
+shoguuDropZone.addEventListener('drop', e => { e.preventDefault(); shoguuDropZone.classList.remove('drag-over'); handleShoguuFiles(e.dataTransfer.files); });
+shoguuFileInput.addEventListener('change', e => { if (e.target.files.length) handleShoguuFiles(e.target.files); e.target.value = ''; });
+
+async function handleShoguuFiles(files) {
+  const status = document.getElementById('shoguuParseStatus');
+  const results = [];
+  for (const file of files) {
+    if (!file.name.match(/\.xlsx?$/i)) continue;
+    status.innerHTML = '<span style="color:#0f766e;">読み込み中: ' + file.name + '...</span>';
+    try {
+      const buf = await file.arrayBuffer();
+      const result = parseShoguuExcel(buf, file.name);
+      result.fileName = file.name;
+      results.push(result);
+    } catch (err) {
+      status.innerHTML = '<span style="color:#dc2626;">読み取りエラー (' + file.name + '): ' + err.message + '</span>';
+      console.error('Shoguu Excel parse error:', err);
+      return;
+    }
+  }
+  if (!results.length) { status.innerHTML = '<span style="color:#dc2626;">Excelファイルが見つかりません</span>'; return; }
+  showShoguuPreview(results);
+  status.innerHTML = '<span style="color:#16a34a;">読み取り完了 — 下の内容を確認して「ダッシュボードに反映」を押してください</span>';
+}
+
+function parseShoguuExcel(arrayBuffer, fileName) {
+  if (typeof XLSX === 'undefined') throw new Error('Excelライブラリが読み込まれていません');
+  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error('シートが見つかりません');
+
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  let year = null, month = null, totalAmount = 0;
+  let chiikiAmount = 0, sougouAmount = 0;
+
+  // セルの値を文字列で取得
+  function cellStr(r, c) {
+    const cell = ws[XLSX.utils.encode_cell({ r, c })];
+    if (!cell) return '';
+    return String(cell.v || '').trim();
+  }
+  // セルの数値を取得
+  function cellNum(r, c) {
+    const cell = ws[XLSX.utils.encode_cell({ r, c })];
+    if (!cell || typeof cell.v !== 'number') return null;
+    return cell.v;
+  }
+
+  // 全セルをスキャンして審査年月・加算総額・内訳を探す
+  let lastCategoryRow = '';
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (!cell) continue;
+      const val = String(cell.v || '').trim();
+
+      // 審査年月: テキストで "令和X年 X月審査分" を含む行を探す
+      const ym = val.match(/令和\s*(\d+)\s*年?\s*(\d+)\s*月\s*審査分/);
+      if (ym) {
+        year = parseInt(ym[1]) + 2018;
+        month = parseInt(ym[2]);
+      }
+
+      // 審査年月: Excelの日付シリアル値から取得（B28等に日付が入っている場合）
+      if (!year && cell.t === 'n' && cell.v > 40000 && cell.v < 60000) {
+        // 同じ行に「審査分」テキストがあるか、またはタイトル行付近かチェック
+        let rowHasRelevant = false;
+        for (let cc = range.s.c; cc <= range.e.c; cc++) {
+          const s = cellStr(r, cc);
+          if (s.includes('審査分') || s.includes('加算総額') || s.includes('事業所番号')) { rowHasRelevant = true; break; }
+        }
+        if (rowHasRelevant || r < range.s.r + 10) {
+          // Excelシリアル値を日付に変換
+          const d = new Date((cell.v - 25569) * 86400000);
+          const candidateY = d.getFullYear();
+          const candidateM = d.getMonth() + 1;
+          if (candidateY >= 2020 && candidateY <= 2040) {
+            year = candidateY;
+            month = candidateM;
+          }
+        }
+      }
+
+      // 加算総額: "加算総額" というセルを見つけたら同じ行の右側から数値を取得
+      if (val === '加算総額') {
+        for (let nc = c + 1; nc <= range.e.c; nc++) {
+          const n = cellNum(r, nc);
+          if (n !== null && n > 0) { totalAmount = n; break; }
+        }
+      }
+
+      // カテゴリ行を記録（地域密着型 / 総合事業）
+      if (val.includes('地域密着型')) lastCategoryRow = 'chiiki';
+      if (val.includes('介護予防') && val.includes('総合事業')) lastCategoryRow = 'sougou';
+      if (val.includes('指定サービス等')) lastCategoryRow = 'shitei';
+
+      // 介護職員等処遇改善加算総額の金額を取得
+      if (val.includes('介護職員等処遇改善加算総額')) {
+        for (let nc = c + 1; nc <= range.e.c; nc++) {
+          const n = cellNum(r, nc);
+          if (n !== null && n > 0) {
+            if (lastCategoryRow === 'chiiki') chiikiAmount = n;
+            else if (lastCategoryRow === 'sougou') sougouAmount = n;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // ファイル名からも審査年月を推測（フォールバック）
+  if (!year || !month) {
+    if (fileName) {
+      const fm = fileName.match(/(\d{4})(\d{2})/);
+      if (fm) { year = parseInt(fm[1]); month = parseInt(fm[2]); }
+    }
+    if (!year || !month) throw new Error('審査年月が見つかりません');
+  }
+  if (!totalAmount) throw new Error('加算総額が見つかりません');
+
+  return { year, month, totalAmount, chiikiAmount, sougouAmount };
+}
+
+function showShoguuPreview(results) {
+  const el = document.getElementById('shoguuPreview');
+  let html = '<div style="margin-top:16px;">';
+
+  for (const r of results) {
+    html += '<div class="form-section sec-shoguu" style="margin-bottom:12px;">';
+    html += '<h3>' + r.year + '年' + r.month + '月審査分</h3>';
+    html += '<table style="font-size:14px;width:100%;">';
+    if (r.chiikiAmount) html += '<tr><td style="text-align:left;padding:6px 8px;">地域密着型サービス</td><td style="text-align:right;padding:6px 8px;font-weight:600;">' + fmtYen(r.chiikiAmount) + '円</td></tr>';
+    if (r.sougouAmount) html += '<tr><td style="text-align:left;padding:6px 8px;">総合事業サービス</td><td style="text-align:right;padding:6px 8px;font-weight:600;">' + fmtYen(r.sougouAmount) + '円</td></tr>';
+    html += '<tr style="border-top:2px solid #8b5cf6;"><td style="text-align:left;padding:6px 8px;font-weight:700;">加算総額</td><td style="text-align:right;padding:6px 8px;font-weight:700;font-size:18px;color:#6d28d9;">' + fmtYen(r.totalAmount) + '円</td></tr>';
+    html += '</table>';
+
+    const dk = toKey(r.year, r.month);
+    const existing = dashStore[dk];
+    if (existing && existing.shoguuIn > 0) {
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#faf5ff;border-radius:6px;font-size:13px;color:#7c3aed;">';
+      html += '※ ' + r.year + '年' + r.month + '月は既に処遇改善収入 ' + fmtYen(existing.shoguuIn) + '円 が入力されています。上書きされます。';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '<div class="btn-group" style="margin-top:16px;">';
+  html += '<button class="btn btn-primary" id="btnShoguuSave">ダッシュボードに反映</button>';
+  html += '<button class="btn btn-secondary" id="btnShoguuCancel">キャンセル</button>';
+  html += '</div></div>';
+
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+
+  document.getElementById('btnShoguuSave').addEventListener('click', () => {
+    for (const r of results) {
+      const key = toKey(r.year, r.month);
+      shoguuStore[key] = {
+        yearMonth: { year: r.year, month: r.month },
+        totalAmount: r.totalAmount,
+        chiikiAmount: r.chiikiAmount,
+        sougouAmount: r.sougouAmount,
+        savedAt: new Date().toISOString()
+      };
+      syncShoguuToDashboard(key);
+    }
+    saveShoguu();
+    el.classList.add('hidden');
+    const months = results.map(r => r.year + '年' + r.month + '月').join('、');
+    document.getElementById('shoguuParseStatus').innerHTML = '<span style="color:#16a34a;">✓ ' + months + ' のデータを保存しました（処遇改善収入もダッシュボードに反映済み）</span>';
+    renderShoguuTab();
+    updateStorageStatus();
+  });
+
+  document.getElementById('btnShoguuCancel').addEventListener('click', () => {
+    el.classList.add('hidden');
+    document.getElementById('shoguuParseStatus').innerHTML = '';
+  });
+}
+
+function syncShoguuToDashboard(key) {
+  const sd = shoguuStore[key];
+  if (!sd) return;
+  const dk = toKey(sd.yearMonth.year, sd.yearMonth.month);
+  if (!dashStore[dk]) {
+    dashStore[dk] = { yearMonth: sd.yearMonth, kokuhoren: 0, riyosha: 0, mishukin: 0, jinkenhi: 0, sonota: 0, shoguuIn: 0, shoguuOut: 0, shinki: 0, shuryo: 0, cancel: 0, henrei: 0 };
+  }
+  dashStore[dk].shoguuIn = sd.totalAmount;
+  saveDash();
+}
+
+function renderShoguuTab() {
+  const el = document.getElementById('shoguuDataList');
+  const keys = Object.keys(shoguuStore).sort((a,b)=>{const [ay,am]=a.split('/').map(Number),[by,bm]=b.split('/').map(Number);return ay-by||am-bm;});
+  if (!keys.length) { el.innerHTML = 'データなし'; return; }
+
+  let html = '<table><thead><tr><th style="text-align:left;">審査年月</th><th>地域密着型</th><th>総合事業</th><th>加算総額</th><th>操作</th></tr></thead><tbody>';
+  for (const k of keys) {
+    const d = shoguuStore[k];
+    html += '<tr>';
+    html += '<td style="text-align:left;font-weight:600;">' + d.yearMonth.year + '年' + d.yearMonth.month + '月</td>';
+    html += '<td>' + fmtYen(d.chiikiAmount || 0) + '円</td>';
+    html += '<td>' + fmtYen(d.sougouAmount || 0) + '円</td>';
+    html += '<td style="font-weight:700;color:#6d28d9;">' + fmtYen(d.totalAmount) + '円</td>';
+    html += '<td><button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" data-shoguu-del="' + k + '">削除</button></td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-shoguu-del]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.shoguuDel;
+      const d = shoguuStore[key];
+      if (!confirm(d.yearMonth.year + '年' + d.yearMonth.month + '月のデータを削除しますか？')) return;
+      delete shoguuStore[key];
+      saveShoguu();
+      renderShoguuTab();
+      updateStorageStatus();
+    });
+  });
+}
+
+// ===========================================
+// 設定
+// ===========================================
+document.getElementById('btnSaveSettings').addEventListener('click',()=>{
+  appSettings.initialUsers=parseInt(document.getElementById('initialUsers').value)||0;
+  appSettings.initialUsersBase=document.getElementById('initialUsersBase').value;
+  saveSets();showMsg('settingsMsg');
+});
+function loadSetsForm(){document.getElementById('initialUsers').value=appSettings.initialUsers||'';if(appSettings.initialUsersBase)document.getElementById('initialUsersBase').value=appSettings.initialUsersBase;}
+function updateStorageStatus(){
+  const dk=sortedKeys(dashStore),kk=sortedKeys(kadoritsuStore),parts=[];
+  const sk=Object.keys(salaryStore);
+  const kh=Object.keys(kokuhoStore);
+  const sh=Object.keys(shoguuStore);
+  const bn=Object.keys(bonusStore);
+  if(dk.length)parts.push('経営データ: '+dk.length+'ヶ月分');
+  if(kk.length)parts.push('稼働率データ: '+kk.length+'ヶ月分');
+  if(sk.length)parts.push('給与データ: '+sk.length+'ヶ月分');
+  if(bn.length)parts.push('処遇賞与: '+bn.length+'件');
+  if(kh.length)parts.push('国保連通知: '+kh.length+'ヶ月分');
+  if(sh.length)parts.push('処遇改善: '+sh.length+'ヶ月分');
+  document.getElementById('storageStatus').textContent=parts.length?parts.join(' ／ ')+' — ブラウザを閉じても残ります':'データなし';
+}
+
+// ===========================================
+// バックアップ
+// ===========================================
+document.getElementById('btnExport').addEventListener('click',()=>{
+  const d={dashboard:dashStore,kadoritsu:kadoritsuStore,settings:appSettings,salary:salaryStore,fuyouStaff:fuyouStaffList,kokuho:kokuhoStore,shoguu:shoguuStore,bonus:bonusStore,version:5};
+  const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a');
+  const n=new Date();a.href=u;a.download='経営ダッシュボード_'+n.getFullYear()+String(n.getMonth()+1).padStart(2,'0')+String(n.getDate()).padStart(2,'0')+'.json';a.click();URL.revokeObjectURL(u);
+});
+document.getElementById('btnImport').addEventListener('click',()=>document.getElementById('importInput').click());
+document.getElementById('importInput').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=ev=>{try{const d=JSON.parse(ev.target.result);
+    if(!confirm('バックアップを読み込みます。既存データは上書きされます。よろしいですか？'))return;
+    if(d.dashboard){Object.keys(dashStore).forEach(k=>delete dashStore[k]);Object.keys(d.dashboard).forEach(k=>dashStore[k]=d.dashboard[k]);saveDash();}
+    if(d.kadoritsu){Object.keys(kadoritsuStore).forEach(k=>delete kadoritsuStore[k]);Object.keys(d.kadoritsu).forEach(k=>kadoritsuStore[k]=d.kadoritsu[k]);saveKado();}
+    if(d.settings){appSettings=d.settings;saveSets();loadSetsForm();}
+    if(d.salary){Object.keys(salaryStore).forEach(k=>delete salaryStore[k]);Object.keys(d.salary).forEach(k=>salaryStore[k]=d.salary[k]);saveSalary();}
+    if(d.fuyouStaff){fuyouStaffList=d.fuyouStaff;saveFuyou();}
+    if(d.kokuho){Object.keys(kokuhoStore).forEach(k=>delete kokuhoStore[k]);Object.keys(d.kokuho).forEach(k=>kokuhoStore[k]=d.kokuho[k]);saveKokuho();}
+    if(d.shoguu){Object.keys(shoguuStore).forEach(k=>delete shoguuStore[k]);Object.keys(d.shoguu).forEach(k=>shoguuStore[k]=d.shoguu[k]);saveShoguu();}
+    if(d.bonus){Object.keys(bonusStore).forEach(k=>delete bonusStore[k]);Object.keys(d.bonus).forEach(k=>bonusStore[k]=d.bonus[k]);saveBonus();}
+    updateInputList();updateStorageStatus();renderKadoritsuTab();renderSalaryTab();renderBonusTab();renderKokuhoTab();renderShoguuTab();renderDashboard();alert('バックアップを読み込みました');
+  }catch(err){
+    try{const od=JSON.parse(ev.target.result);if(od&&Object.values(od)[0]?.yearMonth){Object.keys(kadoritsuStore).forEach(k=>delete kadoritsuStore[k]);Object.keys(od).forEach(k=>kadoritsuStore[k]=od[k]);saveKado();renderKadoritsuTab();alert('稼働率バックアップ（旧形式）を読み込みました');return;}}catch(e2){}
+    alert('ファイルの読み込みに失敗しました。');
+  }};r.readAsText(f);e.target.value='';
+});
+document.getElementById('btnClearAll').addEventListener('click',()=>{
+  if(!confirm('すべてのデータ（経営データ・稼働率データ・設定）を削除します。\n\n先にバックアップ保存することをお勧めします。\n\n本当に削除しますか？'))return;
+  Object.keys(dashStore).forEach(k=>delete dashStore[k]);Object.keys(kadoritsuStore).forEach(k=>delete kadoritsuStore[k]);Object.keys(salaryStore).forEach(k=>delete salaryStore[k]);Object.keys(kokuhoStore).forEach(k=>delete kokuhoStore[k]);Object.keys(shoguuStore).forEach(k=>delete shoguuStore[k]);Object.keys(bonusStore).forEach(k=>delete bonusStore[k]);
+  localStorage.removeItem(DASHBOARD_KEY);localStorage.removeItem(KADORITSU_KEY);localStorage.removeItem(SETTINGS_KEY);localStorage.removeItem(SALARY_KEY);localStorage.removeItem(FUYOU_KEY);localStorage.removeItem(KOKUHO_KEY);localStorage.removeItem(SHOGUU_KEY);localStorage.removeItem(BONUS_KEY);
+  appSettings={initialUsers:0,initialUsersBase:''};fuyouStaffList=[];
+  updateInputList();updateStorageStatus();renderKadoritsuTab();renderSalaryTab();renderDashboard();loadSetsForm();
+});
+
+// ===========================================
+// 初期化
+// ===========================================
+(function init(){
+  loadSets();loadDash();loadKado();loadSalary();loadFuyou();loadKokuho();loadShoguu();loadBonus();initInputTab();loadSetsForm();
+  updateInputList();updateStorageStatus();renderKadoritsuTab();renderKokuhoTab();renderShoguuTab();renderBonusTab();loadMonthForm();renderDashboard();
+})();
+</script>
+</body>
+</html>

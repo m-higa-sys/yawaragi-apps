@@ -451,17 +451,17 @@ function snapshotFromOps(ops){
 
   let amTotal = (am.users||[]).length, pmTotal = (pm.users||[]).length;
   let amAbsent=0, pmAbsent=0, amTrial=0, pmTrial=0;
-  Object.values(am.userStatus||{}).forEach(s => { if(s==='absent') amAbsent++; if(s==='trial') amTrial++; });
-  Object.values(pm.userStatus||{}).forEach(s => { if(s==='absent') pmAbsent++; if(s==='trial') pmTrial++; });
+  Object.values(am.userStatus||{}).forEach(s => { if(s==='absent'||s==='longabsent') amAbsent++; if(s==='trial') amTrial++; });
+  Object.values(pm.userStatus||{}).forEach(s => { if(s==='absent'||s==='longabsent') pmAbsent++; if(s==='trial') pmTrial++; });
   snap.summary = { amTotal, pmTotal, amAbsent:0, pmAbsent:0, amTrial, pmTrial };
 
   // 欠席者を自動でabsentに設定（グレーアウト連携）
   snap.absent = {};
   Object.entries(am.userStatus||{}).forEach(([name, status]) => {
-    if(status === 'absent') snap.absent[normName(name)] = true;
+    if(status === 'absent' || status === 'longabsent') snap.absent[normName(name)] = true;
   });
   Object.entries(pm.userStatus||{}).forEach(([name, status]) => {
-    if(status === 'absent') snap.absent[normName(name)] = true;
+    if(status === 'absent' || status === 'longabsent') snap.absent[normName(name)] = true;
   });
 
   return snap;
@@ -526,10 +526,10 @@ function loadDate(){
       const pm = ops.pm || {};
       dayData.absent = {};
       Object.entries(am.userStatus||{}).forEach(([name, status]) => {
-        if(status === 'absent') dayData.absent[normName(name)] = true;
+        if(status === 'absent' || status === 'longabsent') dayData.absent[normName(name)] = true;
       });
       Object.entries(pm.userStatus||{}).forEach(([name, status]) => {
-        if(status === 'absent') dayData.absent[normName(name)] = true;
+        if(status === 'absent' || status === 'longabsent') dayData.absent[normName(name)] = true;
       });
       if(Object.keys(dayData.absent).length > 0){
         nisshiData[currentDate] = dayData;

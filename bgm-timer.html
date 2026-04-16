@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>運動タイム BGMタイマー</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Hiragino Sans", "Meiryo", sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    min-height: 100vh;
+    color: #fff;
+    padding: 20px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 32px; margin-bottom: 20px; }
+
+  .phase-label {
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+    padding: 15px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 15px;
+    margin-bottom: 20px;
+    min-height: 70px;
+  }
+
+  .timer {
+    text-align: center;
+    font-size: 140px;
+    font-weight: bold;
+    font-family: "Courier New", monospace;
+    padding: 20px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 20px;
+    margin-bottom: 30px;
+    letter-spacing: 5px;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 30px;
+  }
+  button {
+    padding: 25px;
+    font-size: 24px;
+    font-weight: bold;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.1s;
+  }
+  button:active { transform: scale(0.95); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-start { background: #48bb78; color: #fff; }
+  .btn-pause { background: #ed8936; color: #fff; }
+  .btn-reset { background: #e53e3e; color: #fff; }
+
+  .upload-area {
+    background: rgba(255,255,255,0.15);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 20px;
+  }
+  .upload-area h2 { font-size: 20px; margin-bottom: 15px; }
+  .drop-zone {
+    border: 3px dashed rgba(255,255,255,0.5);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: background 0.2s;
+    font-size: 16px;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    background: rgba(255,255,255,0.2);
+    border-color: #fff;
+  }
+  .drop-zone .file-name {
+    font-weight: bold;
+    color: #ffd700;
+    margin-top: 8px;
+  }
+  input[type=file] { display: none; }
+
+  .settings {
+    background: rgba(255,255,255,0.15);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 15px;
+  }
+  .settings label {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 5px;
+  }
+  .settings input[type=number], .settings input[type=range] {
+    width: 100%;
+    padding: 8px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: none;
+  }
+  .volume-val { font-size: 18px; font-weight: bold; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎵 運動タイム BGMタイマー</h1>
+
+  <div class="phase-label" id="phaseLabel">スタンバイ</div>
+  <div class="timer" id="timer">06:00</div>
+
+  <div class="controls">
+    <button class="btn-start" id="btnStart">▶ スタート</button>
+    <button class="btn-pause" id="btnPause" disabled>⏸ 一時停止</button>
+    <button class="btn-reset" id="btnReset">⟲ リセット</button>
+  </div>
+
+  <div class="upload-area">
+    <h2>🎶 BGM設定（mp3をドラッグ＆ドロップ）</h2>
+    <div class="drop-zone" id="dropMain" data-target="main">
+      <div>【運動BGM】前半・後半で流す元気な曲</div>
+      <div class="file-name" id="nameMain">未設定</div>
+    </div>
+    <div class="drop-zone" id="dropRest" data-target="rest">
+      <div>【休憩BGM】30秒休憩で流すゆったりした曲</div>
+      <div class="file-name" id="nameRest">未設定</div>
+    </div>
+  </div>
+
+  <div class="settings">
+    <div>
+      <label>前半・後半の時間（分）</label>
+      <input type="number" id="durationMin" value="6" min="1" max="20">
+    </div>
+    <div>
+      <label>休憩時間（秒）</label>
+      <input type="number" id="restSec" value="30" min="10" max="120">
+    </div>
+    <div>
+      <label>BGM音量 <span class="volume-val" id="volVal">50</span></label>
+      <input type="range" id="volume" min="0" max="100" value="50">
+    </div>
+  </div>
+</div>
+
+<audio id="audioMain" loop></audio>
+<audio id="audioRest" loop></audio>
+
+<script>
+const phaseLabel = document.getElementById('phaseLabel');
+const timerEl = document.getElementById('timer');
+const btnStart = document.getElementById('btnStart');
+const btnPause = document.getElementById('btnPause');
+const btnReset = document.getElementById('btnReset');
+const audioMain = document.getElementById('audioMain');
+const audioRest = document.getElementById('audioRest');
+const durationMinInput = document.getElementById('durationMin');
+const restSecInput = document.getElementById('restSec');
+const volumeInput = document.getElementById('volume');
+const volVal = document.getElementById('volVal');
+
+let state = 'idle'; // idle | first | rest | second | done
+let remaining = 0;
+let tickInterval = null;
+let announcedOneMin = false;
+let countdownStarted = false;
+
+// 音量
+function applyVolume() {
+  const v = volumeInput.value / 100;
+  audioMain.volume = v;
+  audioRest.volume = v;
+  volVal.textContent = volumeInput.value;
+}
+volumeInput.addEventListener('input', applyVolume);
+applyVolume();
+
+// D&D
+document.querySelectorAll('.drop-zone').forEach(zone => {
+  const target = zone.dataset.target;
+  zone.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.onchange = e => loadFile(e.target.files[0], target);
+    input.click();
+  });
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    zone.classList.add('dragover');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file, target);
+  });
+});
+
+function loadFile(file, target) {
+  if (!file || !file.type.startsWith('audio/')) {
+    alert('音声ファイル（mp3など）を選んでください');
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  if (target === 'main') {
+    audioMain.src = url;
+    document.getElementById('nameMain').textContent = file.name;
+  } else {
+    audioRest.src = url;
+    document.getElementById('nameRest').textContent = file.name;
+  }
+}
+
+// 音声合成
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'ja-JP';
+  u.rate = 1.0;
+  u.pitch = 1.0;
+  u.volume = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
+function fmt(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function setPhase(label, color) {
+  phaseLabel.textContent = label;
+  phaseLabel.style.background = color || 'rgba(255,255,255,0.2)';
+}
+
+function stopAllAudio() {
+  audioMain.pause();
+  audioRest.pause();
+  audioMain.currentTime = 0;
+  audioRest.currentTime = 0;
+}
+
+function playMain() {
+  audioRest.pause();
+  if (audioMain.src) audioMain.play().catch(()=>{});
+}
+function playRest() {
+  audioMain.pause();
+  if (audioRest.src) audioRest.play().catch(()=>{});
+}
+
+function tick() {
+  remaining--;
+  timerEl.textContent = fmt(remaining);
+
+  if (state === 'first' || state === 'second') {
+    if (remaining === 60 && !announcedOneMin) {
+      announcedOneMin = true;
+      if (state === 'first') speak('残り1分です！頑張りましょう！');
+      else speak('残り1分です！頑張ってください！');
+    }
+  }
+
+  if (state === 'rest' && remaining === 10 && !countdownStarted) {
+    countdownStarted = true;
+    speak('10、9、8、7、6、5、4、3、2、1');
+  }
+
+  if (remaining <= 0) {
+    nextPhase();
+  }
+}
+
+function nextPhase() {
+  clearInterval(tickInterval);
+  announcedOneMin = false;
+  countdownStarted = false;
+
+  if (state === 'first') {
+    state = 'rest';
+    remaining = parseInt(restSecInput.value) || 30;
+    setPhase('🌿 休憩中', 'rgba(72,187,120,0.5)');
+    speak('前半終了です！30秒休憩です');
+    setTimeout(() => playRest(), 2500);
+    startTick();
+  } else if (state === 'rest') {
+    state = 'second';
+    remaining = (parseInt(durationMinInput.value) || 6) * 60;
+    setPhase('🔥 後半', 'rgba(237,137,54,0.5)');
+    speak('それでは始めます！後半スタートです！');
+    setTimeout(() => playMain(), 2500);
+    startTick();
+  } else if (state === 'second') {
+    state = 'done';
+    setPhase('✅ 終了', 'rgba(72,187,120,0.5)');
+    timerEl.textContent = '00:00';
+    stopAllAudio();
+    speak('終了です！お疲れ様でした！');
+    btnStart.disabled = false;
+    btnStart.textContent = '▶ もう一度';
+    btnPause.disabled = true;
+  }
+}
+
+function startTick() {
+  timerEl.textContent = fmt(remaining);
+  tickInterval = setInterval(tick, 1000);
+}
+
+btnStart.addEventListener('click', () => {
+  if (state === 'idle' || state === 'done') {
+    state = 'first';
+    remaining = (parseInt(durationMinInput.value) || 6) * 60;
+    setPhase('🔥 前半', 'rgba(237,137,54,0.5)');
+    speak('それでは始めます！前半スタートです！');
+    setTimeout(() => playMain(), 2500);
+    startTick();
+    btnStart.disabled = true;
+    btnPause.disabled = false;
+    btnPause.textContent = '⏸ 一時停止';
+  } else if (state === 'paused') {
+    // 再開
+    state = pausedState;
+    if (state === 'rest') playRest(); else playMain();
+    startTick();
+    btnStart.disabled = true;
+    btnPause.disabled = false;
+    btnPause.textContent = '⏸ 一時停止';
+  }
+});
+
+let pausedState = null;
+btnPause.addEventListener('click', () => {
+  if (state !== 'paused' && tickInterval) {
+    clearInterval(tickInterval);
+    audioMain.pause();
+    audioRest.pause();
+    pausedState = state;
+    state = 'paused';
+    btnStart.disabled = false;
+    btnStart.textContent = '▶ 再開';
+    btnPause.disabled = true;
+  }
+});
+
+btnReset.addEventListener('click', () => {
+  clearInterval(tickInterval);
+  window.speechSynthesis.cancel();
+  stopAllAudio();
+  state = 'idle';
+  remaining = (parseInt(durationMinInput.value) || 6) * 60;
+  timerEl.textContent = fmt(remaining);
+  setPhase('スタンバイ');
+  btnStart.disabled = false;
+  btnStart.textContent = '▶ スタート';
+  btnPause.disabled = true;
+  announcedOneMin = false;
+  countdownStarted = false;
+});
+
+// 初期表示
+timerEl.textContent = fmt((parseInt(durationMinInput.value) || 6) * 60);
+durationMinInput.addEventListener('change', () => {
+  if (state === 'idle') {
+    timerEl.textContent = fmt((parseInt(durationMinInput.value) || 6) * 60);
+  }
+});
+</script>
+</body>
+</html>
