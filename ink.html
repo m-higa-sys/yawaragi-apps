@@ -403,21 +403,21 @@
 <!-- 在庫タブ（メイン画面・スタッフが「使った」を押す） -->
 <div class="tab-content active" id="tab-stock">
     <div class="note">
-        💡 インクを使ったら、その色の <b>「使った」</b> ボタンを押してください。在庫が0になると社長にLINEとメールで通知されます。
+        💡 インクを使ったら、名前を選んで <b>「使った」</b> ボタンを押してください。在庫が0になると社長にメールで通知されます。
+    </div>
+    <div class="add-form-card">
+        <label class="form-label">あなたの名前</label>
+        <select id="useStaff" class="form-select">
+            <option value="">-- 選択してください --</option>
+        </select>
     </div>
     <div id="printerCards"></div>
 </div>
 
-<!-- 補充タブ（社長用・PIN保護） -->
+<!-- 補充タブ（社長用） -->
 <div class="tab-content" id="tab-add">
     <div class="note">
-        💡 1階のプリンターにインクを補充したら、補充者を選んでから補充ボタンを押してください。
-    </div>
-    <div class="add-form-card">
-        <label class="form-label">補充者</label>
-        <select id="addStaff" class="form-select">
-            <option value="">-- 選択してください --</option>
-        </select>
+        💡 新しいインクを補充したら、その色の「補充した」ボタンを押してください。
     </div>
     <div id="addPrinterCards"></div>
 </div>
@@ -698,6 +698,13 @@
 
     // ===== 使用記録 =====
     function useInk(printerId, colorId) {
+        const staff = document.getElementById('useStaff').value;
+        if (!staff) {
+            showToast('名前を選んでください');
+            document.getElementById('useStaff').focus();
+            return;
+        }
+
         const printer = data.printers.find(p => p.id === printerId);
         const color = printer ? printer.colors.find(c => c.id === colorId) : null;
         if (!printer || !color) return;
@@ -717,27 +724,20 @@
             printerName: printer.name,
             colorId: colorId,
             colorName: color.name,
+            staff: staff,
             date: new Date().toISOString()
         });
         saveData(data);
         renderPrinterCards();
         renderAddPrinterCards();
 
-        // 社長に通知（GAS経由でLINE+Gmail）
         notifyEmpty(printer.name, color.name);
 
-        showToast(`📤 ${color.name} を「使った」と記録しました`);
+        showToast(`📤 ${staff}さんが ${color.name} を「使った」と記録しました`);
     }
 
     // ===== 補充記録 =====
     function addInk(printerId, colorId) {
-        const staff = document.getElementById('addStaff').value;
-        if (!staff) {
-            showToast('補充者を選んでください');
-            document.getElementById('addStaff').focus();
-            return;
-        }
-
         const printer = data.printers.find(p => p.id === printerId);
         const color = printer ? printer.colors.find(c => c.id === colorId) : null;
         if (!printer || !color) return;
@@ -755,14 +755,14 @@
             printerName: printer.name,
             colorId: colorId,
             colorName: color.name,
-            staff: staff,
+            staff: '比嘉',
             date: new Date().toISOString()
         });
         saveData(data);
         renderPrinterCards();
         renderAddPrinterCards();
 
-        showToast(`📥 ${color.name} を補充しました（${staff}）`);
+        showToast(`📥 ${color.name} を補充しました`);
     }
 
     // ===== 履歴表示 =====
@@ -911,7 +911,8 @@
     }
 
     function renderStaffSelects() {
-        const select = document.getElementById('addStaff');
+        const select = document.getElementById('useStaff');
+        if (!select) return;
         const current = select.value;
         select.innerHTML = '<option value="">-- 選択してください --</option>';
         data.staff.forEach(name => {
@@ -1014,9 +1015,11 @@
         if (tabName === 'settings') {
             renderStaffList();
         }
+        if (tabName === 'stock') {
+            renderStaffSelects();
+        }
         if (tabName === 'add') {
             renderAddPrinterCards();
-            renderStaffSelects();
         }
     }
 
