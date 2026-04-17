@@ -190,6 +190,16 @@ function doGet(e) {
       var ym = e && e.parameter ? e.parameter.yearMonth : null;
       result.sendHistory = getSendHistory(ss, ym);
     }
+    if (action === 'haichi') {
+      var haichiSheet = ss.getSheetByName('配置データ');
+      if (haichiSheet) {
+        var val = haichiSheet.getRange('A1').getValue();
+        result.haichi = val ? JSON.parse(val) : {};
+      } else {
+        result.haichi = {};
+      }
+      return respond(result, callback);
+    }
 
     return respond(result, callback);
   } catch (err) {
@@ -230,6 +240,11 @@ function doPost(e) {
         return jsonResp(deleteBoardTask(ss, data));
       case 'create_drafts':
         return jsonResp(createJissekiDrafts(data.yearMonth));
+      case 'save_haichi':
+        var hSheet = ss.getSheetByName('配置データ');
+        if (!hSheet) hSheet = ss.insertSheet('配置データ');
+        hSheet.getRange('A1').setValue(JSON.stringify(data.haichi || {}));
+        return jsonResp({ success: true });
       default:
         return jsonResp({ error: '不明なアクション', success: false });
     }

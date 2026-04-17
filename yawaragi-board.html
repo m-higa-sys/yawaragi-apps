@@ -1646,6 +1646,7 @@ function assignStaffColors() {
 
 // ========== 配置ストレージ ==========
 const STORAGE_KEY = 'yawaragi_haichi';
+const HAICHI_SYNC_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 
 function getData() {
     try {
@@ -1653,7 +1654,57 @@ function getData() {
         return d || { assignments: {}, staff: [...DEFAULT_STAFF] };
     } catch { return { assignments: {}, staff: [...DEFAULT_STAFF] }; }
 }
-function saveData(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+function saveData(d) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+    haichiCloudSave(d);
+}
+
+// ===== 配置データのクラウド同期 =====
+let _haichiSyncTimer = null;
+function haichiCloudSave(d) {
+    if (_haichiSyncTimer) clearTimeout(_haichiSyncTimer);
+    _haichiSyncTimer = setTimeout(function() {
+        try {
+            fetch(HAICHI_SYNC_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: JSON.stringify({ action: 'save_haichi', haichi: d })
+            }).catch(function(){});
+        } catch(e) {}
+    }, 2000);
+}
+
+function haichiCloudLoad(callback) {
+    const cbName = '_haichiCb_' + Date.now();
+    const script = document.createElement('script');
+    let timeout = setTimeout(function() { cleanup(); if(callback) callback(null); }, 8000);
+    function cleanup() {
+        clearTimeout(timeout);
+        try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = function(data) {
+        cleanup();
+        if (data && data.success && data.haichi) {
+            // クラウドデータとローカルをマージ（クラウド優先、ローカルにしかないものも保持）
+            const local = getData();
+            const cloud = data.haichi;
+            if (cloud.assignments) {
+                Object.keys(cloud.assignments).forEach(function(key) {
+                    local.assignments[key] = cloud.assignments[key];
+                });
+            }
+            if (cloud.staff && cloud.staff.length > 0) local.staff = cloud.staff;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+            if (callback) callback(local);
+        } else {
+            if (callback) callback(null);
+        }
+    };
+    script.src = HAICHI_SYNC_URL + '?action=haichi&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() { cleanup(); if(callback) callback(null); };
+    document.head.appendChild(script);
+}
 function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
 function getAssignmentKey(date, unit) { return date + '_' + unit; }
 
@@ -2079,11 +2130,14 @@ function updateBiasAlert() {
 
 function loadAssignment() {
     currentDate = document.getElementById('assign-date').value;
-    currentAssignment = getAssignment(currentDate, currentUnit);
-    openChecklists = {};
-    renderAssignments();
-    document.getElementById('assign-memo').value = currentAssignment.memo || '';
-    updateBusyNotice();
+    // クラウドから最新データを取得してから表示
+    haichiCloudLoad(function() {
+        currentAssignment = getAssignment(currentDate, currentUnit);
+        openChecklists = {};
+        renderAssignments();
+        document.getElementById('assign-memo').value = currentAssignment.memo || '';
+        updateBusyNotice();
+    });
 }
 
 function saveAssignment() {
