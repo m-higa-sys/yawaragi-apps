@@ -1199,11 +1199,13 @@ function renderTodayChecklist() {
       const c = ((oralData.checks[fiscalYear] || {})[u.name]) || {};
       // 口腔モニタリングのみ対象（月1回実施）
       const required = 1;
-      const done = c[monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ'] ? 1 : 0;
-      if (showOral || done < required) {
-        oralList.push({ ...u, required, done, fiscalYear, monthLabel });
-      }
+      const doneVal = c[monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ'];
+      const done = doneVal ? 1 : 0;
+      // 完了・未完了両方表示（完了者はグレーアウト）
+      oralList.push({ ...u, required, done, doneVal, fiscalYear, monthLabel });
     });
+    // 未完了を上、完了を下に並べる
+    oralList.sort((a, b) => (a.done >= a.required ? 1 : 0) - (b.done >= b.required ? 1 : 0));
   }
 
   // HTML組み立て
