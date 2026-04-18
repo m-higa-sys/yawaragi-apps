@@ -1315,37 +1315,66 @@ function buildMeasureChecklistTable(list, yearMonthKey, ampm, checks) {
   return html;
 }
 
+function buildVisitCells(m, unitPrefix, yearMonthKey, checks) {
+  if (!m) return '<td></td><td></td><td></td>';
+  const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+  const key = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_done';
+  const staffKey = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_staff';
+  const isDone = !!checks[key];
+  const checked = isDone ? ' checked' : '';
+  const bg = isDone ? ' style="background:#f3f4f6;color:#9ca3af;"' : '';
+  const nameStyle = isDone ? ' style="text-decoration:line-through;background:#f3f4f6;color:#9ca3af;"' : '';
+  let html = '<td' + bg + '>' + buildStaffSelect(staffKey, checks[staffKey] || '') + '</td>';
+  html += '<td class="name"' + nameStyle + '>' + escapeHtmlBoard(m.name) + '</td>';
+  html += '<td' + bg + '><input type="checkbox" data-measure-key="' + key + '"' + checked + '></td>';
+  return html;
+}
+
 function buildVisitChecklistTable(list, yearMonthKey, ampm, checks) {
   if (list.length === 0) return '<div class="checklist-empty">対象者なし</div>';
   const unitPrefix = ampm === 'AM' ? 'visit_am' : 'visit_pm';
-  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>訪問済</th></tr></thead><tbody>';
-  list.forEach(m => {
-    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
-    const key = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_done';
-    const staffKey = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_staff';
-    const isDone = !!checks[key];
-    const rowCls = isDone ? ' class="row-done"' : '';
-    const checked = isDone ? ' checked' : '';
-    html += '<tr' + rowCls + '>';
-    html += '<td>' + buildStaffSelect(staffKey, checks[staffKey] || '') + '</td>';
-    html += '<td class="name">' + escapeHtmlBoard(m.name) + '</td>';
-    html += '<td><input type="checkbox" data-measure-key="' + key + '"' + checked + '></td></tr>';
-  });
+  const half = Math.ceil(list.length / 2);
+  const left = list.slice(0, half);
+  const right = list.slice(half);
+  const maxRows = Math.max(left.length, right.length);
+  let html = '<table class="checklist-table"><thead><tr>';
+  html += '<th>担当</th><th>名前</th><th>訪問済</th>';
+  html += '<th>担当</th><th>名前</th><th>訪問済</th>';
+  html += '</tr></thead><tbody>';
+  for (let i = 0; i < maxRows; i++) {
+    html += '<tr>';
+    html += buildVisitCells(left[i], unitPrefix, yearMonthKey, checks);
+    html += buildVisitCells(right[i], unitPrefix, yearMonthKey, checks);
+    html += '</tr>';
+  }
   html += '</tbody></table>';
+  return html;
+}
+
+function buildWeightCells(m) {
+  if (!m) return '<td></td><td></td><td></td>';
+  const up = m.weightDiff > 0;
+  const arrow = up ? '↑' : '↓';
+  const sign = up ? '+' : '';
+  let html = '<td class="name">' + escapeHtmlBoard(m.name) + '</td>';
+  html += '<td class="weight-badge ' + (up ? 'up' : 'down') + '">' + arrow + sign + m.weightDiff.toFixed(1) + 'kg</td>';
+  html += '<td style="font-size:11px;color:#64748b;">' + m.prev2Label + ':' + m.weightPrev2 + 'kg → ' + m.prevLabel + ':' + m.weightPrev + 'kg</td>';
   return html;
 }
 
 function buildWeightChecklistTable(list) {
   if (list.length === 0) return '<div class="checklist-empty">変動なし</div>';
-  let html = '<table class="checklist-table"><thead><tr><th>名前</th><th>前回比</th><th>前々月→前月</th></tr></thead><tbody>';
-  list.forEach(m => {
-    const up = m.weightDiff > 0;
-    const arrow = up ? '↑' : '↓';
-    const sign = up ? '+' : '';
-    html += '<tr><td class="name">' + escapeHtmlBoard(m.name) + '</td>'
-      + '<td class="weight-badge ' + (up ? 'up' : 'down') + '">' + arrow + sign + m.weightDiff.toFixed(1) + 'kg</td>'
-      + '<td style="font-size:11px;color:#64748b;">' + m.prev2Label + ':' + m.weightPrev2 + 'kg → ' + m.prevLabel + ':' + m.weightPrev + 'kg</td></tr>';
-  });
+  const half = Math.ceil(list.length / 2);
+  const left = list.slice(0, half);
+  const right = list.slice(half);
+  const maxRows = Math.max(left.length, right.length);
+  let html = '<table class="checklist-table"><thead><tr>';
+  html += '<th>名前</th><th>前回比</th><th>前々月→前月</th>';
+  html += '<th>名前</th><th>前回比</th><th>前々月→前月</th>';
+  html += '</tr></thead><tbody>';
+  for (let i = 0; i < maxRows; i++) {
+    html += '<tr>' + buildWeightCells(left[i]) + buildWeightCells(right[i]) + '</tr>';
+  }
   html += '</tbody></table>';
   return html;
 }
@@ -1407,27 +1436,38 @@ function updateBirthdayStatus(name, month, day, phase, checked) {
   save();
 }
 
+function buildOralCells(u, measureChecks) {
+  if (!u) return '<td></td><td></td><td></td>';
+  const isShien = u.care === 'shien';
+  const cMonKey = u.monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ';
+  const checks = ((loadOralData().checks[u.fiscalYear] || {})[u.name]) || {};
+  const cMonChecked = checks[cMonKey] ? ' checked' : '';
+  const nameKey = u.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+  const staffKey = u.fiscalYear + '_oral_' + nameKey + '_staff';
+  const isDone = u.done >= u.required;
+  const bg = isDone ? ' style="background:#f3f4f6;color:#9ca3af;"' : '';
+  const nameStyle = isDone ? ' style="text-decoration:line-through;background:#f3f4f6;color:#9ca3af;"' : '';
+  let html = '<td' + bg + '>' + buildStaffSelect(staffKey, measureChecks[staffKey] || '') + '</td>';
+  html += '<td class="name"' + nameStyle + '>' + escapeHtmlBoard(u.name)
+    + (isShien ? '<span class="support-badge">(支援)</span>' : '') + '</td>';
+  html += '<td' + bg + '><input type="checkbox" data-oral="' + escapeHtmlBoard(cMonKey) + '" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + cMonChecked + '></td>';
+  return html;
+}
+
 function buildOralChecklistTable(list) {
   if (list.length === 0) return '<div class="checklist-empty">対象者なし</div>';
-  // 担当者は measureChecks 側に保存（同月共通キー）
   const measureChecks = loadMeasurementChecks();
-  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>モニタリング</th></tr></thead><tbody>';
-  list.forEach(u => {
-    const isShien = u.care === 'shien';
-    const cMonKey = u.monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ';
-    const checks = ((loadOralData().checks[u.fiscalYear] || {})[u.name]) || {};
-    const cMonChecked = checks[cMonKey] ? ' checked' : '';
-    const nameKey = u.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
-    const staffKey = u.fiscalYear + '_oral_' + nameKey + '_staff';
-    const isDone = u.done >= u.required;
-    const rowCls = isDone ? ' class="row-done"' : '';
-    html += '<tr' + rowCls + '>';
-    html += '<td>' + buildStaffSelect(staffKey, measureChecks[staffKey] || '') + '</td>';
-    html += '<td class="name">' + escapeHtmlBoard(u.name)
-      + (isShien ? '<span class="support-badge">(支援)</span>' : '') + '</td>';
-    html += '<td><input type="checkbox" data-oral="' + escapeHtmlBoard(cMonKey) + '" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + cMonChecked + '></td>';
-    html += '</tr>';
-  });
+  const half = Math.ceil(list.length / 2);
+  const left = list.slice(0, half);
+  const right = list.slice(half);
+  const maxRows = Math.max(left.length, right.length);
+  let html = '<table class="checklist-table"><thead><tr>';
+  html += '<th>担当</th><th>名前</th><th>モニタリング</th>';
+  html += '<th>担当</th><th>名前</th><th>モニタリング</th>';
+  html += '</tr></thead><tbody>';
+  for (let i = 0; i < maxRows; i++) {
+    html += '<tr>' + buildOralCells(left[i], measureChecks) + buildOralCells(right[i], measureChecks) + '</tr>';
+  }
   html += '</tbody></table>';
   return html;
 }
