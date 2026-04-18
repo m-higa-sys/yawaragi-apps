@@ -1184,12 +1184,9 @@ function renderTodayChecklist() {
     oralData.users.forEach(u => {
       if (!matchesChecklistSchedule(u, weekday, ampm)) return;
       const c = ((oralData.checks[fiscalYear] || {})[u.name]) || {};
-      // 要介護=1回目+2回目+モニタリングの3項目、要支援=1回目+モニタリングの2項目
-      const required = (u.care === 'shien') ? 2 : 3;
-      let done = 0;
-      if (c[monthLabel + '_1回目']) done++;
-      if (u.care !== 'shien' && c[monthLabel + '_2回目']) done++;
-      if (c[monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ']) done++;
+      // 口腔モニタリングのみ対象（月1回実施）
+      const required = 1;
+      const done = c[monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ'] ? 1 : 0;
       if (showOral || done < required) {
         oralList.push({ ...u, required, done, fiscalYear, monthLabel });
       }
@@ -1217,9 +1214,9 @@ function renderTodayChecklist() {
   html += buildWeightChecklistTable(weightList);
   html += '</div>';
 
-  // 口腔チェック
+  // 口腔モニタリング
   html += '<div class="checklist-section">';
-  html += '<div class="checklist-title gray">🦷 口腔チェック（' + (oralList.length) + '名）</div>';
+  html += '<div class="checklist-title gray">🦷 口腔モニタリング（' + (oralList.length) + '名）</div>';
   html += buildOralChecklistTable(oralList);
   html += '</div>';
 
@@ -1337,15 +1334,11 @@ function buildOralChecklistTable(list) {
   if (list.length === 0) return '<div class="checklist-empty">対象者なし</div>';
   // 担当者は measureChecks 側に保存（同月共通キー）
   const measureChecks = loadMeasurementChecks();
-  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>1回目</th><th>2回目</th><th>モニタリング</th><th>進捗</th></tr></thead><tbody>';
+  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>モニタリング</th></tr></thead><tbody>';
   list.forEach(u => {
     const isShien = u.care === 'shien';
-    const c1Key = u.monthLabel + '_1回目';
-    const c2Key = u.monthLabel + '_2回目';
     const cMonKey = u.monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ';
     const checks = ((loadOralData().checks[u.fiscalYear] || {})[u.name]) || {};
-    const c1Checked = checks[c1Key] ? ' checked' : '';
-    const c2Checked = checks[c2Key] ? ' checked' : '';
     const cMonChecked = checks[cMonKey] ? ' checked' : '';
     const nameKey = u.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
     const staffKey = u.fiscalYear + '_oral_' + nameKey + '_staff';
@@ -1355,14 +1348,8 @@ function buildOralChecklistTable(list) {
     html += '<td>' + buildStaffSelect(staffKey, measureChecks[staffKey] || '') + '</td>';
     html += '<td class="name">' + escapeHtmlBoard(u.name)
       + (isShien ? '<span class="support-badge">(支援)</span>' : '') + '</td>';
-    html += '<td><input type="checkbox" data-oral="' + escapeHtmlBoard(c1Key) + '" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + c1Checked + '></td>';
-    if (isShien) {
-      html += '<td style="background:#f9fafb;color:#cbd5e1;">—</td>';
-    } else {
-      html += '<td><input type="checkbox" data-oral="' + escapeHtmlBoard(c2Key) + '" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + c2Checked + '></td>';
-    }
     html += '<td><input type="checkbox" data-oral="' + escapeHtmlBoard(cMonKey) + '" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + cMonChecked + '></td>';
-    html += '<td>' + u.done + '/' + u.required + '</td></tr>';
+    html += '</tr>';
   });
   html += '</tbody></table>';
   return html;
