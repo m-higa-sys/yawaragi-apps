@@ -2,1132 +2,1672 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>今日のタスクボード - yawaragi</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root {
-  --primary: #0f766e;
-  --primary-dark: #115e59;
-  --primary-light: #ccfbf1;
-  --bg: #f0f4f8;
-  --white: #ffffff;
-  --text: #1e293b;
-  --text-sub: #64748b;
-  --border: #e2e8f0;
-  --red: #ef4444;
-  --red-bg: rgba(239,68,68,0.1);
-  --orange: #f59e0b;
-  --orange-bg: rgba(245,158,11,0.1);
-  --green: #22c55e;
-  --green-bg: rgba(34,197,94,0.1);
-  --shadow: 0 1px 4px rgba(0,0,0,0.08);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
-}
-* { margin:0; padding:0; box-sizing:border-box; }
-body {
-  font-family: 'Noto Sans JP', 'Segoe UI', 'Meiryo', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  -webkit-tap-highlight-color: transparent;
-  -webkit-text-size-adjust: 100%;
-}
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif;
+    margin: 0;
+    background: #f5f7fa;
+    color: #1a1a1a;
+    font-size: 14px;
+  }
+  header {
+    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+    color: white;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  h1 { margin: 0; font-size: 20px; }
+  .date-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .date-nav input {
+    padding: 6px 10px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  .date-nav button {
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.2);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .date-nav button:hover { background: rgba(255,255,255,0.3); }
+  .container { padding: 12px; max-width: 1400px; margin: 0 auto; }
+  .main-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: white;
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 12px;
+  }
+  .panel h2 {
+    margin: 0 0 10px;
+    font-size: 17px;
+    color: #1e3a8a;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 6px;
+  }
+  .task-form {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr auto;
+    gap: 6px;
+    padding: 10px;
+    background: #f8fafc;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+  .task-form input, .task-form select {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .task-form button {
+    padding: 7px 14px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .task-form button:hover { background: #2563eb; }
 
-/* ===== ヘッダー ===== */
-.header {
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  color: white;
-  padding: 14px 20px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.header-left { display:flex; align-items:center; gap:12px; }
-.header h1 { font-size:20px; font-weight:700; }
-.header .date { font-size:14px; opacity:0.85; }
-.header-btn {
-  background: rgba(255,255,255,0.2);
-  border: 1px solid rgba(255,255,255,0.4);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s;
-  min-height: 44px;
-}
-.header-btn:hover { background: rgba(255,255,255,0.3); }
-.header-btn.active { background: rgba(255,255,255,0.4); font-weight:700; }
+  /* タスクカード */
+  .task-list { display: flex; flex-direction: column; gap: 6px; }
+  .task {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border-left: 5px solid;
+    background: #fff;
+    border-top: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    align-items: center;
+  }
+  .task.done { opacity: 0.5; text-decoration: line-through; }
+  .task.pri-red { border-left-color: #dc2626; background: #fef2f2; }
+  .task.pri-yellow { border-left-color: #d97706; background: #fffbeb; }
+  .task.pri-green { border-left-color: #059669; background: #f0fdf4; }
+  .task.pri-gray { border-left-color: #64748b; background: #f8fafc; }
+  .task input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+  .task .title { font-weight: 600; }
+  .task .title .sub { font-weight: normal; font-size: 12px; color: #64748b; }
+  .task .pri-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .task .pri-badge.pri-red { background: #dc2626; color: white; border-left: none; }
+  .task .pri-badge.pri-yellow { background: #d97706; color: white; border-left: none; }
+  .task .pri-badge.pri-green { background: #059669; color: white; border-left: none; }
+  .task .pri-badge.pri-gray { background: #64748b; color: white; border-left: none; }
+  .task .staff { font-size: 12px; color: #475569; padding: 2px 8px; background: #e0e7ff; border-radius: 4px; }
+  .task .delete {
+    padding: 3px 8px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+  }
 
-/* ===== タブ ===== */
-.tabs {
-  display: flex;
-  background: white;
-  padding: 8px 16px 0;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-.tab {
-  padding: 12px 24px;
-  border-radius: 10px 10px 0 0;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--text-sub);
-  border: none;
-  background: none;
-  font-family: inherit;
-  transition: all 0.2s;
-  white-space: nowrap;
-  min-height: 48px;
-}
-.tab:hover { color: var(--primary); background: #f0fdfa; }
-.tab.active {
-  color: var(--primary);
-  background: #f0fdfa;
-  border-bottom: 3px solid var(--primary);
-  font-weight: 700;
-}
+  /* スタッフ別ビュー */
+  .staff-list { display: flex; flex-direction: column; gap: 6px; }
+  .staff-item {
+    padding: 8px 10px;
+    background: #f8fafc;
+    border-radius: 6px;
+    border-left: 4px solid #94a3b8;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    align-items: center;
+  }
+  .staff-item.busy { border-left-color: #dc2626; background: #fef2f2; }
+  .staff-item.moderate { border-left-color: #d97706; background: #fffbeb; }
+  .staff-item.easy { border-left-color: #059669; background: #f0fdf4; }
+  .staff-item .name { font-weight: 600; }
+  .staff-item .counts { font-size: 12px; color: #475569; display: flex; gap: 6px; }
+  .staff-item .counts span { padding: 1px 6px; border-radius: 4px; }
+  .staff-item .counts .c-red { background: #fee2e2; color: #991b1b; }
+  .staff-item .counts .c-yellow { background: #fef3c7; color: #92400e; }
+  .staff-item .counts .c-green { background: #d1fae5; color: #065f46; }
+  .staff-item .counts .c-gray { background: #f1f5f9; color: #475569; }
+  .staff-item .status { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
+  .staff-item.busy .status { background: #dc2626; color: white; }
+  .staff-item.moderate .status { background: #d97706; color: white; }
+  .staff-item.easy .status { background: #059669; color: white; }
+  .staff-item.idle .status { background: #64748b; color: white; }
 
-/* ===== コンテナ ===== */
-.container { max-width:1200px; margin:0 auto; padding:16px; }
-.tab-content { display:none; }
-.tab-content.active { display:block; }
+  .section-title { font-size: 13px; font-weight: 600; margin: 10px 0 4px; color: #475569; }
+  .empty { padding: 16px; text-align: center; color: #94a3b8; font-size: 13px; background: #f8fafc; border-radius: 6px; }
 
-/* ===== カード ===== */
-.card {
-  background: var(--white);
-  border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow);
-}
-.card h2 {
-  font-size: 16px;
-  color: var(--primary);
-  margin-bottom: 14px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--primary-light);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .stat-card {
+    padding: 8px 10px;
+    text-align: center;
+    border-radius: 6px;
+    border-left: 4px solid;
+  }
+  .stat-card .num { font-size: 20px; font-weight: bold; }
+  .stat-card .label { font-size: 11px; color: #475569; }
+  .stat-red { background: #fef2f2; border-left-color: #dc2626; }
+  .stat-yellow { background: #fffbeb; border-left-color: #d97706; }
+  .stat-green { background: #f0fdf4; border-left-color: #059669; }
+  .stat-gray { background: #f8fafc; border-left-color: #64748b; }
 
-/* ===== スタッフ選択 ===== */
-.staff-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-}
-.staff-chip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 14px 12px;
-  border-radius: 10px;
-  border: 2px solid var(--border);
-  background: var(--white);
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 500;
-  font-family: inherit;
-  transition: all 0.2s;
-  min-height: 52px;
-}
-.staff-chip:hover { border-color: var(--primary); background: #f0fdfa; }
-.staff-chip.selected {
-  border-color: var(--primary);
-  background: var(--primary-light);
-  color: var(--primary-dark);
-  font-weight: 700;
-}
-.staff-chip .check { display:none; }
-.staff-chip.selected .check { display:inline; }
+  .toolbar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .toolbar button {
+    padding: 6px 12px;
+    background: #e2e8f0;
+    color: #334155;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .toolbar button:hover { background: #cbd5e1; }
+  .toolbar button.primary { background: #3b82f6; color: white; }
+  .toolbar button.primary:hover { background: #2563eb; }
+  .toolbar button.danger { background: #ef4444; color: white; }
 
-/* ===== タスク登録フォーム ===== */
-.form-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.form-row label {
-  font-size: 14px;
-  font-weight: 500;
-  min-width: 80px;
-  color: var(--text-sub);
-}
-.form-row input, .form-row select {
-  flex: 1;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 16px;
-  font-family: inherit;
-  min-height: 48px;
-  min-width: 0;
-}
-.form-row input:focus, .form-row select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(15,118,110,0.1);
-}
+  @media (max-width: 700px) {
+    .task-form { grid-template-columns: 1fr; }
+    .task { grid-template-columns: auto 1fr; }
+    .task .pri-badge, .task .staff, .task .delete { grid-column: 2; justify-self: end; }
+  }
 
-/* ===== 優先度ボタン ===== */
-.priority-btns { display:flex; gap:8px; flex:1; }
-.priority-btn {
-  flex: 1;
-  padding: 12px 8px;
-  border-radius: 8px;
-  border: 2px solid var(--border);
-  background: white;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  font-family: inherit;
-  transition: all 0.2s;
-  min-height: 48px;
-  text-align: center;
-}
-.priority-btn[data-p="high"] { color: var(--red); }
-.priority-btn[data-p="normal"] { color: var(--orange); }
-.priority-btn[data-p="low"] { color: var(--green); }
-.priority-btn.selected[data-p="high"] { background:var(--red-bg); border-color:var(--red); font-weight:700; }
-.priority-btn.selected[data-p="normal"] { background:var(--orange-bg); border-color:var(--orange); font-weight:700; }
-.priority-btn.selected[data-p="low"] { background:var(--green-bg); border-color:var(--green); font-weight:700; }
+  /* モーダル */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  }
+  .modal h2 { margin: 0 0 14px; color: #db2777; }
+  .modal .close {
+    float: right;
+    background: #64748b;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .bday-form {
+    display: grid;
+    grid-template-columns: 80px 80px 1fr auto;
+    gap: 6px;
+    padding: 10px;
+    background: #fce7f3;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    align-items: end;
+  }
+  .bday-form label { font-size: 11px; color: #64748b; display: block; }
+  .bday-form input {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 13px;
+    width: 100%;
+  }
+  .bday-form button {
+    padding: 7px 14px;
+    background: #db2777;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .bday-list { list-style: none; padding: 0; margin: 0; }
+  .bday-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #fdf2f8;
+    border-left: 4px solid #db2777;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    align-items: center;
+  }
+  .bday-item .date { font-weight: bold; color: #831843; min-width: 50px; }
+  .bday-item .status {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .bday-item .status.pending { background: #fef3c7; color: #92400e; }
+  .bday-item .status.photographed { background: #dbeafe; color: #1e40af; }
+  .bday-item .status.printed { background: #d1fae5; color: #065f46; }
+  .bday-item .status.delivered { background: #e5e7eb; color: #475569; text-decoration: line-through; }
 
-/* ===== 登録ボタン ===== */
-.btn-primary {
-  background: var(--primary);
-  color: white;
-  padding: 14px 32px;
-  border: none;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s;
-  min-height: 52px;
-  width: 100%;
-}
-.btn-primary:hover { background: var(--primary-dark); }
-.btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
-
-.btn-danger {
-  background: var(--red);
-  color: white;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: inherit;
-  min-height: 36px;
-}
-
-.btn-complete {
-  background: var(--green);
-  color: white;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-  min-height: 44px;
-  transition: all 0.2s;
-}
-.btn-complete:hover { background: #16a34a; }
-
-/* ===== ボード ===== */
-.board-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
-}
-.staff-column {
-  background: var(--white);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-.staff-column-header {
-  padding: 14px 16px;
-  font-size: 16px;
-  font-weight: 700;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.staff-column-header .task-count {
-  font-size: 13px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 20px;
-}
-
-/* 忙しさレベル */
-.busy-high .staff-column-header { background: var(--red-bg); color: var(--red); border-bottom: 3px solid var(--red); }
-.busy-high .task-count { background: var(--red); color:white; }
-.busy-mid .staff-column-header { background: var(--orange-bg); color: #b45309; border-bottom: 3px solid var(--orange); }
-.busy-mid .task-count { background: var(--orange); color:white; }
-.busy-low .staff-column-header { background: var(--green-bg); color: #15803d; border-bottom: 3px solid var(--green); }
-.busy-low .task-count { background: var(--green); color:white; }
-
-.staff-column-body { padding: 12px; min-height: 80px; }
-.staff-column-body .empty-msg {
-  text-align: center;
-  color: var(--text-sub);
-  font-size: 14px;
-  padding: 20px 0;
-}
-
-/* タスクカード */
-.task-card {
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  margin-bottom: 8px;
-  transition: all 0.2s;
-}
-.task-card:last-child { margin-bottom:0; }
-.task-card.done {
-  opacity: 0.5;
-  background: #f8fafc;
-}
-.task-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.task-name {
-  font-size: 15px;
-  font-weight: 600;
-  flex: 1;
-  word-break: break-all;
-}
-.task-card.done .task-name { text-decoration: line-through; }
-.priority-badge {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 20px;
-  white-space: nowrap;
-}
-.priority-badge.high { background:var(--red-bg); color:var(--red); }
-.priority-badge.normal { background:var(--orange-bg); color:#b45309; }
-.priority-badge.low { background:var(--green-bg); color:#15803d; }
-
-.task-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--text-sub);
-  flex-wrap: wrap;
-}
-.time-over { color: var(--red); font-weight:700; }
-.time-ok { color: var(--green); font-weight:600; }
-
-.task-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-/* ===== 管理画面 ===== */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.stat-card {
-  background: var(--white);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-  box-shadow: var(--shadow);
-}
-.stat-value { font-size: 32px; font-weight: 700; color: var(--primary); }
-.stat-label { font-size: 13px; color: var(--text-sub); margin-top: 4px; }
-
-.ranking-table { width:100%; border-collapse:collapse; font-size:14px; }
-.ranking-table th {
-  background: #f1f5f9;
-  padding: 12px 10px;
-  text-align: left;
-  font-weight: 600;
-  color: #475569;
-  border-bottom: 2px solid var(--border);
-}
-.ranking-table td {
-  padding: 12px 10px;
-  border-bottom: 1px solid #f1f5f9;
-}
-.ranking-table tr:hover { background: #f8fafc; }
-
-/* ===== 設定画面 ===== */
-.setting-section { margin-bottom: 24px; }
-.setting-section h3 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--primary);
-  margin-bottom: 12px;
-}
-.staff-list-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 6px;
-}
-.staff-list-item input {
-  flex: 1;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 15px;
-  font-family: inherit;
-  min-height: 44px;
-}
-.staff-list-item .remove-staff {
-  background: none;
-  border: none;
-  color: var(--red);
-  font-size: 20px;
-  cursor: pointer;
-  padding: 4px 8px;
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.task-template-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
-}
-.task-template-item input[type="text"] {
-  flex: 2;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 15px;
-  font-family: inherit;
-  min-height: 44px;
-  min-width: 120px;
-}
-.task-template-item input[type="number"] {
-  width: 80px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 15px;
-  font-family: inherit;
-  min-height: 44px;
-  text-align: center;
-}
-.add-btn {
-  background: #f0fdfa;
-  color: var(--primary);
-  border: 2px dashed var(--primary-light);
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  font-family: inherit;
-  width: 100%;
-  min-height: 48px;
-  transition: all 0.2s;
-}
-.add-btn:hover { background: var(--primary-light); border-color: var(--primary); }
-
-/* ===== モーダル ===== */
-.modal-overlay {
-  display: none;
-  position: fixed;
-  top:0; left:0; right:0; bottom:0;
-  background: rgba(0,0,0,0.5);
-  z-index: 200;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.modal-overlay.show { display:flex; }
-.modal {
-  background: white;
-  border-radius: 16px;
-  padding: 24px;
-  max-width: 500px;
-  width: 100%;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: var(--shadow-md);
-}
-.modal h3 { font-size:18px; margin-bottom:16px; color:var(--primary); }
-.modal-actions { display:flex; gap:10px; margin-top:16px; }
-.modal-actions button { flex:1; min-height:48px; border-radius:8px; font-size:15px; font-family:inherit; cursor:pointer; }
-
-/* ===== レスポンシブ ===== */
-@media (max-width: 600px) {
-  .header { padding: 12px 14px; }
-  .header h1 { font-size: 17px; }
-  .container { padding: 12px; }
-  .board-grid { grid-template-columns: 1fr; }
-  .form-row { flex-direction: column; align-items: stretch; }
-  .form-row label { min-width: auto; }
-  .priority-btns { flex-wrap: nowrap; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-/* ===== 印刷 ===== */
-@media print {
-  .header, .tabs, .tab-content:not(.active) { display:none !important; }
-  body { background:white; }
-  .card { box-shadow:none; border:1px solid #ddd; break-inside:avoid; }
-}
+  /* 今日のチェックリスト */
+  .ampm-btn {
+    padding: 4px 12px;
+    border: 1px solid #cbd5e1;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .ampm-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; }
+  .checklist-section { margin-bottom: 14px; }
+  .checklist-title {
+    font-size: 14px; font-weight: bold; padding: 6px 10px;
+    border-left: 4px solid #4CAF50; background: #e8f5e9; margin-bottom: 6px;
+  }
+  .checklist-title.blue { border-left-color: #2196F3; background: #e3f2fd; }
+  .checklist-title.orange { border-left-color: #FF9800; background: #fff3e0; }
+  .checklist-title.gray { border-left-color: #9e9e9e; background: #f5f5f5; }
+  .checklist-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .checklist-table th, .checklist-table td {
+    border: 1px solid #d1d5db; padding: 4px 6px; text-align: center;
+  }
+  .checklist-table th { background: #f3f4f6; font-weight: 600; font-size: 12px; }
+  .checklist-table td.name { text-align: left; min-width: 90px; font-weight: 600; }
+  .checklist-table input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+  .checklist-table input.date-input { width: 100px; font-size: 12px; padding: 2px 4px; }
+  .checklist-table select.staff-select { font-size: 12px; padding: 2px 4px; min-width: 70px; }
+  .checklist-table tr.row-done { background: #f3f4f6; color: #9ca3af; }
+  .checklist-table tr.row-done td.name { text-decoration: line-through; }
+  .checklist-empty { color: #94a3b8; font-size: 13px; padding: 8px 10px; font-style: italic; }
+  .support-badge { font-size: 10px; color: #999; margin-left: 2px; }
+  .weight-badge { font-size: 11px; font-weight: bold; }
+  .weight-badge.up { color: #f44336; }
+  .weight-badge.down { color: #2196F3; }
 </style>
 </head>
 <body>
-
-<!-- ヘッダー -->
-<div class="header">
-  <div class="header-left">
-    <h1>📋 今日のタスクボード</h1>
-    <span class="date" id="todayDate"></span>
+<header>
+  <h1>📋 今日のタスクボード</h1>
+  <div class="date-nav">
+    <button onclick="changeDate(-1)">←前日</button>
+    <input type="date" id="current-date" onchange="onDateChange()">
+    <button onclick="setToday()">今日</button>
+    <button onclick="changeDate(1)">翌日→</button>
   </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;">
-    <button class="header-btn" onclick="location.reload()">🔄 更新</button>
-    <button class="header-btn" id="btnResetDay" onclick="confirmResetDay()">🗑 今日のリセット</button>
-  </div>
-</div>
+</header>
 
-<!-- タブ -->
-<div class="tabs">
-  <button class="tab active" data-tab="board">📊 ボード</button>
-  <button class="tab" data-tab="register">✏️ タスク登録</button>
-  <button class="tab" data-tab="admin">👔 管理画面</button>
-  <button class="tab" data-tab="settings">⚙ 設定</button>
-</div>
-
-<!-- ===== ボード ===== -->
-<div class="tab-content active" id="tab-board">
-  <div class="container">
-    <div class="board-grid" id="boardGrid">
-      <!-- JSで生成 -->
-    </div>
-    <p id="boardEmpty" style="text-align:center;color:var(--text-sub);padding:40px 0;font-size:15px;display:none;">
-      まだ今日のタスクがありません。「タスク登録」タブから登録してください。
-    </p>
-  </div>
-</div>
-
-<!-- ===== タスク登録 ===== -->
-<div class="tab-content" id="tab-register">
-  <div class="container">
-    <div class="card">
-      <h2>👤 誰のタスク？</h2>
-      <div class="staff-grid" id="staffSelect">
-        <!-- JSで生成 -->
+<div class="container">
+  <div class="main-grid">
+    <!-- 左: タスクリスト -->
+    <div>
+      <!-- 今日の測定・訪問・口腔チェック -->
+      <div class="panel" id="checklist-panel">
+        <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span>📏 今日の測定・訪問・口腔</span>
+          <span id="ampm-switch" style="display:inline-flex;gap:4px;font-size:13px;font-weight:normal;">
+            <button class="ampm-btn" data-ampm="AM" onclick="setChecklistAmpm('AM')">AM</button>
+            <button class="ampm-btn" data-ampm="PM" onclick="setChecklistAmpm('PM')">PM</button>
+          </span>
+          <span id="ampm-status" style="font-size:12px;color:#64748b;font-weight:normal;"></span>
+        </h2>
+        <div id="today-checklist-section"></div>
       </div>
-    </div>
-    <div class="card">
-      <h2>📝 タスク内容</h2>
-      <div style="margin-bottom:12px;">
-        <label style="font-size:14px;font-weight:500;color:var(--text-sub);display:block;margin-bottom:6px;">よく使うタスクから選ぶ</label>
-        <div id="templateBtns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
-          <!-- JSで生成 -->
+
+      <div class="panel">
+        <h2>📝 イレギュラータスクの追加</h2>
+        <div style="font-size:12px;color:#64748b;margin-bottom:6px;">
+          💡 毎月のルーティンは🔄マーク付きで自動表示されます。ここにはイレギュラー・臨時のタスクだけ追加してください。
+        </div>
+        <div class="task-form">
+          <input type="text" id="new-title" placeholder="タスク名（例: ○○様 体調不良対応）" />
+          <select id="new-pri">
+            <option value="red">🔴最優先</option>
+            <option value="yellow" selected>🟡高優先</option>
+            <option value="green">🟢中優先</option>
+            <option value="gray">⚪低優先</option>
+          </select>
+          <select id="new-staff"></select>
+          <input type="text" id="new-sub" placeholder="メモ（任意）" />
+          <button onclick="addTask()">追加</button>
         </div>
       </div>
-      <div class="form-row">
-        <label>タスク名</label>
-        <input type="text" id="taskName" placeholder="例：利用者の記録整理">
-      </div>
-      <div class="form-row">
-        <label>急ぎ度</label>
-        <div class="priority-btns">
-          <button class="priority-btn selected" data-p="high" onclick="selectPriority('high')">🔴 急ぎ</button>
-          <button class="priority-btn" data-p="normal" onclick="selectPriority('normal')">🟡 普通</button>
-          <button class="priority-btn" data-p="low" onclick="selectPriority('low')">🟢 余裕</button>
+
+      <div class="panel">
+        <h2>📋 今日のタスク一覧</h2>
+        <div class="stats" id="stats-area"></div>
+
+        <div id="task-sections">
+          <div class="section-title">🔴 最優先</div>
+          <div id="tasks-red" class="task-list"></div>
+          <div class="section-title">🟡 高優先</div>
+          <div id="tasks-yellow" class="task-list"></div>
+          <div class="section-title">🟢 中優先</div>
+          <div id="tasks-green" class="task-list"></div>
+          <div class="section-title">⚪ 低優先</div>
+          <div id="tasks-gray" class="task-list"></div>
         </div>
       </div>
-      <div class="form-row">
-        <label>目安時間</label>
-        <select id="taskTime">
-          <option value="">未設定</option>
-          <option value="5">5分</option>
-          <option value="10">10分</option>
-          <option value="15">15分</option>
-          <option value="20">20分</option>
-          <option value="30">30分</option>
-          <option value="45">45分</option>
-          <option value="60">1時間</option>
-          <option value="90">1時間30分</option>
-          <option value="120">2時間</option>
-        </select>
-      </div>
-      <button class="btn-primary" id="btnAddTask" onclick="addTask()">タスクを登録</button>
     </div>
-  </div>
-</div>
 
-<!-- ===== 管理画面 ===== -->
-<div class="tab-content" id="tab-admin">
-  <div class="container">
-    <div class="stats-grid" id="statsGrid">
-      <!-- JSで生成 -->
-    </div>
-    <div class="card">
-      <h2>📈 スタッフ別の状況</h2>
-      <div style="overflow-x:auto;">
-        <table class="ranking-table" id="rankingTable">
-          <thead>
-            <tr>
-              <th>スタッフ</th>
-              <th>タスク数</th>
-              <th>完了</th>
-              <th>残り</th>
-              <th>目安合計</th>
-              <th>実績合計</th>
-              <th>状態</th>
-            </tr>
-          </thead>
-          <tbody id="rankingBody"></tbody>
-        </table>
+    <!-- 右: スタッフ別ビュー -->
+    <div>
+      <div class="panel">
+        <h2>👥 スタッフ別状況</h2>
+        <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
+          忙しい人＝守るべき人 ／ 余裕ある人＝サポート役
+        </div>
+        <div class="staff-list" id="staff-view"></div>
       </div>
-    </div>
-    <div class="card">
-      <h2>⏱ 完了タスクの時間比較</h2>
-      <div style="overflow-x:auto;">
-        <table class="ranking-table" id="timeTable">
-          <thead>
-            <tr>
-              <th>スタッフ</th>
-              <th>タスク名</th>
-              <th>目安</th>
-              <th>実績</th>
-              <th>差</th>
-            </tr>
-          </thead>
-          <tbody id="timeBody"></tbody>
-        </table>
+
+      <div class="panel">
+        <h2>⚙️ 設定</h2>
+        <div class="toolbar">
+          <button class="primary" style="background:#db2777" onclick="openBdayModal()">🎂 誕生日管理</button>
+          <button class="primary" onclick="exportData()">💾 エクスポート</button>
+          <button onclick="document.getElementById('import-file').click()">📥 インポート</button>
+          <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+          <button class="danger" onclick="resetAll()">🗑 全削除</button>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:8px;">
+          データはブラウザに保存されます。バックアップはエクスポート推奨。
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ===== 設定 ===== -->
-<div class="tab-content" id="tab-settings">
-  <div class="container">
-    <div class="card">
-      <h2>👥 スタッフ登録</h2>
-      <div class="setting-section">
-        <div id="staffListEdit">
-          <!-- JSで生成 -->
-        </div>
-        <button class="add-btn" onclick="addStaffRow()">＋ スタッフを追加</button>
-        <div style="margin-top:12px;">
-          <button class="btn-primary" onclick="saveStaff()">スタッフを保存</button>
-        </div>
-      </div>
-    </div>
-    <div class="card">
-      <h2>📋 よく使うタスク（テンプレート）</h2>
-      <div class="setting-section">
-        <p style="font-size:13px;color:var(--text-sub);margin-bottom:12px;">目安時間リストが見つかったらここに登録してください</p>
-        <div id="templateListEdit">
-          <!-- JSで生成 -->
-        </div>
-        <button class="add-btn" onclick="addTemplateRow()">＋ テンプレートを追加</button>
-        <div style="margin-top:12px;">
-          <button class="btn-primary" onclick="saveTemplates()">テンプレートを保存</button>
-        </div>
-      </div>
-    </div>
-    <div class="card" style="border-left:4px solid var(--red);">
-      <h2 style="color:var(--red);">⚠ データ管理</h2>
-      <p style="font-size:13px;color:var(--text-sub);margin-bottom:12px;">※ この端末のデータのみ削除されます</p>
-      <button class="btn-danger" onclick="confirmClearAll()" style="padding:12px 24px;font-size:14px;border-radius:8px;">全データを削除</button>
-    </div>
-  </div>
-</div>
-
-<!-- 確認モーダル -->
-<div class="modal-overlay" id="confirmModal">
+<!-- 誕生日管理モーダル -->
+<div class="modal-overlay" id="bday-modal">
   <div class="modal">
-    <h3 id="modalTitle"></h3>
-    <p id="modalMsg" style="font-size:14px;color:var(--text-sub);"></p>
-    <div class="modal-actions">
-      <button style="background:var(--border);border:none;color:var(--text);" onclick="closeModal()">キャンセル</button>
-      <button id="modalOk" style="background:var(--red);border:none;color:white;font-weight:700;"></button>
+    <button class="close" onclick="closeBdayModal()">閉じる</button>
+    <h2>🎂 誕生日管理</h2>
+    <div style="font-size:12px;color:#64748b;margin-bottom:10px;">
+      登録すると誕生日の3日前から「写真撮影」タスクが自動表示されます。<br>
+      撮影→プリント→お渡しの3段階で進行します。
     </div>
+    <div class="bday-form">
+      <div>
+        <label>月</label>
+        <input type="number" id="bday-month" min="1" max="12" placeholder="4">
+      </div>
+      <div>
+        <label>日</label>
+        <input type="number" id="bday-day" min="1" max="31" placeholder="20">
+      </div>
+      <div>
+        <label>利用者名</label>
+        <input type="text" id="bday-name" placeholder="○○様">
+      </div>
+      <button onclick="addBirthday()">追加</button>
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:8px;font-size:12px;">
+      <button onclick="filterBday('current')" id="filter-current" style="flex:1;padding:5px;background:#db2777;color:white;border:none;border-radius:4px;cursor:pointer;">今月</button>
+      <button onclick="filterBday('next')" id="filter-next" style="flex:1;padding:5px;background:#e2e8f0;color:#475569;border:none;border-radius:4px;cursor:pointer;">来月</button>
+      <button onclick="filterBday('all')" id="filter-all" style="flex:1;padding:5px;background:#e2e8f0;color:#475569;border:none;border-radius:4px;cursor:pointer;">全部</button>
+    </div>
+    <ul class="bday-list" id="bday-list"></ul>
   </div>
 </div>
 
 <script>
-// ===== データ管理 =====
-const STORAGE_KEY = 'yawaragi_taskboard';
-const TODAY = new Date().toISOString().slice(0,10);
+const STORAGE_KEY = 'yawaragi_taskboard_v5';
+const STAFF_LIST = ['星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'];
+const PRI_INFO = {
+  red: { label: '🔴最優先', badge: '最優先' },
+  yellow: { label: '🟡高優先', badge: '高' },
+  green: { label: '🟢中優先', badge: '中' },
+  gray: { label: '⚪低優先', badge: '低' },
+};
 
-function loadData() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return getDefault();
-    const d = JSON.parse(raw);
-    // 日付が変わったらタスクだけリセット（スタッフ・テンプレートは保持）
-    if (d.date !== TODAY) {
-      d.date = TODAY;
-      d.tasks = [];
-    }
-    return d;
-  } catch(e) { return getDefault(); }
-}
-const DEFAULT_TEMPLATES = [
-  {name:'介護請求　利用者請求表のチェック', time:60},
-  {name:'国保連請求', time:30},
-  {name:'国保連請求の明細を介護請求ファイルへ', time:15},
-  {name:'利用者請求、請求書・領収書発行', time:30},
-  {name:'介護請求　利用者請求表の作成', time:30},
-  {name:'実績用メール・FAXファイル作成', time:10},
-  {name:'来月の測定一覧表の作成', time:30},
-  {name:'新規利用者　口座登録　郵送', time:null},
-  {name:'通所モニタリング・最終評価', time:null},
-  {name:'科学的介護推進体制加算　データ入力', time:90},
-  {name:'口腔・栄養改善等の加算チェック', time:120},
-  {name:'測定結果　ケアマネ用印刷（PDF）', time:60},
-  {name:'計画書の確認とスキャンと仕分け', time:60},
-  {name:'長期休み連絡', time:null},
-  {name:'実績確定', time:null},
-  {name:'実績送付準備【メール】送信', time:60},
-  {name:'口座振替　リハブ　レセプト登録', time:15},
-  {name:'区分変更者リスト記入', time:null},
-  {name:'ケアプラン更新者リスト作成', time:30},
-  {name:'リマインダーに翌月のケアプラン更新者入力', time:15},
+// ルーティンタスクマスタ（スタッフが関わる業務のみ）
+// type: 'monthly'=毎月X日 | 'monthly-range'=毎月X-Y日
+// 月末はday=31で表現（実際は月末日に発動）
+const ROUTINES = [
+  // LIFE提出（加算別・担当者別）
+  { id:'r-life-kokuII', title:'LIFE提出（口腔II）', sub:'10日締切・看護師担当', pri:'yellow', type:'monthly', day:10, windowDays:5, autoStaff:'' },
+  { id:'r-life-science', title:'LIFE提出（科学的介護）', sub:'10日締切・星野/下浦担当', pri:'yellow', type:'monthly', day:10, windowDays:5, autoStaff:'' },
+  { id:'r-life-adl', title:'LIFE提出（ADL維持）', sub:'10日締切・看護師担当', pri:'yellow', type:'monthly', day:10, windowDays:5, autoStaff:'' },
+  // ケアマネ実績送付（複数人で分担）
+  { id:'r-caremanage', title:'ケアマネ実績送付', sub:'月末〜月初・複数人分担', pri:'yellow', type:'monthly-range', startDay:28, endDay:5, autoStaff:'' },
 ];
 
-function getDefault() {
-  return { date: TODAY, staff: [], templates: DEFAULT_TEMPLATES.map(t=>({...t})), tasks: [] };
-}
-function saveData(d) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+// 今日適用すべきルーティンを取得
+function getTodayRoutines(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDate();
+  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  const matched = [];
+  for (const r of ROUTINES) {
+    if (r.type === 'monthly') {
+      // 月末扱い（day:31は月末日に変換）
+      const targetDay = r.day > lastDay ? lastDay : r.day;
+      // windowDays は targetDay を含む前側の期間
+      if (day >= targetDay - (r.windowDays - 1) && day <= targetDay) {
+        matched.push(r);
+      }
+    } else if (r.type === 'monthly-range') {
+      let sd = r.startDay;
+      let ed = r.endDay;
+      if (sd <= ed) {
+        // 同月内
+        if (day >= sd && day <= ed) matched.push(r);
+      } else {
+        // 月をまたぐ（月末〜月初）
+        if (day >= sd || day <= ed) matched.push(r);
+      }
+    }
+  }
+  return matched;
 }
 
-let data = loadData();
-// 既存データにテンプレートが空なら初期値を入れる
-if (data.templates.length === 0) {
-  data.templates = DEFAULT_TEMPLATES.map(t=>({...t}));
-  saveData(data);
-}
+let data = { tasks: {}, birthdays: [] };
+// birthdays = [{ id, month, day, name, year: 登録年, status: 'pending'|'photographed'|'printed'|'delivered', lastUpdated }]
+let currentDate = '';
+let bdayFilter = 'current';
 
-// ===== 日付表示 =====
-function formatDate() {
+function load() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) {
+    data = JSON.parse(raw);
+    if (!data.birthdays) data.birthdays = [];
+  }
+}
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+function todayStr() {
   const d = new Date();
-  const days = ['日','月','火','水','木','金','土'];
-  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日（${days[d.getDay()]}）`;
-}
-document.getElementById('todayDate').textContent = formatDate();
-
-// ===== タブ切替 =====
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-    if (tab.dataset.tab === 'board') renderBoard();
-    if (tab.dataset.tab === 'register') renderRegister();
-    if (tab.dataset.tab === 'admin') renderAdmin();
-    if (tab.dataset.tab === 'settings') renderSettings();
-  });
-});
-
-// ===== タスク登録 =====
-let selectedStaff = null;
-let selectedPriority = 'high';
-
-function renderRegister() {
-  const grid = document.getElementById('staffSelect');
-  grid.innerHTML = data.staff.map(name =>
-    `<button class="staff-chip ${selectedStaff===name?'selected':''}" onclick="selectStaff('${name}')">
-      <span class="check">✓</span>${name}
-    </button>`
-  ).join('');
-  if (data.staff.length === 0) {
-    grid.innerHTML = '<p style="color:var(--text-sub);font-size:14px;">先に「設定」タブでスタッフを登録してください</p>';
-  }
-  // テンプレートボタン
-  const tmpl = document.getElementById('templateBtns');
-  tmpl.innerHTML = data.templates.map(t =>
-    `<button style="padding:10px 16px;border:1px solid var(--border);border-radius:20px;background:white;
-     font-size:14px;font-family:inherit;cursor:pointer;min-height:44px;transition:all 0.2s;"
-     onclick="applyTemplate('${t.name.replace(/'/g,"\\'")}',${t.time||0})"
-     onmouseover="this.style.background='#f0fdfa'" onmouseout="this.style.background='white'">
-     ${t.name}${t.time ? ' ('+t.time+'分)' : ''}</button>`
-  ).join('');
-  if (data.templates.length === 0) {
-    tmpl.innerHTML = '<span style="font-size:13px;color:var(--text-sub);">「設定」タブでテンプレートを追加できます</span>';
-  }
+  return d.toISOString().slice(0, 10);
 }
 
-function selectStaff(name) {
-  selectedStaff = name;
-  renderRegister();
-}
-function selectPriority(p) {
-  selectedPriority = p;
-  document.querySelectorAll('.priority-btn').forEach(b => {
-    b.classList.toggle('selected', b.dataset.p === p);
+function init() {
+  load();
+  currentDate = todayStr();
+  document.getElementById('current-date').value = currentDate;
+  // スタッフセレクト
+  const sel = document.getElementById('new-staff');
+  sel.innerHTML = '<option value="">担当未定</option>' + STAFF_LIST.map(s => `<option>${s}</option>`).join('');
+  render();
+  // クラウドから最新データ取得（完了後に再描画）
+  boardCloudLoad(function() { render(); });
+  // 30秒ごと自動更新
+  setInterval(function() {
+    if (document.hidden) return;
+    boardCloudLoad(function(ok) { if (ok) render(); });
+  }, 30000);
+  // 画面復帰時にも更新
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) boardCloudLoad(function(ok) { if (ok) render(); });
   });
 }
-function applyTemplate(name, time) {
-  document.getElementById('taskName').value = name;
-  if (time) document.getElementById('taskTime').value = time;
+
+function onDateChange() {
+  currentDate = document.getElementById('current-date').value;
+  render();
+}
+function changeDate(offset) {
+  const d = new Date(currentDate);
+  d.setDate(d.getDate() + offset);
+  currentDate = d.toISOString().slice(0, 10);
+  document.getElementById('current-date').value = currentDate;
+  render();
+}
+function setToday() {
+  currentDate = todayStr();
+  document.getElementById('current-date').value = currentDate;
+  render();
 }
 
 function addTask() {
-  const name = document.getElementById('taskName').value.trim();
-  if (!selectedStaff) { alert('スタッフを選んでください'); return; }
-  if (!name) { alert('タスク名を入力してください'); return; }
-  const timeStr = document.getElementById('taskTime').value;
-  const task = {
-    id: Date.now(),
-    staff: selectedStaff,
-    name: name,
-    priority: selectedPriority,
-    estimatedMin: timeStr ? parseInt(timeStr) : null,
-    startTime: new Date().toISOString(),
-    endTime: null,
-    done: false
-  };
-  data.tasks.push(task);
-  saveData(data);
-  document.getElementById('taskName').value = '';
-  document.getElementById('taskTime').value = '';
-  // 成功メッセージ
-  const btn = document.getElementById('btnAddTask');
-  btn.textContent = '✓ 登録しました！';
-  btn.style.background = '#22c55e';
-  setTimeout(() => { btn.textContent = 'タスクを登録'; btn.style.background = ''; }, 1500);
+  const title = document.getElementById('new-title').value.trim();
+  if (!title) { alert('タスク名を入れてください'); return; }
+  const pri = document.getElementById('new-pri').value;
+  const staff = document.getElementById('new-staff').value;
+  const sub = document.getElementById('new-sub').value.trim();
+  if (!data.tasks[currentDate]) data.tasks[currentDate] = [];
+  data.tasks[currentDate].push({
+    id: newId(),
+    title, sub, priority: pri, staff,
+    done: false,
+    createdAt: new Date().toISOString(),
+  });
+  save();
+  document.getElementById('new-title').value = '';
+  document.getElementById('new-sub').value = '';
+  render();
 }
 
-// ===== ボード表示 =====
-function renderBoard() {
-  const grid = document.getElementById('boardGrid');
-  const empty = document.getElementById('boardEmpty');
-  // 今日タスクがあるスタッフだけ表示
-  const staffWithTasks = [...new Set(data.tasks.map(t=>t.staff))];
-  if (staffWithTasks.length === 0) {
-    grid.innerHTML = '';
-    empty.style.display = 'block';
+function toggleTask(id) {
+  const list = data.tasks[currentDate] || [];
+  const t = list.find(x => x.id === id);
+  if (!t) return;
+  t.done = !t.done;
+  t.doneAt = t.done ? new Date().toISOString() : null;
+  // 誕生日タスクなら完了時にステータス進行
+  if (t.done && t.bdayId) advanceBdayOnCheck(t);
+  save();
+  render();
+}
+
+function deleteTask(id) {
+  if (!confirm('このタスクを削除しますか？')) return;
+  data.tasks[currentDate] = (data.tasks[currentDate] || []).filter(x => x.id !== id);
+  save();
+  render();
+}
+
+function updateStaff(id, staff) {
+  const t = (data.tasks[currentDate] || []).find(x => x.id === id);
+  if (t) { t.staff = staff; save(); render(); }
+}
+
+function applyRoutines() {
+  // 今日該当するルーティンを自動追加（重複防止）
+  if (!data.tasks[currentDate]) data.tasks[currentDate] = [];
+  const beforeLen = data.tasks[currentDate].length;
+
+  // 利用者別自動タスクのクリーンアップ（その日の時間帯に合わないもの＆古い情報欠落タスクを削除）
+  data.tasks[currentDate] = data.tasks[currentDate].filter(t => {
+    const isAutoUserTask = t.measureTaskId || t.visitTaskId || t.weightAlertTaskId || t.oralTaskId;
+    if (!isAutoUserTask) return true; // 手動・ルーティン・誕生日は残す
+    if (t.done) return true; // 完了済みは残す
+    // memberDays情報ありなら曜日・時間帯で判定
+    if (t.memberDays !== undefined) {
+      const fakeMember = { days: t.memberDays, unitRaw: t.memberUnitRaw || '' };
+      return matchesTodaySchedule(fakeMember);
+    }
+    return false; // 情報欠落の古いタスクは削除
+  });
+  if (data.tasks[currentDate].length !== beforeLen) save();
+  const list = data.tasks[currentDate];
+
+  const routines = getTodayRoutines(currentDate);
+  let added = 0;
+  for (const r of routines) {
+    const already = list.some(t => t.routineId === r.id);
+    if (!already) {
+      list.push({
+        id: newId(),
+        routineId: r.id,
+        title: r.title,
+        sub: r.sub || '',
+        priority: r.pri,
+        staff: r.autoStaff || '',
+        done: false,
+        createdAt: new Date().toISOString(),
+      });
+      added++;
+    }
+  }
+  // 誕生日関連タスクの自動生成
+  applyBirthdayTasks(list);
+  // 利用者別の測定・訪問・体重・口腔は専用チェックリストセクションで表示
+  // （カード形式には追加しない）
+  if (added > 0) save();
+  return added;
+}
+
+// ============ 測定対象者の自動抽出（2026/4/18追加） ============
+// 測定・訪問・誕生日一覧アプリのlocalStorageから読み込む
+const MEASURE_MEMBERS_KEY = 'yawaragi_monthly_members_cache';
+const MEASURE_CHECKS_KEY = 'yawaragi_monthly_checks';
+const MEASURE_IRREGULAR_KEY = 'yawaragi_monthly_irregular';
+const WEIGHT_STORAGE_KEY = 'yawaragi_weight_check';
+const WEIGHT_THRESHOLD = 2.0;
+
+// クラウド同期URL（口腔・体重・測定と同じGAS）
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+let _boardSyncing = false;
+
+function boardCloudLoad(onDone) {
+  if (_boardSyncing) { if (onDone) onDone(false); return; }
+  _boardSyncing = true;
+  try {
+    const script = document.createElement('script');
+    const cbName = '_boardCb_' + Date.now();
+    let loaded = false;
+    // 3系統（monthly・oral・weight）を順に取得するため、ここではmonthlyのみ。oral/weightは別途
+    window[cbName] = function(cloud) {
+      loaded = true;
+      if (cloud && cloud.checks) localStorage.setItem(MEASURE_CHECKS_KEY, JSON.stringify(cloud.checks));
+      if (cloud && cloud.members && cloud.members.length > 0) localStorage.setItem(MEASURE_MEMBERS_KEY, JSON.stringify(cloud.members));
+      if (cloud && cloud.irregular) localStorage.setItem(MEASURE_IRREGULAR_KEY, JSON.stringify(cloud.irregular));
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      // 口腔・体重もロード
+      boardCloudLoadOral(function() {
+        boardCloudLoadWeight(function() {
+          _boardSyncing = false;
+          if (onDone) onDone(true);
+        });
+      });
+    };
+    script.src = SYNC_URL + '?action=getMonthly&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+      if (!loaded) { delete window[cbName]; _boardSyncing = false; if (onDone) onDone(false); }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+    document.head.appendChild(script);
+  } catch(e) { _boardSyncing = false; if (onDone) onDone(false); }
+}
+
+function boardCloudLoadOral(onDone) {
+  try {
+    const script = document.createElement('script');
+    const cbName = '_boardOralCb_' + Date.now();
+    window[cbName] = function(cloud) {
+      if (cloud && cloud.checks) {
+        const existing = JSON.parse(localStorage.getItem(ORAL_STORAGE_KEY) || '{"users":[],"checks":{}}');
+        existing.checks = cloud.checks;
+        if (cloud.users && cloud.users.length > 0) existing.users = cloud.users;
+        localStorage.setItem(ORAL_STORAGE_KEY, JSON.stringify(existing));
+      }
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      if (onDone) onDone();
+    };
+    script.src = SYNC_URL + '?action=getOral&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() { delete window[cbName]; if (onDone) onDone(); if (script.parentNode) script.parentNode.removeChild(script); };
+    document.head.appendChild(script);
+  } catch(e) { if (onDone) onDone(); }
+}
+
+function boardCloudLoadWeight(onDone) {
+  try {
+    const script = document.createElement('script');
+    const cbName = '_boardWeightCb_' + Date.now();
+    window[cbName] = function(cloud) {
+      if (cloud && cloud.weights) {
+        const existing = JSON.parse(localStorage.getItem(WEIGHT_STORAGE_KEY) || '{"users":[],"weights":{},"heights":{}}');
+        existing.weights = cloud.weights;
+        if (cloud.heights) existing.heights = cloud.heights;
+        if (cloud.users && cloud.users.length > 0) existing.users = cloud.users;
+        localStorage.setItem(WEIGHT_STORAGE_KEY, JSON.stringify(existing));
+      }
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      if (onDone) onDone();
+    };
+    script.src = SYNC_URL + '?action=getWeight&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() { delete window[cbName]; if (onDone) onDone(); if (script.parentNode) script.parentNode.removeChild(script); };
+    document.head.appendChild(script);
+  } catch(e) { if (onDone) onDone(); }
+}
+
+// チェック保存時に同期
+function boardCloudSyncMonthly() {
+  try {
+    const checks = JSON.parse(localStorage.getItem(MEASURE_CHECKS_KEY) || '{}');
+    const members = JSON.parse(localStorage.getItem(MEASURE_MEMBERS_KEY) || '[]');
+    const irregular = JSON.parse(localStorage.getItem(MEASURE_IRREGULAR_KEY) || '{}');
+    fetch(SYNC_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'monthly', data: { checks, members, irregular } }),
+      keepalive: true
+    });
+  } catch(e) {}
+}
+
+function boardCloudSyncOral() {
+  try {
+    const d = JSON.parse(localStorage.getItem(ORAL_STORAGE_KEY) || '{"users":[],"checks":{}}');
+    fetch(SYNC_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'oral', data: d }),
+      keepalive: true
+    });
+  } catch(e) {}
+}
+
+// ============ 曜日・時間帯マッチ判定（2026/4/18追加） ============
+// タスクボードの日付＆現在時刻から、その日のその時間帯に来所する利用者だけ絞る
+const WEEKDAY_CHARS = ['日','月','火','水','木','金','土'];
+
+function getCurrentAmPm() {
+  // 当日なら現在時刻で判定、他日なら null（両方表示）
+  if (currentDate !== todayStr()) return null;
+  return new Date().getHours() < 12 ? 'AM' : 'PM';
+}
+
+function getCurrentWeekday() {
+  const d = new Date(currentDate);
+  return WEEKDAY_CHARS[d.getDay()];
+}
+
+// member: { days, unit, unitRaw? } or { days, ampm }（口腔チェック形式）
+function matchesTodaySchedule(member) {
+  const weekday = getCurrentWeekday();
+  const ampm = getCurrentAmPm(); // 'AM' | 'PM' | null
+  const ampmJP = ampm === 'AM' ? '午前' : ampm === 'PM' ? '午後' : null;
+
+  // 曜日判定（曜日情報なしは非表示＝厳格化）
+  const days = member.days || '';
+  if (!days) return false;
+  if (days.indexOf(weekday) < 0) return false;
+
+  // AM/PM判定不要（他日表示中）
+  if (!ampm) return true;
+
+  // 複合パターン（「月午前、木午後」）優先で判定
+  const raw = member.unitRaw || member.ampm || '';
+  if (raw && (raw.indexOf('、') >= 0 || raw.indexOf(',') >= 0)) {
+    const parts = raw.split(/[、,]/);
+    for (const part of parts) {
+      const p = part.trim();
+      if (p.indexOf(weekday) >= 0) {
+        return p.indexOf(ampmJP) >= 0;
+      }
+    }
+    return false;
+  }
+  // 単純「午前」「午後」
+  if (raw) {
+    if (raw.indexOf('午前') >= 0 || raw.toUpperCase().indexOf('AM') >= 0) return ampm === 'AM';
+    if (raw.indexOf('午後') >= 0 || raw.toUpperCase().indexOf('PM') >= 0) return ampm === 'PM';
+  }
+  // unitフィールド（AM/PM）
+  if (member.unit) return member.unit === ampm;
+  return true;
+}
+
+function loadMeasurementMembers() {
+  try {
+    const raw = localStorage.getItem(MEASURE_MEMBERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+function loadMeasurementChecks() {
+  try {
+    const raw = localStorage.getItem(MEASURE_CHECKS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+function loadWeightData() {
+  try {
+    const raw = localStorage.getItem(WEIGHT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+// 測定月判定（測定一覧アプリと同じロジック・介護度別サイクル）
+function isMeasurementMonthBoard(planStartStr, selectedYear, selectedMonth, startDateStr, type) {
+  if (!planStartStr) return false;
+  const cycle = (type === '要支援') ? 4 : 3;
+  const [pYear, pMonth] = planStartStr.split('-').map(Number);
+  const planStart = pYear * 12 + (pMonth - 1);
+  const selected = selectedYear * 12 + (selectedMonth - 1);
+  if (startDateStr) {
+    const [sYear, sMonth] = startDateStr.split('-').map(Number);
+    if (!isNaN(sYear) && !isNaN(sMonth)) {
+      const startMonth = sYear * 12 + (sMonth - 1);
+      if (selected < startMonth) return false;
+      const diff = selected - startMonth;
+      return diff % cycle === 0;
+    }
+  }
+  const diff = selected - (planStart - 1);
+  if (diff < 0) return false;
+  return diff % cycle === 0;
+}
+
+function applyMeasurementTasks(list) {
+  const d = new Date(currentDate);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const yearMonthKey = year + '-' + String(month).padStart(2, '0');
+
+  const members = loadMeasurementMembers();
+  if (!members || members.length === 0) return;
+  const checks = loadMeasurementChecks();
+
+  members.forEach(m => {
+    if (!isMeasurementMonthBoard(m.planStart, year, month, m.startDate, m.type)) return;
+    if (!matchesTodaySchedule(m)) return; // その日の時間帯に来所しない人はスキップ
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const unitPrefix = m.unit === 'AM' ? 'measure_am' : 'measure_pm';
+    const inputKey = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_input';
+    if (checks[inputKey]) return; // 測定完了済み
+
+    const taskId = 'measure-' + yearMonthKey + '-' + nameKey;
+    if (list.some(t => t.measureTaskId === taskId)) return;
+
+    const isShien = m.type === '要支援';
+    list.push({
+      id: newId(),
+      measureTaskId: taskId,
+      title: '📏 体力測定: ' + m.name,
+      sub: (isShien ? '要支援（4ヶ月）' : '要介護（3ヶ月）') + ' ' + (m.unit || '') + '単位',
+      priority: 'yellow',
+      staff: '',
+      done: false,
+      memberDays: m.days || '',
+      memberUnitRaw: m.unitRaw || '',
+      createdAt: new Date().toISOString(),
+    });
+  });
+}
+
+function getFiscalYearForBoard(year, month) {
+  return month >= 4 ? year : year - 1;
+}
+
+// 居宅訪問（モニタリング）タスク - 測定月の利用者で未訪問者
+function applyVisitTasks(list) {
+  const d = new Date(currentDate);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const yearMonthKey = year + '-' + String(month).padStart(2, '0');
+
+  const members = loadMeasurementMembers();
+  if (!members || members.length === 0) return;
+  const checks = loadMeasurementChecks();
+
+  members.forEach(m => {
+    if (!isMeasurementMonthBoard(m.planStart, year, month, m.startDate, m.type)) return;
+    if (!matchesTodaySchedule(m)) return; // その日の時間帯に来所しない人はスキップ
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const unitPrefix = m.unit === 'AM' ? 'visit_am' : 'visit_pm';
+    const doneKey = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_done';
+    if (checks[doneKey]) return; // 訪問完了済み
+
+    const taskId = 'visit-' + yearMonthKey + '-' + nameKey;
+    if (list.some(t => t.visitTaskId === taskId)) return;
+
+    const isShien = m.type === '要支援';
+    list.push({
+      id: newId(),
+      visitTaskId: taskId,
+      title: '🏠 居宅訪問（モニタリング）: ' + m.name,
+      sub: (isShien ? '要支援（4ヶ月）' : '要介護（3ヶ月）') + ' ' + (m.unit || '') + '単位',
+      priority: 'green',
+      staff: '',
+      done: false,
+      memberDays: m.days || '',
+      memberUnitRaw: m.unitRaw || '',
+      createdAt: new Date().toISOString(),
+    });
+  });
+}
+
+// 口腔チェック未完了タスク - 要介護=月2回・要支援=月1回
+const ORAL_STORAGE_KEY = 'yawaragi_oral_check';
+function loadOralData() {
+  try {
+    const raw = localStorage.getItem(ORAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function applyOralCheckTasks(list) {
+  const d = new Date(currentDate);
+  const day = d.getDate();
+  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+
+  // 月末7日以内になったら未完了者をタスク化
+  if (day < lastDay - 6) return;
+
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const monthLabel = month + '月';
+  const fiscalYear = getFiscalYearForBoard(year, month);
+  const yearMonthKey = year + '-' + String(month).padStart(2, '0');
+
+  const oralData = loadOralData();
+  if (!oralData || !oralData.users) return;
+
+  oralData.users.forEach(u => {
+    if (!matchesTodaySchedule(u)) return; // その日の時間帯に来所しない人はスキップ
+    const checks = ((oralData.checks[fiscalYear] || {})[u.name]) || {};
+    const required = (u.care === 'shien') ? 1 : 2;
+    let done = 0;
+    for (let i = 1; i <= required; i++) {
+      if (checks[monthLabel + '_' + i + '回目']) done++;
+    }
+    if (done >= required) return; // 完了
+
+    const nameKey = u.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const taskId = 'oral-' + yearMonthKey + '-' + nameKey;
+    if (list.some(t => t.oralTaskId === taskId)) return;
+
+    list.push({
+      id: newId(),
+      oralTaskId: taskId,
+      title: '🦷 口腔チェック未完了: ' + u.name,
+      sub: done + '/' + required + ' 回実施済（月末まで要実施）',
+      priority: 'gray',
+      staff: '',
+      done: false,
+      memberDays: u.days || '',
+      memberUnitRaw: u.ampm || '',
+      createdAt: new Date().toISOString(),
+    });
+  });
+}
+
+function applyWeightAlertTasks(list) {
+  const d = new Date(currentDate);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const yearMonthKey = year + '-' + String(month).padStart(2, '0');
+
+  const members = loadMeasurementMembers();
+  if (!members || members.length === 0) return;
+  const wData = loadWeightData();
+  if (!wData || !wData.weights) return;
+
+  let prevMonth = month - 1, prevYear = year;
+  if (prevMonth <= 0) { prevMonth += 12; prevYear--; }
+  let prev2Month = month - 2, prev2Year = year;
+  if (prev2Month <= 0) { prev2Month += 12; prev2Year--; }
+
+  const prevFY = getFiscalYearForBoard(prevYear, prevMonth);
+  const prev2FY = getFiscalYearForBoard(prev2Year, prev2Month);
+  const prevLabel = prevMonth + '月';
+  const prev2Label = prev2Month + '月';
+
+  members.forEach(m => {
+    // 今月が本来の体力測定月ならスキップ（体力測定タスクでカバー済み）
+    if (isMeasurementMonthBoard(m.planStart, year, month, m.startDate, m.type)) return;
+    if (!matchesTodaySchedule(m)) return; // その日の時間帯に来所しない人はスキップ
+
+    const weights = ((wData.weights[prevFY] || {})[m.name]) || {};
+    const weights2 = ((wData.weights[prev2FY] || {})[m.name]) || {};
+    const prevW = parseFloat(weights[prevLabel]);
+    const prev2W = parseFloat(weights2[prev2Label]);
+    if (isNaN(prevW) || isNaN(prev2W)) return;
+
+    const rawDiff = prevW - prev2W;
+    if (Math.abs(rawDiff) < WEIGHT_THRESHOLD) return;
+
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const taskId = 'weight-alert-' + yearMonthKey + '-' + nameKey;
+    if (list.some(t => t.weightAlertTaskId === taskId)) return;
+
+    const arrow = rawDiff > 0 ? '↑' : '↓';
+    const sign = rawDiff > 0 ? '+' : '';
+    list.push({
+      id: newId(),
+      weightAlertTaskId: taskId,
+      title: '⚖ 体重測定: ' + m.name,
+      sub: '前回比 ' + arrow + sign + rawDiff.toFixed(1) + 'kg（±2kg以上・月1体重測定対象）',
+      priority: 'yellow',
+      staff: '',
+      done: false,
+      memberDays: m.days || '',
+      memberUnitRaw: m.unitRaw || '',
+      createdAt: new Date().toISOString(),
+    });
+  });
+}
+
+// ============ 今日のチェックリスト（測定・訪問・口腔） ============
+let checklistAmpm = null; // 'AM' | 'PM' - nullは自動判定
+
+function setChecklistAmpm(ampm) {
+  checklistAmpm = ampm;
+  renderTodayChecklist();
+}
+
+function getEffectiveAmpm() {
+  if (checklistAmpm) return checklistAmpm;
+  // 未設定なら現在時刻＆当日判定で決定
+  if (currentDate === todayStr()) {
+    return new Date().getHours() < 12 ? 'AM' : 'PM';
+  }
+  return 'AM'; // 他日表示時のデフォルト
+}
+
+function matchesChecklistSchedule(member, weekday, ampm) {
+  const days = member.days || '';
+  if (!days) return false;
+  if (days.indexOf(weekday) < 0) return false;
+  const ampmJP = ampm === 'AM' ? '午前' : '午後';
+  const raw = member.unitRaw || member.ampm || '';
+  if (raw && (raw.indexOf('、') >= 0 || raw.indexOf(',') >= 0)) {
+    const parts = raw.split(/[、,]/);
+    for (const part of parts) {
+      const p = part.trim();
+      if (p.indexOf(weekday) >= 0) return p.indexOf(ampmJP) >= 0;
+    }
+    return false;
+  }
+  if (raw) {
+    if (raw.indexOf('午前') >= 0 || raw.toUpperCase().indexOf('AM') >= 0) return ampm === 'AM';
+    if (raw.indexOf('午後') >= 0 || raw.toUpperCase().indexOf('PM') >= 0) return ampm === 'PM';
+  }
+  if (member.unit) return member.unit === ampm;
+  return true;
+}
+
+function saveMeasurementCheck(key, value) {
+  const checks = loadMeasurementChecks();
+  checks[key] = value;
+  try { localStorage.setItem(MEASURE_CHECKS_KEY, JSON.stringify(checks)); } catch(e) {}
+  boardCloudSyncMonthly();
+}
+
+function saveOralCheck(fiscalYear, name, subKey, value) {
+  const raw = localStorage.getItem(ORAL_STORAGE_KEY);
+  const d = raw ? JSON.parse(raw) : { users: [], checks: {} };
+  if (!d.checks) d.checks = {};
+  if (!d.checks[fiscalYear]) d.checks[fiscalYear] = {};
+  if (!d.checks[fiscalYear][name]) d.checks[fiscalYear][name] = {};
+  d.checks[fiscalYear][name][subKey] = value;
+  try { localStorage.setItem(ORAL_STORAGE_KEY, JSON.stringify(d)); } catch(e) {}
+  boardCloudSyncOral();
+}
+
+function escapeHtmlBoard(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderTodayChecklist() {
+  const section = document.getElementById('today-checklist-section');
+  if (!section) return;
+
+  const d = new Date(currentDate);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const yearMonthKey = year + '-' + String(month).padStart(2, '0');
+  const weekday = WEEKDAY_CHARS[d.getDay()];
+  const ampm = getEffectiveAmpm();
+
+  // AM/PMボタンのアクティブ状態
+  document.querySelectorAll('.ampm-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.ampm === ampm);
+  });
+  const statusEl = document.getElementById('ampm-status');
+  if (statusEl) {
+    const auto = !checklistAmpm ? '（自動判定）' : '';
+    statusEl.textContent = weekday + '曜 ' + ampm + auto;
+  }
+
+  const members = loadMeasurementMembers();
+  const checks = loadMeasurementChecks();
+
+  // 今日該当の利用者を抽出
+  const todayMembers = members.filter(m => matchesChecklistSchedule(m, weekday, ampm));
+
+  // 各セクションのデータを作る
+  const measureList = [];
+  const visitList = [];
+  const weightList = [];
+  todayMembers.forEach(m => {
+    if (isMeasurementMonthBoard(m.planStart, year, month, m.startDate, m.type)) {
+      measureList.push(m);
+      visitList.push(m);
+    }
+  });
+
+  // 体重変動
+  const wData = loadWeightData();
+  if (wData && wData.weights) {
+    let prevMonth = month - 1, prevYear = year;
+    if (prevMonth <= 0) { prevMonth += 12; prevYear--; }
+    let prev2Month = month - 2, prev2Year = year;
+    if (prev2Month <= 0) { prev2Month += 12; prev2Year--; }
+    const prevFY = getFiscalYearForBoard(prevYear, prevMonth);
+    const prev2FY = getFiscalYearForBoard(prev2Year, prev2Month);
+    const prevLabel = prevMonth + '月';
+    const prev2Label = prev2Month + '月';
+
+    todayMembers.forEach(m => {
+      if (isMeasurementMonthBoard(m.planStart, year, month, m.startDate, m.type)) return;
+      const w1 = parseFloat(((wData.weights[prevFY]||{})[m.name]||{})[prevLabel]);
+      const w2 = parseFloat(((wData.weights[prev2FY]||{})[m.name]||{})[prev2Label]);
+      if (!isNaN(w1) && !isNaN(w2)) {
+        const diff = w1 - w2;
+        if (Math.abs(diff) >= WEIGHT_THRESHOLD) {
+          weightList.push({ ...m, weightDiff: diff, weightPrev: w1, weightPrev2: w2, prevLabel, prev2Label });
+        }
+      }
+    });
+  }
+
+  // 口腔チェック
+  const oralList = [];
+  const oralData = loadOralData();
+  if (oralData && oralData.users) {
+    const fiscalYear = getFiscalYearForBoard(year, month);
+    const monthLabel = month + '月';
+    const day = d.getDate();
+    const lastDay = new Date(year, month, 0).getDate();
+    const showOral = day >= lastDay - 6; // 月末7日前から
+
+    oralData.users.forEach(u => {
+      if (!matchesChecklistSchedule(u, weekday, ampm)) return;
+      const c = ((oralData.checks[fiscalYear] || {})[u.name]) || {};
+      const required = (u.care === 'shien') ? 1 : 2;
+      let done = 0;
+      for (let i = 1; i <= required; i++) if (c[monthLabel + '_' + i + '回目']) done++;
+      if (showOral || done < required) {
+        oralList.push({ ...u, required, done, fiscalYear, monthLabel });
+      }
+    });
+  }
+
+  // HTML組み立て
+  let html = '';
+
+  // 体力測定
+  html += '<div class="checklist-section">';
+  html += '<div class="checklist-title">📏 体力測定（' + (measureList.length) + '名）</div>';
+  html += buildMeasureChecklistTable(measureList, yearMonthKey, ampm, checks);
+  html += '</div>';
+
+  // 居宅訪問
+  html += '<div class="checklist-section">';
+  html += '<div class="checklist-title blue">🏠 居宅訪問（モニタリング）（' + (visitList.length) + '名）</div>';
+  html += buildVisitChecklistTable(visitList, yearMonthKey, ampm, checks);
+  html += '</div>';
+
+  // 体重変動
+  html += '<div class="checklist-section">';
+  html += '<div class="checklist-title orange">⚖ 体重変動あり・月1体重測定（' + (weightList.length) + '名）</div>';
+  html += buildWeightChecklistTable(weightList);
+  html += '</div>';
+
+  // 口腔チェック
+  html += '<div class="checklist-section">';
+  html += '<div class="checklist-title gray">🦷 口腔チェック（' + (oralList.length) + '名）</div>';
+  html += buildOralChecklistTable(oralList);
+  html += '</div>';
+
+  section.innerHTML = html;
+
+  // イベントバインド
+  section.querySelectorAll('input[data-measure-key]').forEach(el => {
+    el.addEventListener('change', function() {
+      saveMeasurementCheck(this.dataset.measureKey, this.type === 'checkbox' ? this.checked : this.value);
+      render(); // グレーアウト＋スタッフビュー更新
+    });
+  });
+  section.querySelectorAll('select.staff-select').forEach(el => {
+    el.addEventListener('change', function() {
+      saveMeasurementCheck(this.dataset.measureKey, this.value);
+      render();
+    });
+  });
+  section.querySelectorAll('input[data-oral]').forEach(el => {
+    el.addEventListener('change', function() {
+      const fy = parseInt(this.dataset.oralFy);
+      const name = this.dataset.oralName;
+      const sub = this.dataset.oral;
+      saveOralCheck(fy, name, sub, this.checked);
+      render();
+    });
+  });
+}
+
+function buildStaffSelect(key, currentValue) {
+  let html = '<select class="staff-select" data-measure-key="' + key + '"><option value="">—</option>';
+  STAFF_LIST.forEach(s => {
+    const sel = currentValue === s ? ' selected' : '';
+    html += '<option value="' + s + '"' + sel + '>' + s + '</option>';
+  });
+  html += '</select>';
+  return html;
+}
+
+function buildMeasureChecklistTable(list, yearMonthKey, ampm, checks) {
+  if (list.length === 0) return '<div class="checklist-empty">対象者なし</div>';
+  const unitPrefix = ampm === 'AM' ? 'measure_am' : 'measure_pm';
+  const items = [
+    ['input', '測定'], ['cm', 'CM'], ['honin', '本人'],
+    ['keikaku', '計画書'], ['kyomi', '興味関心'], ['hyouka', '評価']
+  ];
+  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th>';
+  items.forEach(([k, label]) => html += '<th>' + label + '</th>');
+  html += '</tr></thead><tbody>';
+  list.forEach(m => {
+    const isShien = m.type === '要支援';
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const staffKey = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_staff';
+    const inputKey = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_input';
+    const isDone = !!checks[inputKey];
+    const rowCls = isDone ? ' class="row-done"' : '';
+    html += '<tr' + rowCls + '>';
+    html += '<td>' + buildStaffSelect(staffKey, checks[staffKey] || '') + '</td>';
+    html += '<td class="name">' + escapeHtmlBoard(m.name)
+      + (isShien ? '<span class="support-badge">(支援)</span>' : '') + '</td>';
+    items.forEach(([k, label], idx) => {
+      const key = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_' + k;
+      const val = checks[key];
+      if (isShien && idx >= 3) {
+        html += '<td style="background:#f9fafb;color:#cbd5e1;">—</td>';
+      } else if (k === 'input') {
+        html += '<td><input type="date" class="date-input" data-measure-key="' + key + '" value="' + (val || '') + '"></td>';
+      } else {
+        const checked = val ? ' checked' : '';
+        html += '<td><input type="checkbox" data-measure-key="' + key + '"' + checked + '></td>';
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function buildVisitChecklistTable(list, yearMonthKey, ampm, checks) {
+  if (list.length === 0) return '<div class="checklist-empty">対象者なし</div>';
+  const unitPrefix = ampm === 'AM' ? 'visit_am' : 'visit_pm';
+  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>訪問済</th></tr></thead><tbody>';
+  list.forEach(m => {
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const key = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_done';
+    const staffKey = yearMonthKey + '_' + unitPrefix + '_' + nameKey + '_staff';
+    const isDone = !!checks[key];
+    const rowCls = isDone ? ' class="row-done"' : '';
+    const checked = isDone ? ' checked' : '';
+    html += '<tr' + rowCls + '>';
+    html += '<td>' + buildStaffSelect(staffKey, checks[staffKey] || '') + '</td>';
+    html += '<td class="name">' + escapeHtmlBoard(m.name) + '</td>';
+    html += '<td><input type="checkbox" data-measure-key="' + key + '"' + checked + '></td></tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function buildWeightChecklistTable(list) {
+  if (list.length === 0) return '<div class="checklist-empty">変動なし</div>';
+  let html = '<table class="checklist-table"><thead><tr><th>名前</th><th>前回比</th><th>前々月→前月</th></tr></thead><tbody>';
+  list.forEach(m => {
+    const up = m.weightDiff > 0;
+    const arrow = up ? '↑' : '↓';
+    const sign = up ? '+' : '';
+    html += '<tr><td class="name">' + escapeHtmlBoard(m.name) + '</td>'
+      + '<td class="weight-badge ' + (up ? 'up' : 'down') + '">' + arrow + sign + m.weightDiff.toFixed(1) + 'kg</td>'
+      + '<td style="font-size:11px;color:#64748b;">' + m.prev2Label + ':' + m.weightPrev2 + 'kg → ' + m.prevLabel + ':' + m.weightPrev + 'kg</td></tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function buildOralChecklistTable(list) {
+  if (list.length === 0) return '<div class="checklist-empty">対象者なし</div>';
+  // 担当者は measureChecks 側に保存（同月共通キー）
+  const measureChecks = loadMeasurementChecks();
+  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>1回目</th><th>2回目</th><th>進捗</th></tr></thead><tbody>';
+  list.forEach(u => {
+    const isShien = u.care === 'shien';
+    const c1Key = u.monthLabel + '_1回目';
+    const c2Key = u.monthLabel + '_2回目';
+    const checks = ((loadOralData().checks[u.fiscalYear] || {})[u.name]) || {};
+    const c1Checked = checks[c1Key] ? ' checked' : '';
+    const c2Checked = checks[c2Key] ? ' checked' : '';
+    const nameKey = u.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const staffKey = u.fiscalYear + '_oral_' + nameKey + '_staff';
+    const isDone = u.done >= u.required;
+    const rowCls = isDone ? ' class="row-done"' : '';
+    html += '<tr' + rowCls + '>';
+    html += '<td>' + buildStaffSelect(staffKey, measureChecks[staffKey] || '') + '</td>';
+    html += '<td class="name">' + escapeHtmlBoard(u.name)
+      + (isShien ? '<span class="support-badge">(支援)</span>' : '') + '</td>';
+    html += '<td><input type="checkbox" data-oral="1回目" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + c1Checked + '></td>';
+    if (isShien) {
+      html += '<td style="background:#f9fafb;color:#cbd5e1;">—</td>';
+    } else {
+      html += '<td><input type="checkbox" data-oral="2回目" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + c2Checked + '></td>';
+    }
+    html += '<td>' + u.done + '/' + u.required + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+// ============ 誕生日管理 ============
+function getBdayStatusForYear(bday, year) {
+  // 当該年の進捗を取得（なければ pending）
+  if (!bday.progress) bday.progress = {};
+  if (!bday.progress[year]) bday.progress[year] = 'pending';
+  return bday.progress[year];
+}
+function setBdayStatusForYear(bday, year, status) {
+  if (!bday.progress) bday.progress = {};
+  bday.progress[year] = status;
+  bday.lastUpdated = new Date().toISOString();
+}
+
+function applyBirthdayTasks(list) {
+  const d = new Date(currentDate);
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const lastDay = new Date(year, month, 0).getDate();
+  const dayOfMonth = day;
+
+  for (const b of data.birthdays) {
+    const status = getBdayStatusForYear(b, year);
+    if (status === 'delivered') continue; // 今年分は完了済み
+
+    // 写真撮影タスク: 誕生日当日の利用者が来所する想定で、当日 or 前後数日
+    // 簡便化: 誕生日の3日前〜誕生日当日
+    const isPhotoWindow = (b.month === month) && (day >= b.day - 3) && (day <= b.day);
+    // プリントタスク: 撮影済み後、その月内
+    const isPrintWindow = (b.month === month) && status === 'photographed';
+    // お渡しタスク: プリント済み後、その月内 or 翌月初
+    const isDeliverWindow = status === 'printed' && (
+      (b.month === month) ||
+      // 翌月に持ち越した場合
+      ((b.month === 12 && month === 1) || (b.month + 1 === month))
+    );
+
+    if (status === 'pending' && isPhotoWindow) {
+      const taskId = 'bday-photo-' + b.id;
+      if (!list.some(t => t.bdayTaskId === taskId)) {
+        list.push({
+          id: newId(),
+          bdayTaskId: taskId,
+          bdayId: b.id,
+          bdayPhase: 'photo',
+          title: `🎂 誕生日写真撮影: ${b.name}`,
+          sub: `${b.month}/${b.day}誕生日`,
+          priority: 'green',
+          staff: '',
+          done: false,
+        });
+      }
+    } else if (status === 'photographed' && isPrintWindow) {
+      const taskId = 'bday-print-' + b.id;
+      if (!list.some(t => t.bdayTaskId === taskId)) {
+        list.push({
+          id: newId(),
+          bdayTaskId: taskId,
+          bdayId: b.id,
+          bdayPhase: 'print',
+          title: `🖨 誕生日写真プリント: ${b.name}`,
+          sub: `撮影済み → プリント待ち`,
+          priority: 'gray',
+          staff: '',
+          done: false,
+        });
+      }
+    } else if (status === 'printed' && isDeliverWindow) {
+      const taskId = 'bday-deliver-' + b.id;
+      if (!list.some(t => t.bdayTaskId === taskId)) {
+        list.push({
+          id: newId(),
+          bdayTaskId: taskId,
+          bdayId: b.id,
+          bdayPhase: 'deliver',
+          title: `🎁 誕生日写真お渡し: ${b.name}`,
+          sub: `プリント済み → お渡し待ち`,
+          priority: 'green',
+          staff: '',
+          done: false,
+        });
+      }
+    }
+  }
+}
+
+function openBdayModal() {
+  document.getElementById('bday-modal').classList.add('active');
+  renderBdayList();
+}
+function closeBdayModal() {
+  document.getElementById('bday-modal').classList.remove('active');
+  render(); // タスクリスト再描画
+}
+function filterBday(kind) {
+  bdayFilter = kind;
+  ['current','next','all'].forEach(k => {
+    const b = document.getElementById('filter-'+k);
+    if (k === kind) {
+      b.style.background = '#db2777'; b.style.color = 'white';
+    } else {
+      b.style.background = '#e2e8f0'; b.style.color = '#475569';
+    }
+  });
+  renderBdayList();
+}
+function addBirthday() {
+  const m = parseInt(document.getElementById('bday-month').value);
+  const d = parseInt(document.getElementById('bday-day').value);
+  const n = document.getElementById('bday-name').value.trim();
+  if (!m || !d || !n) { alert('月・日・名前を全て入力してください'); return; }
+  if (m < 1 || m > 12 || d < 1 || d > 31) { alert('日付が不正です'); return; }
+  data.birthdays.push({
+    id: newId(),
+    month: m, day: d, name: n,
+    progress: {}, // year毎の進捗
+    createdAt: new Date().toISOString(),
+  });
+  save();
+  document.getElementById('bday-month').value = '';
+  document.getElementById('bday-day').value = '';
+  document.getElementById('bday-name').value = '';
+  renderBdayList();
+}
+function deleteBirthday(id) {
+  if (!confirm('この誕生日登録を削除しますか？')) return;
+  data.birthdays = data.birthdays.filter(b => b.id !== id);
+  save();
+  renderBdayList();
+}
+function renderBdayList() {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+  const year = now.getFullYear();
+  const ul = document.getElementById('bday-list');
+  const list = [...data.birthdays];
+  let filtered;
+  if (bdayFilter === 'current') filtered = list.filter(b => b.month === currentMonth);
+  else if (bdayFilter === 'next') filtered = list.filter(b => b.month === nextMonth);
+  else filtered = list;
+  filtered.sort((a,b) => a.month*100+a.day - (b.month*100+b.day));
+  if (!filtered.length) {
+    ul.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8;">登録なし</div>';
     return;
   }
-  empty.style.display = 'none';
-
-  // スタッフごとに忙しさ順でソート（残タスク多い順）
-  const sorted = staffWithTasks.map(s => {
-    const tasks = data.tasks.filter(t=>t.staff===s);
-    const remaining = tasks.filter(t=>!t.done).length;
-    return { name:s, tasks, remaining };
-  }).sort((a,b) => b.remaining - a.remaining);
-
-  grid.innerHTML = sorted.map(s => {
-    const level = s.remaining >= 3 ? 'high' : s.remaining >= 1 ? 'mid' : 'low';
-    const levelText = s.remaining >= 3 ? '🔴 忙しい' : s.remaining >= 1 ? '🟡 対応中' : '🟢 完了';
-    // 優先度順にソート: high→normal→low、未完了を先に
-    const sortedTasks = [...s.tasks].sort((a,b) => {
-      if (a.done !== b.done) return a.done ? 1 : -1;
-      const po = {high:0,normal:1,low:2};
-      return po[a.priority] - po[b.priority];
-    });
+  ul.innerHTML = filtered.map(b => {
+    const status = getBdayStatusForYear(b, year);
+    const statusLabel = {
+      pending: '📸 撮影待ち',
+      photographed: '🖨 プリント待ち',
+      printed: '🎁 お渡し待ち',
+      delivered: '✅ 完了',
+    }[status];
     return `
-    <div class="staff-column busy-${level}">
-      <div class="staff-column-header">
-        <span>${s.name} ${levelText}</span>
-        <span class="task-count">${s.tasks.filter(t=>t.done).length}/${s.tasks.length} 完了</span>
-      </div>
-      <div class="staff-column-body">
-        ${sortedTasks.length === 0 ? '<div class="empty-msg">タスクなし</div>' :
-          sortedTasks.map(t => renderTaskCard(t)).join('')}
-      </div>
-    </div>`;
+      <li class="bday-item">
+        <span class="date">${b.month}/${b.day}</span>
+        <span>${escapeHtml(b.name)}</span>
+        <span class="status ${status}">${statusLabel}</span>
+        <button style="padding:4px 8px;background:#ef4444;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;" onclick="deleteBirthday('${b.id}')">削除</button>
+      </li>
+    `;
   }).join('');
 }
 
-function renderTaskCard(t) {
-  const pLabel = {high:'🔴 急ぎ', normal:'🟡 普通', low:'🟢 余裕'};
-  const pClass = t.priority;
-  let timeMeta = '';
-  if (t.estimatedMin) {
-    timeMeta += `目安 ${formatMin(t.estimatedMin)}`;
-  }
-  if (t.done && t.endTime) {
-    const actual = Math.round((new Date(t.endTime) - new Date(t.startTime)) / 60000);
-    timeMeta += ` → 実績 ${formatMin(actual)}`;
-    if (t.estimatedMin) {
-      const diff = actual - t.estimatedMin;
-      if (diff > 0) {
-        timeMeta += ` <span class="time-over">（+${diff}分）</span>`;
-      } else {
-        timeMeta += ` <span class="time-ok">（${diff}分）</span>`;
-      }
+// タスクチェック時に誕生日ステータスを進める
+function advanceBdayOnCheck(task) {
+  if (!task.bdayId || !task.bdayPhase) return;
+  const bday = data.birthdays.find(x => x.id === task.bdayId);
+  if (!bday) return;
+  const year = new Date(currentDate).getFullYear();
+  if (task.bdayPhase === 'photo') setBdayStatusForYear(bday, year, 'photographed');
+  else if (task.bdayPhase === 'print') setBdayStatusForYear(bday, year, 'printed');
+  else if (task.bdayPhase === 'deliver') setBdayStatusForYear(bday, year, 'delivered');
+}
+
+function render() {
+  applyRoutines();
+  renderTodayChecklist();
+  const list = data.tasks[currentDate] || [];
+  const byPri = { red: [], yellow: [], green: [], gray: [] };
+  for (const t of list) (byPri[t.priority] || byPri.gray).push(t);
+
+  // タスクセクション
+  for (const [pri, items] of Object.entries(byPri)) {
+    const el = document.getElementById('tasks-' + pri);
+    if (!items.length) {
+      el.innerHTML = '<div class="empty">なし</div>';
+      continue;
     }
-  } else if (!t.done) {
-    const elapsed = Math.round((Date.now() - new Date(t.startTime)) / 60000);
-    if (t.estimatedMin && elapsed > t.estimatedMin) {
-      timeMeta += ` <span class="time-over">⚠ ${elapsed - t.estimatedMin}分オーバー</span>`;
-    } else if (elapsed > 0) {
-      timeMeta += ` （経過 ${elapsed}分）`;
-    }
+    el.innerHTML = items.map(t => `
+      <div class="task pri-${t.priority} ${t.done ? 'done' : ''}">
+        <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask('${t.id}')" />
+        <div class="title">
+          ${t.routineId ? '<span style="color:#3b82f6;font-size:11px;margin-right:4px;" title="自動生成ルーティン">🔄</span>' : ''}
+          ${escapeHtml(t.title)}
+          ${t.sub ? `<div class="sub">${escapeHtml(t.sub)}</div>` : ''}
+        </div>
+        <span class="pri-badge pri-${t.priority}">${PRI_INFO[t.priority].badge}</span>
+        <select class="staff" onchange="updateStaff('${t.id}',this.value)">
+          <option value="">担当未定</option>
+          ${STAFF_LIST.map(s => `<option ${t.staff===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <button class="delete" onclick="deleteTask('${t.id}')">×</button>
+      </div>
+    `).join('');
   }
 
-  return `
-  <div class="task-card ${t.done?'done':''}">
-    <div class="task-card-top">
-      <span class="task-name">${escapeHtml(t.name)}</span>
-      <span class="priority-badge ${pClass}">${pLabel[t.priority]}</span>
-    </div>
-    <div class="task-meta">${timeMeta}</div>
-    <div class="task-actions">
-      ${t.done
-        ? `<button class="btn-complete" style="background:var(--text-sub);font-size:13px;padding:6px 12px;" onclick="undoTask(${t.id})">↩ 戻す</button>`
-        : `<button class="btn-complete" onclick="completeTask(${t.id})">✓ 完了</button>`
-      }
-      <button class="btn-danger" onclick="deleteTask(${t.id})">削除</button>
-    </div>
-  </div>`;
-}
-
-function formatMin(m) {
-  if (m >= 60) return Math.floor(m/60) + '時間' + (m%60 ? m%60 + '分' : '');
-  return m + '分';
-}
-
-function completeTask(id) {
-  const t = data.tasks.find(t=>t.id===id);
-  if (t) { t.done = true; t.endTime = new Date().toISOString(); }
-  saveData(data);
-  renderBoard();
-}
-function undoTask(id) {
-  const t = data.tasks.find(t=>t.id===id);
-  if (t) { t.done = false; t.endTime = null; }
-  saveData(data);
-  renderBoard();
-}
-function deleteTask(id) {
-  data.tasks = data.tasks.filter(t=>t.id!==id);
-  saveData(data);
-  renderBoard();
-}
-
-// ===== 管理画面 =====
-function renderAdmin() {
-  const tasks = data.tasks;
-  const total = tasks.length;
-  const done = tasks.filter(t=>t.done).length;
-  const remaining = total - done;
-  const urgent = tasks.filter(t=>!t.done && t.priority==='high').length;
-
-  document.getElementById('statsGrid').innerHTML = `
-    <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">全タスク数</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--green)">${done}</div><div class="stat-label">完了</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--orange)">${remaining}</div><div class="stat-label">残り</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--red)">${urgent}</div><div class="stat-label">急ぎ（未完了）</div></div>
+  // 統計
+  const stats = document.getElementById('stats-area');
+  stats.innerHTML = `
+    <div class="stat-card stat-red"><div class="num">${byPri.red.length}</div><div class="label">🔴 最優先</div></div>
+    <div class="stat-card stat-yellow"><div class="num">${byPri.yellow.length}</div><div class="label">🟡 高優先</div></div>
+    <div class="stat-card stat-green"><div class="num">${byPri.green.length}</div><div class="label">🟢 中優先</div></div>
+    <div class="stat-card stat-gray"><div class="num">${byPri.gray.length}</div><div class="label">⚪ 低優先</div></div>
   `;
 
-  // スタッフ別
-  const staffNames = [...new Set(tasks.map(t=>t.staff))];
-  const tbody = document.getElementById('rankingBody');
-  tbody.innerHTML = staffNames.map(name => {
-    const st = tasks.filter(t=>t.staff===name);
-    const d = st.filter(t=>t.done);
-    const r = st.filter(t=>!t.done);
-    const estTotal = st.reduce((s,t)=>s+(t.estimatedMin||0), 0);
-    const actTotal = d.reduce((s,t) => {
-      if (t.endTime) return s + Math.round((new Date(t.endTime)-new Date(t.startTime))/60000);
-      return s;
-    }, 0);
-    const status = r.length === 0 && d.length > 0 ? '🟢 全完了' :
-                   r.filter(t=>t.priority==='high').length > 0 ? '🔴 急ぎあり' :
-                   r.length > 0 ? '🟡 対応中' : '—';
-    return `<tr>
-      <td style="font-weight:600;">${name}</td>
-      <td>${st.length}</td>
-      <td>${d.length}</td>
-      <td>${r.length}</td>
-      <td>${estTotal ? formatMin(estTotal) : '—'}</td>
-      <td>${actTotal ? formatMin(actTotal) : '—'}</td>
-      <td>${status}</td>
-    </tr>`;
-  }).join('');
-
-  // 時間比較
-  const doneTasks = tasks.filter(t=>t.done && t.endTime);
-  const timeBody = document.getElementById('timeBody');
-  timeBody.innerHTML = doneTasks.map(t => {
-    const actual = Math.round((new Date(t.endTime)-new Date(t.startTime))/60000);
-    const est = t.estimatedMin;
-    let diffHtml = '—';
-    if (est) {
-      const diff = actual - est;
-      if (diff > 0) diffHtml = `<span style="color:var(--red);font-weight:700;">+${diff}分</span>`;
-      else if (diff < 0) diffHtml = `<span style="color:var(--green);font-weight:600;">${diff}分</span>`;
-      else diffHtml = `<span style="color:var(--green);">±0</span>`;
-    }
-    return `<tr>
-      <td>${t.staff}</td>
-      <td>${escapeHtml(t.name)}</td>
-      <td>${est ? formatMin(est) : '—'}</td>
-      <td>${formatMin(actual)}</td>
-      <td>${diffHtml}</td>
-    </tr>`;
-  }).join('');
-  if (doneTasks.length === 0) {
-    timeBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-sub);padding:20px;">まだ完了タスクがありません</td></tr>';
+  // スタッフビュー
+  const staffCount = {};
+  for (const s of STAFF_LIST) staffCount[s] = { red: 0, yellow: 0, green: 0, gray: 0, checklist: 0 };
+  for (const t of list) {
+    if (t.done) continue;
+    if (t.staff && staffCount[t.staff]) staffCount[t.staff][t.priority] = (staffCount[t.staff][t.priority]||0) + 1;
   }
-}
-
-// ===== 設定画面 =====
-function renderSettings() {
-  renderStaffList();
-  renderTemplateList();
-}
-
-function renderStaffList() {
-  const el = document.getElementById('staffListEdit');
-  el.innerHTML = data.staff.map((name, i) =>
-    `<div class="staff-list-item">
-      <span style="font-size:14px;color:var(--text-sub);min-width:24px;">${i+1}.</span>
-      <input type="text" value="${escapeHtml(name)}" data-staff-idx="${i}" onchange="updateStaffName(${i}, this.value)">
-      <button class="remove-staff" onclick="removeStaff(${i})">✕</button>
-    </div>`
-  ).join('');
-}
-function addStaffRow() {
-  data.staff.push('');
-  renderStaffList();
-  // フォーカス
-  const inputs = document.querySelectorAll('[data-staff-idx]');
-  if (inputs.length) inputs[inputs.length-1].focus();
-}
-function updateStaffName(idx, val) {
-  data.staff[idx] = val.trim();
-}
-function removeStaff(idx) {
-  data.staff.splice(idx, 1);
-  renderStaffList();
-}
-function saveStaff() {
-  data.staff = data.staff.filter(s => s.trim());
-  saveData(data);
-  renderStaffList();
-  alert('スタッフを保存しました（' + data.staff.length + '名）');
-}
-
-function renderTemplateList() {
-  const el = document.getElementById('templateListEdit');
-  el.innerHTML = data.templates.map((t, i) =>
-    `<div class="task-template-item">
-      <input type="text" value="${escapeHtml(t.name)}" placeholder="タスク名" data-tmpl-idx="${i}" onchange="updateTemplate(${i},'name',this.value)">
-      <input type="number" value="${t.time||''}" placeholder="分" min="1" onchange="updateTemplate(${i},'time',this.value)">
-      <span style="font-size:13px;color:var(--text-sub);">分</span>
-      <button class="remove-staff" onclick="removeTemplate(${i})">✕</button>
-    </div>`
-  ).join('');
-}
-function addTemplateRow() {
-  data.templates.push({name:'', time:null});
-  renderTemplateList();
-  const inputs = document.querySelectorAll('[data-tmpl-idx]');
-  if (inputs.length) inputs[inputs.length-1].focus();
-}
-function updateTemplate(idx, key, val) {
-  if (key === 'name') data.templates[idx].name = val.trim();
-  if (key === 'time') data.templates[idx].time = val ? parseInt(val) : null;
-}
-function removeTemplate(idx) {
-  data.templates.splice(idx, 1);
-  renderTemplateList();
-}
-function saveTemplates() {
-  data.templates = data.templates.filter(t => t.name.trim());
-  saveData(data);
-  renderTemplateList();
-  alert('テンプレートを保存しました（' + data.templates.length + '件）');
-}
-
-// ===== モーダル =====
-function showModal(title, msg, okText, okFn) {
-  document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalMsg').textContent = msg;
-  const okBtn = document.getElementById('modalOk');
-  okBtn.textContent = okText;
-  okBtn.onclick = () => { closeModal(); okFn(); };
-  document.getElementById('confirmModal').classList.add('show');
-}
-function closeModal() {
-  document.getElementById('confirmModal').classList.remove('show');
-}
-function confirmResetDay() {
-  showModal('今日のタスクをリセット', '今日登録されたタスクをすべて削除します。スタッフ・テンプレートの設定は残ります。', 'リセットする', () => {
-    data.tasks = [];
-    saveData(data);
-    renderBoard();
+  // チェックリスト担当者を集計
+  const mChecks = loadMeasurementChecks();
+  Object.keys(mChecks).forEach(k => {
+    if (!k.endsWith('_staff')) return;
+    const staffName = mChecks[k];
+    if (!staffName || !staffCount[staffName]) return;
+    // 該当タスクが未完了かチェック
+    const baseKey = k.replace(/_staff$/, '');
+    let isDone = false;
+    if (k.indexOf('_measure_') >= 0) isDone = !!mChecks[baseKey + '_input'];
+    else if (k.indexOf('_visit_') >= 0) isDone = !!mChecks[baseKey + '_done'];
+    else if (k.indexOf('_oral_') >= 0) isDone = false; // 口腔は別判定（ここではカウント）
+    if (!isDone) staffCount[staffName].checklist++;
   });
-}
-function confirmClearAll() {
-  showModal('全データを削除', 'スタッフ・テンプレート・タスクすべてのデータを削除します。この操作は元に戻せません。', '全削除する', () => {
-    localStorage.removeItem(STORAGE_KEY);
-    data = getDefault();
-    renderBoard();
-    renderSettings();
-  });
+  const sv = document.getElementById('staff-view');
+  sv.innerHTML = Object.entries(staffCount).map(([name, c]) => {
+    const highCount = c.red + c.yellow + c.checklist;
+    const total = c.red + c.yellow + c.green + c.gray + c.checklist;
+    let status, clsName;
+    if (highCount >= 3) { status = '超忙しい'; clsName = 'busy'; }
+    else if (highCount >= 1) { status = '忙しい'; clsName = 'moderate'; }
+    else if (total >= 1) { status = '対応中'; clsName = 'easy'; }
+    else { status = 'サポート役'; clsName = 'idle'; }
+    return `
+      <div class="staff-item ${clsName}">
+        <div>
+          <div class="name">${name}</div>
+          <div class="counts">
+            ${c.red ? `<span class="c-red">🔴${c.red}</span>` : ''}
+            ${c.yellow ? `<span class="c-yellow">🟡${c.yellow}</span>` : ''}
+            ${c.green ? `<span class="c-green">🟢${c.green}</span>` : ''}
+            ${c.gray ? `<span class="c-gray">⚪${c.gray}</span>` : ''}
+            ${c.checklist ? `<span class="c-yellow">📏${c.checklist}</span>` : ''}
+            ${total === 0 ? '<span class="c-gray">タスクなし</span>' : ''}
+          </div>
+        </div>
+        <span class="status">${status}</span>
+      </div>
+    `;
+  }).join('');
 }
 
-// ===== ユーティリティ =====
-function escapeHtml(str) {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// ===== 自動更新（経過時間の更新用） =====
-setInterval(() => {
-  const activeTab = document.querySelector('.tab.active');
-  if (activeTab && activeTab.dataset.tab === 'board') renderBoard();
-}, 60000); // 1分ごと
+function exportData() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `タスクボード_${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (!imported.tasks) throw new Error('フォーマット不正');
+      if (!confirm('現在のデータを上書きします。よろしいですか？')) return;
+      data = imported;
+      save();
+      render();
+      alert('インポート完了しました');
+    } catch (err) {
+      alert('インポートに失敗: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+function resetAll() {
+  if (!confirm('全データを削除してよろしいですか？この操作は取り消せません。')) return;
+  if (!confirm('本当によろしいですか？')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
 
-// ===== 初期表示 =====
-renderBoard();
-renderRegister();
+init();
 </script>
 </body>
 </html>
