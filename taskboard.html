@@ -1184,9 +1184,12 @@ function renderTodayChecklist() {
     oralData.users.forEach(u => {
       if (!matchesChecklistSchedule(u, weekday, ampm)) return;
       const c = ((oralData.checks[fiscalYear] || {})[u.name]) || {};
-      const required = (u.care === 'shien') ? 1 : 2;
+      // 要介護=1回目+2回目+モニタリングの3項目、要支援=1回目+モニタリングの2項目
+      const required = (u.care === 'shien') ? 2 : 3;
       let done = 0;
-      for (let i = 1; i <= required; i++) if (c[monthLabel + '_' + i + '回目']) done++;
+      if (c[monthLabel + '_1回目']) done++;
+      if (u.care !== 'shien' && c[monthLabel + '_2回目']) done++;
+      if (c[monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ']) done++;
       if (showOral || done < required) {
         oralList.push({ ...u, required, done, fiscalYear, monthLabel });
       }
@@ -1334,14 +1337,16 @@ function buildOralChecklistTable(list) {
   if (list.length === 0) return '<div class="checklist-empty">対象者なし</div>';
   // 担当者は measureChecks 側に保存（同月共通キー）
   const measureChecks = loadMeasurementChecks();
-  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>1回目</th><th>2回目</th><th>進捗</th></tr></thead><tbody>';
+  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>1回目</th><th>2回目</th><th>モニタリング</th><th>進捗</th></tr></thead><tbody>';
   list.forEach(u => {
     const isShien = u.care === 'shien';
     const c1Key = u.monthLabel + '_1回目';
     const c2Key = u.monthLabel + '_2回目';
+    const cMonKey = u.monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ';
     const checks = ((loadOralData().checks[u.fiscalYear] || {})[u.name]) || {};
     const c1Checked = checks[c1Key] ? ' checked' : '';
     const c2Checked = checks[c2Key] ? ' checked' : '';
+    const cMonChecked = checks[cMonKey] ? ' checked' : '';
     const nameKey = u.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
     const staffKey = u.fiscalYear + '_oral_' + nameKey + '_staff';
     const isDone = u.done >= u.required;
@@ -1356,6 +1361,7 @@ function buildOralChecklistTable(list) {
     } else {
       html += '<td><input type="checkbox" data-oral="2回目" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + c2Checked + '></td>';
     }
+    html += '<td><input type="checkbox" data-oral="ﾓﾆﾀﾘﾝｸﾞ" data-oral-fy="' + u.fiscalYear + '" data-oral-name="' + escapeHtmlBoard(u.name) + '"' + cMonChecked + '></td>';
     html += '<td>' + u.done + '/' + u.required + '</td></tr>';
   });
   html += '</tbody></table>';
