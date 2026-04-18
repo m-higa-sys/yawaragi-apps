@@ -1220,6 +1220,13 @@ function renderTodayChecklist() {
   html += buildOralChecklistTable(oralList);
   html += '</div>';
 
+  // 今月の誕生日（表形式）
+  const birthList = members.filter(m => m.birthMonth && parseInt(m.birthMonth) === month);
+  html += '<div class="checklist-section">';
+  html += '<div class="checklist-title orange">🎂 今月の誕生日（' + birthList.length + '名）</div>';
+  html += buildBirthdayChecklistTable(birthList, year);
+  html += '</div>';
+
   section.innerHTML = html;
 
   // イベントバインド
@@ -1241,6 +1248,16 @@ function renderTodayChecklist() {
       const name = this.dataset.oralName;
       const sub = this.dataset.oral;
       saveOralCheck(fy, name, sub, this.checked);
+      render();
+    });
+  });
+  section.querySelectorAll('input[data-bday-phase]').forEach(el => {
+    el.addEventListener('change', function() {
+      const name = this.dataset.bdayName;
+      const month = parseInt(this.dataset.bdayMonth);
+      const day = parseInt(this.dataset.bdayDay);
+      const phase = this.dataset.bdayPhase;
+      updateBirthdayStatus(name, month, day, phase, this.checked);
       render();
     });
   });
@@ -1328,6 +1345,63 @@ function buildWeightChecklistTable(list) {
   });
   html += '</tbody></table>';
   return html;
+}
+
+function buildBirthdayChecklistTable(list, year) {
+  if (list.length === 0) return '<div class="checklist-empty">今月の誕生日なし</div>';
+  const measureChecks = loadMeasurementChecks();
+  // 誕生日順にソート
+  list = list.slice().sort((a, b) => (a.birthDay || 0) - (b.birthDay || 0));
+  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>名前</th><th>誕生日</th><th>撮影</th><th>プリント</th><th>お渡し</th></tr></thead><tbody>';
+  list.forEach(m => {
+    const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+    const staffKey = year + '_bday_' + nameKey + '_staff';
+    // 進捗キー（status: pending/photographed/printed/delivered）
+    // 既存のbirthday管理（data.birthdays）と連携
+    const bday = (data.birthdays || []).find(b => b.name === m.name && b.month === parseInt(m.birthMonth) && b.day === parseInt(m.birthDay));
+    let status = 'pending';
+    if (bday && bday.progress && bday.progress[year]) status = bday.progress[year];
+    const photoChecked = ['photographed','printed','delivered'].includes(status) ? ' checked' : '';
+    const printChecked = ['printed','delivered'].includes(status) ? ' checked' : '';
+    const deliverChecked = status === 'delivered' ? ' checked' : '';
+    const isDone = status === 'delivered';
+    const rowCls = isDone ? ' class="row-done"' : '';
+    html += '<tr' + rowCls + '>';
+    html += '<td>' + buildStaffSelect(staffKey, measureChecks[staffKey] || '') + '</td>';
+    html += '<td class="name">' + escapeHtmlBoard(m.name) + '</td>';
+    html += '<td>' + m.birthMonth + '/' + m.birthDay + '</td>';
+    html += '<td><input type="checkbox" data-bday-phase="photo" data-bday-name="' + escapeHtmlBoard(m.name) + '" data-bday-month="' + m.birthMonth + '" data-bday-day="' + m.birthDay + '"' + photoChecked + '></td>';
+    html += '<td><input type="checkbox" data-bday-phase="print" data-bday-name="' + escapeHtmlBoard(m.name) + '" data-bday-month="' + m.birthMonth + '" data-bday-day="' + m.birthDay + '"' + printChecked + '></td>';
+    html += '<td><input type="checkbox" data-bday-phase="deliver" data-bday-name="' + escapeHtmlBoard(m.name) + '" data-bday-month="' + m.birthMonth + '" data-bday-day="' + m.birthDay + '"' + deliverChecked + '></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function updateBirthdayStatus(name, month, day, phase, checked) {
+  if (!data.birthdays) data.birthdays = [];
+  let bday = data.birthdays.find(b => b.name === name && b.month === month && b.day === day);
+  if (!bday) {
+    bday = { id: newId(), name: name, month: month, day: day, progress: {}, createdAt: new Date().toISOString() };
+    data.birthdays.push(bday);
+  }
+  if (!bday.progress) bday.progress = {};
+  const d = new Date(currentDate);
+  const year = d.getFullYear();
+  const currentStatus = bday.progress[year] || 'pending';
+  // フェーズごとの進行ロジック
+  let newStatus = currentStatus;
+  if (phase === 'photo') {
+    newStatus = checked ? (currentStatus === 'pending' ? 'photographed' : currentStatus) : 'pending';
+  } else if (phase === 'print') {
+    newStatus = checked ? 'printed' : (currentStatus === 'printed' || currentStatus === 'delivered' ? 'photographed' : currentStatus);
+  } else if (phase === 'deliver') {
+    newStatus = checked ? 'delivered' : 'printed';
+  }
+  bday.progress[year] = newStatus;
+  bday.lastUpdated = new Date().toISOString();
+  save();
 }
 
 function buildOralChecklistTable(list) {
@@ -1579,18 +1653,34 @@ function render() {
     if (t.done) continue;
     if (t.staff && staffCount[t.staff]) staffCount[t.staff][t.priority] = (staffCount[t.staff][t.priority]||0) + 1;
   }
-  // チェックリスト担当者を集計
+  // チェックリスト担当者を集計（今日の曜日・時間帯に来所する利用者のみカウント）
   const mChecks = loadMeasurementChecks();
+  const todayMembers = loadMeasurementMembers();
+  const d = new Date(currentDate);
+  const weekday = WEEKDAY_CHARS[d.getDay()];
+  const ampm = getEffectiveAmpm();
+  const todayNameKeys = new Set();
+  todayMembers.forEach(m => {
+    if (matchesChecklistSchedule(m, weekday, ampm)) {
+      const nk = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
+      todayNameKeys.add(nk);
+    }
+  });
   Object.keys(mChecks).forEach(k => {
     if (!k.endsWith('_staff')) return;
     const staffName = mChecks[k];
     if (!staffName || !staffCount[staffName]) return;
+    // キーから利用者nameKeyを抽出
+    const mm = k.match(/_(?:measure|visit)_(?:am|pm)_(.+)_staff$/) || k.match(/_oral_(.+)_staff$/);
+    if (!mm) return;
+    const nk = mm[1];
+    if (!todayNameKeys.has(nk)) return; // 今日の利用者じゃないタスクは集計しない
     // 該当タスクが未完了かチェック
     const baseKey = k.replace(/_staff$/, '');
     let isDone = false;
     if (k.indexOf('_measure_') >= 0) isDone = !!mChecks[baseKey + '_input'];
     else if (k.indexOf('_visit_') >= 0) isDone = !!mChecks[baseKey + '_done'];
-    else if (k.indexOf('_oral_') >= 0) isDone = false; // 口腔は別判定（ここではカウント）
+    else if (k.indexOf('_oral_') >= 0) isDone = false;
     if (!isDone) staffCount[staffName].checklist++;
   });
   const sv = document.getElementById('staff-view');
