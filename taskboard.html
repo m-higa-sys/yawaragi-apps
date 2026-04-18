@@ -1220,8 +1220,11 @@ function renderTodayChecklist() {
   html += buildOralChecklistTable(oralList);
   html += '</div>';
 
-  // 今月の誕生日（表形式）
-  const birthList = members.filter(m => m.birthMonth && parseInt(m.birthMonth) === month);
+  // 今月の誕生日（表形式）- 今日の曜日・時間帯に来所する人だけ
+  const birthList = members.filter(m =>
+    m.birthMonth && parseInt(m.birthMonth) === month &&
+    matchesChecklistSchedule(m, weekday, ampm)
+  );
   html += '<div class="checklist-section">';
   html += '<div class="checklist-title orange">🎂 今月の誕生日（' + birthList.length + '名）</div>';
   html += buildBirthdayChecklistTable(birthList, year);
