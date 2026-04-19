@@ -561,6 +561,7 @@ function init() {
 
 function onDateChange() {
   currentDate = document.getElementById('current-date').value;
+  _oralOrderCache = null;
   render();
 }
 function changeDate(offset) {
@@ -568,11 +569,13 @@ function changeDate(offset) {
   d.setDate(d.getDate() + offset);
   currentDate = d.toISOString().slice(0, 10);
   document.getElementById('current-date').value = currentDate;
+  _oralOrderCache = null;
   render();
 }
 function setToday() {
   currentDate = todayStr();
   document.getElementById('current-date').value = currentDate;
+  _oralOrderCache = null;
   render();
 }
 
@@ -1062,9 +1065,11 @@ function applyWeightAlertTasks(list) {
 
 // ============ 今日のチェックリスト（測定・訪問・口腔） ============
 let checklistAmpm = null; // 'AM' | 'PM' - nullは自動判定
+let _oralOrderCache = null; // 口腔モニタリングの並び順キャッシュ（操作中の位置ズレ防止）
 
 function setChecklistAmpm(ampm) {
   checklistAmpm = ampm;
+  _oralOrderCache = null;
   renderTodayChecklist();
 }
 
@@ -1201,11 +1206,17 @@ function renderTodayChecklist() {
       const required = 1;
       const doneVal = c[monthLabel + '_ﾓﾆﾀﾘﾝｸﾞ'];
       const done = doneVal ? 1 : 0;
-      // 完了・未完了両方表示（完了者はグレーアウト）
       oralList.push({ ...u, required, done, doneVal, fiscalYear, monthLabel });
     });
-    // 未完了を上、完了を下に並べる
-    oralList.sort((a, b) => (a.done >= a.required ? 1 : 0) - (b.done >= b.required ? 1 : 0));
+    // 並び順キャッシュ：初回は「未完了上・完了下」でソート、以降は同じ順序を維持（チェック操作で位置動かない）
+    if (_oralOrderCache) {
+      const order = {};
+      _oralOrderCache.forEach((n, i) => { order[n] = i; });
+      oralList.sort((a, b) => (order[a.name] ?? 999) - (order[b.name] ?? 999));
+    } else {
+      oralList.sort((a, b) => (a.done >= a.required ? 1 : 0) - (b.done >= b.required ? 1 : 0));
+      _oralOrderCache = oralList.map(u => u.name);
+    }
   }
 
   // HTML組み立て
