@@ -3,7 +3,7 @@
 // LINE公式アカウント「yawaragi社内」から社長だけに通知を送る
 // ============================================================
 
-var LINE_TOKEN = 'uwL+AkshOnTUGkFn+vx7QejtZK7LRYkNmMw19nlM1Iyr84d2SFiHe/vgg0MXSc3U9UmvDl7kaQPGx6Cyv+JzDmag9E0WupZQNpEVoAqFqBhCHUMXVb+CBT2bBSnMyseaHONSMh7ieuWZFrHvDu147gdB04t89/1O/w1cDnyilFU=';
+var LINE_TOKEN = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
 
 // 社長のLINEユーザーID（スクリプトプロパティから取得）
 function getOwnerUserId() {

@@ -26,8 +26,8 @@
 
 // ===== 設定 =====
 // LINE通知用（yawaragiボードと共通）
-var LINE_TOKEN = 'uwL+AkshOnTUGkFn+vx7QejtZK7LRYkNmMw19nlM1Iyr84d2SFiHe/vgg0MXSc3U9UmvDl7kaQPGx6Cyv+JzDmag9E0WupZQNpEVoAqFqBhCHUMXVb+CBT2bBSnMyseaHONSMh7ieuWZFrHvDu147gdB04t89/1O/w1cDnyilFU=';
-var OWNER_USER_ID = 'Ue54376b8f1aa48fd139962c33b54affe';
+var LINE_TOKEN = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
+var OWNER_USER_ID = PropertiesService.getScriptProperties().getProperty('OWNER_USER_ID');
 var OWNER_EMAIL = 'm-higa@keepfitlife.com';
 
 // シート名
