@@ -1211,6 +1211,13 @@ function renderTodayChecklist() {
   // HTML組み立て
   let html = '';
 
+  // 今日のルーティン（LIFE・ケアマネ実績等）
+  const routineTasks = (data.tasks[currentDate] || []).filter(t => t.routineId);
+  html += '<div class="checklist-section">';
+  html += '<div class="checklist-title">📋 今日のルーティン（' + routineTasks.length + '件）</div>';
+  html += buildRoutineChecklistTable(routineTasks);
+  html += '</div>';
+
   // 体力測定
   html += '<div class="checklist-section">';
   html += '<div class="checklist-title">📏 体力測定（' + (measureList.length) + '名）</div>';
@@ -1277,6 +1284,26 @@ function renderTodayChecklist() {
       const phase = this.dataset.bdayPhase;
       updateBirthdayStatus(name, month, day, phase, this.checked);
       render();
+    });
+  });
+  // ルーティンタスクの担当者・完了
+  section.querySelectorAll('select[data-task-staff]').forEach(el => {
+    el.addEventListener('change', function() {
+      const id = this.dataset.taskStaff;
+      const t = (data.tasks[currentDate] || []).find(x => x.id === id);
+      if (t) { t.staff = this.value; save(); render(); }
+    });
+  });
+  section.querySelectorAll('input[data-task-done]').forEach(el => {
+    el.addEventListener('change', function() {
+      const id = this.dataset.taskDone;
+      const t = (data.tasks[currentDate] || []).find(x => x.id === id);
+      if (t) {
+        t.done = this.checked;
+        t.doneAt = this.checked ? new Date().toISOString() : null;
+        save();
+        render();
+      }
     });
   });
 }
@@ -1390,6 +1417,41 @@ function buildWeightChecklistTable(list) {
   for (let i = 0; i < maxRows; i++) {
     html += '<tr>' + buildWeightCells(left[i]) + buildWeightCells(right[i]) + '</tr>';
   }
+  html += '</tbody></table>';
+  return html;
+}
+
+function buildRoutineChecklistTable(list) {
+  if (list.length === 0) return '<div class="checklist-empty">今日のルーティンなし</div>';
+  // 優先度順にソート（完了は下）
+  const priOrder = { red: 0, yellow: 1, green: 2, gray: 3 };
+  const sorted = list.slice().sort((a, b) => {
+    const aDone = a.done ? 1 : 0;
+    const bDone = b.done ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    return (priOrder[a.priority] || 9) - (priOrder[b.priority] || 9);
+  });
+  const priEmoji = { red: '🔴', yellow: '🟡', green: '🟢', gray: '⚪' };
+  let html = '<table class="checklist-table"><thead><tr><th>担当</th><th>タスク名</th><th>優先度</th><th>完了</th></tr></thead><tbody>';
+  sorted.forEach(t => {
+    const isDone = !!t.done;
+    const bg = isDone ? ' style="background:#f3f4f6;color:#9ca3af;"' : '';
+    const nameStyle = isDone ? ' style="text-decoration:line-through;background:#f3f4f6;color:#9ca3af;"' : '';
+    html += '<tr>';
+    html += '<td' + bg + '><select class="staff-select" data-task-staff="' + t.id + '">';
+    html += '<option value="">—</option>';
+    STAFF_LIST.forEach(s => {
+      const sel = t.staff === s ? ' selected' : '';
+      html += '<option value="' + s + '"' + sel + '>' + s + '</option>';
+    });
+    html += '</select></td>';
+    html += '<td class="name"' + nameStyle + '>' + escapeHtmlBoard(t.title);
+    if (t.sub) html += '<br><span style="font-size:10px;color:#94a3b8;">' + escapeHtmlBoard(t.sub) + '</span>';
+    html += '</td>';
+    html += '<td' + bg + '>' + (priEmoji[t.priority] || '') + '</td>';
+    html += '<td' + bg + '><input type="checkbox" data-task-done="' + t.id + '"' + (isDone ? ' checked' : '') + '></td>';
+    html += '</tr>';
+  });
   html += '</tbody></table>';
   return html;
 }
@@ -1667,8 +1729,10 @@ function render() {
   applyRoutines();
   renderTodayChecklist();
   const list = data.tasks[currentDate] || [];
+  // ルーティン・誕生日は表形式セクションで表示するので、カードからは除外
+  const cardList = list.filter(t => !t.routineId && !t.bdayTaskId);
   const byPri = { red: [], yellow: [], green: [], gray: [] };
-  for (const t of list) (byPri[t.priority] || byPri.gray).push(t);
+  for (const t of cardList) (byPri[t.priority] || byPri.gray).push(t);
 
   // タスクセクション
   for (const [pri, items] of Object.entries(byPri)) {
