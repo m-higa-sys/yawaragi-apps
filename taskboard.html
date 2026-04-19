@@ -538,9 +538,16 @@ function todayStr() {
   return d.toISOString().slice(0, 10);
 }
 
+const CURRENT_DATE_KEY = 'yawaragi_board_current_date';
+function saveCurrentDate() {
+  try { localStorage.setItem(CURRENT_DATE_KEY, currentDate); } catch(e) {}
+}
+
 function init() {
   load();
-  currentDate = todayStr();
+  // 前回開いていた日付を復元（なければ今日）
+  const saved = localStorage.getItem(CURRENT_DATE_KEY);
+  currentDate = saved || todayStr();
   document.getElementById('current-date').value = currentDate;
   // スタッフセレクト
   const sel = document.getElementById('new-staff');
@@ -561,6 +568,7 @@ function init() {
 
 function onDateChange() {
   currentDate = document.getElementById('current-date').value;
+  saveCurrentDate();
   _oralOrderCache = null;
   render();
 }
@@ -569,12 +577,14 @@ function changeDate(offset) {
   d.setDate(d.getDate() + offset);
   currentDate = d.toISOString().slice(0, 10);
   document.getElementById('current-date').value = currentDate;
+  saveCurrentDate();
   _oralOrderCache = null;
   render();
 }
 function setToday() {
   currentDate = todayStr();
   document.getElementById('current-date').value = currentDate;
+  saveCurrentDate();
   _oralOrderCache = null;
   render();
 }
