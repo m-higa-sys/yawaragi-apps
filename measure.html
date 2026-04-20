@@ -149,6 +149,8 @@
         <button onclick="fetchFromSpreadsheet()" style="font-size:13px; padding:5px 10px; cursor:pointer; border:1px solid #FF9800; border-radius:4px; background:#fff3e0;">📡 データ更新</button>
         <button onclick="showLoadArea()" style="font-size:12px; padding:4px 8px; cursor:pointer; border:1px solid #ccc; border-radius:4px; background:#f5f5f5; color:#666;">手動</button>
         <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="font-size:13px; padding:5px 10px; cursor:pointer; border:1px solid #1976d2; border-radius:4px; background:#e3f2fd; color:#1565c0; font-weight:bold;">📋 利用者台帳</button>
+        <button onclick="manualCloudPush()" id="syncPushBtn" style="font-size:13px; padding:5px 10px; cursor:pointer; border:1px solid #10b981; border-radius:4px; background:#d1fae5; color:#065f46; font-weight:bold;">☁️ クラウド同期</button>
+        <span id="syncStatusMsg" style="font-size:12px; color:#64748b; margin-left:6px;"></span>
     </span>
     <span id="displayYearMonth" style="font-size:16px; font-weight:bold; margin-left:10px;"></span>
 </div>
@@ -207,6 +209,10 @@
 <div class="section-title">体力測定（<span id="nextPlanMonth"></span>計画書用）</div>
 <div id="measurementSection"><div class="loading">データ読み込み中...</div></div>
 
+<!-- 体重変動セクション -->
+<div class="section-title orange">⚖ 体重変動あり（月1体重測定対象・前回比±2kg以上）</div>
+<div id="weightAlertSection"></div>
+
 <!-- 居宅訪問セクション -->
 <div class="section-title blue">居宅訪問（<span id="nextPlanMonth2"></span>計画書用）</div>
 <div id="visitSection"></div>
@@ -260,6 +266,116 @@ const IS_GAS = (typeof google !== 'undefined' && google.script && google.script.
 const IRREGULAR_KEY = 'yawaragi_monthly_irregular';
 const CHECK_KEY = 'yawaragi_monthly_checks';
 const MEMBERS_CACHE_KEY = 'yawaragi_monthly_members_cache';
+
+// クラウド同期（口腔・体重と同じGAS）
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+let _syncTimer = null;
+let _isSyncing = false;
+
+function cloudSync() {
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(function() {
+        if (_isSyncing) return;
+        _isSyncing = true;
+        try {
+            const checks = JSON.parse(localStorage.getItem(CHECK_KEY) || '{}');
+            const members = JSON.parse(localStorage.getItem(MEMBERS_CACHE_KEY) || '[]');
+            const irregular = JSON.parse(localStorage.getItem(IRREGULAR_KEY) || '{}');
+            const payload = JSON.stringify({
+                type: 'monthly',
+                data: { checks: checks, members: members, irregular: irregular }
+            });
+            fetch(SYNC_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+                keepalive: true
+            }).then(function() { _isSyncing = false; })
+              .catch(function() { _isSyncing = false; });
+        } catch(e) { _isSyncing = false; }
+    }, 2000);
+}
+
+function cloudLoad(onDone) {
+    try {
+        const script = document.createElement('script');
+        const cbName = '_monthlyCb_' + Date.now();
+        let loaded = false;
+        window[cbName] = function(cloud) {
+            loaded = true;
+            if (cloud && cloud.checks) {
+                // マージ：クラウド側の値を優先
+                localStorage.setItem(CHECK_KEY, JSON.stringify(cloud.checks));
+            }
+            if (cloud && cloud.members && cloud.members.length > 0) {
+                localStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(cloud.members));
+                ALL_MEMBERS = cloud.members;
+            }
+            if (cloud && cloud.irregular) {
+                localStorage.setItem(IRREGULAR_KEY, JSON.stringify(cloud.irregular));
+            }
+            delete window[cbName];
+            if (script.parentNode) script.parentNode.removeChild(script);
+            if (onDone) onDone(true);
+        };
+        script.src = SYNC_URL + '?action=getMonthly&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            if (!loaded) { delete window[cbName]; if (onDone) onDone(false); }
+            if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        document.head.appendChild(script);
+    } catch(e) { if (onDone) onDone(false); }
+}
+
+// 手動同期（ボタン押下時・即時実行）
+function manualCloudPush() {
+    const btn = document.getElementById('syncPushBtn');
+    const msg = document.getElementById('syncStatusMsg');
+    if (btn) btn.disabled = true;
+    if (msg) { msg.textContent = '☁️ アップロード中...'; msg.style.color = '#2563eb'; }
+    try {
+        const checks = JSON.parse(localStorage.getItem(CHECK_KEY) || '{}');
+        const members = JSON.parse(localStorage.getItem(MEMBERS_CACHE_KEY) || '[]');
+        const irregular = JSON.parse(localStorage.getItem(IRREGULAR_KEY) || '{}');
+        const payload = JSON.stringify({
+            type: 'monthly',
+            data: { checks: checks, members: members, irregular: irregular }
+        });
+        fetch(SYNC_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+        }).then(function() {
+            if (msg) { msg.textContent = '✅ 同期完了（他の端末で反映されます）'; msg.style.color = '#059669'; }
+            setTimeout(function() { if (msg) msg.textContent = ''; }, 5000);
+            if (btn) btn.disabled = false;
+        }).catch(function() {
+            if (msg) { msg.textContent = '⚠ 同期失敗'; msg.style.color = '#dc2626'; }
+            if (btn) btn.disabled = false;
+        });
+    } catch(e) {
+        if (msg) { msg.textContent = '⚠ エラー: ' + e.message; msg.style.color = '#dc2626'; }
+        if (btn) btn.disabled = false;
+    }
+}
+
+// 30秒ごと＋画面復帰時にクラウドから再取得
+let _autoRefreshTimer = null;
+function startAutoRefresh() {
+    if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = setInterval(function() {
+        if (document.hidden || _isSyncing) return;
+        cloudLoad(function(ok) { if (ok) renderAll(); });
+    }, 30000);
+}
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && !_isSyncing) {
+        cloudLoad(function(ok) { if (ok) renderAll(); });
+    }
+});
 
 let ALL_MEMBERS = []; // スプレッドシートから取得した全利用者
 let filterDay = '';
@@ -316,12 +432,14 @@ function loadIrregulars() {
 }
 function saveIrregulars(data) {
     localStorage.setItem(IRREGULAR_KEY, JSON.stringify(data));
+    cloudSync();
 }
 function loadChecks() {
     return JSON.parse(localStorage.getItem(CHECK_KEY) || '{}');
 }
 function saveChecks(data) {
     localStorage.setItem(CHECK_KEY, JSON.stringify(data));
+    cloudSync();
 }
 
 // ========== データ読み込み ==========
@@ -365,6 +483,7 @@ function processLoadedData(text) {
         return;
     }
     localStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(members));
+    cloudSync();
     ALL_MEMBERS = members;
     document.getElementById('loadArea').style.display = 'none';
     renderAll();
@@ -512,42 +631,50 @@ function init() {
         // キャッシュがない場合はスプレッドシートから自動取得
         fetchFromSpreadsheet();
     }
+    // クラウドから最新取得＆30秒ごと自動更新
+    cloudLoad(function(ok) { if (ok) renderAll(); });
+    startAutoRefresh();
 }
 
 // ========== 測定月計算 ==========
-function isMeasurementMonth(planStartStr, selectedYear, selectedMonth, startDateStr) {
+// 2026/4/18 ルール変更: 要介護=3ヶ月サイクル / 要支援=4ヶ月サイクル
+function isMeasurementMonth(planStartStr, selectedYear, selectedMonth, startDateStr, type) {
     if (!planStartStr) return false;
+    const cycle = (type === '要支援') ? 4 : 3;
     const [pYear, pMonth] = planStartStr.split('-').map(Number);
     const planStart = pYear * 12 + (pMonth - 1);
     const selected = selectedYear * 12 + (selectedMonth - 1);
 
-    // 新規利用者（利用開始日あり）: 利用開始月を基準に3ヶ月サイクル
+    // 新規利用者（利用開始日あり）: 利用開始月を基準にサイクル計算
     if (startDateStr) {
         const [sYear, sMonth] = startDateStr.split('-').map(Number);
         if (!isNaN(sYear) && !isNaN(sMonth)) {
             const startMonth = sYear * 12 + (sMonth - 1);
             if (selected < startMonth) return false;
             const diff = selected - startMonth;
-            return diff % 3 === 0;
+            return diff % cycle === 0;
         }
     }
 
     // 既存利用者（利用開始日なし）: 従来の計算
     const diff = selected - (planStart - 1);
     if (diff < 0) return false;
-    return diff % 3 === 0;
+    return diff % cycle === 0;
 }
 
 // ========== 繰り越しチェック ==========
-// 過去1〜2ヶ月にサイクル月があり、未実施なら繰り越し対象
+// 過去のサイクル月が未実施なら繰り越し対象
+// 2026/4/18 ルール変更: 要介護=3ヶ月サイクル(最大2ヶ月遡る) / 要支援=4ヶ月サイクル(最大3ヶ月遡る)
 function getCarryOver(m, year, month, checks, checkPrefix, checkField) {
     const nameKey = m.name.replace(/[^a-zA-Z0-9\u3040-\u9fff]/g, '');
     const unitPrefix = m.unit === 'AM' ? checkPrefix + '_am' : checkPrefix + '_pm';
+    const cycle = (m.type === '要支援') ? 4 : 3;
+    const maxBack = cycle - 1;
 
     const today = new Date();
     const todayYM = today.getFullYear() * 12 + today.getMonth(); // 今月（0始まり）
 
-    for (let back = 1; back <= 2; back++) {
+    for (let back = 1; back <= maxBack; back++) {
         let checkMonth = month - back;
         let checkYear = year;
         if (checkMonth <= 0) { checkMonth += 12; checkYear--; }
@@ -559,7 +686,7 @@ function getCarryOver(m, year, month, checks, checkPrefix, checkField) {
         const checkYMval = checkYear * 12 + (checkMonth - 1);
         if (checkYMval >= todayYM) continue;
 
-        if (isMeasurementMonth(m.planStart, checkYear, checkMonth, m.startDate)) {
+        if (isMeasurementMonth(m.planStart, checkYear, checkMonth, m.startDate, m.type)) {
             const checkYM = checkYear + '-' + String(checkMonth).padStart(2, '0');
             const checkKey = checkYM + '_' + unitPrefix + '_' + nameKey + '_' + checkField;
             if (!checks[checkKey]) {
@@ -570,6 +697,110 @@ function getCarryOver(m, year, month, checks, checkPrefix, checkField) {
         }
     }
     return null;
+}
+
+// ========== 体重変動検知（2026/4/18追加） ==========
+// 前回比±2kg以上の利用者を月1体重測定対象として抽出
+const WEIGHT_STORAGE_KEY = 'yawaragi_weight_check';
+const WEIGHT_THRESHOLD = 2.0;
+
+function loadWeightData() {
+    try {
+        const raw = localStorage.getItem(WEIGHT_STORAGE_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch(e) {
+        return null;
+    }
+}
+
+function getFiscalYearFor(year, month) {
+    return month >= 4 ? year : year - 1;
+}
+
+function getWeightAlertMembers(members, year, month) {
+    const wData = loadWeightData();
+    if (!wData || !wData.weights) return [];
+
+    // 前月・前々月の年月
+    let prevMonth = month - 1, prevYear = year;
+    if (prevMonth <= 0) { prevMonth += 12; prevYear--; }
+    let prev2Month = month - 2, prev2Year = year;
+    if (prev2Month <= 0) { prev2Month += 12; prev2Year--; }
+
+    const prevFY = getFiscalYearFor(prevYear, prevMonth);
+    const prev2FY = getFiscalYearFor(prev2Year, prev2Month);
+    const prevLabel = prevMonth + '月';
+    const prev2Label = prev2Month + '月';
+
+    const result = [];
+    members.forEach(m => {
+        // 本来の体力測定月は既に表示済みなのでスキップ（体力測定時に体重も測る）
+        if (isMeasurementMonth(m.planStart, year, month, m.startDate, m.type)) return;
+
+        const weights = ((wData.weights[prevFY] || {})[m.name]) || {};
+        const weights2 = ((wData.weights[prev2FY] || {})[m.name]) || {};
+
+        const prevW = parseFloat(weights[prevLabel]);
+        const prev2W = parseFloat(weights2[prev2Label]);
+
+        if (!isNaN(prevW) && !isNaN(prev2W)) {
+            const rawDiff = prevW - prev2W;
+            if (Math.abs(rawDiff) >= WEIGHT_THRESHOLD) {
+                result.push({
+                    ...m,
+                    weightAlert: true,
+                    weightDiff: rawDiff.toFixed(1),
+                    weightPrev: prevW,
+                    weightPrev2: prev2W,
+                    weightPrevLabel: prevLabel,
+                    weightPrev2Label: prev2Label
+                });
+            }
+        }
+    });
+
+    return result;
+}
+
+function buildWeightAlertTable(amList, pmList) {
+    if (amList.length === 0 && pmList.length === 0) {
+        return '<p style="color:#999; padding:10px;">対象者なし（前月比±2kg以上の利用者がいません）</p>';
+    }
+    const maxRows = Math.max(amList.length, pmList.length);
+    let html = '<table><thead><tr>';
+    html += '<th class="ampm-header am-header" colspan="2">AM</th>';
+    html += '<th class="ampm-header pm-header" colspan="2">PM</th>';
+    html += '</tr><tr>';
+    html += '<th class="am-sub">名前</th><th class="am-sub">体重変動</th>';
+    html += '<th class="pm-sub">名前</th><th class="pm-sub">体重変動</th>';
+    html += '</tr></thead><tbody>';
+    for (let i = 0; i < maxRows; i++) {
+        html += '<tr>';
+        html += buildWeightAlertCells(amList, i);
+        html += buildWeightAlertCells(pmList, i);
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+}
+
+function buildWeightAlertCells(list, index) {
+    if (index >= list.length) return '<td></td><td></td>';
+    const m = list[index];
+    const isShien = m.type === '要支援';
+    const diffNum = parseFloat(m.weightDiff);
+    const arrow = diffNum > 0 ? '↑' : '↓';
+    const color = diffNum > 0 ? '#f44336' : '#2196F3';
+    const bg = ' style="background:#fff3e0"';
+    let html = '<td class="name"' + bg + '>' + escHtml(m.name)
+        + (isShien ? '<span class="support-label">（支援）</span>' : '')
+        + '</td>';
+    html += '<td' + bg + ' style="font-size:11px; color:' + color + '; font-weight:bold;">'
+        + arrow + ' ' + (diffNum > 0 ? '+' : '') + m.weightDiff + 'kg<br>'
+        + '<span style="color:#999; font-weight:normal;">' + m.weightPrev2Label + ':' + m.weightPrev2 + 'kg → ' + m.weightPrevLabel + ':' + m.weightPrev + 'kg</span>'
+        + '</td>';
+    return html;
 }
 
 // ========== 認定期間チェック ==========
@@ -667,7 +898,7 @@ function renderAll() {
     const measurePM = [];
     members.forEach(m => {
         // 本来のサイクルで今月が測定月
-        if (isMeasurementMonth(m.planStart, year, month, m.startDate)) {
+        if (isMeasurementMonth(m.planStart, year, month, m.startDate, m.type)) {
             if (m.unit === 'AM') measureAM.push({ ...m, irregular: false, carryOver: false });
             else measurePM.push({ ...m, irregular: false, carryOver: false });
             return;
@@ -697,7 +928,7 @@ function renderAll() {
     const visitPM = [];
     members.forEach(m => {
         // 本来のサイクルで今月が測定月
-        if (isMeasurementMonth(m.planStart, year, month, m.startDate)) {
+        if (isMeasurementMonth(m.planStart, year, month, m.startDate, m.type)) {
             if (m.unit === 'AM') visitAM.push({ ...m, irregular: false, carryOver: false });
             else visitPM.push({ ...m, irregular: false, carryOver: false });
             return;
@@ -735,9 +966,18 @@ function renderAll() {
     // 認定期間終了が近い人
     const certExpiring = getCertExpiringMembers(year, month);
 
+    // 体重変動者（月1体重測定対象）
+    const weightAlertMembers = getWeightAlertMembers(members, year, month);
+    const weightAlertAM = weightAlertMembers.filter(m => m.unit === 'AM');
+    const weightAlertPM = weightAlertMembers.filter(m => m.unit === 'PM');
+    sortByPriority(weightAlertAM);
+    sortByPriority(weightAlertPM);
+
     // テーブル描画
     document.getElementById('measurementSection').innerHTML =
         buildMeasureTable(measureAM, measurePM, yearMonthKey, 'measure', checks);
+    document.getElementById('weightAlertSection').innerHTML =
+        buildWeightAlertTable(weightAlertAM, weightAlertPM);
     document.getElementById('visitSection').innerHTML =
         buildVisitTable(visitAM, visitPM, yearMonthKey, 'visit', checks);
     document.getElementById('certSection').innerHTML =
@@ -1008,6 +1248,7 @@ function convertGASResponse(response) {
 
 function applyMembers(members) {
     localStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(members));
+    cloudSync();
     ALL_MEMBERS = members;
     document.getElementById('loadArea').style.display = 'none';
     var statusEl = document.getElementById('fetchStatus');
