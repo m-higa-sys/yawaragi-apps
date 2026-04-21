@@ -827,6 +827,47 @@
             background: #38a169; color: white; font-size: 0.75rem; font-weight: 700;
             margin-left: 8px;
         }
+        .trm-care-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            background: #3182ce; color: white; font-size: 0.7rem; font-weight: 600;
+            margin-left: 6px; vertical-align: middle;
+        }
+        .trm-care-badge.shien { background: #d69e2e; }
+        .trm-help-btn {
+            float: right; padding: 3px 10px; border: 1px solid #bee3f8; border-radius: 12px;
+            background: #ebf8ff; color: #2b6cb0; font-size: 0.75rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .trm-help-btn:hover { background: #bee3f8; }
+        .trm-help-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999;
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        .trm-help-box {
+            background: white; border-radius: 12px; max-width: 640px; width: 100%;
+            max-height: 85vh; display: flex; flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .trm-help-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
+        }
+        .trm-help-header h3 { margin: 0; font-size: 1.05rem; color: #2d3748; }
+        .trm-help-close {
+            border: none; background: transparent; font-size: 1.2rem; color: #718096;
+            cursor: pointer; padding: 4px 8px;
+        }
+        .trm-help-body { padding: 14px 18px; overflow-y: auto; }
+        .trm-help-section {
+            padding: 10px 12px; border-left: 3px solid #cbd5e0;
+            background: #f7fafc; border-radius: 6px; margin-bottom: 10px;
+        }
+        .trm-help-section h4 { margin: 0 0 6px 0; font-size: 0.95rem; color: #2d3748; }
+        .trm-help-section ul, .trm-help-section ol {
+            margin: 4px 0 4px 18px; padding: 0; font-size: 0.85rem; color: #4a5568;
+        }
+        .trm-help-section li { margin: 2px 0; }
+        .trm-help-important { border-left-color: #e53e3e; background: #fff5f5; }
         .trm-summary-grid {
             display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
         }
@@ -5964,20 +6005,26 @@ function trmRenderList() {
 }
 
 function trmRenderCard(t) {
+    // 要支援判定（介護度に「要支援」を含むか）。空なら不明→要介護扱い（ADL必要）
+    const isShienMode = (t.careLevel || '').indexOf('要支援') !== -1;
+
     // 段階的有効化の判定
     const stage1Done = t.tasks.tsusho && t.tasks.kotraining && t.tasks.koukou;
-    const stage2Done = stage1Done && t.tasks.kagakuteki;
-    const stage3Done = stage2Done && t.tasks.adl;
-    const allDone = stage3Done;
+    // 段階2: 要支援なら科学的のみ、要介護なら科学的＋ADL両方
+    const stage2Done = stage1Done && t.tasks.kagakuteki && (isShienMode || t.tasks.adl);
+    const allDone = stage2Done;
 
     const lastUseJP = trmFormatDateJP(t.lastUseDate);
     const terminateJP = trmFormatDateJP(t.terminateDate);
     const contactJP = trmFormatDateJP(t.contactDate);
+    const careBadge = t.careLevel
+        ? '<span class="trm-care-badge' + (isShienMode ? ' shien' : '') + '">' + escapeHtml(t.careLevel) + '</span>'
+        : '';
 
     return '<div class="trm-card">' +
         '<div class="trm-card-header">' +
             '<div>' +
-                '<div class="trm-card-name">' + escapeHtml(t.name) + '様' +
+                '<div class="trm-card-name">' + escapeHtml(t.name) + '様' + careBadge +
                     (allDone ? '<span class="trm-all-done-badge">✓ 全完了</span>' : '') +
                 '</div>' +
                 '<div class="trm-card-meta">' +
@@ -5992,7 +6039,9 @@ function trmRenderCard(t) {
         (t.supplement ? '<div class="trm-card-supplement">補足: ' + escapeHtml(t.supplement) + '</div>' : '') +
 
         '<div class="trm-task-list">' +
-            '<div class="trm-task-title">📋 リハブクラウド作業チェックリスト（順序あり）</div>' +
+            '<div class="trm-task-title">📋 リハブクラウド作業チェックリスト（順序あり）' +
+                '<button class="trm-help-btn" onclick="trmShowHelp()" title="手順を見る">？ やり方</button>' +
+            '</div>' +
 
             // 段階1: 通所/個訓/口腔（順不同）
             '<div class="trm-task-step-label active">段階1: この3つを完了させる（順不同）</div>' +
@@ -6000,23 +6049,101 @@ function trmRenderCard(t) {
             trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false) +
             trmTaskItem(t, 'koukou', '口腔機能向上計画書', false) +
 
-            // 段階2: 科学的（段階1完了で有効化）
+            // 段階2: 科学的＋ADL（段階1完了で両方同時有効化、要支援はADL非表示）
             '<div class="trm-task-step-label ' + (stage1Done ? 'active' : '') + '" style="margin-top:8px;">' +
-                '段階2: ' + (stage1Done ? '段階1完了 → ここをチェック' : '段階1完了後にチェック可能') +
+                '段階2: ' + (stage1Done
+                    ? '段階1完了 → ' + (isShienMode ? '科学的介護をチェック（要支援はADL不要）' : '科学的介護とADLをチェック')
+                    : '段階1完了後にチェック可能') +
             '</div>' +
             trmTaskItem(t, 'kagakuteki', '科学的介護推進体制', !stage1Done) +
-
-            // 段階3: ADL（段階2完了で有効化）
-            '<div class="trm-task-step-label ' + (stage2Done ? 'active' : '') + '" style="margin-top:8px;">' +
-                '段階3: ' + (stage2Done ? '段階2完了 → ここをチェック' : '段階2完了後にチェック可能') +
-            '</div>' +
-            trmTaskItem(t, 'adl', 'ADL維持等加算', !stage2Done) +
+            (isShienMode ? '' : trmTaskItem(t, 'adl', 'ADL維持等加算', !stage1Done)) +
         '</div>' +
 
         '<div class="trm-card-actions">' +
             '<button class="trm-cancel-btn" onclick="trmCancelTermination(\'' + t.lastUseDate + '\', \'' + escapeAttr(t.name) + '\')">↩ 中止を取消す</button>' +
         '</div>' +
     '</div>';
+}
+
+// 中止時のリハブクラウド作業手順モーダル
+function trmShowHelp() {
+    const existing = document.getElementById('trm-help-modal');
+    if (existing) { existing.remove(); return; }
+
+    const modal = document.createElement('div');
+    modal.id = 'trm-help-modal';
+    modal.className = 'trm-help-overlay';
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+    modal.innerHTML =
+        '<div class="trm-help-box">' +
+            '<div class="trm-help-header">' +
+                '<h3>📘 中止時のリハブクラウド作業手順</h3>' +
+                '<button class="trm-help-close" onclick="document.getElementById(\'trm-help-modal\').remove()">✕</button>' +
+            '</div>' +
+            '<div class="trm-help-body">' +
+
+                '<div class="trm-help-section">' +
+                    '<h4>📋 全体の流れ</h4>' +
+                    '<ol>' +
+                        '<li><b>段階1</b>: 通所・個別機能訓練・口腔 の3つを完成（順不同）</li>' +
+                        '<li><b>段階2</b>: 科学的介護＋ADL維持等 を完成（要支援はADL不要）</li>' +
+                        '<li>完成後にLIFEへ提出</li>' +
+                    '</ol>' +
+                '</div>' +
+
+                '<div class="trm-help-section">' +
+                    '<h4>① 通所計画書（中止時）</h4>' +
+                    '<ul>' +
+                        '<li>リハブクラウド → 「通所計画書」タブ → 該当利用者を選択</li>' +
+                        '<li>「中止日」と「中止理由」を入力</li>' +
+                        '<li>最終的な評価（目標達成度等）を入力して保存</li>' +
+                    '</ul>' +
+                '</div>' +
+
+                '<div class="trm-help-section">' +
+                    '<h4>② 個別機能訓練計画書（中止時）</h4>' +
+                    '<ul>' +
+                        '<li>「個別機能訓練加算(II)」タブ → 該当利用者を選択</li>' +
+                        '<li>最終月の評価を入力（必須項目を埋める）</li>' +
+                        '<li>「情報提出期限」の日付を確認して保存</li>' +
+                    '</ul>' +
+                '</div>' +
+
+                '<div class="trm-help-section">' +
+                    '<h4>③ 口腔機能向上計画書（中止時）</h4>' +
+                    '<ul>' +
+                        '<li>「口腔機能向上加算(II)」タブ → 該当利用者を選択</li>' +
+                        '<li>最終的な口腔評価を入力して保存</li>' +
+                    '</ul>' +
+                '</div>' +
+
+                '<div class="trm-help-section trm-help-important">' +
+                    '<h4>④ 科学的介護推進体制加算（中止時も必要！）</h4>' +
+                    '<ul>' +
+                        '<li>「科学的介護推進体制加算」タブ → 該当利用者を選択</li>' +
+                        '<li>必須項目を入力（①〜③の値から自動入力される部分あり）</li>' +
+                        '<li><b>中止者も提出必須</b>。期限は評価月の翌月10日</li>' +
+                    '</ul>' +
+                '</div>' +
+
+                '<div class="trm-help-section trm-help-important">' +
+                    '<h4>⑤ ADL維持等加算（要介護者のみ）</h4>' +
+                    '<ul>' +
+                        '<li>「ADL維持等加算」タブ → 該当利用者を選択</li>' +
+                        '<li>退所時のバーセルインデックス（ADL評価）を入力</li>' +
+                        '<li><b>要支援の方はADL不要</b>（このアプリでは自動で非表示になります）</li>' +
+                    '</ul>' +
+                '</div>' +
+
+                '<div class="trm-help-section">' +
+                    '<h4>⚠️ 迷ったら</h4>' +
+                    '<p style="margin:4px 0;">① が完了すると ②③ の値が自動入力される可能性があります（要検証）。</p>' +
+                    '<p style="margin:4px 0;">期限切れでもLIFEは提出可能です。できるだけ早く入力→提出してください。</p>' +
+                '</div>' +
+
+            '</div>' +
+        '</div>';
+    document.body.appendChild(modal);
 }
 
 function trmTaskItem(t, key, label, disabled) {
