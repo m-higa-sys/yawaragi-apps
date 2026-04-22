@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>身長チェック表 - yawaragi</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Meiryo', sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            font-size: 16px;
+        }
+        .header {
+            background: linear-gradient(135deg, #4CAF50, #66BB6A);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .header h1 { font-size: 22px; }
+        .header-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .year-select {
+            font-size: 18px; padding: 8px 12px; border: none;
+            border-radius: 6px; background: rgba(255,255,255,0.9);
+            color: #333; cursor: pointer;
+        }
+        .btn {
+            padding: 10px 16px; border: none; border-radius: 6px;
+            font-size: 14px; cursor: pointer; font-weight: bold;
+            min-height: 44px; min-width: 44px; touch-action: manipulation;
+        }
+        .btn-white { background: white; color: #2E7D32; }
+        .btn-white:hover { background: #e8f5e9; }
+        .btn-red { background: #f44336; color: white; }
+        .btn-red:hover { background: #d32f2f; }
+        .btn-green { background: #4CAF50; color: white; }
+        .btn-green:hover { background: #388E3C; }
+        .toolbar {
+            padding: 12px 20px; background: white; border-bottom: 1px solid #ddd;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 10px;
+        }
+        .stats { font-size: 15px; color: #666; }
+        .stats strong { color: #2E7D32; font-size: 18px; }
+        .legend { display: flex; gap: 12px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-color {
+            width: 18px; height: 18px; border-radius: 4px; border: 1px solid #ccc;
+            display: flex; align-items: center; justify-content: center; font-size: 11px;
+        }
+        .notice {
+            background: #fff8e1; color: #e65100; padding: 10px 20px;
+            border-left: 4px solid #ffa000; font-size: 14px; line-height: 1.6;
+        }
+        .table-container { overflow-x: auto; padding: 15px; }
+        table {
+            border-collapse: collapse; width: 100%; background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;
+        }
+        th, td { border: 1px solid #e0e0e0; text-align: center; padding: 10px 8px; font-size: 15px; }
+        th {
+            background: #4CAF50; color: white; font-weight: bold;
+            position: sticky; top: 0; z-index: 10; font-size: 16px;
+        }
+        .name-cell {
+            text-align: left; padding-left: 10px; font-weight: bold;
+            min-width: 55px; white-space: nowrap;
+            position: sticky; left: 0; background: white; z-index: 5;
+        }
+        .group-cell {
+            font-weight: bold; color: #2E7D32; background: #e8f5e9;
+            position: sticky; left: 0; z-index: 5; min-width: 30px;
+        }
+        .height-cell {
+            cursor: pointer; min-width: 90px; min-height: 48px;
+            user-select: none; -webkit-user-select: none; touch-action: manipulation;
+            position: relative; font-size: 16px;
+        }
+        .height-cell:hover { background: #f5f5f5; }
+        .height-cell.has-value { background: #e8f5e9; }
+        .height-cell.highlight-undone { background: #ffebee; }
+        .height-value { font-weight: bold; font-size: 18px; color: #2E7D32; }
+        .height-unit { font-size: 11px; color: #777; margin-left: 2px; }
+        .name-cell.clickable { cursor: pointer; }
+        .name-cell.clickable:hover { background: #e8f5e9 !important; text-decoration: underline; }
+        .row-even { background: #fafafa; }
+        .row-even .name-cell { background: #fafafa; }
+
+        /* モーダル */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 100;
+            justify-content: center; align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: white; border-radius: 12px; padding: 30px;
+            max-width: 400px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal h2 { margin-bottom: 15px; color: #333; font-size: 20px; }
+        .modal p { margin-bottom: 15px; color: #666; line-height: 1.6; }
+        .modal .btn { width: 100%; margin-top: 10px; }
+        .height-input {
+            font-size: 28px; width: 100%; padding: 15px;
+            border: 2px solid #4CAF50; border-radius: 8px;
+            text-align: center; outline: none;
+        }
+        .height-input:focus { border-color: #2E7D32; box-shadow: 0 0 0 3px rgba(76,175,80,0.2); }
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        .btn-group .btn { flex: 1; }
+
+        .toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            padding: 12px 24px; border-radius: 8px; color: white;
+            font-weight: bold; z-index: 200; transition: opacity 0.3s; font-size: 15px;
+        }
+
+        /* 曜日フィルター */
+        .filter-bar {
+            padding: 8px 20px; background: #fff; border-bottom: 1px solid #ddd;
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        }
+        .filter-label { font-size: 13px; font-weight: bold; color: #555; white-space: nowrap; }
+        .filter-group { display: flex; gap: 4px; flex-wrap: wrap; }
+        .filter-btn {
+            padding: 6px 14px; border: 1px solid #ccc; border-radius: 20px;
+            background: #fff; color: #555; font-size: 14px; cursor: pointer;
+            min-height: 36px; touch-action: manipulation; transition: all 0.15s;
+        }
+        .filter-btn:hover { background: #f5f5f5; }
+        .filter-btn.active { background: #4CAF50; color: #fff; border-color: #4CAF50; font-weight: bold; }
+        .filter-btn.active-ampm { background: #ff9800; color: #fff; border-color: #ff9800; font-weight: bold; }
+        .filter-count { font-size: 13px; color: #666; margin-left: 8px; }
+
+        /* 印刷 */
+        @media print {
+            body { background: white; font-size: 12px; }
+            .header, .toolbar, .filter-bar, .notice, .no-print { display: none !important; }
+            .table-container { padding: 0; overflow: visible; }
+            table { box-shadow: none; font-size: 12px; }
+            th, td { padding: 4px 3px; font-size: 12px; }
+            .name-cell, .group-cell { position: static; }
+            @page { size: A4 landscape; margin: 10mm; }
+        }
+        @media (max-width: 768px) {
+            .header { padding: 10px 15px; }
+            .header h1 { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📏 身長チェック表</h1>
+    <div class="header-controls">
+        <select class="year-select" id="yearSelect" onchange="changeYear()"></select>
+        <button class="btn btn-white" onclick="loadFromSpreadsheet()">🔄 利用者台帳から取得</button>
+        <button class="btn btn-white no-print" onclick="window.print()">🖨️ 印刷</button>
+    </div>
+</div>
+
+<div class="notice">
+    📏 <strong>身長測定ルール</strong>：3ヶ月に1回（4月・7月・10月・1月）測定。体重チェック表のBMI計算に使用されます。
+</div>
+
+<div class="toolbar">
+    <div class="stats">
+        利用者: <strong id="totalCount">0</strong>名
+        &nbsp;|&nbsp; 今期測定済: <strong id="doneCount">0</strong> / <strong id="totalMeasure">0</strong>
+    </div>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#e8f5e9;">cm</div> 入力済</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffebee;"></div> 測定月・未入力</div>
+    </div>
+</div>
+
+<div class="filter-bar" id="filterBar" style="display:none;">
+    <span class="filter-label">曜日:</span>
+    <div class="filter-group" id="dayFilters">
+        <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
+        <button class="filter-btn" onclick="setDayFilter('月')">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火')">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水')">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木')">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金')">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+    </div>
+    <span class="filter-label" style="margin-left:8px;">時間:</span>
+    <div class="filter-group" id="ampmFilters">
+        <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
+</div>
+
+<div class="table-container">
+    <table id="checkTable">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999; font-size:18px;">
+        「🔄 利用者台帳から取得」ボタンで利用者一覧を読み込んでください
+    </div>
+</div>
+
+<!-- 身長入力モーダル -->
+<div class="modal-overlay" id="heightModal">
+    <div class="modal">
+        <h2 id="heightModalTitle">身長入力</h2>
+        <p id="heightModalInfo"></p>
+        <input type="number" class="height-input" id="heightInput" placeholder="例: 155.0" step="0.1" min="100" max="220" inputmode="decimal">
+        <div id="bmiDisplay" style="margin-top:10px; text-align:center; font-size:15px; color:#666;"></div>
+        <div class="btn-group">
+            <button class="btn btn-green" onclick="saveHeight()">保存</button>
+            <button class="btn btn-red" onclick="clearHeight()">削除</button>
+        </div>
+        <button class="btn" style="background:#eee; color:#666; width:100%; margin-top:5px;" onclick="closeHeightModal()">キャンセル</button>
+    </div>
+</div>
+
+<div id="toast" class="toast" style="opacity:0;"></div>
+
+<script>
+// ============ 定数 ============
+const STORAGE_KEY = 'yawaragi_weight_check'; // 体重チェック表と共有（同じデータを使う）
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+const HEIGHT_MONTHS = ['4月', '7月', '10月', '1月'];
+
+let appData = {
+    users: [],
+    weights: {},
+    heights: {},
+    currentYear: getCurrentFiscalYear()
+};
+let editingUser = '';
+let editingMonth = '';
+let filterDay = '';
+let filterAmpm = '';
+let _syncTimer = null;
+
+// ============ ユーティリティ ============
+function getCurrentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+function showToast(msg, color) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = color || '#4CAF50';
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escapeAttr(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function getGroup(kana) {
+    if (!kana) return '他';
+    const c = kana.charAt(0);
+    if ('あいうえおアイウエオ'.includes(c)) return 'ア';
+    if ('かきくけこがぎぐげごカキクケコガギグゲゴ'.includes(c)) return 'カ';
+    if ('さしすせそざじずぜぞサシスセソザジズゼゾ'.includes(c)) return 'サ';
+    if ('たちつてとだぢづでどタチツテトダヂヅデド'.includes(c)) return 'タ';
+    if ('なにぬねのナニヌネノ'.includes(c)) return 'ナ';
+    if ('はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ'.includes(c)) return 'ハ';
+    if ('まみむめもマミムメモ'.includes(c)) return 'マ';
+    if ('やゆよヤユヨ'.includes(c)) return 'ヤ';
+    if ('らりるれろラリルレロ'.includes(c)) return 'ラ';
+    if ('わをんワヲン'.includes(c)) return 'ワ';
+    return '他';
+}
+function sortUsers() {
+    appData.users.sort((a, b) => (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja'));
+}
+
+// ============ 曜日フィルター ============
+function setDayFilter(day) {
+    filterDay = day;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderTable();
+}
+function setAmpmFilter(ampm) {
+    filterAmpm = ampm;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
+    event.target.classList.add('active-ampm');
+    renderTable();
+}
+function matchesSchedule(user, day, ampm) {
+    if (!day) return true;
+    if (!user.days || user.days.indexOf(day) < 0) return false;
+    if (!ampm) return true;
+    const ap = user.ampm || '';
+    if (ap === '午前' || ap === '午後') return ap === ampm;
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) return p.indexOf(ampm) >= 0;
+    }
+    return false;
+}
+
+// ============ ローカル保存 ============
+function loadData() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+            const p = JSON.parse(raw);
+            appData.users = p.users || [];
+            appData.weights = p.weights || {};
+            appData.heights = p.heights || {};
+        }
+    } catch(e) { console.warn(e); }
+}
+function saveData() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            users: appData.users,
+            weights: appData.weights,
+            heights: appData.heights
+        }));
+        scheduleCloudSync();
+    } catch(e) { console.warn(e); }
+}
+
+// ============ クラウド同期 ============
+function scheduleCloudSync() {
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTimer = setTimeout(syncToCloud, 3000);
+}
+function syncToCloud() {
+    try {
+        const body = JSON.stringify({
+            type: 'weight',
+            data: {
+                users: appData.users,
+                weights: appData.weights,
+                heights: appData.heights
+            }
+        });
+        navigator.sendBeacon(SYNC_URL, body);
+        console.log('☁️ 身長データ同期完了');
+    } catch(e) {
+        fetch(SYNC_URL, { method:'POST', mode:'no-cors', body, keepalive:true }).catch(()=>{});
+    }
+}
+function loadFromCloud() {
+    fetch(SYNC_URL + '?type=weight&t=' + Date.now())
+        .then(r => r.json())
+        .then(cloud => {
+            if (!cloud) return;
+            // heightsをマージ（クラウド優先）
+            if (cloud.heights) {
+                Object.keys(cloud.heights).forEach(function(fy) {
+                    if (!appData.heights[fy]) appData.heights[fy] = {};
+                    Object.keys(cloud.heights[fy]).forEach(function(name) {
+                        if (!appData.heights[fy][name]) appData.heights[fy][name] = {};
+                        Object.keys(cloud.heights[fy][name]).forEach(function(mk) {
+                            var val = cloud.heights[fy][name][mk];
+                            if (val !== undefined && val !== null && val !== '' &&
+                                (appData.heights[fy][name][mk] === undefined || appData.heights[fy][name][mk] === null || appData.heights[fy][name][mk] === '')) {
+                                appData.heights[fy][name][mk] = val;
+                            }
+                        });
+                    });
+                });
+            }
+            if (cloud.weights) appData.weights = cloud.weights;
+            if (cloud.users && cloud.users.length) appData.users = cloud.users;
+            saveData();
+            renderTable();
+        })
+        .catch(e => console.warn('cloud load error:', e));
+}
+
+// ============ 利用者台帳から取得 ============
+function loadFromSpreadsheet() {
+    showToast('📋 利用者台帳から取得中...', '#4CAF50');
+    const callbackName = 'gasCallback_' + Date.now();
+    const url = GAS_URL + '?callback=' + callbackName;
+    const timeout = setTimeout(() => {
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        showToast('⚠ 取得に時間がかかっています', '#f44');
+    }, 15000);
+    window[callbackName] = function(data) {
+        clearTimeout(timeout);
+        delete window[callbackName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        try {
+            const users = (data.users || []).map(u => ({
+                name: u.name || '',
+                furigana: u.kana || '',
+                days: u.days || '',
+                ampm: u.ampm || ''
+            })).filter(u => u.name);
+            if (users.length === 0) { showToast('⚠ 利用者が見つかりません', '#f44'); return; }
+            mergeUsers(users);
+            saveData();
+            renderTable();
+            showToast('✅ ' + appData.users.length + '名の利用者を取得しました', '#4CAF50');
+        } catch(err) {
+            showToast('⚠ データ解析に失敗', '#f44');
+            console.error(err);
+        }
+    };
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = function() {
+        clearTimeout(timeout);
+        delete window[callbackName];
+        showToast('⚠ 取得失敗。ネット接続を確認してください', '#f44');
+    };
+    document.head.appendChild(script);
+}
+function mergeUsers(newUsers) {
+    const existingMap = {};
+    appData.users.forEach(u => { existingMap[u.name] = u; });
+    appData.users = newUsers.map(nu => ({
+        name: nu.name,
+        furigana: nu.furigana || (existingMap[nu.name] ? existingMap[nu.name].furigana : ''),
+        days: nu.days || (existingMap[nu.name] ? existingMap[nu.name].days : '') || '',
+        ampm: nu.ampm || (existingMap[nu.name] ? existingMap[nu.name].ampm : '') || ''
+    }));
+    sortUsers();
+}
+
+// ============ 年度セレクト ============
+function initYearSelect() {
+    const sel = document.getElementById('yearSelect');
+    const fy = getCurrentFiscalYear();
+    sel.innerHTML = '';
+    for (let y = fy - 2; y <= fy + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = '令和' + (y - 2018) + '年度';
+        sel.appendChild(opt);
+    }
+    sel.value = appData.currentYear;
+}
+function changeYear() {
+    appData.currentYear = parseInt(document.getElementById('yearSelect').value);
+    renderTable();
+}
+
+// ============ 直近の身長取得（BMI用） ============
+function getNearestHeight(userName, year, currentMi) {
+    if (!appData.heights[year] || !appData.heights[year][userName]) {
+        // 前年度も確認
+        const prev = appData.heights[year - 1];
+        if (prev && prev[userName]) {
+            const keys = HEIGHT_MONTHS.slice().reverse();
+            for (const k of keys) {
+                if (prev[userName][k]) return prev[userName][k];
+            }
+        }
+        return null;
+    }
+    const hd = appData.heights[year][userName];
+    // 現在月から遡って一番近いもの
+    for (let i = currentMi; i >= 0; i--) {
+        const m = HEIGHT_MONTHS[i];
+        if (hd[m]) return hd[m];
+    }
+    // 前年度
+    const prev = appData.heights[year - 1];
+    if (prev && prev[userName]) {
+        const keys = HEIGHT_MONTHS.slice().reverse();
+        for (const k of keys) {
+            if (prev[userName][k]) return prev[userName][k];
+        }
+    }
+    return null;
+}
+
+// ============ テーブル描画 ============
+function renderTable() {
+    const year = appData.currentYear;
+    const thead = document.getElementById('tableHead');
+    const tbody = document.getElementById('tableBody');
+    if (appData.users.length === 0) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        document.getElementById('emptyMessage').style.display = 'block';
+        document.getElementById('totalCount').textContent = '0';
+        document.getElementById('doneCount').textContent = '0';
+        document.getElementById('totalMeasure').textContent = '0';
+        return;
+    }
+    document.getElementById('emptyMessage').style.display = 'none';
+
+    let headerRow = '<tr><th style="min-width:30px;"></th><th style="min-width:55px;">氏名</th>';
+    for (const m of HEIGHT_MONTHS) headerRow += '<th>' + m + '</th>';
+    headerRow += '</tr>';
+    thead.innerHTML = headerRow;
+
+    if (!appData.heights[year]) appData.heights[year] = {};
+    const yearData = appData.heights[year];
+
+    const now = new Date();
+    const currentMonthNum = now.getMonth() + 1;
+    const currentMonthLabel = currentMonthNum + '月';
+    const isCurrentYear = (currentMonthNum >= 4 && year === now.getFullYear()) ||
+                          (currentMonthNum < 4 && year === now.getFullYear() - 1);
+    const isCurrentMeasureMonth = isCurrentYear && HEIGHT_MONTHS.includes(currentMonthLabel);
+
+    sortUsers();
+    const filteredUsers = appData.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+    const hasScheduleData = appData.users.some(u => u.days);
+    document.getElementById('filterBar').style.display = hasScheduleData ? 'flex' : 'none';
+    const fcEl = document.getElementById('filterCount');
+    fcEl.textContent = (filterDay || filterAmpm) ? (filteredUsers.length + ' / ' + appData.users.length + '名 表示中') : '';
+
+    let doneCount = 0;
+    let totalMeasure = 0;
+    let html = '';
+    let currentGroup = '';
+    let rowIndex = 0;
+
+    for (const user of filteredUsers) {
+        const group = getGroup(user.furigana);
+        if (group !== currentGroup) {
+            currentGroup = group;
+            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + HEIGHT_MONTHS.length) + '" style="background:#e8f5e9;"></td></tr>';
+        }
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+        if (!yearData[user.name]) yearData[user.name] = {};
+
+        html += '<tr class="' + rowClass + '">';
+        html += '<td class="group-cell"></td>';
+        html += '<td class="name-cell">' + escapeHtml(user.name) + '</td>';
+
+        for (let mi = 0; mi < HEIGHT_MONTHS.length; mi++) {
+            const m = HEIGHT_MONTHS[mi];
+            const height = yearData[user.name][m];
+            let cls = 'height-cell';
+            let content = '';
+            if (height !== undefined && height !== null && height !== '') {
+                cls += ' has-value';
+                content = '<span class="height-value">' + height + '</span><span class="height-unit">cm</span>';
+            } else if (isCurrentMeasureMonth && m === currentMonthLabel) {
+                cls += ' highlight-undone';
+            }
+            html += '<td class="' + cls + '" onclick="openHeightInput(\'' + escapeAttr(user.name) + '\',\'' + m + '\')">' + content + '</td>';
+        }
+        html += '</tr>';
+
+        if (isCurrentMeasureMonth && yearData[user.name][currentMonthLabel] !== undefined && yearData[user.name][currentMonthLabel] !== null && yearData[user.name][currentMonthLabel] !== '') {
+            doneCount++;
+        }
+        if (isCurrentMeasureMonth) totalMeasure++;
+        rowIndex++;
+    }
+    tbody.innerHTML = html;
+    document.getElementById('totalCount').textContent = appData.users.length;
+    document.getElementById('doneCount').textContent = isCurrentMeasureMonth ? doneCount : '-';
+    document.getElementById('totalMeasure').textContent = isCurrentMeasureMonth ? totalMeasure : '-';
+}
+
+// ============ 身長入力 ============
+function openHeightInput(userName, month) {
+    editingUser = userName;
+    editingMonth = month;
+    document.getElementById('heightModalTitle').textContent = userName + ' - ' + month + ' の身長';
+
+    const year = appData.currentYear;
+    if (!appData.heights[year]) appData.heights[year] = {};
+    if (!appData.heights[year][userName]) appData.heights[year][userName] = {};
+    const current = appData.heights[year][userName][month];
+    const input = document.getElementById('heightInput');
+    input.value = (current !== undefined && current !== null && current !== '') ? current : '';
+
+    // 直近の身長を参考表示
+    const mi = HEIGHT_MONTHS.indexOf(month);
+    const nearest = getNearestHeight(userName, year, mi > 0 ? mi - 1 : -1);
+    let info = '';
+    if (nearest) info = '前回測定: ' + nearest + 'cm';
+    document.getElementById('heightModalInfo').textContent = info;
+
+    // BMI表示（体重データがあれば）
+    const bmiEl = document.getElementById('bmiDisplay');
+    const weight = appData.weights[year]?.[userName]?.[month] ||
+                   appData.weights[year]?.[userName]?.[getLatestWeightMonth(userName, year)];
+    input.oninput = function() { updateBmi(bmiEl, input.value, weight); };
+    updateBmi(bmiEl, input.value || nearest, weight);
+
+    document.getElementById('heightModal').classList.add('active');
+    setTimeout(() => input.focus(), 100);
+}
+function getLatestWeightMonth(name, year) {
+    const wd = appData.weights[year]?.[name];
+    if (!wd) return null;
+    const months = ['3月','2月','1月','12月','11月','10月','9月','8月','7月','6月','5月','4月'];
+    for (const m of months) {
+        if (wd[m] !== undefined && wd[m] !== null && wd[m] !== '') return m;
+    }
+    return null;
+}
+function updateBmi(el, height, weight) {
+    if (!height || !weight) {
+        el.textContent = weight ? '' : '（体重データがあればBMIを計算します）';
+        return;
+    }
+    const h = parseFloat(height) / 100;
+    const w = parseFloat(weight);
+    if (!h || !w) { el.textContent = ''; return; }
+    const bmi = (w / (h * h)).toFixed(1);
+    let judge = '';
+    if (bmi < 18.5) judge = '低体重';
+    else if (bmi < 25) judge = '普通';
+    else if (bmi < 30) judge = '肥満(1度)';
+    else judge = '肥満(2度以上)';
+    el.innerHTML = '📊 BMI <strong style="color:#2E7D32; font-size:18px;">' + bmi + '</strong>（' + judge + '・体重' + w + 'kg）';
+}
+function closeHeightModal() {
+    document.getElementById('heightModal').classList.remove('active');
+}
+function saveHeight() {
+    const val = parseFloat(document.getElementById('heightInput').value);
+    if (isNaN(val) || val < 100 || val > 220) {
+        showToast('⚠ 身長は100〜220cmの範囲で入力してください', '#f44');
+        return;
+    }
+    const year = appData.currentYear;
+    if (!appData.heights[year]) appData.heights[year] = {};
+    if (!appData.heights[year][editingUser]) appData.heights[year][editingUser] = {};
+    appData.heights[year][editingUser][editingMonth] = val;
+    saveData();
+    renderTable();
+    closeHeightModal();
+    showToast('✅ ' + editingUser + ' の身長を保存しました', '#4CAF50');
+}
+function clearHeight() {
+    if (!confirm(editingUser + ' の ' + editingMonth + ' の身長を削除しますか？')) return;
+    const year = appData.currentYear;
+    if (appData.heights[year]?.[editingUser]) {
+        delete appData.heights[year][editingUser][editingMonth];
+    }
+    saveData();
+    renderTable();
+    closeHeightModal();
+    showToast('🗑️ 削除しました', '#ff9800');
+}
+
+// ============ 起動 ============
+loadData();
+initYearSelect();
+renderTable();
+loadFromCloud();
+</script>
+</body>
+</html>
