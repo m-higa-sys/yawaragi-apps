@@ -60,6 +60,30 @@
             background: #fff8e1; color: #e65100; padding: 10px 20px;
             border-left: 4px solid #ffa000; font-size: 14px; line-height: 1.6;
         }
+        .target-banner {
+            background: #ffebee; border-left: 6px solid #e53935;
+            margin: 12px 20px; padding: 14px 18px; border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        }
+        .target-banner h3 {
+            color: #c62828; font-size: 19px; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .target-banner .count-badge {
+            background: #e53935; color: white; padding: 2px 10px;
+            border-radius: 12px; font-size: 15px;
+        }
+        .target-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .target-chip {
+            background: white; padding: 8px 14px; border-radius: 18px;
+            border: 1.5px solid #e53935; font-size: 15px; font-weight: bold;
+            color: #c62828;
+        }
+        .target-chip.initial { background: #fff3e0; border-color: #f57c00; color: #e65100; }
+        .target-chip .prev { font-size: 12px; color: #888; font-weight: normal; margin-left: 4px; }
+        .target-banner.empty { background: #e8f5e9; border-left-color: #4CAF50; }
+        .target-banner.empty h3 { color: #2E7D32; }
+        .target-banner.empty .count-badge { background: #4CAF50; }
         .table-container { overflow-x: auto; padding: 15px; }
         table {
             border-collapse: collapse; width: 100%; background: white;
@@ -168,17 +192,22 @@
 </div>
 
 <div class="notice">
-    📏 <strong>身長測定ルール</strong>：3ヶ月に1回（4月・7月・10月・1月）測定。体重チェック表のBMI計算に使用されます。
+    📏 <strong>身長測定ルール</strong>：利用者ごとに前回測定から3ヶ月経過で再測定。未測定者は初回対象。体重チェック表のBMI計算に使用されます。
+</div>
+
+<div class="target-banner" id="targetBanner" style="display:none;">
+    <h3>🔴 今月測定対象 <span class="count-badge" id="targetCount">0名</span></h3>
+    <div class="target-list" id="targetList"></div>
 </div>
 
 <div class="toolbar">
     <div class="stats">
         利用者: <strong id="totalCount">0</strong>名
-        &nbsp;|&nbsp; 今期測定済: <strong id="doneCount">0</strong> / <strong id="totalMeasure">0</strong>
+        &nbsp;|&nbsp; 今月対象 測定済: <strong id="doneCount">0</strong> / <strong id="totalMeasure">0</strong>
     </div>
     <div class="legend">
         <div class="legend-item"><div class="legend-color" style="background:#e8f5e9;">cm</div> 入力済</div>
-        <div class="legend-item"><div class="legend-color" style="background:#ffebee;"></div> 測定月・未入力</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffebee;"></div> 今月対象・未入力</div>
     </div>
 </div>
 
@@ -234,7 +263,8 @@
 const STORAGE_KEY = 'yawaragi_weight_check'; // 体重チェック表と共有（同じデータを使う）
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
 const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
-const HEIGHT_MONTHS = ['4月', '7月', '10月', '1月'];
+const HEIGHT_MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
+const MEASURE_INTERVAL_MONTHS = 3;
 
 let appData = {
     users: [],
@@ -481,6 +511,69 @@ function getNearestHeight(userName, year, currentMi) {
     return null;
 }
 
+// ============ 測定月計算 ============
+// 月ラベル('4月'等)と会計年度(fy)から暦年を算出
+function monthLabelToCalYear(monthLabel, fy) {
+    const n = parseInt(monthLabel);
+    return n >= 4 ? fy : fy + 1;
+}
+
+// ユーザーの最新測定を全年度から検索 → {year, monthNum} or null
+function findLatestMeasurement(userName) {
+    const fys = Object.keys(appData.heights).map(Number).filter(n => !isNaN(n)).sort((a,b) => b - a);
+    for (const fy of fys) {
+        const userData = appData.heights[fy]?.[userName];
+        if (!userData) continue;
+        let best = null;
+        for (const m of HEIGHT_MONTHS) {
+            const v = userData[m];
+            if (v === undefined || v === null || v === '') continue;
+            const monthNum = parseInt(m);
+            const calYear = monthLabelToCalYear(m, fy);
+            const sortKey = calYear * 100 + monthNum;
+            if (!best || sortKey > best.sortKey) {
+                best = { year: calYear, monthNum, sortKey, value: v };
+            }
+        }
+        if (best) return best;
+    }
+    return null;
+}
+
+// 今月測定対象者リストを算出
+function computeThisMonthTargets() {
+    const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth() + 1;
+    const targets = [];
+    for (const user of appData.users) {
+        const latest = findLatestMeasurement(user.name);
+        if (!latest) {
+            targets.push({ name: user.name, reason: 'initial', prevLabel: '' });
+        } else {
+            const monthsSince = (nowYear - latest.year) * 12 + (nowMonth - latest.monthNum);
+            if (monthsSince >= MEASURE_INTERVAL_MONTHS) {
+                targets.push({
+                    name: user.name,
+                    reason: 'due',
+                    prevLabel: latest.year + '/' + latest.monthNum + '月',
+                    monthsSince
+                });
+            }
+        }
+    }
+    return targets;
+}
+
+// 特定ユーザーが今月対象か判定（セル強調用）
+function isUserDueThisMonth(userName) {
+    const latest = findLatestMeasurement(userName);
+    const now = new Date();
+    if (!latest) return true;
+    const monthsSince = (now.getFullYear() - latest.year) * 12 + (now.getMonth() + 1 - latest.monthNum);
+    return monthsSince >= MEASURE_INTERVAL_MONTHS;
+}
+
 // ============ テーブル描画 ============
 function renderTable() {
     const year = appData.currentYear;
@@ -510,7 +603,11 @@ function renderTable() {
     const currentMonthLabel = currentMonthNum + '月';
     const isCurrentYear = (currentMonthNum >= 4 && year === now.getFullYear()) ||
                           (currentMonthNum < 4 && year === now.getFullYear() - 1);
-    const isCurrentMeasureMonth = isCurrentYear && HEIGHT_MONTHS.includes(currentMonthLabel);
+
+    // 今月対象者を算出（選択年度に関係なく常に現在月基準）
+    const targets = computeThisMonthTargets();
+    const targetNames = new Set(targets.map(t => t.name));
+    renderTargetBanner(targets);
 
     sortUsers();
     const filteredUsers = appData.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
@@ -520,7 +617,6 @@ function renderTable() {
     fcEl.textContent = (filterDay || filterAmpm) ? (filteredUsers.length + ' / ' + appData.users.length + '名 表示中') : '';
 
     let doneCount = 0;
-    let totalMeasure = 0;
     let html = '';
     let currentGroup = '';
     let rowIndex = 0;
@@ -534,6 +630,8 @@ function renderTable() {
         const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
         if (!yearData[user.name]) yearData[user.name] = {};
 
+        const isUserTarget = targetNames.has(user.name);
+
         html += '<tr class="' + rowClass + '">';
         html += '<td class="group-cell"></td>';
         html += '<td class="name-cell">' + escapeHtml(user.name) + '</td>';
@@ -546,23 +644,52 @@ function renderTable() {
             if (height !== undefined && height !== null && height !== '') {
                 cls += ' has-value';
                 content = '<span class="height-value">' + height + '</span><span class="height-unit">cm</span>';
-            } else if (isCurrentMeasureMonth && m === currentMonthLabel) {
+            } else if (isCurrentYear && m === currentMonthLabel && isUserTarget) {
                 cls += ' highlight-undone';
             }
             html += '<td class="' + cls + '" onclick="openHeightInput(\'' + escapeAttr(user.name) + '\',\'' + m + '\')">' + content + '</td>';
         }
         html += '</tr>';
 
-        if (isCurrentMeasureMonth && yearData[user.name][currentMonthLabel] !== undefined && yearData[user.name][currentMonthLabel] !== null && yearData[user.name][currentMonthLabel] !== '') {
-            doneCount++;
+        // 今月対象者が今月セルに入力済みか（達成カウント用）
+        if (isUserTarget && isCurrentYear) {
+            const v = yearData[user.name][currentMonthLabel];
+            if (v !== undefined && v !== null && v !== '') doneCount++;
         }
-        if (isCurrentMeasureMonth) totalMeasure++;
         rowIndex++;
     }
     tbody.innerHTML = html;
     document.getElementById('totalCount').textContent = appData.users.length;
-    document.getElementById('doneCount').textContent = isCurrentMeasureMonth ? doneCount : '-';
-    document.getElementById('totalMeasure').textContent = isCurrentMeasureMonth ? totalMeasure : '-';
+    document.getElementById('doneCount').textContent = isCurrentYear ? doneCount : '-';
+    document.getElementById('totalMeasure').textContent = isCurrentYear ? targets.length : '-';
+}
+
+// 今月測定対象バナーを描画
+function renderTargetBanner(targets) {
+    const banner = document.getElementById('targetBanner');
+    const countEl = document.getElementById('targetCount');
+    const listEl = document.getElementById('targetList');
+    if (!targets || targets.length === 0) {
+        banner.className = 'target-banner empty';
+        banner.style.display = 'block';
+        countEl.textContent = '0名';
+        listEl.innerHTML = '<div style="color:#2E7D32;">今月の測定対象者はいません（全員3ヶ月以内に測定済）</div>';
+        return;
+    }
+    banner.className = 'target-banner';
+    banner.style.display = 'block';
+    countEl.textContent = targets.length + '名';
+    // 未測定(initial)を先頭に、次にdueを前回古い順
+    targets.sort((a, b) => {
+        if (a.reason !== b.reason) return a.reason === 'initial' ? -1 : 1;
+        return (b.monthsSince || 0) - (a.monthsSince || 0);
+    });
+    listEl.innerHTML = targets.map(t => {
+        if (t.reason === 'initial') {
+            return '<div class="target-chip initial">⭐ ' + escapeHtml(t.name) + '<span class="prev">初回未測定</span></div>';
+        }
+        return '<div class="target-chip">' + escapeHtml(t.name) + '<span class="prev">前回 ' + t.prevLabel + '</span></div>';
+    }).join('');
 }
 
 // ============ 身長入力 ============
