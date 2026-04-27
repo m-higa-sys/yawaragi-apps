@@ -193,6 +193,11 @@ body {
 .transport-badge.shuttle { background: #e6fffa; color: var(--shuttle); }
 .transport-badge.walk { background: #fefcbf; color: var(--walk); }
 .transport-badge.family { background: #fed7d7; color: var(--family); }
+.user-row.absent { opacity: 0.6; background: #f7fafc; }
+.user-row.absent .user-name { text-decoration: line-through; color: #718096; }
+.user-row.absent .user-time { text-decoration: line-through; color: #a0aec0; }
+.absent-badge { display:inline-block; font-size: 12px; padding: 2px 8px; border-radius: 5px; font-weight: 700; background: #fed7d7; color: #c53030; margin-left: 6px; vertical-align: middle; }
+.absent-badge.long { background: #4a5568; color: #fff; }
 .empty-state {
   text-align: center;
   padding: 40px 20px;
@@ -277,11 +282,70 @@ body {
 <script>
 // === 設定 ===
 const GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const DAYS = ['月','火','水','木','金','土'];
 const TRANSPORT_LABELS = { shuttle: '🚐 送迎', walk: '🚶 徒歩', family: '🚗 家族送迎' };
 
 let DATA = null; // { schedTime, userDays, transport, lastSync }
 let currentDay = '';
+let BOARD_ABS_MAP = {}; // 正規化名→'absent'|'longabsent'|'walk'|'family'（当日分のみ）
+
+// === 名前正規化（NFKC + スペース除去 + 様除去）yawaragiボード照合用 ===
+function normNameStrict(n){
+  return String(n||'').normalize('NFKC').replace(/[\s　]/g,'').replace(/様$/,'');
+}
+
+function statusFromReason(reason){
+  const r = reason || '';
+  if(r.indexOf('家族送迎')>=0) return 'family';
+  if(r.indexOf('徒歩送迎')>=0) return 'walk';
+  return 'absent';
+}
+
+function todayDateStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+// JSONP で yawaragiボードから当日欠席を取得
+function fetchBoardAbsencesP(dateStr){
+  return new Promise((resolve)=>{
+    const cbName = '_boardAbsCb_'+Date.now()+'_'+Math.floor(Math.random()*10000);
+    const script = document.createElement('script');
+    let tid = setTimeout(()=>{ cleanup(); resolve(null); }, 10000);
+    function cleanup(){
+      clearTimeout(tid);
+      try { delete window[cbName]; } catch(e){ window[cbName]=undefined; }
+      if(script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = function(data){
+      cleanup();
+      if(!data || !data.success || !data.absences){ resolve(null); return; }
+      const list = (data.absences && data.absences.absences) || [];
+      const longTermList = (data.absences && data.absences.longTerm) || [];
+      const map = {};
+      longTermList.forEach(item=>{
+        if(!item.name) return;
+        const start = item.date;
+        const resume = item.resumeDate || '';
+        if(start<=dateStr && (!resume || resume>dateStr)){
+          map[normNameStrict(item.name)] = 'longabsent';
+        }
+      });
+      list.forEach(item=>{
+        if(item.date===dateStr && item.name){
+          const k = normNameStrict(item.name);
+          if(map[k]==='longabsent') return;
+          map[k] = statusFromReason(item.reason||'');
+        }
+      });
+      resolve(map);
+    };
+    script.src = ABS_BOARD_API_URL+'?action=absences&date='+encodeURIComponent(dateStr)+'&callback='+cbName+'&t='+Date.now();
+    script.onerror = function(){ cleanup(); resolve(null); };
+    document.head.appendChild(script);
+  });
+}
 
 // === 今日の曜日を取得 ===
 function getTodayDay(){
@@ -290,12 +354,19 @@ function getTodayDay(){
   return map[d] || '月';
 }
 
-// === データ取得 ===
+// === データ取得（送迎時間 + yawaragiボード欠席 を並行取得）===
 async function loadData(){
   try {
-    const res = await fetch(GAS_URL + '?action=getSchedTimes&t=' + Date.now());
-    if(!res.ok) throw new Error('取得失敗');
-    DATA = await res.json();
+    const today = todayDateStr();
+    const [schedRes, absMap] = await Promise.all([
+      fetch(GAS_URL + '?action=getSchedTimes&t=' + Date.now()).then(r=>{
+        if(!r.ok) throw new Error('取得失敗');
+        return r.json();
+      }),
+      fetchBoardAbsencesP(today)
+    ]);
+    DATA = schedRes;
+    BOARD_ABS_MAP = absMap || {};
     if(!DATA || !DATA.schedTime){
       document.getElementById('mainContent').innerHTML =
         '<div class="empty-state"><div class="icon">📋</div>送迎時間データがまだ登録されていません。<br>送迎管理システムで「送迎時間を同期」ボタンを押してください。</div>';
@@ -306,8 +377,9 @@ async function loadData(){
     renderCurrentDay();
     if(DATA.lastSync){
       const d = new Date(DATA.lastSync);
+      const absNote = absMap ? '・欠席連動✓' : '・欠席連動✗（取得失敗）';
       document.getElementById('syncInfo').innerHTML =
-        '最終同期: <span class="time">' + d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + '</span>';
+        '最終同期: <span class="time">' + d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + '</span>' + absNote;
     }
   } catch(e){
     console.error('データ取得エラー:', e);
@@ -422,8 +494,17 @@ function userRowHtml(u, ampm){
   const tpClass = u.transport || 'shuttle';
   const tpLabel = TRANSPORT_LABELS[u.transport] || TRANSPORT_LABELS.shuttle;
 
-  return '<div class="user-row">'
-    + '<div class="user-name">' + escHtml(u.name) + '</div>'
+  // yawaragiボード欠席の反映（今日の曜日のみ）
+  const isToday = currentDay === getTodayDay();
+  const status = isToday ? (BOARD_ABS_MAP[normNameStrict(u.name)] || '') : '';
+  const isAbsent = status === 'absent' || status === 'longabsent';
+  const rowClass = isAbsent ? 'user-row absent' : 'user-row';
+  const absentBadge = status === 'longabsent' ? '<span class="absent-badge long">長欠</span>'
+                    : status === 'absent'    ? '<span class="absent-badge">欠</span>'
+                    : '';
+
+  return '<div class="' + rowClass + '">'
+    + '<div class="user-name">' + escHtml(u.name) + absentBadge + '</div>'
     + '<div class="user-time ' + timeClass + '">' + escHtml(timeText) + '</div>'
     + '<div class="transport-badge ' + tpClass + '">' + tpLabel + '</div>'
     + '</div>';
