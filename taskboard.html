@@ -353,6 +353,20 @@
 </header>
 
 <div class="container">
+  <!-- 🩺 看護師サポート週間バナー（毎月第2週・第3週に自動表示・2026/4/28追加） -->
+  <div id="nurse-support-banner" style="display:none; background:linear-gradient(135deg,#fef3c7 0%, #fde68a 100%); border-left:6px solid #f59e0b; border-radius:8px; padding:12px 16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span style="font-size:32px;">🩺</span>
+      <div style="flex:1;">
+        <div style="font-weight:700; font-size:16px; color:#92400e; margin-bottom:4px;">今週は「看護師サポート週間」です</div>
+        <div style="font-size:14px; color:#78350f; line-height:1.6;">
+          看護師（春山・石井・髙山）はモニタリング＆口腔機能向上計画書の作成期間です。<br>
+          <strong>手の空いた利用者がいたら、フロアスタッフから声かけ・トレーニング誘導をお願いします。</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="main-grid">
     <!-- 左: タスクリスト -->
     <div>
@@ -1746,7 +1760,20 @@ function advanceBdayOnCheck(task) {
   else if (task.bdayPhase === 'deliver') setBdayStatusForYear(bday, year, 'delivered');
 }
 
+function checkNurseSupportWeek() {
+  // 毎月 第2週・第3週（8〜21日）は「看護師サポート週間」バナーを表示
+  // 2026/4/28追加: 看護師がモニタリング＆口腔計画書作成で多忙な期間
+  const banner = document.getElementById('nurse-support-banner');
+  if (!banner) return;
+  const d = new Date(currentDate);
+  if (isNaN(d.getTime())) { banner.style.display = 'none'; return; }
+  const dayOfMonth = d.getDate();
+  const weekNum = Math.ceil(dayOfMonth / 7);
+  banner.style.display = (weekNum === 2 || weekNum === 3) ? 'block' : 'none';
+}
+
 function render() {
+  checkNurseSupportWeek();
   applyRoutines();
   renderTodayChecklist();
   const list = data.tasks[currentDate] || [];
