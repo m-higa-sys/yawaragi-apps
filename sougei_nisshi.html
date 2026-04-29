@@ -87,9 +87,59 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
   .remarks-area textarea { border: 1px solid #000; }
   .user-absent { text-decoration: line-through; color: #999; }
 }
+
+/* === 未実施報告ボタン（2026-04-28追加）=== */
+#undone-report-btn {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  padding: 14px 20px;
+  margin: 0 0 12px 0;
+  border: none;
+  border-radius: 0;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+#undone-report-btn[data-state="idle"] {
+  background: #dc3545;
+  color: #fff;
+}
+#undone-report-btn[data-state="sending"] {
+  background: #6c757d;
+  color: #fff;
+  cursor: not-allowed;
+}
+#undone-report-btn[data-state="reported"] {
+  background: #28a745;
+  color: #fff;
+}
+#undone-report-btn[data-state="error"] {
+  background: #ffc107;
+  color: #212529;
+}
+#undone-report-btn .sub {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  margin-top: 4px;
+  opacity: 0.9;
+}
+@media print {
+  #undone-report-btn { display: none; }
+}
 </style>
 </head>
 <body>
+
+<button id="undone-report-btn" data-state="idle" type="button" onclick="onUndoneClick()">
+  <span class="main-text">🔴 今日できませんでした（タップで報告）</span>
+  <span class="sub"></span>
+</button>
 
 <div class="controls">
   <h1>送迎日誌</h1>
@@ -189,6 +239,101 @@ function setGasUrl(url){
   localStorage.setItem(GAS_URL_KEY, url);
   gasUrl = url;
 }
+
+// ═══════════════════════════════════════════════
+// 未実施業務報告ボタン（2026-04-28追加）
+// 設計: docs/superpowers/specs/2026-04-28-未実施業務報告ボタン機能-design.md
+// ═══════════════════════════════════════════════
+const UNDONE_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const UNDONE_APP_KEY = 'sougei_nisshi';
+const UNDONE_APP_LABEL = '送迎日誌';
+
+function _undoneTodayDateStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function _undoneStorageKey(){
+  return 'yawaragi_undone_' + UNDONE_APP_KEY + '_' + _undoneTodayDateStr();
+}
+function _undoneFormatHHMM(iso){
+  try {
+    const d = new Date(iso);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  } catch(e){ return ''; }
+}
+function _undoneSetState(state, data){
+  const btn = document.getElementById('undone-report-btn');
+  if (!btn) return;
+  btn.setAttribute('data-state', state);
+  const main = btn.querySelector('.main-text');
+  const sub = btn.querySelector('.sub');
+  if (state === 'idle') {
+    main.textContent = '🔴 今日できませんでした（タップで報告）';
+    sub.textContent = '';
+  } else if (state === 'sending') {
+    main.textContent = '⏳ 送信中...';
+    sub.textContent = '';
+  } else if (state === 'reported') {
+    const t = data && data.reportedAt ? _undoneFormatHHMM(data.reportedAt) : '';
+    main.textContent = '✅ 未実施報告済' + (t ? '（' + t + '）' : '');
+    sub.textContent = 'もう一度タップで取り消し';
+  } else if (state === 'error') {
+    main.textContent = '⚠️ 送信失敗・再タップで再試行';
+    sub.textContent = (data && data.message) ? data.message : '';
+  }
+}
+function _undoneRestoreState(){
+  try {
+    const raw = localStorage.getItem(_undoneStorageKey());
+    if (!raw) { _undoneSetState('idle'); return; }
+    const data = JSON.parse(raw);
+    _undoneSetState('reported', data);
+  } catch(e){
+    _undoneSetState('idle');
+  }
+}
+async function onUndoneClick(){
+  const btn = document.getElementById('undone-report-btn');
+  if (!btn) return;
+  const currentState = btn.getAttribute('data-state');
+  if (currentState === 'sending') return;
+
+  const stored = localStorage.getItem(_undoneStorageKey());
+  const isReported = !!stored;
+  const toggle = isReported ? 'cancel' : 'report';
+
+  _undoneSetState('sending');
+
+  const payload = {
+    action: 'report_undone',
+    app: UNDONE_APP_KEY,
+    app_label: UNDONE_APP_LABEL,
+    date: _undoneTodayDateStr(),
+    toggle: toggle
+  };
+
+  try {
+    await fetch(UNDONE_BOARD_API_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+    // no-cors では response.json() 読めない。送信成功と仮定してUIを切替（optimistic update）。
+    if (toggle === 'report') {
+      const localData = {id: 'pending', reportedAt: new Date().toISOString()};
+      localStorage.setItem(_undoneStorageKey(), JSON.stringify(localData));
+      _undoneSetState('reported', localData);
+    } else {
+      localStorage.removeItem(_undoneStorageKey());
+      _undoneSetState('idle');
+    }
+  } catch(err){
+    _undoneSetState('error', {message: err.message || ''});
+  }
+}
+window.addEventListener('DOMContentLoaded', _undoneRestoreState);
 
 async function cloudSave(){
   if(!gasUrl || isSyncing) return;
