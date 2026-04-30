@@ -555,12 +555,11 @@ body {
       <input type="text" id="newTaskName" placeholder="タスク名">
       <select id="newTaskSlot">
         <option value="朝（1から順番に行う）">朝</option>
-        <option value="午前利用中（前半）">午前前半</option>
+        <option value="午前利用中">午前利用中</option>
         <option value="前半終了後">前半終了後</option>
-        <option value="午前利用中（後半）">午前後半</option>
         <option value="午前終了後">午前終了後</option>
         <option value="昼清掃・準備">昼清掃・準備</option>
-        <option value="利用中">利用中</option>
+        <option value="午後利用中">午後利用中</option>
         <option value="午後準備">午後準備</option>
       </select>
       <button onclick="addNewTask()">追加</button>
@@ -800,25 +799,37 @@ function renderTasks() {
   // 時間帯でグループ化
   const timeSlots = [
     '朝（1から順番に行う）',
-    '午前利用中（前半）',
+    '午前利用中',
     '前半終了後',
-    '午前利用中（後半）',
     '午前終了後',
     '昼清掃・準備',
-    '利用中',
+    '午後利用中',
     '午後準備'
   ];
 
   const timeSlotLabels = {
     '朝（1から順番に行う）': '朝（上から順番に行う）',
-    '午前利用中（前半）': '午前利用中（前半）',
+    '午前利用中': '午前利用中',
     '前半終了後': '前半終了後',
-    '午前利用中（後半）': '午前利用中（後半）',
     '午前終了後': '午前終了後',
     '昼清掃・準備': '昼清掃・準備',
-    '利用中': '利用中',
+    '午後利用中': '午後利用中',
     '午後準備': '午後準備'
   };
+
+  // 旧値→新値マッピング（互換性維持。既存タスクが UI で再保存されるまでこちらで吸収）
+  // 旧「利用中」「午前利用中（前半）」「午前利用中（後半）」は一旦「午前利用中」として表示。
+  // 社長が UI で「午後利用中」に変更して保存すれば、その時点でスプレッドシートに新値が書き込まれる。
+  const legacyTimeSlotMap = {
+    '午前利用中（前半）': '午前利用中',
+    '午前利用中（後半）': '午前利用中',
+    '利用中': '午前利用中'
+  };
+  STATE.tasks.forEach(function(t) {
+    if (legacyTimeSlotMap[t.timeSlot]) {
+      t.timeSlot = legacyTimeSlotMap[t.timeSlot];
+    }
+  });
 
   let html = '';
   let totalTasks = 0;
