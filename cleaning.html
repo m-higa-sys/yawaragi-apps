@@ -159,6 +159,22 @@ body {
 }
 .task-item.checked .task-name { text-decoration: line-through; color: var(--sub); }
 
+/* 代理ボタン */
+.proxy-btn {
+  background: #fff3cd;
+  border: 1px solid var(--orange);
+  color: #d97c00;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 8px;
+  flex-shrink: 0;
+  font-weight: bold;
+}
+.proxy-btn:hover { background: #ffe699; }
+.staff-name.proxy { background: #fff3cd; color: #d97c00; padding: 1px 6px; border-radius: 4px; }
+
 .task-check {
   width: 28px;
   height: 28px;
@@ -707,6 +723,16 @@ body.edit-mode #mainView { padding-bottom: 80px; }
   <button class="btn-save" id="btnSaveEdit" onclick="saveEditMode()">保存</button>
 </div>
 
+<!-- 代理チェックモーダル -->
+<div class="modal-overlay" id="proxyModal">
+  <div class="modal">
+    <h2>代理チェック</h2>
+    <p id="proxyModalSub" style="font-size:13px;color:var(--sub)"></p>
+    <div class="staff-grid" id="proxyStaffGrid"></div>
+    <button onclick="closeProxyModal()" style="margin-top:12px;background:#eee;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;width:100%">キャンセル</button>
+  </div>
+</div>
+
 <!-- 管理者PINモーダル -->
 <div class="pin-modal-overlay" id="pinModal">
   <div class="pin-modal">
@@ -1075,6 +1101,18 @@ function renderTasks() {
         : 'onclick="toggleTask(' + task.no + ',\'' + escHtml(task.name) + '\',' + isChecked + ')"';
       const lockedStyle = locked ? ' style="opacity:0.45;cursor:not-allowed;"' : '';
 
+      // 代理ボタン: 未チェック・ロック解除のタスクにのみ表示
+      const proxyBtn = (!isChecked && !locked)
+        ? '<button class="proxy-btn" onclick="event.stopPropagation();showProxyModal(' + task.no + ',\'' + escHtml(task.name) + '\')">代理</button>'
+        : '';
+
+      // 完了者の表示: 名前に「（代理）」を含むなら別スタイル
+      let staffHtml = '';
+      if (isChecked) {
+        const isProxy = /（代理）$/.test(logEntry.staff);
+        staffHtml = '<div class="task-meta"><span class="staff-name' + (isProxy ? ' proxy' : '') + '">' + escHtml(logEntry.staff) + '</span> ' + escHtml(logEntry.time) + '</div>';
+      }
+
       taskHtml += '<div class="task-item' + (isChecked ? ' checked' : '') + '" '
         + clickAttr + lockedStyle + ' '
         + 'data-no="' + task.no + '">'
@@ -1083,8 +1121,10 @@ function renderTasks() {
         + '<div class="task-name">' + escHtml(task.name)
         + (task.dayLimit ? '<span class="task-day-limit">' + escHtml(task.dayLimit) + '</span>' : '')
         + '</div>'
-        + (isChecked ? '<div class="task-meta"><span class="staff-name">' + escHtml(logEntry.staff) + '</span> ' + escHtml(logEntry.time) + '</div>' : '')
-        + '</div></div>';
+        + staffHtml
+        + '</div>'
+        + proxyBtn
+        + '</div>';
     });
 
     html += '<div class="time-section">'
@@ -1113,6 +1153,49 @@ function escHtml(str) {
 }
 
 // --- タスクのチェック/チェック解除 ---
+// --- 代理チェック ---
+let pendingProxy = null;
+
+function showProxyModal(taskNo, taskName) {
+  pendingProxy = { no: taskNo, name: taskName };
+  document.getElementById('proxyModalSub').textContent = '「' + taskName + '」のチェックを誰の代わりに付けますか？';
+  const grid = document.getElementById('proxyStaffGrid');
+  grid.innerHTML = '';
+  STATE.staff.forEach(function(s) {
+    const name = (typeof s === 'string') ? s : (s.name || '');
+    if (!name) return;
+    const btn = document.createElement('button');
+    btn.className = 'staff-btn';
+    btn.textContent = name;
+    btn.onclick = function() { doProxyCheck(name); };
+    grid.appendChild(btn);
+  });
+  document.getElementById('proxyModal').classList.add('show');
+}
+
+function closeProxyModal() {
+  document.getElementById('proxyModal').classList.remove('show');
+  pendingProxy = null;
+}
+
+async function doProxyCheck(staffName) {
+  if (!pendingProxy) return;
+  const task = pendingProxy;
+  closeProxyModal();
+  const proxyStaff = staffName + '（代理）';
+  try {
+    await gasPost({ action: 'check', taskNo: task.no, taskName: task.name, staff: proxyStaff });
+    var now = new Date();
+    STATE.log.push({ taskNo: task.no, taskName: task.name, staff: proxyStaff, time: ('0'+now.getHours()).slice(-2)+':'+('0'+now.getMinutes()).slice(-2) });
+    renderTasks();
+    renderStats();
+    showToast(staffName + 'さん（代理）でチェックしました');
+    setTimeout(function() { refreshLog(); }, 2000);
+  } catch (e) {
+    showToast('代理チェック失敗: ' + e.message);
+  }
+}
+
 async function toggleTask(taskNo, taskName, isChecked) {
   if (!STATE.currentUser) {
     showStaffModal();
