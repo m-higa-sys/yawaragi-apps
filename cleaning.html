@@ -647,26 +647,6 @@ body.edit-mode #mainView { padding-bottom: 80px; }
   </div>
 
   <div class="settings-section">
-    <h3>タスク追加</h3>
-    <div class="input-row">
-      <input type="text" id="newTaskName" placeholder="タスク名">
-      <select id="newTaskSlot">
-        <option value="朝（1から順番に行う）">朝</option>
-        <option value="午前利用中">午前利用中</option>
-        <option value="前半終了後">前半終了後</option>
-        <option value="午前終了後">午前終了後</option>
-        <option value="昼清掃・準備">昼清掃・準備</option>
-        <option value="午後利用中">午後利用中</option>
-        <option value="午後準備">午後準備</option>
-      </select>
-      <button onclick="addNewTask()">追加</button>
-    </div>
-    <div class="input-row">
-      <input type="text" id="newTaskDay" placeholder="曜日制限（例: 月・水・金）空欄=毎日">
-    </div>
-  </div>
-
-  <div class="settings-section">
     <h3>自動更新間隔</h3>
     <div class="input-row">
       <select id="refreshInterval" onchange="saveRefreshInterval()">
@@ -685,6 +665,14 @@ body.edit-mode #mainView { padding-bottom: 80px; }
     <h3>データ</h3>
     <button class="save-url-btn" style="background:var(--orange);margin-bottom:8px" onclick="loadAllData()">最新データを取得</button>
     <button class="save-url-btn" style="background:var(--red)" onclick="clearLocalData()">この端末のキャッシュをクリア</button>
+  </div>
+
+  <div class="settings-section">
+    <h3>スプレッドシート直編集（バックアップ用）</h3>
+    <p style="font-size:12px;color:var(--sub);margin-bottom:8px;text-align:left">
+      通常は右上「清掃内容変更」ボタンから編集してください。緊急時のみこちらを使用：
+    </p>
+    <button class="save-url-btn" style="background:#666" onclick="window.open('https://docs.google.com/spreadsheets/d/1sFrr5ScSoAcOzvxEs1QtV2qdM_v4OdXe3W5bJJm25G0/edit','_blank')">スプレッドシートで開く</button>
   </div>
 </div>
 
@@ -1159,29 +1147,6 @@ function saveGasUrl() {
   });
 }
 
-// --- タスク追加 ---
-async function addNewTask() {
-  const name = document.getElementById('newTaskName').value.trim();
-  const slot = document.getElementById('newTaskSlot').value;
-  const day = document.getElementById('newTaskDay').value.trim();
-
-  if (!name) {
-    showToast('タスク名を入力してください');
-    return;
-  }
-
-  try {
-    const res = await gasPost({ action: 'addTask', name: name, timeSlot: slot, dayLimit: day });
-    if (res.error) throw new Error(res.error);
-    showToast('「' + name + '」を追加しました');
-    document.getElementById('newTaskName').value = '';
-    document.getElementById('newTaskDay').value = '';
-    await loadAllData();
-  } catch (e) {
-    showToast('追加に失敗: ' + e.message);
-  }
-}
-
 // --- 自動更新 ---
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
@@ -1286,6 +1251,14 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(function() { t.classList.remove('show'); }, 2500);
 }
+
+// --- 編集中の未保存ガード ---
+window.addEventListener('beforeunload', function(e) {
+  if (STATE.editMode && STATE.editDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // --- 管理者PIN ---
 function showAdminPinModal() {
