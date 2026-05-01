@@ -375,6 +375,30 @@ body {
 .pin-modal .pin-cancel { background: #eee; color: var(--text); }
 .pin-modal .pin-ok { background: var(--primary); color: #fff; }
 
+/* 編集モード */
+body.edit-mode .header { background: linear-gradient(135deg, #d33 0%, #b22 100%); }
+body.edit-mode #btnRefresh { display: none !important; }
+body.edit-mode .stats-toggle { display: none; }
+body.edit-mode .progress-section { display: none; }
+body.edit-mode .user-bar { display: none !important; }
+
+.edit-mode-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #fff; border-top: 2px solid var(--red);
+  padding: 12px 16px; display: none;
+  box-shadow: 0 -4px 12px rgba(0,0,0,.1); z-index: 500;
+  gap: 8px; justify-content: flex-end;
+}
+body.edit-mode .edit-mode-bar { display: flex; }
+.edit-mode-bar button {
+  padding: 10px 20px; font-size: 14px; border: none; border-radius: 8px;
+  cursor: pointer; font-weight: bold;
+}
+.edit-mode-bar .btn-cancel { background: #eee; color: var(--text); }
+.edit-mode-bar .btn-save { background: var(--red); color: #fff; }
+.edit-mode-bar .btn-save:disabled { background: #ccc; cursor: not-allowed; }
+body.edit-mode #mainView { padding-bottom: 80px; }
+
 /* 設定画面 */
 .settings-panel {
   display: none;
@@ -632,6 +656,12 @@ body {
   </div>
 </div>
 
+<!-- 編集モード保存バー -->
+<div class="edit-mode-bar">
+  <button class="btn-cancel" onclick="cancelEditMode()">キャンセル</button>
+  <button class="btn-save" id="btnSaveEdit" onclick="saveEditMode()">保存</button>
+</div>
+
 <!-- 管理者PINモーダル -->
 <div class="pin-modal-overlay" id="pinModal">
   <div class="pin-modal">
@@ -663,7 +693,10 @@ let STATE = {
   refreshInterval: parseInt(localStorage.getItem('gyomu_refresh_interval') || '30'),
   lastSync: null,
   monthlyStats: {},
-  statsView: 'today'
+  statsView: 'today',
+  editMode: false,
+  editingTasks: [],
+  editDirty: false
 };
 
 let refreshTimer = null;
@@ -1262,9 +1295,41 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// 編集モード（次タスクで本実装。仮の関数）
+// --- 編集モード ---
 function enterEditMode() {
-  showToast('編集モードに入りました（次タスクで実装）');
+  STATE.editingTasks = STATE.tasks.map(function(t) {
+    return { no: t.no, name: t.name, timeSlot: t.timeSlot, dayLimit: t.dayLimit || '', memo: t.memo || '' };
+  });
+  STATE.editMode = true;
+  STATE.editDirty = false;
+  document.body.classList.add('edit-mode');
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  renderEditTasks();
+}
+
+function exitEditMode() {
+  STATE.editMode = false;
+  STATE.editingTasks = [];
+  STATE.editDirty = false;
+  document.body.classList.remove('edit-mode');
+  startAutoRefresh();
+  renderTasks();
+}
+
+function cancelEditMode() {
+  if (STATE.editDirty && !confirm('編集中の内容を破棄しますか？')) return;
+  exitEditMode();
+}
+
+// 仮レンダラー（Task 4 で本実装）
+function renderEditTasks() {
+  document.getElementById('taskContainer').innerHTML =
+    '<p style="text-align:center;padding:40px;color:#666">編集モード（次タスクで実装）</p>';
+}
+
+// 仮：保存（Task 6 で本実装）
+function saveEditMode() {
+  showToast('保存（次タスクで実装）');
 }
 </script>
 </body>
