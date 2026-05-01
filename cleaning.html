@@ -798,6 +798,21 @@ function gasRequest(params) {
 async function gasGet(params) { return gasRequest(params); }
 async function gasPost(data) { return gasRequest(data); }
 
+// 大きなデータを送る用のPOST（JSONP URL長制限の回避）
+// fetch + Content-Type: text/plain でCORS preflight回避。
+// no-corsモードなのでレスポンス本文は読めない → 楽観的にsuccess扱い、
+// 直後の loadAllData() で実データを取り直して画面を同期する。
+async function gasPostLarge(data) {
+  if (!STATE.gasUrl) throw new Error('GAS URLが設定されていません');
+  await fetch(STATE.gasUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(data)
+  });
+  return { success: true };
+}
+
 // --- データ読み込み ---
 async function loadAllData() {
   const btn = document.getElementById('btnRefresh');
@@ -1485,8 +1500,9 @@ async function saveEditMode() {
         memo: (t.memo || '').trim()
       };
     });
-    const res = await gasGet({ action: 'reorderTasks', order: JSON.stringify(order) });
-    if (res.error) throw new Error(res.error);
+    // fetch+POST（no-cors）で大きいデータを送信。レスポンスは読めないので
+    // 楽観的に成功扱いし、直後の loadAllData() で実データを取り直して整合確認。
+    await gasPostLarge({ action: 'reorderTasks', order: order });
     showToast('保存しました（' + order.length + '件）');
     exitEditMode();
     await loadAllData();
