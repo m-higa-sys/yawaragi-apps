@@ -1418,22 +1418,69 @@ function moveEditRow(idx, dir) {
   renderEditTasks();
 }
 
-// 仮プルダウン（Task 5 で本実装）
+// --- 既存値からユニーク抽出 ---
+function getUniqueSlots() {
+  const set = new Set();
+  STATE.tasks.forEach(function(t) { if (t.timeSlot) set.add(t.timeSlot); });
+  STATE.editingTasks.forEach(function(t) { if (t.timeSlot) set.add(t.timeSlot); });
+  // 推奨表示順序を優先
+  const preferred = ['朝（1から順番に行う）','午前利用中','前半終了後','午前終了後','昼清掃・準備','午後利用中','午後準備'];
+  const result = preferred.filter(function(s) { return set.has(s); });
+  Array.from(set).forEach(function(s) { if (result.indexOf(s) === -1) result.push(s); });
+  return result;
+}
+
+function getUniqueDays() {
+  const set = new Set();
+  STATE.tasks.forEach(function(t) { if (t.dayLimit) set.add(t.dayLimit); });
+  STATE.editingTasks.forEach(function(t) { if (t.dayLimit) set.add(t.dayLimit); });
+  return Array.from(set);
+}
+
 function buildSlotOptions(selected) {
-  const slots = ['朝（1から順番に行う）','午前利用中','前半終了後','午前終了後','昼清掃・準備','午後利用中','午後準備'];
-  return slots.map(function(s) {
+  const slots = getUniqueSlots();
+  if (selected && slots.indexOf(selected) === -1) slots.unshift(selected);
+  let html = slots.map(function(s) {
     return '<option value="' + escHtml(s) + '"' + (s === selected ? ' selected' : '') + '>' + escHtml(s) + '</option>';
   }).join('');
+  html += '<option value="__new__">＋ 新しい時間帯を作る</option>';
+  return html;
 }
+
 function buildDayOptions(selected) {
-  return '<option value=""' + (!selected ? ' selected' : '') + '>毎日</option>' +
-    '<option value="月・水・金"' + (selected === '月・水・金' ? ' selected' : '') + '>月・水・金</option>' +
-    '<option value="火・木"' + (selected === '火・木' ? ' selected' : '') + '>火・木</option>';
+  const days = getUniqueDays();
+  if (selected && days.indexOf(selected) === -1) days.unshift(selected);
+  let html = '<option value=""' + (!selected ? ' selected' : '') + '>毎日</option>';
+  html += days.map(function(d) {
+    return '<option value="' + escHtml(d) + '"' + (d === selected ? ' selected' : '') + '>' + escHtml(d) + '</option>';
+  }).join('');
+  html += '<option value="__new__">＋ 新しい曜日制限を作る</option>';
+  return html;
 }
+
 function onSlotChange(idx, sel) {
+  if (sel.value === '__new__') {
+    const v = prompt('新しい時間帯名を入力してください（例: 夕方準備）:');
+    if (v && v.trim()) {
+      STATE.editingTasks[idx].timeSlot = v.trim();
+      STATE.editDirty = true;
+    }
+    renderEditTasks();
+    return;
+  }
   updateEditField(idx, 'timeSlot', sel.value);
 }
+
 function onDayChange(idx, sel) {
+  if (sel.value === '__new__') {
+    const v = prompt('新しい曜日制限を入力してください（例: 月・水・金 / 空欄で毎日）:');
+    if (v !== null) {
+      STATE.editingTasks[idx].dayLimit = v.trim();
+      STATE.editDirty = true;
+    }
+    renderEditTasks();
+    return;
+  }
   updateEditField(idx, 'dayLimit', sel.value);
 }
 
