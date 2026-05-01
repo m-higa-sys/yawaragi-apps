@@ -262,6 +262,34 @@ body {
   color: var(--sub);
   font-weight: 500;
 }
+/* 業務分担マトリックス */
+.matrix-table {
+  width: 100%; border-collapse: collapse; font-size: 12px; background: #fff;
+}
+.matrix-table th, .matrix-table td {
+  border: 1px solid #ddd; padding: 4px 6px; text-align: center;
+}
+.matrix-table thead th {
+  background: var(--primary); color: #fff; font-weight: bold;
+  position: sticky; top: 0; z-index: 1;
+}
+.matrix-table th.task-name-col {
+  text-align: left; min-width: 180px;
+  background: #f5f7fa; color: var(--text);
+  position: sticky; left: 0; z-index: 2;
+}
+.matrix-table tbody td.task-name-col {
+  text-align: left; background: #f5f7fa;
+  position: sticky; left: 0; z-index: 1; font-weight: bold;
+}
+.matrix-table td.zero { background: #ffe3e3; color: #c00; font-weight: bold; }
+.matrix-table td.low { background: #fff5d6; }
+.matrix-table td.high { background: #d6f5d8; }
+.matrix-wrapper {
+  max-height: 500px; overflow: auto;
+  border: 1px solid #ddd; border-radius: 6px;
+}
+
 .stats-tab.active {
   background: var(--primary);
   color: #fff;
@@ -666,6 +694,15 @@ body.edit-mode #mainView { padding-bottom: 80px; }
       <div class="stats-tabs">
         <button class="stats-tab active" id="tabToday" onclick="showStats('today')">今日</button>
         <button class="stats-tab" id="tabMonth" onclick="showStats('month')">今月</button>
+        <button class="stats-tab" id="tabMatrix" onclick="showStats('matrix')">業務分担</button>
+      </div>
+      <div id="matrixControls" style="display:none;padding:8px 12px;background:#f8f9fa;border-bottom:1px solid var(--border);font-size:13px">
+        期間：
+        <select id="matrixPeriod" onchange="loadMatrix()" style="padding:4px 8px;font-size:13px;border:1px solid #ccc;border-radius:4px;margin-left:6px">
+          <option value="current">今月</option>
+          <option value="prev">先月</option>
+          <option value="all">全期間</option>
+        </select>
       </div>
       <div id="statsBody">読み込み中...</div>
     </div>
@@ -1430,7 +1467,105 @@ function showStats(view) {
   STATE.statsView = view;
   document.getElementById('tabToday').classList.toggle('active', view === 'today');
   document.getElementById('tabMonth').classList.toggle('active', view === 'month');
-  renderStats();
+  document.getElementById('tabMatrix').classList.toggle('active', view === 'matrix');
+  document.getElementById('matrixControls').style.display = (view === 'matrix') ? 'block' : 'none';
+  if (view === 'matrix') {
+    loadMatrix();
+  } else {
+    renderStats();
+  }
+}
+
+// --- 業務分担マトリックス ---
+async function loadMatrix() {
+  const body = document.getElementById('statsBody');
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:#666">読み込み中...</div>';
+  const period = document.getElementById('matrixPeriod').value;
+  let monthParam = 'all';
+  if (period === 'current') {
+    const now = new Date();
+    monthParam = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
+  } else if (period === 'prev') {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    monthParam = prev.getFullYear() + '-' + ('0' + (prev.getMonth() + 1)).slice(-2);
+  }
+  try {
+    const res = await gasGet({ action: 'getTaskStaffMatrix', month: monthParam });
+    if (res.error) throw new Error(res.error);
+    renderMatrix(res.matrix || {}, monthParam);
+  } catch (e) {
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:#c00">読み込み失敗: ' + escHtml(e.message) + '</div>';
+  }
+}
+
+function renderMatrix(matrix, period) {
+  const body = document.getElementById('statsBody');
+
+  // スタッフ一覧（実績がある人 + 登録スタッフ）。代理を含む既存スタッフ名のみ。
+  const staffSet = new Set();
+  Object.values(matrix).forEach(function(t) {
+    Object.keys(t.counts || {}).forEach(function(s) { staffSet.add(s); });
+  });
+  // 登録スタッフも含める（実績0でも列を出すため）
+  STATE.staff.forEach(function(s) {
+    const name = (typeof s === 'string') ? s : (s.name || '');
+    if (name && name !== '代表') staffSet.add(name);
+  });
+  const staffList = Array.from(staffSet).sort();
+
+  // タスクごとの行を作る。STATE.tasks の順序に合わせ、ログにのみあるタスクは末尾。
+  const orderedTaskNos = STATE.tasks.map(function(t) { return String(t.no); });
+  const matrixKeys = Object.keys(matrix);
+  matrixKeys.forEach(function(no) {
+    if (orderedTaskNos.indexOf(String(no)) === -1) orderedTaskNos.push(String(no));
+  });
+
+  if (staffList.length === 0 || orderedTaskNos.length === 0) {
+    body.innerHTML = '<div style="padding:20px;text-align:center;color:#666">該当期間のデータがありません</div>';
+    return;
+  }
+
+  // 各タスクの最大値（その行の最大％判定用）
+  let html = '<div class="matrix-wrapper"><table class="matrix-table">';
+  html += '<thead><tr><th class="task-name-col">タスク</th>';
+  staffList.forEach(function(s) {
+    html += '<th>' + escHtml(s) + '</th>';
+  });
+  html += '<th>合計</th></tr></thead><tbody>';
+
+  orderedTaskNos.forEach(function(no) {
+    const taskInfo = matrix[no] || { name: '', counts: {} };
+    let taskName = taskInfo.name;
+    if (!taskName) {
+      const t = STATE.tasks.find(function(t) { return String(t.no) === String(no); });
+      if (t) taskName = t.name;
+    }
+    if (!taskName) return;
+    const counts = taskInfo.counts || {};
+    const total = staffList.reduce(function(sum, s) { return sum + (counts[s] || 0); }, 0);
+    if (total === 0) {
+      // 全員0回のタスクはスキップ（雑音）。ただし表に「未実施」行として出してもいい
+      // ここでは表示する：そのタスクは「誰もやってない」=見える化
+    }
+    html += '<tr>';
+    html += '<td class="task-name-col">' + escHtml(taskName) + '</td>';
+    staffList.forEach(function(s) {
+      const c = counts[s] || 0;
+      const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+      let cls = '';
+      if (c === 0) cls = 'zero';
+      else if (pct >= 40) cls = 'high';
+      else if (pct < 15) cls = 'low';
+      html += '<td class="' + cls + '">' + (c === 0 ? '0' : (c + '<br><small>' + pct + '%</small>')) + '</td>';
+    });
+    html += '<td><strong>' + total + '</strong></td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  html += '<div style="font-size:11px;color:#666;padding:6px 4px">期間: ' + escHtml(period === 'all' ? '全期間' : period) + ' ／ <span style="background:#ffe3e3;padding:1px 6px;border-radius:3px;color:#c00">赤=0回</span> <span style="background:#fff5d6;padding:1px 6px;border-radius:3px">黄=15%未満</span> <span style="background:#d6f5d8;padding:1px 6px;border-radius:3px">緑=40%以上</span> ／ 代理は元のスタッフに集約</div>';
+  body.innerHTML = html;
 }
 
 function renderStats() {
