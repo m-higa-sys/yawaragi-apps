@@ -426,6 +426,12 @@ body.edit-mode #mainView { padding-bottom: 80px; }
   background: #e8f0fe; border: 2px dashed var(--primary); color: var(--primary);
   font-size: 14px; border-radius: 8px; cursor: pointer;
 }
+.edit-slot-header {
+  background: var(--primary); color: #fff;
+  padding: 8px 14px; margin: 16px 0 8px;
+  border-radius: 6px; font-weight: bold; font-size: 14px;
+}
+.edit-slot-header:first-child { margin-top: 0; }
 @media (max-width: 768px) {
   .edit-row {
     grid-template-columns: 32px 1fr 60px;
@@ -918,8 +924,8 @@ function renderTasks() {
   const todayDay = days[today.getDay()];
   const todayGarbage = getTakasakaGarbageItem(today);
 
-  // 時間帯でグループ化
-  const timeSlots = [
+  // 時間帯でグループ化（既知の固定順 + ユーザー追加の未知時間帯を出現順で末尾に）
+  const knownSlots = [
     '朝（1から順番に行う）',
     '午前利用中',
     '前半終了後',
@@ -928,6 +934,13 @@ function renderTasks() {
     '午後利用中',
     '午後準備'
   ];
+  const unknownSlots = [];
+  STATE.tasks.forEach(function(t) {
+    if (t.timeSlot && knownSlots.indexOf(t.timeSlot) === -1 && unknownSlots.indexOf(t.timeSlot) === -1) {
+      unknownSlots.push(t.timeSlot);
+    }
+  });
+  const timeSlots = knownSlots.concat(unknownSlots);
 
   const timeSlotLabels = {
     '朝（1から順番に行う）': '朝（上から順番に行う）',
@@ -938,6 +951,7 @@ function renderTasks() {
     '午後利用中': '午後利用中',
     '午後準備': '午後準備'
   };
+  unknownSlots.forEach(function(s) { timeSlotLabels[s] = s; });
 
   // 旧値→新値マッピング（互換性維持。既存タスクが UI で再保存されるまでこちらで吸収）
   // 旧「利用中」「午前利用中（前半）」「午前利用中（後半）」は一旦「午前利用中」として表示。
@@ -1328,10 +1342,28 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // --- 編集モード ---
+// 通常画面と同じ並び（時間帯順 → 同じ時間帯内は元の順）に並び替える
+const EDIT_SLOT_ORDER = ['朝（1から順番に行う）','午前利用中','前半終了後','午前終了後','昼清掃・準備','午後利用中','午後準備'];
+
+function sortByTimeSlot_(tasks) {
+  // 既知時間帯にない時間帯は最後尾に、出現順を維持してまとめる
+  const unknown = [];
+  tasks.forEach(function(t) {
+    if (EDIT_SLOT_ORDER.indexOf(t.timeSlot) === -1 && unknown.indexOf(t.timeSlot) === -1) {
+      unknown.push(t.timeSlot);
+    }
+  });
+  const full = EDIT_SLOT_ORDER.concat(unknown);
+  return tasks.slice().sort(function(a, b) {
+    return full.indexOf(a.timeSlot) - full.indexOf(b.timeSlot);
+  });
+}
+
 function enterEditMode() {
   STATE.editingTasks = STATE.tasks.map(function(t) {
     return { no: t.no, name: t.name, timeSlot: t.timeSlot, dayLimit: t.dayLimit || '', memo: t.memo || '' };
   });
+  STATE.editingTasks = sortByTimeSlot_(STATE.editingTasks);
   STATE.editMode = true;
   STATE.editDirty = false;
   document.body.classList.add('edit-mode');
@@ -1356,7 +1388,12 @@ function cancelEditMode() {
 function renderEditTasks() {
   const container = document.getElementById('taskContainer');
   let html = '';
+  let currentSlot = null;
   STATE.editingTasks.forEach(function(t, idx) {
+    if (t.timeSlot !== currentSlot) {
+      currentSlot = t.timeSlot;
+      html += '<div class="edit-slot-header">' + escHtml(currentSlot || '(時間帯未設定)') + '</div>';
+    }
     html += '<div class="edit-row" data-idx="' + idx + '">';
     html += '<div class="move-btns">';
     html += '<button onclick="moveEditRow(' + idx + ',-1)" title="上へ">↑</button>';
@@ -1453,10 +1490,13 @@ function onSlotChange(idx, sel) {
       STATE.editingTasks[idx].timeSlot = v.trim();
       STATE.editDirty = true;
     }
-    renderEditTasks();
-    return;
+  } else {
+    STATE.editingTasks[idx].timeSlot = sel.value;
+    STATE.editDirty = true;
   }
-  updateEditField(idx, 'timeSlot', sel.value);
+  // 時間帯が変わったので並びを揃える（該当時間帯グループの末尾に移動）
+  STATE.editingTasks = sortByTimeSlot_(STATE.editingTasks);
+  renderEditTasks();
 }
 
 function onDayChange(idx, sel) {
