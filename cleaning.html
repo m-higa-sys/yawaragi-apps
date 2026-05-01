@@ -399,6 +399,50 @@ body.edit-mode .edit-mode-bar { display: flex; }
 .edit-mode-bar .btn-save:disabled { background: #ccc; cursor: not-allowed; }
 body.edit-mode #mainView { padding-bottom: 80px; }
 
+/* 編集行 */
+.edit-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 140px 120px 1fr 60px;
+  gap: 8px; align-items: center;
+  padding: 8px; background: #fff;
+  border: 1px solid #ddd; border-radius: 8px; margin-bottom: 6px;
+}
+.edit-row input[type=text], .edit-row select {
+  padding: 6px 8px; font-size: 13px; border: 1px solid #ccc; border-radius: 6px;
+  width: 100%; box-sizing: border-box;
+}
+.edit-row .move-btns { display: flex; gap: 2px; }
+.edit-row .move-btns button {
+  width: 26px; height: 26px; padding: 0; font-size: 14px;
+  background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;
+  cursor: pointer;
+}
+.edit-row .delete-btn {
+  background: #fee; color: var(--red); border: 1px solid var(--red);
+  padding: 6px 8px; font-size: 12px; border-radius: 6px; cursor: pointer;
+}
+.edit-add-btn {
+  width: 100%; padding: 12px; margin-top: 12px;
+  background: #e8f0fe; border: 2px dashed var(--primary); color: var(--primary);
+  font-size: 14px; border-radius: 8px; cursor: pointer;
+}
+@media (max-width: 768px) {
+  .edit-row {
+    grid-template-columns: 32px 1fr 60px;
+    grid-template-areas:
+      "move name del"
+      "move slot slot"
+      "move day day"
+      "move memo memo";
+  }
+  .edit-row .move-btns { grid-area: move; flex-direction: column; }
+  .edit-row .name-input { grid-area: name; }
+  .edit-row .slot-select { grid-area: slot; }
+  .edit-row .day-select { grid-area: day; }
+  .edit-row .memo-input { grid-area: memo; }
+  .edit-row .delete-btn { grid-area: del; }
+}
+
 /* 設定画面 */
 .settings-panel {
   display: none;
@@ -1321,10 +1365,76 @@ function cancelEditMode() {
   exitEditMode();
 }
 
-// 仮レンダラー（Task 4 で本実装）
 function renderEditTasks() {
-  document.getElementById('taskContainer').innerHTML =
-    '<p style="text-align:center;padding:40px;color:#666">編集モード（次タスクで実装）</p>';
+  const container = document.getElementById('taskContainer');
+  let html = '';
+  STATE.editingTasks.forEach(function(t, idx) {
+    html += '<div class="edit-row" data-idx="' + idx + '">';
+    html += '<div class="move-btns">';
+    html += '<button onclick="moveEditRow(' + idx + ',-1)" title="上へ">↑</button>';
+    html += '<button onclick="moveEditRow(' + idx + ',1)" title="下へ">↓</button>';
+    html += '</div>';
+    html += '<input type="text" class="name-input" value="' + escHtml(t.name) + '" placeholder="タスク名" oninput="updateEditField(' + idx + ',\'name\',this.value)">';
+    html += '<select class="slot-select" onchange="onSlotChange(' + idx + ',this)">' + buildSlotOptions(t.timeSlot) + '</select>';
+    html += '<select class="day-select" onchange="onDayChange(' + idx + ',this)">' + buildDayOptions(t.dayLimit) + '</select>';
+    html += '<input type="text" class="memo-input" value="' + escHtml(t.memo) + '" placeholder="メモ（任意）" oninput="updateEditField(' + idx + ',\'memo\',this.value)">';
+    html += '<button class="delete-btn" onclick="deleteEditRow(' + idx + ')">削除</button>';
+    html += '</div>';
+  });
+  html += '<button class="edit-add-btn" onclick="addEditRow()">＋ タスクを追加</button>';
+  container.innerHTML = html;
+}
+
+function updateEditField(idx, field, value) {
+  STATE.editingTasks[idx][field] = value;
+  STATE.editDirty = true;
+}
+
+function deleteEditRow(idx) {
+  const t = STATE.editingTasks[idx];
+  if (!confirm('「' + (t.name || '(名称なし)') + '」を削除しますか？')) return;
+  STATE.editingTasks.splice(idx, 1);
+  STATE.editDirty = true;
+  renderEditTasks();
+}
+
+function addEditRow() {
+  STATE.editingTasks.push({ name: '', timeSlot: '朝（1から順番に行う）', dayLimit: '', memo: '' });
+  STATE.editDirty = true;
+  renderEditTasks();
+  setTimeout(function() {
+    const inputs = document.querySelectorAll('.edit-row .name-input');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }, 50);
+}
+
+function moveEditRow(idx, dir) {
+  const target = idx + dir;
+  if (target < 0 || target >= STATE.editingTasks.length) return;
+  const tmp = STATE.editingTasks[idx];
+  STATE.editingTasks[idx] = STATE.editingTasks[target];
+  STATE.editingTasks[target] = tmp;
+  STATE.editDirty = true;
+  renderEditTasks();
+}
+
+// 仮プルダウン（Task 5 で本実装）
+function buildSlotOptions(selected) {
+  const slots = ['朝（1から順番に行う）','午前利用中','前半終了後','午前終了後','昼清掃・準備','午後利用中','午後準備'];
+  return slots.map(function(s) {
+    return '<option value="' + escHtml(s) + '"' + (s === selected ? ' selected' : '') + '>' + escHtml(s) + '</option>';
+  }).join('');
+}
+function buildDayOptions(selected) {
+  return '<option value=""' + (!selected ? ' selected' : '') + '>毎日</option>' +
+    '<option value="月・水・金"' + (selected === '月・水・金' ? ' selected' : '') + '>月・水・金</option>' +
+    '<option value="火・木"' + (selected === '火・木' ? ' selected' : '') + '>火・木</option>';
+}
+function onSlotChange(idx, sel) {
+  updateEditField(idx, 'timeSlot', sel.value);
+}
+function onDayChange(idx, sel) {
+  updateEditField(idx, 'dayLimit', sel.value);
 }
 
 // 仮：保存（Task 6 で本実装）
