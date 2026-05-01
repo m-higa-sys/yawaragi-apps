@@ -696,6 +696,7 @@ body.edit-mode #mainView { padding-bottom: 80px; }
 
 <!-- 編集モード保存バー -->
 <div class="edit-mode-bar">
+  <button class="btn-add-summary" onclick="addMissingSummaries()" style="background:var(--orange);color:#fff" title="各時間帯に「全ての確認チェック」が無ければ追加">確認ボタン補完</button>
   <button class="btn-cancel" onclick="cancelEditMode()">キャンセル</button>
   <button class="btn-save" id="btnSaveEdit" onclick="saveEditMode()">保存</button>
 </div>
@@ -1441,6 +1442,37 @@ function moveEditRow(idx, dir) {
   STATE.editingTasks[target] = tmp;
   STATE.editDirty = true;
   renderEditTasks();
+}
+
+// 各時間帯セクションに「全ての確認チェック」が無ければ追加する補完ボタン
+function addMissingSummaries() {
+  const slotMap = {};   // { 時間帯名: { hasSummary: bool } }
+  STATE.editingTasks.forEach(function(t) {
+    if (!t.timeSlot) return;
+    if (!slotMap[t.timeSlot]) slotMap[t.timeSlot] = { hasSummary: false };
+    if (/(全て|すべて)の確認チェック/.test(t.name || '')) {
+      slotMap[t.timeSlot].hasSummary = true;
+    }
+  });
+  const slotsToAdd = Object.keys(slotMap).filter(function(s) { return !slotMap[s].hasSummary; });
+  if (slotsToAdd.length === 0) {
+    showToast('全ての時間帯に既に確認ボタンがあります');
+    return;
+  }
+  if (!confirm(slotsToAdd.length + '個の時間帯に「全ての確認チェック」を追加しますか？\n\n対象：\n' + slotsToAdd.join('\n'))) return;
+  slotsToAdd.forEach(function(slot) {
+    STATE.editingTasks.push({
+      no: 0,
+      name: slot + '：全ての確認チェック',
+      timeSlot: slot,
+      dayLimit: '',
+      memo: ''
+    });
+  });
+  STATE.editingTasks = sortByTimeSlot_(STATE.editingTasks);
+  STATE.editDirty = true;
+  renderEditTasks();
+  showToast(slotsToAdd.length + '個の確認ボタンを追加しました（保存で確定）');
 }
 
 // --- 既存値からユニーク抽出 ---
