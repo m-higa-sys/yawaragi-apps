@@ -529,6 +529,11 @@ body.edit-mode #mainView { padding-bottom: 80px; }
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
 
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 /* 同期状態 */
 .sync-status {
   display: inline-flex;
@@ -589,6 +594,7 @@ body.edit-mode #mainView { padding-bottom: 80px; }
   <div>
     <h1>清掃・準備チェック表</h1>
     <div class="header-date" id="headerDate"></div>
+    <div id="monthEndAlert" style="display:none;margin-top:6px;padding:6px 10px;background:#fff3cd;color:#d33;border:2px solid #d33;border-radius:6px;font-weight:bold;font-size:13px;animation:blink 1.5s ease-in-out infinite"></div>
   </div>
   <div class="header-right">
     <div class="sync-status">
@@ -767,6 +773,22 @@ function updateDateDisplay() {
   const days = ['日','月','火','水','木','金','土'];
   const str = now.getFullYear() + '年' + (now.getMonth()+1) + '月' + now.getDate() + '日（' + days[now.getDay()] + '）';
   document.getElementById('headerDate').textContent = str;
+
+  // 月末まで6日以内なら警告表示（最後の週=おおむね最後の6日）
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysLeft = lastDay - now.getDate();
+  const alertEl = document.getElementById('monthEndAlert');
+  if (alertEl) {
+    if (daysLeft <= 5) {
+      const msg = daysLeft === 0
+        ? '⚠️ 今日は月末！ファイリング終わらないと帰れないよ！'
+        : '⚠️ 月末まで残り' + daysLeft + '日！ファイリング終わらないと帰れないよ';
+      alertEl.textContent = msg;
+      alertEl.style.display = 'block';
+    } else {
+      alertEl.style.display = 'none';
+    }
+  }
 }
 
 // --- GAS通信（JSONP方式：file://でも動作する） ---
