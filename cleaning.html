@@ -1484,9 +1484,45 @@ function onDayChange(idx, sel) {
   updateEditField(idx, 'dayLimit', sel.value);
 }
 
-// 仮：保存（Task 6 で本実装）
-function saveEditMode() {
-  showToast('保存（次タスクで実装）');
+async function saveEditMode() {
+  // バリデーション
+  for (let i = 0; i < STATE.editingTasks.length; i++) {
+    const t = STATE.editingTasks[i];
+    if (!t.name || !t.name.trim()) {
+      showToast((i + 1) + '番目のタスク名を入力してください');
+      return;
+    }
+    if (!t.timeSlot || !t.timeSlot.trim()) {
+      showToast((i + 1) + '番目の時間帯を選択してください');
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btnSaveEdit');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+
+  try {
+    const order = STATE.editingTasks.map(function(t) {
+      return {
+        no: 0,
+        name: t.name.trim(),
+        timeSlot: t.timeSlot.trim(),
+        dayLimit: (t.dayLimit || '').trim(),
+        memo: (t.memo || '').trim()
+      };
+    });
+    const res = await gasGet({ action: 'reorderTasks', order: JSON.stringify(order) });
+    if (res.error) throw new Error(res.error);
+    showToast('保存しました（' + order.length + '件）');
+    exitEditMode();
+    await loadAllData();
+  } catch (e) {
+    showToast('保存失敗: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存';
+  }
 }
 </script>
 </body>
