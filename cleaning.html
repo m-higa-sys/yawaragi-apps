@@ -1024,8 +1024,7 @@ function renderTasks() {
     }
   });
 
-  // 「1日 全ての確認チェック」用：今日表示される全タスクのうち、
-  // サマリータスク以外が全件チェック済みかを事前計算
+  // 共通判定関数
   function isTaskActiveToday_(t) {
     if (!t.dayLimit) return true;
     if (t.dayLimit === '月末日' || t.dayLimit === '月末') return todayIsLastDay;
@@ -1037,10 +1036,31 @@ function renderTasks() {
   function isAllDaySummary_(t) {
     return /1日.*(全て|すべて)の確認チェック/.test(t.name);
   }
+  // 「1日 全ての確認チェック」用：全時間帯の非サマリータスクが全件チェック済みか
   const allDayNonSummaryAllChecked = STATE.tasks.filter(function(t) {
     return isTaskActiveToday_(t) && !isSummaryTaskGlobal_(t);
   }).every(function(t) {
     return STATE.log.some(function(l) { return l.taskNo == t.no; });
+  });
+
+  // 完全連鎖ロック用：時間帯ごとのサマリー完了状態
+  // - その時間帯のサマリータスク（1日サマリー除く）が全部チェック済みなら true
+  // - サマリータスクが無い時間帯は true（ブロックしない）
+  const slotSummaryDone = {};
+  timeSlots.forEach(function(slot) {
+    const summaries = STATE.tasks.filter(function(t) {
+      return t.timeSlot === slot
+        && isSummaryTaskGlobal_(t)
+        && !isAllDaySummary_(t)
+        && isTaskActiveToday_(t);
+    });
+    if (summaries.length === 0) {
+      slotSummaryDone[slot] = true;
+      return;
+    }
+    slotSummaryDone[slot] = summaries.every(function(t) {
+      return STATE.log.some(function(l) { return l.taskNo == t.no; });
+    });
   });
 
   let html = '';
@@ -1092,12 +1112,39 @@ function renderTasks() {
       if (isChecked) { checkedTasks++; slotChecked++; }
       totalTasks++;
 
-      // ロック判定: 「1日 全ての確認チェック」だけは全時間帯の全タスク完了を要求
-      const locked = isSummaryTask(task) && !isChecked && (
-        isAllDaySummary_(task) ? !allDayNonSummaryAllChecked : !allOthersChecked
-      );
+      // ロック判定（完全連鎖）：
+      //   通常タスク → 前の時間帯のサマリーが全部完了
+      //   時間帯サマリー → 前のサマリー全部完了 + 自分の時間帯の他タスク全部完了
+      //   1日サマリー → 全時間帯の非サマリータスクが全部完了
+      const taskSlotIdx = timeSlots.indexOf(task.timeSlot);
+      const previousSlots = timeSlots.slice(0, Math.max(taskSlotIdx, 0));
+      const allPreviousSummariesDone = previousSlots.every(function(s) { return slotSummaryDone[s]; });
+      const blockingSlot = previousSlots.find(function(s) { return !slotSummaryDone[s]; });
+
+      let locked = false;
+      let lockMsg = '';
+      if (!isChecked) {
+        if (isAllDaySummary_(task)) {
+          locked = !allDayNonSummaryAllChecked;
+          lockMsg = '今日の全タスクを終わらせてから押してください';
+        } else if (isSummaryTask(task)) {
+          if (!allPreviousSummariesDone) {
+            locked = true;
+            lockMsg = '先に「' + blockingSlot + '」の確認チェックを完了させてください';
+          } else if (!allOthersChecked) {
+            locked = true;
+            lockMsg = 'このセクションの全項目をチェックしてから押してください';
+          }
+        } else {
+          // 通常タスク：前の時間帯のサマリー全部完了が必要
+          if (!allPreviousSummariesDone) {
+            locked = true;
+            lockMsg = '先に「' + blockingSlot + '」の確認チェックを完了させてください';
+          }
+        }
+      }
       const clickAttr = locked
-        ? 'onclick="showToast(\'このセクションの全項目をチェックしてから押してください\')"'
+        ? 'onclick="showToast(\'' + escHtml(lockMsg).replace(/'/g, '\\\'') + '\')"'
         : 'onclick="toggleTask(' + task.no + ',\'' + escHtml(task.name) + '\',' + isChecked + ')"';
       const lockedStyle = locked ? ' style="opacity:0.45;cursor:not-allowed;"' : '';
 
