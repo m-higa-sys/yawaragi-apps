@@ -917,12 +917,20 @@ function getTakasakaGarbageItem(date) {
   return null;
 }
 
+// --- 月末日判定 ---
+function isLastDayOfMonth_(d) {
+  const tomorrow = new Date(d);
+  tomorrow.setDate(d.getDate() + 1);
+  return tomorrow.getMonth() !== d.getMonth();
+}
+
 // --- タスク描画 ---
 function renderTasks() {
   const container = document.getElementById('taskContainer');
   const today = new Date();
   const days = ['日','月','火','水','木','金','土'];
   const todayDay = days[today.getDay()];
+  const todayIsLastDay = isLastDayOfMonth_(today);
   const todayGarbage = getTakasakaGarbageItem(today);
 
   // 時間帯でグループ化（既知の固定順 + ユーザー追加の未知時間帯を出現順で末尾に）
@@ -968,6 +976,25 @@ function renderTasks() {
     }
   });
 
+  // 「1日 全ての確認チェック」用：今日表示される全タスクのうち、
+  // サマリータスク以外が全件チェック済みかを事前計算
+  function isTaskActiveToday_(t) {
+    if (!t.dayLimit) return true;
+    if (t.dayLimit === '月末日' || t.dayLimit === '月末') return todayIsLastDay;
+    return t.dayLimit.indexOf(todayDay) >= 0;
+  }
+  function isSummaryTaskGlobal_(t) {
+    return /(全て|すべて)の確認チェック/.test(t.name);
+  }
+  function isAllDaySummary_(t) {
+    return /1日.*(全て|すべて)の確認チェック/.test(t.name);
+  }
+  const allDayNonSummaryAllChecked = STATE.tasks.filter(function(t) {
+    return isTaskActiveToday_(t) && !isSummaryTaskGlobal_(t);
+  }).every(function(t) {
+    return STATE.log.some(function(l) { return l.taskNo == t.no; });
+  });
+
   let html = '';
   let totalTasks = 0;
   let checkedTasks = 0;
@@ -979,6 +1006,10 @@ function renderTasks() {
     // 今日の曜日でフィルタ + ゴミ出しタスクの動的リネーム/非表示
     const filteredTasks = slotTasks.filter(function(t) {
       if (!t.dayLimit) return true;
+      // 「月末日」「月末」が指定されたタスクは月末日のみ表示
+      if (t.dayLimit === '月末日' || t.dayLimit === '月末') {
+        return todayIsLastDay;
+      }
       return t.dayLimit.indexOf(todayDay) >= 0;
     }).map(function(t) {
       if (/^ゴミ出し($|（)/.test(t.name)) {
@@ -1013,7 +1044,10 @@ function renderTasks() {
       if (isChecked) { checkedTasks++; slotChecked++; }
       totalTasks++;
 
-      const locked = isSummaryTask(task) && !isChecked && !allOthersChecked;
+      // ロック判定: 「1日 全ての確認チェック」だけは全時間帯の全タスク完了を要求
+      const locked = isSummaryTask(task) && !isChecked && (
+        isAllDaySummary_(task) ? !allDayNonSummaryAllChecked : !allOthersChecked
+      );
       const clickAttr = locked
         ? 'onclick="showToast(\'このセクションの全項目をチェックしてから押してください\')"'
         : 'onclick="toggleTask(' + task.no + ',\'' + escHtml(task.name) + '\',' + isChecked + ')"';
@@ -1510,6 +1544,8 @@ function buildSlotOptions(selected) {
 
 function buildDayOptions(selected) {
   const days = getUniqueDays();
+  // 「月末日」を必ず候補に含める
+  if (days.indexOf('月末日') === -1) days.push('月末日');
   if (selected && days.indexOf(selected) === -1) days.unshift(selected);
   let html = '<option value=""' + (!selected ? ' selected' : '') + '>毎日</option>';
   html += days.map(function(d) {
