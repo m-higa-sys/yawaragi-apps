@@ -967,10 +967,18 @@ async function refreshLog() {
   try {
     const logRes = await gasGet({ action: 'getLog' });
     if (logRes.error) return;
-    STATE.log = logRes.log || [];
+    const newLog = logRes.log || [];
+    // ログに変化がなければ再描画スキップ（チラつき防止）
+    const same = JSON.stringify(STATE.log) === JSON.stringify(newLog);
+    STATE.log = newLog;
     localStorage.setItem('gyomu_log_cache', JSON.stringify(STATE.log));
-    renderTasks();
-    renderStats();
+    if (!same) {
+      const scrollY = window.scrollY;
+      renderTasks();
+      renderStats();
+      // 再描画でスクロール位置が飛ぶのを防ぐ
+      window.scrollTo({ top: scrollY, behavior: 'instant' });
+    }
     setSyncStatus('online');
     STATE.lastSync = new Date();
   } catch (e) {
