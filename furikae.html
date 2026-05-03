@@ -170,7 +170,6 @@
 </style>
 </head>
 <body>
-<script src="auto-refresh-patch.js"></script>
 
 <div class="no-print" style="margin-bottom:12px;">
   <a href="yawaragiボード.html" class="back-link-btn">← yawaragiボードに戻る</a>
@@ -202,6 +201,12 @@
 </div>
 
 <div class="summary-cards" id="summaryCards"></div>
+
+<!-- 🎉 今月解決セクション（resolvedMonth === 表示中の月のレコード） -->
+<div id="resolvedSection" style="display:none; background:linear-gradient(135deg,#eafaf1,#d4f5e9); border-left:8px solid #27ae60; border-radius:10px; padding:16px 20px; margin-bottom:20px; box-shadow:0 2px 8px rgba(39,174,96,0.15);">
+  <h3 style="font-size:17px; color:#1e7e34; margin-bottom:10px;">🎉 今月引落できました（先月までの不能から回復）</h3>
+  <div id="resolvedList"></div>
+</div>
 
 <table id="mainTable">
   <thead>
@@ -292,6 +297,22 @@
 <div class="modal-overlay" id="addModal">
   <div class="modal">
     <h3>振替不能データ追加</h3>
+
+    <!-- 🚀 爆速入力テンプレボタン -->
+    <div style="background:#fff7ed;border:2px solid #f59e0b;border-radius:8px;padding:10px 12px;margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px;">🚀 爆速入力テンプレ（クリックで自動入力）</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button type="button" class="template-btn" onclick="applyTemplate('inkan')" style="padding:6px 12px;border:1px solid #f59e0b;background:#fef3c7;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">🔴 印鑑相違（電算返却）</button>
+        <button type="button" class="template-btn" onclick="applyTemplate('zandaka')" style="padding:6px 12px;border:1px solid #f59e0b;background:#fef3c7;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">💰 残高不足</button>
+        <button type="button" class="template-btn" onclick="applyTemplate('nashi')" style="padding:6px 12px;border:1px solid #f59e0b;background:#fef3c7;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">📄 依頼書なし</button>
+        <button type="button" class="template-btn" onclick="applyTemplate('torihiki_nashi')" style="padding:6px 12px;border:1px solid #f59e0b;background:#fef3c7;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">❌ 預金取引なし</button>
+        <button type="button" class="template-btn" onclick="applyTemplate('kaiyaku')" style="padding:6px 12px;border:1px solid #f59e0b;background:#fef3c7;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">🚫 口座解約</button>
+        <button type="button" class="template-btn" onclick="applyTemplate('yucho_matsubi')" style="padding:6px 12px;border:1px solid #f59e0b;background:#fef3c7;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">📮 ゆうちょ末尾漏れ</button>
+        <button type="button" class="template-btn" onclick="applyTemplate('clear')" style="padding:6px 12px;border:1px solid #94a3b8;background:#f1f5f9;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;">🔄 クリア</button>
+      </div>
+      <div style="font-size:11px;color:#78716c;margin-top:6px;">クリック後、利用者名と金額を入力するだけでOK</div>
+    </div>
+
     <div class="form-group">
       <label>引落月（例: 2026-02）</label>
       <input type="month" id="formMonth" value="2026-02">
@@ -327,9 +348,13 @@
     <div class="form-group">
       <label>不能理由</label>
       <select id="formReason">
+        <option value="残高不足">残高不足</option>
+        <option value="印鑑相違">印鑑相違</option>
         <option value="預金口座振替依頼書なし">預金口座振替依頼書なし</option>
         <option value="預金取引なし">預金取引なし</option>
-        <option value="残高不足">残高不足</option>
+        <option value="口座解約">口座解約</option>
+        <option value="記載事項相違">記載事項相違</option>
+        <option value="印鑑不鮮明">印鑑不鮮明</option>
         <option value="その他">その他</option>
       </select>
     </div>
@@ -350,6 +375,7 @@
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeAddModal()">キャンセル</button>
+      <button type="button" onclick="saveDraft()" style="padding:10px 20px;background:#f59e0b;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;">🕐 一時保存</button>
       <button class="btn btn-primary" onclick="addRecord()">追加</button>
     </div>
   </div>
@@ -807,6 +833,25 @@ function renderMonth() {
             placeholder="メモ" onchange="updateMemo(${r.id}, this.value)"></td>
       </tr>`;
     }).join('');
+  }
+
+  // 🎉 今月解決セクション（過去の不能から今月引落成功した人）
+  const resolvedThisMonth = data.records.filter(r => r.resolvedMonth === month && r.month !== month);
+  const resolvedSection = document.getElementById('resolvedSection');
+  const resolvedList = document.getElementById('resolvedList');
+  if (resolvedThisMonth.length > 0) {
+    resolvedSection.style.display = 'block';
+    resolvedList.innerHTML = resolvedThisMonth.map(r => {
+      const [oy, om] = r.month.split('-');
+      const originLabel = `${parseInt(om)}月不能`;
+      return `<div style="background:white; border-radius:8px; padding:10px 14px; margin-bottom:8px; border-left:4px solid #27ae60; font-size:14px;">
+        <span style="font-weight:bold; color:#1e7e34;">✅ ${escapeHtml(r.name) || '(名前未入力)'} さん</span>
+        <span style="color:#555; margin-left:8px;">${r.amount.toLocaleString()}円</span>
+        <span style="display:inline-block; margin-left:8px; padding:2px 8px; background:#fff3cd; color:#856404; border-radius:10px; font-size:11px; font-weight:bold;">${originLabel}（${escapeHtml(r.reason)}）から回復</span>
+      </div>`;
+    }).join('');
+  } else {
+    resolvedSection.style.display = 'none';
   }
 
   renderPendingPanel();
@@ -1277,14 +1322,149 @@ function fallbackCopy(text) {
 }
 
 // ============ 追加モーダル ============
+const DRAFT_KEY = 'furikae_draft';
+
 function openAddModal() {
   document.getElementById('addModal').classList.add('active');
   const currentMonth = document.getElementById('monthSelect').value || '2026-02';
   document.getElementById('formMonth').value = currentMonth;
+
+  // 下書きがあれば復元を提案
+  const draft = localStorage.getItem(DRAFT_KEY);
+  if(draft) {
+    const d = JSON.parse(draft);
+    const saved = d._savedAt ? new Date(d._savedAt).toLocaleString('ja-JP',{hour12:false}) : '';
+    if(confirm('📂 途中まで入力した下書きがあります（' + saved + '保存）。\n\n復元しますか？\n\n[OK] = 復元する\n[キャンセル] = 新規で入力する（下書きは残ります）')) {
+      restoreDraft(d);
+    }
+  }
 }
 
 function closeAddModal() {
   document.getElementById('addModal').classList.remove('active');
+  // 閉じる時に入力中のデータがあれば確認
+  const hasData = ['formName','formAmount','formNo'].some(id => {
+    const v = document.getElementById(id).value.trim();
+    return v !== '';
+  });
+  if(hasData) {
+    if(confirm('⚠️ 入力中のデータがあります。一時保存しますか？\n\n[OK] = 一時保存して閉じる\n[キャンセル] = 破棄して閉じる')) {
+      saveDraft(true);
+    }
+  }
+}
+
+function saveDraft(silent) {
+  const fields = ['formMonth','formNo','formName','formBank','formBranch','formAccount','formAmount','formCustomerId','formReason','formDetailReason','formSentDate','formExpectedStart'];
+  const d = { _savedAt: new Date().toISOString() };
+  fields.forEach(id => {
+    d[id] = document.getElementById(id).value;
+  });
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+  if(!silent) {
+    showTemplateHint('🕐 一時保存しました。続きは次回「＋追加」を押した時に復元できます');
+  }
+}
+
+function restoreDraft(d) {
+  const fields = ['formMonth','formNo','formName','formBank','formBranch','formAccount','formAmount','formCustomerId','formReason','formDetailReason','formSentDate','formExpectedStart'];
+  fields.forEach(id => {
+    if(d[id] !== undefined) document.getElementById(id).value = d[id];
+  });
+  showTemplateHint('📂 下書きを復元しました');
+}
+
+function clearDraft() {
+  localStorage.removeItem(DRAFT_KEY);
+}
+
+// 🚀 爆速入力テンプレ
+function applyTemplate(type) {
+  const today = new Date().toISOString().slice(0,10);
+  const ym = today.slice(0,7);
+
+  // 一旦クリア（type='clear'用にも使える）
+  if(type === 'clear') {
+    ['formNo','formName','formBank','formBranch','formAccount','formAmount','formCustomerId','formDetailReason'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('formSentDate').value = '';
+    document.getElementById('formExpectedStart').value = '';
+    document.getElementById('formReason').value = '残高不足';
+    return;
+  }
+
+  const templates = {
+    inkan: {
+      reason: '印鑑相違',
+      detail: '電算から不備返却（' + today + '受領）・新しい口座振替依頼書で再提出予定・勝又さん連絡中',
+      sentDate: '',
+      note: '💡 利用者名・金額・連番（依頼書番号）を入力してください'
+    },
+    zandaka: {
+      reason: '残高不足',
+      detail: '残高不足で振替不能・次回合算引落 or 振込で対応予定',
+      sentDate: '',
+      note: '💡 利用者名・金額を入力してください'
+    },
+    nashi: {
+      reason: '預金口座振替依頼書なし',
+      detail: '依頼書未提出・新規の方向け・勝又さん経由で依頼書送付',
+      sentDate: today,
+      note: '💡 利用者名・金額・顧客番号を入力してください'
+    },
+    torihiki_nashi: {
+      reason: '預金取引なし',
+      detail: '銀行に該当口座なし・口座番号の再確認が必要',
+      sentDate: '',
+      note: '💡 利用者名・金額・顧客番号を入力してください'
+    },
+    kaiyaku: {
+      reason: '口座解約',
+      detail: '口座解約済・別口座での再登録が必要',
+      sentDate: '',
+      note: '💡 利用者名・金額を入力してください'
+    },
+    yucho_matsubi: {
+      reason: '記載事項相違',
+      detail: 'ゆうちょ口座番号の末尾「1」漏れ・電算で再登録済・次回引落予定',
+      sentDate: today,
+      note: '💡 利用者名・金額・顧客番号を入力してください'
+    }
+  };
+
+  const t = templates[type];
+  if(!t) return;
+
+  document.getElementById('formReason').value = t.reason;
+  document.getElementById('formDetailReason').value = t.detail;
+  if(t.sentDate) document.getElementById('formSentDate').value = t.sentDate;
+
+  // 今月をデフォルトに
+  if(!document.getElementById('formMonth').value) {
+    document.getElementById('formMonth').value = ym;
+  }
+
+  // 次に入力すべきフィールドにフォーカス
+  setTimeout(() => {
+    document.getElementById('formName').focus();
+  }, 100);
+
+  // ヒントを一時表示
+  showTemplateHint(t.note);
+}
+
+function showTemplateHint(msg) {
+  let hint = document.getElementById('templateHint');
+  if(!hint) {
+    hint = document.createElement('div');
+    hint.id = 'templateHint';
+    hint.style.cssText = 'position:fixed;top:20px;right:20px;background:#16a34a;color:white;padding:10px 16px;border-radius:8px;font-weight:600;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:9999;max-width:300px;';
+    document.body.appendChild(hint);
+  }
+  hint.textContent = msg;
+  hint.style.display = 'block';
+  setTimeout(() => { hint.style.display = 'none'; }, 4000);
 }
 
 function addRecord() {
@@ -1330,6 +1510,9 @@ function addRecord() {
   ['formNo','formName','formBank','formBranch','formAccount','formAmount','formCustomerId','formSentDate','formExpectedStart','formDetailReason'].forEach(id => {
     document.getElementById(id).value = '';
   });
+
+  // 登録成功したら下書きは削除
+  clearDraft();
 
   closeAddModal();
   initMonthSelect();
