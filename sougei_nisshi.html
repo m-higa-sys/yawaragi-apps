@@ -221,15 +221,15 @@ let isSyncing = false;
 
 // ===== オンライン同期 =====
 // GitHub Pages版・iPad等でlocalStorageが空でも動くようフォールバックURLを設定
-// 送迎日誌GASのWebApp URL（公開アクセスなので直書きOK）
-// 2026-04-28: 旧URL(AKfycbyh_h7qB...) が機能しなくなったため、出勤＆送迎表GAS(AKfycby-V66...)に切替
-//   action=getOps / getData / POST すべて対応する統合GAS
-const FALLBACK_GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+// 2026-05-03: 出勤＆送迎表GAS(AKfycby-V66...) は A1セルしか読まないため大容量データNG
+//   → 送迎日誌GAS(AKfycbyh_h7qB...)に戻す（複数セル連結readOpsData対応・@40で再修復済み・clasp管理下）
+const FALLBACK_GAS_URL = 'https://script.google.com/macros/s/AKfycbyh_h7qB93S17_9mI52uTcCfUfBjeX9K4Xaq6LIX3d8Bae4w0lqKY-Gsqnw173atAvm7Q/exec';
 
 function getGasUrl(){
   const stored = localStorage.getItem(GAS_URL_KEY);
-  // 2026-04-28: 過去に登録された壊れた旧URLは強制的に上書き
-  if (stored && stored.indexOf('AKfycbyh_h7qB') >= 0) {
+  // 出勤＆送迎表GAS（A1のみ読み・dailyOpsで「データなし」表示の原因）が登録されてたら強制クリア
+  if (stored && stored.indexOf('AKfycby-V66Udd') >= 0) {
+    console.warn('出勤＆送迎表GAS URL検出 → 送迎日誌GAS に置換（大容量データ対応）');
     localStorage.removeItem(GAS_URL_KEY);
     return FALLBACK_GAS_URL;
   }
