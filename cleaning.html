@@ -1038,6 +1038,9 @@ function renderTasks() {
   const todayDay = days[today.getDay()];
   const todayIsLastDay = isLastDayOfMonth_(today);
   const todayGarbage = getTakasakaGarbageItem(today);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const tomorrowGarbage = getTakasakaGarbageItem(tomorrow);
 
   // 時間帯でグループ化（既知の固定順 + ユーザー追加の未知時間帯を出現順で末尾に）
   const knownSlots = [
@@ -1129,7 +1132,9 @@ function renderTasks() {
     const slotTasks = STATE.tasks.filter(function(t) { return t.timeSlot === slot; });
     if (slotTasks.length === 0) return;
 
-    // 今日の曜日でフィルタ + ゴミ出しタスクの動的リネーム/非表示
+    // 今日の曜日でフィルタ + ゴミ出し系タスクの動的リネーム
+    // - 「ゴミ出し」: 今日のごみ → ある日「ゴミ出し（可燃物）」/ない日「ゴミ出し（今日なし）」
+    // - 「明日のごみ出し準備」: 明日のごみ → ある日「明日のごみ出し準備【可燃物】」/ない日「明日のごみ出し準備【なし】」
     const filteredTasks = slotTasks.filter(function(t) {
       if (!t.dayLimit) return true;
       // 「月末日」「月末」が指定されたタスクは月末日のみ表示
@@ -1139,8 +1144,10 @@ function renderTasks() {
       return t.dayLimit.indexOf(todayDay) >= 0;
     }).map(function(t) {
       if (/^ゴミ出し($|（)/.test(t.name)) {
-        if (!todayGarbage) return null;
-        return Object.assign({}, t, { name: 'ゴミ出し（' + todayGarbage + '）' });
+        return Object.assign({}, t, { name: 'ゴミ出し（' + (todayGarbage || '今日なし') + '）' });
+      }
+      if (/^明日の(ごみ|ゴミ)出し準備($|【)/.test(t.name)) {
+        return Object.assign({}, t, { name: '明日のごみ出し準備【' + (tomorrowGarbage || 'なし') + '】' });
       }
       return t;
     }).filter(function(t) { return t !== null; });
