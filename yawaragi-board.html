@@ -3011,11 +3011,6 @@ let tbSelectedPriority = 'high';
 function tbInit() {
     tbFetchGasTasks(); // GASからタスクを取得
     tbRenderAll();
-    // 1分ごとにボード更新（経過時間の更新用）
-    setInterval(() => {
-        const activeTab = document.querySelector('.tab-btn.active');
-        if (activeTab && activeTab.dataset.tab === 'task') tbRenderBoard();
-    }, 60000);
     // 5分ごとにGASタスクを再取得
     setInterval(() => tbFetchGasTasks(), 300000);
 }
@@ -3034,14 +3029,13 @@ function tbOnGasTasksLoaded(resp) {
     document.querySelectorAll('script[src*="board_tasks"]').forEach(s => s.remove());
     if (resp && resp.success && resp.boardTasks) {
         tbGasTasks = resp.boardTasks;
-        tbRenderBoard();
+        mmRenderTasks();
     }
 }
 
 function tbRenderAll() {
     tbRenderStaffSelect();
     tbRenderTemplates();
-    tbRenderBoard();
     tbRenderTemplateManage();
 }
 
@@ -3110,7 +3104,7 @@ function tbAddTask() {
     btn.textContent = '登録しました！';
     btn.style.background = '#38a169';
     setTimeout(() => { btn.textContent = 'タスクを登録'; btn.style.background = ''; }, 1500);
-    tbRenderBoard();
+    mmRenderTasks();
 }
 
 // ボード表示（localStorage + GASタスクをマージ）
@@ -3267,7 +3261,7 @@ function tbCompleteTask(id) {
     const t = tbData.tasks.find(t => t.id === id);
     if (t) { t.done = true; t.endTime = new Date().toISOString(); }
     tbSaveData();
-    tbRenderBoard();
+    mmRenderTasks();
     showToast('タスク完了！');
 }
 
@@ -3275,20 +3269,20 @@ function tbUndoTask(id) {
     const t = tbData.tasks.find(t => t.id === id);
     if (t) { t.done = false; t.endTime = null; }
     tbSaveData();
-    tbRenderBoard();
+    mmRenderTasks();
 }
 
 function tbDeleteTask(id) {
     tbData.tasks = tbData.tasks.filter(t => t.id !== id);
     tbSaveData();
-    tbRenderBoard();
+    mmRenderTasks();
 }
 
 function tbResetDay() {
     if (!confirm('今日のタスクをすべてリセットしますか？')) return;
     tbData.tasks = [];
     tbSaveData();
-    tbRenderBoard();
+    mmRenderTasks();
     showToast('タスクをリセットしました');
 }
 
@@ -3313,7 +3307,7 @@ function tbCompleteGasTask(id) {
     // 即座にローカル表示を更新
     const t = tbGasTasks.find(t => t.id === id);
     if (t) { t.status = '完了'; t.completedAt = new Date().toISOString(); t.completedBy = by; }
-    tbRenderBoard();
+    mmRenderTasks();
     showToast('タスク完了！（' + by + 'さん）');
     // 数秒後にGASから再取得して同期
     setTimeout(() => tbFetchGasTasks(), 3000);
@@ -3323,7 +3317,7 @@ function tbUndoGasTask(id) {
     // GAS側にはundo APIがないのでローカルのみ更新 + 再取得で同期
     const t = tbGasTasks.find(t => t.id === id);
     if (t) { t.status = '未完了'; t.completedAt = ''; }
-    tbRenderBoard();
+    mmRenderTasks();
     // 注: GAS側のステータスは変わらない。本格運用時は別途APIを追加
     showToast('戻しました（画面のみ）');
 }
@@ -3331,7 +3325,7 @@ function tbUndoGasTask(id) {
 function tbDeleteGasTask(id) {
     gasPost({ action: 'delete_board_task', id: id }, 'タスク削除');
     tbGasTasks = tbGasTasks.filter(t => t.id !== id);
-    tbRenderBoard();
+    mmRenderTasks();
     showToast('タスクを削除しました');
 }
 
