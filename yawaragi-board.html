@@ -2049,7 +2049,6 @@ function activateTab(tabName) {
         if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
     }
     if (tabName === 'remind' && typeof rmdLoad === 'function') rmdLoad();
-    if (tabName === 'task' && typeof tbRenderAll === 'function') tbRenderAll();
     if (tabName === 'absence') {
         if (typeof absRenderTodayList === 'function') absRenderTodayList();
         if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
@@ -2080,10 +2079,16 @@ function setupTabs() {
             activateTab(btn.dataset.tab);
         });
     });
-    // リロード後に前回のタブを復元
+    // リロード後に前回のタブを復元（'task' は廃止済みなので 'meeting' にフォールバック）
     try {
         const saved = localStorage.getItem(TAB_STATE_KEY);
-        if (saved) activateTab(saved);
+        if (saved === 'task') {
+            activateTab('meeting');
+            localStorage.setItem(TAB_STATE_KEY, 'meeting');
+        } else if (saved) {
+            const ok = activateTab(saved);
+            if (!ok) activateTab('meeting');
+        }
     } catch {}
 }
 
