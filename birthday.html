@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>誕生日一覧</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Meiryo', sans-serif; font-size: 13px; background: #f5f5f5; padding: 15px; }
+        .header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+        .header h1 { font-size: 18px; }
+        .header select, .header button { font-size: 14px; padding: 5px 10px; cursor: pointer; }
+        .btn-primary { background: #4CAF50; color: #fff; border: 1px solid #4CAF50; border-radius: 4px; }
+        .btn-print { background: #2196F3; color: #fff; border: 1px solid #2196F3; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th, td { border: 1px solid #999; padding: 4px 8px; text-align: center; }
+        th { background: #fff3e0; font-weight: bold; font-size: 12px; }
+        td { font-size: 13px; }
+        td.name { text-align: left; min-width: 80px; }
+        .am-sub { background: #fff3e0; }
+        .pm-sub { background: #fff3e0; }
+        .section-title { font-size: 15px; font-weight: bold; margin: 15px 0 8px; padding: 5px 10px;
+                         background: #fff3e0; border-left: 4px solid #FF9800; }
+        input[type="checkbox"] { width: 22px; height: 22px; cursor: pointer; }
+        @media (max-width: 900px) {
+            body { padding: 8px; }
+            input[type="checkbox"] { width: 26px; height: 26px; }
+        }
+        @media print {
+            body { background: #fff; padding: 5mm; font-size: 11px; }
+            .no-print { display: none !important; }
+            @page { size: A4 portrait; margin: 10mm; }
+        }
+        .loading { text-align: center; padding: 30px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>誕生日一覧</h1>
+    <span class="no-print">
+        <select id="yearSelect"></select>年
+        <select id="monthSelect"></select>月
+        <button onclick="renderAll()" class="btn-primary">表示</button>
+        <button onclick="window.print()" class="btn-print">印刷</button>
+        <button onclick="fetchFromGAS()" style="font-size:13px; padding:5px 10px; border:1px solid #FF9800; border-radius:4px; background:#fff3e0;">📡 データ更新</button>
+    </span>
+    <span id="displayYearMonth" style="font-size:16px; font-weight:bold; margin-left:10px;"></span>
+</div>
+
+<div class="section-title">🎂 誕生日</div>
+<div id="birthdaySection"><div class="loading">データ読み込み中...</div></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwqfudNXAiZ3E1RoD3MP0s2cjFajKk_94MvjnWoLUElYNEM32BUPbpGLEyVxUSDmjyW/exec';
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
+const MEMBERS_CACHE_KEY = 'yawaragi_monthly_members_cache';
+const BIRTHDAY_CHECK_KEY = 'yawaragi_birthday_checks';
+
+let ALL_MEMBERS = [];
+let currentYear, currentMonth;
+
+function nameKey(name) {
+    return String(name || '').normalize('NFKC').replace(/\s+/g, '').replace(/様$/, '');
+}
+
+function getBirthdayChecks() {
+    return JSON.parse(localStorage.getItem(BIRTHDAY_CHECK_KEY) || '{}');
+}
+
+function setBirthdayChecks(data) {
+    localStorage.setItem(BIRTHDAY_CHECK_KEY, JSON.stringify(data));
+    cloudSync();
+}
+
+function loadMembers() {
+    const cached = localStorage.getItem(MEMBERS_CACHE_KEY);
+    if (cached) {
+        try { ALL_MEMBERS = JSON.parse(cached); } catch(e) { ALL_MEMBERS = []; }
+    }
+}
+
+function fetchFromGAS() {
+    const cbName = '_birthdayCb_' + Date.now();
+    window[cbName] = function(res) {
+        if (res && res.success && res.data) {
+            ALL_MEMBERS = res.data;
+            localStorage.setItem(MEMBERS_CACHE_KEY, JSON.stringify(ALL_MEMBERS));
+            renderAll();
+        }
+        delete window[cbName];
+    };
+    const script = document.createElement('script');
+    script.src = GAS_URL + '?callback=' + cbName + '&t=' + Date.now();
+    document.head.appendChild(script);
+}
+
+function cloudSync() {
+    try {
+        const data = getBirthdayChecks();
+        const payload = JSON.stringify({ type: 'birthday', data: data });
+        fetch(SYNC_URL, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload, keepalive: true
+        }).catch(function(){});
+    } catch(e) {}
+}
+
+function cloudLoad(onDone) {
+    try {
+        const cbName = '_birthdayLoadCb_' + Date.now();
+        window[cbName] = function(cloud) {
+            if (cloud && typeof cloud === 'object') {
+                localStorage.setItem(BIRTHDAY_CHECK_KEY, JSON.stringify(cloud));
+            }
+            delete window[cbName];
+            if (onDone) onDone(true);
+        };
+        const script = document.createElement('script');
+        script.src = SYNC_URL + '?action=getBirthday&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function(){ if (onDone) onDone(false); };
+        document.head.appendChild(script);
+    } catch(e) { if (onDone) onDone(false); }
+}
+
+function setupYearMonthSelectors() {
+    const now = new Date();
+    const yearSel = document.getElementById('yearSelect');
+    const monthSel = document.getElementById('monthSelect');
+    for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) {
+        const opt = document.createElement('option');
+        opt.value = y; opt.textContent = y;
+        if (y === now.getFullYear()) opt.selected = true;
+        yearSel.appendChild(opt);
+    }
+    for (let m = 1; m <= 12; m++) {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        if (m === now.getMonth() + 1) opt.selected = true;
+        monthSel.appendChild(opt);
+    }
+    currentYear = now.getFullYear();
+    currentMonth = now.getMonth() + 1;
+}
+
+function renderAll() {
+    currentYear = parseInt(document.getElementById('yearSelect').value);
+    currentMonth = parseInt(document.getElementById('monthSelect').value);
+    document.getElementById('displayYearMonth').textContent = currentYear + '年' + currentMonth + '月';
+
+    const monthKey = currentYear + '-' + String(currentMonth).padStart(2, '0');
+    const checks = getBirthdayChecks();
+    if (!checks[monthKey]) checks[monthKey] = {};
+
+    // 該当月の誕生日の人を抽出（午前/午後別）
+    const targets = ALL_MEMBERS.filter(function(m) {
+        if (!m.birthMonth) return false;
+        return parseInt(m.birthMonth) === currentMonth;
+    });
+
+    const ams = targets.filter(function(m) { return m.unit === 'AM'; });
+    const pms = targets.filter(function(m) { return m.unit === 'PM'; });
+
+    if (targets.length === 0) {
+        document.getElementById('birthdaySection').innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">該当者なし</div>';
+        return;
+    }
+
+    let html = '<table><thead><tr>';
+    html += '<th class="am-sub">名前</th><th class="am-sub">誕生日</th><th class="am-sub">写真撮影</th><th class="am-sub">プリントアウト</th><th class="am-sub">お渡し</th>';
+    html += '<th class="pm-sub">名前</th><th class="pm-sub">誕生日</th><th class="pm-sub">写真撮影</th><th class="pm-sub">プリントアウト</th><th class="pm-sub">お渡し</th>';
+    html += '</tr></thead><tbody>';
+
+    const maxRows = Math.max(ams.length, pms.length);
+    for (let i = 0; i < maxRows; i++) {
+        html += '<tr>';
+        html += renderBirthdayCells(ams[i], monthKey, checks);
+        html += renderBirthdayCells(pms[i], monthKey, checks);
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('birthdaySection').innerHTML = html;
+}
+
+function renderBirthdayCells(member, monthKey, checks) {
+    if (!member) return '<td></td><td></td><td></td><td></td><td></td>';
+    const k = nameKey(member.name);
+    const c = checks[monthKey][k] || { photo: false, print: false, give: false };
+    return '<td class="name">' + member.name + '様</td>' +
+           '<td>' + (member.birthMonth && member.birthDay ? member.birthMonth + '/' + member.birthDay : '') + '</td>' +
+           '<td><input type="checkbox" ' + (c.photo ? 'checked' : '') + ' onchange="toggleBirthdayCheck(\'' + monthKey + '\',\'' + k + '\',\'photo\',this.checked)"></td>' +
+           '<td><input type="checkbox" ' + (c.print ? 'checked' : '') + ' onchange="toggleBirthdayCheck(\'' + monthKey + '\',\'' + k + '\',\'print\',this.checked)"></td>' +
+           '<td><input type="checkbox" ' + (c.give ? 'checked' : '') + ' onchange="toggleBirthdayCheck(\'' + monthKey + '\',\'' + k + '\',\'give\',this.checked)"></td>';
+}
+
+function toggleBirthdayCheck(monthKey, k, field, value) {
+    const checks = getBirthdayChecks();
+    if (!checks[monthKey]) checks[monthKey] = {};
+    if (!checks[monthKey][k]) checks[monthKey][k] = { photo: false, print: false, give: false };
+    checks[monthKey][k][field] = value;
+    setBirthdayChecks(checks);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    setupYearMonthSelectors();
+    loadMembers();
+    cloudLoad(function() { renderAll(); });
+    if (ALL_MEMBERS.length === 0) fetchFromGAS();
+});
+</script>
+</body>
+</html>
