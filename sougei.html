@@ -574,6 +574,9 @@ const CAR_CAPACITY = {'ス':7, 'シS':6, 'シW':6, 'モ':3, 'キ':4};
 // ═══════════════════════════════════════════════
 const OPS_GAS_URL_KEY = 'yawaragi_ops_gas_url';
 const READONLY_GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+// yawaragiボード GAS（出席予定タブの欠席を取得するため）2026-05-06追加
+const BOARD_GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const ABSENCE_POLL_MS = 10000;  // 10秒ポーリング
 function getOpsGasUrl(){ return IS_READONLY ? READONLY_GAS_URL : (localStorage.getItem(OPS_GAS_URL_KEY)||localStorage.getItem('yawaragi_nisshi_gas_url')||READONLY_GAS_URL); }
 function setOpsGasUrl(url){ if(!IS_READONLY) localStorage.setItem(OPS_GAS_URL_KEY, url); }
 
@@ -3018,8 +3021,7 @@ function showStatusMenu(key,name,e){
   const cur=D[key].userStatus[name]||'';
   const items=[
     {val:'',     label:'利用（通常）', color:'#fff',    border:'#999'},
-    {val:'absent',label:'休み',       color:'#d0d0d0', border:'#999'},
-    {val:'longabsent',label:'長期休', color:'#a0a0a0', border:'#666'},
+    // 休み・長期休はyawaragiボード「出席予定」タブで登録（一本化）
     {val:'walk',  label:'徒歩',       color:'#e3f2fd', border:'#1565c0'},
     {val:'family',label:'家族送迎',   color:'#e8f5e9', border:'#2e7d32'},
     {val:'pickonly',label:'迎えのみ（行きだけ）',color:'#e8eaf6', border:'#283593'},
@@ -3034,6 +3036,11 @@ function showStatusMenu(key,name,e){
   const menu=document.createElement('div');
   menu.className='st-menu';
   menu.id='st-menu-popup';
+  // 休み・長期休登録の誘導文（yawaragiボードへの一本化）
+  const hint=document.createElement('div');
+  hint.style.cssText='padding:8px 12px;font-size:11px;color:#666;background:#fff3e0;border-bottom:1px solid #ddd;line-height:1.4;';
+  hint.innerHTML='ℹ️ 休み・長期休みは<br><strong>yawaragiボード「出席予定」</strong>から登録';
+  menu.appendChild(hint);
   items.forEach(item=>{
     const row=document.createElement('div');
     row.className='st-menu-item'+(cur===item.val?' active':'');
@@ -6489,6 +6496,125 @@ function applyBoardAbsences(dateStr){
   });
 }
 
+// ========== yawaragiボード「出席予定」からの休み同期 fetch版 (2026-05-06追加) ==========
+function _absenceCurrentDate(){
+  return D && D.date ? D.date : '';
+}
+
+async function fetchAbsencesFromBoard(dateStr){
+  if(!BOARD_GAS_URL) return;
+  const ds = dateStr || _absenceCurrentDate();
+  if(!ds) return;
+  try {
+    const url = BOARD_GAS_URL + '?action=getAbsences&date=' + ds + '&t=' + Date.now();
+    const res = await fetch(url);
+    if(!res.ok){
+      console.warn('[absence] HTTP ' + res.status);
+      return;
+    }
+    const data = await res.json();
+    if(!data || !Array.isArray(data.absences)){
+      console.warn('[absence] invalid response', data);
+      return;
+    }
+    applyAbsencesToUserStatus(data.absences);
+  } catch(e){
+    console.warn('[absence] fetch failed', e);
+    // 失敗時は既存のuserStatusはクリアしない（4/28事件の教訓）
+  }
+}
+
+function applyAbsencesToUserStatus(absences){
+  if(!D) return;
+  let changed = false;
+
+  ['am','pm'].forEach(unit => {
+    const u = D[unit];
+    if(!u) return;
+    if(!u.userStatus) u.userStatus = {};
+    if(!u.userStatusBeforeAbsence) u.userStatusBeforeAbsence = {};
+
+    // (1) ボード側にある休みを反映（最優先で上書き、元状態は退避）
+    absences.forEach(a => {
+      const isUnitMatch = (a.unit === '終日') ||
+                          (a.unit === '午前' && unit === 'am') ||
+                          (a.unit === '午後' && unit === 'pm');
+      if(!isUnitMatch) return;
+      const name = a.name;
+      const cur = u.userStatus[name] || '';
+      if(cur === a.type) return;  // 既に同じ状態
+      // 元状態が休み以外（walk/family/trial等）なら退避
+      if(cur && cur !== 'absent' && cur !== 'longabsent'){
+        u.userStatusBeforeAbsence[name] = cur;
+      }
+      u.userStatus[name] = a.type;
+      changed = true;
+    });
+
+    // (2) ボード側で取り消された休みを解除（退避状態があれば復元）
+    Object.keys(u.userStatus).forEach(name => {
+      const cur = u.userStatus[name];
+      if(cur !== 'absent' && cur !== 'longabsent') return;
+      const stillAbsent = absences.some(a => {
+        if(a.name !== name) return false;
+        return (a.unit === '終日') ||
+               (a.unit === '午前' && unit === 'am') ||
+               (a.unit === '午後' && unit === 'pm');
+      });
+      if(!stillAbsent){
+        if(u.userStatusBeforeAbsence[name]){
+          u.userStatus[name] = u.userStatusBeforeAbsence[name];
+          delete u.userStatusBeforeAbsence[name];
+        } else {
+          delete u.userStatus[name];
+        }
+        changed = true;
+      }
+    });
+  });
+
+  if(changed){
+    if(typeof autoSave === 'function') autoSave();
+    if(typeof render === 'function') render();
+  }
+}
+
+let _absencePollTimer = null;
+let _absenceBoardChannel = null;
+
+function startAbsenceSync(){
+  // (A) 起動時に1回取得
+  fetchAbsencesFromBoard();
+
+  // (B) 10秒ポーリング
+  if(_absencePollTimer) clearInterval(_absencePollTimer);
+  _absencePollTimer = setInterval(() => {
+    fetchAbsencesFromBoard();
+  }, ABSENCE_POLL_MS);
+
+  // (C) タブをアクティブにした瞬間に即取得
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible'){
+      fetchAbsencesFromBoard();
+    }
+  });
+
+  // (D) BroadcastChannel: 同一ブラウザ内のyawaragiボードからの通知を受信
+  try {
+    _absenceBoardChannel = new BroadcastChannel('yawaragi-absence');
+    _absenceBoardChannel.onmessage = (ev) => {
+      if(ev.data && ev.data.type === 'updated'){
+        const target = ev.data.date;
+        if(!target || target === _absenceCurrentDate()){
+          fetchAbsencesFromBoard();
+        }
+      }
+    };
+  } catch(e){
+    console.info('[absence] BroadcastChannel not supported:', e);
+  }
+}
+
 // ═══════════════════════════════════════════════
 // 初期化
 // ═══════════════════════════════════════════════
@@ -6581,6 +6707,7 @@ async function initApp(){
   loadDay(defaultDate);
   render();
   applyBoardAbsences(defaultDate);
+  startAbsenceSync();  // 2026-05-06追加: fetch版ポーリング + visibilitychange + BroadcastChannel
   if(!IS_READONLY) addNewUsers({auto:true});
   if(!IS_READONLY) opsAutoBackup();
   if(IS_READONLY) roUpdateStatus('最終更新: '+new Date().toLocaleTimeString('ja-JP'));
