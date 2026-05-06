@@ -6496,117 +6496,41 @@ function applyBoardAbsences(dateStr){
   });
 }
 
-// ========== yawaragiボード「出席予定」からの休み同期 fetch版 (2026-05-06追加) ==========
+// ========== yawaragiボード「出席予定」からの休み同期 (2026-05-06追加) ==========
+// 既存の applyBoardAbsences (line 6460+) を、ポーリング・タブ切替・BroadcastChannelの3経路でも起動。
+// 既存ロジック（家族送迎/徒歩送迎の理由判定・キャッシュ・再開バッジ）をそのまま活用する。
 function _absenceCurrentDate(){
   return D && D.date ? D.date : '';
-}
-
-async function fetchAbsencesFromBoard(dateStr){
-  if(!BOARD_GAS_URL) return;
-  const ds = dateStr || _absenceCurrentDate();
-  if(!ds) return;
-  try {
-    const url = BOARD_GAS_URL + '?action=getAbsences&date=' + ds + '&t=' + Date.now();
-    const res = await fetch(url);
-    if(!res.ok){
-      console.warn('[absence] HTTP ' + res.status);
-      return;
-    }
-    const data = await res.json();
-    if(!data || !Array.isArray(data.absences)){
-      console.warn('[absence] invalid response', data);
-      return;
-    }
-    applyAbsencesToUserStatus(data.absences);
-  } catch(e){
-    console.warn('[absence] fetch failed', e);
-    // 失敗時は既存のuserStatusはクリアしない（4/28事件の教訓）
-  }
-}
-
-function applyAbsencesToUserStatus(absences){
-  if(!D) return;
-  let changed = false;
-
-  ['am','pm'].forEach(unit => {
-    const u = D[unit];
-    if(!u) return;
-    if(!u.userStatus) u.userStatus = {};
-    if(!u.userStatusBeforeAbsence) u.userStatusBeforeAbsence = {};
-
-    // (1) ボード側にある休みを反映（最優先で上書き、元状態は退避）
-    absences.forEach(a => {
-      const isUnitMatch = (a.unit === '終日') ||
-                          (a.unit === '午前' && unit === 'am') ||
-                          (a.unit === '午後' && unit === 'pm');
-      if(!isUnitMatch) return;
-      const name = a.name;
-      const cur = u.userStatus[name] || '';
-      if(cur === a.type) return;  // 既に同じ状態
-      // 元状態が休み以外（walk/family/trial等）なら退避
-      if(cur && cur !== 'absent' && cur !== 'longabsent'){
-        u.userStatusBeforeAbsence[name] = cur;
-      }
-      u.userStatus[name] = a.type;
-      changed = true;
-    });
-
-    // (2) ボード側で取り消された休みを解除（退避状態があれば復元）
-    Object.keys(u.userStatus).forEach(name => {
-      const cur = u.userStatus[name];
-      if(cur !== 'absent' && cur !== 'longabsent') return;
-      const stillAbsent = absences.some(a => {
-        if(a.name !== name) return false;
-        return (a.unit === '終日') ||
-               (a.unit === '午前' && unit === 'am') ||
-               (a.unit === '午後' && unit === 'pm');
-      });
-      if(!stillAbsent){
-        if(u.userStatusBeforeAbsence[name]){
-          u.userStatus[name] = u.userStatusBeforeAbsence[name];
-          delete u.userStatusBeforeAbsence[name];
-        } else {
-          delete u.userStatus[name];
-        }
-        changed = true;
-      }
-    });
-  });
-
-  if(changed){
-    if(typeof autoSave === 'function') autoSave();
-    if(typeof render === 'function') render();
-  }
 }
 
 let _absencePollTimer = null;
 let _absenceBoardChannel = null;
 
 function startAbsenceSync(){
-  // (A) 起動時に1回取得
-  fetchAbsencesFromBoard();
-
-  // (B) 10秒ポーリング
+  // (A) 10秒ポーリング
   if(_absencePollTimer) clearInterval(_absencePollTimer);
   _absencePollTimer = setInterval(() => {
-    fetchAbsencesFromBoard();
+    const ds = _absenceCurrentDate();
+    if(ds && typeof applyBoardAbsences === 'function') applyBoardAbsences(ds);
   }, ABSENCE_POLL_MS);
 
-  // (C) タブをアクティブにした瞬間に即取得
+  // (B) タブをアクティブにした瞬間に即取得
   document.addEventListener('visibilitychange', () => {
     if(document.visibilityState === 'visible'){
-      fetchAbsencesFromBoard();
+      const ds = _absenceCurrentDate();
+      if(ds && typeof applyBoardAbsences === 'function') applyBoardAbsences(ds);
     }
   });
 
-  // (D) BroadcastChannel: 同一ブラウザ内のyawaragiボードからの通知を受信
+  // (C) BroadcastChannel: 同一ブラウザ内のyawaragiボードからの通知を受信
   try {
     _absenceBoardChannel = new BroadcastChannel('yawaragi-absence');
     _absenceBoardChannel.onmessage = (ev) => {
       if(ev.data && ev.data.type === 'updated'){
         const target = ev.data.date;
-        if(!target || target === _absenceCurrentDate()){
-          fetchAbsencesFromBoard();
+        const ds = _absenceCurrentDate();
+        if(ds && (!target || target === ds) && typeof applyBoardAbsences === 'function'){
+          applyBoardAbsences(ds);
         }
       }
     };
