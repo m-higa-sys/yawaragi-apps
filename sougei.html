@@ -47,6 +47,55 @@ body{font-family:'Noto Sans JP',sans-serif;background:#fff;color:#222;font-size:
 /* ── カレンダーモーダル ── */
 .cal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.3);z-index:500;justify-content:center;align-items:flex-start;padding-top:60px;}
 .cal-overlay.show{display:flex;}
+/* ── 今月のシフト モーダル ── */
+.mshift-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:flex-start;justify-content:center;overflow:auto;padding:20px 10px;}
+.mshift-overlay.show{display:flex;}
+.mshift-box{background:#fff;border-radius:8px;padding:12px;max-width:1400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,0.3);}
+.mshift-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;border-bottom:1px solid #ddd;padding-bottom:8px;}
+.mshift-title{font-size:16px;font-weight:bold;margin-right:auto;}
+.mshift-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
+.mshift-controls button{padding:4px 10px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;background:#fff;}
+.mshift-controls button:hover{background:#f0f0f0;}
+.mshift-controls .btn-edit{background:#1976d2;color:#fff;border-color:#1565c0;}
+.mshift-controls .btn-edit:hover{background:#1565c0;}
+.mshift-controls .btn-print{background:#0d9668;color:#fff;border-color:#0a7e56;}
+.mshift-month{font-size:14px;font-weight:bold;padding:0 10px;}
+.mshift-table-wrap{overflow:auto;max-height:70vh;border:1px solid #ddd;border-radius:4px;}
+.mshift-table{border-collapse:collapse;font-size:11px;width:max-content;min-width:100%;}
+.mshift-table th,.mshift-table td{border:1px solid #ccc;padding:1px 3px;text-align:center;height:24px;min-width:32px;white-space:nowrap;}
+.mshift-table th{background:#f5f5f5;font-weight:normal;position:sticky;top:0;z-index:3;}
+.mshift-table th.staff-h,.mshift-table td.staff-h{text-align:left;padding:1px 8px;background:#f5f5f5;position:sticky;left:0;z-index:2;min-width:80px;font-weight:bold;}
+.mshift-table th.staff-h{z-index:4;}
+.mshift-table th.dow-sat{background:#e3f2fd;color:#1565c0;}
+.mshift-table th.dow-sun{background:#ffcdd2;color:#c62828;}
+.mshift-table td.cell{font-weight:bold;font-size:11px;}
+.mshift-table td.cell.full{background:#fff59d;color:#000;}
+.mshift-table td.cell.short{background:#fff59d;color:#000;}
+.mshift-table td.cell.escort{background:#e0e0e0;color:#000;}
+.mshift-table td.cell.off{background:#ffcdd2;color:#b71c1c;}
+.mshift-table td.cell.leave{background:#ffe0b2;color:#e65100;}
+.mshift-table td.cell.half-leave{background:#f8bbd0;color:#ad1457;}
+.mshift-table td.summary{background:#f9fbe7;font-weight:bold;}
+.mshift-table tr.summary-row td{background:#f9fbe7;font-size:10px;}
+/* zebra: 偶数行の空セル・スタッフ名セルを薄グレー */
+.mshift-table tbody tr:nth-child(even) td:not(.cell):not(.staff-h):not(.summary){background:#f5f5f5;}
+.mshift-table tbody tr:nth-child(even) td.staff-h{background:#e8e8e8;}
+/* 今日の列ハイライト */
+.mshift-table th.today-col{background:#ffe0b2 !important;color:#e65100;font-weight:bold;}
+.mshift-table td.today-col{border-left:2px solid #ff9800 !important;border-right:2px solid #ff9800 !important;}
+.mshift-table th.today-col{border-left:2px solid #ff9800;border-right:2px solid #ff9800;}
+.mshift-table td.today-col:not(.cell){background:#fff8e1;}
+.mshift-table tr.summary-row td.today-col{background:#ffe0b2 !important;}
+.mshift-empty{padding:40px;text-align:center;color:#666;}
+.mshift-empty .empty-title{font-size:14px;font-weight:bold;color:#c62828;margin-bottom:8px;}
+@media print {
+  body > *:not(.mshift-overlay){display:none !important;}
+  .mshift-overlay{position:static !important;background:#fff !important;display:block !important;padding:0;}
+  .mshift-box{box-shadow:none;max-width:100%;}
+  .mshift-controls{display:none !important;}
+  .mshift-table{font-size:9px;}
+  .mshift-table th,.mshift-table td{height:18px;min-width:22px;}
+}
 .cal-box{background:#fff;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.2);padding:12px;min-width:300px;}
 .cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
 .cal-header button{padding:4px 10px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-size:13px;font-weight:700;background:#fff;}
@@ -154,6 +203,8 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 .st-absent{background:#d0d0d0 !important;color:#888 !important;text-decoration:line-through;}
 .st-longabsent{background:#a0a0a0 !important;color:#fff !important;text-decoration:line-through;font-weight:700;}
 .st-longabsent::after{content:' 長期休';font-size:9px;font-weight:900;}
+.st-resumed{background:#a7f3d0 !important;color:#065f46 !important;font-weight:900;}
+.st-resumed::after{content:' 再開';font-size:9px;font-weight:900;color:#065f46;}
 .st-walk{background:#e3f2fd !important;color:#1565c0 !important;}
 .st-walk::after{content:' 徒';font-size:9px;font-weight:700;}
 .st-family{background:#e8f5e9 !important;color:#2e7d32 !important;}
@@ -363,6 +414,8 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   .st-absent{background:#d0d0d0!important;color:#888!important;text-decoration:line-through;}
   .st-longabsent{background:#a0a0a0!important;color:#fff!important;text-decoration:line-through;font-weight:700;}
   .st-longabsent::after{content:' 長期休';font-size:7pt;font-weight:900;}
+  .st-resumed{background:#a7f3d0!important;color:#065f46!important;font-weight:900;border:2px solid #047857!important;}
+  .st-resumed::after{content:' 再開';font-size:7pt;color:#065f46;}
   .st-walk::after{content:' 徒';font-size:7pt;}
   .st-family::after{content:' 家';font-size:7pt;}
   .st-pickonly::after{content:' 迎のみ';font-size:7pt;}
@@ -388,7 +441,7 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 .readonly .add-row-btn,.readonly .del-btn,.readonly .del-col,.readonly .btn-rider,
 .readonly .no-print,.readonly .wage-panel,.readonly .health-check-panel,
 .readonly .mt-panel,.readonly .cap-warn,.readonly .back-link,
-.readonly .collapse-header{display:none!important;}
+.readonly .collapse-header,.readonly #btn-mshift{display:none!important;}
 .readonly .attendance-area{display:flex!important;}
 .readonly .sticky-top{position:static;border-bottom:none;padding:0;}
 @media print{.readonly-bar{display:none!important;}}
@@ -414,25 +467,38 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 
 <div class="ctrl no-print">
   <input type="date" id="inp-date" onchange="changeDate(this.value)">
+
+  <!-- 日常操作 -->
   <button class="btn-primary" onclick="saveData()">💾 保存</button>
   <button onclick="undo()" id="btn-undo" disabled>↩ 元に戻す</button>
-  <button onclick="window.print()">🖨 印刷</button>
-  <button onclick="openLayoutPanel()" style="background:#f3e5f5;border-color:#9c27b0;color:#6a1b9a">⚙ レイアウト</button>
-  <button onclick="toggleConfirm()" id="btn-confirm" style="padding:3px 14px;font-size:12px;font-weight:900;border-radius:5px;cursor:pointer;font-family:inherit;border:2px solid #1976d2;background:#e3f2fd;color:#1565c0">📢 確定して公開</button>
-  <button onclick="refreshUsers()" style="background:#e8f5e9;border-color:#4caf50;color:#2e7d32">🔄 利用者を更新</button>
-  <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="background:#e3f2fd;border-color:#1976d2;color:#1565c0">📋 利用者台帳</button>
-  <button onclick="restoreBackup()" style="background:#ffebee;border-color:#d32f2f;color:#b71c1c">🔙 復元</button>
-  <button onclick="clearDay()">🗑 この日をクリア</button>
   <button onclick="copyFromPrevWeek()" id="btn-copy" style="background:#fff3e0;border-color:#ff9800;color:#e65100">📋 前週からコピー</button>
-  <button onclick="exportOpsJSON()" style="background:#4caf50;color:#fff;border-color:#388e3c;font-weight:bold">保存</button>
-  <button onclick="document.getElementById('importOpsFile').click()" style="background:#7b1fa2;color:#fff;border-color:#6a1b9a;font-weight:bold">読込</button>
-  <button onclick="exportRoutesForTransport()" style="background:#f59e0b;color:#fff;border-color:#d97706;font-weight:bold">🚐 ルート書出</button>
-  <input type="file" id="importOpsFile" accept=".json" style="display:none" onchange="importOpsJSON(event)">
+  <button onclick="toggleConfirm()" id="btn-confirm" style="padding:3px 14px;font-size:12px;font-weight:900;border-radius:5px;cursor:pointer;font-family:inherit;border:2px solid #1976d2;background:#e3f2fd;color:#1565c0">📢 確定して公開</button>
+  <button onclick="window.print()">🖨 印刷</button>
+
+  <span class="ctrl-sep" style="display:inline-block;width:1px;height:18px;background:#ccc;margin:0 6px;vertical-align:middle"></span>
+
+  <!-- データ・週次 -->
+  <button onclick="addNewUsers({auto:false})" style="background:#e8f5e9;border-color:#4caf50;color:#2e7d32" title="台帳に追加された新規利用者を表に追加します">➕ 新規利用者を追加</button>
+  <button onclick="cleanupEndedUsers()" style="background:#f5f5f5;border-color:#999;color:#555" title="台帳から消えた利用者を表からも削除します（チェックボックスで選択）">🗑 終了者を整理</button>
+  <button onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')" style="background:#e3f2fd;border-color:#1976d2;color:#1565c0">📋 利用者台帳</button>
+  <button onclick="exportOpsJSON()" style="background:#4caf50;color:#fff;border-color:#388e3c;font-weight:bold" title="出勤送迎データをJSONバックアップとしてPCに書き出す">💾 バックアップ書出</button>
+
+  <span class="ctrl-sep" style="display:inline-block;width:1px;height:18px;background:#ccc;margin:0 6px;vertical-align:middle"></span>
+
+  <!-- 日付ナビ -->
   <div class="week-nav" id="week-nav"></div>
   <button onclick="openCalendar()" style="margin-left:4px">📅 カレンダー</button>
+  <button onclick="openMonthShift()" id="btn-mshift" style="background:#fff3e0;border-color:#ff9800;color:#e65100">📋 今月のシフト</button>
+
+  <span class="ctrl-sep" style="display:inline-block;width:1px;height:18px;background:#ccc;margin:0 6px;vertical-align:middle"></span>
+
+  <!-- 設定・緊急 -->
+  <button onclick="openLayoutPanel()" style="background:#f3e5f5;border-color:#9c27b0;color:#6a1b9a">⚙ レイアウト</button>
   <button onclick="setupCloudSync()" id="btn-cloud" style="background:#e3f2fd;border-color:#1976d2;color:#1565c0">☁️</button>
-  <button onclick="syncSchedTimesToStaff()" style="background:#e8f5e9;border-color:#43a047;color:#2e7d32;font-weight:bold" title="今日の送迎時間をスタッフ用ページに共有">📤 送迎時間を共有</button>
-  <a class="back-link" href="送迎管理システム.html">← 送迎管理へ戻る</a>
+  <button onclick="restoreBackup()" style="background:#ffebee;border-color:#d32f2f;color:#b71c1c">🔙 復元</button>
+  <button onclick="clearDay()" style="background:#fff8e1;border-color:#ff8f00;color:#e65100" title="この日のデータを全削除（取消不可・緊急時のみ）">🗑 この日をクリア</button>
+  <button onclick="syncSchedTimesToStaff()" style="background:#e8f5e9;border-color:#43a047;color:#2e7d32;font-weight:bold" title="送迎時間をスタッフ用ページに手動で再共有（通常は自動同期で不要・GAS復旧時等の緊急用）">📤 送迎時間を共有</button>
+
   <span id="board-sync-status" style="font-size:11px;margin-left:6px;color:#64748b;display:none"></span>
 </div>
 <div class="readonly-bar">
@@ -448,6 +514,9 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 <div class="cal-overlay" id="cal-overlay" onclick="if(event.target===this)closeCalendar()">
   <div class="cal-box" id="cal-box"></div>
 </div>
+<div class="mshift-overlay" id="mshift-overlay" onclick="if(event.target===this)closeMonthShift()">
+  <div class="mshift-box" id="mshift-box"></div>
+</div>
 
 <div id="app"></div>
 
@@ -458,7 +527,7 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
     var els=document.body.children;
     for(var i=els.length-1;i>=0;i--){
       var el=els[i];
-      if(el.id==='app'||el.id==='cal-overlay'||el.tagName==='SCRIPT'||el.tagName==='STYLE'||el.classList.contains('ctrl')) continue;
+      if(el.id==='app'||el.id==='cal-overlay'||el.id==='mshift-overlay'||el.tagName==='SCRIPT'||el.tagName==='STYLE'||el.classList.contains('ctrl')) continue;
       el.remove();
     }
   }
@@ -558,6 +627,39 @@ window.addEventListener('pagehide', function(){ flushCloudSync(); });
 document.addEventListener('visibilitychange', function(){
   if(document.visibilityState === 'hidden') flushCloudSync();
 });
+
+// 全期間ローカルデータをクラウドへ一括アップロード（賞与分析用）
+async function uploadAllLocalData(){
+  const url = getOpsGasUrl();
+  if(!url){ alert('GAS URLが設定されていません。先に☁️ボタンから設定してください。'); return; }
+  let all = {};
+  try { all = JSON.parse(localStorage.getItem('yawaragi_daily_ops')||'{}'); } catch(e){ alert('ローカルデータの読み込みに失敗しました'); return; }
+  const dates = Object.keys(all).sort();
+  if(dates.length===0){ alert('ローカルデータがありません'); return; }
+  if(!confirm(dates.length+'日分のローカルデータをクラウドへ一括アップロードします。\n（'+dates[0]+' 〜 '+dates[dates.length-1]+'）\n\n5〜10分かかる場合があります。よろしいですか？')) return;
+
+  const btn = event && event.target;
+  if(btn){ btn.disabled=true; btn.textContent='📤 同期中 0/'+dates.length; }
+  let success=0, fail=0;
+  for(let i=0;i<dates.length;i++){
+    const date = dates[i];
+    const sendData = {};
+    sendData[date] = all[date];
+    const payload = { type:'yawaragi_daily_ops', dailyOps: sendData };
+    try {
+      await fetch(url, { method:'POST', mode:'no-cors', body: JSON.stringify(payload), keepalive:true });
+      success++;
+    } catch(e){
+      console.warn('一括同期失敗', date, e);
+      fail++;
+    }
+    if(btn){ btn.textContent='📤 同期中 '+(i+1)+'/'+dates.length; }
+    // GAS負荷軽減で200msウェイト
+    await new Promise(r=>setTimeout(r, 200));
+  }
+  if(btn){ btn.disabled=false; btn.textContent='📤 全期間同期'; }
+  alert('完了\n成功: '+success+'日分\n失敗: '+fail+'日分\n\nクラウドのスプレッドシートで確認してください。');
+}
 
 async function cloudSyncOps(){
   const url = getOpsGasUrl();
@@ -673,7 +775,13 @@ function setupCloudSync(){
     alert('☁️ クラウド同期を解除しました');
     updateCloudBtn('error');
   } else {
-    setOpsGasUrl(input.trim());
+    var input2 = input.trim();
+    // 中継GAS（送迎時間一覧用READONLY_GAS_URL）の誤登録を防止
+    if(input2 === READONLY_GAS_URL){
+      alert('⚠️ そのURLは「送迎時間一覧」用の中継GASです！\n\n出勤＆送迎表のクラウド同期には使えません\n（POSTデータが黙って破棄されて雲が☁️✗になります）\n\n正しい「送迎日誌GAS」のURLを入れ直してください。');
+      return;
+    }
+    setOpsGasUrl(input2);
     alert('☁️ クラウド同期を設定しました！\n保存するたびに自動でクラウドに送ります');
     cloudSyncOps(); // 初回同期
   }
@@ -751,6 +859,221 @@ function getDow(dateStr){
 }
 
 // ═══════════════════════════════════════════════
+// 長期休み送迎付替：定位置自動学習・復元（MVP）
+// 設計書: docs/superpowers/specs/2026-04-26-長期休み送迎付替機能-design.md
+// ═══════════════════════════════════════════════
+const STD_POS_KEY = 'yawaragi_standard_positions';
+
+// 定位置記録の対象外ステータス（送迎ルート対象外 or 不安定状態）
+function isStdPosExcluded(st){
+  return st==='absent' || st==='longabsent' || st==='walk' || st==='family'
+      || st==='trial' || st==='droponly' || st==='pickonly' || st==='new';
+}
+
+function loadStandardPositions(){
+  try{
+    return JSON.parse(localStorage.getItem(STD_POS_KEY) || '{}');
+  }catch(e){
+    console.warn('[stdPos] localStorage破損→初期化:', e);
+    return {};
+  }
+}
+function saveStandardPositions(master){
+  try{
+    localStorage.setItem(STD_POS_KEY, JSON.stringify(master));
+  }catch(e){
+    console.warn('[stdPos] 保存失敗:', e);
+  }
+}
+
+// 利用者の現在位置を全ルートから探す。{route, stop} または null
+function findUserPosition(routes, name){
+  if(!routes || !name) return null;
+  for(let r=0; r<routes.length; r++){
+    const stops = (routes[r] && routes[r].stops) || [];
+    for(let s=0; s<stops.length; s++){
+      if(stops[s] && stops[s].user === name) return {route:r, stop:s};
+    }
+  }
+  return null;
+}
+
+// autoSave連動：当日の各利用者の定位置を曜日マスタに記録
+function updateStandardPositions(dateStr){
+  try{
+    if(!dateStr) return;
+    const dow = getDow(dateStr);
+    if(!dow || dow==='日' || dow==='土') return; // 営業日のみ
+    const master = loadStandardPositions();
+
+    ['am','pm'].forEach(unitKey=>{
+      const unit = D[unitKey]; if(!unit) return;
+      const userStatus = unit.userStatus || {};
+      (unit.users||[]).forEach(name=>{
+        if(!name) return;
+        const st = userStatus[name] || '';
+        if(isStdPosExcluded(st)) return;
+        const pickPos = findUserPosition(unit.pick, name);
+        const dropPos = findUserPosition(unit.drop, name);
+        if(!pickPos && !dropPos) return; // 送迎ルート対象外
+
+        if(!master[name]) master[name] = {};
+        if(!master[name][dow]) master[name][dow] = {am:null, pm:null};
+        // 既存の他unitスロットは保持して、当該unitだけ上書き
+        const slot = master[name][dow][unitKey] || {};
+        if(pickPos) slot.pick = pickPos; else delete slot.pick;
+        if(dropPos) slot.drop = dropPos; else delete slot.drop;
+        master[name][dow][unitKey] = (slot.pick||slot.drop) ? slot : null;
+        master[name].updatedAt = new Date().toISOString();
+      });
+    });
+    saveStandardPositions(master);
+  }catch(e){
+    console.warn('[stdPos] updateStandardPositions error:', e);
+  }
+}
+
+// 指定unit・指定nameの定位置に復元する
+// 戻り値: {restored:[{type,to,evacuated?}], conflicts:[{type,reason}], skipped:[]}
+function restoreStandardPosition(name, unitKey){
+  const log = {restored:[], conflicts:[], skipped:[]};
+  if(!name || !D || !D.date) return log;
+  const dow = getDow(D.date);
+  const master = loadStandardPositions();
+  const std = master[name] && master[name][dow] && master[name][dow][unitKey];
+  if(!std){ log.skipped.push({reason:'定位置データなし'}); return log; }
+
+  const unit = D[unitKey]; if(!unit) return log;
+
+  ['pick','drop'].forEach(type=>{
+    const target = std[type]; if(!target) return;
+    const routes = unit[type] || [];
+    const tRoute = routes[target.route];
+    if(!tRoute || !tRoute.stops || !tRoute.stops[target.stop]){
+      log.conflicts.push({type, reason:'ルート構造変化（範囲外）'});
+      return;
+    }
+    const targetStop = tRoute.stops[target.stop];
+    const occupant = targetStop.user || '';
+
+    // 復帰者の同type内現在位置（重複配置を避けるため除去）
+    const currentPos = findUserPosition(routes, name);
+
+    if(!occupant || occupant===name){
+      if(currentPos && (currentPos.route!==target.route || currentPos.stop!==target.stop)){
+        routes[currentPos.route].stops[currentPos.stop].user = '';
+      }
+      targetStop.user = name;
+      log.restored.push({type, to:target});
+      return;
+    }
+
+    // 占有者あり → 占有者の定位置に退避（1段だけ）
+    const occStd = master[occupant] && master[occupant][dow] && master[occupant][dow][unitKey] && master[occupant][dow][unitKey][type];
+    if(!occStd){
+      log.conflicts.push({type, occupant, reason:'占有者「'+occupant+'」の定位置データなし'});
+      return;
+    }
+    const occRoute = routes[occStd.route];
+    if(!occRoute || !occRoute.stops || !occRoute.stops[occStd.stop]){
+      log.conflicts.push({type, occupant, reason:'占有者「'+occupant+'」の定位置がルート範囲外'});
+      return;
+    }
+    const occTarget = occRoute.stops[occStd.stop];
+    const occOcc = occTarget.user || '';
+    if(occOcc && occOcc!==occupant){
+      log.conflicts.push({type, occupant, reason:'占有者「'+occupant+'」の定位置にも別の人（'+occOcc+'）'});
+      return;
+    }
+    // 退避→復帰
+    targetStop.user = '';
+    occTarget.user = occupant;
+    if(currentPos && (currentPos.route!==target.route || currentPos.stop!==target.stop)){
+      // 退避先と現在位置が偶然同じケースを避ける
+      if(!(currentPos.route===occStd.route && currentPos.stop===occStd.stop)){
+        routes[currentPos.route].stops[currentPos.stop].user = '';
+      }
+    }
+    targetStop.user = name;
+    log.restored.push({type, to:target, evacuated:{user:occupant, to:occStd}});
+  });
+
+  return log;
+}
+
+function _typeLabelJa(t){ return t==='pick' ? '迎え' : (t==='drop' ? '送り' : t); }
+function _unitLabelJa(u){ return u==='am' ? '午前' : (u==='pm' ? '午後' : u); }
+
+function confirmRestoreDialog(name, std, unitKey, dow){
+  const lines = [];
+  lines.push('✅ '+name+'様が長期休みから復帰します。');
+  lines.push('');
+  lines.push('元の送迎位置（'+_unitLabelJa(unitKey)+'・'+dow+'曜日）に戻しますか？');
+  ['pick','drop'].forEach(type=>{
+    const p = std[type]; if(!p) return;
+    const routes = (D[unitKey] && D[unitKey][type]) || [];
+    let cur = '';
+    if(routes[p.route] && routes[p.route].stops && routes[p.route].stops[p.stop]){
+      const u = routes[p.route].stops[p.stop].user;
+      cur = u ? '現在：'+u+'様' : '空き';
+    } else {
+      cur = '⚠ ルート範囲外';
+    }
+    lines.push('・'+_typeLabelJa(type)+'：ルート'+(p.route+1)+'の'+(p.stop+1)+'番目（'+cur+'）');
+  });
+  lines.push('');
+  lines.push('戻す場合、占有者は各自の定位置に自動退避します。玉突きは警告します。');
+  return confirm(lines.join('\n'));
+}
+
+function showRestoreResultDialog(name, unitKey, log){
+  const lines = [];
+  if(log.restored.length>0){
+    lines.push('✅ '+name+'様（'+_unitLabelJa(unitKey)+'）を元の位置に戻しました。');
+  } else {
+    lines.push('ℹ '+name+'様（'+_unitLabelJa(unitKey)+'）の復元はスキップされました。');
+  }
+  const evac = log.restored.filter(r=>r.evacuated);
+  if(evac.length>0){
+    lines.push('');
+    lines.push('🔄 自動退避：');
+    evac.forEach(r=>{
+      const u = r.evacuated.user;
+      const t = r.evacuated.to;
+      lines.push('　・'+u+'様 → '+_typeLabelJa(r.type)+' ルート'+(t.route+1)+'の'+(t.stop+1)+'番目');
+    });
+  }
+  if(log.conflicts.length>0){
+    lines.push('');
+    lines.push('⚠ 玉突き発生（手動で調整してください）：');
+    log.conflicts.forEach(c=>{
+      lines.push('　・'+_typeLabelJa(c.type)+'：'+c.reason);
+    });
+  }
+  if(log.skipped.length>0 && log.restored.length===0 && log.conflicts.length===0){
+    lines.push('');
+    log.skipped.forEach(s=>lines.push('　・'+(s.reason||'スキップ')));
+  }
+  alert(lines.join('\n'));
+}
+
+// applyUserStatusからのフック：longabsent解除時の自動復元
+function handleLongAbsentResume(unitKey, name){
+  try{
+    if(!name || !D || !D.date) return;
+    const dow = getDow(D.date);
+    const master = loadStandardPositions();
+    const std = master[name] && master[name][dow] && master[name][dow][unitKey];
+    if(!std) return; // 定位置データなし → 通常解除のみ
+    if(!confirmRestoreDialog(name, std, unitKey, dow)) return;
+    const log = restoreStandardPosition(name, unitKey);
+    showRestoreResultDialog(name, unitKey, log);
+  }catch(e){
+    console.warn('[stdPos] handleLongAbsentResume error:', e);
+  }
+}
+
+// ═══════════════════════════════════════════════
 // 描画
 // ═══════════════════════════════════════════════
 function syncTrialUsers(){
@@ -807,6 +1130,9 @@ function syncTrialUsers(){
 }
 
 function render(){
+  // 再描画でスクロール位置がずれるのを防ぐため、現在位置を保存
+  const _saveScrollY = window.scrollY;
+  const _saveScrollX = window.scrollX;
   try{
   syncTrialUsers();
   const app=document.getElementById('app');
@@ -954,6 +1280,10 @@ function render(){
   autoSave();
   if(IS_READONLY) readonlyCleanup();
   if(!IS_READONLY) updateConfirmBtn();
+  // 描画後にスクロール位置を元の場所へ戻す（レイアウトシフトでズレるのを防止）
+  if(window.scrollY !== _saveScrollY || window.scrollX !== _saveScrollX){
+    window.scrollTo(_saveScrollX, _saveScrollY);
+  }
   }catch(e){
     console.error('render error:',e);
     document.getElementById('app').innerHTML='<div style="color:red;padding:20px;font-size:16px;font-weight:bold">⚠ 表示エラーが発生しました<br><br>エラー内容: '+e.message+'<br><br><button onclick="clearDay()" style="font-size:14px;padding:8px 16px">この日のデータをリセット</button></div>';
@@ -1127,11 +1457,12 @@ function renderUnit(title,key){
   shiftResult.errors.forEach(w=>{
     h+='<div class="cap-warn no-print" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;padding:4px 8px;font-weight:700">'+w+'</div>';
   });
-  // 確認（ギリギリ）→ OKで消せる
-  shiftResult.confirms.forEach((w,wi)=>{
-    const swk=key+'_sc_'+wi;
+  // 確認（ギリギリ）→ OKで消せる。キーは内容ベース（ドライバー名＋時間）で安定化
+  shiftResult.confirms.forEach(w=>{
+    const swk=key+'_'+w.okKey;
     if(!D.shiftWarnOk[swk]){
-      h+='<div class="cap-warn no-print" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;padding:4px 8px;font-weight:700">'+w+' <button style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.shiftWarnOk)D.shiftWarnOk={};D.shiftWarnOk[\''+swk+'\']=true;autoSave();render()">OK</button></div>';
+      const keySafe=swk.replace(/'/g,"\\'");
+      h+='<div class="cap-warn no-print" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;padding:4px 8px;font-weight:700">'+w.msg+' <button style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.shiftWarnOk)D.shiftWarnOk={};D.shiftWarnOk[\''+keySafe+'\']=true;autoSave();render()">OK</button></div>';
     }
   });
 
@@ -1450,6 +1781,8 @@ function breakTimeSelect(idx,current){
     opts+='<option value="'+t+'"'+(current===t?' selected':'')+'>'+t+'</option>';
   });
   opts+='<option value="送迎後"'+(current==='送迎後'?' selected':'')+'>送迎後</option>';
+  opts+='<option value="担会後"'+(current==='担会後'?' selected':'')+'>担会後</option>';
+  opts+='<option value="契約後"'+(current==='契約後'?' selected':'')+'>契約後</option>';
   return '<select class="sel-time" style="color:#333" onchange="D.breaks['+idx+'].time=this.value;autoSave();render()">'+opts+'</select>';
 }
 
@@ -1512,7 +1845,7 @@ function renderTelCalls(){
     // チェックボックス
     h+='<td class="tel-check" onclick="pushUndo();D.telCalls['+i+'].done=!D.telCalls['+i+'].done;autoSave();render()">'+(tc.done?'✅':'⬜')+'</td>';
     // 時間プルダウン
-    const times=['朝一','8:00','8:30','お昼前','11:30','12:00'];
+    const times=['朝一','8:00','8:30','10:30','11:00','お昼前','11:30','12:00'];
     h+='<td><select class="sel-time" style="color:#1565c0;font-size:11px" onchange="D.telCalls['+i+'].time=this.value;autoSave()">';
     h+='<option value="">--</option>';
     times.forEach(t=>{
@@ -1591,7 +1924,7 @@ function renderEvents(){
   otherEvents.forEach(({ev,i})=>{
     const hasCar=needsCar.includes(ev.type);
     h+='<tr>';
-    h+='<td style="vertical-align:middle"><select class="ev-type-select ev-type-'+ev.type+'" onchange="D.events['+i+'].type=this.value;autoSave();render()">';
+    h+='<td style="vertical-align:middle"><select class="ev-type-select ev-type-'+ev.type+'" onchange="D.events['+i+'].type=this.value;if(D.events['+i+'].time)calcBackTime('+i+');autoSave();render()">';
     h+='<option value=""'+(ev.type===''?' selected':'')+'> -- </option>';
     ['担会','契約','メモ'].forEach(t=>{
       h+='<option value="'+t+'"'+(ev.type===t?' selected':'')+'>'+t+'</option>';
@@ -1716,7 +2049,7 @@ function renderBreakClean(){
   if(D.events && D.breaks){
     D.events.forEach((ev,i)=>{
       if(!ev.staff || !ev.time || (ev.type!=='担会'&&ev.type!=='契約')) return;
-      const staffBreak=D.breaks.find(b=>b.name===ev.staff && b.time && b.time!=='送迎後');
+      const staffBreak=D.breaks.find(b=>b.name===ev.staff && b.time && b.time!=='送迎後' && b.time!=='担会後' && b.time!=='契約後');
       if(!staffBreak) return;
       const evMin=timeToMin(ev.time);
       const departMin=evMin-30;
@@ -1994,7 +2327,7 @@ function timeSelect(path,current,type){
   if(type==='am_dep'){
     for(let m=7*60+45;m<=8*60+45;m+=5) times.push(minToTime(m));
   } else {
-    for(let m=12*60;m<=13*60+25;m+=5) times.push(minToTime(m));
+    for(let m=11*60+30;m<=13*60+25;m+=5) times.push(minToTime(m));
   }
   let opts='<option value="">--</option>';
   times.forEach(t=>{
@@ -2049,7 +2382,10 @@ function checkDriverShiftWarnings(key){
           if(depMin<shiftMin){
             errors.push('⚠ '+driver+'の出発'+depTime+'が出勤'+shiftTime+'より前です！');
           } else if(depMin-shiftMin>=15){
-            confirms.push('⚠ '+driver+'：出勤'+shiftTime+'→出発'+depTime+'（'+(depMin-shiftMin)+'分早い）人件費大丈夫？');
+            confirms.push({
+              msg:'⚠ '+driver+'：出勤'+shiftTime+'→出発'+depTime+'（'+(depMin-shiftMin)+'分早い）人件費大丈夫？',
+              okKey:'sc_ss_'+driver+'_'+shiftTime+'_'+depTime
+            });
           }
         }
       }
@@ -2066,7 +2402,7 @@ function checkDriverShiftWarnings(key){
         const depMin=timeToMin(depTime);
         if(key==='pm'){
           // PM迎え → 休憩終了時間と比較
-          const brk=(D.breaks||[]).find(b=>b.name===driver&&b.time&&b.time!=='送迎後');
+          const brk=(D.breaks||[]).find(b=>b.name===driver&&b.time&&b.time!=='送迎後'&&b.time!=='担会後'&&b.time!=='契約後');
           if(brk){
             const brkStart=timeToMin(brk.time);
             const brkDur=parseInt(brk.duration)||60;
@@ -2076,7 +2412,10 @@ function checkDriverShiftWarnings(key){
               if(depMin<brkEnd){
                 errors.push('⚠ '+driver+'の出発'+depTime+'が休憩終了'+brkEndTime+'より前です！');
               } else if(depMin-brkEnd>=15){
-                confirms.push('⚠ '+driver+'：休憩終了'+brkEndTime+'→出発'+depTime+'（'+(depMin-brkEnd)+'分早い）人件費大丈夫？');
+                confirms.push({
+                  msg:'⚠ '+driver+'：休憩終了'+brkEndTime+'→出発'+depTime+'（'+(depMin-brkEnd)+'分早い）人件費大丈夫？',
+                  okKey:'sc_brk_'+driver+'_'+brkEndTime+'_'+depTime
+                });
               }
             }
           }
@@ -2087,7 +2426,10 @@ function checkDriverShiftWarnings(key){
             if(depMin<attMin){
               errors.push('⚠ '+driver+'の出発'+depTime+'が出勤'+att.time+'より前です！');
             } else if(depMin-attMin>=15){
-              confirms.push('⚠ '+driver+'：出勤'+att.time+'→出発'+depTime+'（'+(depMin-attMin)+'分早い）人件費大丈夫？');
+              confirms.push({
+                msg:'⚠ '+driver+'：出勤'+att.time+'→出発'+depTime+'（'+(depMin-attMin)+'分早い）人件費大丈夫？',
+                okKey:'sc_att_'+driver+'_'+att.time+'_'+depTime
+              });
             }
           }
         }
@@ -2184,7 +2526,7 @@ function checkBreakDriverWarnings(){
   const pmPickDrivers=[];
   (D.pm.pick||[]).forEach(r=>{ if(r.driver&&r.depTime) pmPickDrivers.push({name:r.driver,dep:r.depTime}); });
   D.breaks.forEach(b=>{
-    if(!b.name||!b.time||b.time==='送迎後') return;
+    if(!b.name||!b.time||b.time==='送迎後'||b.time==='担会後'||b.time==='契約後') return;
     const bStart=timeToMin(b.time);
     if(bStart<0) return;
     const bEnd=bStart+60; // 1時間
@@ -2272,7 +2614,7 @@ function checkFloorStaffCount(){
 
       // 休憩中（1時間）
       (D.breaks||[]).forEach(b=>{
-        if(!b.name||!b.time||b.time==='送迎後') return;
+        if(!b.name||!b.time||b.time==='送迎後'||b.time==='担会後'||b.time==='契約後') return;
         if(!floorNames.includes(b.name)) return;
         const bStart=timeToMin(b.time);
         if(bStart==null||bStart<0) return;
@@ -2496,6 +2838,7 @@ function userCellClass(st){
   if(st==='absent') return ' st-absent';
   if(st==='longabsent') return ' st-longabsent';
   if(st==='new') return ' st-new';
+  if(st==='resumed') return ' st-resumed';
   if(st==='walk') return ' st-walk';
   if(st==='family') return ' st-family';
   if(st==='pickonly') return ' st-pickonly';
@@ -2724,6 +3067,10 @@ function applyUserStatus(key,name,oldSt,newSt){
   } else {
     delete D[key].userStatus[name];
   }
+  // 長期休み解除（longabsent → 通常）：定位置への自動復元を提案
+  if(oldSt==='longabsent' && !newSt){
+    handleLongAbsentResume(key, name);
+  }
   // 欠席→復帰した時、ルートの定員オーバーをチェック
   if(isAbsentStatus(oldSt)&&!isAbsentStatus(newSt)){
     const warns=[];
@@ -2858,6 +3205,15 @@ function addAttendance(val){
   D.attendance.push({name:staff.name, time:staff.defaultStart});
   // 退社時間も追加
   D.leave.push({name:staff.name, time:''});
+  // 🔴 休憩時間も自動追加（送迎ドライバー以外のフロアスタッフ）
+  if(staff.type !== '送迎'){
+    if(!D.breaks) D.breaks=[];
+    // 既に休憩に登録済みの場合はスキップ
+    const alreadyExists = D.breaks.some(b => b.name === staff.name);
+    if(!alreadyExists){
+      D.breaks.push({time:'', name:staff.name, duration:'1時間'});
+    }
+  }
   render();
 }
 
@@ -2929,6 +3285,19 @@ let SHIFT_DATA = {
     higa:['-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-'],
     ookubo:['-','-','H','-','-','H','-','-','H','-','-','-','H','-','-','H','-','-','-','H','-','-','H','-','-','-','H','-','-','H'],
     ishikawa:['E1','E1','-','-','-','-','-','E1','E1','E1','-','-','E1','E1','-','E1','-','-','-','E1','-','-','-','E1','-','-','-','E1','E1','E1'],
+  },
+  '2026-05': {
+    katsumata:['B2','-','-','B2','B2','B2','B2','B2','-','-','B2','B2','B2','B2','B2','-','-','B2','B2','B2','B2','B2','-','-','B2','B2','B2','B2','B2','-','-'],
+    hoshino:['B2','-','-','B2','休','休','B2','B2','-','-','B2','B2','B2','B2','B2','-','-','B2','B2','B2','B2','B2','-','-','B2','B2','B2','B2','B2','-','-'],
+    shimoura:['C','-','-','休','C','C','C','休','-','-','休','C','C','-','C','-','-','-','C','-','C','C','-','-','-','C','C','C','休','-','-'],
+    kudou:['-','-','-','H','H','H','-','H','-','-','休','休','H','H','-','-','-','H','-','H','-','H','-','-','-','-','H','H','H','-','-'],
+    takayama:['E1','-','-','-','-','-','E1','E1','-','-','E1','-','E1','-','E1','-','-','E1','-','E1','-','E1','-','-','E1','-','E1','E1','E1','-','-'],
+    haruyama:['F','-','-','E1','F','休','-','F','-','-','F','F','-','E1','-','-','-','-','F','-','F','-','-','-','F','F','-','休','F','-','-'],
+    ono:['7②','-','-','-','7③','7③','7②','7②','-','-','7②','7②','-','7②','7②','-','-','7②','-','7②','7②','7②','-','-','7②','7②','7②','7②','-','-','-'],
+    hayashi:['-','-','-','7②','7②','7②','-','-','-','-','休','-','7②','-','7②','-','-','-','7②','-','-','7②','-','-','-','7②','休','-','7②','-','-'],
+    higa:['-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-','-'],
+    ookubo:['-','-','-','H','-','H','H','-','-','-','H','-','-','H','-','-','-','H','-','H','休','-','-','-','H','H','-','休','-','-','-'],
+    ishikawa:['休','-','-','-','E1','E1','-','休','-','-','休','E1','休','E1','E1','-','-','E1','E1','-','E1','-','-','-','E1','E1','休','E1','休','-','-'],
   }
 };
 
@@ -2947,40 +3316,85 @@ const SHIFT_DEFAULT_CODE = {
 };
 
 function loadShiftFromTable(){
+  let loaded = 0;
+
+  // ① 新形式: シフト作成.html が保存する yawaragi_shift_YYYY-MM
+  //    形式: { data: { 名前: { "YYYY-MM-DD": "B2"等 } }, savedAt }
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      const m = key && key.match(/^yawaragi_shift_(\d{4})-(\d{2})$/);
+      if (!m) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const obj = JSON.parse(raw);
+      const sd = obj && obj.data;
+      if (!sd || typeof sd !== 'object') continue;
+
+      const ym = m[1] + '-' + m[2];
+      const year = Number(m[1]);
+      const month = Number(m[2]);
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const result = {};
+      for (const [name, id] of Object.entries(SHIFT_NAME_TO_ID)) {
+        if (id === 'higa') continue; // 社長はシフト表に含めない
+        const byDate = sd[name];
+        if (!byDate) continue; // データのない別表記名で先行データを上書きしない（例: 石井→ishikawa, 石川→ishikawa）
+        const arr = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateKey = ym + '-' + String(d).padStart(2,'0');
+          const v = byDate ? byDate[dateKey] : '';
+          if (v == null || v === '') arr.push('-');
+          else arr.push(v);
+        }
+        result[id] = arr;
+      }
+      SHIFT_DATA[ym] = result;
+      loaded++;
+      console.log('✅ シフト作成.htmlから読込: ' + ym + '（' + Object.keys(result).length + '名）');
+    }
+  } catch(e) {
+    console.warn('新形式シフト読込エラー:', e);
+  }
+
+  // ② 旧形式: 4月シフト表.html が保存する yawaragi_shift（year/month/shift）
   try {
     const raw = localStorage.getItem('yawaragi_shift');
-    if (!raw) return false;
-    const data = JSON.parse(raw);
-    if (!data.year || !data.month || !data.shift) return false;
-
-    const ym = data.year + '-' + String(data.month).padStart(2,'0');
-    const daysInMonth = new Date(data.year, data.month, 0).getDate();
-    const result = {};
-
-    for (const [name, id] of Object.entries(SHIFT_NAME_TO_ID)) {
-      if (id === 'higa') continue; // 社長はシフト表に含めない
-      const defaultCode = SHIFT_DEFAULT_CODE[id] || '-';
-      const arr = [];
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dayData = data.shift[String(d)];
-        if (!dayData || dayData[name] === undefined || dayData[name] === 0) {
-          arr.push('-');
-        } else if (dayData[name] === 16) {
-          arr.push(id === 'haruyama' ? 'H' : 'F');
-        } else {
-          arr.push(defaultCode);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && data.year && data.month && data.shift) {
+        const ym = data.year + '-' + String(data.month).padStart(2,'0');
+        // 新形式で既に読み込み済みの月はそちらを優先（上書きしない）
+        if (!SHIFT_DATA[ym] || Object.keys(SHIFT_DATA[ym]).length === 0) {
+          const daysInMonth = new Date(data.year, data.month, 0).getDate();
+          const result = {};
+          for (const [name, id] of Object.entries(SHIFT_NAME_TO_ID)) {
+            if (id === 'higa') continue;
+            const defaultCode = SHIFT_DEFAULT_CODE[id] || '-';
+            const arr = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+              const dayData = data.shift[String(d)];
+              if (!dayData || dayData[name] === undefined || dayData[name] === 0) {
+                arr.push('-');
+              } else if (dayData[name] === 16) {
+                arr.push(id === 'haruyama' ? 'H' : 'F');
+              } else {
+                arr.push(defaultCode);
+              }
+            }
+            result[id] = arr;
+          }
+          SHIFT_DATA[ym] = result;
+          loaded++;
+          console.log('✅ 旧シフト表から読込: ' + ym + '（' + Object.keys(result).length + '名）');
         }
       }
-      result[id] = arr;
     }
-
-    SHIFT_DATA[ym] = result;
-    console.log('✅ シフト表から読み込み: ' + ym + '（' + Object.keys(result).length + '名）');
-    return true;
   } catch(e) {
-    console.warn('シフト表読み込みエラー:', e);
-    return false;
+    console.warn('旧形式シフト読込エラー:', e);
   }
+
+  return loaded > 0;
 }
 
 // ハードコード済みシフトデータのバックアップ（シフト表アプリ連携で上書きされた場合の復旧用）
@@ -3029,20 +3443,31 @@ const SHIFT_HOURS = {
 // ═══════════════════════════════════════════════
 let wageOpen=false; // パネル開閉状態
 
+// 🔴 最新時給（2026/4/27 メモリと同期）
 const DEFAULT_WAGES={
-  katsumata:250000, hoshino:220000,
-  shimoura:1450, kudou:1400, takayama:1730,
-  haruyama:1700, ookubo:1400,
-  ono:1300, hayashi:1200
+  katsumata:250000, hoshino:220000, higa:0,  // 比嘉=役員報酬・計算外
+  shimoura:1500,    // 2026年4月勤務分から1450→1500
+  kudou:1300,
+  takayama:1600,
+  haruyama:1500,
+  ookubo:1100,
+  ishikawa:1650,    // 石井祐子（2026年4月入社・看護師）
+  tanaka:1500,
+  ono:1100,
+  hayashi:1050
 };
 function loadWages(){
   try{
     const w=JSON.parse(localStorage.getItem('yawaragi_staff_wages'))||{};
-    // 初回はデフォルト値をセット
-    if(Object.keys(w).length===0){
-      saveWageData(DEFAULT_WAGES);
-      return {...DEFAULT_WAGES};
-    }
+    // 未登録のスタッフのみDEFAULT_WAGESで自動補完（社長の手動入力は維持）
+    let updated=false;
+    Object.keys(DEFAULT_WAGES).forEach(id=>{
+      if(w[id]===undefined||w[id]===null||w[id]===''){
+        w[id]=DEFAULT_WAGES[id];
+        updated=true;
+      }
+    });
+    if(updated) saveWageData(w);
     return w;
   }catch(e){ return {...DEFAULT_WAGES}; }
 }
@@ -3913,7 +4338,7 @@ function undoMeasure(name,cycleKey){
 
 // 臨時測定追加（ケアプラン変更時）
 function addAdHocMeasure(){
-  if(!_taichoUserInfoCache){alert('利用者台帳が読み込まれていません。\n「🔄 利用者を更新」ボタンを押してください。');return;}
+  if(!_taichoUserInfoCache){alert('利用者台帳が読み込まれていません。\nブラウザを強制リロード（Ctrl+Shift+R）してください。');return;}
   const names=Object.keys(_taichoUserInfoCache).sort();
   let list='';
   names.forEach((n,i)=>{list+=(i+1)+'. '+n+'\n';});
@@ -4040,7 +4465,7 @@ function showToast(msg,color){
 }
 
 // ═══════════════════════════════════════════════
-// 送迎管理システムから利用者リスト読み込み
+// 利用者台帳GASから利用者リスト読み込み
 // ═══════════════════════════════════════════════
 // 利用者台帳スプレッドシートから直接取得（キャッシュ付き）
 const TAICHO_GAS_URL='https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
@@ -4048,7 +4473,17 @@ const MEASURE_GAS_URL='https://script.google.com/macros/s/AKfycbwqfudNXAiZ3E1RoD
 let _taichoCache=null; // {曜日: {am:[], pm:[]}} のキャッシュ
 let _taichoUserInfoCache=null; // {名前: {birthday, planStart}} のキャッシュ
 
-function loadUsersFromTransport(dow,dateStr){
+// 過去日付かどうか判定（自動追加対象外）
+function isPastDate(dateStr){
+  if(!dateStr) return false;
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  const target=new Date(dateStr);
+  target.setHours(0,0,0,0);
+  return target<today;
+}
+
+function loadUsersFromTaicho(dow,dateStr){
   // キャッシュがあればそこから返す（利用開始日でフィルタ）
   if(_taichoCache){
     const base=_taichoCache[dow]||{am:[],pm:[]};
@@ -4063,23 +4498,8 @@ function loadUsersFromTransport(dow,dateStr){
     }
     return base;
   }
-  // フォールバック: 送迎管理システムのlocalStorageから読み取り
-  try{
-    const raw=localStorage.getItem('yawaragi_transport_data');
-    if(!raw) return {am:[],pm:[]};
-    const td=JSON.parse(raw);
-    const userDays=td.userDays||{};
-    const am=[],pm=[];
-    for(const [name,ud] of Object.entries(userDays)){
-      if(ud&&ud.schedule&&ud.schedule[dow]){
-        if(ud.schedule[dow]==='am') am.push(name);
-        else if(ud.schedule[dow]==='pm') pm.push(name);
-      }
-    }
-    return {am,pm};
-  }catch(e){
-    return {am:[],pm:[]};
-  }
+  // 利用者台帳キャッシュがまだ取得できていない場合は空を返す（fetchTaicho()完了を待つ）
+  return {am:[],pm:[]};
 }
 
 function fetchTaicho(){
@@ -4169,9 +4589,9 @@ function loadFromShift(dateStr){
   const data=newDayData();
   data.date=dateStr;
 
-  // 送迎管理システムから利用者リストを読み込み（利用開始日フィルタ付き）
+  // 利用者台帳GASから利用者リストを読み込み（利用開始日フィルタ付き）
   const dow=getDow(dateStr);
-  const users=loadUsersFromTransport(dow,dateStr);
+  const users=loadUsersFromTaicho(dow,dateStr);
   data.am.users=users.am.slice(0,18);
   data.pm.users=users.pm.slice(0,18);
 
@@ -4335,8 +4755,8 @@ function autoSave(){
   const all=loadAllData();
   all[D.date]=D;
   localStorage.setItem('yawaragi_daily_ops',JSON.stringify(all));
-  // 送迎管理システムとのデータ同期（ルート・利用者情報）
-  syncToTransport(all);
+  // 定位置自動学習（長期休み送迎付替機能用）
+  updateStandardPositions(D.date);
   // GASにも自動同期（5秒デバウンス）
   debouncedCloudSync();
   // 送迎時間一覧への自動同期（5秒デバウンス）
@@ -4372,82 +4792,6 @@ function restoreBackup(){
   localStorage.setItem('yawaragi_daily_ops',JSON.stringify(all));
   render();
   alert('復元しました！');
-}
-
-// 出勤＆送迎表のルートをファイルとして書き出し（送迎管理システムで読み込む用）
-function exportRoutesForTransport(){
-  const allData=loadAllData();
-  const dnames=['日','月','火','水','木','金','土'];
-  const dates=Object.keys(allData).sort().reverse();
-  const sync={};
-  const found=new Set();
-  for(const dateStr of dates){
-    if(found.size>=6) break;
-    const d=allData[dateStr];
-    const dow=dnames[new Date(dateStr+'T00:00:00').getDay()];
-    if(dow==='日'||found.has(dow)) continue;
-    found.add(dow);
-    sync[dow]={
-      date:dateStr,
-      am:{
-        users:(d.am?.users||[]).filter(u=>u),
-        userStatus:d.am?.userStatus||{},
-        pick:d.am?.pick||[],
-        drop:d.am?.drop||[]
-      },
-      pm:{
-        users:(d.pm?.users||[]).filter(u=>u),
-        userStatus:d.pm?.userStatus||{},
-        pick:d.pm?.pick||[],
-        drop:d.pm?.drop||[]
-      }
-    };
-  }
-  const json=JSON.stringify({lastUpdated:new Date().toISOString(),routes:sync},null,2);
-  const blob=new Blob([json],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='routes_sync.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-  alert('✅ ルートデータを書き出しました（'+found.size+'曜日分）\n\n送迎管理システムの「設定・保存」→「ルートファイルを読み込む」で取り込んでください。');
-}
-
-// 出勤＆送迎表の最新データを送迎管理システム用に書き出し
-function syncToTransport(allData){
-  try{
-    const sync={};
-    // 直近30日分のデータから曜日別の最新ルートを抽出
-    const dnames=['日','月','火','水','木','金','土'];
-    const dates=Object.keys(allData).sort().reverse(); // 新しい順
-    const found=new Set();
-    for(const dateStr of dates){
-      if(found.size>=6) break; // 月〜土の6曜日分見つかったら終了
-      const d=allData[dateStr];
-      const dow=dnames[new Date(dateStr+'T00:00:00').getDay()];
-      if(dow==='日'||found.has(dow)) continue;
-      found.add(dow);
-      sync[dow]={
-        date:dateStr,
-        am:{
-          users:(d.am?.users||[]).filter(u=>u),
-          userStatus:d.am?.userStatus||{},
-          pick:d.am?.pick||[],
-          drop:d.am?.drop||[]
-        },
-        pm:{
-          users:(d.pm?.users||[]).filter(u=>u),
-          userStatus:d.pm?.userStatus||{},
-          pick:d.pm?.pick||[],
-          drop:d.pm?.drop||[]
-        }
-      };
-    }
-    localStorage.setItem('yawaragi_daily_routes_sync',JSON.stringify({
-      lastUpdated:new Date().toISOString(),
-      routes:sync
-    }));
-  }catch(e){console.warn('syncToTransport error:',e);}
 }
 
 // ═══════════════════════════════════════════════
@@ -4538,16 +4882,10 @@ function syncSchedTimesToStaff(silent){
   const userCount=Object.keys(schedTime).length;
   if(userCount===0 && routeCount===0){ if(!silent) alert('共有できる送迎データがありません'); return; }
 
-  // ─── GASが受け入れる schedTime に、ルート情報をJSON文字列として埋め込む ───
-  // 特殊キー名（__ROUTES_〜__）でユニーク化。送迎時間一覧側で取り出して復元する。
-  function embedRoutes(key, routeList){
-    if(!schedTime[key]) schedTime[key]={};
-    schedTime[key][dayOfWeek] = JSON.stringify(routeList);
-  }
-  embedRoutes('__ROUTES_AM_PICK__', routes.am.pick);
-  embedRoutes('__ROUTES_AM_DROP__', routes.am.drop);
-  embedRoutes('__ROUTES_PM_PICK__', routes.pm.pick);
-  embedRoutes('__ROUTES_PM_DROP__', routes.pm.drop);
+  // 2026-05-03 routes対応: 中継GAS側で routes フィールドを直接保存
+  // routes は曜日キー直下に格納（routes[dayOfWeek] = {am:{...}, pm:{...}}）
+  var routesByDay = {};
+  routesByDay[dayOfWeek] = routes;
 
   var payload=JSON.stringify({
     action:'saveSchedTimes',
@@ -4557,6 +4895,7 @@ function syncSchedTimesToStaff(silent){
       schedTime:schedTime,
       userDays:userDays,
       transport:transport,
+      routes:routesByDay,
       lastSync:new Date().toISOString()
     }
   });
@@ -4841,7 +5180,13 @@ function syncWithTransportSchedule(dateStr){
 
 function changeDate(dateStr){
   const all=loadAllData();
-  const isNew=!all[dateStr]; // この日のデータがまだない
+  const existing=all[dateStr];
+  // データが無い／利用者0人で未拒否なら「コピーするか聞く」対象にする
+  const shouldOffer = !existing || (
+    !existing.copyDeclined &&
+    (!existing.am || !existing.am.users || existing.am.users.length===0) &&
+    (!existing.pm || !existing.pm.users || existing.pm.users.length===0)
+  );
   loadDay(dateStr);
   document.getElementById('inp-date').value=dateStr;
   if(IS_READONLY && document.getElementById('ro-date')) document.getElementById('ro-date').value=dateStr;
@@ -4850,19 +5195,31 @@ function changeDate(dateStr){
   // yawaragiボードから欠席連動
   applyBoardAbsences(dateStr);
 
-  // 新規日で前週同曜日にデータがあれば提案
-  if(isNew){
+  // 自動追加：当日＋未来日付の場合のみ（過去日付・閲覧専用は除外）
+  if(!IS_READONLY) addNewUsers({auto:true});
+
+  // 利用者リストが空で前週同曜日にデータがあれば提案
+  if(shouldOffer){
     const d=new Date(dateStr+'T00:00:00');
     const dow=d.getDay();
-    if(dow>=1&&dow<=5){ // 平日のみ
+    if(dow>=1&&dow<=5){ // 月〜金（土曜営業開始後にdow<=6へ拡張）
       const prevDate=new Date(d);
       prevDate.setDate(prevDate.getDate()-7);
       const prevStr=fmtDate(prevDate);
-      if(all[prevStr]){
+      const prevData=all[prevStr];
+      const prevHasUsers = prevData && (
+        (prevData.am && prevData.am.users && prevData.am.users.length>0) ||
+        (prevData.pm && prevData.pm.users && prevData.pm.users.length>0)
+      );
+      if(prevHasUsers){
         const prevDow=['日','月','火','水','木','金','土'][prevDate.getDay()];
         setTimeout(()=>{
           if(confirm('💡 前週 '+prevStr+'（'+prevDow+'）のデータがあります。\nルートや利用者をコピーしますか？\n\n（スタッフは今週のシフトで自動更新されます）')){
             copyFromPrevWeek();
+          } else {
+            // NOを選んだ日は次回開いても再度聞かない（祝日・特別日対応）
+            D.copyDeclined = true;
+            autoSave();
           }
         },100);
       }
@@ -4870,82 +5227,210 @@ function changeDate(dateStr){
   }
 }
 
-function refreshUsers(){
+// ═══════════════════════════════════════════════
+// 新規利用者の自動追加・手動追加
+// ═══════════════════════════════════════════════
+// options.auto=true  → 確認ダイアログなし・即追加・トースト通知（自動モード）
+// options.auto=false → 確認ダイアログあり（手動モード）
+function addNewUsers(options){
+  options=options||{};
+  const auto=!!options.auto;
+
   if(!D.date) return;
-  // スプレッドシートから最新を取得してからリフレッシュ
-  _taichoCache=null; // キャッシュクリア
-  _taichoUserInfoCache=null;
-  fetchTaicho().then(()=>{_doRefreshUsers();}).catch(()=>{_doRefreshUsers();});
-}
-function _doRefreshUsers(){
-  if(!D.date) return;
-  const dow=getDow(D.date);
-  const fresh=loadUsersFromTransport(dow,D.date);
-  if(fresh.am.length===0&&fresh.pm.length===0){
-    alert('利用者台帳にこの曜日の利用者データがありません');
+
+  // 自動モードでは過去日付では何もしない
+  if(auto && isPastDate(D.date)) return;
+
+  // キャッシュ未取得なら何もしない（自動・手動両方）
+  if(!_taichoCache){
+    if(!auto) alert('利用者台帳がまだ読み込まれていません。少し待ってからもう一度押してください。');
     return;
   }
-  // 現在の利用者（正規化名でも比較できるようにする）
-  const oldAmRaw=D.am.users.filter(u=>u);
-  const oldPmRaw=D.pm.users.filter(u=>u);
-  const oldAmNormSet=new Set(oldAmRaw.map(normName));
-  const oldPmNormSet=new Set(oldPmRaw.map(normName));
-  const newAmNormSet=new Set(fresh.am.map(normName));
-  const newPmNormSet=new Set(fresh.pm.map(normName));
 
-  // 体験者は差分計算から除外
+  const dow=getDow(D.date);
+  const fresh=loadUsersFromTaicho(dow,D.date);
+
+  // 体験者は触らない（既存ロジック踏襲）
   const trialAm=new Set(D.am.users.filter(u=>u&&D.am.userStatus&&D.am.userStatus[u]==='trial'));
   const trialPm=new Set(D.pm.users.filter(u=>u&&D.pm.userStatus&&D.pm.userStatus[u]==='trial'));
-  const trialAmNorm=new Set([...trialAm].map(normName));
-  const trialPmNorm=new Set([...trialPm].map(normName));
-  // 差分を計算（正規化名で比較、体験者は除外）
-  const addedAm=fresh.am.filter(u=>!oldAmNormSet.has(normName(u)));
-  const removedAm=oldAmRaw.filter(u=>!newAmNormSet.has(normName(u))&&!trialAmNorm.has(normName(u)));
-  const addedPm=fresh.pm.filter(u=>!oldPmNormSet.has(normName(u)));
-  const removedPm=oldPmRaw.filter(u=>!newPmNormSet.has(normName(u))&&!trialPmNorm.has(normName(u)));
 
-  if(!addedAm.length&&!removedAm.length&&!addedPm.length&&!removedPm.length){
-    alert('変更はありません');
+  // 現在の表に既にいる人（体験者含む）
+  const existingAmNorm=new Set(D.am.users.filter(u=>u).map(normName));
+  const existingPmNorm=new Set(D.pm.users.filter(u=>u).map(normName));
+
+  // 追加対象を抽出
+  const addedAm=fresh.am.filter(u=>!existingAmNorm.has(normName(u)));
+  const addedPm=fresh.pm.filter(u=>!existingPmNorm.has(normName(u)));
+
+  // 18人上限チェック
+  const amCap=18;
+  const pmCap=18;
+  const amRoom=Math.max(0, amCap - D.am.users.filter(u=>u).length);
+  const pmRoom=Math.max(0, pmCap - D.pm.users.filter(u=>u).length);
+  const amOver=addedAm.slice(amRoom);
+  const pmOver=addedPm.slice(pmRoom);
+  const amFinal=addedAm.slice(0, amRoom);
+  const pmFinal=addedPm.slice(0, pmRoom);
+  if(amOver.length) console.warn('AM枠が18人上限を超えるため追加スキップ:', amOver);
+  if(pmOver.length) console.warn('PM枠が18人上限を超えるため追加スキップ:', pmOver);
+
+  if(amFinal.length===0 && pmFinal.length===0){
+    if(!auto) alert('追加対象はいません');
     return;
   }
 
-  let msg='利用者リストを更新します\n（※送迎ルートはそのまま残ります）\n\n';
-  if(addedAm.length) msg+='【午前 追加】'+addedAm.join('、')+'\n';
-  if(removedAm.length) msg+='【午前 削除】'+removedAm.join('、')+'\n';
-  if(addedPm.length) msg+='【午後 追加】'+addedPm.join('、')+'\n';
-  if(removedPm.length) msg+='【午後 削除】'+removedPm.join('、')+'\n';
-  if(!confirm(msg+'\nよろしいですか？')) return;
+  // 手動モードは確認ダイアログ
+  if(!auto){
+    let msg='以下の利用者を追加します。\n\n';
+    if(amFinal.length) msg+='【午前 追加】'+amFinal.join('、')+'\n';
+    if(pmFinal.length) msg+='【午後 追加】'+pmFinal.join('、')+'\n';
+    if(amOver.length||pmOver.length){
+      msg+='\n⚠ 18人上限のためスキップ:\n';
+      if(amOver.length) msg+='  AM: '+amOver.join('、')+'\n';
+      if(pmOver.length) msg+='  PM: '+pmOver.join('、')+'\n';
+    }
+    if(!confirm(msg+'\nよろしいですか？')) return;
+  }
 
   pushUndo();
 
-  // 利用者リスト更新（体験者は保持）
-  const keepTrialAm=[...trialAm];
-  const keepTrialPm=[...trialPm];
-  D.am.users=[...fresh.am.slice(0,18),...keepTrialAm];
-  D.pm.users=[...fresh.pm.slice(0,18),...keepTrialPm];
+  // 末尾に追加
+  D.am.users=[...D.am.users, ...amFinal];
+  D.pm.users=[...D.pm.users, ...pmFinal];
 
-  // 削除された利用者のみルートから除去（追加はルートに影響しない）
-  if(removedAm.length||removedPm.length){
-    const removedAmNorm=new Set(removedAm.map(normName));
-    const removedPmNorm=new Set(removedPm.map(normName));
+  autoSave();
+  render();
+
+  // トースト通知（改行を効かせるため pre-line で表示）
+  let toastMsg='✅ 新規利用者を追加しました';
+  if(amFinal.length) toastMsg+='\n　午前: '+amFinal.join('、')+'さん';
+  if(pmFinal.length) toastMsg+='\n　午後: '+pmFinal.join('、')+'さん';
+  showToast(toastMsg, '#4caf50');
+  const _t=document.getElementById('ops-toast');
+  if(_t) _t.style.whiteSpace='pre-line';
+}
+
+// ═══════════════════════════════════════════════
+// 終了者の整理（台帳から完全に消えた人を表からも削除）
+// ═══════════════════════════════════════════════
+function cleanupEndedUsers(){
+  if(!D.date) return;
+
+  if(!_taichoCache){
+    alert('利用者台帳がまだ読み込まれていません。少し待ってからもう一度押してください。');
+    return;
+  }
+
+  // 全曜日・AM/PM の台帳全体をSet化（曜日不問）
+  const liveSet=new Set();
+  ['月','火','水','木','金','土'].forEach(d=>{
+    const day=_taichoCache[d];
+    if(!day) return;
+    ['am','pm'].forEach(ap=>{
+      (day[ap]||[]).forEach(n=>liveSet.add(normName(n)));
+    });
+  });
+
+  // 体験者は除外
+  const trialAm=new Set(D.am.users.filter(u=>u&&D.am.userStatus&&D.am.userStatus[u]==='trial').map(normName));
+  const trialPm=new Set(D.pm.users.filter(u=>u&&D.pm.userStatus&&D.pm.userStatus[u]==='trial').map(normName));
+
+  // 現在の表にいて、台帳全体に居ない人を抽出
+  const candidates=[]; // {name, slots:['am','pm'], normalized}
+  const map={};
+  ['am','pm'].forEach(slot=>{
+    const trial=slot==='am'?trialAm:trialPm;
+    D[slot].users.forEach(u=>{
+      if(!u) return;
+      const n=normName(u);
+      if(trial.has(n)) return;
+      if(liveSet.has(n)) return;
+      if(!map[n]) map[n]={name:u, slots:[], normalized:n};
+      if(!map[n].slots.includes(slot)) map[n].slots.push(slot);
+    });
+  });
+  Object.values(map).forEach(c=>candidates.push(c));
+
+  if(candidates.length===0){
+    alert('整理対象はいません');
+    return;
+  }
+
+  showEndedUsersDialog(candidates);
+}
+
+// ═══════════════════════════════════════════════
+// 終了者整理 確認ダイアログ（チェックボックス式・デフォルト未チェック）
+// ═══════════════════════════════════════════════
+function showEndedUsersDialog(candidates){
+  const existing=document.getElementById('ended-users-overlay');
+  if(existing) existing.remove();
+
+  const overlay=document.createElement('div');
+  overlay.id='ended-users-overlay';
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:700;display:flex;justify-content:center;align-items:flex-start;padding-top:60px;';
+
+  const panel=document.createElement('div');
+  panel.style.cssText='background:#fff;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.3);padding:20px;min-width:380px;max-width:90%;max-height:80vh;overflow-y:auto;font-size:14px;';
+
+  let html='<h3 style="margin:0 0 12px;font-size:17px;">🗑 終了者を整理</h3>';
+  html+='<p style="margin:0 0 8px;color:#555;">以下の利用者は台帳から消えています。表からも削除しますか？</p>';
+  html+='<p style="margin:0 0 12px;color:#d32f2f;font-size:12px;">※削除したい人だけチェックしてください（デフォルト未チェック）</p>';
+  html+='<div style="margin-bottom:16px;">';
+  candidates.forEach((c,i)=>{
+    const slotLabel=c.slots.map(s=>s==='am'?'午前':'午後').join('・');
+    html+='<label style="display:block;padding:6px 0;cursor:pointer;font-size:14px;">';
+    html+='<input type="checkbox" data-idx="'+i+'" style="margin-right:8px;transform:scale(1.3);"> ';
+    html+='<span style="font-weight:600;">'+c.name+'さん</span>';
+    html+='<span style="color:#888;margin-left:6px;">（'+slotLabel+'）</span>';
+    html+='</label>';
+  });
+  html+='</div>';
+  html+='<div style="display:flex;gap:10px;justify-content:flex-end;">';
+  html+='<button id="ended-cancel-btn" style="padding:8px 16px;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer;">キャンセル</button>';
+  html+='<button id="ended-confirm-btn" style="padding:8px 16px;border:1px solid #d32f2f;border-radius:5px;background:#d32f2f;color:#fff;cursor:pointer;font-weight:bold;">選択した人を削除</button>';
+  html+='</div>';
+  panel.innerHTML=html;
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  document.getElementById('ended-cancel-btn').onclick=function(){
+    overlay.remove();
+  };
+
+  document.getElementById('ended-confirm-btn').onclick=function(){
+    const checks=panel.querySelectorAll('input[type="checkbox"]:checked');
+    if(checks.length===0){
+      alert('削除する人を1人以上チェックしてください');
+      return;
+    }
+    const toDelete=Array.from(checks).map(cb=>candidates[parseInt(cb.dataset.idx,10)]);
+    pushUndo();
+    const delAmNorm=new Set();
+    const delPmNorm=new Set();
+    toDelete.forEach(c=>{
+      if(c.slots.includes('am')) delAmNorm.add(c.normalized);
+      if(c.slots.includes('pm')) delPmNorm.add(c.normalized);
+    });
+    D.am.users=D.am.users.filter(u=>!u||!delAmNorm.has(normName(u)));
+    D.pm.users=D.pm.users.filter(u=>!u||!delPmNorm.has(normName(u)));
     ['am','pm'].forEach(k=>{
-      const removedNorm=k==='am'?removedAmNorm:removedPmNorm;
-      if(removedNorm.size===0) return;
+      const delNorm=k==='am'?delAmNorm:delPmNorm;
       ['pick','drop'].forEach(t=>{
         (D[k][t]||[]).forEach(route=>{
-          route.stops.forEach(stop=>{
-            if(stop.user&&removedNorm.has(normName(stop.user))){
+          (route.stops||[]).forEach(stop=>{
+            if(stop.user && delNorm.has(normName(stop.user))){
               stop.user='';
             }
           });
         });
       });
     });
-  }
-
-  autoSave();
-  render();
-  alert('利用者リストを更新しました！');
+    autoSave();
+    render();
+    overlay.remove();
+    showToast('🗑 '+toDelete.length+'人を表から削除しました', '#757575');
+  };
 }
 
 function clearDay(){
@@ -5379,6 +5864,250 @@ function closeCalendar(){
   document.getElementById('cal-overlay').classList.remove('show');
 }
 
+// ═══════════════════════════════════════════════
+// 今月のシフトモーダル
+// ═══════════════════════════════════════════════
+let _mshiftYM = null; // 現在表示中の年月 'YYYY-MM'
+
+function openMonthShift(){
+  const cur = D.date || document.getElementById('inp-date').value || fmtDate(new Date());
+  const d = new Date(cur+'T00:00:00');
+  _mshiftYM = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  renderMonthShift();
+  document.getElementById('mshift-overlay').classList.add('show');
+}
+
+function closeMonthShift(){
+  document.getElementById('mshift-overlay').classList.remove('show');
+}
+
+/**
+ * 指定YMのlocalStorageを読み、{staffId: [day1,day2,...]} 形式で返す
+ * 既存の SHIFT_DATA[ym] には書かない（副作用なし・モーダル専用）
+ * 名前重複（石井→ishikawa, 石川→ishikawa）はデータのある名前を優先
+ */
+function loadShiftForMonth(ym){
+  try {
+    const raw = localStorage.getItem('yawaragi_shift_' + ym);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    const sd = obj && obj.data;
+    if (!sd || typeof sd !== 'object') return null;
+
+    const m = ym.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return null;
+    const year = Number(m[1]);
+    const month = Number(m[2]);
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    const result = {};
+    for (const [name, id] of Object.entries(SHIFT_NAME_TO_ID)) {
+      if (id === 'higa') continue;
+      const byDate = sd[name];
+      if (!byDate) continue;
+      const arr = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateKey = ym + '-' + String(d).padStart(2,'0');
+        const v = byDate[dateKey];
+        arr.push((v == null || v === '') ? '-' : v);
+      }
+      if (result[id]) {
+        const existingNonEmpty = result[id].filter(x => x !== '-').length;
+        const newNonEmpty = arr.filter(x => x !== '-').length;
+        if (newNonEmpty > existingNonEmpty) result[id] = arr;
+      } else {
+        result[id] = arr;
+      }
+    }
+    return { ym, year, month, daysInMonth, byStaff: result };
+  } catch(e) {
+    console.warn('loadShiftForMonth error:', e);
+    return null;
+  }
+}
+
+/**
+ * シフトコード → CSSクラス変換
+ */
+function mshiftCellClass(code){
+  if (!code || code === '-') return '';
+  if (code === '休') return 'cell off';
+  if (code === '有') return 'cell leave';
+  if (code === '半' || code === '半休') return 'cell half-leave';
+  if (/^[78]/.test(code)) return 'cell escort';
+  if (code === 'E1') return 'cell short';
+  if (['B2','C','F','H'].includes(code)) return 'cell full';
+  return 'cell';
+}
+
+function mshiftIsAm(code){
+  if (!code) return false;
+  if (['B2','C','F','H','E1'].includes(code)) return true;
+  if (/^[78][①②③]/.test(code)) return true;
+  return false;
+}
+
+function mshiftIsPm(code){
+  if (!code) return false;
+  if (['B2','C','F','H'].includes(code)) return true;
+  if (/^[78][②③]/.test(code)) return true;
+  return false;
+}
+
+function mshiftIsEscort(code){
+  return code && /^[78]/.test(code);
+}
+
+function renderMonthShift(){
+  const ym = _mshiftYM;
+  const data = loadShiftForMonth(ym);
+  const box = document.getElementById('mshift-box');
+
+  let h = '<div class="mshift-header">';
+  h += '<span class="mshift-title">📋 今月のシフト</span>';
+  h += '<button onclick="closeMonthShift()">✕ 閉じる</button>';
+  h += '</div>';
+
+  h += '<div class="mshift-controls">';
+  h += '<button onclick="mshiftPrevMonth()">◀ 前月</button>';
+  h += '<button onclick="mshiftThisMonth()">今月</button>';
+  h += '<button onclick="mshiftNextMonth()">次月 ▶</button>';
+  const [y,m] = ym.split('-');
+  h += '<span class="mshift-month">'+Number(y)+'年'+Number(m)+'月</span>';
+  h += '<span style="flex:1"></span>';
+  h += '<button class="btn-edit" onclick="mshiftOpenEditor()">✏️ シフト作成を開く</button>';
+  h += '<button class="btn-print" onclick="window.print()">🖨 印刷</button>';
+  h += '</div>';
+
+  if (!data) {
+    h += '<div class="mshift-empty">';
+    h += '<div class="empty-title">⚠️ '+Number(y)+'年'+Number(m)+'月のシフトが見つかりません</div>';
+    h += '<div>シフト作成.htmlでまだ組まれていないか、ブラウザに保存されていません。</div>';
+    h += '<div style="margin-top:12px"><button class="btn-edit" onclick="mshiftOpenEditor()" style="padding:6px 16px;border:1px solid #1565c0;border-radius:4px;cursor:pointer;background:#1976d2;color:#fff;font-weight:bold">✏️ シフト作成を開く</button></div>';
+    h += '</div>';
+    box.innerHTML = h;
+    return;
+  }
+
+  h += '<div class="mshift-table-wrap">';
+  h += renderMshiftTable(data);
+  h += '</div>';
+
+  box.innerHTML = h;
+}
+
+/**
+ * マトリクスHTML生成
+ */
+function renderMshiftTable(data){
+  const { ym, year, month, daysInMonth, byStaff } = data;
+
+  // 今日判定
+  const today = new Date();
+  const isCurrentMonth = (today.getFullYear() === year && (today.getMonth()+1) === month);
+  const todayD = isCurrentMonth ? today.getDate() : -1;
+  const todayClass = (d) => (d === todayD ? ' today-col' : '');
+
+  let h = '<table class="mshift-table">';
+  h += '<thead>';
+  h += '<tr><th class="staff-h">スタッフ</th>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    h += '<th class="'+todayClass(d).trim()+'">'+d+'</th>';
+  }
+  h += '<th class="summary">出勤</th>';
+  h += '</tr>';
+  h += '<tr><th class="staff-h"></th>';
+  const dows = ['日','月','火','水','木','金','土'];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(year, month-1, d);
+    const dow = dt.getDay();
+    let cls = '';
+    if (dow === 0) cls = 'dow-sun';
+    else if (dow === 6) cls = 'dow-sat';
+    cls += todayClass(d);
+    h += '<th class="'+cls.trim()+'">'+dows[dow]+'</th>';
+  }
+  h += '<th class="summary"></th>';
+  h += '</tr>';
+  h += '</thead>';
+
+  h += '<tbody>';
+  STAFF.forEach(s => {
+    if (s.id === 'higa') return;
+    const arr = byStaff[s.id];
+    if (!arr) return;
+    h += '<tr>';
+    h += '<td class="staff-h">'+s.name+'</td>';
+    let workCount = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const code = arr[d-1] || '-';
+      let cls = mshiftCellClass(code);
+      cls += todayClass(d);
+      h += '<td class="'+cls.trim()+'">'+(code === '-' ? '' : code)+'</td>';
+      if (code !== '-' && code !== '休' && code !== '有' && code !== '半' && code !== '半休') workCount++;
+    }
+    h += '<td class="summary">'+workCount+'</td>';
+    h += '</tr>';
+  });
+
+  // 日別集計行
+  const amCounts = new Array(daysInMonth).fill(0);
+  const pmCounts = new Array(daysInMonth).fill(0);
+  const escCounts = new Array(daysInMonth).fill(0);
+  STAFF.forEach(s => {
+    if (s.id === 'higa') return;
+    const arr = byStaff[s.id];
+    if (!arr) return;
+    for (let d = 0; d < daysInMonth; d++) {
+      const code = arr[d];
+      if (mshiftIsAm(code)) amCounts[d]++;
+      if (mshiftIsPm(code)) pmCounts[d]++;
+      if (mshiftIsEscort(code)) escCounts[d]++;
+    }
+  });
+
+  h += '<tr class="summary-row"><td class="staff-h">午前出勤</td>';
+  for (let d = 0; d < daysInMonth; d++) h += '<td class="'+todayClass(d+1).trim()+'">'+(amCounts[d]||'')+'</td>';
+  h += '<td></td></tr>';
+  h += '<tr class="summary-row"><td class="staff-h">午後出勤</td>';
+  for (let d = 0; d < daysInMonth; d++) h += '<td class="'+todayClass(d+1).trim()+'">'+(pmCounts[d]||'')+'</td>';
+  h += '<td></td></tr>';
+  h += '<tr class="summary-row"><td class="staff-h">送迎</td>';
+  for (let d = 0; d < daysInMonth; d++) h += '<td class="'+todayClass(d+1).trim()+'">'+(escCounts[d]||'')+'</td>';
+  h += '<td></td></tr>';
+
+  h += '</tbody>';
+
+  h += '</table>';
+  return h;
+}
+
+function mshiftPrevMonth(){
+  const [y,m] = _mshiftYM.split('-').map(Number);
+  let ny = y, nm = m - 1;
+  if (nm < 1) { nm = 12; ny--; }
+  _mshiftYM = ny + '-' + String(nm).padStart(2,'0');
+  renderMonthShift();
+}
+
+function mshiftNextMonth(){
+  const [y,m] = _mshiftYM.split('-').map(Number);
+  let ny = y, nm = m + 1;
+  if (nm > 12) { nm = 1; ny++; }
+  _mshiftYM = ny + '-' + String(nm).padStart(2,'0');
+  renderMonthShift();
+}
+
+function mshiftThisMonth(){
+  const now = new Date();
+  _mshiftYM = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  renderMonthShift();
+}
+
+function mshiftOpenEditor(){
+  window.open('file:///C:/Users/mh/マイドライブ/yawaragi-apps/シフト管理マスター/シフト作成.html', '_blank');
+}
+
 function renderCalendar(){
   const all=loadAllData();
   const today=fmtDate(new Date());
@@ -5621,6 +6350,7 @@ function fetchBoardAbsences(dateStr, onSuccess, onError){
       const targetDate=dateStr;
       const absencesList=(data.absences && data.absences.absences)||[];
       const longTermList=(data.absences && data.absences.longTerm)||[];
+      const resumedTodayList=(data.absences && data.absences.resumedToday)||[];
       // 理由で分類: 家族送迎/徒歩送迎は来所扱い、それ以外は欠席扱い
       const absentItems=[]; // [{name, reason}]
       const longTermItems=[];
@@ -5641,7 +6371,10 @@ function fetchBoardAbsences(dateStr, onSuccess, onError){
           }
         }
       });
-      onSuccess(absentItems, longTermItems);
+      const resumedItems=resumedTodayList
+        .filter(item=>item && item.name && item.resumeDate===targetDate)
+        .map(item=>({name:item.name}));
+      onSuccess(absentItems, longTermItems, resumedItems);
     } else if(onError){
       onError('取得失敗');
     }
@@ -5659,7 +6392,7 @@ function statusFromReason(reason){
 }
 // ボードの欠席/送迎変更をD.am/D.pmのuserStatusに反映。既存のlongabsentは尊重。
 // 戻り値: {changed:bool, matched:数, total:数, unmatched:[名前]}
-function mergeBoardAbsencesToD(absentItems, longTermItems){
+function mergeBoardAbsencesToD(absentItems, longTermItems, resumedItems){
   const result={changed:false, matched:0, total:0, unmatched:[]};
   if(!D || !D.date) return result;
   // 入力名前を収集（重複排除）
@@ -5667,6 +6400,7 @@ function mergeBoardAbsencesToD(absentItems, longTermItems){
   const addName=(n)=>{ if(n && allNames.indexOf(n)<0) allNames.push(n); };
   (absentItems||[]).forEach(it=>addName(it.name||it));
   (longTermItems||[]).forEach(it=>addName(it.name||it));
+  (resumedItems||[]).forEach(it=>addName(it.name||it));
   result.total=allNames.length;
   const matchedSet=new Set();
   const apply=(unitKey)=>{
@@ -5693,6 +6427,16 @@ function mergeBoardAbsencesToD(absentItems, longTermItems){
       const target=statusFromReason(reason);
       if(cur!==target){ unit.userStatus[orig]=target; result.changed=true; }
     });
+    // 再開バッジ：欠席/長期休みでない通常出勤者にのみ付与
+    (resumedItems||[]).forEach(it=>{
+      const rawName=it.name||it;
+      const orig=normToOrig[normNameStrict(rawName)];
+      if(!orig) return;
+      matchedSet.add(rawName);
+      const cur=unit.userStatus[orig]||'';
+      if(cur==='longabsent' || cur==='absent' || cur==='walk' || cur==='family') return;
+      if(cur!=='resumed'){ unit.userStatus[orig]='resumed'; result.changed=true; }
+    });
   };
   apply('am'); apply('pm');
   result.matched=matchedSet.size;
@@ -5711,16 +6455,16 @@ function applyBoardAbsences(dateStr){
   // 1. キャッシュから即適用
   const cached=getCachedBoardAbsences(dateStr);
   if(cached){
-    const r=mergeBoardAbsencesToD(cached.absent, cached.longTerm);
+    const r=mergeBoardAbsencesToD(cached.absent, cached.longTerm, cached.resumed);
     if(r.changed){ if(!IS_READONLY) autoSave(); render(); }
     setBoardSyncStatus('📋 ボード欠席 '+r.matched+'/'+r.total+'人 反映済（キャッシュ）', '#64748b');
   } else {
     setBoardSyncStatus('📡 yawaragiボードから欠席取得中...', '#1976d2');
   }
   // 2. 裏でGAS取得
-  fetchBoardAbsences(dateStr, function(names, longTermNames){
-    setCachedBoardAbsences(dateStr, {absent:names, longTerm:longTermNames});
-    const r=mergeBoardAbsencesToD(names, longTermNames);
+  fetchBoardAbsences(dateStr, function(names, longTermNames, resumedNames){
+    setCachedBoardAbsences(dateStr, {absent:names, longTerm:longTermNames, resumed:resumedNames});
+    const r=mergeBoardAbsencesToD(names, longTermNames, resumedNames);
     if(r.changed){ if(!IS_READONLY) autoSave(); render(); }
     if(r.total>0){
       if(r.unmatched.length>0){
@@ -5837,6 +6581,7 @@ async function initApp(){
   loadDay(defaultDate);
   render();
   applyBoardAbsences(defaultDate);
+  if(!IS_READONLY) addNewUsers({auto:true});
   if(!IS_READONLY) opsAutoBackup();
   if(IS_READONLY) roUpdateStatus('最終更新: '+new Date().toLocaleTimeString('ja-JP'));
 }
