@@ -5316,6 +5316,19 @@ function absSubmit() {
             dupDates.forEach(dateStr => {
                 gasPost({ action: 'cancel_absence', name: targetName, date: dateStr, unit: '終日' }, '重複取消');
             });
+
+            // 楽観的更新（2026-05-06）: cachedGasから該当日を除外＋当月キャッシュ破棄
+            // 上書き直後にabsRenderUpcomingListが古いキャッシュを表示し続ける問題への対策
+            if (window._cachedGasAbsences) {
+                window._cachedGasAbsences = window._cachedGasAbsences.filter(
+                    g => !(g.name === targetName && dupDates.includes(g.date))
+                );
+            }
+            try {
+                const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+                delete cache[absCurrentMonth];
+                localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+            } catch {}
         }
     }
 
@@ -5346,13 +5359,20 @@ function absSubmit() {
         };
         gasPostAbsenceWithVerify(ltData, absState.selectedUser.name + '様の長期休み登録').then(ok => {
             if (!ok) console.error('長期休み登録: GAS送信失敗');
+            // 検証完了後に最新データで再描画（2026-05-06追加・上書き表示遅延対策）
+            try {
+                const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+                delete cache[absCurrentMonth];
+                localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+            } catch {}
+            absLoadLongTermList();
+            absRenderUpcomingList();
         });
 
         absClearName();
         btn.disabled = false;
         btn.textContent = 'この内容で登録する';
         showToast('長期休みを登録中...', 3000);
-        setTimeout(() => absLoadLongTermList(), 4000);
         return;
     }
 
@@ -5375,6 +5395,13 @@ function absSubmit() {
     // GAS送信（検証付きリトライ・バックグラウンドで実行）
     gasPostAbsenceWithVerify(postData, absState.selectedUser.name + '様の欠席登録').then(ok => {
         if (!ok) console.error('欠席登録: GAS送信失敗（' + absState.selectedUser.name + '）');
+        // 検証完了後に最新データで再描画（2026-05-06追加・上書き表示遅延対策）
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            delete cache[absCurrentMonth];
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+        absRenderUpcomingList();
     });
 
     // localStorageにも保存（即座に画面反映するため）
