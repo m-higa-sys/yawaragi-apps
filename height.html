@@ -187,6 +187,7 @@
     <div class="header-controls">
         <select class="year-select" id="yearSelect" onchange="changeYear()"></select>
         <button class="btn btn-white" onclick="loadFromSpreadsheet()">🔄 利用者台帳から取得</button>
+        <button class="btn btn-green no-print" onclick="forceCloudSync()">☁️ 全件クラウド送信</button>
         <button class="btn btn-white no-print" onclick="window.print()">🖨️ 印刷</button>
     </div>
 </div>
@@ -396,6 +397,23 @@ function syncToCloud() {
     } catch(e) {
         fetch(SYNC_URL, { method:'POST', mode:'no-cors', body, keepalive:true }).catch(()=>{});
     }
+}
+function forceCloudSync() {
+    var count = 0;
+    Object.keys(appData.heights || {}).forEach(function(fy) {
+        Object.keys(appData.heights[fy] || {}).forEach(function(name) {
+            Object.values(appData.heights[fy][name] || {}).forEach(function(v) {
+                if (v !== undefined && v !== null && v !== '') count++;
+            });
+        });
+    });
+    if (count === 0) {
+        showToast('⚠ このデバイスに身長データがありません', '#f44');
+        return;
+    }
+    if (!confirm('このデバイスの身長データ ' + count + ' 件を全部クラウドへ送信します。よろしいですか？')) return;
+    syncToCloud();
+    showToast('☁️ ' + count + ' 件をクラウドへ送信しました。他デバイスでリロードしてください', '#4CAF50');
 }
 function loadFromCloud() {
     fetch(SYNC_URL + '?action=getWeight&t=' + Date.now())
