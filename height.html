@@ -420,22 +420,25 @@ function loadFromCloud() {
         .then(r => r.json())
         .then(cloud => {
             if (!cloud) return;
-            // heightsをクラウド優先でマージ（last-write-wins）
-            // クラウドに値があれば常にローカルを上書き。これによりマルチデバイス間で
-            // 既存セルの修正も反映される（コメント通りの「クラウド優先」を実装）。
+            // heightsをクラウド完全置換（last-write-wins）
+            // 削除も他デバイスに同期されるよう、クラウドの状態をそのままローカルに反映。
+            // ただしクラウドが空の場合はローカル維持（事故防止・syncToCloud側の空ガードと対）。
+            var cloudHasHeightValues = false;
             if (cloud.heights) {
-                Object.keys(cloud.heights).forEach(function(fy) {
-                    if (!appData.heights[fy]) appData.heights[fy] = {};
-                    Object.keys(cloud.heights[fy]).forEach(function(name) {
-                        if (!appData.heights[fy][name]) appData.heights[fy][name] = {};
-                        Object.keys(cloud.heights[fy][name]).forEach(function(mk) {
-                            var val = cloud.heights[fy][name][mk];
-                            if (val !== undefined && val !== null && val !== '') {
-                                appData.heights[fy][name][mk] = val;
+                Object.keys(cloud.heights).some(function(fy) {
+                    return Object.keys(cloud.heights[fy] || {}).some(function(name) {
+                        return Object.values(cloud.heights[fy][name] || {}).some(function(v) {
+                            if (v !== undefined && v !== null && v !== '') {
+                                cloudHasHeightValues = true;
+                                return true;
                             }
+                            return false;
                         });
                     });
                 });
+            }
+            if (cloudHasHeightValues) {
+                appData.heights = cloud.heights;
             }
             if (cloud.weights) appData.weights = cloud.weights;
             if (cloud.users && cloud.users.length) appData.users = cloud.users;
@@ -816,6 +819,13 @@ loadData();
 initYearSelect();
 renderTable();
 loadFromCloud();
+
+// タブが非表示→表示に戻った時に自動でクラウド再取得（マルチデバイス間の手動リロード不要化）
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        loadFromCloud();
+    }
+});
 </script>
 </body>
 </html>
