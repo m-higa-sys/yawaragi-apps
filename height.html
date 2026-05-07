@@ -368,6 +368,21 @@ function scheduleCloudSync() {
 }
 function syncToCloud() {
     try {
+        // 空データ上書き事故防止ガード（2026-05-08事件の再発防止）
+        // heights/weights どちらにも実値が無い時はPOSTしない
+        const hasAnyValue = function(tree) {
+            return Object.keys(tree || {}).some(function(fy) {
+                return Object.keys(tree[fy] || {}).some(function(name) {
+                    return Object.values(tree[fy][name] || {}).some(function(v) {
+                        return v !== undefined && v !== null && v !== '';
+                    });
+                });
+            });
+        };
+        if (!hasAnyValue(appData.heights) && !hasAnyValue(appData.weights)) {
+            console.log('☁️ ローカルデータが空のためクラウド送信スキップ（上書き事故防止）');
+            return;
+        }
         const body = JSON.stringify({
             type: 'weight',
             data: {
