@@ -420,7 +420,9 @@ function loadFromCloud() {
         .then(r => r.json())
         .then(cloud => {
             if (!cloud) return;
-            // heightsをマージ（クラウド優先）
+            // heightsをクラウド優先でマージ（last-write-wins）
+            // クラウドに値があれば常にローカルを上書き。これによりマルチデバイス間で
+            // 既存セルの修正も反映される（コメント通りの「クラウド優先」を実装）。
             if (cloud.heights) {
                 Object.keys(cloud.heights).forEach(function(fy) {
                     if (!appData.heights[fy]) appData.heights[fy] = {};
@@ -428,8 +430,7 @@ function loadFromCloud() {
                         if (!appData.heights[fy][name]) appData.heights[fy][name] = {};
                         Object.keys(cloud.heights[fy][name]).forEach(function(mk) {
                             var val = cloud.heights[fy][name][mk];
-                            if (val !== undefined && val !== null && val !== '' &&
-                                (appData.heights[fy][name][mk] === undefined || appData.heights[fy][name][mk] === null || appData.heights[fy][name][mk] === '')) {
+                            if (val !== undefined && val !== null && val !== '') {
                                 appData.heights[fy][name][mk] = val;
                             }
                         });
