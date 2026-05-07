@@ -1152,6 +1152,13 @@ function renderTasks() {
 
   // 共通判定関数
   function isTaskActiveToday_(t) {
+    // memo の [start:YYYY-MM-DD] 印があれば、その日まで非表示
+    const startMatch = (t.memo || '').match(/\[start:(\d{4}-\d{2}-\d{2})\]/);
+    if (startMatch) {
+      const startDate = new Date(startMatch[1] + 'T00:00:00');
+      const todayMid0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      if (todayMid0 < startDate) return false;
+    }
     if (!t.dayLimit) return true;
     if (t.dayLimit === '月末日' || t.dayLimit === '月末') return todayIsLastDay;
     // 「N日インターバル」形式：前回実施からN日以上経過で表示
