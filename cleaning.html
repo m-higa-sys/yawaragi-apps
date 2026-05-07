@@ -817,7 +817,8 @@ let STATE = {
   statsView: 'today',
   editMode: false,
   editingTasks: [],
-  editDirty: false
+  editDirty: false,
+  taskLastDates: JSON.parse(localStorage.getItem('gyomu_task_last_dates') || '{}')
 };
 
 let refreshTimer = null;
@@ -941,6 +942,9 @@ async function loadAllData() {
     localStorage.setItem('gyomu_staff_cache', JSON.stringify(STATE.staff));
     localStorage.setItem('gyomu_monthly_cache', JSON.stringify(STATE.monthlyStats));
 
+    // インターバル系タスクがあれば過去ログから最新実施日を算出（バックグラウンド）
+    loadIntervalLastDates();
+
     renderTasks();
     renderStats();
     setSyncStatus('online');
@@ -961,6 +965,66 @@ async function loadAllData() {
   } finally {
     btn.classList.remove('syncing');
   }
+}
+
+// インターバル系タスクの最新実施日を過去ログから算出
+async function loadIntervalLastDates() {
+  // 「N日インターバル」形式の dayLimit を持つタスクがあるか確認
+  const intervalTasks = (STATE.tasks || []).filter(function(t) {
+    return /^\d+日インターバル$/.test(t.dayLimit || '');
+  });
+  if (intervalTasks.length === 0) return;
+
+  // 最大インターバル日数 + 余裕5日 を遡って取得
+  let maxDays = 30;
+  intervalTasks.forEach(function(t) {
+    const m = String(t.dayLimit).match(/^(\d+)日インターバル$/);
+    if (m) maxDays = Math.max(maxDays, parseInt(m[1], 10));
+  });
+  const lookbackDays = maxDays + 5;
+
+  function fmt(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + dd;
+  }
+
+  const today = new Date();
+  const targetTaskNos = new Set(intervalTasks.map(function(t) { return String(t.no); }));
+  const lastDateMap = Object.assign({}, STATE.taskLastDates || {});
+
+  // 5並列ずつバッチ実行（GASレート制限対策）
+  const batchSize = 5;
+  for (let offset = 1; offset <= lookbackDays; offset += batchSize) {
+    const batch = [];
+    for (let i = 0; i < batchSize && (offset + i) <= lookbackDays; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - (offset + i));
+      const dateStr = fmt(d);
+      batch.push(
+        gasGet({ action: 'getLog', date: dateStr })
+          .then(function(r) { return { date: dateStr, log: (r && r.log) || [] }; })
+          .catch(function() { return { date: dateStr, log: [] }; })
+      );
+    }
+    const results = await Promise.all(batch);
+    results.forEach(function(item) {
+      item.log.forEach(function(l) {
+        const no = String(l.taskNo);
+        if (targetTaskNos.has(no)) {
+          if (!lastDateMap[no] || lastDateMap[no] < item.date) {
+            lastDateMap[no] = item.date;
+          }
+        }
+      });
+    });
+  }
+
+  STATE.taskLastDates = lastDateMap;
+  localStorage.setItem('gyomu_task_last_dates', JSON.stringify(lastDateMap));
+  // 取得後に再描画（最新実施日反映）
+  renderTasks();
 }
 
 // チェックログだけ更新（軽量）
@@ -1090,6 +1154,19 @@ function renderTasks() {
   function isTaskActiveToday_(t) {
     if (!t.dayLimit) return true;
     if (t.dayLimit === '月末日' || t.dayLimit === '月末') return todayIsLastDay;
+    // 「N日インターバル」形式：前回実施からN日以上経過で表示
+    const intervalMatch = String(t.dayLimit).match(/^(\d+)日インターバル$/);
+    if (intervalMatch) {
+      const intervalDays = parseInt(intervalMatch[1], 10);
+      // 当日チェック済みなら表示維持（チェック直後に消えないように）
+      if (STATE.log.some(function(l) { return l.taskNo == t.no; })) return true;
+      const lastDate = (STATE.taskLastDates || {})[String(t.no)];
+      if (!lastDate) return true; // 一度も実施なし → 表示
+      const last = new Date(lastDate + 'T00:00:00');
+      const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const daysSince = Math.floor((todayMid - last) / 86400000);
+      return daysSince >= intervalDays;
+    }
     return t.dayLimit.indexOf(todayDay) >= 0;
   }
   function isSummaryTaskGlobal_(t) {
@@ -1137,12 +1214,7 @@ function renderTasks() {
     // - 「ゴミ出し」: 今日のごみ → ある日「ゴミ出し（可燃物）」/ない日「ゴミ出し（今日なし）」
     // - 「明日のごみ出し準備」: 明日のごみ → ある日「明日のごみ出し準備【可燃物】」/ない日「明日のごみ出し準備【なし】」
     const filteredTasks = slotTasks.filter(function(t) {
-      if (!t.dayLimit) return true;
-      // 「月末日」「月末」が指定されたタスクは月末日のみ表示
-      if (t.dayLimit === '月末日' || t.dayLimit === '月末') {
-        return todayIsLastDay;
-      }
-      return t.dayLimit.indexOf(todayDay) >= 0;
+      return isTaskActiveToday_(t);
     }).map(function(t) {
       if (/^ゴミ出し($|（)/.test(t.name)) {
         return Object.assign({}, t, { name: 'ゴミ出し（' + (todayGarbage || '今日なし') + '）' });
@@ -1860,8 +1932,9 @@ function buildSlotOptions(selected) {
 
 function buildDayOptions(selected) {
   const days = getUniqueDays();
-  // 「月末日」を必ず候補に含める
+  // 「月末日」「30日インターバル」を必ず候補に含める
   if (days.indexOf('月末日') === -1) days.push('月末日');
+  if (days.indexOf('30日インターバル') === -1) days.push('30日インターバル');
   if (selected && days.indexOf(selected) === -1) days.unshift(selected);
   let html = '<option value=""' + (!selected ? ' selected' : '') + '>毎日</option>';
   html += days.map(function(d) {
