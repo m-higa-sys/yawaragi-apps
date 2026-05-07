@@ -59,6 +59,8 @@
         .btn-white:hover { background: #e3f2fd; }
         .btn-taicho { background: #e3f2fd; color: #1565c0; border: 1px solid #1976d2; }
         .btn-taicho:hover { background: #bbdefb; }
+        .btn-green { background: #4CAF50; color: white; }
+        .btn-green:hover { background: #388E3C; }
         .btn-red { background: #f44336; color: white; }
         .btn-red:hover { background: #d32f2f; }
 
@@ -412,6 +414,7 @@
     <div class="header-controls">
         <select id="yearSelect" class="year-select" onchange="changeYear()"></select>
         <button class="btn btn-white" onclick="loadFromSpreadsheet()">🔄 利用者台帳から取得</button>
+        <button class="btn btn-green no-print" onclick="forceCloudSync()">☁️ 全件クラウド送信</button>
         <button class="btn btn-taicho" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
         <button class="btn btn-white" onclick="openCsvModal()">📁 CSV読込</button>
         <button class="btn btn-white" onclick="exportJson()">💾 バックアップ</button>
@@ -598,10 +601,24 @@ function escapeAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
 let _syncTimer = null;
 
+function _hasAnyValue(tree) {
+    return Object.keys(tree || {}).some(function(fy) {
+        return Object.keys(tree[fy] || {}).some(function(name) {
+            return Object.values(tree[fy][name] || {}).some(function(v) {
+                return v !== undefined && v !== null && v !== '';
+            });
+        });
+    });
+}
 function cloudSync() {
     if (_syncTimer) clearTimeout(_syncTimer);
     _syncTimer = setTimeout(async function() {
         try {
+            // 空データ上書き事故防止ガード（身長アプリ2026-05-08事件と同型）
+            if (!_hasAnyValue(appData.heights) && !_hasAnyValue(appData.weights)) {
+                console.log('☁️ ローカルデータが空のためクラウド送信スキップ（上書き事故防止）');
+                return;
+            }
             await fetch(SYNC_URL, {
                 method: 'POST', mode: 'no-cors',
                 body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: appData.weights, heights: appData.heights } }),
@@ -611,42 +628,48 @@ function cloudSync() {
         } catch(e) { console.warn('☁️ 同期エラー:', e); }
     }, 2000);
 }
+function forceCloudSync() {
+    var wcount = 0, hcount = 0;
+    Object.keys(appData.weights || {}).forEach(function(fy) {
+        Object.keys(appData.weights[fy] || {}).forEach(function(name) {
+            Object.values(appData.weights[fy][name] || {}).forEach(function(v) {
+                if (v !== undefined && v !== null && v !== '') wcount++;
+            });
+        });
+    });
+    Object.keys(appData.heights || {}).forEach(function(fy) {
+        Object.keys(appData.heights[fy] || {}).forEach(function(name) {
+            Object.values(appData.heights[fy][name] || {}).forEach(function(v) {
+                if (v !== undefined && v !== null && v !== '') hcount++;
+            });
+        });
+    });
+    if (wcount === 0 && hcount === 0) {
+        showToast('⚠ このデバイスにデータがありません', '#f44');
+        return;
+    }
+    if (!confirm('このデバイスのデータ（体重 ' + wcount + '件 + 身長 ' + hcount + '件）を全部クラウドへ送信します。よろしいですか？')) return;
+    if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+    fetch(SYNC_URL, {
+        method: 'POST', mode: 'no-cors',
+        body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: appData.weights, heights: appData.heights } }),
+        keepalive: true
+    });
+    showToast('☁️ 体重' + wcount + '件・身長' + hcount + '件をクラウドへ送信しました', '#4CAF50');
+}
 
 async function cloudLoad() {
     try {
         const res = await fetch(SYNC_URL + '?action=getWeight&t=' + Date.now());
         if (!res.ok) return;
         const cloud = await res.json();
-        if (cloud && cloud.weights) {
-            Object.keys(cloud.weights).forEach(function(fy) {
-                if (!appData.weights[fy]) appData.weights[fy] = {};
-                Object.keys(cloud.weights[fy]).forEach(function(name) {
-                    if (!appData.weights[fy][name]) appData.weights[fy][name] = {};
-                    Object.keys(cloud.weights[fy][name]).forEach(function(mk) {
-                        var val = cloud.weights[fy][name][mk];
-                        if (val !== undefined && val !== null && val !== '' &&
-                            (appData.weights[fy][name][mk] === undefined || appData.weights[fy][name][mk] === null || appData.weights[fy][name][mk] === '')) {
-                            appData.weights[fy][name][mk] = val;
-                        }
-                    });
-                });
-            });
+        // weights/heightsをクラウド完全置換（last-write-wins）
+        // 削除と変更を他デバイスに同期。クラウドが空ならローカル維持（事故防止）。
+        if (cloud && _hasAnyValue(cloud.weights)) {
+            appData.weights = cloud.weights;
         }
-        // 身長データもマージ
-        if (cloud && cloud.heights) {
-            Object.keys(cloud.heights).forEach(function(fy) {
-                if (!appData.heights[fy]) appData.heights[fy] = {};
-                Object.keys(cloud.heights[fy]).forEach(function(name) {
-                    if (!appData.heights[fy][name]) appData.heights[fy][name] = {};
-                    Object.keys(cloud.heights[fy][name]).forEach(function(mk) {
-                        var val = cloud.heights[fy][name][mk];
-                        if (val !== undefined && val !== null && val !== '' &&
-                            (appData.heights[fy][name][mk] === undefined || appData.heights[fy][name][mk] === null || appData.heights[fy][name][mk] === '')) {
-                            appData.heights[fy][name][mk] = val;
-                        }
-                    });
-                });
-            });
+        if (cloud && _hasAnyValue(cloud.heights)) {
+            appData.heights = cloud.heights;
         }
         if (cloud && cloud.users && cloud.users.length > 0 && appData.users.length === 0) {
             appData.users = cloud.users;
@@ -1417,6 +1440,13 @@ loadData();
 initYearSelect();
 renderTable();
 cloudLoad().then(function(){ renderTable(); });
+
+// タブが非表示→表示に戻った時に自動でクラウド再取得（マルチデバイス間の手動リロード不要化）
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        cloudLoad().then(function(){ renderTable(); });
+    }
+});
 </script>
 </body>
 </html>
