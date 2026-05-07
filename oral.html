@@ -57,6 +57,8 @@
         }
         .btn-white { background: white; color: #4CAF50; }
         .btn-white:hover { background: #e8f5e9; }
+        .btn-green { background: #4CAF50; color: white; }
+        .btn-green:hover { background: #388E3C; }
         .btn-taicho { background: #e3f2fd; color: #1565c0; border: 1px solid #1976d2; }
         .btn-taicho:hover { background: #bbdefb; }
         .btn-red { background: #f44336; color: white; }
@@ -379,6 +381,7 @@
     <div class="header-controls">
         <select id="yearSelect" class="year-select" onchange="changeYear()"></select>
         <button class="btn btn-white" onclick="loadFromSpreadsheet()">🔄 利用者台帳から取得</button>
+        <button class="btn btn-green no-print" onclick="forceCloudSync()">☁️ 全件クラウド送信</button>
         <button class="btn btn-taicho" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
         <button class="btn btn-white" onclick="openCsvModal()">📁 CSV読込</button>
         <button class="btn btn-white" onclick="exportJson()">💾 バックアップ</button>
@@ -541,10 +544,24 @@ const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-
 let _syncTimer = null;
 let _isSyncing = false;
 
+function _hasAnyValue(tree) {
+    return Object.keys(tree || {}).some(function(year) {
+        return Object.keys(tree[year] || {}).some(function(name) {
+            return Object.values(tree[year][name] || {}).some(function(v) {
+                return v !== undefined && v !== null && v !== '';
+            });
+        });
+    });
+}
 function cloudSync() {
     if (_syncTimer) clearTimeout(_syncTimer);
     _syncTimer = setTimeout(function() {
         if (_isSyncing) return;
+        // 空データ上書き事故防止ガード（身長アプリ2026-05-08事件と同型）
+        if (!_hasAnyValue(appData.checks)) {
+            console.log('☁️ ローカルデータが空のためクラウド送信スキップ（上書き事故防止）');
+            return;
+        }
         _isSyncing = true;
         try {
             var payload = JSON.stringify({
@@ -566,6 +583,34 @@ function cloudSync() {
         }
     }, 2000);
 }
+function forceCloudSync() {
+    var count = 0;
+    Object.keys(appData.checks || {}).forEach(function(year) {
+        Object.keys(appData.checks[year] || {}).forEach(function(name) {
+            Object.values(appData.checks[year][name] || {}).forEach(function(v) {
+                if (v !== undefined && v !== null && v !== '') count++;
+            });
+        });
+    });
+    if (count === 0) {
+        showToast('⚠ このデバイスにデータがありません', '#f44336');
+        return;
+    }
+    if (!confirm('このデバイスの口腔チェックデータ ' + count + ' 件を全部クラウドへ送信します。よろしいですか？')) return;
+    if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
+    _isSyncing = true;
+    var payload = JSON.stringify({
+        type: 'oral',
+        data: { users: appData.users, checks: appData.checks }
+    });
+    fetch(SYNC_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+    }).then(function(){ _isSyncing = false; }).catch(function(){ _isSyncing = false; });
+    showToast('☁️ ' + count + ' 件をクラウドへ送信しました', '#2196F3');
+}
 
 async function cloudLoad() {
     try {
@@ -574,7 +619,8 @@ async function cloudLoad() {
         var loaded = false;
         window[cbName] = function(cloud) {
             loaded = true;
-            if (cloud && cloud.checks) {
+            // クラウドが空ならローカル維持（事故防止・cloudSync側の空ガードと対）
+            if (cloud && _hasAnyValue(cloud.checks)) {
                 appData.checks = cloud.checks;
             }
             if (cloud && cloud.users && cloud.users.length > 0) {
@@ -1092,6 +1138,13 @@ loadData();
 initYearSelect();
 renderTable();
 cloudLoad();
+
+// タブが非表示→表示に戻った時に自動でクラウド再取得（マルチデバイス間の手動リロード不要化）
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        cloudLoad();
+    }
+});
 </script>
 </body>
 </html>
