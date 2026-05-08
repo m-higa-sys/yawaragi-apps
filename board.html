@@ -1407,6 +1407,8 @@
         <!-- 登録ボタン -->
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
+            <!-- 二重申請防止 警告バナー（2026-05-08追加） -->
+            <div id="abs-dup-warning" style="display:none;background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px;margin:12px 0;"></div>
             <button class="abs-submit-btn" id="abs-submit-btn" onclick="absSubmit()">この内容で登録する</button>
         </div>
     </div>
@@ -2202,10 +2204,14 @@ function activateTab(tabName) {
         if (typeof loadCmContactsCache === 'function') loadCmContactsCache();
         // リロード時のタブ復元はDOM準備完了前に走るのでJSONPが失敗する。完全ロードまで待つ
         if (typeof loadIntakeList === 'function') {
+            const fire = () => setTimeout(loadIntakeList, 200);
             if (document.readyState === 'complete') {
-                setTimeout(loadIntakeList, 200);
+                fire();
             } else {
-                window.addEventListener('load', () => setTimeout(loadIntakeList, 200), { once: true });
+                let fired = false;
+                const safeFire = () => { if (!fired) { fired = true; fire(); } };
+                window.addEventListener('load', safeFire, { once: true });
+                setTimeout(safeFire, 2000); // load取り逃し対策の安全網
             }
         }
     }
@@ -4979,6 +4985,7 @@ function absClearName() {
     absState.contact = '';
     absState.method = '';
     absState.contactDate = '';
+    if (typeof absHideDuplicateWarning === 'function') absHideDuplicateWarning();
 }
 
 // ----- 日付選択 -----
@@ -5225,6 +5232,227 @@ function absUpdateConfirm() {
         <strong>連絡方法:</strong> ${absState.method}<br>
         <strong>連絡日:</strong> ${contactDateText}
     `;
+
+    // 確認ステップ表示時に最新GAS状態で重複チェック（2026-05-08二重申請防止）
+    absRefreshGasDuplicateCheck();
+}
+
+// ============================================================
+// ===== 二重申請防止（2026-05-08追加） =====
+// ============================================================
+
+// 登録対象日付リストを作る（dateType に応じて単発/期間/長期休みを処理）
+function absBuildTargetDates() {
+    const dates = [];
+    if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
+        const start = new Date(absState.dateFrom);
+        const end = new Date(absState.dateTo);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            dates.push(toLocalDateStr(d));
+        }
+    } else if (absState.dateFrom) {
+        dates.push(absState.dateFrom);
+    }
+    return dates;
+}
+
+// 重複検知（ローカル+キャッシュGAS両方をチェック）
+function absDetectDuplicates(name, dates, isLongterm) {
+    const dupDates = [];
+    const dupSources = [];
+    const cachedGas = window._cachedGasAbsences || [];
+    const cachedLT = window._cachedLongTerm || [];
+    const existingLocal = absGetRecords();
+
+    function pushSource(date, reporter, timestamp) {
+        if (!dupSources.find(s => s.date === date)) {
+            dupSources.push({ date: date, reporter: reporter || '不明', timestamp: timestamp || '' });
+        }
+    }
+
+    if (isLongterm) {
+        const startDate = dates[0];
+        if (!startDate) return { dupDates, dupSources };
+        cachedLT.forEach(g => {
+            const gStart = g.date || g.startDate;
+            if (g.name === name && gStart === startDate && !g.resumeDate) {
+                if (!dupDates.includes(startDate)) dupDates.push(startDate);
+                pushSource(startDate, g.reporter, g.timestamp);
+            }
+        });
+        existingLocal.forEach(r => {
+            if (r.userName === name && r.dateType === 'longterm' && r.dateFrom === startDate) {
+                if (!dupDates.includes(startDate)) dupDates.push(startDate);
+                pushSource(startDate, r.contact, r.timestamp);
+            }
+        });
+    } else {
+        dates.forEach(targetDate => {
+            cachedGas.forEach(g => {
+                if (g.name === name && g.date === targetDate) {
+                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
+                    pushSource(targetDate, g.reporter, g.timestamp);
+                }
+            });
+            existingLocal.forEach(r => {
+                if (r.userName !== name || r.dateType === 'longterm') return;
+                let match = false;
+                if (r.dateType === 'range' && r.dateFrom && r.dateTo) {
+                    match = (r.dateFrom <= targetDate && targetDate <= r.dateTo);
+                } else {
+                    match = (r.dateFrom === targetDate);
+                }
+                if (match) {
+                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
+                    pushSource(targetDate, r.contact, r.timestamp);
+                }
+            });
+        });
+    }
+    return { dupDates: dupDates.sort(), dupSources };
+}
+
+function absShowDuplicateWarning(name, dup, isLongterm) {
+    const banner = document.getElementById('abs-dup-warning');
+    if (!banner) return;
+
+    const sourcesHtml = dup.dupSources.map(s => {
+        const ts = s.timestamp ? `（${s.timestamp}）` : '';
+        return `<li style="margin:4px 0;">${absFormatDate(s.date)}: <strong>${s.reporter}</strong>さん${ts}</li>`;
+    }).join('');
+
+    let title, footer;
+    if (isLongterm) {
+        title = '⚠️ すでに長期休みが登録されています';
+        footer = '追加で送信したい場合は、先に既存の長期休みをキャンセルしてください。';
+    } else if (dup.dupDates.length === 1) {
+        title = '⚠️ すでに申請済みです';
+        footer = '追加で送信したい場合は、先に登録済みの行をキャンセルしてから再登録してください。';
+    } else {
+        title = '⚠️ 以下の日はすでに申請済みです';
+        footer = 'すべての日が登録できる状態になるまで送信できません。重複している日は、先に登録済みの行をキャンセルしてください。';
+    }
+
+    banner.innerHTML = `
+        <div style="font-weight:700;color:#dc2626;font-size:1rem;margin-bottom:8px;">${title}</div>
+        <div style="font-size:0.92rem;color:#374151;margin-bottom:6px;"><strong>${name}</strong>様</div>
+        <ul style="font-size:0.9rem;color:#374151;margin:6px 0 8px 20px;padding:0;">${sourcesHtml}</ul>
+        <div style="font-size:0.85rem;color:#7f1d1d;line-height:1.5;">${footer}</div>
+    `;
+    banner.style.display = 'block';
+
+    const btn = document.getElementById('abs-submit-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.dupBlocked = '1';
+        btn.textContent = 'すでに申請済み';
+    }
+}
+
+function absHideDuplicateWarning() {
+    const banner = document.getElementById('abs-dup-warning');
+    if (banner) {
+        banner.innerHTML = '';
+        banner.style.display = 'none';
+    }
+    const btn = document.getElementById('abs-submit-btn');
+    if (btn && btn.dataset.dupBlocked === '1') {
+        btn.disabled = false;
+        delete btn.dataset.dupBlocked;
+        btn.textContent = 'この内容で登録する';
+    }
+}
+
+function absRefreshGasDuplicateCheck() {
+    if (!absState.selectedUser || !absState.dateFrom) return;
+    const isLongterm = absState.dateType === 'longterm';
+    const dates = absBuildTargetDates();
+    if (dates.length === 0) return;
+
+    const cachedDup = absDetectDuplicates(absState.selectedUser.name, dates, isLongterm);
+    if (cachedDup.dupDates.length > 0) {
+        absShowDuplicateWarning(absState.selectedUser.name, cachedDup, isLongterm);
+    } else {
+        absHideDuplicateWarning();
+    }
+
+    let unit = '午前';
+    if (absState.selectedUser.pattern && absState.selectedUser.pattern.length > 0) {
+        const hasAm = absState.selectedUser.pattern.some(p => p.unit === 'am');
+        const hasPm = absState.selectedUser.pattern.some(p => p.unit === 'pm');
+        if (hasAm && hasPm) unit = '終日';
+        else if (hasPm) unit = '午後';
+    }
+
+    absCheckDuplicateGas({
+        name: absState.selectedUser.name,
+        dates: dates,
+        unit: unit,
+        type: isLongterm ? 'longterm' : 'absence',
+        startDate: isLongterm ? dates[0] : ''
+    }).then(res => {
+        if (!res || !res.success) return;
+        if (isLongterm) {
+            if (res.duplicate && res.existing) {
+                const dup = {
+                    dupDates: [res.existing.startDate],
+                    dupSources: [{ date: res.existing.startDate, reporter: res.existing.reporter, timestamp: res.existing.timestamp }]
+                };
+                absShowDuplicateWarning(absState.selectedUser.name, dup, true);
+            } else if (cachedDup.dupDates.length === 0) {
+                absHideDuplicateWarning();
+            }
+        } else {
+            const list = res.existingDates || [];
+            if (list.length > 0) {
+                const dup = {
+                    dupDates: list.map(x => x.date).sort(),
+                    dupSources: list.map(x => ({ date: x.date, reporter: x.reporter, timestamp: x.timestamp }))
+                };
+                absShowDuplicateWarning(absState.selectedUser.name, dup, false);
+            } else if (cachedDup.dupDates.length === 0) {
+                absHideDuplicateWarning();
+            }
+        }
+    });
+}
+
+function absCheckDuplicateGas(opts) {
+    return new Promise(resolve => {
+        const cbName = '_chkDup_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        const params = new URLSearchParams({
+            action: 'check_duplicate_absence',
+            callback: cbName,
+            name: opts.name,
+            type: opts.type || 'absence'
+        });
+        if (opts.type === 'longterm') {
+            params.set('startDate', opts.startDate || '');
+        } else {
+            params.set('dates', (opts.dates || []).join(','));
+            params.set('unit', opts.unit || '午前');
+        }
+        const script = document.createElement('script');
+        script.src = ABS_BOARD_API_URL + '?' + params.toString() + '&t=' + Date.now();
+        const timeout = setTimeout(() => {
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve({ success: false, error: 'timeout' });
+        }, 8000);
+        window[cbName] = function (data) {
+            clearTimeout(timeout);
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve(data || { success: false });
+        };
+        script.onerror = () => {
+            clearTimeout(timeout);
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve({ success: false, error: 'network' });
+        };
+        document.body.appendChild(script);
+    });
 }
 
 // ----- 登録 -----
@@ -5249,86 +5477,16 @@ function absSubmit() {
         dates.push(absState.dateFrom);
     }
 
-    // ===== 重複チェック（長期休み含む全モード） =====
-    // 同じ利用者・同じ日付ですでに登録があれば、上書き確認する
+    // ===== 重複チェック（2026-05-08二重申請防止・上書きモード完全廃止） =====
+    // 重複ありなら警告バナー表示＋送信中止。再送が必要なら「先にキャンセル→再登録」の運用
     {
         const targetName = absState.selectedUser.name;
-        const existingLocal = absGetRecords();
-        const cachedGas = window._cachedGasAbsences || [];
         const isLongterm = absState.dateType === 'longterm';
-
-        // 重複している日付を集める
-        const dupDates = [];           // 重複した日付の文字列リスト
-        const dupLocalIds = new Set(); // 削除対象のlocalStorage ID
-
-        // 長期休みの場合は開始日以降の全欠席を対象に、それ以外は dates のみ対象
-        const checkDates = isLongterm
-            ? dates.concat(
-                cachedGas
-                    .filter(g => g.name === targetName && g.date >= dates[0])
-                    .map(g => g.date)
-              )
-            : dates;
-        const uniqueCheckDates = Array.from(new Set(checkDates));
-
-        uniqueCheckDates.forEach(targetDate => {
-            // localStorage側のチェック
-            existingLocal.forEach(r => {
-                if (r.userName !== targetName) return;
-                let match = false;
-                if (r.dateType === 'range' && r.dateFrom && r.dateTo) {
-                    match = (r.dateFrom <= targetDate && targetDate <= r.dateTo);
-                } else {
-                    match = (r.dateFrom === targetDate);
-                }
-                if (match) {
-                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
-                    dupLocalIds.add(r.id);
-                }
-            });
-            // GAS側のチェック
-            cachedGas.forEach(g => {
-                if (g.name === targetName && g.date === targetDate) {
-                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
-                }
-            });
-        });
-
-        if (dupDates.length > 0) {
-            const dupDateText = dupDates
-                .sort()
-                .map(d => absFormatDate(d))
-                .join('、');
-            const dialogMsg = isLongterm
-                ? `${targetName}さんは以下の日付ですでに欠席登録されています。\n\n${dupDateText}\n\n長期休みに切り替えますか？\n（既存の欠席登録は全部削除されます）\n\n「キャンセル」を押すと登録を中止します。`
-                : `${targetName}さんは以下の日付ですでに欠席登録されています。\n\n${dupDateText}\n\n上書きしますか？\n（古い登録を取り消して、新しい内容で登録します）\n\n「キャンセル」を押すと登録を中止します。`;
-            const ok = confirm(dialogMsg);
-            if (!ok) return;
-
-            // 古いlocalStorageレコードを削除
-            if (dupLocalIds.size > 0) {
-                let recs = absGetRecords();
-                recs = recs.filter(r => !dupLocalIds.has(r.id));
-                absSaveRecords(recs);
-            }
-
-            // 古いGASレコードも削除（重複日ごとにキャンセル送信）
-            dupDates.forEach(dateStr => {
-                gasPost({ action: 'cancel_absence', name: targetName, date: dateStr, unit: '終日' }, '重複取消');
-            });
-
-            // 楽観的更新（2026-05-06）: cachedGasから該当日を除外＋当月キャッシュ破棄
-            // 上書き直後にabsRenderUpcomingListが古いキャッシュを表示し続ける問題への対策
-            if (window._cachedGasAbsences) {
-                window._cachedGasAbsences = window._cachedGasAbsences.filter(
-                    g => !(g.name === targetName && dupDates.includes(g.date))
-                );
-            }
-            try {
-                const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
-                delete cache[absCurrentMonth];
-                localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
-            } catch {}
+        const dup = absDetectDuplicates(targetName, dates, isLongterm);
+        if (dup.dupDates.length > 0) {
+            absShowDuplicateWarning(targetName, dup, isLongterm);
+            showToast('⚠️ すでに申請済みです。先に登録済みの行をキャンセルしてください', 5000);
+            return;
         }
     }
 
