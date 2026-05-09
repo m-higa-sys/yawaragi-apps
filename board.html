@@ -5460,7 +5460,7 @@ function absCheckDuplicateGas(opts) {
 }
 
 // ----- 登録 -----
-function absSubmit() {
+async function absSubmit() {
     if (!absState.selectedUser || !absState.reason || !absState.contact || !absState.method || !absState.contactDate) {
         alert('すべての項目を入力してください');
         return;
@@ -5538,6 +5538,34 @@ function absSubmit() {
         return;
     }
 
+    // ★ 2026-05-10: ケアマネメール送信確認ポップアップ
+    const cmOffice = absState.selectedUser.cmOffice || '';
+    const cmNameInit = absState.selectedUser.cmName || '';
+    let cmEmailInit = '';
+    if (cmOffice && cmNameInit) {
+        const c = await fetchCmContact(cmOffice, cmNameInit);
+        if (c.found) cmEmailInit = c.email || '';
+    }
+    let mailCmName = cmNameInit;
+    let mailCmEmail = '';
+    let mailSend = false;
+    if (cmOffice) {
+        const r = await showAbsenceMailConfirm({
+            userName: absState.selectedUser.name,
+            dates: dates,
+            reason: reason,
+            supplement: '',
+            cmOffice: cmOffice,
+            cmName: cmNameInit,
+            cmEmail: cmEmailInit
+        });
+        if (r.send) {
+            mailSend = true;
+            mailCmName = r.cmName;
+            mailCmEmail = r.email;
+        }
+    }
+
     // GASにPOST送信
     const postData = {
         action: 'absence',
@@ -5549,9 +5577,9 @@ function absSubmit() {
         contact: contact,
         method: absState.method,
         contactDate: absState.contactDate,
-        cmOffice: absState.selectedUser.cmOffice || '',
-        cmEmail: '',
-        cmName: ''
+        cmOffice: cmOffice,
+        cmEmail: mailSend ? mailCmEmail : '',
+        cmName: mailCmName
     };
 
     // GAS送信（検証付きリトライ・バックグラウンドで実行）
@@ -6646,11 +6674,40 @@ function attShowAbsentMenu(name) {
     document.body.appendChild(menu);
 }
 
-function attCancelAbsence(name, dateStr) {
+async function attCancelAbsence(name, dateStr) {
     if (!confirm(name + '様 ' + absFormatDate(dateStr) + ' の欠席を取り消しますか？')) return;
 
-    // GASに取消送信
-    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席取消');
+    // ★ 2026-05-10: ケアマネにメール送信確認ポップアップ
+    const cached = (typeof absUserCache !== 'undefined') ? absUserCache.find(c => c.name === name) : null;
+    const cmOffice = cached ? (cached.cmOffice || '') : '';
+    const cmNameInit = (cached && cached.cmName) ? cached.cmName : '';
+    let cmEmailInit = '';
+    if (cmOffice && cmNameInit) {
+        const c = await fetchCmContact(cmOffice, cmNameInit);
+        if (c.found) cmEmailInit = c.email || '';
+    }
+    let mailCmName = cmNameInit;
+    let mailCmEmail = '';
+    let mailSend = false;
+    if (cmOffice) {
+        const r = await showCancelMailConfirm({
+            userName: name, dateStr: dateStr,
+            cmOffice: cmOffice, cmName: cmNameInit, cmEmail: cmEmailInit
+        });
+        if (r.send) {
+            mailSend = true;
+            mailCmName = r.cmName;
+            mailCmEmail = r.email;
+        }
+    }
+
+    // GASに取消送信（cmEmail がある場合は GAS 側で sendCancelEmail 自動実行）
+    gasPost({
+        action: 'cancel_absence',
+        name: name, date: dateStr, unit: '終日',
+        cmOffice: cmOffice, cmName: mailCmName,
+        cmEmail: mailSend ? mailCmEmail : ''
+    }, '欠席取消');
 
     // ローカル欠席記録からも削除
     let records = absGetRecords();
@@ -10316,6 +10373,235 @@ async function deleteIntakeAction(id) {
 }
 
 // ===== 利用者イベント機能は契約担会ケアマネ.html に分離（2026/4/29） =====
+
+// ===== ケアマネ欠席連絡 即時方式 Phase 1（2026-05-10） =====
+function formatDateForCmMail(dateStr) {
+    const parts = String(dateStr).split('-');
+    if (parts.length < 3) return String(dateStr);
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    const w = ['日','月','火','水','木','金','土'][new Date(y, m-1, d).getDay()];
+    return m + '月' + d + '日(' + w + ')';
+}
+
+function formatDatesForCmMail(dates) {
+    return (dates || []).map(formatDateForCmMail).join('、');
+}
+
+function buildAbsenceMailBody(opts) {
+    const dateLabel = formatDatesForCmMail(opts.dates);
+    return (opts.cmOffice || '【ケアマネ事業所】') + '\n' +
+        (opts.cmName || '【ケアマネ氏名】') + '様\n\n' +
+        'いつもお世話になっております。\n' +
+        'リハビリデイサービス yawaragi です。\n\n' +
+        dateLabel + '、' + opts.userName + '様より「' + (opts.reason || '体調不良') + '」とのご連絡があり、\n' +
+        'yawaragiをお休みされる旨伺いましたのでご報告いたします。\n' +
+        (opts.supplement ? '\n［備考： ' + opts.supplement + '］\n' : '') +
+        '\nご確認のほどよろしくお願いいたします。\n\n' +
+        '━━━━━━━━━━━━━━━━━━\n' +
+        'リハビリデイサービス yawaragi\n' +
+        'TEL/FAX: 0493-81-5125\n' +
+        '━━━━━━━━━━━━━━━━━━';
+}
+
+function buildCancelMailBody(opts) {
+    const dateLabel = formatDateForCmMail(opts.dateStr);
+    return (opts.cmOffice || '【ケアマネ事業所】') + '\n' +
+        (opts.cmName || '【ケアマネ氏名】') + '様\n\n' +
+        'いつもお世話になっております。\n' +
+        'リハビリデイサービス yawaragi です。\n\n' +
+        '先ほどお休み連絡をさせていただいた' + dateLabel + ' ' + opts.userName + '様ですが、\n' +
+        'やはりご利用されることになりましたのでご報告いたします。\n' +
+        '実績として計上されます。\n\n' +
+        'ご確認のほどよろしくお願いいたします。\n\n' +
+        '━━━━━━━━━━━━━━━━━━\n' +
+        'リハビリデイサービス yawaragi\n' +
+        'TEL/FAX: 0493-81-5125\n' +
+        '━━━━━━━━━━━━━━━━━━';
+}
+
+async function fetchCmContact(office, name) {
+    if (!office || !name) return { found: false, email: '' };
+    try {
+        const url = ABS_BOARD_API_URL + '?action=getCmContact&office=' + encodeURIComponent(office) + '&name=' + encodeURIComponent(name);
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.success && j.found) return { found: true, email: j.email || '' };
+        return { found: false, email: '' };
+    } catch(e) {
+        console.warn('fetchCmContact エラー:', e);
+        return { found: false, email: '' };
+    }
+}
+
+async function saveCmContact(office, name, email) {
+    if (!office || !name || !email) return;
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'updateCmContact', office: office, name: name, email: email })
+        });
+    } catch(e) {
+        console.warn('saveCmContact エラー（送信は続行）:', e);
+    }
+}
+
+async function showAbsenceMailConfirm(opts) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;';
+
+        const dateLabel = formatDatesForCmMail(opts.dates);
+        const subject = '【yawaragi】' + dateLabel + ' ' + opts.userName + '様 お休み連絡';
+
+        const cmNameEditable = !opts.cmName;
+        const emailEditable = !opts.cmEmail;
+
+        function renderBody() {
+            const cmNameVal = cmNameEditable ? (document.getElementById('cmNameInputAbs')?.value || '') : opts.cmName;
+            return buildAbsenceMailBody({
+                userName: opts.userName, dates: opts.dates, reason: opts.reason, supplement: opts.supplement,
+                cmOffice: opts.cmOffice, cmName: cmNameVal
+            });
+        }
+
+        const cmNameFieldHtml = cmNameEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ ケアマネ氏名が未登録</div>' +
+              '<input type="text" id="cmNameInputAbs" placeholder="例：田中 花子" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">👤 ケアマネ: ' + escapeHtml(opts.cmName) + '</div>';
+
+        const emailFieldHtml = emailEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ メールアドレスが未登録（次回から自動表示されます）</div>' +
+              '<input type="email" id="cmEmailInputAbs" placeholder="例：example@careplan.com" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">📧 送信先: ' + escapeHtml(opts.cmEmail) + '</div>';
+
+        overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:680px;width:96%;max-height:92vh;overflow-y:auto;">' +
+            '<h3 style="margin:0 0 12px;color:#16a085;font-size:18px;">✉ ケアマネにお休み連絡メールを送信</h3>' +
+            '<div style="font-size:13px;color:#7f8c8d;margin-bottom:8px;">差出人: r.d-yawaragi@keepfitlife.com</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📍 ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
+            cmNameFieldHtml +
+            emailFieldHtml +
+            '<div style="font-weight:bold;margin:10px 0 4px;font-size:14px;">件名:</div>' +
+            '<div style="padding:6px;background:#f8f9fa;border-radius:3px;margin-bottom:10px;font-size:13px;">' + escapeHtml(subject) + '</div>' +
+            '<div style="font-weight:bold;margin-bottom:4px;font-size:14px;">本文プレビュー:</div>' +
+            '<pre id="absMailBodyPreview" style="padding:10px;background:#f8f9fa;border-radius:3px;white-space:pre-wrap;font-size:12px;font-family:inherit;margin-bottom:10px;max-height:280px;overflow-y:auto;">' + escapeHtml(renderBody()) + '</pre>' +
+            '<div style="text-align:right;margin-top:12px;">' +
+            '<button id="btnAbsMailCancel" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">送信しない</button>' +
+            '<button id="btnAbsMailSend" style="padding:10px 18px;background:#16a085;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">送信する</button>' +
+            '</div></div>';
+
+        document.body.appendChild(overlay);
+
+        if (cmNameEditable) {
+            const inp = document.getElementById('cmNameInputAbs');
+            inp.addEventListener('input', () => {
+                document.getElementById('absMailBodyPreview').textContent = renderBody();
+            });
+        }
+
+        document.getElementById('btnAbsMailCancel').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ send: false });
+        };
+        document.getElementById('btnAbsMailSend').onclick = async () => {
+            const cmNameFinal = cmNameEditable ? (document.getElementById('cmNameInputAbs').value || '').trim() : opts.cmName;
+            const emailFinal = emailEditable ? (document.getElementById('cmEmailInputAbs').value || '').trim() : opts.cmEmail;
+            if (!cmNameFinal) { alert('ケアマネ氏名を入力してください'); return; }
+            if (!emailFinal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFinal)) {
+                alert('メールアドレスを正しく入力してください'); return;
+            }
+            if ((emailEditable || cmNameEditable) && opts.cmOffice) {
+                saveCmContact(opts.cmOffice, cmNameFinal, emailFinal);
+            }
+            document.body.removeChild(overlay);
+            resolve({ send: true, email: emailFinal, cmName: cmNameFinal });
+        };
+    });
+}
+
+async function showCancelMailConfirm(opts) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;';
+
+        const dateLabel = formatDateForCmMail(opts.dateStr);
+        const subject = '【yawaragi】' + dateLabel + ' ' + opts.userName + '様 ご利用に変更（休み→利用）';
+
+        const cmNameEditable = !opts.cmName;
+        const emailEditable = !opts.cmEmail;
+
+        function renderBody() {
+            const cmNameVal = cmNameEditable ? (document.getElementById('cmNameInputCancel')?.value || '') : opts.cmName;
+            return buildCancelMailBody({
+                userName: opts.userName, dateStr: opts.dateStr,
+                cmOffice: opts.cmOffice, cmName: cmNameVal
+            });
+        }
+
+        const cmNameFieldHtml = cmNameEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ ケアマネ氏名が未登録</div>' +
+              '<input type="text" id="cmNameInputCancel" placeholder="例：田中 花子" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">👤 ケアマネ: ' + escapeHtml(opts.cmName) + '</div>';
+
+        const emailFieldHtml = emailEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ メールアドレスが未登録</div>' +
+              '<input type="email" id="cmEmailInputCancel" placeholder="例：example@careplan.com" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">📧 送信先: ' + escapeHtml(opts.cmEmail) + '</div>';
+
+        overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:680px;width:96%;max-height:92vh;overflow-y:auto;">' +
+            '<h3 style="margin:0 0 12px;color:#27ae60;font-size:18px;">↩ ケアマネに「やっぱり利用」連絡を送信</h3>' +
+            '<div style="font-size:13px;color:#7f8c8d;margin-bottom:8px;">差出人: r.d-yawaragi@keepfitlife.com</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📍 ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
+            cmNameFieldHtml +
+            emailFieldHtml +
+            '<div style="font-weight:bold;margin:10px 0 4px;font-size:14px;">件名:</div>' +
+            '<div style="padding:6px;background:#f8f9fa;border-radius:3px;margin-bottom:10px;font-size:13px;">' + escapeHtml(subject) + '</div>' +
+            '<div style="font-weight:bold;margin-bottom:4px;font-size:14px;">本文プレビュー:</div>' +
+            '<pre id="cancelMailBodyPreview" style="padding:10px;background:#f8f9fa;border-radius:3px;white-space:pre-wrap;font-size:12px;font-family:inherit;margin-bottom:10px;max-height:280px;overflow-y:auto;">' + escapeHtml(renderBody()) + '</pre>' +
+            '<div style="text-align:right;margin-top:12px;">' +
+            '<button id="btnCancelMailNo" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">送信しない</button>' +
+            '<button id="btnCancelMailYes" style="padding:10px 18px;background:#27ae60;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">送信する</button>' +
+            '</div></div>';
+
+        document.body.appendChild(overlay);
+
+        if (cmNameEditable) {
+            const inp = document.getElementById('cmNameInputCancel');
+            inp.addEventListener('input', () => {
+                document.getElementById('cancelMailBodyPreview').textContent = renderBody();
+            });
+        }
+
+        document.getElementById('btnCancelMailNo').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ send: false });
+        };
+        document.getElementById('btnCancelMailYes').onclick = async () => {
+            const cmNameFinal = cmNameEditable ? (document.getElementById('cmNameInputCancel').value || '').trim() : opts.cmName;
+            const emailFinal = emailEditable ? (document.getElementById('cmEmailInputCancel').value || '').trim() : opts.cmEmail;
+            if (!cmNameFinal) { alert('ケアマネ氏名を入力してください'); return; }
+            if (!emailFinal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFinal)) {
+                alert('メールアドレスを正しく入力してください'); return;
+            }
+            if ((emailEditable || cmNameEditable) && opts.cmOffice) {
+                saveCmContact(opts.cmOffice, cmNameFinal, emailFinal);
+            }
+            document.body.removeChild(overlay);
+            resolve({ send: true, email: emailFinal, cmName: cmNameFinal });
+        };
+    });
+}
 
 </script>
 </body>
