@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>通所介護計画モニタリング - yawaragi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', 'Meiryo', sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    font-size: 16px;
+}
+.header {
+    background: linear-gradient(135deg, #4CAF50, #66BB6A);
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.header h1 { font-size: 22px; }
+.header-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.year-select {
+    font-size: 18px; padding: 8px 12px; border: none;
+    border-radius: 6px; background: rgba(255,255,255,0.9);
+    color: #333; cursor: pointer; min-height: 44px;
+}
+.btn {
+    padding: 10px 16px; border: none; border-radius: 6px;
+    font-size: 14px; cursor: pointer; font-weight: bold;
+    min-height: 44px; min-width: 44px; touch-action: manipulation;
+}
+.btn-white { background: white; color: #2E7D32; }
+.btn-white:hover { background: #e8f5e9; }
+.btn-green { background: #4CAF50; color: white; }
+.btn-green:hover { background: #388E3C; }
+
+.notice {
+    background: #fff8e1; color: #e65100; padding: 10px 20px;
+    border-left: 4px solid #ffa000; font-size: 14px; line-height: 1.6;
+}
+
+.toolbar {
+    padding: 12px 20px; background: white; border-bottom: 1px solid #ddd;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px;
+}
+.stats { font-size: 15px; color: #666; }
+.stats strong { color: #c62828; font-size: 18px; }
+.legend { display: flex; gap: 12px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-color {
+    width: 18px; height: 18px; border-radius: 4px; border: 1px solid #ccc;
+}
+
+#offlineBanner {
+    background: #ffebee; color: #c62828; padding: 8px 20px;
+    border-left: 4px solid #c62828; font-size: 14px;
+}
+
+.table-container { overflow-x: auto; padding: 15px; }
+table {
+    border-collapse: collapse; width: 100%; background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;
+}
+th, td { border: 1px solid #e0e0e0; text-align: center; padding: 4px 6px; font-size: 14px; }
+th {
+    background: #4CAF50; color: white; font-weight: bold;
+    position: sticky; top: 0; z-index: 10; font-size: 14px; padding: 8px 4px;
+}
+th.year-boundary, td.year-boundary { border-left: 2px solid #888; }
+.name-col {
+    text-align: left; padding-left: 10px; font-weight: bold;
+    min-width: 110px; white-space: nowrap;
+    position: sticky; left: 0; background: white; z-index: 5;
+}
+tr:nth-child(even) .name-col { background: #fafafa; }
+tr:nth-child(even) td.cell:not(.done):not(.partial):not(.past-empty) { background: #fafafa; }
+
+td.cell {
+    cursor: pointer; min-width: 78px; min-height: 56px;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+    padding: 4px 6px; vertical-align: middle;
+}
+td.cell:hover { filter: brightness(0.97); }
+td.cell.done { background: #c8e6c9; }
+td.cell.partial { background: #fff9c4; }
+td.cell.past-empty { background: #ffebee; box-shadow: inset 0 0 0 2px #f44336; }
+td.cell.current { box-shadow: inset 0 0 0 3px #1976d2; }
+td.cell .row {
+    display: block; font-size: 12px; line-height: 1.4;
+    padding: 1px 0;
+}
+td.cell .row .lbl { color: #666; margin-right: 2px; }
+td.cell .row .val { font-weight: bold; color: #1b5e20; }
+td.cell .row .val.empty { color: #bbb; font-weight: normal; }
+
+/* ボトムシート */
+.bs-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 9999;
+    align-items: flex-end; justify-content: center;
+}
+.bs-overlay.show { display: flex; }
+.bs-panel {
+    background: #fff; width: 100%; max-width: 500px;
+    padding: 20px 18px 24px; border-radius: 14px 14px 0 0;
+    animation: slideUp 0.18s ease-out;
+}
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+.bs-title {
+    font-size: 17px; font-weight: bold; margin-bottom: 6px; color: #333;
+}
+.bs-current {
+    font-size: 14px; color: #1976d2; margin-bottom: 14px;
+    background: #e3f2fd; padding: 8px 12px; border-radius: 6px;
+    display: none;
+}
+.bs-current.show { display: block; }
+.bs-btn {
+    display: block; width: 100%; padding: 14px;
+    margin: 8px 0; border: 1px solid #ccc; background: #f5f5f5;
+    font-size: 16px; border-radius: 10px; cursor: pointer;
+    min-height: 52px; font-weight: bold; text-align: center;
+}
+.bs-btn:hover { filter: brightness(0.96); }
+.bs-primary { background: #4CAF50; color: #fff; border-color: #4CAF50; }
+.bs-danger { background: #fff; color: #c62828; border-color: #c62828; }
+.bs-cancel { background: #fff; color: #666; }
+
+.toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    padding: 12px 24px; border-radius: 8px; color: white;
+    font-weight: bold; z-index: 10000; transition: opacity 0.3s; font-size: 15px;
+    opacity: 0; pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+.print-title { display: none; }
+
+@media print {
+    @page { size: A4 landscape; margin: 8mm; }
+    body { background: white; font-size: 11px; }
+    .header, .toolbar, .notice, #offlineBanner, .bs-overlay, button { display: none !important; }
+    .table-container { padding: 0; overflow: visible; }
+    table { box-shadow: none; }
+    th, td { padding: 2px 3px; font-size: 10px; }
+    th { padding: 4px 3px; font-size: 11px; }
+    .name-col { position: static; min-width: 90px; }
+    td.cell { min-width: 0; min-height: 0; }
+    td.cell.current { box-shadow: none; }
+    td.cell.past-empty { box-shadow: inset 0 0 0 1px #f44336; }
+    td.cell .row { font-size: 10px; line-height: 1.3; }
+    .print-title {
+        display: block; font-size: 14px; font-weight: bold;
+        text-align: center; padding: 4px 0 8px;
+    }
+}
+@media (max-width: 768px) {
+    .header { padding: 10px 15px; }
+    .header h1 { font-size: 18px; }
+    th, td { padding: 3px 4px; font-size: 13px; }
+    td.cell { min-width: 70px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📋 通所介護計画モニタリング</h1>
+    <div class="header-controls">
+        <select class="year-select" id="fiscalYearSelect" onchange="onYearChange()"></select>
+        <button class="btn btn-white" onclick="loadFiscalYearData()">📥 最新を取得</button>
+        <button class="btn btn-white" onclick="window.print()">🖨️ 印刷</button>
+    </div>
+</div>
+
+<div class="notice">
+    📋 <strong>モニタリングルール</strong>：要支援1・要支援2・事業対象者を毎月モニタリング。①記録作成日（記）と②ケアマネ送付用PDF保存日（P）の2項目を月次でチェック。
+</div>
+
+<div id="offlineBanner" style="display:none;">⚠ オフライン中（キャッシュ表示）。ネット復帰後、最新を取得してください。</div>
+
+<div class="toolbar">
+    <div class="stats">
+        対象: <strong id="totalUsers">0</strong>名
+        &nbsp;|&nbsp; 今月未完了: <strong id="unfinishedCount">0</strong>名
+    </div>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#c8e6c9;"></div> 両方済</div>
+        <div class="legend-item"><div class="legend-color" style="background:#fff9c4;"></div> 片方のみ</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffebee;border:2px solid #f44336;"></div> 過去未入力</div>
+        <div class="legend-item"><div class="legend-color" style="border:3px solid #1976d2;"></div> 当月</div>
+    </div>
+</div>
+
+<div class="print-title" id="printTitle"></div>
+
+<div class="table-container">
+    <table id="monitoringTable">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+    <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999; font-size:18px;">
+        読み込み中...
+    </div>
+</div>
+
+<!-- ボトムシート -->
+<div id="bottomSheet" class="bs-overlay" onclick="closeBottomSheet(event)">
+    <div class="bs-panel" onclick="event.stopPropagation()">
+        <div class="bs-title" id="bsTitle"></div>
+        <div class="bs-current" id="bsCurrent"></div>
+        <button class="bs-btn bs-primary" id="bsTodayBtn">📅 今日を入れる</button>
+        <button class="bs-btn" id="bsPickerBtn">📆 日付を選ぶ</button>
+        <button class="bs-btn bs-danger" id="bsClearBtn" style="display:none">🗑 クリア</button>
+        <button class="bs-btn bs-cancel" onclick="closeBottomSheet()">✕ キャンセル</button>
+        <input type="date" id="bsDateInput" style="position:absolute;left:-9999px;" onchange="onPickerChange()">
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ============ 定数 ============
+const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const CACHE_PREFIX = 'monitoring_cache_';
+
+// ============ 状態 ============
+let monitoringState = {
+    fiscalYear: getCurrentFiscalYear(),
+    users: [],            // [{ userId, name, category }]
+    records: {},          // key: "userId_year_month" → { recordDate, pdfDate }
+    isLoading: false,
+};
+let bsContext = null;     // 編集中ならnon-null
+
+// ============ ユーティリティ ============
+function getCurrentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[<>&"]/g, c => ({
+        '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'
+    }[c]));
+}
+function formatTodayISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function formatTodayMD() {
+    const d = new Date();
+    return (d.getMonth() + 1) + '/' + d.getDate();
+}
+function formatMD(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const parts = String(yyyymmdd).split('-');
+    if (parts.length < 3) return yyyymmdd;
+    return parseInt(parts[1], 10) + '/' + parseInt(parts[2], 10);
+}
+function showToast(msg, color) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = color || '#4CAF50';
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+function showOfflineBanner() {
+    document.getElementById('offlineBanner').style.display = 'block';
+}
+function hideOfflineBanner() {
+    document.getElementById('offlineBanner').style.display = 'none';
+}
+
+// ============ 年度セレクタ ============
+function populateFiscalYearSelect() {
+    const sel = document.getElementById('fiscalYearSelect');
+    const current = getCurrentFiscalYear();
+    sel.innerHTML = '';
+    for (let y = current + 1; y >= 2024; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y + '年度（' + y + '/4〜' + (y + 1) + '/3）';
+        if (y === current) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    monitoringState.fiscalYear = current;
+}
+
+function onYearChange() {
+    monitoringState.fiscalYear = parseInt(document.getElementById('fiscalYearSelect').value, 10);
+    loadCache();
+    loadFiscalYearData();
+}
+
+// ============ キャッシュ ============
+function saveCache() {
+    try {
+        const key = CACHE_PREFIX + monitoringState.fiscalYear;
+        localStorage.setItem(key, JSON.stringify({
+            fetchedAt: new Date().toISOString(),
+            users: monitoringState.users,
+            records: monitoringState.records
+        }));
+    } catch (e) { console.warn('cache save failed', e); }
+}
+
+function loadCache() {
+    try {
+        const key = CACHE_PREFIX + monitoringState.fiscalYear;
+        const raw = localStorage.getItem(key);
+        if (!raw) {
+            monitoringState.users = [];
+            monitoringState.records = {};
+            renderTable();
+            updateStats();
+            return;
+        }
+        const c = JSON.parse(raw);
+        monitoringState.users = c.users || [];
+        monitoringState.records = c.records || {};
+        renderTable();
+        updateStats();
+    } catch (e) {
+        console.warn('cache load failed', e);
+    }
+}
+
+// ============ API ============
+async function fetchMonitoringYear(year) {
+    const res = await fetch(API_BASE + '?action=getMonitoringYear&year=' + year + '&t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+}
+
+async function loadFiscalYearData() {
+    if (monitoringState.isLoading) return;
+    monitoringState.isLoading = true;
+    const fy = monitoringState.fiscalYear;
+    try {
+        const [r1, r2] = await Promise.all([
+            fetchMonitoringYear(fy),
+            fetchMonitoringYear(fy + 1)
+        ]);
+        if (!r1 || !r1.ok || !r2 || !r2.ok) {
+            console.warn('API returned non-ok', r1, r2);
+            showOfflineBanner();
+            return;
+        }
+        // 空ガード: usersが空なら既存キャッシュを維持
+        if (!r1.users || r1.users.length === 0) {
+            console.warn('users empty — keep cache');
+            showToast('⚠ 利用者データが空でした。キャッシュを維持します', '#ff9800');
+            return;
+        }
+        monitoringState.users = r1.users;
+        // recordsは年度横断で完全置換
+        const newRecords = {};
+        [r1, r2].forEach(r => {
+            (r.records || []).forEach(rec => {
+                const key = rec.userId + '_' + rec.year + '_' + rec.month;
+                newRecords[key] = {
+                    recordDate: rec.recordDate || '',
+                    pdfDate: rec.pdfDate || ''
+                };
+            });
+        });
+        monitoringState.records = newRecords;
+        saveCache();
+        hideOfflineBanner();
+        renderTable();
+        updateStats();
+    } catch (e) {
+        console.error('loadFiscalYearData error:', e);
+        showOfflineBanner();
+        showToast('⚠ データ取得に失敗（オフライン表示）', '#f44336');
+    } finally {
+        monitoringState.isLoading = false;
+    }
+}
+
+// ============ テーブル描画 ============
+function buildMonths(fy) {
+    const months = [];
+    for (let m = 4; m <= 12; m++) months.push({ year: fy, month: m, label: m + '月' });
+    for (let m = 1; m <= 3; m++) months.push({ year: fy + 1, month: m, label: m + '月' });
+    return months;
+}
+
+function renderTable() {
+    const fy = monitoringState.fiscalYear;
+    const months = buildMonths(fy);
+    const thead = document.querySelector('#monitoringTable thead');
+    const tbody = document.querySelector('#monitoringTable tbody');
+    const emptyEl = document.getElementById('emptyMessage');
+
+    if (!monitoringState.users || monitoringState.users.length === 0) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = monitoringState.isLoading ? '読み込み中...' : '対象者がいません';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth() + 1;
+
+    let headerHtml = '<tr><th class="name-col">氏名</th>';
+    months.forEach(mo => {
+        const cls = (mo.month === 1 && mo.year === fy + 1) ? ' class="year-boundary"' : '';
+        headerHtml += '<th' + cls + '>' + mo.label + '</th>';
+    });
+    headerHtml += '</tr>';
+    thead.innerHTML = headerHtml;
+
+    let bodyHtml = '';
+    monitoringState.users.forEach(u => {
+        bodyHtml += '<tr>';
+        bodyHtml += '<td class="name-col">' + escapeHtml(u.name) + '</td>';
+        months.forEach(mo => {
+            const key = u.userId + '_' + mo.year + '_' + mo.month;
+            const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
+            const isPast = (mo.year < nowYear) || (mo.year === nowYear && mo.month < nowMonth);
+            const isCurrent = (mo.year === nowYear && mo.month === nowMonth);
+            let cls = 'cell';
+            if (rec.recordDate && rec.pdfDate) cls += ' done';
+            else if (rec.recordDate || rec.pdfDate) cls += ' partial';
+            else if (isPast) cls += ' past-empty';
+            if (isCurrent) cls += ' current';
+            if (mo.month === 1 && mo.year === fy + 1) cls += ' year-boundary';
+
+            const recDisp = rec.recordDate
+                ? '<span class="val">' + formatMD(rec.recordDate) + '</span>'
+                : '<span class="val empty">─</span>';
+            const pdfDisp = rec.pdfDate
+                ? '<span class="val">' + formatMD(rec.pdfDate) + '</span>'
+                : '<span class="val empty">─</span>';
+
+            bodyHtml += '<td class="' + cls + '"'
+                + ' data-userid="' + escapeHtml(u.userId) + '"'
+                + ' data-year="' + mo.year + '"'
+                + ' data-month="' + mo.month + '"'
+                + ' onclick="onCellClick(event, this)">'
+                + '<span class="row" data-field="recordDate"><span class="lbl">記:</span>' + recDisp + '</span>'
+                + '<span class="row" data-field="pdfDate"><span class="lbl">P:</span>' + pdfDisp + '</span>'
+                + '</td>';
+        });
+        bodyHtml += '</tr>';
+    });
+    tbody.innerHTML = bodyHtml;
+    updatePrintTitle();
+}
+
+function updateStats() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    let done = 0;
+    monitoringState.users.forEach(u => {
+        const key = u.userId + '_' + y + '_' + m;
+        const r = monitoringState.records[key];
+        if (r && r.recordDate && r.pdfDate) done++;
+    });
+    document.getElementById('totalUsers').textContent = monitoringState.users.length;
+    document.getElementById('unfinishedCount').textContent = monitoringState.users.length - done;
+}
+
+function updatePrintTitle() {
+    const fy = monitoringState.fiscalYear;
+    document.getElementById('printTitle').textContent =
+        '通所介護計画モニタリング ' + fy + '年度（' + fy + '/4〜' + (fy + 1) + '/3）';
+}
+
+// ============ ボトムシート ============
+function onCellClick(ev, td) {
+    const fieldEl = ev.target.closest ? ev.target.closest('[data-field]') : null;
+    const field = fieldEl ? fieldEl.dataset.field : 'recordDate';
+    const userId = td.dataset.userid;
+    const year = parseInt(td.dataset.year, 10);
+    const month = parseInt(td.dataset.month, 10);
+    const key = userId + '_' + year + '_' + month;
+    const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
+    const current = rec[field] || '';
+
+    let name = '';
+    monitoringState.users.forEach(u => { if (u.userId === userId) name = u.name; });
+    const fieldLabel = field === 'recordDate' ? 'モニタリング記録作成日' : 'ケアマネ送付用PDF保存日';
+
+    bsContext = { userId, year, month, field, currentValue: current, name };
+
+    document.getElementById('bsTitle').textContent =
+        name + '  ' + month + '月の' + fieldLabel;
+
+    const curEl = document.getElementById('bsCurrent');
+    if (current) {
+        curEl.textContent = '現在: ' + current;
+        curEl.classList.add('show');
+    } else {
+        curEl.classList.remove('show');
+    }
+
+    const todayBtn = document.getElementById('bsTodayBtn');
+    todayBtn.textContent = current
+        ? '📅 今日（' + formatTodayMD() + '）に変更'
+        : '📅 今日（' + formatTodayMD() + '）を入れる';
+    todayBtn.onclick = () => applyValue(formatTodayISO());
+
+    document.getElementById('bsPickerBtn').onclick = () => {
+        const inp = document.getElementById('bsDateInput');
+        inp.value = current || formatTodayISO();
+        if (inp.showPicker) {
+            try { inp.showPicker(); }
+            catch (e) { inp.click(); }
+        } else {
+            inp.click();
+        }
+    };
+
+    const clearBtn = document.getElementById('bsClearBtn');
+    if (current) {
+        clearBtn.style.display = 'block';
+        clearBtn.onclick = () => {
+            if (confirm(name + ' ' + month + '月の' + fieldLabel + ' をクリアしますか？')) {
+                applyValue('');
+            }
+        };
+    } else {
+        clearBtn.style.display = 'none';
+    }
+
+    document.getElementById('bottomSheet').classList.add('show');
+}
+
+function closeBottomSheet(ev) {
+    if (ev && ev.target && ev.target.id !== 'bottomSheet') return;
+    document.getElementById('bottomSheet').classList.remove('show');
+    bsContext = null;
+}
+
+function onPickerChange() {
+    const v = document.getElementById('bsDateInput').value;
+    if (v && bsContext) applyValue(v);
+}
+
+async function applyValue(value) {
+    if (!bsContext) return;
+    const ctx = bsContext;
+    document.getElementById('bottomSheet').classList.remove('show');
+    bsContext = null;
+
+    // 楽観更新
+    const key = ctx.userId + '_' + ctx.year + '_' + ctx.month;
+    const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
+    rec[ctx.field] = value;
+    if (!rec.recordDate && !rec.pdfDate) {
+        delete monitoringState.records[key];
+    } else {
+        monitoringState.records[key] = rec;
+    }
+    saveCache();
+    renderTable();
+    updateStats();
+
+    // API送信
+    try {
+        const url = API_BASE + '?action=updateMonitoring'
+            + '&userId=' + encodeURIComponent(ctx.userId)
+            + '&year=' + ctx.year
+            + '&month=' + ctx.month
+            + '&field=' + ctx.field
+            + '&value=' + encodeURIComponent(value)
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        showToast(value ? '✅ 保存しました' : '🗑 クリアしました', value ? '#4CAF50' : '#ff9800');
+        hideOfflineBanner();
+    } catch (e) {
+        console.error('updateMonitoring error:', e);
+        showToast('⚠ 保存失敗。ネット接続を確認してください', '#f44336');
+        showOfflineBanner();
+    }
+}
+
+// ============ 起動 ============
+window.addEventListener('load', async () => {
+    populateFiscalYearSelect();
+    loadCache();           // 即表示
+    await loadFiscalYearData(); // バックグラウンド更新
+});
+
+// タブが非表示→表示に戻った時に自動再取得（編集中は抑止）
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !bsContext) {
+        loadFiscalYearData();
+    }
+});
+</script>
+</body>
+</html>
