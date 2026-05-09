@@ -27,6 +27,7 @@ body {
 }
 .header h1 { font-size: 22px; }
 .header-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 .year-select {
     font-size: 18px; padding: 8px 12px; border: none;
     border-radius: 6px; background: rgba(255,255,255,0.9);
@@ -37,10 +38,10 @@ body {
     font-size: 14px; cursor: pointer; font-weight: bold;
     min-height: 44px; min-width: 44px; touch-action: manipulation;
 }
-.btn-white { background: white; color: #2E7D32; }
+.btn-white { background: white; color: #4CAF50; }
 .btn-white:hover { background: #e8f5e9; }
-.btn-green { background: #4CAF50; color: white; }
-.btn-green:hover { background: #388E3C; }
+.btn-red { background: #f44336; color: white; }
+.btn-red:hover { background: #d32f2f; }
 
 .notice {
     background: #fff8e1; color: #e65100; padding: 10px 20px;
@@ -52,8 +53,10 @@ body {
     display: flex; justify-content: space-between; align-items: center;
     flex-wrap: wrap; gap: 10px;
 }
+.toolbar-left { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
 .stats { font-size: 15px; color: #666; }
-.stats strong { color: #c62828; font-size: 18px; }
+.stats strong { color: #4CAF50; font-size: 18px; }
+
 .legend { display: flex; gap: 12px; align-items: center; font-size: 13px; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 4px; }
 .legend-color {
@@ -65,83 +68,124 @@ body {
     border-left: 4px solid #c62828; font-size: 14px;
 }
 
+/* 曜日＋午前/午後フィルター */
+.filter-bar {
+    padding: 8px 20px; background: #fff; border-bottom: 1px solid #ddd;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.filter-label { font-size: 13px; font-weight: bold; color: #555; white-space: nowrap; }
+.filter-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.filter-btn {
+    padding: 6px 14px; border: 1px solid #ccc; border-radius: 20px;
+    background: #fff; color: #555; font-size: 14px; cursor: pointer;
+    min-height: 36px; touch-action: manipulation; transition: all 0.15s;
+}
+.filter-btn:hover { background: #f5f5f5; }
+.filter-btn.active {
+    background: #4CAF50; color: #fff; border-color: #4CAF50; font-weight: bold;
+}
+.filter-btn.active-ampm {
+    background: #2196F3; color: #fff; border-color: #2196F3; font-weight: bold;
+}
+.filter-count { font-size: 13px; color: #888; align-self: center; }
+
 .table-container { overflow-x: auto; padding: 15px; }
 table {
     border-collapse: collapse; width: 100%; background: white;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;
 }
-th, td { border: 1px solid #e0e0e0; text-align: center; padding: 4px 6px; font-size: 14px; }
+th, td {
+    border: 1px solid #e0e0e0; text-align: center;
+    padding: 6px 3px; font-size: 14px;
+}
 th {
     background: #4CAF50; color: white; font-weight: bold;
-    position: sticky; top: 0; z-index: 10; font-size: 14px; padding: 8px 4px;
+    position: sticky; top: 0; z-index: 10;
 }
-th.year-boundary, td.year-boundary { border-left: 2px solid #888; }
-.name-col {
+th.month-header {
+    background: #388E3C; font-size: 15px;
+    border-left: 3px solid #1B5E20;
+}
+th.sub-header {
+    background: #4CAF50; font-size: 12px; min-width: 56px;
+}
+th.sub-header.month-start { border-left: 3px solid #1B5E20; }
+
+.month-border { border-left: 3px solid #a5d6a7 !important; }
+
+.name-cell {
     text-align: left; padding-left: 10px; font-weight: bold;
-    min-width: 110px; white-space: nowrap;
-    position: sticky; left: 0; background: white; z-index: 5;
+    min-width: 90px; white-space: nowrap;
+    position: sticky; left: 30px; background: white; z-index: 5;
 }
-tr:nth-child(even) .name-col { background: #fafafa; }
-tr:nth-child(even) td.cell:not(.done):not(.partial):not(.past-empty) { background: #fafafa; }
+.group-cell {
+    font-weight: bold; color: #4CAF50; background: #f1f8e9;
+    position: sticky; left: 0; z-index: 5; min-width: 30px;
+}
+.care-badge {
+    display: inline-block; font-size: 10px; padding: 1px 4px;
+    border-radius: 3px; margin-left: 4px; font-weight: normal;
+    vertical-align: middle;
+}
+.care-shien1 { background: #E1F5FE; color: #01579B; }
+.care-shien2 { background: #B3E5FC; color: #01579B; }
+.care-jigyou { background: #FFE0B2; color: #E65100; }
 
-td.cell {
-    cursor: pointer; min-width: 78px; min-height: 56px;
+.check-cell {
+    cursor: pointer; min-width: 56px; min-height: 44px;
     user-select: none; -webkit-user-select: none; touch-action: manipulation;
-    padding: 4px 6px; vertical-align: middle;
+    transition: background 0.15s; font-size: 13px; font-weight: bold;
 }
-td.cell:hover { filter: brightness(0.97); }
-td.cell.done { background: #c8e6c9; }
-td.cell.partial { background: #fff9c4; }
-td.cell.past-empty { background: #ffebee; box-shadow: inset 0 0 0 2px #f44336; }
-td.cell.current { box-shadow: inset 0 0 0 3px #1976d2; }
-td.cell .row {
-    display: block; font-size: 12px; line-height: 1.4;
-    padding: 1px 0;
+.check-cell:hover { background: #f5f5f5; }
+.check-cell.checked {
+    background: #e8f5e9; color: #2E7D32;
 }
-td.cell .row .lbl { color: #666; margin-right: 2px; }
-td.cell .row .val { font-weight: bold; color: #1b5e20; }
-td.cell .row .val.empty { color: #bbb; font-weight: normal; }
+.check-cell.highlight-undone {
+    background: #ffebee;
+    box-shadow: inset 0 0 0 2px #f44336;
+}
+.check-cell.current {
+    box-shadow: inset 0 0 0 3px #1976d2;
+}
+.check-cell.current.highlight-undone {
+    box-shadow: inset 0 0 0 3px #1976d2, inset 0 0 0 5px #ffebee;
+}
+.check-cell.both-done {
+    background: #c8e6c9;
+}
 
-/* ボトムシート */
-.bs-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4); z-index: 9999;
-    align-items: flex-end; justify-content: center;
+.row-even { background: #fafafa; }
+.row-even .name-cell { background: #fafafa; }
+
+/* 日付編集ダイアログ */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 100;
+    justify-content: center; align-items: center;
 }
-.bs-overlay.show { display: flex; }
-.bs-panel {
-    background: #fff; width: 100%; max-width: 500px;
-    padding: 20px 18px 24px; border-radius: 14px 14px 0 0;
-    animation: slideUp 0.18s ease-out;
+.modal-overlay.active { display: flex; }
+.date-dialog {
+    background: white; border-radius: 12px; padding: 24px;
+    max-width: 360px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    text-align: center;
 }
-@keyframes slideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
+.date-dialog h3 { margin-bottom: 6px; font-size: 18px; color: #333; }
+.date-dialog .sub { font-size: 13px; color: #666; margin-bottom: 14px; }
+.date-dialog .current-date {
+    font-size: 22px; font-weight: bold; color: #2E7D32; margin-bottom: 12px;
 }
-.bs-title {
-    font-size: 17px; font-weight: bold; margin-bottom: 6px; color: #333;
+.date-dialog input[type="date"] {
+    font-size: 18px; padding: 10px 14px;
+    border: 2px solid #4CAF50; border-radius: 8px;
+    width: 100%; margin-bottom: 15px; min-height: 44px;
 }
-.bs-current {
-    font-size: 14px; color: #1976d2; margin-bottom: 14px;
-    background: #e3f2fd; padding: 8px 12px; border-radius: 6px;
-    display: none;
-}
-.bs-current.show { display: block; }
-.bs-btn {
-    display: block; width: 100%; padding: 14px;
-    margin: 8px 0; border: 1px solid #ccc; background: #f5f5f5;
-    font-size: 16px; border-radius: 10px; cursor: pointer;
-    min-height: 52px; font-weight: bold; text-align: center;
-}
-.bs-btn:hover { filter: brightness(0.96); }
-.bs-primary { background: #4CAF50; color: #fff; border-color: #4CAF50; }
-.bs-danger { background: #fff; color: #c62828; border-color: #c62828; }
-.bs-cancel { background: #fff; color: #666; }
+.date-dialog .btn-row { display: flex; gap: 10px; }
+.date-dialog .btn-row .btn { flex: 1; }
 
 .toast {
     position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
     padding: 12px 24px; border-radius: 8px; color: white;
-    font-weight: bold; z-index: 10000; transition: opacity 0.3s; font-size: 15px;
+    font-weight: bold; z-index: 200; transition: opacity 0.3s; font-size: 15px;
     opacity: 0; pointer-events: none;
 }
 .toast.show { opacity: 1; }
@@ -150,27 +194,25 @@ td.cell .row .val.empty { color: #bbb; font-weight: normal; }
 
 @media print {
     @page { size: A4 landscape; margin: 8mm; }
-    body { background: white; font-size: 11px; }
-    .header, .toolbar, .notice, #offlineBanner, .bs-overlay, button { display: none !important; }
+    body { background: white; font-size: 10px; }
+    .header, .toolbar, .filter-bar, .notice, #offlineBanner, .modal-overlay, button { display: none !important; }
     .table-container { padding: 0; overflow: visible; }
-    table { box-shadow: none; }
-    th, td { padding: 2px 3px; font-size: 10px; }
-    th { padding: 4px 3px; font-size: 11px; }
-    .name-col { position: static; min-width: 90px; }
-    td.cell { min-width: 0; min-height: 0; }
-    td.cell.current { box-shadow: none; }
-    td.cell.past-empty { box-shadow: inset 0 0 0 1px #f44336; }
-    td.cell .row { font-size: 10px; line-height: 1.3; }
+    table { box-shadow: none; font-size: 10px; }
+    th, td { padding: 2px 1px; font-size: 10px; }
+    .name-cell, .group-cell { position: static; }
+    .check-cell.checked { font-size: 10px; }
+    .check-cell.highlight-undone { box-shadow: inset 0 0 0 1px #f44336; }
+    .check-cell.current { box-shadow: none; }
+    .care-badge { font-size: 8px; }
     .print-title {
-        display: block; font-size: 14px; font-weight: bold;
+        display: block; font-size: 13px; font-weight: bold;
         text-align: center; padding: 4px 0 8px;
     }
 }
+
 @media (max-width: 768px) {
     .header { padding: 10px 15px; }
     .header h1 { font-size: 18px; }
-    th, td { padding: 3px 4px; font-size: 13px; }
-    td.cell { min-width: 70px; }
 }
 </style>
 </head>
@@ -179,29 +221,53 @@ td.cell .row .val.empty { color: #bbb; font-weight: normal; }
 <div class="header">
     <h1>📋 通所介護計画モニタリング</h1>
     <div class="header-controls">
-        <select class="year-select" id="fiscalYearSelect" onchange="onYearChange()"></select>
+        <select id="fiscalYearSelect" class="year-select" onchange="onYearChange()"></select>
         <button class="btn btn-white" onclick="loadFiscalYearData()">📥 最新を取得</button>
-        <button class="btn btn-white" onclick="window.print()">🖨️ 印刷</button>
+        <button class="btn btn-white" onclick="window.print()">🖨 印刷</button>
     </div>
 </div>
 
 <div class="notice">
-    📋 <strong>モニタリングルール</strong>：要支援1・要支援2・事業対象者を毎月モニタリング。①記録作成日（記）と②ケアマネ送付用PDF保存日（P）の2項目を月次でチェック。
+    📋 <strong>モニタリングルール</strong>：要支援1・要支援2・事業対象者を毎月モニタリング。①記録作成日と②ケアマネ送付用PDF保存日の2項目を月次でチェック。<br>
+    未入力セルをタップ＝今日の日付が入る／入力済セルをタップ＝日付編集ダイアログ（変更/取消）。
 </div>
 
 <div id="offlineBanner" style="display:none;">⚠ オフライン中（キャッシュ表示）。ネット復帰後、最新を取得してください。</div>
 
 <div class="toolbar">
-    <div class="stats">
-        対象: <strong id="totalUsers">0</strong>名
-        &nbsp;|&nbsp; 今月未完了: <strong id="unfinishedCount">0</strong>名
+    <div class="toolbar-left">
+        <div class="stats">
+            対象: <strong id="totalUsers">0</strong>名
+            （要支援1: <span id="shien1Count">0</span> ／ 要支援2: <span id="shien2Count">0</span> ／ 事業対象: <span id="jigyouCount">0</span>）
+            ｜ 今月完了: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
+        </div>
     </div>
     <div class="legend">
         <div class="legend-item"><div class="legend-color" style="background:#c8e6c9;"></div> 両方済</div>
-        <div class="legend-item"><div class="legend-color" style="background:#fff9c4;"></div> 片方のみ</div>
+        <div class="legend-item"><div class="legend-color" style="background:#e8f5e9;"></div> 入力済</div>
         <div class="legend-item"><div class="legend-color" style="background:#ffebee;border:2px solid #f44336;"></div> 過去未入力</div>
         <div class="legend-item"><div class="legend-color" style="border:3px solid #1976d2;"></div> 当月</div>
     </div>
+</div>
+
+<div class="filter-bar" id="filterBar" style="display:none;">
+    <span class="filter-label">曜日:</span>
+    <div class="filter-group" id="dayFilters">
+        <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
+        <button class="filter-btn" onclick="setDayFilter('月')">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火')">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水')">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木')">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金')">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+    </div>
+    <span class="filter-label" style="margin-left:8px;">時間:</span>
+    <div class="filter-group" id="ampmFilters">
+        <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
 </div>
 
 <div class="print-title" id="printTitle"></div>
@@ -216,16 +282,17 @@ td.cell .row .val.empty { color: #bbb; font-weight: normal; }
     </div>
 </div>
 
-<!-- ボトムシート -->
-<div id="bottomSheet" class="bs-overlay" onclick="closeBottomSheet(event)">
-    <div class="bs-panel" onclick="event.stopPropagation()">
-        <div class="bs-title" id="bsTitle"></div>
-        <div class="bs-current" id="bsCurrent"></div>
-        <button class="bs-btn bs-primary" id="bsTodayBtn">📅 今日を入れる</button>
-        <button class="bs-btn" id="bsPickerBtn">📆 日付を選ぶ</button>
-        <button class="bs-btn bs-danger" id="bsClearBtn" style="display:none">🗑 クリア</button>
-        <button class="bs-btn bs-cancel" onclick="closeBottomSheet()">✕ キャンセル</button>
-        <input type="date" id="bsDateInput" style="position:absolute;left:-9999px;" onchange="onPickerChange()">
+<!-- 日付編集ダイアログ -->
+<div class="modal-overlay" id="dateDialog">
+    <div class="date-dialog">
+        <h3 id="dateDialogTitle">日付編集</h3>
+        <div class="sub" id="dateDialogSub"></div>
+        <input type="date" id="dateInput">
+        <div class="btn-row">
+            <button class="btn btn-red" onclick="clearCheckDate()">取消</button>
+            <button class="btn" style="background:#4CAF50;color:white;" onclick="saveDateFromDialog()">OK</button>
+        </div>
+        <button class="btn" style="background:#eee;color:#666;width:100%;margin-top:10px;" onclick="closeDateDialog()">キャンセル</button>
     </div>
 </div>
 
@@ -235,15 +302,29 @@ td.cell .row .val.empty { color: #bbb; font-weight: normal; }
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const CACHE_PREFIX = 'monitoring_cache_';
+const MONTHS = [
+    { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
+    { m: 7, label: '7月' }, { m: 8, label: '8月' }, { m: 9, label: '9月' },
+    { m: 10, label: '10月' }, { m: 11, label: '11月' }, { m: 12, label: '12月' },
+    { m: 1, label: '1月', nextYear: true },
+    { m: 2, label: '2月', nextYear: true },
+    { m: 3, label: '3月', nextYear: true }
+];
+const SUB_COLS = [
+    { field: 'recordDate', label: '記録' },
+    { field: 'pdfDate', label: 'PDF' }
+];
 
 // ============ 状態 ============
 let monitoringState = {
     fiscalYear: getCurrentFiscalYear(),
-    users: [],            // [{ userId, name, category }]
+    users: [],            // [{ userId, name, category, furigana, days, ampm }]
     records: {},          // key: "userId_year_month" → { recordDate, pdfDate }
     isLoading: false,
 };
-let bsContext = null;     // 編集中ならnon-null
+let filterDay = '';
+let filterAmpm = '';
+let dialogState = { userId: '', name: '', year: 0, month: 0, field: '', currentValue: '' };
 
 // ============ ユーティリティ ============
 function getCurrentFiscalYear() {
@@ -255,13 +336,16 @@ function escapeHtml(s) {
         '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'
     }[c]));
 }
+function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+function formatTodayShort() {
+    const d = new Date();
+    return (d.getMonth() + 1) + '/' + d.getDate();
+}
 function formatTodayISO() {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-function formatTodayMD() {
-    const d = new Date();
-    return (d.getMonth() + 1) + '/' + d.getDate();
 }
 function formatMD(yyyymmdd) {
     if (!yyyymmdd) return '';
@@ -281,6 +365,56 @@ function showOfflineBanner() {
 }
 function hideOfflineBanner() {
     document.getElementById('offlineBanner').style.display = 'none';
+}
+
+// ============ ふりがなグループ分け ============
+function getGroup(kana) {
+    if (!kana) return '他';
+    const c = kana.charAt(0);
+    if ('あいうえおアイウエオ'.indexOf(c) >= 0) return 'ア';
+    if ('かきくけこがぎぐげごカキクケコガギグゲゴ'.indexOf(c) >= 0) return 'カ';
+    if ('さしすせそざじずぜぞサシスセソザジズゼゾ'.indexOf(c) >= 0) return 'サ';
+    if ('たちつてとだぢづでどタチツテトダヂヅデド'.indexOf(c) >= 0) return 'タ';
+    if ('なにぬねのナニヌネノ'.indexOf(c) >= 0) return 'ナ';
+    if ('はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ'.indexOf(c) >= 0) return 'ハ';
+    if ('まみむめもマミムメモ'.indexOf(c) >= 0) return 'マ';
+    if ('やゆよヤユヨ'.indexOf(c) >= 0) return 'ヤ';
+    if ('らりるれろラリルレロ'.indexOf(c) >= 0) return 'ラ';
+    if ('わをんワヲン'.indexOf(c) >= 0) return 'ワ';
+    return '他';
+}
+
+function sortUsers() {
+    monitoringState.users.sort((a, b) =>
+        (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja')
+    );
+}
+
+// ============ 曜日・午前午後フィルター ============
+function setDayFilter(day) {
+    filterDay = day;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderTable();
+}
+function setAmpmFilter(ampm) {
+    filterAmpm = ampm;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
+    event.target.classList.add('active-ampm');
+    renderTable();
+}
+function matchesSchedule(user, day, ampm) {
+    if (!day) return true;
+    if (!user.days || user.days.indexOf(day) < 0) return false;
+    if (!ampm) return true;
+    const ap = user.ampm || '';
+    if (ap === '午前' || ap === '午後') return ap === ampm;
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) return p.indexOf(ampm) >= 0;
+    }
+    return false;
 }
 
 // ============ 年度セレクタ ============
@@ -332,9 +466,7 @@ function loadCache() {
         monitoringState.records = c.records || {};
         renderTable();
         updateStats();
-    } catch (e) {
-        console.warn('cache load failed', e);
-    }
+    } catch (e) { console.warn('cache load failed', e); }
 }
 
 // ============ API ============
@@ -358,14 +490,12 @@ async function loadFiscalYearData() {
             showOfflineBanner();
             return;
         }
-        // 空ガード: usersが空なら既存キャッシュを維持
         if (!r1.users || r1.users.length === 0) {
             console.warn('users empty — keep cache');
             showToast('⚠ 利用者データが空でした。キャッシュを維持します', '#ff9800');
             return;
         }
         monitoringState.users = r1.users;
-        // recordsは年度横断で完全置換
         const newRecords = {};
         [r1, r2].forEach(r => {
             (r.records || []).forEach(rec => {
@@ -391,16 +521,8 @@ async function loadFiscalYearData() {
 }
 
 // ============ テーブル描画 ============
-function buildMonths(fy) {
-    const months = [];
-    for (let m = 4; m <= 12; m++) months.push({ year: fy, month: m, label: m + '月' });
-    for (let m = 1; m <= 3; m++) months.push({ year: fy + 1, month: m, label: m + '月' });
-    return months;
-}
-
 function renderTable() {
     const fy = monitoringState.fiscalYear;
-    const months = buildMonths(fy);
     const thead = document.querySelector('#monitoringTable thead');
     const tbody = document.querySelector('#monitoringTable tbody');
     const emptyEl = document.getElementById('emptyMessage');
@@ -410,6 +532,7 @@ function renderTable() {
         tbody.innerHTML = '';
         emptyEl.style.display = 'block';
         emptyEl.textContent = monitoringState.isLoading ? '読み込み中...' : '対象者がいません';
+        document.getElementById('filterBar').style.display = 'none';
         return;
     }
     emptyEl.style.display = 'none';
@@ -418,53 +541,104 @@ function renderTable() {
     const nowYear = now.getFullYear();
     const nowMonth = now.getMonth() + 1;
 
-    let headerHtml = '<tr><th class="name-col">氏名</th>';
-    months.forEach(mo => {
-        const cls = (mo.month === 1 && mo.year === fy + 1) ? ' class="year-boundary"' : '';
-        headerHtml += '<th' + cls + '>' + mo.label + '</th>';
+    // ヘッダー（2段）
+    let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="position:sticky;left:30px;background:#4CAF50;">氏名</th>';
+    MONTHS.forEach(mo => {
+        h1 += '<th class="month-header" colspan="' + SUB_COLS.length + '">' + mo.label + '</th>';
     });
-    headerHtml += '</tr>';
-    thead.innerHTML = headerHtml;
+    h1 += '</tr>';
 
-    let bodyHtml = '';
-    monitoringState.users.forEach(u => {
-        bodyHtml += '<tr>';
-        bodyHtml += '<td class="name-col">' + escapeHtml(u.name) + '</td>';
-        months.forEach(mo => {
-            const key = u.userId + '_' + mo.year + '_' + mo.month;
-            const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
-            const isPast = (mo.year < nowYear) || (mo.year === nowYear && mo.month < nowMonth);
-            const isCurrent = (mo.year === nowYear && mo.month === nowMonth);
-            let cls = 'cell';
-            if (rec.recordDate && rec.pdfDate) cls += ' done';
-            else if (rec.recordDate || rec.pdfDate) cls += ' partial';
-            else if (isPast) cls += ' past-empty';
-            if (isCurrent) cls += ' current';
-            if (mo.month === 1 && mo.year === fy + 1) cls += ' year-boundary';
-
-            const recDisp = rec.recordDate
-                ? '<span class="val">' + formatMD(rec.recordDate) + '</span>'
-                : '<span class="val empty">─</span>';
-            const pdfDisp = rec.pdfDate
-                ? '<span class="val">' + formatMD(rec.pdfDate) + '</span>'
-                : '<span class="val empty">─</span>';
-
-            bodyHtml += '<td class="' + cls + '"'
-                + ' data-userid="' + escapeHtml(u.userId) + '"'
-                + ' data-year="' + mo.year + '"'
-                + ' data-month="' + mo.month + '"'
-                + ' onclick="onCellClick(event, this)">'
-                + '<span class="row" data-field="recordDate"><span class="lbl">記:</span>' + recDisp + '</span>'
-                + '<span class="row" data-field="pdfDate"><span class="lbl">P:</span>' + pdfDisp + '</span>'
-                + '</td>';
+    let h2 = '<tr>';
+    MONTHS.forEach(mo => {
+        SUB_COLS.forEach((sub, si) => {
+            const borderCls = si === 0 ? ' month-start' : '';
+            h2 += '<th class="sub-header' + borderCls + '">' + sub.label + '</th>';
         });
-        bodyHtml += '</tr>';
     });
-    tbody.innerHTML = bodyHtml;
+    h2 += '</tr>';
+    thead.innerHTML = h1 + h2;
+
+    // 並び替え＋フィルター
+    sortUsers();
+    const filteredUsers = monitoringState.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+
+    const hasScheduleData = monitoringState.users.some(u => u.days);
+    document.getElementById('filterBar').style.display = hasScheduleData ? 'flex' : 'none';
+    const fcEl = document.getElementById('filterCount');
+    fcEl.textContent = (filterDay || filterAmpm)
+        ? filteredUsers.length + ' / ' + monitoringState.users.length + '名 表示中'
+        : '';
+
+    let html = '';
+    let currentGroup = '';
+    let rowIndex = 0;
+
+    filteredUsers.forEach(u => {
+        const group = getGroup(u.furigana);
+        if (group !== currentGroup) {
+            currentGroup = group;
+            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + MONTHS.length * SUB_COLS.length) + '" style="background:#f1f8e9;"></td></tr>';
+        }
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+
+        // カテゴリバッジ
+        let badgeCls = 'care-shien1';
+        let badgeText = '支1';
+        if (u.category === '要支援2') { badgeCls = 'care-shien2'; badgeText = '支2'; }
+        else if (u.category === '事業対象') { badgeCls = 'care-jigyou'; badgeText = '事業'; }
+
+        html += '<tr class="' + rowClass + '">';
+        html += '<td class="group-cell"></td>';
+        html += '<td class="name-cell">' + escapeHtml(u.name) + '<span class="care-badge ' + badgeCls + '">' + badgeText + '</span></td>';
+
+        MONTHS.forEach(mo => {
+            const cellYear = mo.nextYear ? fy + 1 : fy;
+            const key = u.userId + '_' + cellYear + '_' + mo.m;
+            const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
+            const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
+            const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
+            const bothDone = !!(rec.recordDate && rec.pdfDate);
+
+            SUB_COLS.forEach((sub, si) => {
+                const value = rec[sub.field] || '';
+                let cls = 'check-cell';
+                if (si === 0) cls += ' month-border';
+                if (bothDone) cls += ' both-done';
+                else if (value) cls += ' checked';
+                else if (isPast) cls += ' highlight-undone';
+                if (isCurrent) cls += ' current';
+
+                const display = value ? formatMD(value) : '';
+                html += '<td class="' + cls + '"'
+                    + ' data-userid="' + escapeAttr(u.userId) + '"'
+                    + ' data-name="' + escapeAttr(u.name) + '"'
+                    + ' data-year="' + cellYear + '"'
+                    + ' data-month="' + mo.m + '"'
+                    + ' data-field="' + sub.field + '"'
+                    + ' data-fieldlabel="' + sub.label + '"'
+                    + ' onclick="onCellTap(this)">' + display + '</td>';
+            });
+        });
+        html += '</tr>';
+        rowIndex++;
+    });
+    tbody.innerHTML = html;
+    updateStats();
     updatePrintTitle();
 }
 
 function updateStats() {
+    let shien1 = 0, shien2 = 0, jigyou = 0;
+    monitoringState.users.forEach(u => {
+        if (u.category === '要支援1') shien1++;
+        else if (u.category === '要支援2') shien2++;
+        else if (u.category === '事業対象') jigyou++;
+    });
+    document.getElementById('totalUsers').textContent = monitoringState.users.length;
+    document.getElementById('shien1Count').textContent = shien1;
+    document.getElementById('shien2Count').textContent = shien2;
+    document.getElementById('jigyouCount').textContent = jigyou;
+
     const now = new Date();
     const y = now.getFullYear();
     const m = now.getMonth() + 1;
@@ -474,8 +648,8 @@ function updateStats() {
         const r = monitoringState.records[key];
         if (r && r.recordDate && r.pdfDate) done++;
     });
-    document.getElementById('totalUsers').textContent = monitoringState.users.length;
-    document.getElementById('unfinishedCount').textContent = monitoringState.users.length - done;
+    document.getElementById('progressCount').textContent = done;
+    document.getElementById('progressTotal').textContent = monitoringState.users.length;
 }
 
 function updatePrintTitle() {
@@ -484,87 +658,62 @@ function updatePrintTitle() {
         '通所介護計画モニタリング ' + fy + '年度（' + fy + '/4〜' + (fy + 1) + '/3）';
 }
 
-// ============ ボトムシート ============
-function onCellClick(ev, td) {
-    const fieldEl = ev.target.closest ? ev.target.closest('[data-field]') : null;
-    const field = fieldEl ? fieldEl.dataset.field : 'recordDate';
+// ============ セルクリック処理（口腔チェック方式） ============
+function onCellTap(td) {
     const userId = td.dataset.userid;
+    const name = td.dataset.name;
     const year = parseInt(td.dataset.year, 10);
     const month = parseInt(td.dataset.month, 10);
+    const field = td.dataset.field;
+    const fieldLabel = td.dataset.fieldlabel;
     const key = userId + '_' + year + '_' + month;
     const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
     const current = rec[field] || '';
 
-    let name = '';
-    monitoringState.users.forEach(u => { if (u.userId === userId) name = u.name; });
-    const fieldLabel = field === 'recordDate' ? 'モニタリング記録作成日' : 'ケアマネ送付用PDF保存日';
-
-    bsContext = { userId, year, month, field, currentValue: current, name };
-
-    document.getElementById('bsTitle').textContent =
-        name + '  ' + month + '月の' + fieldLabel;
-
-    const curEl = document.getElementById('bsCurrent');
-    if (current) {
-        curEl.textContent = '現在: ' + current;
-        curEl.classList.add('show');
+    if (!current) {
+        // 未入力 → ワンタップで今日入る
+        applyValue(userId, name, year, month, field, fieldLabel, formatTodayISO(), formatTodayShort());
     } else {
-        curEl.classList.remove('show');
+        // 入力済 → 日付編集ダイアログ
+        openDateDialog(userId, name, year, month, field, fieldLabel, current);
     }
+}
 
-    const todayBtn = document.getElementById('bsTodayBtn');
-    todayBtn.textContent = current
-        ? '📅 今日（' + formatTodayMD() + '）に変更'
-        : '📅 今日（' + formatTodayMD() + '）を入れる';
-    todayBtn.onclick = () => applyValue(formatTodayISO());
+function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue) {
+    dialogState = { userId, name, year, month, field, fieldLabel, currentValue };
+    document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月の' + fieldLabel + '日';
+    document.getElementById('dateDialogSub').textContent = '現在: ' + currentValue;
+    document.getElementById('dateInput').value = currentValue;
+    document.getElementById('dateDialog').classList.add('active');
+}
 
-    document.getElementById('bsPickerBtn').onclick = () => {
-        const inp = document.getElementById('bsDateInput');
-        inp.value = current || formatTodayISO();
-        if (inp.showPicker) {
-            try { inp.showPicker(); }
-            catch (e) { inp.click(); }
-        } else {
-            inp.click();
-        }
-    };
+function closeDateDialog() {
+    document.getElementById('dateDialog').classList.remove('active');
+}
 
-    const clearBtn = document.getElementById('bsClearBtn');
-    if (current) {
-        clearBtn.style.display = 'block';
-        clearBtn.onclick = () => {
-            if (confirm(name + ' ' + month + '月の' + fieldLabel + ' をクリアしますか？')) {
-                applyValue('');
-            }
-        };
-    } else {
-        clearBtn.style.display = 'none';
+async function saveDateFromDialog() {
+    const v = document.getElementById('dateInput').value;
+    if (!v) {
+        showToast('⚠ 日付が選択されていません', '#f44336');
+        return;
     }
-
-    document.getElementById('bottomSheet').classList.add('show');
+    const ds = dialogState;
+    closeDateDialog();
+    await applyValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.fieldLabel, v, formatMD(v));
 }
 
-function closeBottomSheet(ev) {
-    if (ev && ev.target && ev.target.id !== 'bottomSheet') return;
-    document.getElementById('bottomSheet').classList.remove('show');
-    bsContext = null;
+async function clearCheckDate() {
+    const ds = dialogState;
+    if (!confirm(ds.name + ' ' + ds.month + '月の' + ds.fieldLabel + ' をクリアしますか？')) return;
+    closeDateDialog();
+    await applyValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.fieldLabel, '', '');
 }
 
-function onPickerChange() {
-    const v = document.getElementById('bsDateInput').value;
-    if (v && bsContext) applyValue(v);
-}
-
-async function applyValue(value) {
-    if (!bsContext) return;
-    const ctx = bsContext;
-    document.getElementById('bottomSheet').classList.remove('show');
-    bsContext = null;
-
+async function applyValue(userId, name, year, month, field, fieldLabel, value, displayValue) {
     // 楽観更新
-    const key = ctx.userId + '_' + ctx.year + '_' + ctx.month;
+    const key = userId + '_' + year + '_' + month;
     const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
-    rec[ctx.field] = value;
+    rec[field] = value;
     if (!rec.recordDate && !rec.pdfDate) {
         delete monitoringState.records[key];
     } else {
@@ -572,21 +721,20 @@ async function applyValue(value) {
     }
     saveCache();
     renderTable();
-    updateStats();
 
     // API送信
     try {
         const url = API_BASE + '?action=updateMonitoring'
-            + '&userId=' + encodeURIComponent(ctx.userId)
-            + '&year=' + ctx.year
-            + '&month=' + ctx.month
-            + '&field=' + ctx.field
+            + '&userId=' + encodeURIComponent(userId)
+            + '&year=' + year + '&month=' + month
+            + '&field=' + field
             + '&value=' + encodeURIComponent(value)
             + '&t=' + Date.now();
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
-        showToast(value ? '✅ 保存しました' : '🗑 クリアしました', value ? '#4CAF50' : '#ff9800');
+        showToast(value ? '✅ ' + name + ' ' + month + '月 ' + fieldLabel + '=' + displayValue : '🗑 ' + name + ' ' + month + '月 ' + fieldLabel + ' クリア',
+                  value ? '#4CAF50' : '#ff9800');
         hideOfflineBanner();
     } catch (e) {
         console.error('updateMonitoring error:', e);
@@ -598,13 +746,12 @@ async function applyValue(value) {
 // ============ 起動 ============
 window.addEventListener('load', async () => {
     populateFiscalYearSelect();
-    loadCache();           // 即表示
-    await loadFiscalYearData(); // バックグラウンド更新
+    loadCache();
+    await loadFiscalYearData();
 });
 
-// タブが非表示→表示に戻った時に自動再取得（編集中は抑止）
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && !bsContext) {
+    if (document.visibilityState === 'visible' && !document.getElementById('dateDialog').classList.contains('active')) {
         loadFiscalYearData();
     }
 });
