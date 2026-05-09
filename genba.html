@@ -2451,13 +2451,18 @@ let tbSelectedPriority = 'high';
 function tbInit() {
     tbFetchGasTasks(); // GASからタスクを取得
     tbRenderAll();
-    // 1分ごとにボード更新（経過時間の更新用）
+    // 1分ごとにボード更新（経過時間の更新用、タブ非表示中・別タブ表示中は止める）
     setInterval(() => {
+        if (document.hidden) return;
         const activeTab = document.querySelector('.tab-btn.active');
         if (activeTab && activeTab.dataset.tab === 'task') tbRenderBoard();
     }, 60000);
-    // 5分ごとにGASタスクを再取得
-    setInterval(() => tbFetchGasTasks(), 300000);
+    // 30秒ごとにGASタスクを再取得（タブ非表示中・別タブ表示中は止める）
+    setInterval(() => {
+        if (document.hidden) return;
+        const activeTab = document.querySelector('.tab-btn.active');
+        if (activeTab && activeTab.dataset.tab === 'task') tbFetchGasTasks();
+    }, 30000);
 }
 
 // GASからタスクを取得
@@ -4049,14 +4054,38 @@ function attUpdateDateLabel() {
 
 function attChangeDate(offset) {
     attCurrentDate.setDate(attCurrentDate.getDate() + offset);
+    attLastOrder = { am: [], pm: [] }; // 日付変更時は並び順リセット
     attUpdateDateLabel();
     attLoad();
 }
 
 function attGoToday() {
     attCurrentDate = new Date();
+    attLastOrder = { am: [], pm: [] };
     attUpdateDateLabel();
     attLoad();
+}
+
+// 並び順安定化ヘルパー：前回順序があればそれに従う、新規ユーザーは末尾に追加
+function attApplyStableOrder(list, lastOrderNames) {
+    if (!lastOrderNames || lastOrderNames.length === 0) {
+        return list.slice().sort((a, b) => {
+            if (a.status === '出席' && b.status !== '出席') return -1;
+            if (a.status !== '出席' && b.status === '出席') return 1;
+            return 0;
+        });
+    }
+    const byName = {};
+    list.forEach(u => { byName[u.name] = u; });
+    const ordered = [];
+    lastOrderNames.forEach(name => {
+        if (byName[name]) {
+            ordered.push(byName[name]);
+            delete byName[name];
+        }
+    });
+    Object.keys(byName).forEach(name => ordered.push(byName[name]));
+    return ordered;
 }
 
 function attLoad() {
@@ -4181,12 +4210,9 @@ function attRender(data) {
     if (data.am.length === 0) {
         html += '<div class="att-empty">通所予定の利用者がいません</div>';
     } else {
-        // 出席を先に、欠席を後に
-        const amSorted = data.am.slice().sort((a, b) => {
-            if (a.status === '出席' && b.status !== '出席') return -1;
-            if (a.status !== '出席' && b.status === '出席') return 1;
-            return 0;
-        });
+        // 並び順安定化：初回は出席→欠席ソート、以降は前回の表示順を維持して画面ジャンプ防止
+        const amSorted = attApplyStableOrder(data.am, attLastOrder.am);
+        attLastOrder.am = amSorted.map(u => u.name);
         amSorted.forEach(u => {
             html += attRenderUser(u);
         });
@@ -4204,11 +4230,8 @@ function attRender(data) {
     if (data.pm.length === 0) {
         html += '<div class="att-empty">通所予定の利用者がいません</div>';
     } else {
-        const pmSorted = data.pm.slice().sort((a, b) => {
-            if (a.status === '出席' && b.status !== '出席') return -1;
-            if (a.status !== '出席' && b.status === '出席') return 1;
-            return 0;
-        });
+        const pmSorted = attApplyStableOrder(data.pm, attLastOrder.pm);
+        attLastOrder.pm = pmSorted.map(u => u.name);
         pmSorted.forEach(u => {
             html += attRenderUser(u);
         });
@@ -4249,6 +4272,9 @@ function attRenderUser(u) {
 
 // 出席予定タブから取得したデータを保持
 let attLastData = { am: [], pm: [] };
+
+// 表示順を保持（初回は出席→欠席ソート、以降は同じ順序を維持して画面ジャンプ防止）
+let attLastOrder = { am: [], pm: [] };
 
 function attStartAbsence(name) {
     // 欠席登録タブに切り替え
@@ -4321,7 +4347,11 @@ function attInit() {
     // 長期休み一覧も読み込み（再開予定日の表示用）
     if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
     // 30秒ごとに出席予定を自動更新（欠席登録のリアルタイム反映）
+    // 他アプリと同じガード方式：タブ非表示・他タブ表示中は再描画を止める
     setInterval(() => {
+        if (document.hidden) return;
+        const tabBtn = document.querySelector('.tab-btn[data-tab="attendance"]');
+        if (tabBtn && !tabBtn.classList.contains('active')) return;
         // キャッシュをクリアしてGASから最新データを取得
         try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
         attLoad();

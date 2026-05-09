@@ -2167,9 +2167,12 @@ function init() {
     attInit();
     // 欠席登録初期化
     absInit();
-    // 区変管理 初期ロード + 10分ごと再取得
+    // 区変管理 初期ロード + 1分ごと再取得（タブ非表示中は止める）
     loadKubunHenkouList();
-    setInterval(loadKubunHenkouList, 60 * 1000); // 1分おきに自動更新（2026/4/27 社長依頼で 10分→1分）
+    setInterval(function() {
+        if (document.hidden) return;
+        loadKubunHenkouList();
+    }, 60 * 1000); // 1分おきに自動更新（2026/4/27 社長依頼で 10分→1分）
 }
 
 const TAB_STATE_KEY = 'yawaragi_board_active_tab';
@@ -4702,8 +4705,9 @@ function applyMailTasks() {
     });
 }
 
-// 1分ごとに17:00アラート再判定（タブ開きっぱなし対策）
+// 1分ごとに17:00アラート再判定（タブ開きっぱなし対策、タブ非表示中は止める）
 setInterval(function () {
+    if (document.hidden) return;
     if (typeof mmCurrentDate === 'string' && mmCurrentDate) mmMailUpdateAlert(mmCurrentDate);
 }, 60 * 1000);
 

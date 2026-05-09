@@ -546,8 +546,11 @@
         } catch(e) { /* オフライン時は静かに失敗 */ }
     }
 
-    // 30秒ごとにクラウドから取得
-    setInterval(fetchFromCloud, 30000);
+    // 30秒ごとにクラウドから取得（タブ非表示中は止める）
+    setInterval(function() {
+        if (document.hidden) return;
+        fetchFromCloud();
+    }, 30000);
     document.addEventListener('visibilitychange', function() {
         if (!document.hidden) fetchFromCloud();
     });
