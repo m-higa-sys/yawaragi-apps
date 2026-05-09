@@ -67,7 +67,18 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
 .modal-buttons{display:flex;gap:8px;justify-content:flex-end}
 .modal-buttons button{padding:8px 20px;border:none;border-radius:4px;font-size:14px;font-weight:bold;cursor:pointer}
 .modal-btn-ok{background:#2c5f8a;color:#fff}
+.modal-btn-ok:disabled{background:#aaa;cursor:not-allowed}
 .modal-btn-cancel{background:#eee;color:#333}
+.modal select{width:100%;padding:8px;border:2px solid #ccc;border-radius:4px;font-size:14px;margin-bottom:8px;background:#fff}
+.modal select:focus{border-color:#2c5f8a;outline:none}
+.modal label.field-label{display:block;font-size:13px;font-weight:bold;margin-bottom:4px;color:#444}
+
+/* === イレギュラー送迎切替ボタン（2026-05-09追加） === */
+.toggle-sougei-btn{display:inline-block;width:20px;height:20px;line-height:16px;font-size:12px;margin-left:3px;border:1px solid #2c5f8a;border-radius:50%;background:#fff;color:#2c5f8a;cursor:pointer;padding:0;vertical-align:middle;text-align:center;font-weight:bold;-webkit-tap-highlight-color:transparent}
+.toggle-sougei-btn:hover{background:#e3f2fd}
+.toggle-sougei-btn[data-mode="restore"]{border-color:#2e7d32;color:#2e7d32}
+.toggle-sougei-btn[data-mode="restore"]:hover{background:#e8f5e9}
+.nt-item .toggle-sougei-btn{margin-left:6px}
 
 @media print {
   @page { size: A4 portrait; margin: 5mm; }
@@ -86,6 +97,7 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
   .remarks-area { border: 1px solid #000; border-radius: 0; }
   .remarks-area textarea { border: 1px solid #000; }
   .user-absent { text-decoration: line-through; color: #999; }
+  .toggle-sougei-btn { display:none !important; }
 }
 
 /* === 未実施報告ボタン（2026-04-28追加）=== */
@@ -192,6 +204,23 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- イレギュラー送迎切替ダイアログ（2026-05-09追加） -->
+<div id="toggleDialog" class="modal-overlay" style="display:none;z-index:300">
+  <div class="modal">
+    <h2 id="toggleDialogTitle">送迎切替</h2>
+    <p id="toggleDialogDesc" style="font-size:13px;color:#555"></p>
+    <label class="field-label" for="toggleOperatorSelect">操作者（必須）</label>
+    <select id="toggleOperatorSelect" onchange="onToggleOperatorChange()">
+      <option value="">-- 選択してください --</option>
+    </select>
+    <input type="text" id="toggleOperatorInput" placeholder="リストにない人は手入力" oninput="onToggleOperatorChange()" style="width:100%;padding:8px;border:1px dashed #aaa;border-radius:4px;font-size:13px;margin-bottom:12px;box-sizing:border-box">
+    <div class="modal-buttons">
+      <button class="modal-btn-cancel" onclick="closeToggleDialog()">いいえ</button>
+      <button class="modal-btn-ok" id="toggleConfirmBtn" onclick="confirmToggle()" disabled>はい</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const DAILY_OPS_KEY = 'yawaragi_daily_ops';
@@ -805,6 +834,7 @@ function renderSection(containerId, secData, type, sectionKey, absent){
   routes.forEach(() => { h += '<th style="background:#f0f0f0;font-size:10px">名前</th>'; });
   h += '</tr>';
 
+  const _unit = sectionKey.startsWith('am') ? 'am' : 'pm';
   for(let i = 0; i < maxUsers; i++){
     h += `<tr><td class="user-num">${i+1}</td>`;
     routes.forEach(r => {
@@ -813,7 +843,8 @@ function renderSection(containerId, secData, type, sectionKey, absent){
         const isAbsent = absent[user];
         if(!isAbsent) totalUsers++;
         const cls = isAbsent ? 'user-name user-absent' : 'user-name';
-        h += `<td class="${cls}" data-user="${escHtml(user)}" onclick="toggleAbsent(this)" title="タップで欠席/出席切替">${escHtml(user)}</td>`;
+        const toggleBtn = (typeof renderToggleButton === 'function') ? renderToggleButton(user, _unit) : '';
+        h += `<td class="${cls}" data-user="${escHtml(user)}" onclick="toggleAbsent(this)" title="タップで欠席/出席切替">${escHtml(user)}${toggleBtn}</td>`;
       } else {
         h += '<td></td>';
       }
@@ -837,7 +868,9 @@ function renderNoTransport(items, absent){
   document.getElementById('ntList').innerHTML = items.map(it => {
     const cls = it.status === '徒歩' ? 'nt-walk' : 'nt-family';
     const absentStyle = absent[it.name] ? 'text-decoration:line-through;opacity:0.5' : '';
-    return `<span class="nt-item ${cls}" style="${absentStyle}" data-user="${escHtml(it.name)}" onclick="toggleAbsent(this)" title="タップで欠席/出席切替">${it.unit}：${escHtml(it.name)}（${it.status}）${absent[it.name]?'【欠席】':''}</span>`;
+    const unitKey = it.unit === '午前' ? 'am' : 'pm';
+    const toggleBtn = (typeof renderToggleButton === 'function') ? renderToggleButton(it.name, unitKey) : '';
+    return `<span class="nt-item ${cls}" style="${absentStyle}" data-user="${escHtml(it.name)}" onclick="toggleAbsent(this)" title="タップで欠席/出席切替">${it.unit}：${escHtml(it.name)}（${it.status}）${absent[it.name]?'【欠席】':''}${toggleBtn}</span>`;
   }).join('');
 }
 
@@ -1014,6 +1047,181 @@ function showToast(msg, color){
   t.style.opacity = '1';
   clearTimeout(t._timer);
   t._timer = setTimeout(()=>{ t.style.opacity = '0'; }, 3000);
+}
+
+// ═══════════════════════════════════════════════
+// イレギュラー送迎切替（2026-05-09追加）
+// 設計: docs/superpowers/specs/2026-05-08-送迎日誌-イレギュラー送迎切替-design.md
+// 書込API: 「出勤＆送迎表」GAS (scriptId 1eBQ1rrq...) の setSougeiType
+// データ読み出しは引き続き FALLBACK_GAS_URL（送迎日誌GAS）の getOps を使用
+// ═══════════════════════════════════════════════
+const SOUGEI_API_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+const SOUGEI_OPERATOR_KEY = 'yawaragi_nisshi_operator';
+const SOUGEI_STAFF_LIST = [
+  '比嘉学','下浦理絵','勝又裕子','工藤経子','星野友太','春山忍','石井祐子','髙山奈緒美'
+];
+
+let pendingToggle = null;
+
+function todayISO(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function getCurrentUserStatus(user, unit){
+  try{
+    const allOps = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
+    const ops = allOps[currentDate];
+    if(!ops || !ops[unit] || !ops[unit].userStatus) return '';
+    return ops[unit].userStatus[user] || '';
+  } catch(e){ return ''; }
+}
+
+function renderToggleButton(user, unit){
+  if(currentDate < todayISO()) return '';
+  const status = getCurrentUserStatus(user, unit);
+  if(status === 'family' || status === 'walk'){
+    return ` <button class="toggle-sougei-btn" data-mode="restore" onclick="event.stopPropagation();openToggleDialog('${escHtml(user).replace(/'/g,"\\'")}','${unit}','restore')" title="送迎に戻す">🚐</button>`;
+  } else {
+    return ` <button class="toggle-sougei-btn" onclick="event.stopPropagation();openToggleDialog('${escHtml(user).replace(/'/g,"\\'")}','${unit}','to-family')" title="家族送迎にする（送迎不要）">🚗</button>`;
+  }
+}
+
+function populateOperatorSelect(){
+  const sel = document.getElementById('toggleOperatorSelect');
+  sel.innerHTML = '<option value="">-- 選択してください --</option>';
+  SOUGEI_STAFF_LIST.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  const cached = localStorage.getItem(SOUGEI_OPERATOR_KEY) || '';
+  if(cached && SOUGEI_STAFF_LIST.indexOf(cached) >= 0){
+    sel.value = cached;
+  } else if(cached){
+    document.getElementById('toggleOperatorInput').value = cached;
+  }
+  onToggleOperatorChange();
+}
+
+function onToggleOperatorChange(){
+  const sel = document.getElementById('toggleOperatorSelect');
+  const input = document.getElementById('toggleOperatorInput');
+  const operator = (sel.value || input.value || '').trim();
+  document.getElementById('toggleConfirmBtn').disabled = !operator;
+}
+
+function getToggleOperator(){
+  const sel = document.getElementById('toggleOperatorSelect');
+  const input = document.getElementById('toggleOperatorInput');
+  return (sel.value || input.value || '').trim();
+}
+
+function openToggleDialog(user, unit, mode){
+  if(currentDate < todayISO()){
+    showToast('過去日は変更できません', '#e53935');
+    return;
+  }
+  const currentValue = getCurrentUserStatus(user, unit);
+  const targetValue = mode === 'restore' ? '' : 'family';
+  pendingToggle = { user, unit, mode, currentValue, targetValue };
+
+  const unitLabel = unit === 'am' ? '午前' : '午後';
+  const action = mode === 'restore' ? '送迎に戻しますか？' : '送迎不要（家族送迎）にしますか？';
+  document.getElementById('toggleDialogTitle').textContent = `${user}さん（${unitLabel}）`;
+  document.getElementById('toggleDialogDesc').textContent = action;
+
+  populateOperatorSelect();
+  document.getElementById('toggleDialog').style.display = 'flex';
+}
+
+function closeToggleDialog(){
+  document.getElementById('toggleDialog').style.display = 'none';
+  pendingToggle = null;
+}
+
+async function confirmToggle(){
+  if(!pendingToggle) return;
+  const operator = getToggleOperator();
+  if(!operator) return;
+
+  if(currentDate < todayISO()){
+    showToast('過去日は変更できません', '#e53935');
+    closeToggleDialog();
+    return;
+  }
+
+  const btn = document.getElementById('toggleConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = '送信中...';
+
+  const toggle = pendingToggle;
+  const ok = await saveToggle(toggle, operator);
+
+  btn.textContent = 'はい';
+
+  if(ok){
+    localStorage.setItem(SOUGEI_OPERATOR_KEY, operator);
+    closeToggleDialog();
+    showToast(`${toggle.user}さん（${toggle.unit==='am'?'午前':'午後'}）を更新しました`, '#4caf50');
+    try{
+      const allOps = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
+      if(allOps[currentDate] && allOps[currentDate][toggle.unit]){
+        if(!allOps[currentDate][toggle.unit].userStatus) allOps[currentDate][toggle.unit].userStatus = {};
+        if(toggle.targetValue === ''){
+          delete allOps[currentDate][toggle.unit].userStatus[toggle.user];
+        } else {
+          allOps[currentDate][toggle.unit].userStatus[toggle.user] = toggle.targetValue;
+        }
+        allOps[currentDate]._lastModified = Date.now();
+        localStorage.setItem(DAILY_OPS_KEY, JSON.stringify(allOps));
+      }
+    } catch(e){ console.warn('local cache update failed', e); }
+    loadDate();
+    if(gasUrl) cloudLoad().then(()=>loadDate());
+  } else {
+    btn.disabled = false;
+  }
+}
+
+async function saveToggle(toggle, operator){
+  const payload = {
+    action: 'setSougeiType',
+    date: currentDate,
+    userId: toggle.user,
+    unit: toggle.unit,
+    value: toggle.targetValue,
+    operator: operator,
+    source: '送迎日誌'
+  };
+  const url = SOUGEI_API_URL;
+  if(!url){
+    showToast('GAS URLが未設定です', '#e53935');
+    return false;
+  }
+  try{
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+    let json;
+    try{ json = await res.json(); }
+    catch(e){
+      showToast('サーバ応答を確認できませんでした。画面を再読込してください', '#ff9800');
+      return false;
+    }
+    if(!json || !json.success){
+      showToast('保存に失敗: ' + ((json && json.error) || '不明'), '#e53935');
+      return false;
+    }
+    return true;
+  } catch(err){
+    showToast('通信エラー: ' + (err && err.message || err), '#e53935');
+    return false;
+  }
 }
 
 // ===== 起動 =====
