@@ -7791,8 +7791,8 @@ function trmRenderCard(t) {
     // 要支援判定（介護度に「要支援」を含むか）。空なら不明→要介護扱い（ADL必要）
     const isShienMode = (t.careLevel || '').indexOf('要支援') !== -1;
 
-    // 段階的有効化の判定
-    const stage1Done = t.tasks.tsusho && t.tasks.kotraining && t.tasks.koukou;
+    // 段階的有効化の判定（要支援は個訓非対象→通所＋口腔のみで段階1完了）
+    const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isShienMode || t.tasks.kotraining);
     // 段階2: 要支援なら科学的のみ、要介護なら科学的＋ADL両方
     const stage2Done = stage1Done && t.tasks.kagakuteki && (isShienMode || t.tasks.adl);
     const allDone = stage2Done;
@@ -7825,10 +7825,10 @@ function trmRenderCard(t) {
                 '<button class="trm-help-btn" onclick="trmShowHelp()" title="手順を見る">？ やり方</button>' +
             '</div>' +
 
-            // 段階1: 通所/個訓/口腔（順不同）
-            '<div class="trm-task-step-label active">段階1: この3つを完了させる（順不同）</div>' +
+            // 段階1: 通所/個訓/口腔（順不同）。要支援は個訓非対象なので非表示
+            '<div class="trm-task-step-label active">段階1: ' + (isShienMode ? 'この2つを完了させる（順不同）' : 'この3つを完了させる（順不同）') + '</div>' +
             trmTaskItem(t, 'tsusho', '通所計画書', false) +
-            trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false) +
+            (isShienMode ? '' : trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false)) +
             trmTaskItem(t, 'koukou', '口腔機能向上計画書', false) +
 
             // 段階2: 科学的＋ADL（段階1完了で両方同時有効化、要支援はADL非表示）
