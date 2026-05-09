@@ -153,6 +153,11 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 .check-cell.both-done {
     background: #c8e6c9;
 }
+.check-cell.disabled {
+    background: #e0e0e0; color: #999;
+    cursor: default; font-size: 14px;
+}
+.check-cell.disabled:hover { background: #e0e0e0; }
 
 .row-even { background: #fafafa; }
 .row-even .name-cell { background: #fafafa; }
@@ -302,6 +307,9 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const CACHE_PREFIX = 'monitoring_cache_';
+// 運用開始年月（これより前のセルは「対象外」灰色表示）
+const START_YEAR = 2026;
+const START_MONTH = 5;
 const MONTHS = [
     { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
     { m: 7, label: '7月' }, { m: 8, label: '8月' }, { m: 9, label: '9月' },
@@ -598,11 +606,18 @@ function renderTable() {
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
             const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
             const bothDone = !!(rec.recordDate && rec.pdfDate);
+            // 運用開始月より前は対象外
+            const isBeforeStart = (cellYear < START_YEAR) || (cellYear === START_YEAR && mo.m < START_MONTH);
 
             SUB_COLS.forEach((sub, si) => {
                 const value = rec[sub.field] || '';
                 let cls = 'check-cell';
                 if (si === 0) cls += ' month-border';
+                if (isBeforeStart) {
+                    cls += ' disabled';
+                    html += '<td class="' + cls + '">-</td>';
+                    return;
+                }
                 if (bothDone) cls += ' both-done';
                 else if (value) cls += ' checked';
                 else if (isPast) cls += ' highlight-undone';
