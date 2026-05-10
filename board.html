@@ -1347,6 +1347,8 @@
                     <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
                     <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
                 </div>
+                <!-- 単発・期間用の日付入力コンテナ（ボタングループ直下） -->
+                <div class="abs-date-inputs" id="abs-date-inputs" style="margin-top:8px;"></div>
             </div>
             <div class="abs-date-type-divider"></div>
             <div class="abs-date-type-group">
@@ -1354,11 +1356,13 @@
                 <div class="abs-date-type-btns">
                     <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')">長期休み</button>
                 </div>
+                <!-- 長期休み用の日付入力コンテナ（長期休みボタン直下） -->
+                <div class="abs-date-inputs" id="abs-date-inputs-longterm" style="margin-top:8px;"></div>
             </div>
-            <div id="abs-single-warning" style="display:none; background:#fffbeb; border:1px solid #f59e0b; border-radius:8px; padding:8px 12px; margin:6px 0; font-size:0.85rem; color:#92400e;">
-                ⓘ これは<strong>単発の欠席</strong>として登録されます。長期休みなら下の赤いボタンを押してください。
+            <div id="abs-single-warning" style="display:none;background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin:8px 0;font-size:0.92rem;color:#7f1d1d;line-height:1.5;">
+                <div style="font-weight:700;color:#dc2626;font-size:1rem;margin-bottom:4px;">⚠️ これは「単発の欠席」として登録されます</div>
+                <div>長期休み（終了日未定）なら下の赤ボタン<strong>「長期休み」</strong>を押してください</div>
             </div>
-            <div class="abs-date-inputs" id="abs-date-inputs"></div>
             <div class="abs-date-warning" id="abs-date-warning" style="display:none;"></div>
         </div>
 
@@ -5005,9 +5009,15 @@ function absSelectDateType(type) {
         singleWarning.style.display = (type === 'longterm') ? 'none' : 'block';
     }
 
-    const container = document.getElementById('abs-date-inputs');
+    // 単発用と長期休み用の2つのコンテナを排他的に切り替える
+    const containerSingle = document.getElementById('abs-date-inputs');
+    const containerLongterm = document.getElementById('abs-date-inputs-longterm');
     const warning = document.getElementById('abs-date-warning');
     warning.style.display = 'none';
+
+    // 切替時はいったん両方クリア
+    containerSingle.innerHTML = '';
+    containerLongterm.innerHTML = '';
 
     const today = new Date();
     const todayStr = toLocalDateStr(today);
@@ -5015,7 +5025,7 @@ function absSelectDateType(type) {
     if (type === 'today') {
         absState.dateFrom = todayStr;
         absState.dateTo = todayStr;
-        container.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
+        containerSingle.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
             ${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}（${DAY_NAMES[today.getDay()]}）
         </p>`;
         // 通所日でない日チェック → falseなら先に進まない
@@ -5025,12 +5035,12 @@ function absSelectDateType(type) {
     } else if (type === 'specific') {
         absState.dateFrom = '';
         absState.dateTo = '';
-        container.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
+        containerSingle.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
         absOnDateSpecific(todayStr);
     } else if (type === 'range') {
         absState.dateFrom = '';
         absState.dateTo = '';
-        container.innerHTML = `
+        containerSingle.innerHTML = `
             <div class="abs-date-range-wrap">
                 <input type="date" id="abs-date-from" value="${todayStr}" onchange="absOnDateRange()">
                 <span>〜</span>
@@ -5041,7 +5051,7 @@ function absSelectDateType(type) {
     } else if (type === 'longterm') {
         absState.dateFrom = todayStr;
         absState.dateTo = '';
-        container.innerHTML = `
+        containerLongterm.innerHTML = `
             <div style="margin-bottom:8px;">
                 <label style="font-weight:600;font-size:0.85rem;">いつから休み？</label>
                 <input type="date" id="abs-lt-start" value="${todayStr}" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;margin-top:4px;" onchange="absState.dateFrom=this.value">
@@ -5277,6 +5287,7 @@ function absDetectDuplicates(name, dates, isLongterm) {
     if (isLongterm) {
         const startDate = dates[0];
         if (!startDate) return { dupDates, dupSources };
+        // 既存の長期休み（同一開始日・未再開）
         cachedLT.forEach(g => {
             const gStart = g.date || g.startDate;
             if (g.name === name && gStart === startDate && !g.resumeDate) {
@@ -5284,6 +5295,7 @@ function absDetectDuplicates(name, dates, isLongterm) {
                 pushSource(startDate, g.reporter, g.timestamp);
             }
         });
+        // ローカル保存中の長期休み申請
         existingLocal.forEach(r => {
             if (r.userName === name && r.dateType === 'longterm' && r.dateFrom === startDate) {
                 if (!dupDates.includes(startDate)) dupDates.push(startDate);
@@ -5292,12 +5304,14 @@ function absDetectDuplicates(name, dates, isLongterm) {
         });
     } else {
         dates.forEach(targetDate => {
+            // GAS側
             cachedGas.forEach(g => {
                 if (g.name === name && g.date === targetDate) {
                     if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
                     pushSource(targetDate, g.reporter, g.timestamp);
                 }
             });
+            // ローカル
             existingLocal.forEach(r => {
                 if (r.userName !== name || r.dateType === 'longterm') return;
                 let match = false;
@@ -5316,6 +5330,7 @@ function absDetectDuplicates(name, dates, isLongterm) {
     return { dupDates: dupDates.sort(), dupSources };
 }
 
+// 警告バナー表示（送信ボタンも disable）
 function absShowDuplicateWarning(name, dup, isLongterm) {
     const banner = document.getElementById('abs-dup-warning');
     if (!banner) return;
@@ -5337,11 +5352,27 @@ function absShowDuplicateWarning(name, dup, isLongterm) {
         footer = 'すべての日が登録できる状態になるまで送信できません。重複している日は、先に登録済みの行をキャンセルしてください。';
     }
 
+    // 上書きボタン：単発1件かつ長期休みでない場合のみ表示
+    const showOverwriteBtn = !isLongterm && dup.dupDates.length === 1;
+    const overwriteBtnHtml = showOverwriteBtn ? `
+        <div style="margin-top:12px;border-top:1px dashed #fca5a5;padding-top:12px;">
+            <button id="abs-overwrite-btn" type="button"
+                style="width:100%;padding:12px 16px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-size:0.95rem;font-weight:700;cursor:pointer;"
+                onclick="absOverwriteAbsence()">
+                📝 この内容で上書きする
+            </button>
+            <div style="font-size:0.78rem;color:#92400e;margin-top:6px;text-align:center;">
+                既存の登録を取り消し、今入力した内容で再登録します
+            </div>
+        </div>
+    ` : '';
+
     banner.innerHTML = `
         <div style="font-weight:700;color:#dc2626;font-size:1rem;margin-bottom:8px;">${title}</div>
         <div style="font-size:0.92rem;color:#374151;margin-bottom:6px;"><strong>${name}</strong>様</div>
         <ul style="font-size:0.9rem;color:#374151;margin:6px 0 8px 20px;padding:0;">${sourcesHtml}</ul>
         <div style="font-size:0.85rem;color:#7f1d1d;line-height:1.5;">${footer}</div>
+        ${overwriteBtnHtml}
     `;
     banner.style.display = 'block';
 
@@ -5353,6 +5384,7 @@ function absShowDuplicateWarning(name, dup, isLongterm) {
     }
 }
 
+// 警告バナー非表示（送信ボタン復活）
 function absHideDuplicateWarning() {
     const banner = document.getElementById('abs-dup-warning');
     if (banner) {
@@ -5367,12 +5399,61 @@ function absHideDuplicateWarning() {
     }
 }
 
+// 既存の単発登録を取り消して、入力中の内容で再登録する（上書き）
+async function absOverwriteAbsence() {
+    if (!absState.selectedUser || !absState.dateFrom) return;
+    if (absState.dateType === 'longterm') return; // 長期休みは対象外
+
+    const name = absState.selectedUser.name;
+    const dateStr = absState.dateFrom;
+    const dateLabel = absFormatDate(dateStr);
+
+    if (!confirm(`${name}様の ${dateLabel} の登録を、今入力した内容で上書きします。よろしいですか？`)) {
+        return;
+    }
+
+    // ボタン二度押し防止
+    const ovBtn = document.getElementById('abs-overwrite-btn');
+    if (ovBtn) {
+        ovBtn.disabled = true;
+        ovBtn.textContent = '上書き中...';
+    }
+
+    // 1) 既存登録をキャンセル
+    let cancelOk = false;
+    try {
+        cancelOk = await gasPostAbsenceWithVerify(
+            { action: 'cancel_absence', name, date: dateStr, unit: '終日' },
+            `${name}様の${dateLabel}の登録取消（上書き準備）`
+        );
+    } catch (e) {
+        cancelOk = false;
+    }
+
+    if (!cancelOk) {
+        showToast('⚠️ 既存登録のキャンセルに失敗しました。時間をおいて再度お試しください', 5000);
+        if (ovBtn) {
+            ovBtn.disabled = false;
+            ovBtn.textContent = '📝 この内容で上書きする';
+        }
+        return;
+    }
+
+    // 重複バナーを閉じて送信ボタンを復活
+    absHideDuplicateWarning();
+
+    // 2) 通常の送信フローを呼ぶ（absSubmit 内で新規登録される・成功/失敗トーストは内蔵側に任せる）
+    absSubmit({ skipDuplicateCheck: true });
+}
+
+// GAS最新データで重複チェック（JSONP・確認ステップ表示時に呼ぶ）
 function absRefreshGasDuplicateCheck() {
     if (!absState.selectedUser || !absState.dateFrom) return;
     const isLongterm = absState.dateType === 'longterm';
     const dates = absBuildTargetDates();
     if (dates.length === 0) return;
 
+    // まずキャッシュベースで即座に判定（バナーが既に出ている場合の維持）
     const cachedDup = absDetectDuplicates(absState.selectedUser.name, dates, isLongterm);
     if (cachedDup.dupDates.length > 0) {
         absShowDuplicateWarning(absState.selectedUser.name, cachedDup, isLongterm);
@@ -5380,6 +5461,7 @@ function absRefreshGasDuplicateCheck() {
         absHideDuplicateWarning();
     }
 
+    // ユニット判定
     let unit = '午前';
     if (absState.selectedUser.pattern && absState.selectedUser.pattern.length > 0) {
         const hasAm = absState.selectedUser.pattern.some(p => p.unit === 'am');
@@ -5388,6 +5470,7 @@ function absRefreshGasDuplicateCheck() {
         else if (hasPm) unit = '午後';
     }
 
+    // GAS最新データ問い合わせ
     absCheckDuplicateGas({
         name: absState.selectedUser.name,
         dates: dates,
@@ -5395,7 +5478,7 @@ function absRefreshGasDuplicateCheck() {
         type: isLongterm ? 'longterm' : 'absence',
         startDate: isLongterm ? dates[0] : ''
     }).then(res => {
-        if (!res || !res.success) return;
+        if (!res || !res.success) return; // エラー時はキャッシュ判定のまま
         if (isLongterm) {
             if (res.duplicate && res.existing) {
                 const dup = {
@@ -5421,6 +5504,7 @@ function absRefreshGasDuplicateCheck() {
     });
 }
 
+// JSONP で GAS check_duplicate_absence を呼ぶ
 function absCheckDuplicateGas(opts) {
     return new Promise(resolve => {
         const cbName = '_chkDup_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
@@ -5460,7 +5544,8 @@ function absCheckDuplicateGas(opts) {
 }
 
 // ----- 登録 -----
-async function absSubmit() {
+async function absSubmit(opts) {
+    opts = opts || {};
     if (!absState.selectedUser || !absState.reason || !absState.contact || !absState.method || !absState.contactDate) {
         alert('すべての項目を入力してください');
         return;
@@ -5483,7 +5568,8 @@ async function absSubmit() {
 
     // ===== 重複チェック（2026-05-08二重申請防止・上書きモード完全廃止） =====
     // 重複ありなら警告バナー表示＋送信中止。再送が必要なら「先にキャンセル→再登録」の運用
-    {
+    // 上書きフロー（absOverwriteAbsence）から呼ばれた場合は skipDuplicateCheck=true でスキップ
+    if (!opts.skipDuplicateCheck) {
         const targetName = absState.selectedUser.name;
         const isLongterm = absState.dateType === 'longterm';
         const dup = absDetectDuplicates(targetName, dates, isLongterm);
@@ -10421,6 +10507,7 @@ function buildCancelMailBody(opts) {
         '━━━━━━━━━━━━━━━━━━';
 }
 
+// office+name でマスターからメアド取得（fetch GET）
 async function fetchCmContact(office, name) {
     if (!office || !name) return { found: false, email: '' };
     try {
@@ -10435,6 +10522,7 @@ async function fetchCmContact(office, name) {
     }
 }
 
+// マスターにメアド保存（POST・no-cors なのでレスポンスは読まない）
 async function saveCmContact(office, name, email) {
     if (!office || !name || !email) return;
     try {
@@ -10449,6 +10537,9 @@ async function saveCmContact(office, name, email) {
     }
 }
 
+// ===== 欠席連絡 確認ポップアップ =====
+// opts: { userName, dates, reason, supplement, cmOffice, cmName, cmEmail }
+// 戻り値: { send: true, email, cmName } / { send: false }
 async function showAbsenceMailConfirm(opts) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
@@ -10499,6 +10590,7 @@ async function showAbsenceMailConfirm(opts) {
 
         document.body.appendChild(overlay);
 
+        // cmName編集時に本文プレビュー更新
         if (cmNameEditable) {
             const inp = document.getElementById('cmNameInputAbs');
             inp.addEventListener('input', () => {
@@ -10524,6 +10616,7 @@ async function showAbsenceMailConfirm(opts) {
                 'にこの内容で送信します。\n\n' +
                 '本当によろしいですか？';
             if (!confirm(confirmMsg)) return;
+            // マスター保存（office+nameは正規化前のものでOK・GAS側で正規化照合）
             if ((emailEditable || cmNameEditable) && opts.cmOffice) {
                 saveCmContact(opts.cmOffice, cmNameFinal, emailFinal);
             }
@@ -10533,6 +10626,7 @@ async function showAbsenceMailConfirm(opts) {
     });
 }
 
+// ===== 取消（やっぱり利用） 確認ポップアップ =====
 async function showCancelMailConfirm(opts) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
