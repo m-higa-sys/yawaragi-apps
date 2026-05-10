@@ -573,11 +573,28 @@ const CAR_CAPACITY = {'ス':7, 'シS':6, 'シW':6, 'モ':3, 'キ':4};
 // クラウド同期（GAS経由でスプレッドシートに保存）
 // ═══════════════════════════════════════════════
 const OPS_GAS_URL_KEY = 'yawaragi_ops_gas_url';
-const READONLY_GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+// 2026-05-11: スタッフ閲覧画面が空のGAS（中継GAS=AKfycby-V66...）を見ていてデータが反映されない問題を修正
+// READONLY_GAS_URL = 実データ保存先（送迎日誌GAS・複数セル連結readOps対応・clasp管理下）
+const READONLY_GAS_URL = 'https://script.google.com/macros/s/AKfycbyh_h7qB93S17_9mI52uTcCfUfBjeX9K4Xaq6LIX3d8Bae4w0lqKY-Gsqnw173atAvm7Q/exec';
+// RELAY_GAS_URL = 送迎時間一覧用の中継GAS（POSTデータ破棄。誤登録防止チェック用に保持）
+const RELAY_GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
 // yawaragiボード GAS（出席予定タブの欠席を取得するため）2026-05-06追加
 const BOARD_GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const ABSENCE_POLL_MS = 10000;  // 10秒ポーリング
-function getOpsGasUrl(){ return IS_READONLY ? READONLY_GAS_URL : (localStorage.getItem(OPS_GAS_URL_KEY)||localStorage.getItem('yawaragi_nisshi_gas_url')||READONLY_GAS_URL); }
+function getOpsGasUrl(){
+  if(IS_READONLY) return READONLY_GAS_URL;
+  // 旧中継GAS URL（A1セルしか読まない＝大容量NG）が誤登録されてたら強制クリア
+  const k1 = localStorage.getItem(OPS_GAS_URL_KEY);
+  if(k1 && k1.indexOf('AKfycby-V66Udd') >= 0){
+    console.warn('中継GAS URL検出 → 送迎日誌GASに置換');
+    localStorage.removeItem(OPS_GAS_URL_KEY);
+  }
+  const k2 = localStorage.getItem('yawaragi_nisshi_gas_url');
+  if(k2 && k2.indexOf('AKfycby-V66Udd') >= 0){
+    localStorage.removeItem('yawaragi_nisshi_gas_url');
+  }
+  return localStorage.getItem(OPS_GAS_URL_KEY) || localStorage.getItem('yawaragi_nisshi_gas_url') || READONLY_GAS_URL;
+}
 function setOpsGasUrl(url){ if(!IS_READONLY) localStorage.setItem(OPS_GAS_URL_KEY, url); }
 
 // 同期状態の管理
@@ -779,8 +796,8 @@ function setupCloudSync(){
     updateCloudBtn('error');
   } else {
     var input2 = input.trim();
-    // 中継GAS（送迎時間一覧用READONLY_GAS_URL）の誤登録を防止
-    if(input2 === READONLY_GAS_URL){
+    // 中継GAS（送迎時間一覧用RELAY_GAS_URL）の誤登録を防止
+    if(input2 === RELAY_GAS_URL){
       alert('⚠️ そのURLは「送迎時間一覧」用の中継GASです！\n\n出勤＆送迎表のクラウド同期には使えません\n（POSTデータが黙って破棄されて雲が☁️✗になります）\n\n正しい「送迎日誌GAS」のURLを入れ直してください。');
       return;
     }
