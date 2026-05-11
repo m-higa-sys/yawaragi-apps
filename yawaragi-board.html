@@ -8870,13 +8870,16 @@ function ivCollectDayWishes(prefix, rankCount) {
 // 下段：テキスト入力欄（最終的な保存値）。候補になくても手打ちで登録可能
 function ivRenderCmCascade(selectedOffice, selectedName) {
     const offices = Array.from(new Set(_cmCache.map(c => c.office).filter(Boolean))).sort();
-    const officeOpts = '<option value="">▼ 既存の事業所から選ぶ</option>'
+    const officeOpts = '<option value="">▼ 事業所を選んでください</option>'
         + offices.map(o => `<option value="${intakeEscapeAttr(o)}"${o === selectedOffice ? ' selected' : ''}>${intakeEscapeHtml(o)}</option>`).join('');
+    // 既存マスタにない事業所が選ばれている場合は最初からテキスト入力モードで表示
+    const isNewOffice = !!selectedOffice && offices.indexOf(selectedOffice) === -1;
     return `
         <div class="col2">
             <label>ケアマネ事業所</label>
-            <select id="m-ケアマネ事業所-picker" onchange="ivPickCmOffice()" style="margin-bottom:4px;">${officeOpts}</select>
-            <input id="m-ケアマネ事業所" value="${intakeEscapeAttr(selectedOffice)}" placeholder="選択 or 知らない事業所はここに直接入力" oninput="ivOnCmOfficeChange()">
+            <select id="m-ケアマネ事業所-picker" onchange="ivPickCmOffice()" style="${isNewOffice ? 'display:none;' : ''}">${officeOpts}</select>
+            <input id="m-ケアマネ事業所" value="${intakeEscapeAttr(selectedOffice)}" placeholder="新規事業所名を入力" oninput="ivOnCmOfficeChange()" style="${isNewOffice ? '' : 'display:none;'}">
+            <button type="button" id="m-ケアマネ事業所-toggle" onclick="ivToggleCmOfficeInput()" style="margin-top:4px;padding:4px 10px;font-size:12px;background:#edf2f7;border:1px solid #cbd5e0;border-radius:4px;cursor:pointer;">${isNewOffice ? '↩ 既存の事業所から選ぶ' : '✏️ 新規事業所を直接入力'}</button>
         </div>
         <div>
             <label>ケアマネ氏名</label>
@@ -8889,6 +8892,27 @@ function ivPickCmOffice() {
     const pickEl = document.getElementById('m-ケアマネ事業所-picker');
     const textEl = document.getElementById('m-ケアマネ事業所');
     if (pickEl.value) textEl.value = pickEl.value;
+    ivOnCmOfficeChange();
+}
+function ivToggleCmOfficeInput() {
+    const pickEl = document.getElementById('m-ケアマネ事業所-picker');
+    const textEl = document.getElementById('m-ケアマネ事業所');
+    const btn = document.getElementById('m-ケアマネ事業所-toggle');
+    if (!pickEl || !textEl || !btn) return;
+    const isTextMode = textEl.style.display !== 'none';
+    if (isTextMode) {
+        // テキスト入力 → プルダウン選択に戻す
+        textEl.style.display = 'none';
+        pickEl.style.display = '';
+        btn.textContent = '✏️ 新規事業所を直接入力';
+        textEl.value = pickEl.value || '';
+    } else {
+        // プルダウン → テキスト入力に切替
+        pickEl.style.display = 'none';
+        textEl.style.display = '';
+        btn.textContent = '↩ 既存の事業所から選ぶ';
+        setTimeout(() => textEl.focus(), 50);
+    }
     ivOnCmOfficeChange();
 }
 function ivPickCmName() {
