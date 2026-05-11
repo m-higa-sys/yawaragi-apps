@@ -122,12 +122,14 @@ const STEP_LABELS = {
 const LS_KEY = 'furikaeFubi:cases:v1';
 const LS_KEY_CUSTOMER = 'furikaeFubi:customers:v1';
 const LS_KEY_USERS = 'furikaeFubi:users:v1';
+const LS_KEY_STAFFS = 'furikaeFubi:staffs:v1';
 const LS_KEY_CURRENT_MONTH = 'furikaeFubi:currentMonth:v1';
 
 const state = {
   cases: [],
   customers: [],
   users: [],
+  staffs: [],
   funoRecords: [],
   currentMonth: null
 };
@@ -167,21 +169,24 @@ function loadFromLocal() {
   try { state.cases = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (_) { state.cases = []; }
   try { state.customers = JSON.parse(localStorage.getItem(LS_KEY_CUSTOMER) || '[]'); } catch (_) { state.customers = []; }
   try { state.users = JSON.parse(localStorage.getItem(LS_KEY_USERS) || '[]'); } catch (_) { state.users = []; }
+  try { state.staffs = JSON.parse(localStorage.getItem(LS_KEY_STAFFS) || '[]'); } catch (_) { state.staffs = []; }
   state.currentMonth = localStorage.getItem(LS_KEY_CURRENT_MONTH) || null;
 }
 function saveToLocal() {
   localStorage.setItem(LS_KEY, JSON.stringify(state.cases));
   localStorage.setItem(LS_KEY_CUSTOMER, JSON.stringify(state.customers));
   localStorage.setItem(LS_KEY_USERS, JSON.stringify(state.users));
+  localStorage.setItem(LS_KEY_STAFFS, JSON.stringify(state.staffs));
   if (state.currentMonth) localStorage.setItem(LS_KEY_CURRENT_MONTH, state.currentMonth);
 }
 
 async function fetchFromGAS() {
   try {
-    const [casesRes, custRes, usersRes] = await Promise.all([
+    const [casesRes, custRes, usersRes, staffRes] = await Promise.all([
       fetch(GAS_URL + '?action=list').then(r => r.json()).catch(e => null),
       fetch(GAS_URL + '?action=customers').then(r => r.json()).catch(e => null),
-      fetch(YAWARAGI_BOARD_GAS + '?action=user_list').then(r => r.json()).catch(e => null)
+      fetch(YAWARAGI_BOARD_GAS + '?action=user_list').then(r => r.json()).catch(e => null),
+      fetch(YAWARAGI_BOARD_GAS + '?action=staff_list').then(r => r.json()).catch(e => null)
     ]);
     // 空ガード: 空配列で返ってきたらローカルを上書きしない（GAS失敗時の保護）
     if (casesRes && casesRes.ok && Array.isArray(casesRes.cases)) {
@@ -203,6 +208,12 @@ async function fetchFromGAS() {
       }));
       if (users.length > 0 || state.users.length === 0) {
         state.users = users;
+      }
+    }
+    // スタッフ一覧（担当者プルダウン用）
+    if (staffRes && Array.isArray(staffRes.staff)) {
+      if (staffRes.staff.length > 0 || state.staffs.length === 0) {
+        state.staffs = staffRes.staff;
       }
     }
     saveToLocal();
@@ -359,7 +370,7 @@ function cardHTML(c, done) {
           <button class="menu-btn" data-action="menu" data-id="${c.id}">⋮</button>
         </div>
       </div>
-      <div class="card-info">受領: ${c['受領日']} | 不備: ${escapeHtml(reasons)}</div>
+      <div class="card-info">受領: ${c['受領日']} | 不備: ${escapeHtml(reasons)}${c['担当者']?` | 👤 ${escapeHtml(c['担当者'])}さん`:''}</div>
       <div class="progress-bar">${bar} (Step ${step}: ${STEP_LABELS[step] || '完了'})</div>
       ${!done ? `<div class="next-action"><button data-action="open" data-id="${c.id}">▶ ${STEP_LABELS[step]}</button></div>` : ''}
       ${funoSection}
@@ -495,28 +506,42 @@ function openStep2(c) {
       ${cat}
     </label>
   `).join('');
+  // 担当者プルダウンの選択肢（yawaragiボードGAS の staff_list ＋ 社長 ＋ その他）
+  const staffOptions = ['勝又', ...state.staffs.filter(s => s !== '勝又'), '社長']
+    .map(s => `<option value="${escapeHtml(s)}" ${(c['担当者']||'勝又')===s?'selected':''}>${escapeHtml(s)}</option>`)
+    .join('');
   openModal(`
-    <h2>📋 ${escapeHtml(c['利用者名'])}さん - Step 2: 不備理由</h2>
+    <h2>📋 ${escapeHtml(c['利用者名'])}さん - Step 2: 不備理由 ＆ 担当引き継ぎ</h2>
     <p style="font-size:13px;color:#666;margin-top:8px">書類右下の「金融機関使用欄」の不備事由を確認してください</p>
     <label>不備カテゴリ（複数選択可）</label>
     <div class="checkbox-list" id="fubi-cats">${checkboxes}</div>
     <label>詳細メモ（書類に書いてある文言をそのまま）</label>
     <textarea id="reason-detail">${escapeHtml(c['不備理由詳細']||'')}</textarea>
+    <div class="info-block yellow" style="margin-top:12px">
+      <strong>👤 担当に引き継ぎ</strong><br>
+      ここから先（利用者連絡 → 再送付 → ファイリング）は担当者の仕事です。
+      担当者を選ぶと、その方にメール通知が届きます。
+    </div>
+    <label>担当者を選んでください</label>
+    <select id="assignee">${staffOptions}</select>
     <div class="modal-buttons">
       <button class="btn-secondary" onclick="closeModal()">キャンセル</button>
-      <button class="btn-primary" id="btn-step2">次へ → Step 3</button>
+      <button class="btn-primary" id="btn-step2">📨 担当に引き継ぐ → Step 3</button>
     </div>
   `);
   document.getElementById('btn-step2').addEventListener('click', async () => {
     const cats = Array.from(document.querySelectorAll('#fubi-cats input:checked')).map(x => x.value);
     if (cats.length === 0) { alert('不備カテゴリを1つ以上選んでください'); return; }
+    const assignee = document.getElementById('assignee').value;
     const next = { ...c };
     next['不備理由カテゴリ'] = cats;
     next['不備理由詳細'] = document.getElementById('reason-detail').value;
+    next['担当者'] = assignee;
     next['現在ステップ'] = 3;
-    next['ステップ履歴'] = [...(c['ステップ履歴']||[]), { ステップ: 2, 日時: new Date().toISOString(), 担当: '', メモ: '' }];
+    next['ステップ履歴'] = [...(c['ステップ履歴']||[]), { ステップ: 2, 日時: new Date().toISOString(), 担当: '', メモ: '担当: ' + assignee }];
     await pushUpsert(next);
     closeModal();
+    alert(`📨 ${assignee}さんにメール通知しました。\n以降のステップは${assignee}さんが対応します。`);
   });
 }
 
