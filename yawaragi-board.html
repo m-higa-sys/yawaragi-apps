@@ -8453,13 +8453,41 @@ function formatJPPhone(input) {
 }
 
 // ===== ケアマネ連絡先キャッシュ =====
+// 2026-05-11: ケアマネマスタ（送付用居宅一覧）＋利用者台帳の登録済みケアマネをマージ
 function loadCmContactsCache(onLoaded) {
     const cbName = 'cmContactsCb_' + Date.now();
     const url = INTAKE_API_URL + '?action=contacts&callback=' + cbName;
     window[cbName] = function(resp) {
         if (resp && resp.success) _cmCache = resp.cmContacts || [];
-        // モーダルが開いていたら事業所プルダウンを再構築
-        refreshCmPickerIfOpen();
+        // ケアマネマスタ取得完了 → 続けて利用者台帳のケアマネをマージ
+        loadCmFromUserListCache(function() {
+            refreshCmPickerIfOpen();
+            if (typeof onLoaded === 'function') onLoaded();
+        });
+        try { delete window[cbName]; } catch(e){}
+    };
+    const script = document.createElement('script');
+    script.src = url;
+    document.body.appendChild(script);
+    setTimeout(() => { try { script.remove(); } catch(e){} }, 8000);
+}
+
+// 利用者台帳に登録されている全利用者の cmOffice+cmName を _cmCache にマージ
+function loadCmFromUserListCache(onLoaded) {
+    const cbName = 'cmFromUsersCb_' + Date.now();
+    const url = ABS_USER_API_URL + '?action=cmFromUsers&callback=' + cbName;
+    window[cbName] = function(resp) {
+        if (resp && resp.success && Array.isArray(resp.cmFromUsers)) {
+            const seen = {};
+            _cmCache.forEach(c => { seen[(c.office || '') + '|' + (c.name || '')] = true; });
+            resp.cmFromUsers.forEach(c => {
+                const k = (c.office || '') + '|' + (c.name || '');
+                if (!seen[k] && (c.office || c.name)) {
+                    _cmCache.push({ office: c.office || '', name: c.name || '', email: '' });
+                    seen[k] = true;
+                }
+            });
+        }
         if (typeof onLoaded === 'function') onLoaded();
         try { delete window[cbName]; } catch(e){}
     };
@@ -8837,7 +8865,7 @@ function ivRenderDayWishes(prefix, rankCount, rawValue, options) {
         const p = parsed[i] || {};
         rows += ivRenderDayRow(`${prefix}-${i}`, `第${i}希望`, p.days || [], p.ampm || '');
     }
-    const anyBtn = `<button type="button" class="iv-btn${anytime ? ' active' : ''}" data-value="anytime" onclick="intakeToggleAnytime('${prefix}')" style="margin-bottom:8px;">🗓️ いつでもOK</button>`;
+    const anyBtn = options.hideAnytime ? '' : `<button type="button" class="iv-btn${anytime ? ' active' : ''}" data-value="anytime" onclick="intakeToggleAnytime('${prefix}')" style="margin-bottom:8px;">🗓️ いつでもOK</button>`;
 
     // 「後日ご連絡」ボタン＋日付欄（options.enableFollowUp が true の時のみ）
     let followUpUI = '';
@@ -9150,8 +9178,8 @@ function buildIntakeModalHtml(r) {
         <div class="intake-modal-section"><h4>希望曜日（yawaragi側希望）</h4>
             ${ivRenderDayWishes('wish-yawaragi', 3, r['yawarigi希望曜日'] || '', { enableFollowUp: true })}
         </div>
-        <div class="intake-modal-section"><h4>最終決定曜日（契約後に記入）</h4>
-            ${ivRenderDayWishes('wish-final', 2, r.最終決定曜日 || '')}
+        <div class="intake-modal-section"><h4>最終決定曜日</h4>
+            ${ivRenderDayWishes('wish-final', 2, r.最終決定曜日 || '', { hideAnytime: true })}
         </div>
 
         <!-- 送迎シミュレーション（体験のみ表示・見学は家族送迎）-->
