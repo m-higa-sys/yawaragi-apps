@@ -518,15 +518,15 @@ function openStep2(c) {
     <label>詳細メモ（書類に書いてある文言をそのまま）</label>
     <textarea id="reason-detail">${escapeHtml(c['不備理由詳細']||'')}</textarea>
     <div class="info-block yellow" style="margin-top:12px">
-      <strong>👤 担当に引き継ぎ</strong><br>
-      ここから先（利用者連絡 → 再送付 → ファイリング）は担当者の仕事です。
-      担当者を選ぶと、その方にメール通知が届きます。
+      <strong>👤 担当に引き継ぎ＋完了マーク</strong><br>
+      ここから先（利用者連絡 → 新書類受領 → 電算再送付 → ファイリング）は担当者が物理で進めます。
+      担当者にメール通知が届き、アプリ上はこのケースは<strong>完了扱い</strong>になります。
     </div>
     <label>担当者を選んでください</label>
     <select id="assignee">${staffOptions}</select>
     <div class="modal-buttons">
       <button class="btn-secondary" onclick="closeModal()">キャンセル</button>
-      <button class="btn-primary" id="btn-step2">📨 担当に引き継ぐ → Step 3</button>
+      <button class="btn-primary" id="btn-step2">📨 担当に引き継ぐ → 完了</button>
     </div>
   `);
   document.getElementById('btn-step2').addEventListener('click', async () => {
@@ -537,11 +537,17 @@ function openStep2(c) {
     next['不備理由カテゴリ'] = cats;
     next['不備理由詳細'] = document.getElementById('reason-detail').value;
     next['担当者'] = assignee;
-    next['現在ステップ'] = 3;
-    next['ステップ履歴'] = [...(c['ステップ履歴']||[]), { ステップ: 2, 日時: new Date().toISOString(), 担当: '', メモ: '担当: ' + assignee }];
+    next['現在ステップ'] = 6;
+    next['状態'] = '完了';
+    next['完了日'] = todayISO();
+    next['ステップ履歴'] = [
+      ...(c['ステップ履歴']||[]),
+      { ステップ: 2, 日時: new Date().toISOString(), 担当: '', メモ: '担当 ' + assignee + ' へ引き継ぎ' },
+      { ステップ: 6, 日時: new Date().toISOString(), 担当: assignee, メモ: '担当者へ引き継ぎ＝アプリ管理上は完了。実物業務(連絡/再送付/ファイリング)は担当者が物理で実施。' }
+    ];
     await pushUpsert(next);
     closeModal();
-    alert(`📨 ${assignee}さんにメール通知しました。\n以降のステップは${assignee}さんが対応します。`);
+    alert(`📨 ${assignee}さんにメール通知しました。\nこのケースはアプリ上「完了」扱いになります。\n以降の連絡・再送付・ファイリングは${assignee}さんが物理で進めます。`);
   });
 }
 
