@@ -492,7 +492,8 @@ function openStep(id) {
   const c = state.cases.find(x => x.id === id);
   if (!c) return;
   const step = c['現在ステップ'] || 1;
-  if (step === 2) return openStep2(c);
+  // Step 1 のカードは「次にやる＝不備理由入力（Step 2）」へ進める救済
+  if (step <= 2) return openStep2(c);
   if (step === 3) return openStep3(c);
   if (step === 4) return openStep4(c);
   if (step === 5) return openStep5(c);
@@ -754,7 +755,7 @@ function openMenu(id) {
   `);
   document.getElementById('btn-rewind').addEventListener('click', async () => {
     const step = c['現在ステップ'] || 1;
-    if (step <= 1) { alert('これ以上戻せません'); return; }
+    if (step <= 2) { alert('Step 2 より前には戻せません'); return; }
     await pushUpsert({ ...c, 現在ステップ: step - 1, 状態: '進行中', 完了日: '' });
     closeModal();
   });
