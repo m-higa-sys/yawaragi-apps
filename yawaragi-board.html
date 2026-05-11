@@ -8821,9 +8821,16 @@ function ivRenderDayRow(groupId, rankLabel, selectedDays, selectedAmpm) {
         ${amBtn}${pmBtn}
     </div>`;
 }
-function ivRenderDayWishes(prefix, rankCount, rawValue) {
+function ivRenderDayWishes(prefix, rankCount, rawValue, options) {
+    options = options || {};
+    const raw = String(rawValue || '');
     // 「いつでもOK」判定
-    const anytime = /いつでもOK/.test(String(rawValue || ''));
+    const anytime = /いつでもOK/.test(raw);
+    // 「後日ご連絡」判定（フォーマット例：「後日ご連絡」 or 「後日ご連絡:2026-05-20」）
+    const followUpMatch = raw.match(/^後日ご連絡(?::(\d{4}-\d{2}-\d{2}))?/);
+    const followUp = !!followUpMatch;
+    const followUpDate = followUpMatch ? (followUpMatch[1] || '') : '';
+
     const parsed = ivParseDayWishes(rawValue);
     let rows = '';
     for (let i = 1; i <= rankCount; i++) {
@@ -8831,24 +8838,46 @@ function ivRenderDayWishes(prefix, rankCount, rawValue) {
         rows += ivRenderDayRow(`${prefix}-${i}`, `第${i}希望`, p.days || [], p.ampm || '');
     }
     const anyBtn = `<button type="button" class="iv-btn${anytime ? ' active' : ''}" data-value="anytime" onclick="intakeToggleAnytime('${prefix}')" style="margin-bottom:8px;">🗓️ いつでもOK</button>`;
+
+    // 「後日ご連絡」ボタン＋日付欄（options.enableFollowUp が true の時のみ）
+    let followUpUI = '';
+    if (options.enableFollowUp) {
+        const followUpBtn = `<button type="button" class="iv-btn${followUp ? ' active' : ''}" data-value="followup" onclick="intakeToggleFollowUp('${prefix}')" style="margin-bottom:8px;margin-left:6px;">📅 後日ご連絡</button>`;
+        const dateBlock = `<div id="${prefix}-followup-date" style="${followUp ? '' : 'display:none;'}margin-bottom:8px;padding:8px 12px;background:#fff5e6;border:1px solid #f6ad55;border-radius:6px;">
+            <label style="font-size:13px;color:#7b341e;font-weight:bold;">📞 連絡予定日：</label>
+            <input type="date" id="${prefix}-followup-date-input" value="${intakeEscapeAttr(followUpDate)}" style="margin-left:6px;">
+        </div>`;
+        followUpUI = followUpBtn + dateBlock;
+    }
+
     const helpText = `<div style="font-size:11px;color:#718096;margin-bottom:6px;">同じ希望枠で複数曜日OKなら複数タップ（例：月と金どっちでも）</div>`;
-    return `<div data-iv-anytime="${prefix}" data-anytime="${anytime ? 'true' : 'false'}">
-        ${anyBtn}${helpText}
-        <div class="iv-anytime-rows" style="${anytime ? 'opacity:0.35;pointer-events:none;' : ''}">${rows}</div>
+    const inactive = anytime || followUp;
+    return `<div data-iv-anytime="${prefix}" data-anytime="${anytime ? 'true' : 'false'}" data-followup="${followUp ? 'true' : 'false'}">
+        ${anyBtn}${followUpUI}${helpText}
+        <div class="iv-anytime-rows" style="${inactive ? 'opacity:0.35;pointer-events:none;' : ''}">${rows}</div>
     </div>`;
 }
 
 function intakeToggleAnytime(prefix) {
     const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
     if (!host) return;
-    const btn = host.querySelector('.iv-btn');
+    const btn = host.querySelector('.iv-btn[data-value="anytime"]');
     const rows = host.querySelector('.iv-anytime-rows');
     const cur = host.dataset.anytime === 'true';
     const next = !cur;
     host.dataset.anytime = next ? 'true' : 'false';
-    btn.classList.toggle('active', next);
-    rows.style.opacity = next ? 0.35 : 1;
-    rows.style.pointerEvents = next ? 'none' : 'auto';
+    if (btn) btn.classList.toggle('active', next);
+    // 排他：「いつでもOK」をONにしたら「後日ご連絡」はOFF
+    if (next && host.dataset.followup === 'true') {
+        host.dataset.followup = 'false';
+        const fuBtn = host.querySelector('.iv-btn[data-value="followup"]');
+        if (fuBtn) fuBtn.classList.remove('active');
+        const fuBlock = document.getElementById(`${prefix}-followup-date`);
+        if (fuBlock) fuBlock.style.display = 'none';
+    }
+    const inactive = next || host.dataset.followup === 'true';
+    rows.style.opacity = inactive ? 0.35 : 1;
+    rows.style.pointerEvents = inactive ? 'none' : 'auto';
     if (next) {
         // 「いつでもOK」選択時は全曜日クリア
         host.querySelectorAll('[data-iv-day-group]').forEach(g => {
@@ -8858,10 +8887,44 @@ function intakeToggleAnytime(prefix) {
     }
 }
 
-// いつでもOK考慮の集計
+function intakeToggleFollowUp(prefix) {
+    const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
+    if (!host) return;
+    const btn = host.querySelector('.iv-btn[data-value="followup"]');
+    const rows = host.querySelector('.iv-anytime-rows');
+    const dateBlock = document.getElementById(`${prefix}-followup-date`);
+    const cur = host.dataset.followup === 'true';
+    const next = !cur;
+    host.dataset.followup = next ? 'true' : 'false';
+    if (btn) btn.classList.toggle('active', next);
+    if (dateBlock) dateBlock.style.display = next ? '' : 'none';
+    // 排他：「後日ご連絡」をONにしたら「いつでもOK」はOFF
+    if (next && host.dataset.anytime === 'true') {
+        host.dataset.anytime = 'false';
+        const anyBtn = host.querySelector('.iv-btn[data-value="anytime"]');
+        if (anyBtn) anyBtn.classList.remove('active');
+    }
+    const inactive = next || host.dataset.anytime === 'true';
+    rows.style.opacity = inactive ? 0.35 : 1;
+    rows.style.pointerEvents = inactive ? 'none' : 'auto';
+    if (next) {
+        // 「後日ご連絡」選択時は全曜日クリア
+        host.querySelectorAll('[data-iv-day-group]').forEach(g => {
+            g.dataset.days = ''; g.dataset.ampm = '';
+            g.querySelectorAll('.iv-day-btn, .iv-ampm-btn').forEach(b => b.classList.remove('active'));
+        });
+    }
+}
+
+// いつでもOK・後日ご連絡を考慮した集計
 function ivCollectDayWishes(prefix, rankCount) {
     const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
     if (host && host.dataset.anytime === 'true') return 'いつでもOK';
+    if (host && host.dataset.followup === 'true') {
+        const dateEl = document.getElementById(`${prefix}-followup-date-input`);
+        const d = dateEl ? dateEl.value : '';
+        return d ? `後日ご連絡:${d}` : '後日ご連絡';
+    }
     return ivFormatDayWishes(prefix, rankCount);
 }
 
@@ -9108,7 +9171,7 @@ function buildIntakeModalHtml(r) {
             ${ivRenderDayWishes('wish-user', 2, r.利用希望曜日 || '')}
         </div>
         <div class="intake-modal-section"><h4>希望曜日（yawaragi側希望）</h4>
-            ${ivRenderDayWishes('wish-yawaragi', 3, r['yawarigi希望曜日'] || '')}
+            ${ivRenderDayWishes('wish-yawaragi', 3, r['yawarigi希望曜日'] || '', { enableFollowUp: true })}
         </div>
         <div class="intake-modal-section"><h4>最終決定曜日（契約後に記入）</h4>
             ${ivRenderDayWishes('wish-final', 2, r.最終決定曜日 || '')}
