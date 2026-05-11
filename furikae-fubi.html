@@ -225,6 +225,34 @@ async function fetchFromGAS() {
   }
 }
 
+// yawaragiボードGAS の add_board_task を直接叩く（タスクボードタブに登録）
+// yawaragiボードGAS は access:ANYONE_ANONYMOUS なので fetch POST で叩ける
+async function pushBoardTask(c) {
+  const reasonText = (c['不備理由カテゴリ'] || []).join('・');
+  const detail = c['不備理由詳細'] ? `（${c['不備理由詳細']}）` : '';
+  const name = `【口座振替不備返却】${c['利用者名']}様 ${reasonText}${detail}\n` +
+    `→ ①利用者/家族/ケアマネに連絡 ②新書類を受領 ③電算CSS係(058-279-3482)に再送付 ④元書類はパンチで穴開け→ファイリング\n` +
+    `[電算 加入店コード:9470035730 / 担当: ${c['担当者']}]`;
+  try {
+    const res = await fetch(YAWARAGI_BOARD_GAS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'add_board_task',
+        name: name,
+        priority: 'high',
+        source: '代表'
+      }),
+      redirect: 'follow'
+    });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error('pushBoardTask failed:', err);
+    return { success: false, error: String(err) };
+  }
+}
+
 // GAS は access:ANYONE のため、ブラウザクッキー（Googleログイン情報）を送る必要がある。
 // fetch POST はクロスオリジン制約でクッキーが送れないため、form-iframe 方式に切替。
 function postViaForm(payload) {
@@ -521,7 +549,8 @@ function openStep2(c) {
     <div class="info-block yellow" style="margin-top:12px">
       <strong>👤 担当に引き継ぎ＋完了マーク</strong><br>
       ここから先（利用者連絡 → 新書類受領 → 電算再送付 → ファイリング）は担当者が物理で進めます。
-      担当者にメール通知が届き、アプリ上はこのケースは<strong>完了扱い</strong>になります。
+      <strong>yawaragiボードのタスクボードに登録</strong>され、担当者が完了チェックすると社長にメール通知が届きます（言った言わない防止）。
+      アプリ上はこのケースは<strong>完了扱い</strong>になります。
     </div>
     <label>担当者を選んでください</label>
     <select id="assignee">${staffOptions}</select>
@@ -547,8 +576,13 @@ function openStep2(c) {
       { ステップ: 6, 日時: new Date().toISOString(), 担当: assignee, メモ: '担当者へ引き継ぎ＝アプリ管理上は完了。実物業務(連絡/再送付/ファイリング)は担当者が物理で実施。' }
     ];
     await pushUpsert(next);
+    const boardResult = await pushBoardTask(next);
     closeModal();
-    alert(`📨 ${assignee}さんにメール通知しました。\nこのケースはアプリ上「完了」扱いになります。\n以降の連絡・再送付・ファイリングは${assignee}さんが物理で進めます。`);
+    if (boardResult && boardResult.success) {
+      alert(`✅ yawaragiボード タスクボードに登録しました（${assignee}さん向け）。\nこのケースはアプリ上「完了」扱いになります。\n${assignee}さんがボードでタスク完了チェックすると社長にメール通知が届きます。`);
+    } else {
+      alert(`⚠️ ボード登録に失敗しました。yawaragiボードを直接開いて手動でタスクを追加してください。\n（このケース自体はアプリ上「完了」扱いになっています）`);
+    }
   });
 }
 
