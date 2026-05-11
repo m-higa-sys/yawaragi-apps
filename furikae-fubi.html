@@ -214,59 +214,73 @@ async function fetchFromGAS() {
   }
 }
 
-async function pushUpsert(c) {
-  const body = JSON.stringify({ action: 'upsert', case: c });
-  try {
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body,
-      redirect: 'follow'
-    });
-    const data = await res.json();
-    if (data && data.ok && data.case) {
-      const idx = state.cases.findIndex(x => x.id === data.case.id);
-      if (idx >= 0) state.cases[idx] = data.case;
-      else state.cases.push(data.case);
-      saveToLocal();
-      render();
+// GAS は access:ANYONE のため、ブラウザクッキー（Googleログイン情報）を送る必要がある。
+// fetch POST はクロスオリジン制約でクッキーが送れないため、form-iframe 方式に切替。
+function postViaForm(payload) {
+  return new Promise((resolve) => {
+    let iframe = document.getElementById('gas-iframe');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'gas-iframe';
+      iframe.name = 'gas-iframe';
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
     }
-    return data;
-  } catch (err) {
-    console.error('pushUpsert failed:', err);
-    return { ok: false, error: String(err) };
-  }
+    const form = document.createElement('form');
+    form.action = GAS_URL;
+    form.method = 'POST';
+    form.target = 'gas-iframe';
+    form.style.display = 'none';
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+    document.body.appendChild(form);
+    let resolved = false;
+    const onDone = () => {
+      if (resolved) return;
+      resolved = true;
+      try { document.body.removeChild(form); } catch (_) {}
+      iframe.removeEventListener('load', onDone);
+      resolve();
+    };
+    iframe.addEventListener('load', onDone);
+    form.submit();
+    // 5秒タイムアウト
+    setTimeout(onDone, 5000);
+  });
+}
+
+async function pushUpsert(c) {
+  // 楽観的に state へ反映してから送信（即UI反映）
+  if (!c.id) c.id = 'fubi_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  if (!c['作成日時']) c['作成日時'] = new Date().toISOString();
+  c['更新日時'] = new Date().toISOString();
+  const idx = state.cases.findIndex(x => x.id === c.id);
+  if (idx >= 0) state.cases[idx] = c;
+  else state.cases.push(c);
+  saveToLocal();
+  render();
+  await postViaForm({ action: 'upsert', case: c });
+  setTimeout(fetchFromGAS, 1500);
+  return { ok: true, case: c };
 }
 
 async function pushDelete(id) {
-  try {
-    await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'delete', id })
-    });
-    state.cases = state.cases.filter(x => x.id !== id);
-    saveToLocal();
-    render();
-  } catch (err) {
-    console.error('pushDelete failed:', err);
-  }
+  state.cases = state.cases.filter(x => x.id !== id);
+  saveToLocal();
+  render();
+  await postViaForm({ action: 'delete', id });
+  setTimeout(fetchFromGAS, 1500);
 }
 
 async function pushCustomer(c) {
-  try {
-    await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'save_customer', customer: c })
-    });
-    const idx = state.customers.findIndex(x => x['利用者ID'] === c['利用者ID']);
-    if (idx >= 0) state.customers[idx] = { ...state.customers[idx], ...c };
-    else state.customers.push(c);
-    saveToLocal();
-  } catch (err) {
-    console.error('pushCustomer failed:', err);
-  }
+  const idx = state.customers.findIndex(x => x['利用者ID'] === c['利用者ID']);
+  if (idx >= 0) state.customers[idx] = { ...state.customers[idx], ...c };
+  else state.customers.push(c);
+  saveToLocal();
+  await postViaForm({ action: 'save_customer', customer: c });
 }
 
 // ============================
