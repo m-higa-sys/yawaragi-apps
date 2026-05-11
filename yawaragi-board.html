@@ -9085,6 +9085,48 @@ function intakeOnKindChange() {
     }
 }
 
+// 見学レコードを「体験」に昇格させる（保存ボタン押下までは反映されない）
+function intakePromoteToTrial() {
+    const planEl = document.getElementById('m-予定日');
+    const planDate = planEl ? planEl.value : '';
+    if (!confirm(
+        '見学記録を「体験記録」に切り替えます。\n\n' +
+        '・種別が「体験」に変わります\n' +
+        '・見学日（' + (planDate || '未入力') + '）が履歴として保存されます\n' +
+        '・体験予定日は空欄になります（新しい日付を入力してください）\n' +
+        '・「💾保存」ボタンを押すまでサーバーには反映されません\n\n' +
+        'よろしいですか？'
+    )) return;
+
+    // 種別ボタングループの値を 'trial' に変更
+    const kindGroup = document.querySelector('[data-iv-group="種別"]');
+    if (kindGroup) {
+        kindGroup.dataset.value = 'trial';
+        kindGroup.querySelectorAll('.iv-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.value === 'trial');
+        });
+    }
+
+    // 見学日 hidden inputに元の予定日を保存
+    const kengakuEl = document.getElementById('m-見学日');
+    if (kengakuEl) kengakuEl.value = planDate;
+
+    // 体験の予定日は空欄に（新しい日付を入力する）
+    if (planEl) planEl.value = '';
+
+    // 種別変更で送迎セクション表示
+    intakeOnKindChange();
+
+    alert(
+        '✅ 体験記録に切り替わりました。\n\n' +
+        '次にやること：\n' +
+        '① 体験予定日を入力\n' +
+        '② 送迎シミュレーションを入力\n' +
+        '③ 「💾保存」ボタンで反映\n\n' +
+        '※ 見学日（' + (planDate || '未入力') + '）は履歴に残ります'
+    );
+}
+
 function buildIntakeModalHtml(r) {
     const isNew = _intakeModalMode === 'new';
     const today = new Date().toISOString().slice(0,10);
@@ -9100,6 +9142,26 @@ function buildIntakeModalHtml(r) {
         ? `<h3 style="margin-top:0;color:#2c7a7b;">🆕 新規問合せ受付</h3>
            <div style="font-size:13px;color:#4a5568;margin-bottom:12px;">電話で聞きながら入力してください。忙しくなったら「⏸️中断して保存」で未完了のまま保存できます。</div>`
         : `<h3 style="margin-top:0;color:#2c7a7b;">📋 ${INTAKE_KIND_LABEL[r.種別] || ''}記録：${intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）')}</h3>`;
+
+    // 見学→体験 昇格バナー（新規モードでは非表示）
+    let promoteBanner = '';
+    if (!isNew) {
+        if (r.種別 === 'visit') {
+            promoteBanner = `
+            <div style="margin:10px 0;padding:12px 14px;background:#f0fff4;border:2px solid #48bb78;border-radius:8px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:14px;font-weight:bold;color:#22543d;">📈 体験に進めた場合：</span>
+                    <button type="button" onclick="intakePromoteToTrial()" style="background:#48bb78;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;">→ 体験記録に切り替える</button>
+                    <span style="font-size:12px;color:#22543d;">押すと種別=体験に変わり、見学日（${intakeEscapeHtml(r.予定日 || '未入力')}）が履歴として保存されます</span>
+                </div>
+            </div>`;
+        } else if (r.種別 === 'trial' && r.見学日) {
+            promoteBanner = `
+            <div style="margin:10px 0;padding:10px 14px;background:#fefcbf;border:2px solid #ecc94b;border-radius:8px;font-size:14px;font-weight:bold;color:#744210;">
+                📈 見学（${intakeEscapeHtml(r.見学日)}）から体験へ進みました
+            </div>`;
+        }
+    }
 
     // アクションボタン
     let actionBtns = '';
@@ -9123,6 +9185,9 @@ function buildIntakeModalHtml(r) {
 
     return `
         ${header}
+        ${promoteBanner}
+        <!-- 見学日を保持するhidden input（昇格時に書き込まれる）-->
+        <input type="hidden" id="m-見学日" value="${intakeEscapeAttr(r.見学日 || '')}">
 
         <!-- 基本情報 -->
         <div class="intake-modal-section"><h4>基本情報</h4>
@@ -9322,7 +9387,7 @@ function collectTransportSim(idPrefix) {
 function collectIntakeModalPayload() {
     const p = {};
     // テキスト・日付系
-    ['問い合わせ日','予定日','初回対応スタッフ','ケアマネ事業所','ケアマネ氏名',
+    ['問い合わせ日','予定日','見学日','初回対応スタッフ','ケアマネ事業所','ケアマネ氏名',
      'ふりがな','氏名','性別','生年月日','年齢','介護度','住所詳細','TEL','TEL続柄',
      '主訴','yawaragi何番目','利用なし理由詳細',
      '前日連絡日時','前日連絡担当','前日連絡メモ','訪問注意事項',
