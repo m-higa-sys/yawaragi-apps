@@ -7938,7 +7938,9 @@ function trmRenderCard(t) {
     const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isShienMode || t.tasks.kotraining);
     // 段階2: 要支援なら科学的のみ、要介護なら科学的＋ADL両方
     const stage2Done = stage1Done && t.tasks.kagakuteki && (isShienMode || t.tasks.adl);
-    const allDone = stage2Done;
+    // 段階3: リハブクラウドで利用中止操作（請求対象から外す・必須）
+    const stage3Done = stage2Done && t.tasks.rihab_chushi;
+    const allDone = stage3Done;
 
     const lastUseJP = trmFormatDateJP(t.lastUseDate);
     const terminateJP = trmFormatDateJP(t.terminateDate);
@@ -7982,6 +7984,14 @@ function trmRenderCard(t) {
             '</div>' +
             trmTaskItem(t, 'kagakuteki', '科学的介護推進体制', !stage1Done) +
             (isShienMode ? '' : trmTaskItem(t, 'adl', 'ADL維持等加算', !stage1Done)) +
+
+            // 段階3: リハブクラウドで利用中止操作（段階2完了後・請求対象から外す）
+            '<div class="trm-task-step-label ' + (stage2Done ? 'active' : '') + '" style="margin-top:8px;">' +
+                '段階3: ' + (stage2Done
+                    ? '段階2完了 → リハブで利用中止操作（請求対象から外す）'
+                    : '段階2完了後にチェック可能') +
+            '</div>' +
+            trmTaskItem(t, 'rihab_chushi', 'リハブクラウドで利用中止操作', !stage2Done) +
         '</div>' +
 
         '<div class="trm-card-actions">' +
@@ -8012,6 +8022,7 @@ function trmShowHelp() {
                     '<ol>' +
                         '<li><b>段階1</b>: 通所・個別機能訓練・口腔 の3つを完成（順不同）</li>' +
                         '<li><b>段階2</b>: 科学的介護＋ADL維持等 を完成（要支援はADL不要）</li>' +
+                        '<li><b>段階3</b>: リハブクラウドで利用中止操作（請求対象から外す）</li>' +
                         '<li>完成後にLIFEへ提出</li>' +
                     '</ol>' +
                 '</div>' +
@@ -8057,6 +8068,16 @@ function trmShowHelp() {
                         '<li>「ADL維持等加算」タブ → 該当利用者を選択</li>' +
                         '<li>退所時のバーセルインデックス（ADL評価）を入力</li>' +
                         '<li><b>要支援の方はADL不要</b>（このアプリでは自動で非表示になります）</li>' +
+                    '</ul>' +
+                '</div>' +
+
+                '<div class="trm-help-section trm-help-important">' +
+                    '<h4>⑥ リハブクラウドで利用中止操作（最後・必須！）</h4>' +
+                    '<ul>' +
+                        '<li>リハブクラウド → 「利用者一覧」 → 該当利用者を選択</li>' +
+                        '<li>「利用終了日」に最終利用日を入力</li>' +
+                        '<li>必要に応じて「中止理由」等を入力して保存</li>' +
+                        '<li><b>これをやらないと毎月の請求対象に残り続ける</b>（来月以降も利用者として表示される）</li>' +
                     '</ul>' +
                 '</div>' +
 
