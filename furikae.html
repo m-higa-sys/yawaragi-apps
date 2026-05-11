@@ -799,7 +799,7 @@ function renderMonth() {
         <td>${r.no}</td>
         <td><input type="text" class="${nameClass}" value="${escapeHtml(r.name)}"
             placeholder="名前入力" onchange="updateName(${r.id}, this.value)"
-            title="利用者名を入力"></td>
+            title="利用者名を入力">${fubiHistoryBadge(r)}</td>
         <td>${escapeHtml(r.bank)}</td>
         <td>${escapeHtml(r.branch)}</td>
         <td>${r.account}</td>
@@ -1550,6 +1550,47 @@ function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ============ 不備返却アプリ連動 ============
+const FURIKAE_FUBI_GAS = 'https://script.google.com/macros/s/AKfycby9yifGR7oxbstElccGjUFhNN2BlDGfMgcFBT-KlX4iAHIgb6LZuCpplMgpxkMy7am91w/exec';
+let furikaeFubiCases = [];
+
+function normalizeNameForFubi(s) {
+  return String(s || '').normalize('NFKC').replace(/様$|さん$/g, '').replace(/\s+/g, '').trim();
+}
+
+function fubiHistoryBadge(record) {
+  if (!furikaeFubiCases || furikaeFubiCases.length === 0) return '';
+  const recordName = normalizeNameForFubi(record.name);
+  if (!recordName) return '';
+  const matched = furikaeFubiCases.filter(c => {
+    if (c['状態'] !== '完了') return false;
+    if (normalizeNameForFubi(c['利用者名']) !== recordName) return false;
+    const completedDate = c['完了日'] ? new Date(c['完了日']) : null;
+    if (!completedDate) return false;
+    const daysAgo = (new Date() - completedDate) / (1000*60*60*24);
+    return daysAgo <= 180;
+  });
+  if (matched.length === 0) return '';
+  const latest = matched.sort((a, b) => (b['完了日']||'').localeCompare(a['完了日']||''))[0];
+  const reasons = (latest['不備理由カテゴリ']||[]).join('・');
+  const sendStep = (latest['ステップ履歴']||[]).find(s => s.ステップ === 5);
+  const sendDate = sendStep && sendStep.日時 ? sendStep.日時.slice(0,10) : '-';
+  return `<div style="display:block;margin-top:4px;padding:3px 8px;background:#fff3cd;color:#856404;border-radius:10px;font-size:11px;font-weight:bold;" title="${escapeHtml(reasons)}・再送付${sendDate}">🏦 不備返却由来（${(latest['受領日']||'').slice(5)}・再送付${sendDate.slice(5)}）</div>`;
+}
+
+async function fetchFurikaeFubi() {
+  try {
+    const res = await fetch(FURIKAE_FUBI_GAS + '?action=list');
+    const d = await res.json();
+    if (d && d.ok && Array.isArray(d.cases)) {
+      furikaeFubiCases = d.cases;
+      renderMonth();
+    }
+  } catch (err) {
+    console.warn('fetchFurikaeFubi failed:', err);
+  }
+}
+
 // ============ 初期化 ============
 setupDropZone();
 initMonthSelect();
@@ -1562,6 +1603,12 @@ renderMonth();
 // クラウドから初回ロード＋自動同期開始
 cloudLoad();
 startAutoRefresh();
+
+// 不備返却アプリ連動データを取得
+fetchFurikaeFubi();
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) fetchFurikaeFubi();
+});
 
 // ============ 事例ノート機能セットアップ ============
 // 事例ノートセクションを動的に追加（既存HTML構造を壊さないため）
