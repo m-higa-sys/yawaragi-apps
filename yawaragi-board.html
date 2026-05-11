@@ -9288,6 +9288,22 @@ function buildIntakeModalHtml(r) {
         </label>
         </div>
 
+        <!-- 体験日確定・連絡準備（体験日が決まったら入力）-->
+        <div class="intake-modal-section"><h4>📅 体験日確定・連絡準備</h4>
+        <div style="font-size:12px;color:#4a5568;margin:-4px 0 8px;">体験日が決まったら、ケアマネ・本人に「○月○日○時にお迎えに行きます」と電話する準備をここで管理</div>
+        <div class="intake-modal-grid">
+            ${intakeField('体験 お迎え時間', `<input id="m-体験お迎え時間" value="${intakeEscapeAttr(r.体験お迎え時間 || '')}" placeholder="例: 9:10">`)}
+            ${intakeField('連絡予定日（いつ電話するか）', `<input type="date" id="m-体験前連絡予定日" value="${intakeEscapeAttr(r.体験前連絡予定日 || '')}">`)}
+            ${intakeField('連絡相手', ivRenderBtnGroup('体験前連絡相手', ['本人','家族','ケアマネ'], null, r.体験前連絡相手 || ''))}
+        </div>
+        <div class="intake-modal-grid" style="margin-top:8px;">
+            ${intakeField('連絡メモ（電話で伝えること・本人の反応）', `<textarea id="m-体験前連絡メモ" placeholder="例: 9:10にお迎え・玄関先まで・体調確認">${intakeEscapeHtml(r.体験前連絡メモ || '')}</textarea>`, 'col3')}
+        </div>
+        <div class="intake-check-grid" style="margin-top:8px;">
+            ${intakeCheckItem('m-体験前連絡済', '✅ 体験日詳細をケアマネ・本人に連絡済', r.体験前連絡済 === true, false)}
+        </div>
+        </div>
+
         <!-- 前日連絡（強化版）-->
         <div class="intake-modal-section"><h4>📞 前日連絡（体験/見学の前日）</h4>
         <div class="intake-modal-grid">
@@ -9398,6 +9414,7 @@ function collectIntakeModalPayload() {
     ['問い合わせ日','予定日','見学日','初回対応スタッフ','ケアマネ事業所','ケアマネ氏名',
      'ふりがな','氏名','性別','生年月日','年齢','介護度','住所詳細','TEL','TEL続柄',
      '主訴','yawaragi何番目','利用なし理由詳細',
+     '体験お迎え時間','体験前連絡予定日','体験前連絡メモ',
      '前日連絡日時','前日連絡担当','前日連絡メモ','訪問注意事項',
      '本格利用開始日','初回お迎え時間',
      'ケアマネ報告日時','ケアマネ報告内容','ケアマネ利用可否連絡日','契約順位'].forEach(f => {
@@ -9422,12 +9439,13 @@ function collectIntakeModalPayload() {
     });
     // チェックボックス
     ['利用日前日連絡フラグ','ケアマネ連絡済','送迎時間連絡済','週間予定表仮予約済','全記入済',
-     'Googleマップ登録済み','初回お迎え時間報告済','ケアマネ報告済'].forEach(f => {
+     'Googleマップ登録済み','初回お迎え時間報告済','ケアマネ報告済','体験前連絡済'].forEach(f => {
         const el = document.getElementById('m-' + f);
         if (el) p[f] = el.checked === true;
     });
-    // 前日連絡相手・表札・ケアマネ可否回答（btnGroup）
+    // 前日連絡相手・表札・ケアマネ可否回答・体験前連絡相手（btnGroup）
     p.前日連絡相手 = ivGetGroupValue('前日連絡相手');
+    p.体験前連絡相手 = ivGetGroupValue('体験前連絡相手');
     p.表札有無 = ivGetGroupValue('表札有無');
     p.ケアマネ利用可否回答 = ivGetGroupValue('ケアマネ利用可否回答');
     // 決定理由（複数選択チェックボックス → カンマ区切り保存）
