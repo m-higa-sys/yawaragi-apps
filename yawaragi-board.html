@@ -8577,7 +8577,7 @@ function openIntakeModalNew() {
     document.getElementById('intake-modal-body').innerHTML = buildIntakeModalHtml(_intakeModalDraft);
     document.getElementById('intake-modal').classList.add('show');
     if (_cmCache.length === 0) loadCmContactsCache(); // キャッシュ未取得なら今取得
-    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); }, 0);
+    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); intakeUpdateYoteibiDow(); }, 0);
 }
 
 // ===== Task 9: 一覧表示 =====
@@ -8726,7 +8726,7 @@ function openIntakeModal(id) {
     document.getElementById('intake-modal-body').innerHTML = buildIntakeModalHtml(r);
     document.getElementById('intake-modal').classList.add('show');
     if (_cmCache.length === 0) loadCmContactsCache(); // キャッシュ未取得なら今取得
-    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); }, 0);
+    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); intakeUpdateYoteibiDow(); }, 0);
 }
 
 function closeIntakeModal() {
@@ -9085,6 +9085,17 @@ function intakeOnKindChange() {
     }
 }
 
+// 予定日inputの値から曜日（日〜土）を自動表示
+function intakeUpdateYoteibiDow() {
+    const el = document.getElementById('m-予定日');
+    const span = document.getElementById('m-予定日-dow');
+    if (!el || !span) return;
+    if (!el.value) { span.textContent = ''; return; }
+    const d = new Date(el.value);
+    if (isNaN(d.getTime())) { span.textContent = ''; return; }
+    span.textContent = '（' + ['日','月','火','水','木','金','土'][d.getDay()] + '）';
+}
+
 // 見学レコードを「体験」に昇格させる（保存ボタン押下までは反映されない）
 function intakePromoteToTrial() {
     const planEl = document.getElementById('m-予定日');
@@ -9194,7 +9205,7 @@ function buildIntakeModalHtml(r) {
         <div class="intake-modal-grid">
             ${intakeField('種別', ivRenderBtnGroup('種別', ['trial','visit'], ['体験','見学'], r.種別 || 'trial', { onchange: 'intakeOnKindChange' }), 'col3')}
             ${intakeField('問い合わせ日', `<input type="date" id="m-問い合わせ日" value="${intakeEscapeAttr(r.問い合わせ日 || today)}">`)}
-            ${intakeField('予定日', `<input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}">`)}
+            ${intakeField('予定日', `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" onchange="intakeUpdateYoteibiDow()" style="flex:0 0 auto;"><span id="m-予定日-dow" style="font-size:15px;font-weight:bold;color:#2c7a7b;"></span>${ivRenderBtnGroup('予定日AMPM', ['AM','PM'], null, r.予定日AMPM || '')}</div>`)}
             ${intakeField('初回対応スタッフ', (() => {
                 const cur = r.初回対応スタッフ || (typeof getStaff === 'function' ? (localStorage.getItem('yawaragi_staff') || '') : '');
                 const staffList = (typeof getStaff === 'function' ? getStaff() : []).slice();
@@ -9242,9 +9253,6 @@ function buildIntakeModalHtml(r) {
         </div>
         <div class="intake-modal-section"><h4>希望曜日（yawaragi側希望）</h4>
             ${ivRenderDayWishes('wish-yawaragi', 3, r['yawarigi希望曜日'] || '', { enableFollowUp: true })}
-        </div>
-        <div class="intake-modal-section"><h4>最終決定曜日</h4>
-            ${ivRenderDayWishes('wish-final', 2, r.最終決定曜日 || '', { hideAnytime: true })}
         </div>
 
         <!-- 送迎シミュレーション（体験のみ表示・見学は家族送迎）-->
@@ -9398,6 +9406,7 @@ function collectIntakeModalPayload() {
     });
     // ボタングループ
     p.種別 = ivGetGroupValue('種別') || 'trial';
+    p.予定日AMPM = ivGetGroupValue('予定日AMPM') || '';
     const sex = ivGetGroupValue('性別');
     if (sex) p.性別 = sex;
     p.介護度 = ivGetGroupValue('介護度');
@@ -9432,7 +9441,6 @@ function collectIntakeModalPayload() {
     // 曜日希望（「いつでもOK」対応）
     p.利用希望曜日 = ivCollectDayWishes('wish-user', 2);
     p['yawarigi希望曜日'] = ivCollectDayWishes('wish-yawaragi', 3);
-    p.最終決定曜日 = ivCollectDayWishes('wish-final', 2);
     // 送迎シミュレーション
     p.お試し送迎順 = collectTransportSim('m-transport-trial');
     p.利用時送迎順 = collectTransportSim('m-transport-active');
