@@ -94,6 +94,8 @@ header button { background: #fff; color: var(--primary); border: none; padding: 
 // 設定
 // ============================
 const GAS_URL = 'https://script.google.com/macros/s/AKfycby9yifGR7oxbstElccGjUFhNN2BlDGfMgcFBT-KlX4iAHIgb6LZuCpplMgpxkMy7am91w/exec';
+// 利用者マスタは yawaragiボードGAS の user_list を直接叩く（GAS同士の連携は OAuth スコープが要るため）
+const YAWARAGI_BOARD_GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 // 振替不能管理アプリ（同フォルダ内のローカル版）から不能リストを取得する。
 // 将来 GAS 化されたら URL を入れる。当面は localStorage の `furikaeFuno` 等を参照する形でも可。
 const FURIKAE_FUNO_GAS = ''; // TODO: 振替不能管理アプリのGAS URL（あれば設定）
@@ -179,7 +181,7 @@ async function fetchFromGAS() {
     const [casesRes, custRes, usersRes] = await Promise.all([
       fetch(GAS_URL + '?action=list').then(r => r.json()).catch(e => null),
       fetch(GAS_URL + '?action=customers').then(r => r.json()).catch(e => null),
-      fetch(GAS_URL + '?action=users').then(r => r.json()).catch(e => null)
+      fetch(YAWARAGI_BOARD_GAS + '?action=user_list').then(r => r.json()).catch(e => null)
     ]);
     // 空ガード: 空配列で返ってきたらローカルを上書きしない（GAS失敗時の保護）
     if (casesRes && casesRes.ok && Array.isArray(casesRes.cases)) {
@@ -190,9 +192,17 @@ async function fetchFromGAS() {
     if (custRes && custRes.ok && Array.isArray(custRes.customers)) {
       state.customers = custRes.customers;
     }
-    if (usersRes && usersRes.ok && Array.isArray(usersRes.users)) {
-      if (usersRes.users.length > 0 || state.users.length === 0) {
-        state.users = usersRes.users;
+    // yawaragiボードGAS の user_list 形式 → 共通フォーマットへ変換
+    if (usersRes && Array.isArray(usersRes.user_list)) {
+      const users = usersRes.user_list.map(u => ({
+        利用者ID: 'row_' + u.row,
+        利用者名: u.userName,
+        利用者名カナ: u.userNameKana,
+        ケアマネ事業所: u.currentCmOffice,
+        ケアマネ名: u.currentCmStaff
+      }));
+      if (users.length > 0 || state.users.length === 0) {
+        state.users = users;
       }
     }
     saveToLocal();
