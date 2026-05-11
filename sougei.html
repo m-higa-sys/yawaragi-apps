@@ -4767,11 +4767,13 @@ function normalizeUserNames_(dayData){
   });
 }
 
-function autoSave(){
+function autoSave(opts){
   if(IS_READONLY || !D.date) return;
+  opts = opts || {};
   normalizeUserNames_(D); // 保存前に名前を正規化
   // 編集されたら自動的に確定解除（スタッフに中途半端な状態を見せない）
-  if(D.confirmed){
+  // ただし toggleConfirm から呼ばれた時は keepConfirmed:true でスキップ
+  if(!opts.keepConfirmed && D.confirmed){
     D.confirmed=false;
     updateConfirmBtn();
   }
@@ -6243,7 +6245,7 @@ function toggleConfirm(){
     // 確定
     D.confirmed=true;
   }
-  autoSave();
+  autoSave({keepConfirmed: true});
   updateConfirmBtn();
   // 確定フラグを即クラウド同期
   if(getOpsGasUrl()){
