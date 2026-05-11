@@ -8851,7 +8851,8 @@ function ivRenderDayWishes(prefix, rankCount, rawValue, options) {
     }
 
     const helpText = `<div style="font-size:11px;color:#718096;margin-bottom:6px;">同じ希望枠で複数曜日OKなら複数タップ（例：月と金どっちでも）</div>`;
-    const inactive = anytime || followUp;
+    // 「いつでもOK」のみ曜日選択をグレーアウト。「後日ご連絡」は曜日入力を許可（仮希望を記入できるように）
+    const inactive = anytime;
     return `<div data-iv-anytime="${prefix}" data-anytime="${anytime ? 'true' : 'false'}" data-followup="${followUp ? 'true' : 'false'}">
         ${anyBtn}${followUpUI}${helpText}
         <div class="iv-anytime-rows" style="${inactive ? 'opacity:0.35;pointer-events:none;' : ''}">${rows}</div>
@@ -8867,17 +8868,9 @@ function intakeToggleAnytime(prefix) {
     const next = !cur;
     host.dataset.anytime = next ? 'true' : 'false';
     if (btn) btn.classList.toggle('active', next);
-    // 排他：「いつでもOK」をONにしたら「後日ご連絡」はOFF
-    if (next && host.dataset.followup === 'true') {
-        host.dataset.followup = 'false';
-        const fuBtn = host.querySelector('.iv-btn[data-value="followup"]');
-        if (fuBtn) fuBtn.classList.remove('active');
-        const fuBlock = document.getElementById(`${prefix}-followup-date`);
-        if (fuBlock) fuBlock.style.display = 'none';
-    }
-    const inactive = next || host.dataset.followup === 'true';
-    rows.style.opacity = inactive ? 0.35 : 1;
-    rows.style.pointerEvents = inactive ? 'none' : 'auto';
+    // 「いつでもOK」のみ曜日グレーアウト。「後日ご連絡」とは共存OK
+    rows.style.opacity = next ? 0.35 : 1;
+    rows.style.pointerEvents = next ? 'none' : 'auto';
     if (next) {
         // 「いつでもOK」選択時は全曜日クリア
         host.querySelectorAll('[data-iv-day-group]').forEach(g => {
@@ -8888,32 +8881,16 @@ function intakeToggleAnytime(prefix) {
 }
 
 function intakeToggleFollowUp(prefix) {
+    // 「後日ご連絡」はマーカーのみ。曜日選択はそのまま入力可能（仮希望として記録できる）
     const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
     if (!host) return;
     const btn = host.querySelector('.iv-btn[data-value="followup"]');
-    const rows = host.querySelector('.iv-anytime-rows');
     const dateBlock = document.getElementById(`${prefix}-followup-date`);
     const cur = host.dataset.followup === 'true';
     const next = !cur;
     host.dataset.followup = next ? 'true' : 'false';
     if (btn) btn.classList.toggle('active', next);
     if (dateBlock) dateBlock.style.display = next ? '' : 'none';
-    // 排他：「後日ご連絡」をONにしたら「いつでもOK」はOFF
-    if (next && host.dataset.anytime === 'true') {
-        host.dataset.anytime = 'false';
-        const anyBtn = host.querySelector('.iv-btn[data-value="anytime"]');
-        if (anyBtn) anyBtn.classList.remove('active');
-    }
-    const inactive = next || host.dataset.anytime === 'true';
-    rows.style.opacity = inactive ? 0.35 : 1;
-    rows.style.pointerEvents = inactive ? 'none' : 'auto';
-    if (next) {
-        // 「後日ご連絡」選択時は全曜日クリア
-        host.querySelectorAll('[data-iv-day-group]').forEach(g => {
-            g.dataset.days = ''; g.dataset.ampm = '';
-            g.querySelectorAll('.iv-day-btn, .iv-ampm-btn').forEach(b => b.classList.remove('active'));
-        });
-    }
 }
 
 // いつでもOK・後日ご連絡を考慮した集計
