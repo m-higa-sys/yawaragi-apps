@@ -9302,6 +9302,15 @@ function buildIntakeModalHtml(r) {
         <div class="intake-check-grid" style="margin-top:8px;">
             ${intakeCheckItem('m-体験前連絡済', '✅ 体験日詳細をケアマネ・本人に連絡済', r.体験前連絡済 === true, false)}
         </div>
+        <!-- 出勤＆送迎表反映ボタン（2026-05-11追加・体験者として利用者台帳に追加）-->
+        <div style="margin-top:14px;padding:14px;background:${r.送迎表追加済 ? '#f0fff4' : '#fffaf0'};border:2px solid ${r.送迎表追加済 ? '#48bb78' : '#ed8936'};border-radius:8px;">
+            ${r.送迎表追加済
+                ? `<div style="color:#22543d;font-weight:bold;font-size:14px;">✅ 出勤＆送迎表に追加済（${intakeEscapeHtml(r.送迎表追加日時 || '')}）</div>
+                   <div style="font-size:12px;color:#22543d;margin-top:4px;">出勤＆送迎表・出席予定タブで「体験中」ステータスの利用者として表示されます。不成立時は利用者台帳でステータスを「中止」に変更してください。</div>`
+                : `<button type="button" onclick="intakeAddAsTrialAction('${isNew ? '' : r.id}')" style="background:#ed8936;color:#fff;border:none;padding:12px 22px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:15px;">📤 この方を出勤＆送迎表に追加（体験者として）</button>
+                   <div style="font-size:12px;color:#7b341e;margin-top:6px;">押すと利用者台帳に「体験中」ステータスで登録され、出勤＆送迎表・出席予定タブに自動表示されます。体験日が確定したら押してください。</div>`
+            }
+        </div>
         </div>
 
         <!-- 前日連絡（強化版）-->
@@ -9534,6 +9543,34 @@ async function syncIntakeToUserListAction(id) {
     const ok = await gasPost({ action: 'intake_sync_to_userlist', id: id }, '利用者台帳に反映');
     if (ok) {
         alert('✅ 利用者台帳に反映しました');
+        setTimeout(loadIntakeList, 800);
+    }
+}
+
+// 体験者を「体験中」ステータスで利用者台帳に仮登録（2026-05-11追加）
+async function intakeAddAsTrialAction(id) {
+    if (!id) { alert('まず「💾保存」してから押してください'); return; }
+    const planDate = document.getElementById('m-予定日')?.value || '';
+    const pickupTime = document.getElementById('m-体験お迎え時間')?.value || '';
+    if (!planDate) {
+        alert('⚠️ 予定日（体験日）を入力してから押してください');
+        return;
+    }
+    if (!confirm(
+        'この方を利用者台帳に「体験中」ステータスで仮登録します。\n\n' +
+        '・出勤＆送迎表・出席予定タブに自動表示されます\n' +
+        '・体験日: ' + planDate + '\n' +
+        '・お迎え時間: ' + (pickupTime || '未入力') + '\n\n' +
+        '不成立時は利用者台帳画面で「中止」ステータスに変更してください。\n\n' +
+        'よろしいですか？'
+    )) return;
+    const ok = await gasPost({ action: 'intake_add_as_trial', id: id }, '出勤＆送迎表に追加');
+    if (ok) {
+        alert(
+            '✅ 出勤＆送迎表に体験者として追加しました。\n\n' +
+            '出勤＆送迎表・出席予定タブで「体験中」ステータスの利用者として表示されます。\n\n' +
+            '通知メールが yawaragi.notify@gmail.com にも届きます。'
+        );
         setTimeout(loadIntakeList, 800);
     }
 }
