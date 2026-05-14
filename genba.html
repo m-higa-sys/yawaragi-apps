@@ -3111,10 +3111,9 @@ function absSelectDateType(type) {
         container.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
             ${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}（${DAY_NAMES[today.getDay()]}）
         </p>`;
-        // 通所日でない日チェック → falseなら先に進まない
-        if (absCheckNotScheduledDay(todayStr)) {
-            absShowReasonStep();
-        }
+        // 通所日でない日でも警告だけ出して登録は可能にする
+        absCheckNotScheduledDay(todayStr);
+        absShowReasonStep();
     } else if (type === 'specific') {
         absState.dateFrom = '';
         absState.dateTo = '';
@@ -3148,9 +3147,8 @@ function absSelectDateType(type) {
 function absOnDateSpecific(val) {
     absState.dateFrom = val;
     absState.dateTo = val;
-    if (absCheckNotScheduledDay(val)) {
-        absShowReasonStep();
-    }
+    absCheckNotScheduledDay(val);
+    absShowReasonStep();
 }
 
 function absOnDateRange() {
@@ -3168,23 +3166,20 @@ function absOnDateRange() {
 }
 
 function absCheckNotScheduledDay(dateStr) {
-    if (!absState.selectedUser || !absState.selectedUser.pattern) return false;
+    const warning = document.getElementById('abs-date-warning');
+    if (!absState.selectedUser || !absState.selectedUser.pattern) {
+        warning.style.display = 'none';
+        return true;
+    }
     const d = new Date(dateStr);
     const dow = d.getDay();
     const isScheduled = absState.selectedUser.pattern.some(p => p.day === dow);
-    const warning = document.getElementById('abs-date-warning');
     if (!isScheduled) {
         const patternText = absState.selectedUser.pattern.map(p => {
             return DAY_NAMES[p.day] + '（' + (p.unit === 'am' ? '午前' : '午後') + '）';
         }).join('・');
         warning.style.display = 'block';
         warning.innerHTML = `${DAY_NAMES[dow]}曜日はこの利用者の通所日ではありません。<br><span style="color:#2d3748;font-weight:700;">通所日：${patternText || '未登録'}</span>`;
-        // 後続ステップを隠す
-        document.getElementById('abs-step-reason').style.display = 'none';
-        document.getElementById('abs-step-contact').style.display = 'none';
-        document.getElementById('abs-step-method').style.display = 'none';
-        document.getElementById('abs-step-contactdate').style.display = 'none';
-        document.getElementById('abs-step-submit').style.display = 'none';
         return false;
     } else {
         warning.style.display = 'none';
