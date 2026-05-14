@@ -1089,8 +1089,13 @@ function showToast(msg, color){
 // ═══════════════════════════════════════════════
 const SOUGEI_API_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
 const SOUGEI_OPERATOR_KEY = 'yawaragi_nisshi_operator';
+// yawaragiボード staff_list API（24時間キャッシュ・失敗時は下のハードコードへフォールバック）
+const SOUGEI_STAFF_BOARD_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec?action=staff_list';
+const SOUGEI_STAFF_CACHE_KEY = 'yawaragi_nisshi_staff_list';
+const SOUGEI_STAFF_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// API失敗時のフォールバック（API側は姓のみで返るのに合わせ姓表記）
 const SOUGEI_STAFF_LIST = [
-  '比嘉学','下浦理絵','勝又裕子','工藤経子','星野友太','春山忍','石井祐子','髙山奈緒美'
+  '比嘉','勝又','星野','下浦','工藤','髙山','春山','大久保','小野','林','石井'
 ];
 
 let pendingToggle = null;
@@ -1150,17 +1155,40 @@ function openToggleByName(el){
   }
 }
 
-function populateOperatorSelect(){
+// yawaragiボード staff_list API から最新スタッフ一覧を取得（24時間キャッシュ）
+async function fetchStaffList(){
+  try{
+    const raw = localStorage.getItem(SOUGEI_STAFF_CACHE_KEY);
+    if(raw){
+      const cache = JSON.parse(raw);
+      if(cache && Array.isArray(cache.staff) && (Date.now() - (cache.ts||0)) < SOUGEI_STAFF_CACHE_TTL_MS){
+        return cache.staff;
+      }
+    }
+  } catch(e){}
+  try{
+    const res = await fetch(SOUGEI_STAFF_BOARD_URL, { redirect: 'follow' });
+    const json = await res.json();
+    if(json && json.success && Array.isArray(json.staff) && json.staff.length > 0){
+      localStorage.setItem(SOUGEI_STAFF_CACHE_KEY, JSON.stringify({ ts: Date.now(), staff: json.staff }));
+      return json.staff;
+    }
+  } catch(e){ console.warn('staff_list fetch failed', e); }
+  return SOUGEI_STAFF_LIST; // フォールバック
+}
+
+async function populateOperatorSelect(){
   const sel = document.getElementById('toggleOperatorSelect');
   sel.innerHTML = '<option value="">-- 選択してください --</option>';
-  SOUGEI_STAFF_LIST.forEach(name => {
+  const staffList = await fetchStaffList();
+  staffList.forEach(name => {
     const opt = document.createElement('option');
     opt.value = name;
     opt.textContent = name;
     sel.appendChild(opt);
   });
   const cached = localStorage.getItem(SOUGEI_OPERATOR_KEY) || '';
-  if(cached && SOUGEI_STAFF_LIST.indexOf(cached) >= 0){
+  if(cached && staffList.indexOf(cached) >= 0){
     sel.value = cached;
   } else if(cached){
     document.getElementById('toggleOperatorInput').value = cached;
