@@ -865,6 +865,7 @@ function renderSection(containerId, secData, type, sectionKey, absent){
   h += '</tr>';
 
   const _unit = sectionKey.startsWith('am') ? 'am' : 'pm';
+  const _slot = sectionKey.indexOf('Pick') >= 0 ? 'pick' : 'drop'; // amPick/pmPick→pick, amDrop/pmDrop→drop
   for(let i = 0; i < maxUsers; i++){
     h += `<tr><td class="user-num">${i+1}</td>`;
     routes.forEach(r => {
@@ -873,9 +874,9 @@ function renderSection(containerId, secData, type, sectionKey, absent){
         const isAbsent = absent[user];
         if(!isAbsent) totalUsers++;
         const cls = isAbsent ? 'user-name user-absent' : 'user-name';
-        const toggleBtn = (typeof renderToggleButton === 'function') ? renderToggleButton(user, _unit) : '';
+        const toggleBtn = (typeof renderToggleButton === 'function') ? renderToggleButton(user, _unit, _slot) : '';
         const tappable = (!isAbsent && currentDate >= todayISO()) ? ' data-toggleable="1" onclick="openToggleByName(this)"' : '';
-        h += `<td class="${cls}" data-user="${escHtml(user)}" data-unit="${_unit}"${tappable}>${escHtml(user)}${toggleBtn}</td>`;
+        h += `<td class="${cls}" data-user="${escHtml(user)}" data-unit="${_unit}" data-slot="${_slot}"${tappable}>${escHtml(user)}${toggleBtn}</td>`;
       } else {
         h += '<td></td>';
       }
@@ -1099,33 +1100,41 @@ function todayISO(){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
-function getCurrentUserStatus(user, unit){
+// 利用者の送迎タイプ取得（slot個別オーバーライド優先・無ければ半日値）
+function getCurrentUserStatus(user, unit, slot){
   try{
     const allOps = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
     const ops = allOps[currentDate];
-    if(!ops || !ops[unit] || !ops[unit].userStatus) return '';
+    if(!ops || !ops[unit]) return '';
+    if(slot && ops[unit].userStatusBySlot && ops[unit].userStatusBySlot[user]
+       && ops[unit].userStatusBySlot[user][slot] !== undefined){
+      return ops[unit].userStatusBySlot[user][slot];
+    }
+    if(!ops[unit].userStatus) return '';
     return ops[unit].userStatus[user] || '';
   } catch(e){ return ''; }
 }
 
-function renderToggleButton(user, unit){
+function renderToggleButton(user, unit, slot){
   if(currentDate < todayISO()) return ''; // 過去日は非表示
-  const status = getCurrentUserStatus(user, unit);
+  const status = getCurrentUserStatus(user, unit, slot);
   // 送迎不要(family)・徒歩(walk)のときだけ車に赤斜線アイコンを表示・タップで送迎に戻す
-  // 通常送迎の人にはマーク無し（利用者名タップで切替モーダル起動）
   if(status === 'family' || status === 'walk'){
-    return ` <button class="toggle-sougei-btn" data-mode="restore" onclick="event.stopPropagation();openToggleDialog('${escHtml(user).replace(/'/g,"\\'")}','${unit}','restore')" title="送迎に戻す">🚗</button>`;
+    const safeUser = escHtml(user).replace(/'/g,"\\'");
+    const safeSlot = slot || '';
+    return ` <button class="toggle-sougei-btn" data-mode="restore" onclick="event.stopPropagation();openToggleDialog('${safeUser}','${unit}','restore','${safeSlot}')" title="送迎に戻す">🚗</button>`;
   }
   return '';
 }
 
-// 利用者名タップで切替モーダル起動（通常送迎→送迎不要）
+// 利用者名タップで切替モーダル起動
 function openToggleByName(el){
   if(currentDate < todayISO()){ showToast('過去日は変更できません', '#e53935'); return; }
   const user = el.dataset.user;
   const unit = el.dataset.unit;
+  const slot = el.dataset.slot || '';
   if(!user || !unit) return;
-  // 欠席者はスキップ（誤操作防止）
+  // 欠席者はスキップ
   try{
     const day = nisshiData[currentDate];
     if(day && day.absent && day.absent[user]){
@@ -1133,11 +1142,11 @@ function openToggleByName(el){
       return;
     }
   } catch(e){}
-  const status = getCurrentUserStatus(user, unit);
+  const status = getCurrentUserStatus(user, unit, slot);
   if(status === 'family' || status === 'walk'){
-    openToggleDialog(user, unit, 'restore');
+    openToggleDialog(user, unit, 'restore', slot);
   } else {
-    openToggleDialog(user, unit, 'to-family');
+    openToggleDialog(user, unit, 'to-family', slot);
   }
 }
 
@@ -1172,18 +1181,21 @@ function getToggleOperator(){
   return (sel.value || input.value || '').trim();
 }
 
-function openToggleDialog(user, unit, mode){
+function openToggleDialog(user, unit, mode, slot){
   if(currentDate < todayISO()){
     showToast('過去日は変更できません', '#e53935');
     return;
   }
-  const currentValue = getCurrentUserStatus(user, unit);
+  slot = slot || '';
+  const currentValue = getCurrentUserStatus(user, unit, slot);
   const targetValue = mode === 'restore' ? '' : 'family';
-  pendingToggle = { user, unit, mode, currentValue, targetValue };
+  pendingToggle = { user, unit, slot, mode, currentValue, targetValue };
 
   const unitLabel = unit === 'am' ? '午前' : '午後';
+  const slotLabel = slot === 'drop' ? '送り' : (slot === 'pick' ? '迎え' : '');
+  const scopeLabel = slotLabel ? (unitLabel + '・' + slotLabel) : unitLabel;
   const action = mode === 'restore' ? '送迎に戻しますか？' : '送迎不要（家族送迎）にしますか？';
-  document.getElementById('toggleDialogTitle').textContent = `${user}さん（${unitLabel}）`;
+  document.getElementById('toggleDialogTitle').textContent = `${user}さん（${scopeLabel}）`;
   document.getElementById('toggleDialogDesc').textContent = action;
 
   populateOperatorSelect();
@@ -1218,15 +1230,35 @@ async function confirmToggle(){
   if(ok){
     localStorage.setItem(SOUGEI_OPERATOR_KEY, operator);
     closeToggleDialog();
-    showToast(`${toggle.user}さん（${toggle.unit==='am'?'午前':'午後'}）を更新しました`, '#4caf50');
+    const unitL = toggle.unit==='am'?'午前':'午後';
+    const slotL = toggle.slot==='drop'?'・送り':(toggle.slot==='pick'?'・迎え':'');
+    showToast(`${toggle.user}さん（${unitL}${slotL}）を更新しました`, '#4caf50');
     try{
       const allOps = JSON.parse(localStorage.getItem(DAILY_OPS_KEY) || '{}');
       if(allOps[currentDate] && allOps[currentDate][toggle.unit]){
-        if(!allOps[currentDate][toggle.unit].userStatus) allOps[currentDate][toggle.unit].userStatus = {};
-        if(toggle.targetValue === ''){
-          delete allOps[currentDate][toggle.unit].userStatus[toggle.user];
+        const unitData = allOps[currentDate][toggle.unit];
+        if(!unitData.userStatus) unitData.userStatus = {};
+        if(!unitData.userStatusBySlot) unitData.userStatusBySlot = {};
+        const slot = toggle.slot || '';
+        if(!slot || slot === 'both'){
+          if(toggle.targetValue === ''){
+            delete unitData.userStatus[toggle.user];
+          } else {
+            unitData.userStatus[toggle.user] = toggle.targetValue;
+          }
+          delete unitData.userStatusBySlot[toggle.user];
         } else {
-          allOps[currentDate][toggle.unit].userStatus[toggle.user] = toggle.targetValue;
+          if(!unitData.userStatusBySlot[toggle.user]) unitData.userStatusBySlot[toggle.user] = {};
+          unitData.userStatusBySlot[toggle.user][slot] = toggle.targetValue;
+          const halfVal = unitData.userStatus[toggle.user] || '';
+          const slotData = unitData.userStatusBySlot[toggle.user];
+          const dropV = slotData.drop !== undefined ? slotData.drop : halfVal;
+          const pickV = slotData.pick !== undefined ? slotData.pick : halfVal;
+          if(dropV === pickV){
+            if(dropV === ''){ delete unitData.userStatus[toggle.user]; }
+            else { unitData.userStatus[toggle.user] = dropV; }
+            delete unitData.userStatusBySlot[toggle.user];
+          }
         }
         allOps[currentDate]._lastModified = Date.now();
         localStorage.setItem(DAILY_OPS_KEY, JSON.stringify(allOps));
@@ -1245,6 +1277,7 @@ async function saveToggle(toggle, operator){
     date: currentDate,
     userId: toggle.user,
     unit: toggle.unit,
+    slot: toggle.slot || 'both',
     value: toggle.targetValue,
     operator: operator,
     source: '送迎日誌'
