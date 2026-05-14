@@ -157,6 +157,8 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
   <button class="btn-nav" onclick="changeDate(-1)">&#9664;前日</button>
   <input type="date" id="dateInput">
   <button class="btn-nav" onclick="changeDate(1)">翌日&#9654;</button>
+  <button class="btn-nav" onclick="goToToday()" style="background:#ff9800;color:#fff">今日に戻る</button>
+  <span id="dateBadge" style="font-size:13px;font-weight:bold;padding:3px 10px;border-radius:4px;background:rgba(255,255,255,0.22);color:#fff;white-space:nowrap"></span>
   <button class="btn-nav" onclick="window.print()" style="background:#43a047;color:#fff">印刷</button>
   <button class="btn-export" onclick="exportJSON()">保存</button>
   <button class="btn-import" onclick="document.getElementById('importFile').click()">読込</button>
@@ -652,9 +654,35 @@ function snapshotFromOps(ops){
   return snap;
 }
 
+// ===== 日付バッジ更新（曜日＋今日/未来日/過去日） =====
+function updateDateBadge(){
+  const el = document.getElementById('dateBadge');
+  if(!el) return;
+  if(!currentDate){ el.textContent = ''; return; }
+  const d = new Date(currentDate + 'T00:00:00');
+  if(isNaN(d.getTime())){ el.textContent = ''; return; }
+  const today = new Date();
+  const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  const weekDay = ['日','月','火','水','木','金','土'][d.getDay()];
+  let label, bg;
+  if(currentDate === todayStr){ label = '(' + weekDay + ') 【今日】'; bg = 'rgba(255,193,7,.85)'; }
+  else if(currentDate < todayStr){ label = '(' + weekDay + ') 【過去日・閲覧のみ】'; bg = 'rgba(120,120,120,.7)'; }
+  else { label = '(' + weekDay + ') 【未来日】'; bg = 'rgba(33,150,243,.7)'; }
+  el.textContent = label;
+  el.style.background = bg;
+}
+
+function goToToday(){
+  const today = new Date();
+  const ts = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  document.getElementById('dateInput').value = ts;
+  loadDate();
+}
+
 // ===== 日付読み込み =====
 function loadDate(){
   currentDate = document.getElementById('dateInput').value;
+  updateDateBadge();
   if(!currentDate) return;
 
   let dayData = nisshiData[currentDate];
