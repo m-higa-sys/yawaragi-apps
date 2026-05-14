@@ -5625,30 +5625,52 @@ async function absSubmit(opts) {
     }
 
     // ★ 2026-05-10: ケアマネメール送信確認ポップアップ
+    // ★ 2026-05-13: 電話派ケアマネ判定追加（method≠メール→電話モード）
     const cmOffice = absState.selectedUser.cmOffice || '';
     const cmNameInit = absState.selectedUser.cmName || '';
     let cmEmailInit = '';
+    let cmMethod = '';
     if (cmOffice && cmNameInit) {
         const c = await fetchCmContact(cmOffice, cmNameInit);
-        if (c.found) cmEmailInit = c.email || '';
+        if (c.found) {
+            cmEmailInit = c.email || '';
+            cmMethod = c.method || '';
+        }
     }
     let mailCmName = cmNameInit;
     let mailCmEmail = '';
     let mailSend = false;
+    let mailCustomBody = '';
+    let phoneCalled = false;
     if (cmOffice) {
-        const r = await showAbsenceMailConfirm({
-            userName: absState.selectedUser.name,
-            dates: dates,
-            reason: reason,
-            supplement: '',
-            cmOffice: cmOffice,
-            cmName: cmNameInit,
-            cmEmail: cmEmailInit
-        });
-        if (r.send) {
-            mailSend = true;
-            mailCmName = r.cmName;
-            mailCmEmail = r.email;
+        if (isCmPhoneMode(cmMethod)) {
+            // 電話派モード
+            const r = await showAbsencePhoneConfirm({
+                userName: absState.selectedUser.name,
+                dates: dates,
+                reason: reason,
+                cmOffice: cmOffice,
+                cmName: cmNameInit
+            });
+            if (r.phoneCalled) phoneCalled = true;
+        } else {
+            // メール派モード（未登録含む・従来通り）
+            const r = await showAbsenceMailConfirm({
+                userName: absState.selectedUser.name,
+                dates: dates,
+                reason: reason,
+                supplement: '',
+                cmOffice: cmOffice,
+                cmName: cmNameInit,
+                cmEmail: cmEmailInit,
+                reporter: (absReceptionist || contact || '')
+            });
+            if (r.send) {
+                mailSend = true;
+                mailCmName = r.cmName;
+                mailCmEmail = r.email;
+                mailCustomBody = r.body || '';
+            }
         }
     }
 
@@ -5665,7 +5687,9 @@ async function absSubmit(opts) {
         contactDate: absState.contactDate,
         cmOffice: cmOffice,
         cmEmail: mailSend ? mailCmEmail : '',
-        cmName: mailCmName
+        cmName: mailCmName,
+        cmCustomBody: mailSend ? mailCustomBody : '',
+        contactMethod: phoneCalled ? 'phone' : (mailSend ? 'mail' : '')
     };
 
     // GAS送信（検証付きリトライ・バックグラウンドで実行）
@@ -5905,6 +5929,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             contact: g.reporter || '', method: '',
             registeredBy: '',
             contactDate: g.contactDate || '',
+            cmNotified: g.cmNotified || '',
             isLongTerm: false
         });
     });
@@ -5965,13 +5990,28 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         const needsDetail = !r.isLongTerm && (r.needsDetail || (!r.contact && !r.method));
         const warnTag = needsDetail ? '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">⚠ 詳細未入力</span>' : '';
         const ltTag = r.isLongTerm ? '<span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">長期休み</span>' : '';
+        let mailTag = '';
+        if (!r.isLongTerm) {
+            if (r.cmNotified === '送信済' || r.cmNotified === '下書き保存') {
+                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネにメールで連絡済み">✉ ケアマネ連絡済</span>';
+            } else if (r.cmNotified === '電話連絡済') {
+                mailTag = '<span style="background:#3182ce;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネに電話で連絡済み">📞 ケアマネ連絡済</span>';
+            } else if (r.cmNotified && r.cmNotified.indexOf('エラー') === 0) {
+                mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + r.cmNotified.replace(/"/g,'&quot;') + '">⚠ メール失敗</span>';
+            } else if (r.cmNotified === 'メールなし' || !r.cmNotified) {
+                mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネへの連絡がまだです">🔴 ケアマネ連絡未</span>'
+                    + '<button onclick="markCmPhoneCalled(\'' + r.userName.replace(/'/g,"\\'") + '\',\'' + r.dateFrom + '\')" '
+                    + 'style="margin-left:6px;padding:2px 8px;font-size:0.7rem;background:#3182ce;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
+                    + 'title="電話で連絡済みにマーク">📞済にする</button>';
+            }
+        }
         let rowStyle = '';
         if (r.isLongTerm) rowStyle = 'border-left:4px solid #e53e3e;background:#fff5f5;';
         else if (needsDetail) rowStyle = 'border-left:4px solid #fb923c;background:#fff7ed;';
         return `
         <div class="abs-record" style="${rowStyle}">
             <div class="abs-record-main">
-                <div class="abs-record-name">${r.userName}${ltTag}${warnTag}</div>
+                <div class="abs-record-name">${r.userName}${ltTag}${mailTag}${warnTag}</div>
                 <div class="abs-record-detail">
                     ${dateText}　理由: ${r.reason}${r.contact ? '　連絡者: ' + r.contact : ''}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
@@ -6787,7 +6827,8 @@ async function attCancelAbsence(name, dateStr) {
     if (cmOffice) {
         const r = await showCancelMailConfirm({
             userName: name, dateStr: dateStr,
-            cmOffice: cmOffice, cmName: cmNameInit, cmEmail: cmEmailInit
+            cmOffice: cmOffice, cmName: cmNameInit, cmEmail: cmEmailInit,
+            reporter: canceller || ''
         });
         if (r.send) {
             mailSend = true;
@@ -9604,13 +9645,41 @@ function formatJPPhone(input) {
 }
 
 // ===== ケアマネ連絡先キャッシュ =====
+// 2026-05-11: ケアマネマスタ（送付用居宅一覧）＋利用者台帳の登録済みケアマネをマージ
 function loadCmContactsCache(onLoaded) {
     const cbName = 'cmContactsCb_' + Date.now();
     const url = INTAKE_API_URL + '?action=contacts&callback=' + cbName;
     window[cbName] = function(resp) {
         if (resp && resp.success) _cmCache = resp.cmContacts || [];
-        // モーダルが開いていたら事業所プルダウンを再構築
-        refreshCmPickerIfOpen();
+        // ケアマネマスタ取得完了 → 続けて利用者台帳のケアマネをマージ
+        loadCmFromUserListCache(function() {
+            refreshCmPickerIfOpen();
+            if (typeof onLoaded === 'function') onLoaded();
+        });
+        try { delete window[cbName]; } catch(e){}
+    };
+    const script = document.createElement('script');
+    script.src = url;
+    document.body.appendChild(script);
+    setTimeout(() => { try { script.remove(); } catch(e){} }, 8000);
+}
+
+// 利用者台帳に登録されている全利用者の cmOffice+cmName を _cmCache にマージ
+function loadCmFromUserListCache(onLoaded) {
+    const cbName = 'cmFromUsersCb_' + Date.now();
+    const url = ABS_USER_API_URL + '?action=cmFromUsers&callback=' + cbName;
+    window[cbName] = function(resp) {
+        if (resp && resp.success && Array.isArray(resp.cmFromUsers)) {
+            const seen = {};
+            _cmCache.forEach(c => { seen[(c.office || '') + '|' + (c.name || '')] = true; });
+            resp.cmFromUsers.forEach(c => {
+                const k = (c.office || '') + '|' + (c.name || '');
+                if (!seen[k] && (c.office || c.name)) {
+                    _cmCache.push({ office: c.office || '', name: c.name || '', email: '' });
+                    seen[k] = true;
+                }
+            });
+        }
         if (typeof onLoaded === 'function') onLoaded();
         try { delete window[cbName]; } catch(e){}
     };
@@ -9700,7 +9769,7 @@ function openIntakeModalNew() {
     document.getElementById('intake-modal-body').innerHTML = buildIntakeModalHtml(_intakeModalDraft);
     document.getElementById('intake-modal').classList.add('show');
     if (_cmCache.length === 0) loadCmContactsCache(); // キャッシュ未取得なら今取得
-    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); }, 0);
+    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); intakeUpdateYoteibiDow(); }, 0);
 }
 
 // ===== Task 9: 一覧表示 =====
@@ -9849,7 +9918,7 @@ function openIntakeModal(id) {
     document.getElementById('intake-modal-body').innerHTML = buildIntakeModalHtml(r);
     document.getElementById('intake-modal').classList.add('show');
     if (_cmCache.length === 0) loadCmContactsCache(); // キャッシュ未取得なら今取得
-    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); }, 0);
+    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); intakeUpdateYoteibiDow(); }, 0);
 }
 
 function closeIntakeModal() {
@@ -9972,32 +10041,54 @@ function ivRenderDayRow(groupId, rankLabel, selectedDays, selectedAmpm) {
         ${amBtn}${pmBtn}
     </div>`;
 }
-function ivRenderDayWishes(prefix, rankCount, rawValue) {
+function ivRenderDayWishes(prefix, rankCount, rawValue, options) {
+    options = options || {};
+    const raw = String(rawValue || '');
     // 「いつでもOK」判定
-    const anytime = /いつでもOK/.test(String(rawValue || ''));
+    const anytime = /いつでもOK/.test(raw);
+    // 「後日ご連絡」判定（フォーマット例：「後日ご連絡」 or 「後日ご連絡:2026-05-20」）
+    const followUpMatch = raw.match(/^後日ご連絡(?::(\d{4}-\d{2}-\d{2}))?/);
+    const followUp = !!followUpMatch;
+    const followUpDate = followUpMatch ? (followUpMatch[1] || '') : '';
+
     const parsed = ivParseDayWishes(rawValue);
     let rows = '';
     for (let i = 1; i <= rankCount; i++) {
         const p = parsed[i] || {};
         rows += ivRenderDayRow(`${prefix}-${i}`, `第${i}希望`, p.days || [], p.ampm || '');
     }
-    const anyBtn = `<button type="button" class="iv-btn${anytime ? ' active' : ''}" data-value="anytime" onclick="intakeToggleAnytime('${prefix}')" style="margin-bottom:8px;">🗓️ いつでもOK</button>`;
+    const anyBtn = options.hideAnytime ? '' : `<button type="button" class="iv-btn${anytime ? ' active' : ''}" data-value="anytime" onclick="intakeToggleAnytime('${prefix}')" style="margin-bottom:8px;">🗓️ いつでもOK</button>`;
+
+    // 「後日ご連絡」ボタン＋日付欄（options.enableFollowUp が true の時のみ）
+    let followUpUI = '';
+    if (options.enableFollowUp) {
+        const followUpBtn = `<button type="button" class="iv-btn${followUp ? ' active' : ''}" data-value="followup" onclick="intakeToggleFollowUp('${prefix}')" style="margin-bottom:8px;margin-left:6px;">📅 後日ご連絡</button>`;
+        const dateBlock = `<div id="${prefix}-followup-date" style="${followUp ? '' : 'display:none;'}margin-bottom:8px;padding:8px 12px;background:#fff5e6;border:1px solid #f6ad55;border-radius:6px;">
+            <label style="font-size:13px;color:#7b341e;font-weight:bold;">📞 連絡予定日：</label>
+            <input type="date" id="${prefix}-followup-date-input" value="${intakeEscapeAttr(followUpDate)}" style="margin-left:6px;">
+        </div>`;
+        followUpUI = followUpBtn + dateBlock;
+    }
+
     const helpText = `<div style="font-size:11px;color:#718096;margin-bottom:6px;">同じ希望枠で複数曜日OKなら複数タップ（例：月と金どっちでも）</div>`;
-    return `<div data-iv-anytime="${prefix}" data-anytime="${anytime ? 'true' : 'false'}">
-        ${anyBtn}${helpText}
-        <div class="iv-anytime-rows" style="${anytime ? 'opacity:0.35;pointer-events:none;' : ''}">${rows}</div>
+    // 「いつでもOK」のみ曜日選択をグレーアウト。「後日ご連絡」は曜日入力を許可（仮希望を記入できるように）
+    const inactive = anytime;
+    return `<div data-iv-anytime="${prefix}" data-anytime="${anytime ? 'true' : 'false'}" data-followup="${followUp ? 'true' : 'false'}">
+        ${anyBtn}${followUpUI}${helpText}
+        <div class="iv-anytime-rows" style="${inactive ? 'opacity:0.35;pointer-events:none;' : ''}">${rows}</div>
     </div>`;
 }
 
 function intakeToggleAnytime(prefix) {
     const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
     if (!host) return;
-    const btn = host.querySelector('.iv-btn');
+    const btn = host.querySelector('.iv-btn[data-value="anytime"]');
     const rows = host.querySelector('.iv-anytime-rows');
     const cur = host.dataset.anytime === 'true';
     const next = !cur;
     host.dataset.anytime = next ? 'true' : 'false';
-    btn.classList.toggle('active', next);
+    if (btn) btn.classList.toggle('active', next);
+    // 「いつでもOK」のみ曜日グレーアウト。「後日ご連絡」とは共存OK
     rows.style.opacity = next ? 0.35 : 1;
     rows.style.pointerEvents = next ? 'none' : 'auto';
     if (next) {
@@ -10009,10 +10100,28 @@ function intakeToggleAnytime(prefix) {
     }
 }
 
-// いつでもOK考慮の集計
+function intakeToggleFollowUp(prefix) {
+    // 「後日ご連絡」はマーカーのみ。曜日選択はそのまま入力可能（仮希望として記録できる）
+    const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
+    if (!host) return;
+    const btn = host.querySelector('.iv-btn[data-value="followup"]');
+    const dateBlock = document.getElementById(`${prefix}-followup-date`);
+    const cur = host.dataset.followup === 'true';
+    const next = !cur;
+    host.dataset.followup = next ? 'true' : 'false';
+    if (btn) btn.classList.toggle('active', next);
+    if (dateBlock) dateBlock.style.display = next ? '' : 'none';
+}
+
+// いつでもOK・後日ご連絡を考慮した集計
 function ivCollectDayWishes(prefix, rankCount) {
     const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
     if (host && host.dataset.anytime === 'true') return 'いつでもOK';
+    if (host && host.dataset.followup === 'true') {
+        const dateEl = document.getElementById(`${prefix}-followup-date-input`);
+        const d = dateEl ? dateEl.value : '';
+        return d ? `後日ご連絡:${d}` : '後日ご連絡';
+    }
     return ivFormatDayWishes(prefix, rankCount);
 }
 
@@ -10021,13 +10130,16 @@ function ivCollectDayWishes(prefix, rankCount) {
 // 下段：テキスト入力欄（最終的な保存値）。候補になくても手打ちで登録可能
 function ivRenderCmCascade(selectedOffice, selectedName) {
     const offices = Array.from(new Set(_cmCache.map(c => c.office).filter(Boolean))).sort();
-    const officeOpts = '<option value="">▼ 既存の事業所から選ぶ</option>'
+    const officeOpts = '<option value="">▼ 事業所を選んでください</option>'
         + offices.map(o => `<option value="${intakeEscapeAttr(o)}"${o === selectedOffice ? ' selected' : ''}>${intakeEscapeHtml(o)}</option>`).join('');
+    // 既存マスタにない事業所が選ばれている場合は最初からテキスト入力モードで表示
+    const isNewOffice = !!selectedOffice && offices.indexOf(selectedOffice) === -1;
     return `
         <div class="col2">
             <label>ケアマネ事業所</label>
-            <select id="m-ケアマネ事業所-picker" onchange="ivPickCmOffice()" style="margin-bottom:4px;">${officeOpts}</select>
-            <input id="m-ケアマネ事業所" value="${intakeEscapeAttr(selectedOffice)}" placeholder="選択 or 知らない事業所はここに直接入力" oninput="ivOnCmOfficeChange()">
+            <select id="m-ケアマネ事業所-picker" onchange="ivPickCmOffice()" style="${isNewOffice ? 'display:none;' : ''}">${officeOpts}</select>
+            <input id="m-ケアマネ事業所" value="${intakeEscapeAttr(selectedOffice)}" placeholder="新規事業所名を入力" oninput="ivOnCmOfficeChange()" style="${isNewOffice ? '' : 'display:none;'}">
+            <button type="button" id="m-ケアマネ事業所-toggle" onclick="ivToggleCmOfficeInput()" style="margin-top:4px;padding:4px 10px;font-size:12px;background:#edf2f7;border:1px solid #cbd5e0;border-radius:4px;cursor:pointer;">${isNewOffice ? '↩ 既存の事業所から選ぶ' : '✏️ 新規事業所を直接入力'}</button>
         </div>
         <div>
             <label>ケアマネ氏名</label>
@@ -10040,6 +10152,27 @@ function ivPickCmOffice() {
     const pickEl = document.getElementById('m-ケアマネ事業所-picker');
     const textEl = document.getElementById('m-ケアマネ事業所');
     if (pickEl.value) textEl.value = pickEl.value;
+    ivOnCmOfficeChange();
+}
+function ivToggleCmOfficeInput() {
+    const pickEl = document.getElementById('m-ケアマネ事業所-picker');
+    const textEl = document.getElementById('m-ケアマネ事業所');
+    const btn = document.getElementById('m-ケアマネ事業所-toggle');
+    if (!pickEl || !textEl || !btn) return;
+    const isTextMode = textEl.style.display !== 'none';
+    if (isTextMode) {
+        // テキスト入力 → プルダウン選択に戻す
+        textEl.style.display = 'none';
+        pickEl.style.display = '';
+        btn.textContent = '✏️ 新規事業所を直接入力';
+        textEl.value = pickEl.value || '';
+    } else {
+        // プルダウン → テキスト入力に切替
+        pickEl.style.display = 'none';
+        textEl.style.display = '';
+        btn.textContent = '↩ 既存の事業所から選ぶ';
+        setTimeout(() => textEl.focus(), 50);
+    }
     ivOnCmOfficeChange();
 }
 function ivPickCmName() {
@@ -10144,6 +10277,59 @@ function intakeOnKindChange() {
     }
 }
 
+// 予定日inputの値から曜日（日〜土）を自動表示
+function intakeUpdateYoteibiDow() {
+    const el = document.getElementById('m-予定日');
+    const span = document.getElementById('m-予定日-dow');
+    if (!el || !span) return;
+    if (!el.value) { span.textContent = ''; return; }
+    const d = new Date(el.value);
+    if (isNaN(d.getTime())) { span.textContent = ''; return; }
+    span.textContent = '（' + ['日','月','火','水','木','金','土'][d.getDay()] + '）';
+}
+
+// 見学レコードを「体験」に昇格させる（保存ボタン押下までは反映されない）
+function intakePromoteToTrial() {
+    const planEl = document.getElementById('m-予定日');
+    const planDate = planEl ? planEl.value : '';
+    if (!confirm(
+        '見学記録を「体験記録」に切り替えます。\n\n' +
+        '・種別が「体験」に変わります\n' +
+        '・見学日（' + (planDate || '未入力') + '）が履歴として保存されます\n' +
+        '・体験予定日は空欄になります（新しい日付を入力してください）\n' +
+        '・「💾保存」ボタンを押すまでサーバーには反映されません\n\n' +
+        'よろしいですか？'
+    )) return;
+
+    // 種別ボタングループの値を 'trial' に変更
+    const kindGroup = document.querySelector('[data-iv-group="種別"]');
+    if (kindGroup) {
+        kindGroup.dataset.value = 'trial';
+        kindGroup.querySelectorAll('.iv-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.value === 'trial');
+        });
+    }
+
+    // 見学日 hidden inputに元の予定日を保存
+    const kengakuEl = document.getElementById('m-見学日');
+    if (kengakuEl) kengakuEl.value = planDate;
+
+    // 体験の予定日は空欄に（新しい日付を入力する）
+    if (planEl) planEl.value = '';
+
+    // 種別変更で送迎セクション表示
+    intakeOnKindChange();
+
+    alert(
+        '✅ 体験記録に切り替わりました。\n\n' +
+        '次にやること：\n' +
+        '① 体験予定日を入力\n' +
+        '② 送迎シミュレーションを入力\n' +
+        '③ 「💾保存」ボタンで反映\n\n' +
+        '※ 見学日（' + (planDate || '未入力') + '）は履歴に残ります'
+    );
+}
+
 function buildIntakeModalHtml(r) {
     const isNew = _intakeModalMode === 'new';
     const today = new Date().toISOString().slice(0,10);
@@ -10159,6 +10345,26 @@ function buildIntakeModalHtml(r) {
         ? `<h3 style="margin-top:0;color:#2c7a7b;">🆕 新規問合せ受付</h3>
            <div style="font-size:13px;color:#4a5568;margin-bottom:12px;">電話で聞きながら入力してください。忙しくなったら「⏸️中断して保存」で未完了のまま保存できます。</div>`
         : `<h3 style="margin-top:0;color:#2c7a7b;">📋 ${INTAKE_KIND_LABEL[r.種別] || ''}記録：${intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）')}</h3>`;
+
+    // 見学→体験 昇格バナー（新規モードでは非表示）
+    let promoteBanner = '';
+    if (!isNew) {
+        if (r.種別 === 'visit') {
+            promoteBanner = `
+            <div style="margin:10px 0;padding:12px 14px;background:#f0fff4;border:2px solid #48bb78;border-radius:8px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:14px;font-weight:bold;color:#22543d;">📈 体験に進めた場合：</span>
+                    <button type="button" onclick="intakePromoteToTrial()" style="background:#48bb78;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;">→ 体験記録に切り替える</button>
+                    <span style="font-size:12px;color:#22543d;">押すと種別=体験に変わり、見学日（${intakeEscapeHtml(r.予定日 || '未入力')}）が履歴として保存されます</span>
+                </div>
+            </div>`;
+        } else if (r.種別 === 'trial' && r.見学日) {
+            promoteBanner = `
+            <div style="margin:10px 0;padding:10px 14px;background:#fefcbf;border:2px solid #ecc94b;border-radius:8px;font-size:14px;font-weight:bold;color:#744210;">
+                📈 見学（${intakeEscapeHtml(r.見学日)}）から体験へ進みました
+            </div>`;
+        }
+    }
 
     // アクションボタン
     let actionBtns = '';
@@ -10182,13 +10388,16 @@ function buildIntakeModalHtml(r) {
 
     return `
         ${header}
+        ${promoteBanner}
+        <!-- 見学日を保持するhidden input（昇格時に書き込まれる）-->
+        <input type="hidden" id="m-見学日" value="${intakeEscapeAttr(r.見学日 || '')}">
 
         <!-- 基本情報 -->
         <div class="intake-modal-section"><h4>基本情報</h4>
         <div class="intake-modal-grid">
             ${intakeField('種別', ivRenderBtnGroup('種別', ['trial','visit'], ['体験','見学'], r.種別 || 'trial', { onchange: 'intakeOnKindChange' }), 'col3')}
             ${intakeField('問い合わせ日', `<input type="date" id="m-問い合わせ日" value="${intakeEscapeAttr(r.問い合わせ日 || today)}">`)}
-            ${intakeField('予定日', `<input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}">`)}
+            ${intakeField('予定日', `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" onchange="intakeUpdateYoteibiDow()" style="flex:0 0 auto;"><span id="m-予定日-dow" style="font-size:15px;font-weight:bold;color:#2c7a7b;"></span>${ivRenderBtnGroup('予定日AMPM', ['AM','PM'], null, r.予定日AMPM || '')}</div>`)}
             ${intakeField('初回対応スタッフ', (() => {
                 const cur = r.初回対応スタッフ || (typeof getStaff === 'function' ? (localStorage.getItem('yawaragi_staff') || '') : '');
                 const staffList = (typeof getStaff === 'function' ? getStaff() : []).slice();
@@ -10235,10 +10444,7 @@ function buildIntakeModalHtml(r) {
             ${ivRenderDayWishes('wish-user', 2, r.利用希望曜日 || '')}
         </div>
         <div class="intake-modal-section"><h4>希望曜日（yawaragi側希望）</h4>
-            ${ivRenderDayWishes('wish-yawaragi', 3, r['yawarigi希望曜日'] || '')}
-        </div>
-        <div class="intake-modal-section"><h4>最終決定曜日（契約後に記入）</h4>
-            ${ivRenderDayWishes('wish-final', 2, r.最終決定曜日 || '')}
+            ${ivRenderDayWishes('wish-yawaragi', 3, r['yawarigi希望曜日'] || '', { enableFollowUp: true })}
         </div>
 
         <!-- 送迎シミュレーション（体験のみ表示・見学は家族送迎）-->
@@ -10272,6 +10478,31 @@ function buildIntakeModalHtml(r) {
             🗺️ Googleマップに住所を登録済み
             <span style="font-size:12px;color:#9c4221;font-weight:normal;margin-left:auto;">（送迎者がすぐ場所わかるように・体験日前日までに必須）</span>
         </label>
+        </div>
+
+        <!-- 体験日確定・連絡準備（体験日が決まったら入力）-->
+        <div class="intake-modal-section"><h4>📅 体験日確定・連絡準備</h4>
+        <div style="font-size:12px;color:#4a5568;margin:-4px 0 8px;">体験日が決まったら、ケアマネ・本人に「○月○日○時にお迎えに行きます」と電話する準備をここで管理</div>
+        <div class="intake-modal-grid">
+            ${intakeField('体験 お迎え時間', `<input id="m-体験お迎え時間" value="${intakeEscapeAttr(r.体験お迎え時間 || '')}" placeholder="例: 9:10">`)}
+            ${intakeField('連絡予定日（いつ電話するか）', `<input type="date" id="m-体験前連絡予定日" value="${intakeEscapeAttr(r.体験前連絡予定日 || '')}">`)}
+            ${intakeField('連絡相手', ivRenderBtnGroup('体験前連絡相手', ['本人','家族','ケアマネ'], null, r.体験前連絡相手 || ''))}
+        </div>
+        <div class="intake-modal-grid" style="margin-top:8px;">
+            ${intakeField('連絡メモ（電話で伝えること・本人の反応）', `<textarea id="m-体験前連絡メモ" placeholder="例: 9:10にお迎え・玄関先まで・体調確認">${intakeEscapeHtml(r.体験前連絡メモ || '')}</textarea>`, 'col3')}
+        </div>
+        <div class="intake-check-grid" style="margin-top:8px;">
+            ${intakeCheckItem('m-体験前連絡済', '✅ 体験日詳細をケアマネ・本人に連絡済', r.体験前連絡済 === true, false)}
+        </div>
+        <!-- 出勤＆送迎表反映ボタン（2026-05-11追加・体験者として利用者台帳に追加）-->
+        <div style="margin-top:14px;padding:14px;background:${r.送迎表追加済 ? '#f0fff4' : '#fffaf0'};border:2px solid ${r.送迎表追加済 ? '#48bb78' : '#ed8936'};border-radius:8px;">
+            ${r.送迎表追加済
+                ? `<div style="color:#22543d;font-weight:bold;font-size:14px;">✅ 出勤＆送迎表に追加済（${intakeEscapeHtml(r.送迎表追加日時 || '')}）</div>
+                   <div style="font-size:12px;color:#22543d;margin-top:4px;">出勤＆送迎表・出席予定タブで「体験中」ステータスの利用者として表示されます。不成立時は利用者台帳でステータスを「中止」に変更してください。</div>`
+                : `<button type="button" onclick="intakeAddAsTrialAction('${isNew ? '' : r.id}')" style="background:#ed8936;color:#fff;border:none;padding:12px 22px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:15px;">📤 この方を出勤＆送迎表に追加（体験者として）</button>
+                   <div style="font-size:12px;color:#7b341e;margin-top:6px;">押すと利用者台帳に「体験中」ステータスで登録され、出勤＆送迎表・出席予定タブに自動表示されます。体験日が確定したら押してください。</div>`
+            }
+        </div>
         </div>
 
         <!-- 前日連絡（強化版）-->
@@ -10381,9 +10612,10 @@ function collectTransportSim(idPrefix) {
 function collectIntakeModalPayload() {
     const p = {};
     // テキスト・日付系
-    ['問い合わせ日','予定日','初回対応スタッフ','ケアマネ事業所','ケアマネ氏名',
+    ['問い合わせ日','予定日','見学日','初回対応スタッフ','ケアマネ事業所','ケアマネ氏名',
      'ふりがな','氏名','性別','生年月日','年齢','介護度','住所詳細','TEL','TEL続柄',
      '主訴','yawaragi何番目','利用なし理由詳細',
+     '体験お迎え時間','体験前連絡予定日','体験前連絡メモ',
      '前日連絡日時','前日連絡担当','前日連絡メモ','訪問注意事項',
      '本格利用開始日','初回お迎え時間',
      'ケアマネ報告日時','ケアマネ報告内容','ケアマネ利用可否連絡日','契約順位'].forEach(f => {
@@ -10392,6 +10624,7 @@ function collectIntakeModalPayload() {
     });
     // ボタングループ
     p.種別 = ivGetGroupValue('種別') || 'trial';
+    p.予定日AMPM = ivGetGroupValue('予定日AMPM') || '';
     const sex = ivGetGroupValue('性別');
     if (sex) p.性別 = sex;
     p.介護度 = ivGetGroupValue('介護度');
@@ -10407,12 +10640,13 @@ function collectIntakeModalPayload() {
     });
     // チェックボックス
     ['利用日前日連絡フラグ','ケアマネ連絡済','送迎時間連絡済','週間予定表仮予約済','全記入済',
-     'Googleマップ登録済み','初回お迎え時間報告済','ケアマネ報告済'].forEach(f => {
+     'Googleマップ登録済み','初回お迎え時間報告済','ケアマネ報告済','体験前連絡済'].forEach(f => {
         const el = document.getElementById('m-' + f);
         if (el) p[f] = el.checked === true;
     });
-    // 前日連絡相手・表札・ケアマネ可否回答（btnGroup）
+    // 前日連絡相手・表札・ケアマネ可否回答・体験前連絡相手（btnGroup）
     p.前日連絡相手 = ivGetGroupValue('前日連絡相手');
+    p.体験前連絡相手 = ivGetGroupValue('体験前連絡相手');
     p.表札有無 = ivGetGroupValue('表札有無');
     p.ケアマネ利用可否回答 = ivGetGroupValue('ケアマネ利用可否回答');
     // 決定理由（複数選択チェックボックス → カンマ区切り保存）
@@ -10426,7 +10660,6 @@ function collectIntakeModalPayload() {
     // 曜日希望（「いつでもOK」対応）
     p.利用希望曜日 = ivCollectDayWishes('wish-user', 2);
     p['yawarigi希望曜日'] = ivCollectDayWishes('wish-yawaragi', 3);
-    p.最終決定曜日 = ivCollectDayWishes('wish-final', 2);
     // 送迎シミュレーション
     p.お試し送迎順 = collectTransportSim('m-transport-trial');
     p.利用時送迎順 = collectTransportSim('m-transport-active');
@@ -10506,6 +10739,35 @@ async function syncIntakeToUserListAction(id) {
     }
 }
 
+// 体験者を「体験中」ステータスで利用者台帳に仮登録（2026-05-11追加）
+async function intakeAddAsTrialAction(id) {
+    if (!id) { alert('まず「💾保存」してから押してください'); return; }
+    // モーダル未保存の値があれば先に保存する案内
+    const planDate = document.getElementById('m-予定日')?.value || '';
+    const pickupTime = document.getElementById('m-体験お迎え時間')?.value || '';
+    if (!planDate) {
+        alert('⚠️ 予定日（体験日）を入力してから押してください');
+        return;
+    }
+    if (!confirm(
+        'この方を利用者台帳に「体験中」ステータスで仮登録します。\n\n' +
+        '・出勤＆送迎表・出席予定タブに自動表示されます\n' +
+        '・体験日: ' + planDate + '\n' +
+        '・お迎え時間: ' + (pickupTime || '未入力') + '\n\n' +
+        '不成立時は利用者台帳画面で「中止」ステータスに変更してください。\n\n' +
+        'よろしいですか？'
+    )) return;
+    const ok = await gasPost({ action: 'intake_add_as_trial', id: id }, '出勤＆送迎表に追加');
+    if (ok) {
+        alert(
+            '✅ 出勤＆送迎表に体験者として追加しました。\n\n' +
+            '出勤＆送迎表・出席予定タブで「体験中」ステータスの利用者として表示されます。\n\n' +
+            '通知メールが yawaragi.notify@gmail.com にも届きます。'
+        );
+        setTimeout(loadIntakeList, 800);
+    }
+}
+
 async function saveIntakeModal(id) {
     const p = collectIntakeModalPayload();
     if (p.TEL) p.TEL = formatJPPhone(p.TEL);
@@ -10566,48 +10828,92 @@ function formatDatesForCmMail(dates) {
 
 function buildAbsenceMailBody(opts) {
     const dateLabel = formatDatesForCmMail(opts.dates);
+    const reporterLabel = opts.reporter ? (' ' + opts.reporter) : '';
     return (opts.cmOffice || '【ケアマネ事業所】') + '\n' +
         (opts.cmName || '【ケアマネ氏名】') + '様\n\n' +
         'いつもお世話になっております。\n' +
-        'リハビリデイサービス yawaragi です。\n\n' +
+        'リハビリデイサービス yawaragi' + reporterLabel + 'です。\n\n' +
         dateLabel + '、' + opts.userName + '様より「' + (opts.reason || '体調不良') + '」とのご連絡があり、\n' +
         'yawaragiをお休みされる旨伺いましたのでご報告いたします。\n' +
         (opts.supplement ? '\n［備考： ' + opts.supplement + '］\n' : '') +
         '\nご確認のほどよろしくお願いいたします。\n\n' +
         '━━━━━━━━━━━━━━━━━━\n' +
         'リハビリデイサービス yawaragi\n' +
+        'https://www.keepfitlife-yawaragi.com\n' +
+        '✉ r.d-yawaragi@keepfitlife.com\n' +
         'TEL/FAX: 0493-81-5125\n' +
         '━━━━━━━━━━━━━━━━━━';
 }
 
 function buildCancelMailBody(opts) {
     const dateLabel = formatDateForCmMail(opts.dateStr);
+    const reporterLabel = opts.reporter ? (' ' + opts.reporter) : '';
     return (opts.cmOffice || '【ケアマネ事業所】') + '\n' +
         (opts.cmName || '【ケアマネ氏名】') + '様\n\n' +
         'いつもお世話になっております。\n' +
-        'リハビリデイサービス yawaragi です。\n\n' +
+        'リハビリデイサービス yawaragi' + reporterLabel + 'です。\n\n' +
         '先ほどお休み連絡をさせていただいた' + dateLabel + ' ' + opts.userName + '様ですが、\n' +
         'やはりご利用されることになりましたのでご報告いたします。\n' +
         '実績として計上されます。\n\n' +
         'ご確認のほどよろしくお願いいたします。\n\n' +
         '━━━━━━━━━━━━━━━━━━\n' +
         'リハビリデイサービス yawaragi\n' +
+        'https://www.keepfitlife-yawaragi.com\n' +
+        '✉ r.d-yawaragi@keepfitlife.com\n' +
         'TEL/FAX: 0493-81-5125\n' +
         '━━━━━━━━━━━━━━━━━━';
 }
 
-// office+name でマスターからメアド取得（fetch GET）
+// office+name でマスターからメアド/送付方法取得（fetch GET）
 async function fetchCmContact(office, name) {
-    if (!office || !name) return { found: false, email: '' };
+    if (!office || !name) return { found: false, email: '', method: '' };
     try {
         const url = ABS_BOARD_API_URL + '?action=getCmContact&office=' + encodeURIComponent(office) + '&name=' + encodeURIComponent(name);
         const r = await fetch(url);
         const j = await r.json();
-        if (j.success && j.found) return { found: true, email: j.email || '' };
-        return { found: false, email: '' };
+        if (j.success && j.found) return { found: true, email: j.email || '', method: j.method || '' };
+        return { found: false, email: '', method: '' };
     } catch(e) {
         console.warn('fetchCmContact エラー:', e);
-        return { found: false, email: '' };
+        return { found: false, email: '', method: '' };
+    }
+}
+
+// 電話派かどうか判定（method列の値を見る）
+// メール・空欄 → false（メールモード）/ それ以外（FAX/持参/データ連携） → true（電話モード）
+function isCmPhoneMode(method) {
+    const m = String(method || '').trim();
+    if (!m) return false;
+    if (m.indexOf('メール') >= 0) return false;
+    return true;
+}
+
+// 既存欠席を「📞 電話で連絡済み」に手動マーク（2026-05-13）
+async function markCmPhoneCalled(userName, dateStr) {
+    const dt = absFormatDate(dateStr);
+    if (!confirm(userName + '様 ' + dt + ' の欠席を\n「📞 電話で連絡済み」にマークしますか？')) return;
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'updateAbsenceCmNotified',
+                name: userName,
+                date: dateStr,
+                cmNotified: '電話連絡済'
+            })
+        });
+        showToast('📞 電話連絡済みにマークしました', 2000);
+        // キャッシュクリア＆再描画
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            delete cache[absCurrentMonth];
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+        setTimeout(() => absRenderUpcomingList(), 800);
+    } catch (e) {
+        alert('マーク失敗: ' + (e && e.message || e));
     }
 }
 
@@ -10627,8 +10933,9 @@ async function saveCmContact(office, name, email) {
 }
 
 // ===== 欠席連絡 確認ポップアップ =====
-// opts: { userName, dates, reason, supplement, cmOffice, cmName, cmEmail }
-// 戻り値: { send: true, email, cmName } / { send: false }
+// opts: { userName, dates, reason, supplement, cmOffice, cmName, cmEmail, reporter }
+// 戻り値: { send: true, email, cmName, body } / { send: false }
+// 2026-05-13: 備考欄 + 自由編集モード（C案）
 async function showAbsenceMailConfirm(opts) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
@@ -10639,13 +10946,44 @@ async function showAbsenceMailConfirm(opts) {
 
         const cmNameEditable = !opts.cmName;
         const emailEditable = !opts.cmEmail;
+        let advancedMode = false;
 
         function renderBody() {
             const cmNameVal = cmNameEditable ? (document.getElementById('cmNameInputAbs')?.value || '') : opts.cmName;
+            const supplementVal = (document.getElementById('cmSupplementInput')?.value || '').trim() || opts.supplement || '';
             return buildAbsenceMailBody({
-                userName: opts.userName, dates: opts.dates, reason: opts.reason, supplement: opts.supplement,
-                cmOffice: opts.cmOffice, cmName: cmNameVal
+                userName: opts.userName, dates: opts.dates, reason: opts.reason, supplement: supplementVal,
+                cmOffice: opts.cmOffice, cmName: cmNameVal, reporter: opts.reporter
             });
+        }
+
+        function refreshBodyView() {
+            const previewEl = document.getElementById('absMailBodyPreview');
+            const textareaEl = document.getElementById('absMailBodyTextarea');
+            const supplementBox = document.getElementById('cmSupplementBox');
+            const editBtn = document.getElementById('btnToggleEdit');
+            const editHint = document.getElementById('absEditHint');
+            if (advancedMode) {
+                if (!textareaEl.dataset.initialized) {
+                    textareaEl.value = renderBody();
+                    textareaEl.dataset.initialized = '1';
+                }
+                previewEl.style.display = 'none';
+                textareaEl.style.display = 'block';
+                supplementBox.style.display = 'none';
+                editBtn.textContent = '↶ 自動生成に戻す';
+                editHint.textContent = '✏ 直接編集モード：好きに変更できます（戻すと編集内容は破棄）';
+                editHint.style.color = '#3182ce';
+            } else {
+                previewEl.style.display = 'block';
+                textareaEl.style.display = 'none';
+                supplementBox.style.display = 'block';
+                editBtn.textContent = '✏ もっと自由に編集する';
+                editHint.textContent = '※ 備考欄に書いた内容が本文に自動で挿入されます';
+                editHint.style.color = '#718096';
+                previewEl.textContent = renderBody();
+                textareaEl.dataset.initialized = '';
+            }
         }
 
         const cmNameFieldHtml = cmNameEditable
@@ -10662,16 +11000,27 @@ async function showAbsenceMailConfirm(opts) {
               '</div>'
             : '<div style="margin:4px 0;color:#27ae60;">📧 送信先: ' + escapeHtml(opts.cmEmail) + '</div>';
 
+        const supplementBoxHtml = '<div id="cmSupplementBox" style="margin:10px 0;padding:8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #16a085;">' +
+            '<div style="font-size:13px;font-weight:bold;margin-bottom:4px;color:#0f5132;">📝 付け足したいこと（任意・本文に追記されます）</div>' +
+            '<textarea id="cmSupplementInput" rows="2" style="width:100%;padding:6px;font-size:13px;border:1px solid #ccc;border-radius:3px;resize:vertical;box-sizing:border-box;" placeholder="例：明日以降は未定とのことです／お迎えは不要"></textarea>' +
+            '</div>';
+
         overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:680px;width:96%;max-height:92vh;overflow-y:auto;">' +
             '<h3 style="margin:0 0 12px;color:#16a085;font-size:18px;">✉ ケアマネにお休み連絡メールを送信</h3>' +
             '<div style="font-size:13px;color:#7f8c8d;margin-bottom:8px;">差出人: r.d-yawaragi@keepfitlife.com</div>' +
             '<div style="font-size:14px;margin-bottom:6px;">📍 ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
             cmNameFieldHtml +
             emailFieldHtml +
+            supplementBoxHtml +
             '<div style="font-weight:bold;margin:10px 0 4px;font-size:14px;">件名:</div>' +
             '<div style="padding:6px;background:#f8f9fa;border-radius:3px;margin-bottom:10px;font-size:13px;">' + escapeHtml(subject) + '</div>' +
-            '<div style="font-weight:bold;margin-bottom:4px;font-size:14px;">本文プレビュー:</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+                '<div style="font-weight:bold;font-size:14px;">本文プレビュー:</div>' +
+                '<button id="btnToggleEdit" type="button" style="font-size:12px;color:#3182ce;background:none;border:none;cursor:pointer;text-decoration:underline;padding:0;">✏ もっと自由に編集する</button>' +
+            '</div>' +
+            '<div id="absEditHint" style="font-size:11px;color:#718096;margin-bottom:4px;">※ 備考欄に書いた内容が本文に自動で挿入されます</div>' +
             '<pre id="absMailBodyPreview" style="padding:10px;background:#f8f9fa;border-radius:3px;white-space:pre-wrap;font-size:12px;font-family:inherit;margin-bottom:10px;max-height:280px;overflow-y:auto;">' + escapeHtml(renderBody()) + '</pre>' +
+            '<textarea id="absMailBodyTextarea" style="display:none;width:100%;min-height:280px;padding:10px;font-size:12px;font-family:inherit;border:1px solid #3182ce;border-radius:3px;margin-bottom:10px;resize:vertical;box-sizing:border-box;"></textarea>' +
             '<div style="text-align:right;margin-top:12px;">' +
             '<button id="btnAbsMailCancel" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">送信しない</button>' +
             '<button id="btnAbsMailSend" style="padding:10px 18px;background:#16a085;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">送信する</button>' +
@@ -10683,9 +11032,18 @@ async function showAbsenceMailConfirm(opts) {
         if (cmNameEditable) {
             const inp = document.getElementById('cmNameInputAbs');
             inp.addEventListener('input', () => {
-                document.getElementById('absMailBodyPreview').textContent = renderBody();
+                if (!advancedMode) document.getElementById('absMailBodyPreview').textContent = renderBody();
             });
         }
+        // 備考欄入力時に本文プレビュー更新
+        document.getElementById('cmSupplementInput').addEventListener('input', () => {
+            if (!advancedMode) document.getElementById('absMailBodyPreview').textContent = renderBody();
+        });
+        // 自由編集モード切替
+        document.getElementById('btnToggleEdit').onclick = () => {
+            advancedMode = !advancedMode;
+            refreshBodyView();
+        };
 
         document.getElementById('btnAbsMailCancel').onclick = () => {
             document.body.removeChild(overlay);
@@ -10698,6 +11056,10 @@ async function showAbsenceMailConfirm(opts) {
             if (!emailFinal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFinal)) {
                 alert('メールアドレスを正しく入力してください'); return;
             }
+            const finalBody = advancedMode
+                ? (document.getElementById('absMailBodyTextarea').value || '').trim()
+                : renderBody();
+            if (!finalBody) { alert('本文が空です'); return; }
             // 最終確認（二重確認・誤送信防止）
             const confirmMsg = '【最終確認】\n\n' +
                 opts.userName + '様 のお休み連絡を\n' +
@@ -10710,7 +11072,46 @@ async function showAbsenceMailConfirm(opts) {
                 saveCmContact(opts.cmOffice, cmNameFinal, emailFinal);
             }
             document.body.removeChild(overlay);
-            resolve({ send: true, email: emailFinal, cmName: cmNameFinal });
+            resolve({ send: true, email: emailFinal, cmName: cmNameFinal, body: finalBody });
+        };
+    });
+}
+
+// ===== 電話派ケアマネ用 電話連絡確認ポップアップ（2026-05-13） =====
+// opts: { userName, dates, reason, supplement, cmOffice, cmName }
+// 戻り値: { phoneCalled: true/false }
+async function showAbsencePhoneConfirm(opts) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;';
+
+        const dateLabel = formatDatesForCmMail(opts.dates);
+
+        overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:520px;width:96%;max-height:92vh;overflow-y:auto;">' +
+            '<h3 style="margin:0 0 12px;color:#3182ce;font-size:18px;">📞 ケアマネに電話で連絡</h3>' +
+            '<div style="background:#ebf8ff;border-left:4px solid #3182ce;padding:10px;border-radius:4px;margin-bottom:14px;">' +
+                '<div style="font-weight:bold;color:#2c5282;margin-bottom:4px;">⚠ このケアマネは電話派です</div>' +
+                '<div style="font-size:13px;color:#4a5568;">送付方法マスタが「メール」以外のため、メール送信は行いません。<br>電話で連絡してから下のボタンを押してください。</div>' +
+            '</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📍 事業所: ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">👤 担当: ' + escapeHtml(opts.cmName || '【未設定】') + '様</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📅 日付: ' + escapeHtml(dateLabel) + '</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">🧑 利用者: ' + escapeHtml(opts.userName) + '様</div>' +
+            '<div style="font-size:14px;margin-bottom:12px;">📝 理由: ' + escapeHtml(opts.reason || '体調不良') + '</div>' +
+            '<div style="text-align:right;margin-top:12px;">' +
+                '<button id="btnPhoneSkip" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">あとで（連絡未のまま）</button>' +
+                '<button id="btnPhoneDone" style="padding:10px 18px;background:#3182ce;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">📞 電話で連絡済み</button>' +
+            '</div></div>';
+
+        document.body.appendChild(overlay);
+
+        document.getElementById('btnPhoneSkip').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ phoneCalled: false });
+        };
+        document.getElementById('btnPhoneDone').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ phoneCalled: true });
         };
     });
 }
@@ -10731,7 +11132,7 @@ async function showCancelMailConfirm(opts) {
             const cmNameVal = cmNameEditable ? (document.getElementById('cmNameInputCancel')?.value || '') : opts.cmName;
             return buildCancelMailBody({
                 userName: opts.userName, dateStr: opts.dateStr,
-                cmOffice: opts.cmOffice, cmName: cmNameVal
+                cmOffice: opts.cmOffice, cmName: cmNameVal, reporter: opts.reporter
             });
         }
 
