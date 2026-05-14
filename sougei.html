@@ -4531,12 +4531,18 @@ function loadUsersFromTaicho(dow,dateStr){
   return {am:[],pm:[]};
 }
 
-function fetchTaicho(){
-  // TAICHO GAS（曜日・AM/PM）と 測定一覧GAS（planStart・birthday）を並行取得
+function fetchTaicho(dateStr){
+  // v2026-05-14: 中止管理タブ連動API（getMembersForApp）に切替。
+  //   displayMode='hidden' の中止者は cache に入れない。
+  //   fetch完了後、表示中の日付（今日以降）に対して
+  //   syncWithTransportSchedule を再実行して既配置から除去する。
+  const asOfDate = dateStr || (typeof D!=='undefined' && D.date) || (new Date()).toISOString().slice(0,10);
+  const taichoUrl = TAICHO_GAS_URL+'?action=getMembersForApp&appType=attendance&asOfDate='+encodeURIComponent(asOfDate)+'&t='+Date.now();
   return Promise.all([
-    fetch(TAICHO_GAS_URL+'?t='+Date.now()).then(res=>{if(!res.ok) throw new Error('取得失敗');return res.json();}),
+    fetch(taichoUrl).then(res=>{if(!res.ok) throw new Error('取得失敗');return res.json();}),
     fetch(MEASURE_GAS_URL+'?action=getMembersData').then(r=>r.json()).then(d=>d.data||[]).catch(()=>[])
-  ]).then(([users, measureData])=>{
+  ]).then(([apiRes, measureData])=>{
+      const users = (apiRes && apiRes.members) || [];
       // 測定一覧GASのデータをマップに変換（正しいplanStart=yyyy-MM、birthday=M/D）
       const measureMap={};
       measureData.forEach(m=>{
@@ -4547,6 +4553,8 @@ function fetchTaicho(){
       ['月','火','水','木','金','土'].forEach(d=>{cache[d]={am:[],pm:[]};});
       users.forEach(u=>{
         if(!u.name||!u.dow) return;
+        // ★ 中止者（displayMode='hidden'）は cache に入れない
+        if(u.displayMode === 'hidden') return;
         u.name = u.name.replace(/[\s　]+/g,'').trim();
         const mInfo=measureMap[u.name]||{};
         userInfo[u.name]={
@@ -4582,7 +4590,23 @@ function fetchTaicho(){
       }
       _taichoCache=cache;
       _taichoUserInfoCache=userInfo;
-      console.log('利用者台帳から取得完了',cache,userInfo);
+      console.log('利用者台帳から取得完了 (asOfDate='+asOfDate+')',cache,userInfo);
+
+      // ★ 取得完了後、現在表示中の日付（今日以降）に対して同期を再実行
+      //   → 中止になった人が既配置から自動で除去される
+      try{
+        if(typeof D!=='undefined' && D.date && typeof syncWithTransportSchedule === 'function'){
+          const today = new Date(); today.setHours(0,0,0,0);
+          const target = new Date(D.date+'T00:00:00');
+          if(target >= today){
+            console.log('fetchTaicho完了 → syncWithTransportSchedule 再実行 ('+D.date+')');
+            syncWithTransportSchedule(D.date);
+            if(typeof render === 'function') render();
+          }
+        }
+      }catch(e){
+        console.warn('fetchTaicho後の同期再実行でエラー',e);
+      }
     })
     .catch(err=>{
       console.warn('利用者台帳の取得に失敗（localStorageにフォールバック）',err);
@@ -5197,6 +5221,7 @@ function syncWithTransportSchedule(dateStr){
 
     // 台帳から消えた利用者をリストから除去（体験者は除く）
     const trialNormSet=new Set(unit.users.filter(u=>u&&unit.userStatus[u]==='trial').map(normName));
+
     const before=unit.users.length;
     unit.users=unit.users.filter(u=>{
       if(!u) return false; // 空枠は除去
@@ -5204,6 +5229,23 @@ function syncWithTransportSchedule(dateStr){
       return freshNormSet.has(normName(u)); // 台帳にいる人だけ残す
     });
     if(unit.users.length!==before) anyChanged=true;
+
+    // ★ v2026-05-14: pick/drop の stop.user で「台帳に居ない人」を空欄化（中止連動）
+    //   stop.user を主軸に判定するため、既に users から削除済みの利用者も拾える。
+    //   体験者(trialNormSet)は保持。
+    ['pick','drop'].forEach(t=>{
+      (unit[t]||[]).forEach(route=>{
+        (route.stops||[]).forEach(stop=>{
+          if(!stop.user) return;
+          const sn=normName(stop.user);
+          if(trialNormSet.has(sn)) return; // 体験者は保持
+          if(!freshNormSet.has(sn)){
+            stop.user='';
+            anyChanged=true;
+          }
+        });
+      });
+    });
   });
 
   if(anyChanged) autoSave();
@@ -6651,7 +6693,7 @@ async function initApp(){
       if(IS_READONLY) roUpdateStatus('データ取得に失敗しました');
     }
   }
-  try { await fetchTaicho(); } catch(e){}
+  try { await fetchTaicho(defaultDate); } catch(e){}
   loadDay(defaultDate);
   render();
   applyBoardAbsences(defaultDate);
