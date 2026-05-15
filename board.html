@@ -5430,12 +5430,24 @@ function absShowDuplicateWarning(name, dup, isLongterm) {
         </div>
     ` : '';
 
+    // 2026-05-16: キャンセル（フォームクリア）ボタン追加・社長指摘
+    const cancelBtnHtml = `
+        <div style="margin-top:12px;">
+            <button type="button"
+                style="width:100%;padding:10px 16px;background:#fff;color:#4b5563;border:1.5px solid #9ca3af;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer;"
+                onclick="absCancelDuplicateForm()">
+                ✕ やっぱり登録しない（フォームをクリア）
+            </button>
+        </div>
+    `;
+
     banner.innerHTML = `
         <div style="font-weight:700;color:#dc2626;font-size:1rem;margin-bottom:8px;">${title}</div>
         <div style="font-size:0.92rem;color:#374151;margin-bottom:6px;"><strong>${name}</strong>様</div>
         <ul style="font-size:0.9rem;color:#374151;margin:6px 0 8px 20px;padding:0;">${sourcesHtml}</ul>
         <div style="font-size:0.85rem;color:#7f1d1d;line-height:1.5;">${footer}</div>
         ${overwriteBtnHtml}
+        ${cancelBtnHtml}
     `;
     banner.style.display = 'block';
 
@@ -5445,6 +5457,14 @@ function absShowDuplicateWarning(name, dup, isLongterm) {
         btn.dataset.dupBlocked = '1';
         btn.textContent = 'すでに申請済み';
     }
+}
+
+// 重複警告から「やっぱり登録しない」ボタンの処理（2026-05-16追加・社長指摘）
+// バナーを閉じてフォームを最初に戻す
+function absCancelDuplicateForm() {
+    absHideDuplicateWarning();
+    if (typeof absClearName === 'function') absClearName();
+    showToast('登録をキャンセルしました');
 }
 
 // 警告バナー非表示（送信ボタン復活）
