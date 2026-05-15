@@ -1411,21 +1411,23 @@
         <!-- 登録ボタン -->
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
-            <!-- 単位（午前/午後）選択（2026-05-16追加・「終日」廃止） -->
-            <div id="abs-unit-section" style="background:#f8f9fa;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin:12px 0;">
-                <div style="font-size:0.9rem;font-weight:700;margin-bottom:8px;">単位（午前/午後）：</div>
+            <!-- 単位（午前/午後）2026-05-16: 自動判定優先・pattern取得失敗時のみラジオ表示 -->
+            <div id="abs-unit-section" style="display:none;background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:14px;margin:12px 0;">
+                <div style="font-size:0.9rem;font-weight:700;margin-bottom:8px;color:#c53030;">⚠️ 利用者情報から判定できませんでした。午前/午後を選んでください：</div>
                 <label style="display:inline-flex;align-items:center;margin-right:18px;cursor:pointer;font-size:1rem;">
                     <input type="radio" name="abs-unit-radio" value="午前" style="width:18px;height:18px;margin-right:6px;">
-                    午前（9:00〜12:00）
+                    午前
                 </label>
                 <label style="display:inline-flex;align-items:center;cursor:pointer;font-size:1rem;">
                     <input type="radio" name="abs-unit-radio" value="午後" style="width:18px;height:18px;margin-right:6px;">
-                    午後（13:30〜16:30）
+                    午後
                 </label>
-                <div id="abs-unit-warning" style="display:none;font-size:0.85rem;color:#c53030;margin-top:8px;">⚠️ 利用者情報から判定できませんでした。午前/午後を選んでください。</div>
-                <label id="abs-unit-both-wrap" style="display:none;margin-top:10px;cursor:pointer;font-size:0.95rem;align-items:center;">
-                    <input type="checkbox" id="abs-unit-both" style="width:18px;height:18px;margin-right:6px;vertical-align:middle;">
-                    午前と午後の両方を欠席する
+            </div>
+            <!-- 両方利用者専用：両方欠席チェックボックス -->
+            <div id="abs-unit-both-wrap" style="display:none;background:#fffbea;border:1px solid #fbd38d;border-radius:10px;padding:12px;margin:12px 0;">
+                <label style="cursor:pointer;font-size:0.95rem;display:flex;align-items:center;">
+                    <input type="checkbox" id="abs-unit-both" style="width:18px;height:18px;margin-right:8px;">
+                    午前と午後の両方を欠席する（2レコード登録）
                 </label>
             </div>
             <!-- 二重申請防止 警告バナー（2026-05-08追加） -->
@@ -5281,36 +5283,35 @@ function absUpdateConfirm() {
     absRefreshGasDuplicateCheck();
 }
 
-// 単位ラジオの自動判定（利用者の通所パターンから午前/午後を初期選択）
-// 2026-05-16: 「終日」廃止に伴う追加
+// 単位の自動判定（通常時は内部状態のみ・両方利用者時のみ「両方欠席」チェック表示）
+// 2026-05-16: 通所パターンが確認カードに既に表示されているため、UI上のラジオは
+// pattern 取得失敗時のみ表示する（新人スタッフの負担軽減・社長指摘 2026-05-16）
 function absInitUnitRadio() {
     const radios = document.getElementsByName('abs-unit-radio');
-    const warning = document.getElementById('abs-unit-warning');
+    const section = document.getElementById('abs-unit-section');
     const bothWrap = document.getElementById('abs-unit-both-wrap');
     const bothCheckbox = document.getElementById('abs-unit-both');
-    if (!radios || radios.length === 0) return;
-    radios.forEach(r => r.checked = false);
+    if (radios) radios.forEach(r => r.checked = false);
     if (bothCheckbox) bothCheckbox.checked = false;
     if (bothWrap) bothWrap.style.display = 'none';
-    if (warning) warning.style.display = 'none';
+    if (section) section.style.display = 'none';
 
     const su = absState.selectedUser;
     if (!su || !Array.isArray(su.pattern) || su.pattern.length === 0) {
-        if (warning) warning.style.display = 'block';
+        // pattern 取得失敗 → ラジオを強制表示
+        if (section) section.style.display = 'block';
         return;
     }
     const hasAm = su.pattern.some(p => p.unit === 'am');
     const hasPm = su.pattern.some(p => p.unit === 'pm');
     if (hasAm && hasPm) {
-        radios[0].checked = true; // 午前を初期選択
-        if (bothWrap) bothWrap.style.display = 'inline-flex';
-    } else if (hasPm) {
-        radios[1].checked = true;
-    } else if (hasAm) {
-        radios[0].checked = true;
-    } else {
-        if (warning) warning.style.display = 'block';
+        // 両方利用者 → 両方欠席チェックボックスを表示（午前/午後選択は不要）
+        if (bothWrap) bothWrap.style.display = 'block';
+    } else if (!hasAm && !hasPm) {
+        // パターン異常 → ラジオを強制表示
+        if (section) section.style.display = 'block';
     }
+    // 午前のみ/午後のみ利用者は何も表示しない（自動判定だけ）
 }
 
 // ============================================================
@@ -5647,20 +5648,48 @@ async function absSubmit(opts) {
     btn.disabled = true;
     btn.textContent = '登録中...';
 
-    // 午前/午後判定（2026-05-16: ラジオUI採用・「終日」廃止）
-    const checkedRadio = document.querySelector('input[name="abs-unit-radio"]:checked');
+    // 午前/午後判定（2026-05-16: 自動判定優先・「終日」廃止）
+    // 通常時はパターンから自動判定。pattern取得失敗時のみラジオ強制選択。
+    // 両方利用者は「両方欠席」チェックがONなら2レコード生成。
+    const sectionEl = document.getElementById('abs-unit-section');
+    const bothWrapEl = document.getElementById('abs-unit-both-wrap');
     const bothCheckbox = document.getElementById('abs-unit-both');
-    const bothChecked = bothCheckbox && bothCheckbox.checked && bothCheckbox.parentElement && bothCheckbox.parentElement.style.display !== 'none';
+    const checkedRadio = document.querySelector('input[name="abs-unit-radio"]:checked');
     let units = [];
-    if (bothChecked) {
-        units = ['午前', '午後'];
-    } else if (checkedRadio) {
+
+    if (sectionEl && sectionEl.style.display !== 'none') {
+        // pattern取得失敗 → ラジオ必須
+        if (!checkedRadio) {
+            alert('単位（午前/午後）を選択してください');
+            btn.disabled = false;
+            btn.textContent = 'この内容で登録する';
+            return;
+        }
         units = [checkedRadio.value];
     } else {
-        alert('単位（午前/午後）を選択してください');
-        btn.disabled = false;
-        btn.textContent = 'この内容で登録する';
-        return;
+        // 通常: パターンから自動判定
+        const pat = absState.selectedUser.pattern || [];
+        const hasAm = pat.some(p => p.unit === 'am');
+        const hasPm = pat.some(p => p.unit === 'pm');
+        if (hasAm && hasPm) {
+            // 両方利用者 → 「両方欠席」チェック次第
+            if (bothCheckbox && bothCheckbox.checked) {
+                units = ['午前', '午後'];
+            } else {
+                // チェックなし → 午前として登録（社長は要支援/要介護で午前午後分けがある）
+                // ここは保守的に午前デフォルト。誤判定を防ぐため将来的にスタッフ確認モーダルも検討
+                units = ['午前'];
+            }
+        } else if (hasPm) {
+            units = ['午後'];
+        } else if (hasAm) {
+            units = ['午前'];
+        } else {
+            alert('単位（午前/午後）を判定できませんでした。利用者情報を確認してください。');
+            btn.disabled = false;
+            btn.textContent = 'この内容で登録する';
+            return;
+        }
     }
     const unit = units[0];  // 既存コード互換用フォールバック
 
