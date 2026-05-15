@@ -6061,17 +6061,24 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
 
     // 2026-05-16: 「今日に近い順」ソート（社長指摘・今日の欠席が埋もれる問題対応）
     // 今日以降は昇順（今日→未来）、過去は降順（近い過去→遠い過去）でその下に
+    // 長期休み継続中（再開予定日が未定 or 今日以降）は「今日」扱いで未来側の先頭付近へ
     const _nowSort = new Date();
     const _todaySort = _nowSort.getFullYear() + '-' +
         String(_nowSort.getMonth() + 1).padStart(2, '0') + '-' +
         String(_nowSort.getDate()).padStart(2, '0');
+    const _sortKey = (r) => {
+        if (r.isLongTerm && (!r.resumeDate || r.resumeDate >= _todaySort)) return _todaySort;
+        return r.dateFrom;
+    };
     merged.sort((a, b) => {
-        const aFuture = a.dateFrom >= _todaySort;
-        const bFuture = b.dateFrom >= _todaySort;
+        const aKey = _sortKey(a);
+        const bKey = _sortKey(b);
+        const aFuture = aKey >= _todaySort;
+        const bFuture = bKey >= _todaySort;
         if (aFuture && !bFuture) return -1;       // 今日以降 を上に
         if (!aFuture && bFuture) return 1;
-        if (aFuture) return a.dateFrom.localeCompare(b.dateFrom);  // 今日以降同士は昇順
-        return b.dateFrom.localeCompare(a.dateFrom);                // 過去同士は降順
+        if (aFuture) return aKey.localeCompare(bKey);  // 今日以降同士は昇順
+        return bKey.localeCompare(aKey);                // 過去同士は降順
     });
 
     // 件数表示を更新
