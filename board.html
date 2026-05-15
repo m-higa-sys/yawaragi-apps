@@ -1411,7 +1411,7 @@
         <!-- 登録ボタン -->
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
-            <!-- 単位（午前/午後）2026-05-16: 自動判定優先・pattern取得失敗時のみラジオ表示 -->
+            <!-- 単位（午前/午後）2026-05-16: 曜日ベース自動判定・pattern取得失敗時のみラジオ表示 -->
             <div id="abs-unit-section" style="display:none;background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:14px;margin:12px 0;">
                 <div style="font-size:0.9rem;font-weight:700;margin-bottom:8px;color:#c53030;">⚠️ 利用者情報から判定できませんでした。午前/午後を選んでください：</div>
                 <label style="display:inline-flex;align-items:center;margin-right:18px;cursor:pointer;font-size:1rem;">
@@ -1421,13 +1421,6 @@
                 <label style="display:inline-flex;align-items:center;cursor:pointer;font-size:1rem;">
                     <input type="radio" name="abs-unit-radio" value="午後" style="width:18px;height:18px;margin-right:6px;">
                     午後
-                </label>
-            </div>
-            <!-- 両方利用者専用：両方欠席チェックボックス -->
-            <div id="abs-unit-both-wrap" style="display:none;background:#fffbea;border:1px solid #fbd38d;border-radius:10px;padding:12px;margin:12px 0;">
-                <label style="cursor:pointer;font-size:0.95rem;display:flex;align-items:center;">
-                    <input type="checkbox" id="abs-unit-both" style="width:18px;height:18px;margin-right:8px;">
-                    午前と午後の両方を欠席する（2レコード登録）
                 </label>
             </div>
             <!-- 二重申請防止 警告バナー（2026-05-08追加） -->
@@ -5283,35 +5276,21 @@ function absUpdateConfirm() {
     absRefreshGasDuplicateCheck();
 }
 
-// 単位の自動判定（通常時は内部状態のみ・両方利用者時のみ「両方欠席」チェック表示）
-// 2026-05-16: 通所パターンが確認カードに既に表示されているため、UI上のラジオは
-// pattern 取得失敗時のみ表示する（新人スタッフの負担軽減・社長指摘 2026-05-16）
+// 単位の自動判定（pattern取得失敗時のみラジオを強制表示）
+// 2026-05-16: 通所パターンと欠席日の曜日からunit自動判定する仕様（社長指摘）
+// 「両方欠席」概念は廃止（業務上は曜日違いで両日欠席するだけで、同日に両方欠席はない）
 function absInitUnitRadio() {
     const radios = document.getElementsByName('abs-unit-radio');
     const section = document.getElementById('abs-unit-section');
-    const bothWrap = document.getElementById('abs-unit-both-wrap');
-    const bothCheckbox = document.getElementById('abs-unit-both');
     if (radios) radios.forEach(r => r.checked = false);
-    if (bothCheckbox) bothCheckbox.checked = false;
-    if (bothWrap) bothWrap.style.display = 'none';
     if (section) section.style.display = 'none';
 
     const su = absState.selectedUser;
     if (!su || !Array.isArray(su.pattern) || su.pattern.length === 0) {
         // pattern 取得失敗 → ラジオを強制表示
         if (section) section.style.display = 'block';
-        return;
     }
-    const hasAm = su.pattern.some(p => p.unit === 'am');
-    const hasPm = su.pattern.some(p => p.unit === 'pm');
-    if (hasAm && hasPm) {
-        // 両方利用者 → 両方欠席チェックボックスを表示（午前/午後選択は不要）
-        if (bothWrap) bothWrap.style.display = 'block';
-    } else if (!hasAm && !hasPm) {
-        // パターン異常 → ラジオを強制表示
-        if (section) section.style.display = 'block';
-    }
-    // 午前のみ/午後のみ利用者は何も表示しない（自動判定だけ）
+    // それ以外は何も表示しない（absSubmit時に曜日ベースで自動判定）
 }
 
 // ============================================================
@@ -5668,50 +5647,46 @@ async function absSubmit(opts) {
     btn.disabled = true;
     btn.textContent = '登録中...';
 
-    // 午前/午後判定（2026-05-16: 自動判定優先・「終日」廃止）
-    // 通常時はパターンから自動判定。pattern取得失敗時のみラジオ強制選択。
-    // 両方利用者は「両方欠席」チェックがONなら2レコード生成。
+    // 単位判定（2026-05-16: 各日付の曜日から自動判定・unit別dates グループ化）
+    // 宮崎さん（月午後+木午前）が期間欠席するケースに対応
     const sectionEl = document.getElementById('abs-unit-section');
-    const bothWrapEl = document.getElementById('abs-unit-both-wrap');
-    const bothCheckbox = document.getElementById('abs-unit-both');
     const checkedRadio = document.querySelector('input[name="abs-unit-radio"]:checked');
-    let units = [];
+    const dateGroups = { '午前': [], '午後': [] };
 
     if (sectionEl && sectionEl.style.display !== 'none') {
-        // pattern取得失敗 → ラジオ必須
+        // pattern取得失敗 → ラジオ必須・全日付に同じunit を適用
         if (!checkedRadio) {
             alert('単位（午前/午後）を選択してください');
             btn.disabled = false;
             btn.textContent = 'この内容で登録する';
             return;
         }
-        units = [checkedRadio.value];
+        dateGroups[checkedRadio.value] = dates.slice();
     } else {
-        // 通常: パターンから自動判定
+        // 通常: 各日付の曜日からunit判定
         const pat = absState.selectedUser.pattern || [];
-        const hasAm = pat.some(p => p.unit === 'am');
-        const hasPm = pat.some(p => p.unit === 'pm');
-        if (hasAm && hasPm) {
-            // 両方利用者 → 「両方欠席」チェック次第
-            if (bothCheckbox && bothCheckbox.checked) {
-                units = ['午前', '午後'];
-            } else {
-                // チェックなし → 午前として登録（社長は要支援/要介護で午前午後分けがある）
-                // ここは保守的に午前デフォルト。誤判定を防ぐため将来的にスタッフ確認モーダルも検討
-                units = ['午前'];
+        for (const dateStr of dates) {
+            const d = new Date(dateStr);
+            const dow = d.getDay();
+            const matched = pat.filter(p => p.day === dow);
+            if (matched.length === 0) continue; // 通所日でない → スキップ
+            for (const m of matched) {
+                const u = m.unit === 'pm' ? '午後' : '午前';
+                if (!dateGroups[u].includes(dateStr)) dateGroups[u].push(dateStr);
             }
-        } else if (hasPm) {
-            units = ['午後'];
-        } else if (hasAm) {
-            units = ['午前'];
-        } else {
-            alert('単位（午前/午後）を判定できませんでした。利用者情報を確認してください。');
-            btn.disabled = false;
-            btn.textContent = 'この内容で登録する';
-            return;
         }
     }
-    const unit = units[0];  // 既存コード互換用フォールバック
+
+    // 有効unit（dates が1件以上ある unit）の抽出
+    const activeUnits = Object.keys(dateGroups).filter(u => dateGroups[u].length > 0);
+    if (activeUnits.length === 0) {
+        alert('指定期間内に通所予定日がありません');
+        btn.disabled = false;
+        btn.textContent = 'この内容で登録する';
+        return;
+    }
+    const units = activeUnits;
+    const unit = units[0];  // 既存コード互換用フォールバック（cmEmail判定など）
 
     // 長期休みの場合は別アクション
     if (absState.dateType === 'longterm') {
@@ -5794,15 +5769,17 @@ async function absSubmit(opts) {
         }
     }
 
-    // GASにPOST送信（2026-05-16: units ループで送信・両方欠席なら2件登録）
-    // メール送信は1件目のみ（2件目は cmEmail を空にして再送防止）
+    // GASにPOST送信（2026-05-16: unit別 dates グループで送信）
+    // 宮崎さん（月午後+木午前）の期間欠席時、月曜午後と木曜午前を別々に登録
+    // メール送信は1件目のみ（2件目以降は cmEmail を空にして再送防止）
     for (let uIdx = 0; uIdx < units.length; uIdx++) {
         const u = units[uIdx];
+        const datesForUnit = dateGroups[u];
         const isFirst = (uIdx === 0);
         const postData = {
             action: 'absence',
             name: absState.selectedUser.name,
-            dates: dates,
+            dates: datesForUnit,
             unit: u,
             reason: reason,
             reporter: absReceptionist || contact,
@@ -6082,7 +6059,20 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         });
     });
 
-    merged.sort((a, b) => b.dateFrom.localeCompare(a.dateFrom));
+    // 2026-05-16: 「今日に近い順」ソート（社長指摘・今日の欠席が埋もれる問題対応）
+    // 今日以降は昇順（今日→未来）、過去は降順（近い過去→遠い過去）でその下に
+    const _nowSort = new Date();
+    const _todaySort = _nowSort.getFullYear() + '-' +
+        String(_nowSort.getMonth() + 1).padStart(2, '0') + '-' +
+        String(_nowSort.getDate()).padStart(2, '0');
+    merged.sort((a, b) => {
+        const aFuture = a.dateFrom >= _todaySort;
+        const bFuture = b.dateFrom >= _todaySort;
+        if (aFuture && !bFuture) return -1;       // 今日以降 を上に
+        if (!aFuture && bFuture) return 1;
+        if (aFuture) return a.dateFrom.localeCompare(b.dateFrom);  // 今日以降同士は昇順
+        return b.dateFrom.localeCompare(a.dateFrom);                // 過去同士は降順
+    });
 
     // 件数表示を更新
     const countEl = document.getElementById('abs-upcoming-count');
