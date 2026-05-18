@@ -6478,6 +6478,9 @@ function mergeBoardAbsencesToD(absentItems, longTermItems, resumedItems){
   (longTermItems||[]).forEach(it=>addName(it.name||it));
   (resumedItems||[]).forEach(it=>addName(it.name||it));
   result.total=allNames.length;
+  // ボードに現在登録されている名前の正規化セット（取消検知用）
+  const boardNormSet=new Set();
+  allNames.forEach(n=>boardNormSet.add(normNameStrict(n)));
   const matchedSet=new Set();
   const apply=(unitKey)=>{
     const unit=D[unitKey]; if(!unit || !Array.isArray(unit.users)) return;
@@ -6512,6 +6515,16 @@ function mergeBoardAbsencesToD(absentItems, longTermItems, resumedItems){
       const cur=unit.userStatus[orig]||'';
       if(cur==='longabsent' || cur==='absent' || cur==='walk' || cur==='family') return;
       if(cur!=='resumed'){ unit.userStatus[orig]='resumed'; result.changed=true; }
+    });
+    // ボードで欠席が取消された人を出席に戻す（2026-05-18追加）
+    // userStatus が 'absent' の人で、ボードのいずれのリストにも居ない場合のみクリア。
+    // walk/family は出勤送迎表で手動操作される可能性があるため触らない。
+    unit.users.forEach(u=>{
+      if(!u) return;
+      if(unit.userStatus[u]!=='absent') return;
+      if(boardNormSet.has(normNameStrict(u))) return;
+      delete unit.userStatus[u];
+      result.changed=true;
     });
   };
   apply('am'); apply('pm');
