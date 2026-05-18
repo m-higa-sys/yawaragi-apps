@@ -9,10 +9,11 @@
     <title>yawaragiボード</title>
     <script>
     // 利用者キャッシュ形式の世代管理（pattern対応・2026-05-17追加）
+    // 2026-05-18: cmName 列追加対応のためバージョン更新
     // バージョン不一致時は古いlocalStorageキャッシュを自動破棄→次回API取得で最新形式
     (function migrateAbsUserCache() {
       try {
-        const CACHE_VERSION = '2026-05-17-pattern';
+        const CACHE_VERSION = '2026-05-18-cmName';
         const v = localStorage.getItem('yawaragi_abs_users_version');
         if (v !== CACHE_VERSION) {
           localStorage.removeItem('yawaragi_abs_users');
@@ -4792,6 +4793,7 @@ function absLoadUsersFromAPI() {
 
             // APIの返すデータ形式をアプリ内形式に変換
             // data.users（配列）か data.patterns（{name: {days,unit,kana,care}}）の両対応
+            // 2026-05-18: cmName（担当ケアマネ氏名）も受け取るように追加
             let rawUsers = Array.isArray(data.users) ? data.users : [];
             if (rawUsers.length === 0 && data.patterns && typeof data.patterns === 'object') {
                 rawUsers = Object.keys(data.patterns).map(name => {
@@ -4802,7 +4804,8 @@ function absLoadUsersFromAPI() {
                         days: p.days || '',
                         ampm: p.unit || '',
                         care: p.care || '',
-                        cmOffice: p.cmOffice || ''
+                        cmOffice: p.cmOffice || '',
+                        cmName: p.cmName || ''
                     };
                 });
             }
@@ -4814,7 +4817,8 @@ function absLoadUsersFromAPI() {
                     reading: u.kana || '',
                     pattern: pattern,
                     care: u.care || '',
-                    cmOffice: u.cmOffice || ''
+                    cmOffice: u.cmOffice || '',
+                    cmName: u.cmName || ''
                 };
             });
 
@@ -5821,6 +5825,13 @@ async function absSubmit(opts) {
     }
 
     // localStorageにも保存（即座に画面反映するため）
+    // 2026-05-18: ケアマネ連絡ステータス（cmNotified/cmNotifiedAt）も保存し、
+    // 施設PC自身でも即「✉ ケアマネ連絡済」バッジが出るようにする
+    const nowLocal = new Date();
+    let localCmNotified = '';
+    if (mailSend) localCmNotified = '送信済';
+    else if (phoneCalled) localCmNotified = '電話連絡済';
+    else localCmNotified = 'メールなし';
     const record = {
         id: Date.now(),
         userName: absState.selectedUser.name,
@@ -5831,8 +5842,12 @@ async function absSubmit(opts) {
         contact: contact,
         method: absState.method,
         contactDate: absState.contactDate,
-        registeredAt: new Date().toISOString(),
-        registeredBy: absReceptionist
+        registeredAt: nowLocal.toISOString(),
+        registeredBy: absReceptionist,
+        cmNotified: localCmNotified,
+        cmNotifiedAt: (mailSend || phoneCalled) ? nowLocal.toISOString() : '',
+        cmOffice: cmOffice,
+        cmName: mailCmName || cmNameInit
     };
 
     const records = absGetRecords();
@@ -6026,7 +6041,12 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             registeredBy: r.registeredBy,
             contactDate: r.contactDate || '',
             needsDetail: !!r.needsDetail,
-            isLongTerm: false
+            isLongTerm: false,
+            // 2026-05-18: ケアマネ連絡ステータスも引き継ぎ（施設PC自身で即バッジ反映）
+            cmNotified: r.cmNotified || '',
+            cmNotifiedAt: r.cmNotifiedAt || '',
+            cmOffice: r.cmOffice || '',
+            cmName: r.cmName || ''
         });
     });
 
@@ -6128,10 +6148,26 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         const ltTag = r.isLongTerm ? '<span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">長期休み</span>' : '';
         let mailTag = '';
         if (!r.isLongTerm) {
-            if (r.cmNotified === '送信済' || r.cmNotified === '下書き保存') {
-                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネにメールで連絡済み">✉ ケアマネ連絡済</span>';
+            // 2026-05-18: 送信時刻と送信先をバッジに表示（詳細はメール本文で確認の方針）
+            const cmTooltip = [r.cmOffice, r.cmName ? r.cmName + '様' : ''].filter(Boolean).join(' / ');
+            const sentTimeStr = (function() {
+                if (!r.cmNotifiedAt) return '';
+                try {
+                    const dt = new Date(r.cmNotifiedAt);
+                    if (isNaN(dt.getTime())) return '';
+                    const mm = dt.getMonth() + 1;
+                    const dd = dt.getDate();
+                    const hh = String(dt.getHours()).padStart(2,'0');
+                    const mi = String(dt.getMinutes()).padStart(2,'0');
+                    return ' ' + mm + '/' + dd + ' ' + hh + ':' + mi;
+                } catch { return ''; }
+            })();
+            if (r.cmNotified === '送信済') {
+                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="メール送信先: ' + cmTooltip + ' （詳細は r.d-yawaragi@ 受信トレイで確認できます）">✉ メール送信済' + sentTimeStr + '</span>';
+            } else if (r.cmNotified === '下書き保存') {
+                mailTag = '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="下書きとして保存されたため未送信です。Gmail下書きから送信してください">⚠ 下書きのまま（未送信）</span>';
             } else if (r.cmNotified === '電話連絡済') {
-                mailTag = '<span style="background:#3182ce;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネに電話で連絡済み">📞 ケアマネ連絡済</span>';
+                mailTag = '<span style="background:#3182ce;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + cmTooltip + ' に電話で連絡済み">📞 電話連絡済' + sentTimeStr + '</span>';
             } else if (r.cmNotified && r.cmNotified.indexOf('エラー') === 0) {
                 mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + r.cmNotified.replace(/"/g,'&quot;') + '">⚠ メール失敗</span>';
             } else if (r.cmNotified === 'メールなし' || !r.cmNotified) {
