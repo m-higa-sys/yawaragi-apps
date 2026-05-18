@@ -6197,7 +6197,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
 function absDeleteRecord(id) {
     const targetPreview = absGetRecords().find(r => r.id === id);
     const nameLabel = targetPreview ? (targetPreview.userName + '様の欠席記録') : 'この欠席記録';
-    absPromptCanceller('欠席を取消', nameLabel + 'を取消します', function(canceller) {
+    absPromptCanceller('欠席を取り消す', nameLabel + 'を取り消します', function(canceller) {
         let records = absGetRecords();
         const target = records.find(r => r.id === id);
 
@@ -6237,7 +6237,7 @@ function absDeleteRecord(id) {
 
 // GAS登録済み（ローカルに無い）欠席の取消
 function absDeleteGasRecord(userName, dateFrom) {
-    absPromptCanceller('欠席を取消', userName + '様 ' + absFormatDate(dateFrom) + ' の欠席を取消します', function(canceller) {
+    absPromptCanceller('欠席を取り消す', userName + '様 ' + absFormatDate(dateFrom) + ' の欠席を取り消します', function(canceller) {
         gasPost({ action: 'cancel_absence', name: userName, date: dateFrom, unit: '終日', canceller: canceller }, '欠席取消');
 
         // 出席予定キャッシュもクリア（次回GASから再取得）
@@ -6965,7 +6965,7 @@ function attShowAbsentMenu(name) {
         '<div style="background:#fff;border-radius:12px;padding:20px;min-width:280px;max-width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
         '<div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">' + name + '様</div>' +
         '<div style="font-size:0.9rem;color:#666;margin-bottom:14px;">' + dateLabel + ' 欠席登録済み</div>' +
-        '<button onclick="attCancelAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #e53e3e;color:#e53e3e;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✕ 欠席を取消（出席に戻す）</button>' +
+        '<button onclick="attCancelAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #e53e3e;color:#e53e3e;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✕ 欠席を取り消す（出席に戻す）</button>' +
         '<button onclick="attMoveAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #3182ce;color:#3182ce;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">→ 別の日に移動</button>' +
         '<button onclick="attEditAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #38a169;color:#38a169;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✎ 編集（理由・連絡者・種別など）</button>' +
         '<button onclick="document.getElementById(\'att-absent-menu\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
@@ -6979,8 +6979,8 @@ function attShowAbsentMenu(name) {
 async function attCancelAbsence(name, dateStr) {
     // 2026-05-12: confirm() → 取消操作者選択モーダルに変更
     const canceller = await absPromptCanceller(
-        '欠席を取消',
-        name + '様 ' + absFormatDate(dateStr) + ' の欠席を取消します'
+        '欠席を取り消す',
+        name + '様 ' + absFormatDate(dateStr) + ' の欠席を取り消します'
     );
     if (!canceller) return;
 
@@ -7182,7 +7182,7 @@ function absPromptCanceller(title, detail, onConfirm) {
             '<div style="font-size:0.9rem;color:#4a5568;text-align:center;margin-bottom:14px;">' + detail + '</div>' +
             '<div style="font-size:0.9rem;font-weight:700;color:#2d3748;margin-bottom:8px;">取消操作者を選んでください：</div>' +
             '<div id="abs-canceller-btns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;">' + staffHtml + '</div>' +
-            '<button id="abs-canceller-ok" disabled style="display:block;width:100%;padding:14px;background:#cbd5e0;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:800;cursor:not-allowed;margin-bottom:8px;">取消する</button>' +
+            '<button id="abs-canceller-ok" disabled style="display:block;width:100%;padding:14px;background:#cbd5e0;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:800;cursor:not-allowed;margin-bottom:8px;">取り消す</button>' +
             '<button id="abs-canceller-cancel" style="display:block;width:100%;padding:12px;background:#f7fafc;border:1.5px solid #cbd5e0;color:#2d3748;border-radius:10px;font-size:0.95rem;font-weight:700;cursor:pointer;">やめる</button>' +
             '</div>';
         document.body.appendChild(modal);
@@ -7212,7 +7212,7 @@ function absPromptCanceller(title, detail, onConfirm) {
         });
         document.getElementById('abs-canceller-ok').onclick = function() {
             if (!picked) {
-                alert('取消操作者を選んでください\n（上のスタッフ名ボタンを押してから「取消する」を押してください）');
+                alert('取消操作者を選んでください\n（上のスタッフ名ボタンを押してから「取り消す」を押してください）');
                 return;
             }
             close(picked);
@@ -8462,7 +8462,7 @@ function trmToggleTask(lastUseDate, name, task, checked) {
 }
 
 function trmCancelTermination(lastUseDate, name) {
-    if (!confirm(name + '様の中止登録を取消します。\n\n' +
+    if (!confirm(name + '様の中止登録を取り消します。\n\n' +
         '・利用者台帳のステータスが元に戻ります\n' +
         '・中止履歴から削除されます\n\n' +
         'よろしいですか？')) return;
