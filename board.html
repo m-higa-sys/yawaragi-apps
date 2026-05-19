@@ -6163,7 +6163,9 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
                 } catch { return ''; }
             })();
             if (r.cmNotified === '送信済') {
-                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="メール送信先: ' + cmTooltip + ' （詳細は r.d-yawaragi@ 受信トレイで確認できます）">✉ メール送信済' + sentTimeStr + '</span>';
+                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ボード経由でメール送信されました（送信先: ' + cmTooltip + ' / 詳細は r.d-yawaragi@ 受信トレイで確認できます）">✉ メール送信済（自動）' + sentTimeStr + '</span>';
+            } else if (r.cmNotified === '手動メール送信済') {
+                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + cmTooltip + ' にGmailから手動で送信したものとして記録されています">✉ メール送信済（手動）' + sentTimeStr + '</span>';
             } else if (r.cmNotified === '下書き保存') {
                 mailTag = '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="下書きとして保存されたため未送信です。Gmail下書きから送信してください">⚠ 下書きのまま（未送信）</span>';
             } else if (r.cmNotified === '電話連絡済') {
@@ -6171,10 +6173,14 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             } else if (r.cmNotified && r.cmNotified.indexOf('エラー') === 0) {
                 mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + r.cmNotified.replace(/"/g,'&quot;') + '">⚠ メール失敗</span>';
             } else if (r.cmNotified === 'メールなし' || !r.cmNotified) {
+                const safeName = r.userName.replace(/'/g,"\\'");
                 mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネへの連絡がまだです">🔴 ケアマネ連絡未</span>'
-                    + '<button onclick="markCmPhoneCalled(\'' + r.userName.replace(/'/g,"\\'") + '\',\'' + r.dateFrom + '\')" '
+                    + '<button onclick="markCmPhoneCalled(\'' + safeName + '\',\'' + r.dateFrom + '\')" '
                     + 'style="margin-left:6px;padding:2px 8px;font-size:0.7rem;background:#3182ce;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
-                    + 'title="電話で連絡済みにマーク">📞済にする</button>';
+                    + 'title="電話で連絡済みにマーク">📞済にする</button>'
+                    + '<button onclick="markCmMailSent(\'' + safeName + '\',\'' + r.dateFrom + '\')" '
+                    + 'style="margin-left:4px;padding:2px 8px;font-size:0.7rem;background:#16a085;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
+                    + 'title="Gmailから手動でメール送信した場合はこちら">✉ メール済にする</button>';
             }
         }
         let rowStyle = '';
@@ -7609,6 +7615,57 @@ function attInit() {
     }, 30000);
 }
 
+// GAS getUserPatterns の戻り値（{days,unit}）を pattern配列 [{day,unit:'am'|'pm'}] に変換
+// 2026-05-19: 「午後の利用者が欠席登録時に午前デフォルトで登録されるバグ」修正のため新規
+function _ywBuildPatternArray(p) {
+    const DAY_MAP = { '日': 0, '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6 };
+    const days = String((p && p.days) || '');
+    const unit = String((p && p.unit) || '').replace(/\s/g, '');
+    const result = [];
+
+    // 複合パターン例: '月午前、木午後' / '月午前,木午後'
+    if (unit && /[、,]/.test(unit)) {
+        const parts = unit.split(/[、,]/);
+        const hasDay = parts.some(s => /[月火水木金土日]/.test(s));
+        if (hasDay) {
+            parts.forEach(s => {
+                s = s.trim();
+                let dayChar = null;
+                for (const k of Object.keys(DAY_MAP)) {
+                    if (s.indexOf(k) >= 0) { dayChar = k; break; }
+                }
+                if (dayChar === null) return;
+                const dow = DAY_MAP[dayChar];
+                if (s.indexOf('午後') >= 0) result.push({ day: dow, unit: 'pm' });
+                else if (s.indexOf('午前') >= 0) result.push({ day: dow, unit: 'am' });
+                else { result.push({ day: dow, unit: 'am' }); result.push({ day: dow, unit: 'pm' }); }
+            });
+            return result;
+        }
+    }
+
+    // 単純パターン: days文字列の各曜日に unit を当てる
+    const targetUnits = [];
+    if (!unit || unit === '両方' || unit === '午前午後' ||
+        (unit.indexOf('午前') >= 0 && unit.indexOf('午後') >= 0)) {
+        targetUnits.push('am', 'pm');
+    } else if (unit === '午前' || unit === '1') {
+        targetUnits.push('am');
+    } else if (unit === '午後' || unit === '2') {
+        targetUnits.push('pm');
+    } else {
+        targetUnits.push('am', 'pm');
+    }
+
+    for (const dayChar of Object.keys(DAY_MAP)) {
+        if (days.indexOf(dayChar) >= 0) {
+            const dow = DAY_MAP[dayChar];
+            targetUnits.forEach(u => result.push({ day: dow, unit: u }));
+        }
+    }
+    return result;
+}
+
 // 全利用者データを取得（欠席登録の検索用、patternsから全員取得）
 function attLoadAllUsers() {
     const cbName = 'attAllUsersCallback_' + Date.now();
@@ -7623,13 +7680,17 @@ function attLoadAllUsers() {
         if (data.patterns) {
             Object.keys(data.patterns).forEach(name => {
                 const p = data.patterns[name];
+                const patternArr = _ywBuildPatternArray(p);
                 const existing = absUserCache.find(c => c.name === name);
                 if (existing) {
                     if (!existing.reading && p.kana) existing.reading = p.kana;
                     if (!existing.care && p.care) existing.care = p.care;
+                    if (!existing.pattern || existing.pattern.length === 0) {
+                        existing.pattern = patternArr;
+                    }
                 } else {
                     absUserCache.push({
-                        name: name, reading: p.kana || '', pattern: [],
+                        name: name, reading: p.kana || '', pattern: patternArr,
                         care: p.care || '', cmOffice: ''
                     });
                 }
@@ -11133,8 +11194,54 @@ async function markCmPhoneCalled(userName, dateStr) {
                 cmNotified: '電話連絡済'
             })
         });
+        try {
+            const records = absGetRecords();
+            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
+            if (target) {
+                target.cmNotified = '電話連絡済';
+                target.cmNotifiedAt = new Date().toISOString();
+                absSaveRecords(records);
+            }
+        } catch {}
         showToast('📞 電話連絡済みにマークしました', 2000);
         // キャッシュクリア＆再描画
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            delete cache[absCurrentMonth];
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+        setTimeout(() => absRenderUpcomingList(), 800);
+    } catch (e) {
+        alert('マーク失敗: ' + (e && e.message || e));
+    }
+}
+
+// 既存欠席を「✉ Gmailから手動でメール送信済み」に手動マーク（2026-05-19）
+async function markCmMailSent(userName, dateStr) {
+    const dt = absFormatDate(dateStr);
+    if (!confirm(userName + '様 ' + dt + ' の欠席を\n「✉ メール送信済（手動）」にマークしますか？\n\n※ Gmailから直接ケアマネにメールを送ったときに使います。\n（ボードのフォームから自動送信した場合はマーク不要です）')) return;
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'updateAbsenceCmNotified',
+                name: userName,
+                date: dateStr,
+                cmNotified: '手動メール送信済'
+            })
+        });
+        try {
+            const records = absGetRecords();
+            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
+            if (target) {
+                target.cmNotified = '手動メール送信済';
+                target.cmNotifiedAt = new Date().toISOString();
+                absSaveRecords(records);
+            }
+        } catch {}
+        showToast('✉ 手動メール送信済みにマークしました', 2000);
         try {
             const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
             delete cache[absCurrentMonth];
