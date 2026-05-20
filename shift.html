@@ -26,6 +26,9 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  /* 下部固定バー（入力完了ボタン）にカレンダー最下段が隠れないよう余白を確保。
+     JS の adjustBottomPadding() が実寸に合わせて上書きする（これは保険値）。 */
+  padding-bottom: 170px;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1412,6 +1415,23 @@ document.addEventListener('keydown', (e) => {
 // ============================
 // UI切替
 // ============================
+
+// 下部固定バー（入力完了ボタン）の実寸の高さ分だけ本文下に余白を確保する。
+// タブレットでカレンダー最下段が固定バーに隠れて押せない問題への対策。
+function adjustBottomPadding() {
+  var bar = document.getElementById('logoutBtnWrap');
+  if (!bar) return;
+  if (bar.style.display === 'none') {
+    document.body.style.paddingBottom = '24px';
+  } else {
+    document.body.style.paddingBottom = (bar.offsetHeight + 56) + 'px';
+  }
+}
+window.addEventListener('resize', adjustBottomPadding);
+window.addEventListener('orientationchange', function () {
+  setTimeout(adjustBottomPadding, 300);
+});
+
 function applyAdminUI() {
   document.getElementById('mainHeader').classList.add('admin-header');
   document.getElementById('headerTitle').textContent = 'シフト希望入力（管理者）';
@@ -1423,6 +1443,7 @@ function applyAdminUI() {
   document.getElementById('logoutBtnWrap').style.display = 'block';
   document.getElementById('headerSheetBtn').style.display = '';
   showCondToggle();
+  adjustBottomPadding();
 }
 
 function applyStaffUI() {
@@ -1438,6 +1459,7 @@ function showUserBar() {
   document.getElementById('currentUserName').textContent = currentUser;
   document.getElementById('logoutBtnWrap').style.display = 'block';
   showCondToggle();
+  adjustBottomPadding();
 }
 
 function showCondToggle() {
@@ -1472,6 +1494,7 @@ function logout() {
   applyStaffUI();
   document.getElementById('userBar').style.display = 'none';
   document.getElementById('logoutBtnWrap').style.display = 'none';
+  adjustBottomPadding();
   document.getElementById('headerSheetBtn').style.display = 'none';
   document.getElementById('mySummary').style.display = 'none';
   document.getElementById('adminSummary').style.display = 'none';
