@@ -600,6 +600,37 @@
         .att-loading { text-align: center; padding: 40px; color: #a0aec0; font-size: 0.9rem; }
         .att-empty { text-align: center; padding: 20px; color: #a0aec0; font-size: 0.9rem; }
 
+        /* ----- 利用率アラート ----- */
+        .att-usage-badge {
+          display: inline-block;
+          margin-left: 6px;
+          padding: 1px 6px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: bold;
+          cursor: pointer;
+          vertical-align: middle;
+        }
+        .att-usage-badge.warn { background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
+        .att-usage-badge.danger { background: #f8d7da; color: #842029; border: 1px solid #f1aeb5; }
+        .att-redsummary {
+          margin: 6px 0;
+          padding: 8px 10px;
+          background: #fdf0f1;
+          border: 1px solid #f1aeb5;
+          border-radius: 8px;
+          font-size: 13px;
+        }
+        .att-redsummary-title { font-weight: bold; color: #842029; margin-bottom: 4px; }
+        .att-redsummary-item { padding: 2px 0; cursor: pointer; }
+        .att-redsummary-item:hover { text-decoration: underline; }
+        .usage-modal-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
+        .usage-modal-label { color: #666; }
+        .usage-day-grid { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+        .usage-day-cell { padding: 4px 8px; border-radius: 6px; background: #f3f3f3; font-size: 13px; }
+        .usage-day-cell.worst { background: #f8d7da; color: #842029; font-weight: bold; }
+        .usage-action-box { margin-top: 10px; padding: 8px; background: #f0f7ff; border-radius: 6px; font-size: 13px; }
+
         /* 実績確認タブのCSSは 実績まわり.html に分離（2026/4/29） */
 
         /* ===== タスク確認タブ ===== */
@@ -1221,6 +1252,7 @@
         <button class="att-today-btn" onclick="attGoToday()">今日</button>
         <div class="att-status-bar" id="att-status-bar"></div>
     </div>
+    <div class="att-redsummary" id="att-redsummary" style="display:none;"></div>
     <div id="att-content">
         <div class="att-loading">読み込み中...</div>
     </div>
@@ -1676,6 +1708,16 @@
             <div class="staff-select-grid" id="staff-select-grid"></div>
         </div>
     </div>
+</div>
+
+<div class="modal-overlay" id="usage-detail-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="usage-detail-title">利用率の詳細</span>
+      <button class="modal-close" onclick="closeModal('usage-detail-modal')">&times;</button>
+    </div>
+    <div class="modal-body" id="usage-detail-body"></div>
+  </div>
 </div>
 
 <!-- モーダル: 仕事移動先選択 -->
@@ -6784,6 +6826,134 @@ function attShowDatePicker(ev) {
     }
 }
 
+// ===== 利用率アラート =====
+var usageAlertMap = {};   // 正規化なしの利用者名 → アラートデータ
+var usageRedList = [];    // 赤バッジの利用者一覧
+var lastAttData = null;   // 最後に attRender へ渡した attendance データ（利用率データ後着時の再描画用）
+
+// 利用者名の正規化（GAS側 _normalizeUserName と同一仕様）
+function usageNormalizeName(name) {
+  if (!name) return '';
+  return String(name).normalize('NFKC').replace(/[\s　]/g, '').replace(/(様|さま|サマ)$/g, '').trim();
+}
+
+// 判定対象期間を YYYY-MM で返す（設計書3章: データ蓄積に応じたローリング）
+function usagePeriod() {
+  var now = new Date();
+  var y = now.getFullYear(), m = now.getMonth() + 1;
+  var toYM = y + '-' + String(m).padStart(2, '0');
+  var ymNum = y * 12 + m;
+  var monthsBack;
+  if (ymNum <= 2026 * 12 + 6) monthsBack = null;   // 〜2026-06: 運用開始(2026-04)から
+  else if (ymNum <= 2026 * 12 + 9) monthsBack = 2; // 2026-07〜09: 直近3ヶ月
+  else monthsBack = 5;                             // 2026-10〜: 直近6ヶ月
+  var fromYM;
+  if (monthsBack == null) {
+    fromYM = '2026-04';
+  } else {
+    var fd = new Date(y, now.getMonth() - monthsBack, 1);
+    fromYM = fd.getFullYear() + '-' + String(fd.getMonth() + 1).padStart(2, '0');
+  }
+  return { from: fromYM, to: toYM };
+}
+
+// GAS の usage_alerts を JSONP で取得し、usageAlertMap / usageRedList を更新する
+function loadUsageAlerts() {
+  var p = usagePeriod();
+  var cbName = 'usageAlertCallback_' + Date.now();
+  window[cbName] = function(data) {
+    delete window[cbName];
+    if (sEl && sEl.parentNode) sEl.parentNode.removeChild(sEl);
+    try {
+      var ua = data && data.usageAlerts;
+      if (ua && ua.users) {
+        usageAlertMap = {};
+        ua.users.forEach(function(u) { usageAlertMap[usageNormalizeName(u.name)] = u; });
+        usageRedList = ua.redList || [];
+      }
+    } catch (err) { /* 取得失敗時はバッジなしで継続 */ }
+    // attendance が既に描画済みなら、利用率データを反映して再描画
+    if (lastAttData) attRender(lastAttData);
+  };
+  var sEl = document.createElement('script');
+  sEl.src = ABS_BOARD_API_URL + '?action=usage_alerts&from=' + p.from + '&to=' + p.to +
+            '&callback=' + cbName + '&t=' + Date.now();
+  sEl.onerror = function() {
+    delete window[cbName];
+    if (sEl.parentNode) sEl.parentNode.removeChild(sEl);
+  };
+  document.body.appendChild(sEl);
+}
+
+// 利用率詳細モーダルを開く
+function showUsageDetail(name) {
+  var ua = usageAlertMap[usageNormalizeName(name)];
+  if (!ua) return;
+  document.getElementById('usage-detail-title').textContent = name + ' さんの利用率';
+  var body = document.getElementById('usage-detail-body');
+  var ov = ua.overall || {};
+  var html = '';
+  html += '<div class="usage-modal-row"><span class="usage-modal-label">契約曜日</span>' +
+          '<span>' + (ua.weekdaysRaw || '-') + '（週' + (ua.contractCount || 0) + '回）</span></div>';
+  var rateText = (ov.rate == null) ? 'データ不足' : (ov.rate + '%');
+  var weekText = (ov.rate == null) ? '' : '（実質 週' + Math.round(ov.rate * (ua.contractCount || 0) / 100 * 10) / 10 + '回）';
+  html += '<div class="usage-modal-row"><span class="usage-modal-label">全体利用率</span>' +
+          '<span>' + rateText + ' ' + weekText + '</span></div>';
+  // 曜日別
+  html += '<div class="usage-day-grid">';
+  Object.keys(ua.byDay || {}).forEach(function(d) {
+    var b = ua.byDay[d];
+    var isWorst = ua.worstDay && ua.worstDay.day === d;
+    html += '<span class="usage-day-cell' + (isWorst ? ' worst' : '') + '">' +
+            d + ' ' + (b.rate == null ? '-' : b.rate + '%') + '</span>';
+  });
+  html += '</div>';
+  // 直近の欠席
+  if (ua.recentAbsences && ua.recentAbsences.length) {
+    html += '<div class="usage-modal-label" style="margin-top:8px;">直近の欠席</div>';
+    ua.recentAbsences.forEach(function(a) {
+      html += '<div style="font-size:13px;padding:2px 0;">' +
+              a.date + '(' + a.dow + ') ' + a.unit + ' ' + (a.reason || '') + '</div>';
+    });
+  }
+  // 判定理由と推奨アクション
+  if (ua.badge) {
+    var icon = ua.badge === 'red' ? '🔴' : '🟡';
+    html += '<div class="usage-modal-row"><span class="usage-modal-label">判定</span>' +
+            '<span>' + icon + ' ' + (ua.reasons || []).join(' / ') + '</span></div>';
+    html += '<div class="usage-action-box">';
+    if (ua.badge === 'yellow') {
+      html += '▶ 声かけ：「最近お休みが増えていますね、お変わりないですか」と本人・ご家族に確認';
+    } else {
+      html += '▶ 経営へ連絡：社長・勝又さんへ。ケアマネへ状況確認・利用枠調整の検討';
+    }
+    html += '</div>';
+  } else {
+    html += '<div class="usage-action-box">現在は良好です。</div>';
+  }
+  body.innerHTML = html;
+  openModal('usage-detail-modal');
+}
+
+// 赤サマリー（要調整の利用者一覧）を描画する
+function renderUsageRedSummary() {
+  var box = document.getElementById('att-redsummary');
+  if (!box) return;
+  if (!usageRedList || !usageRedList.length) {
+    box.style.display = 'none';
+    return;
+  }
+  var html = '<div class="att-redsummary-title">🔴 利用枠の見直し検討（' + usageRedList.length + '名）</div>';
+  usageRedList.forEach(function(r) {
+    var escaped = String(r.name).replace(/'/g, "\\'");
+    var worst = r.worstDay ? ' / 最悪 ' + r.worstDay.day + '曜' + r.worstDay.rate + '%' : '';
+    html += '<div class="att-redsummary-item" onclick="showUsageDetail(\'' + escaped + '\')">' +
+            r.name + '（利用率' + (r.rate == null ? '-' : r.rate + '%') + worst + '）</div>';
+  });
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
 function attLoad() {
     const dateStr = attFormatDate(attCurrentDate);
     const content = document.getElementById('att-content');
@@ -6838,6 +7008,7 @@ function attLoad() {
 }
 
 function attRender(data) {
+    lastAttData = data;
     const _savedScrollY = window.scrollY;
     const _savedAttScroll = (() => {
         const el = document.getElementById('att-content');
@@ -6948,6 +7119,7 @@ function attRender(data) {
         const el = document.getElementById('att-content');
         if (el && _savedAttScroll) el.scrollTop = _savedAttScroll;
     });
+    if (typeof renderUsageRedSummary === 'function') renderUsageRedSummary();
 }
 
 function attRenderUser(u) {
@@ -6975,9 +7147,20 @@ function attRenderUser(u) {
         ? '<span style="display:inline-block;background:#a7f3d0;color:#065f46;font-size:0.7rem;font-weight:900;padding:2px 8px;border-radius:10px;margin-left:6px;">再開</span>'
         : '';
 
+    // 利用率バッジ（usageAlertMap から引く。黄/赤のみ表示・無印は何も出さない）
+    var usageBadge = '';
+    var ua = usageAlertMap[usageNormalizeName(u.name)];
+    if (ua && ua.badge) {
+        var bcls = ua.badge === 'red' ? 'danger' : 'warn';
+        var bicon = ua.badge === 'red' ? '🔴' : '🟡';
+        usageBadge = '<span class="att-usage-badge ' + bcls + '" ' +
+            'onclick="event.stopPropagation();showUsageDetail(\'' + escapedName + '\')">' + bicon + '</span>';
+    }
+
     return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
         '<span class="att-user-name">' + u.name + '</span>' +
+        usageBadge +
         resumedBadge +
         (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
         (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
@@ -7641,6 +7824,7 @@ function attStartAbsence(name) {
 function attInit() {
     attUpdateDateLabel();
     attLoad();
+    if (typeof loadUsageAlerts === 'function') loadUsageAlerts();
     attLoadAllUsers();
     // 長期休み一覧も読み込み（再開予定日の表示用）
     if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
