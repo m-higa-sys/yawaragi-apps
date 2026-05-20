@@ -649,6 +649,11 @@ body {
   <h3 id="mySummaryTitle">自分の希望休</h3>
   <div class="days" id="myDays"></div>
   <div class="count-text" id="myCount"></div>
+  <div id="confirmArea" style="margin-top:12px; padding-top:12px; border-top:1px solid #eee;">
+    <div id="confirmStatus" style="font-size:13px; margin-bottom:8px;"></div>
+    <button id="confirmBtn" onclick="toggleConfirm()" style="width:100%; padding:12px; font-size:15px; font-weight:700; border:none; border-radius:8px; cursor:pointer;"></button>
+    <div style="font-size:11px; color:#666; margin-top:6px; text-align:center;">※ 期限日（20日）を過ぎると自動で確定になります</div>
+  </div>
 </div>
 
 <!-- 通知バナー -->
@@ -722,7 +727,7 @@ body {
 <!-- お知らせ -->
 <div class="info-bar" id="infoBar">
   休みたい日をタップしてください<br>
-  被りがあるとカレンダーに名前が表示されます。当事者同士で相談してください
+  被りがあるとカレンダーに名前が表示されます。当事者同士で相談し、譲れる人は希望休の横の「ゆずる」ボタンを押してください
 </div>
 
 <!-- カレンダー（一番下） -->
@@ -791,6 +796,8 @@ let isProcessing = false;
 let pendingPinAction = null; // { type: 'staff'|'admin', staffName: '' }
 let currentStaffType = localStorage.getItem('shift_wish_type') || '';
 let allAbsences = [];
+let allConfirmations = [];
+let allJouhoCounts = {};
 
 // 日本の祝日
 const HOLIDAYS = {
@@ -893,6 +900,7 @@ async function loadData() {
     staffList = data.staff || [];
     if (data.month) currentMonth = data.month;
     allAbsences = data.absences || [];
+    allConfirmations = data.confirmations || [];
 
     allWishes = data.wishes || [];
     myWishes = allWishes.filter(w => w.staff === currentUser);
@@ -927,6 +935,8 @@ async function loadDataAdmin() {
     allWishes = data.wishes || [];
     allAbsences = data.absences || [];
     bossRests = data.bossRests || [];
+    allConfirmations = data.confirmations || [];
+    allJouhoCounts = data.jouhoCounts || {};
 
     renderAllAdmin();
     renderBossRests();
@@ -1087,15 +1097,155 @@ function renderMySummary() {
   } else {
     const [y, m] = currentMonth.split('-').map(Number);
     sorted.forEach(w => {
+      // その日の他の希望者を取得
+      const others = allWishes.filter(x => x.day === w.day && x.staff !== currentUser).map(x => x.staff);
+      const hasConflict = others.length > 0;
+
+      const wrap = document.createElement('span');
+      wrap.style.cssText = 'display:inline-flex; align-items:center; gap:4px; margin:4px;';
+
       const chip = document.createElement('span');
       chip.className = 'day-chip';
+      chip.style.margin = '0';
       const dow = ['日','月','火','水','木','金','土'][new Date(y, m - 1, w.day).getDay()];
       chip.textContent = w.day + '日（' + dow + '）';
-      daysDiv.appendChild(chip);
+      if (hasConflict) {
+        chip.style.background = '#ffebee';
+        chip.style.color = '#c62828';
+        chip.style.border = '1px solid #ef9a9a';
+        chip.title = others.join('さん、') + 'さんと被っています';
+      }
+      wrap.appendChild(chip);
+
+      if (hasConflict) {
+        const yuzuruBtn = document.createElement('button');
+        yuzuruBtn.textContent = 'ゆずる';
+        yuzuruBtn.style.cssText = 'background:#fff3e0; color:#e65100; border:1px solid #e65100; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; cursor:pointer;';
+        yuzuruBtn.title = others.join('さん、') + 'さんに譲る';
+        yuzuruBtn.onclick = () => concedeDay(w.day, others);
+        wrap.appendChild(yuzuruBtn);
+      }
+
+      daysDiv.appendChild(wrap);
     });
   }
 
   document.getElementById('myCount').textContent = '希望数: ' + sorted.length + '日';
+
+  renderConfirmArea();
+}
+
+// ============================
+// ゆずる処理
+// ============================
+async function concedeDay(day, otherStaff) {
+  if (!currentUser || isProcessing) return;
+  const others = (otherStaff || []).join('さん、') + 'さん';
+  if (!confirm(day + '日の希望休をゆずります。\n（' + others + 'に譲歩）\n\nよろしいですか？')) return;
+  isProcessing = true;
+  try {
+    const data = await apiCall({ action: 'concedeDay', staff: currentUser, month: currentMonth, day: day });
+    if (data.success) {
+      myWishes = myWishes.filter(w => w.day !== day);
+      allWishes = allWishes.filter(w => !(w.day === day && w.staff === currentUser));
+      showToast('✓ ' + day + '日をゆずりました。ありがとうございます！');
+      renderAll();
+    } else {
+      alert(data.message || 'エラー');
+    }
+  } catch (e) {
+    showToast('通信エラー');
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// ============================
+// 確定エリアの描画
+// ============================
+function renderConfirmArea() {
+  if (!currentUser) return;
+  const statusDiv = document.getElementById('confirmStatus');
+  const btn = document.getElementById('confirmBtn');
+  if (!statusDiv || !btn) return;
+
+  const myConfirm = (allConfirmations || []).find(c => c.staff === currentUser);
+
+  const wishCount = (myWishes || []).length;
+  if (myConfirm) {
+    const typeLabel = myConfirm.type === '自動確定' ? '（自動確定）' : '';
+    const detail = wishCount === 0 ? '（希望なし）' : '（希望休 ' + wishCount + '日）';
+    statusDiv.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✓ 提出済み ' + detail + ' ' + typeLabel + '</span>' +
+      (myConfirm.confirmedAt ? '<span style="color:#666;margin-left:8px;">' + myConfirm.confirmedAt + '</span>' : '');
+    btn.textContent = '提出を取り消す';
+    btn.style.background = '#f5f5f5';
+    btn.style.color = '#d32f2f';
+    btn.style.border = '1px solid #d32f2f';
+  } else {
+    if (wishCount === 0) {
+      statusDiv.innerHTML = '<span style="color:#e65100;font-weight:700;">未提出</span> <span style="color:#666;">希望休がない月は下のボタンを押してください</span>';
+      btn.textContent = '希望なしで提出する';
+    } else {
+      statusDiv.innerHTML = '<span style="color:#e65100;font-weight:700;">未確定</span> <span style="color:#666;">希望が揃ったら下のボタンを押してください</span>';
+      btn.textContent = '希望を確定する（' + wishCount + '日）';
+    }
+    btn.style.background = '#1a73e8';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+  }
+}
+
+// ============================
+// 確定トグル
+// ============================
+async function toggleConfirm() {
+  if (!currentUser || isProcessing) return;
+  const myConfirm = (allConfirmations || []).find(c => c.staff === currentUser);
+
+  if (myConfirm) {
+    if (!confirm('確定を解除して、希望を編集できる状態に戻しますか？')) return;
+    isProcessing = true;
+    try {
+      const data = await apiCall({ action: 'unconfirmSubmission', staff: currentUser, month: currentMonth });
+      if (data.success) {
+        allConfirmations = allConfirmations.filter(c => c.staff !== currentUser);
+        renderConfirmArea();
+        showToast('確定を解除しました');
+      } else {
+        showToast(data.message || 'エラー');
+      }
+    } catch (e) {
+      showToast('通信エラー');
+    } finally {
+      isProcessing = false;
+    }
+  } else {
+    const count = myWishes.length;
+    let confirmMsg;
+    if (count === 0) {
+      confirmMsg = '希望休なしで提出します。よろしいですか？\n\n（提出後も「取り消し」で変更できます）';
+    } else {
+      confirmMsg = 'この内容で希望を確定します。よろしいですか？\n\n希望休: ' + count + '日\n（確定後も「取り消し」で編集できます）';
+    }
+    if (!confirm(confirmMsg)) return;
+    isProcessing = true;
+    try {
+      const data = await apiCall({ action: 'confirmSubmission', staff: currentUser, month: currentMonth, type: '確定' });
+      if (data.success) {
+        const now = new Date();
+        const ts = String(now.getMonth() + 1).padStart(2,'0') + '/' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+        allConfirmations.push({ staff: currentUser, month: currentMonth, confirmedAt: ts, type: '確定' });
+        renderConfirmArea();
+        showToast('✓ 確定しました。ありがとうございます！');
+      } else {
+        showToast(data.message || 'エラー');
+      }
+    } catch (e) {
+      showToast('通信エラー');
+    } finally {
+      isProcessing = false;
+    }
+  }
 }
 
 // ============================
@@ -1178,15 +1328,62 @@ function renderAdminSummary() {
 
   const [y, m] = currentMonth.split('-').map(Number);
 
+  // 全員確定状況サマリー
+  const confirmedCount = (allConfirmations || []).length;
+  const totalCount = staffList.length;
+  const headerBar = document.createElement('div');
+  headerBar.style.cssText = 'margin-bottom:10px; padding:10px; border-radius:8px; font-size:14px; font-weight:700; text-align:center;';
+  if (totalCount > 0 && confirmedCount === totalCount) {
+    headerBar.style.background = '#e8f5e9';
+    headerBar.style.color = '#2e7d32';
+    headerBar.style.border = '2px solid #4caf50';
+    headerBar.innerHTML = '✅ 全員確定済み（' + confirmedCount + '/' + totalCount + '）シフト作成OK！';
+  } else {
+    headerBar.style.background = '#fff3e0';
+    headerBar.style.color = '#e65100';
+    headerBar.style.border = '1px solid #ff9800';
+    headerBar.innerHTML = '確定状況: ' + confirmedCount + '/' + totalCount + ' 人';
+  }
+  content.appendChild(headerBar);
+
   staffList.forEach(name => {
     const wishes = allWishes.filter(w => w.staff === name).sort((a,b) => a.day - b.day);
     const row = document.createElement('div');
     row.className = 'admin-staff-row';
+    row.style.cssText = 'border-bottom:1px solid #eee; padding-bottom:8px;';
+
+    const nameWrap = document.createElement('span');
+    nameWrap.style.cssText = 'display:inline-flex; align-items:center; gap:6px;';
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'admin-staff-name';
     nameSpan.textContent = name;
-    row.appendChild(nameSpan);
+    nameWrap.appendChild(nameSpan);
+
+    // 確定バッジ
+    const myConfirm = (allConfirmations || []).find(c => c.staff === name);
+    const badge = document.createElement('span');
+    if (myConfirm) {
+      const auto = myConfirm.type === '自動確定' ? ' (自動)' : '';
+      badge.textContent = '✓確定' + auto;
+      badge.style.cssText = 'background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;';
+    } else {
+      badge.textContent = '未確定';
+      badge.style.cssText = 'background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;';
+    }
+    nameWrap.appendChild(badge);
+
+    // 譲歩カウント
+    const jouhoCount = (allJouhoCounts && allJouhoCounts[name]) || 0;
+    if (jouhoCount > 0) {
+      const jouhoBadge = document.createElement('span');
+      jouhoBadge.textContent = '譲歩 ' + jouhoCount + '回';
+      jouhoBadge.style.cssText = 'background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;';
+      jouhoBadge.title = '累計譲歩回数（スタッフが「ゆずる」を押した累計）';
+      nameWrap.appendChild(jouhoBadge);
+    }
+
+    row.appendChild(nameWrap);
 
     if (wishes.length === 0) {
       const noWish = document.createElement('span');
@@ -1206,6 +1403,7 @@ function renderAdminSummary() {
     content.appendChild(row);
   });
 }
+
 
 // ============================
 // 希望の追加/削除
@@ -1488,6 +1686,8 @@ function logout() {
   conditionsData = [];
   conditionsVisible = false;
   allAbsences = [];
+  allConfirmations = [];
+  allJouhoCounts = {};
   absencesVisible = false;
   currentStaffType = '';
   localStorage.removeItem('shift_wish_type');
