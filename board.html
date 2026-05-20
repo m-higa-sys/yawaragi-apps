@@ -244,6 +244,11 @@
         }
         .staff-select-btn:hover { border-color: #2c7a7b; background: #f0fff4; }
         .staff-select-btn.already { opacity: 0.35; cursor: not-allowed; text-decoration: line-through; }
+        .assign-block-banner {
+            background: #fffbeb; border: 1px solid #f6e05e; color: #975a16;
+            border-radius: 10px; padding: 10px 12px; margin-bottom: 12px;
+            font-size: 0.85rem; font-weight: 600; line-height: 1.5;
+        }
 
         /* 移動先選択モーダル */
         .move-target-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -1667,6 +1672,7 @@
             <button class="modal-close" onclick="closeModal('staff-modal')">&times;</button>
         </div>
         <div class="modal-body">
+            <div class="assign-block-banner" id="staff-block-banner" style="display:none;"></div>
             <div class="staff-select-grid" id="staff-select-grid"></div>
         </div>
     </div>
@@ -2626,6 +2632,14 @@ function getAllAssignedStaff() {
     return assigned;
 }
 
+// 1枠1人ルール: 空き枠（誰も配置されていない枠）が1つでもあるか
+function hasEmptyPosition() {
+    for (let pid = 1; pid <= 5; pid++) {
+        if (!(currentAssignment.positions[pid] || []).length) return true;
+    }
+    return false;
+}
+
 function openStaffSelect(posId) {
     const pos = POSITIONS.find(p => p.id === posId);
     document.getElementById('staff-modal-title').textContent = `${pos.id} ${pos.name} にスタッフを配置`;
@@ -2659,18 +2673,33 @@ function openStaffSelect(posId) {
         return sa.pct - sb.pct;
     });
 
+    // 1枠1人ルール: 2人目を入れられるのは全枠が埋まったあとだけ・1枠の上限は2人
+    const thisPosCount = (currentAssignment.positions[posId] || []).length;
+    const addBlocked = thisPosCount >= 2 || (thisPosCount >= 1 && hasEmptyPosition());
+    const banner = document.getElementById('staff-block-banner');
+    if (addBlocked) {
+        banner.textContent = thisPosCount >= 2
+            ? '⚠️ この枠はすでに2人配置されています（1つの枠は2人まで）'
+            : '⚠️ まだ空いている枠があります。2人目を入れる前に、先に空いている枠へ配置してください。';
+        banner.style.display = '';
+    } else {
+        banner.style.display = 'none';
+    }
+
     grid.innerHTML = sortedStaff.map(s => {
         const alreadyElsewhere = assigned.has(s) && !inThisPos.has(s);
         const inThis = inThisPos.has(s);
+        const blockedHere = addBlocked && !inThis;
+        const disabled = alreadyElsewhere || blockedHere;
         const st = staffStats[s];
         let badge = '';
         if (st && st.total >= 3 && s !== '比嘉') {
             if (st.count === 0) badge = ' ⭐未経験';
             else badge = ` ${st.pct}%`;
         }
-        return `<button class="staff-select-btn ${alreadyElsewhere ? 'already' : ''}"
-            onclick="${alreadyElsewhere ? '' : `selectStaff('${s}', ${posId})`}"
-            ${alreadyElsewhere ? 'disabled' : ''}>
+        return `<button class="staff-select-btn ${disabled ? 'already' : ''}"
+            onclick="${disabled ? '' : `selectStaff('${s}', ${posId})`}"
+            ${disabled ? 'disabled' : ''}>
             ${s}${badge}${inThis ? ' (配置済み)' : ''}${alreadyElsewhere ? ' (他に配置中)' : ''}
         </button>`;
     }).join('');
@@ -2681,7 +2710,20 @@ function selectStaff(name, posId) {
     if (!currentAssignment.positions[posId]) currentAssignment.positions[posId] = [];
     const arr = currentAssignment.positions[posId];
     const idx = arr.indexOf(name);
-    if (idx >= 0) { arr.splice(idx, 1); } else { arr.push(name); }
+    if (idx >= 0) {
+        arr.splice(idx, 1);
+    } else {
+        // 1枠1人ルール: 全枠が埋まるまで2人目は不可・1枠の上限は2人
+        if (arr.length >= 2) {
+            showToast('1つの枠は2人までです');
+            return;
+        }
+        if (arr.length >= 1 && hasEmptyPosition()) {
+            showToast('まだ空いている枠があります。先にそちらへ配置してください');
+            return;
+        }
+        arr.push(name);
+    }
     renderAssignments();
     autoSave();
     updateBiasAlert();

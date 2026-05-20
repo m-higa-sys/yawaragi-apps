@@ -7,6 +7,21 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>yawaragiボード</title>
+    <script>
+    // 利用者キャッシュ形式の世代管理（pattern対応・2026-05-17追加）
+    // 2026-05-18: cmName 列追加対応のためバージョン更新
+    // バージョン不一致時は古いlocalStorageキャッシュを自動破棄→次回API取得で最新形式
+    (function migrateAbsUserCache() {
+      try {
+        const CACHE_VERSION = '2026-05-18-cmName';
+        const v = localStorage.getItem('yawaragi_abs_users_version');
+        if (v !== CACHE_VERSION) {
+          localStorage.removeItem('yawaragi_abs_users');
+          localStorage.setItem('yawaragi_abs_users_version', CACHE_VERSION);
+        }
+      } catch (e) {}
+    })();
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -395,6 +410,15 @@
         }
         .abs-date-type-btn[data-type="longterm"]:hover:not(.active) {
             border-color: #c53030; color: #c53030;
+        }
+        .abs-date-type-group { margin-bottom: 6px; }
+        .abs-date-type-group-label {
+            font-size: 0.75rem; color: #718096; font-weight: 600;
+            margin-bottom: 4px; padding-left: 2px;
+        }
+        .abs-date-type-divider {
+            border-top: 1px dashed #cbd5e0;
+            margin: 10px 0;
         }
         .abs-date-inputs { margin-top: 8px; }
         .abs-date-inputs input[type="date"] {
@@ -821,7 +845,7 @@
         }
         .trm-help-btn:hover { background: #bee3f8; }
         .trm-help-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.55); z-index: 9999;
             display: flex; align-items: center; justify-content: center; padding: 16px;
         }
         .trm-help-box {
@@ -1032,6 +1056,44 @@
         .transport-sim input { padding:4px; font-size:12px; }
         .transport-sim-labels { display:grid; grid-template-columns: repeat(6, 1fr); gap:4px; font-size:11px; color:#4a5568; text-align:center; }
 
+        /* ===== 📧 共有メール対応セクション（2026/5/3追加・ミニミーティング内） ===== */
+        .mm-mail-section {
+            background: #ebf8ff;
+            border: 2px solid #3182ce;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+        }
+        .mm-mail-section.alert-mode {
+            background: #fff5f5;
+            border-color: #e53e3e;
+            animation: mmMailPulse 2s ease-in-out infinite;
+        }
+        @keyframes mmMailPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(229,62,62,0.5); }
+            50%      { box-shadow: 0 0 0 6px rgba(229,62,62,0); }
+        }
+        .mm-mail-title {
+            font-weight: bold;
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: #2d3748;
+        }
+        .mm-mail-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0;
+            flex-wrap: wrap;
+        }
+        .mm-mail-label { font-weight: 600; min-width: 110px; }
+        .mm-mail-boxes { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+        .mm-mail-check { width: 22px; height: 22px; cursor: pointer; margin: 0; }
+        .mm-mail-completed { margin-top: 6px; color: #2c7a7b; font-weight: bold; font-size: 0.9rem; }
+        .mm-mail-alert { margin-top: 6px; color: #c53030; font-weight: bold; font-size: 0.85rem; }
+        .mm-mail-error { margin-top: 6px; color: #c53030; font-size: 0.8rem; }
+
         /* ===== タスク追加モーダル（2026-05-05追加） ===== */
         .task-modal-overlay {
             display: none;
@@ -1115,12 +1177,9 @@
         .mm-tool-btn.add:hover { background: #2f855a; }
         .mm-tool-btn.furikae { background: #e74c3c; color: white; text-decoration: none; display: inline-block; }
         .mm-tool-btn.furikae:hover { background: #c0392b; }
-        .mm-tool-btn.reset { background: #718096; color: white; }
-        .mm-tool-btn.reset:hover { background: #4a5568; }
     </style>
 </head>
 <body>
-<script src="auto-refresh-patch.js"></script>
 
 <div class="header">
     <div>
@@ -1301,13 +1360,29 @@
         <!-- STEP2: いつ休み？ -->
         <div class="abs-step" id="abs-step-date" style="display:none;">
             <label class="abs-label">2. いつ休み？</label>
-            <div class="abs-date-type-btns">
-                <button class="abs-date-type-btn active" data-type="today" onclick="absSelectDateType('today')">今日</button>
-                <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
-                <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
-                <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')">長期休み</button>
+            <div class="abs-date-type-group">
+                <div class="abs-date-type-group-label">単発・期間（終了日が決まってる）</div>
+                <div class="abs-date-type-btns">
+                    <button class="abs-date-type-btn active" data-type="today" onclick="absSelectDateType('today')">今日</button>
+                    <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
+                    <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
+                </div>
+                <!-- 単発・期間用の日付入力コンテナ（ボタングループ直下） -->
+                <div class="abs-date-inputs" id="abs-date-inputs" style="margin-top:8px;"></div>
             </div>
-            <div class="abs-date-inputs" id="abs-date-inputs"></div>
+            <div class="abs-date-type-divider"></div>
+            <div class="abs-date-type-group">
+                <div class="abs-date-type-group-label">長期休み（終了日未定）</div>
+                <div class="abs-date-type-btns">
+                    <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')">長期休み</button>
+                </div>
+                <!-- 長期休み用の日付入力コンテナ（長期休みボタン直下） -->
+                <div class="abs-date-inputs" id="abs-date-inputs-longterm" style="margin-top:8px;"></div>
+            </div>
+            <div id="abs-single-warning" style="display:none;background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px 14px;margin:8px 0;font-size:0.92rem;color:#7f1d1d;line-height:1.5;">
+                <div style="font-weight:700;color:#dc2626;font-size:1rem;margin-bottom:4px;">⚠️ これは「単発の欠席」として登録されます</div>
+                <div>長期休み（終了日未定）なら下の赤ボタン<strong>「長期休み」</strong>を押してください</div>
+            </div>
             <div class="abs-date-warning" id="abs-date-warning" style="display:none;"></div>
         </div>
 
@@ -1356,6 +1431,20 @@
         <!-- 登録ボタン -->
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
+            <!-- 単位（午前/午後）2026-05-16: 曜日ベース自動判定・pattern取得失敗時のみラジオ表示 -->
+            <div id="abs-unit-section" style="display:none;background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:14px;margin:12px 0;">
+                <div style="font-size:0.9rem;font-weight:700;margin-bottom:8px;color:#c53030;">⚠️ 利用者情報から判定できませんでした。午前/午後を選んでください：</div>
+                <label style="display:inline-flex;align-items:center;margin-right:18px;cursor:pointer;font-size:1rem;">
+                    <input type="radio" name="abs-unit-radio" value="午前" style="width:18px;height:18px;margin-right:6px;">
+                    午前
+                </label>
+                <label style="display:inline-flex;align-items:center;cursor:pointer;font-size:1rem;">
+                    <input type="radio" name="abs-unit-radio" value="午後" style="width:18px;height:18px;margin-right:6px;">
+                    午後
+                </label>
+            </div>
+            <!-- 二重申請防止 警告バナー（2026-05-08追加） -->
+            <div id="abs-dup-warning" style="display:none;background:#fef2f2;border:2px solid #dc2626;border-radius:10px;padding:14px;margin:12px 0;"></div>
             <button class="abs-submit-btn" id="abs-submit-btn" onclick="absSubmit()">この内容で登録する</button>
         </div>
     </div>
@@ -1723,6 +1812,68 @@
     </div>
 </div>
 
+<!-- ===== 長期休み連絡結果入力ダイアログ（2026-05-04追加）===== -->
+<div id="abs-contact-dialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:12px;width:min(560px,92vw);max-height:88vh;overflow-y:auto;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <h3 style="margin:0;font-size:1.1rem;color:#2d3748;">📞 <span id="contact-dialog-name"></span>さん 連絡結果</h3>
+            <button onclick="absCloseContactDialog()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#718096;">×</button>
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem;color:#4a5568;font-weight:600;">担当者</label>
+            <div id="contact-staff-btns" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div>
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem;color:#4a5568;font-weight:600;">連絡方法</label>
+            <div style="display:flex;gap:6px;margin-top:4px;">
+                <button class="contact-method-btn" data-val="電話" onclick="absSelectMethodContact('電話')" style="flex:1;padding:8px;border:1.5px solid #cbd5e0;background:#fff;border-radius:8px;cursor:pointer;font-size:0.9rem;">電話</button>
+                <button class="contact-method-btn" data-val="LINE" onclick="absSelectMethodContact('LINE')" style="flex:1;padding:8px;border:1.5px solid #cbd5e0;background:#fff;border-radius:8px;cursor:pointer;font-size:0.9rem;">LINE</button>
+                <button class="contact-method-btn" data-val="メール" onclick="absSelectMethodContact('メール')" style="flex:1;padding:8px;border:1.5px solid #cbd5e0;background:#fff;border-radius:8px;cursor:pointer;font-size:0.9rem;">メール</button>
+                <button class="contact-method-btn" data-val="その他" onclick="absSelectMethodContact('その他')" style="flex:1;padding:8px;border:1.5px solid #cbd5e0;background:#fff;border-radius:8px;cursor:pointer;font-size:0.9rem;">その他</button>
+            </div>
+            <input type="text" id="contact-method-other" placeholder="その他の方法を入力（例：FAX / 伝言）" style="display:none;width:100%;padding:6px;margin-top:6px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.9rem;box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem;color:#4a5568;font-weight:600;">結果（必須）</label>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+                <label style="display:flex;align-items:center;gap:6px;padding:8px;border:1.5px solid #cbd5e0;border-radius:8px;cursor:pointer;">
+                    <input type="radio" name="contact-result" value="resume" onchange="absToggleContactResult()"> 予定通り再開
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;padding:8px;border:1.5px solid #cbd5e0;border-radius:8px;cursor:pointer;">
+                    <input type="radio" name="contact-result" value="extend" onchange="absToggleContactResult()"> 再開日を延長
+                    <input type="date" id="contact-new-expected" onchange="absToggleContactResult()" style="margin-left:6px;padding:4px;border:1px solid #cbd5e0;border-radius:6px;display:none;">
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;padding:8px;border:1.5px solid #cbd5e0;border-radius:8px;cursor:pointer;">
+                    <input type="radio" name="contact-result" value="pending" onchange="absToggleContactResult()"> 再開日 未定（次回連絡 2週間後にセット）
+                </label>
+            </div>
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="font-size:0.85rem;color:#4a5568;font-weight:600;">メモ（任意）</label>
+            <textarea id="contact-content" rows="3" style="width:100%;padding:8px;border:1.5px solid #cbd5e0;border-radius:8px;font-size:0.9rem;margin-top:4px;box-sizing:border-box;" placeholder="例：家族から電話 / こちらから本人へ / ケアマネから報告 / 5/12延長したい"></textarea>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <label style="font-size:0.85rem;color:#4a5568;font-weight:600;">次回連絡予定日（自動計算・上書き可）</label>
+            <input type="date" id="contact-next-due" style="width:100%;padding:8px;border:1.5px solid #cbd5e0;border-radius:8px;font-size:0.9rem;margin-top:4px;box-sizing:border-box;">
+        </div>
+
+        <details style="margin-bottom:12px;">
+            <summary style="cursor:pointer;font-size:0.85rem;color:#4a5568;font-weight:600;">過去の連絡履歴</summary>
+            <div id="contact-history" style="margin-top:6px;padding:8px;background:#f7fafc;border-radius:8px;font-size:0.82rem;color:#4a5568;white-space:pre-wrap;"></div>
+        </details>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button onclick="absCloseContactDialog()" style="padding:10px 20px;border:1.5px solid #cbd5e0;background:#fff;border-radius:8px;cursor:pointer;">キャンセル</button>
+            <button id="contact-submit-btn" onclick="absSubmitContact()" style="padding:10px 20px;background:#e53e3e;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">保存</button>
+        </div>
+    </div>
+</div>
+
 <!-- ===== ミニミーティングタブ ===== -->
 <div id="tab-meeting" class="tab-content">
     <div style="padding:16px;">
@@ -1758,6 +1909,27 @@
         <div id="mm-grid" style="display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap:16px;">
             <div id="mm-col-tasks" style="background:#f7fafc; padding:12px; border-radius:8px; min-height:400px;">
                 <h3 style="font-size:1.1rem; color:#2d3748; margin:0 0 12px 0;">① 今日のタスク</h3>
+                <!-- 📧 共有メール対応セクション（2026/5/3追加） -->
+                <div id="mm-mail-section" class="mm-mail-section" style="display:none;">
+                    <div class="mm-mail-title">📧 共有メール対応</div>
+                    <div id="mm-mail-loading" style="color:#718096;font-size:0.85rem;">読み込み中...</div>
+                    <div id="mm-mail-body" style="display:none;">
+                        <div class="mm-mail-row">
+                            <span class="mm-mail-label">ケアマネから:</span>
+                            <span id="mm-mail-cm-count">-</span>件
+                            <span id="mm-mail-cm-boxes" class="mm-mail-boxes"></span>
+                        </div>
+                        <div class="mm-mail-row">
+                            <span class="mm-mail-label">利用者・家族:</span>
+                            <span id="mm-mail-uf-count">-</span>件
+                            <span id="mm-mail-uf-boxes" class="mm-mail-boxes"></span>
+                        </div>
+                        <div id="mm-mail-completed" class="mm-mail-completed" style="display:none;">✅ 今日のメール対応 完了</div>
+                        <div id="mm-mail-alert" class="mm-mail-alert" style="display:none;">🚨 未対応あり・正社員（勝又/星野）対応をお願いします</div>
+                        <div id="mm-mail-error" class="mm-mail-error" style="display:none;"></div>
+                    </div>
+                    <div id="mm-mail-empty" style="display:none; color:#a0aec0; font-size:0.85rem;">📭 当日のメール件数 未投入（朝の報告で更新されます）</div>
+                </div>
                 <div id="mm-tasks-content">読み込み中...</div>
             </div>
             <div id="mm-col-staff" style="background:#f7fafc; padding:12px; border-radius:8px; min-height:400px;">
@@ -2032,9 +2204,12 @@ function init() {
     attInit();
     // 欠席登録初期化
     absInit();
-    // 区変管理 初期ロード + 10分ごと再取得
+    // 区変管理 初期ロード + 1分ごと再取得（タブ非表示中は止める）
     loadKubunHenkouList();
-    setInterval(loadKubunHenkouList, 60 * 1000); // 1分おきに自動更新（2026/4/27 社長依頼で 10分→1分）
+    setInterval(function() {
+        if (document.hidden) return;
+        loadKubunHenkouList();
+    }, 60 * 1000); // 1分おきに自動更新（2026/4/27 社長依頼で 10分→1分）
 }
 
 const TAB_STATE_KEY = 'yawaragi_board_active_tab';
@@ -2069,10 +2244,14 @@ function activateTab(tabName) {
         if (typeof loadCmContactsCache === 'function') loadCmContactsCache();
         // リロード時のタブ復元はDOM準備完了前に走るのでJSONPが失敗する。完全ロードまで待つ
         if (typeof loadIntakeList === 'function') {
+            const fire = () => setTimeout(loadIntakeList, 200);
             if (document.readyState === 'complete') {
-                setTimeout(loadIntakeList, 200);
+                fire();
             } else {
-                window.addEventListener('load', () => setTimeout(loadIntakeList, 200), { once: true });
+                let fired = false;
+                const safeFire = () => { if (!fired) { fired = true; fire(); } };
+                window.addEventListener('load', safeFire, { once: true });
+                setTimeout(safeFire, 2000); // load取り逃し対策の安全網
             }
         }
     }
@@ -2841,6 +3020,27 @@ function showToast(msg, duration) {
     setTimeout(() => t.classList.remove('show'), duration || 2000);
 }
 
+// ===== 同一ブラウザ内の他アプリ（出勤＆送迎表等）に欠席更新を通知 (2026-05-06追加) =====
+let _absenceBcChannel = null;
+function notifyAbsenceUpdate(dateStr) {
+    try {
+        if (!_absenceBcChannel) {
+            _absenceBcChannel = new BroadcastChannel('yawaragi-absence');
+        }
+        _absenceBcChannel.postMessage({
+            type: 'updated',
+            date: dateStr || '',
+            timestamp: Date.now()
+        });
+    } catch (e) {
+        // 古いブラウザは無視
+    }
+}
+// 欠席系のactionかどうか判定
+function _isAbsenceAction(action) {
+    return action === 'absence' || action === 'long_term_absence' || action === 'cancel_absence';
+}
+
 // ===== リトライ付きGAS POST送信 =====
 // 3回まで再試行。失敗時はスタッフに警告表示
 async function gasPost(data, label) {
@@ -2853,6 +3053,10 @@ async function gasPost(data, label) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
+            // 欠席系の更新を他アプリに通知（出勤＆送迎表のリアルタイム反映用）
+            if (data && _isAbsenceAction(data.action)) {
+                notifyAbsenceUpdate(data.date || data.dateFrom || data.startDate || '');
+            }
             return true; // ネットワーク送信成功
         } catch (err) {
             console.error('GAS送信エラー (' + i + '/' + maxRetries + '): ' + (label || ''), err);
@@ -2890,6 +3094,10 @@ async function gasPostAbsenceWithVerify(data, label) {
         const verified = await verifyAbsenceInGAS(data.name, data.dates ? data.dates[0] : data.startDate);
         if (verified) {
             showToast('✅ ' + (label || '送信') + ' 完了（通知も送信済み）', 3000);
+            // 同一ブラウザ内の他アプリに欠席更新を通知（2026-05-06追加）
+            if (data && _isAbsenceAction(data.action)) {
+                notifyAbsenceUpdate(data.date || (data.dates ? data.dates[0] : '') || data.startDate || '');
+            }
             return true;
         }
         console.warn('検証失敗 (' + i + '/' + maxRetries + '): GASに記録が見つからない → 再送信');
@@ -4334,6 +4542,8 @@ function mmRender() {
     mmRenderTasks();
     mmRenderStaff();
     mmRenderHaichi();
+    // 📧 共有メール対応セクション（2026/5/3追加）
+    if (typeof applyMailTasks === 'function') applyMailTasks();
     // 自動タスク警告
     try {
         const raw = localStorage.getItem('yawaragi_taskboard_v5');
@@ -4425,6 +4635,155 @@ const ABS_USER_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPD
 // yawaragiボードGAS（欠席登録・伝達事項・ケアマネ通知）
 const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 
+// ============================================================
+// ===== 📧 共有メール対応セクション（2026/5/3追加） =====
+// ミニミーティングタブ「① 今日のタスク」最上部に件数＋チェックボックス表示
+// 設計: docs/superpowers/specs/2026-05-03-メール対応タスク機能-design-v2.md
+// ============================================================
+const MM_MAIL_LS_PREFIX = 'yawaragi_mail_check_';
+const MM_MAIL_ALERT_HOUR = 17;
+const MM_MAIL_TAB_BASE_LABEL = '🌅ミニミーティング';
+
+function mmMailGetCheckState(date) {
+    try {
+        const raw = localStorage.getItem(MM_MAIL_LS_PREFIX + date);
+        if (!raw) return { care_manager: [], user_family: [] };
+        return JSON.parse(raw);
+    } catch (e) { return { care_manager: [], user_family: [] }; }
+}
+
+function mmMailSetCheckState(date, state) {
+    try { localStorage.setItem(MM_MAIL_LS_PREFIX + date, JSON.stringify(state)); }
+    catch (e) {}
+}
+
+function mmMailFetchCounts(date, cb) {
+    const cbName = '__mm_mail_cb_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    const timeout = setTimeout(function () { cleanup(); cb({ success: false, error: 'timeout' }); }, 10000);
+    function cleanup() {
+        clearTimeout(timeout);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = function (res) { cleanup(); cb(res); };
+    script.onerror = function () { cleanup(); cb({ success: false, error: 'network' }); };
+    script.src = ABS_BOARD_API_URL + '?action=mailTaskCounts&date=' + encodeURIComponent(date) + '&callback=' + cbName + '&t=' + Date.now();
+    document.head.appendChild(script);
+}
+
+function mmMailRenderBoxes(type, count, state, date) {
+    const id = type === 'care_manager' ? 'mm-mail-cm-boxes' : 'mm-mail-uf-boxes';
+    const container = document.getElementById(id);
+    if (!container) return;
+    container.innerHTML = '';
+    const arr = (state[type] || []).slice();
+    while (arr.length < count) arr.push(false);
+    if (arr.length > count) arr.length = count;
+    for (let i = 0; i < count; i++) {
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.className = 'mm-mail-check';
+        box.checked = !!arr[i];
+        box.dataset.idx = String(i);
+        box.addEventListener('change', function () {
+            const cur = mmMailGetCheckState(date);
+            if (!cur[type]) cur[type] = [];
+            while (cur[type].length < count) cur[type].push(false);
+            cur[type][i] = box.checked;
+            mmMailSetCheckState(date, cur);
+            mmMailUpdateAlert(date);
+        });
+        container.appendChild(box);
+    }
+    state[type] = arr;
+    mmMailSetCheckState(date, state);
+}
+
+function mmMailUpdateAlert(date) {
+    const section = document.getElementById('mm-mail-section');
+    const alertEl = document.getElementById('mm-mail-alert');
+    const completedEl = document.getElementById('mm-mail-completed');
+    if (!section || !alertEl || !completedEl) return;
+    const cmEl = document.getElementById('mm-mail-cm-count');
+    const ufEl = document.getElementById('mm-mail-uf-count');
+    const cm = parseInt(cmEl ? cmEl.textContent : '0', 10) || 0;
+    const uf = parseInt(ufEl ? ufEl.textContent : '0', 10) || 0;
+    const total = cm + uf;
+    const state = mmMailGetCheckState(date);
+    const cmDone = (state.care_manager || []).filter(Boolean).length;
+    const ufDone = (state.user_family || []).filter(Boolean).length;
+    const totalDone = cmDone + ufDone;
+
+    completedEl.style.display = (total > 0 && totalDone >= total) ? 'block' : 'none';
+
+    // 17:00以降アラートは「当日のみ」発火
+    const todayStr = toLocalDateStr();
+    const isToday = (date === todayStr);
+    const isAlertTime = (new Date()).getHours() >= MM_MAIL_ALERT_HOUR;
+    const hasUnchecked = total > totalDone;
+    const shouldAlert = isToday && isAlertTime && hasUnchecked;
+
+    if (shouldAlert) {
+        section.classList.add('alert-mode');
+        alertEl.style.display = 'block';
+    } else {
+        section.classList.remove('alert-mode');
+        alertEl.style.display = 'none';
+    }
+
+    // タブボタンに⚠️バッジ
+    const tabBtn = document.querySelector('.tab-btn[data-tab="meeting"]');
+    if (tabBtn) {
+        tabBtn.textContent = shouldAlert ? (MM_MAIL_TAB_BASE_LABEL + ' ⚠️') : MM_MAIL_TAB_BASE_LABEL;
+    }
+}
+
+function applyMailTasks() {
+    const section = document.getElementById('mm-mail-section');
+    if (!section) return;
+    const date = mmCurrentDate || toLocalDateStr();
+    const loadingEl = document.getElementById('mm-mail-loading');
+    const bodyEl = document.getElementById('mm-mail-body');
+    const errorEl = document.getElementById('mm-mail-error');
+    const emptyEl = document.getElementById('mm-mail-empty');
+    section.style.display = 'block';
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (bodyEl) bodyEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    mmMailFetchCounts(date, function (res) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (!res || !res.success) {
+            if (bodyEl) bodyEl.style.display = 'block';
+            if (errorEl) {
+                errorEl.textContent = '⚠️ メール件数の取得失敗（手動でGmailをご確認ください）';
+                errorEl.style.display = 'block';
+            }
+            return;
+        }
+        const data = res.data || { care_manager: 0, user_family: 0, updated_at: null };
+        if (!data.updated_at) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+        }
+        if (bodyEl) bodyEl.style.display = 'block';
+        document.getElementById('mm-mail-cm-count').textContent = String(data.care_manager || 0);
+        document.getElementById('mm-mail-uf-count').textContent = String(data.user_family || 0);
+        const state = mmMailGetCheckState(date);
+        mmMailRenderBoxes('care_manager', data.care_manager || 0, state, date);
+        mmMailRenderBoxes('user_family', data.user_family || 0, state, date);
+        mmMailUpdateAlert(date);
+    });
+}
+
+// 1分ごとに17:00アラート再判定（タブ開きっぱなし対策、タブ非表示中は止める）
+setInterval(function () {
+    if (document.hidden) return;
+    if (typeof mmCurrentDate === 'string' && mmCurrentDate) mmMailUpdateAlert(mmCurrentDate);
+}, 60 * 1000);
+
 // 利用者データキャッシュ
 let absUserCache = [];
 let absUserLoaded = false;
@@ -4475,7 +4834,24 @@ function absLoadUsersFromAPI() {
             }
 
             // APIの返すデータ形式をアプリ内形式に変換
-            absUserCache = (data.users || []).map(u => {
+            // data.users（配列）か data.patterns（{name: {days,unit,kana,care}}）の両対応
+            // 2026-05-18: cmName（担当ケアマネ氏名）も受け取るように追加
+            let rawUsers = Array.isArray(data.users) ? data.users : [];
+            if (rawUsers.length === 0 && data.patterns && typeof data.patterns === 'object') {
+                rawUsers = Object.keys(data.patterns).map(name => {
+                    const p = data.patterns[name] || {};
+                    return {
+                        name: name,
+                        kana: p.kana || '',
+                        days: p.days || '',
+                        ampm: p.unit || '',
+                        care: p.care || '',
+                        cmOffice: p.cmOffice || '',
+                        cmName: p.cmName || ''
+                    };
+                });
+            }
+            absUserCache = rawUsers.map(u => {
                 // days列（例: "月水金"）とampm列（例: "午前"）からpattern配列を作る
                 const pattern = absParsePattern(u.days, u.ampm);
                 return {
@@ -4483,7 +4859,8 @@ function absLoadUsersFromAPI() {
                     reading: u.kana || '',
                     pattern: pattern,
                     care: u.care || '',
-                    cmOffice: u.cmOffice || ''
+                    cmOffice: u.cmOffice || '',
+                    cmName: u.cmName || ''
                 };
             });
 
@@ -4703,6 +5080,7 @@ function absClearName() {
     absState.contact = '';
     absState.method = '';
     absState.contactDate = '';
+    if (typeof absHideDuplicateWarning === 'function') absHideDuplicateWarning();
 }
 
 // ----- 日付選択 -----
@@ -4712,9 +5090,21 @@ function absSelectDateType(type) {
         b.classList.toggle('active', b.dataset.type === type);
     });
 
-    const container = document.getElementById('abs-date-inputs');
+    // 単発系（today/specific/range）を選んだ時だけ注意書き表示
+    const singleWarning = document.getElementById('abs-single-warning');
+    if (singleWarning) {
+        singleWarning.style.display = (type === 'longterm') ? 'none' : 'block';
+    }
+
+    // 単発用と長期休み用の2つのコンテナを排他的に切り替える
+    const containerSingle = document.getElementById('abs-date-inputs');
+    const containerLongterm = document.getElementById('abs-date-inputs-longterm');
     const warning = document.getElementById('abs-date-warning');
     warning.style.display = 'none';
+
+    // 切替時はいったん両方クリア
+    containerSingle.innerHTML = '';
+    containerLongterm.innerHTML = '';
 
     const today = new Date();
     const todayStr = toLocalDateStr(today);
@@ -4722,7 +5112,7 @@ function absSelectDateType(type) {
     if (type === 'today') {
         absState.dateFrom = todayStr;
         absState.dateTo = todayStr;
-        container.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
+        containerSingle.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
             ${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}（${DAY_NAMES[today.getDay()]}）
         </p>`;
         // 通所日でない日でも警告だけ出して登録は可能にする
@@ -4731,12 +5121,12 @@ function absSelectDateType(type) {
     } else if (type === 'specific') {
         absState.dateFrom = '';
         absState.dateTo = '';
-        container.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
+        containerSingle.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
         absOnDateSpecific(todayStr);
     } else if (type === 'range') {
         absState.dateFrom = '';
         absState.dateTo = '';
-        container.innerHTML = `
+        containerSingle.innerHTML = `
             <div class="abs-date-range-wrap">
                 <input type="date" id="abs-date-from" value="${todayStr}" onchange="absOnDateRange()">
                 <span>〜</span>
@@ -4747,7 +5137,7 @@ function absSelectDateType(type) {
     } else if (type === 'longterm') {
         absState.dateFrom = todayStr;
         absState.dateTo = '';
-        container.innerHTML = `
+        containerLongterm.innerHTML = `
             <div style="margin-bottom:8px;">
                 <label style="font-weight:600;font-size:0.85rem;">いつから休み？</label>
                 <input type="date" id="abs-lt-start" value="${todayStr}" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;margin-top:4px;" onchange="absState.dateFrom=this.value">
@@ -4938,10 +5328,346 @@ function absUpdateConfirm() {
         <strong>連絡方法:</strong> ${absState.method}<br>
         <strong>連絡日:</strong> ${contactDateText}
     `;
+
+    // 単位ラジオの初期化（2026-05-16追加・「終日」廃止）
+    absInitUnitRadio();
+
+    // 確認ステップ表示時に最新GAS状態で重複チェック（2026-05-08二重申請防止）
+    absRefreshGasDuplicateCheck();
+}
+
+// 単位の自動判定（pattern取得失敗時のみラジオを強制表示）
+// 2026-05-16: 通所パターンと欠席日の曜日からunit自動判定する仕様（社長指摘）
+// 「両方欠席」概念は廃止（業務上は曜日違いで両日欠席するだけで、同日に両方欠席はない）
+function absInitUnitRadio() {
+    const radios = document.getElementsByName('abs-unit-radio');
+    const section = document.getElementById('abs-unit-section');
+    if (radios) radios.forEach(r => r.checked = false);
+    if (section) section.style.display = 'none';
+
+    const su = absState.selectedUser;
+    if (!su || !Array.isArray(su.pattern) || su.pattern.length === 0) {
+        // pattern 取得失敗 → ラジオを強制表示
+        if (section) section.style.display = 'block';
+    }
+    // それ以外は何も表示しない（absSubmit時に曜日ベースで自動判定）
+}
+
+// ============================================================
+// ===== 二重申請防止（2026-05-08追加） =====
+// ============================================================
+
+// 登録対象日付リストを作る（dateType に応じて単発/期間/長期休みを処理）
+function absBuildTargetDates() {
+    const dates = [];
+    if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
+        const start = new Date(absState.dateFrom);
+        const end = new Date(absState.dateTo);
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            dates.push(toLocalDateStr(d));
+        }
+    } else if (absState.dateFrom) {
+        dates.push(absState.dateFrom);
+    }
+    return dates;
+}
+
+// 重複検知（ローカル+キャッシュGAS両方をチェック）
+function absDetectDuplicates(name, dates, isLongterm) {
+    const dupDates = [];
+    const dupSources = [];
+    const cachedGas = window._cachedGasAbsences || [];
+    const cachedLT = window._cachedLongTerm || [];
+    const existingLocal = absGetRecords();
+
+    function pushSource(date, reporter, timestamp) {
+        if (!dupSources.find(s => s.date === date)) {
+            dupSources.push({ date: date, reporter: reporter || '不明', timestamp: timestamp || '' });
+        }
+    }
+
+    if (isLongterm) {
+        const startDate = dates[0];
+        if (!startDate) return { dupDates, dupSources };
+        // 既存の長期休み（同一開始日・未再開）
+        cachedLT.forEach(g => {
+            const gStart = g.date || g.startDate;
+            if (g.name === name && gStart === startDate && !g.resumeDate) {
+                if (!dupDates.includes(startDate)) dupDates.push(startDate);
+                pushSource(startDate, g.reporter, g.timestamp);
+            }
+        });
+        // ローカル保存中の長期休み申請
+        existingLocal.forEach(r => {
+            if (r.userName === name && r.dateType === 'longterm' && r.dateFrom === startDate) {
+                if (!dupDates.includes(startDate)) dupDates.push(startDate);
+                pushSource(startDate, r.contact, r.timestamp);
+            }
+        });
+    } else {
+        dates.forEach(targetDate => {
+            // GAS側
+            cachedGas.forEach(g => {
+                if (g.name === name && g.date === targetDate) {
+                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
+                    pushSource(targetDate, g.reporter, g.timestamp);
+                }
+            });
+            // ローカル
+            existingLocal.forEach(r => {
+                if (r.userName !== name || r.dateType === 'longterm') return;
+                let match = false;
+                if (r.dateType === 'range' && r.dateFrom && r.dateTo) {
+                    match = (r.dateFrom <= targetDate && targetDate <= r.dateTo);
+                } else {
+                    match = (r.dateFrom === targetDate);
+                }
+                if (match) {
+                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
+                    pushSource(targetDate, r.contact, r.timestamp);
+                }
+            });
+        });
+    }
+    return { dupDates: dupDates.sort(), dupSources };
+}
+
+// 警告バナー表示（送信ボタンも disable）
+function absShowDuplicateWarning(name, dup, isLongterm) {
+    const banner = document.getElementById('abs-dup-warning');
+    if (!banner) return;
+
+    const sourcesHtml = dup.dupSources.map(s => {
+        const ts = s.timestamp ? `（${s.timestamp}）` : '';
+        return `<li style="margin:4px 0;">${absFormatDate(s.date)}: <strong>${s.reporter}</strong>さん${ts}</li>`;
+    }).join('');
+
+    let title, footer;
+    if (isLongterm) {
+        title = '⚠️ すでに長期休みが登録されています';
+        footer = '追加で送信したい場合は、先に既存の長期休みをキャンセルしてください。';
+    } else if (dup.dupDates.length === 1) {
+        title = '⚠️ すでに申請済みです';
+        footer = '追加で送信したい場合は、先に登録済みの行をキャンセルしてから再登録してください。';
+    } else {
+        title = '⚠️ 以下の日はすでに申請済みです';
+        footer = 'すべての日が登録できる状態になるまで送信できません。重複している日は、先に登録済みの行をキャンセルしてください。';
+    }
+
+    // 上書きボタン：単発1件かつ長期休みでない場合のみ表示
+    const showOverwriteBtn = !isLongterm && dup.dupDates.length === 1;
+    const overwriteBtnHtml = showOverwriteBtn ? `
+        <div style="margin-top:12px;border-top:1px dashed #fca5a5;padding-top:12px;">
+            <button id="abs-overwrite-btn" type="button"
+                style="width:100%;padding:12px 16px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-size:0.95rem;font-weight:700;cursor:pointer;"
+                onclick="absOverwriteAbsence()">
+                📝 この内容で上書きする
+            </button>
+            <div style="font-size:0.78rem;color:#92400e;margin-top:6px;text-align:center;">
+                既存の登録を取り消し、今入力した内容で再登録します
+            </div>
+        </div>
+    ` : '';
+
+    // 2026-05-16: キャンセル（フォームクリア）ボタン追加・社長指摘
+    const cancelBtnHtml = `
+        <div style="margin-top:12px;">
+            <button type="button"
+                style="width:100%;padding:10px 16px;background:#fff;color:#4b5563;border:1.5px solid #9ca3af;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer;"
+                onclick="absCancelDuplicateForm()">
+                ✕ やっぱり登録しない（フォームをクリア）
+            </button>
+        </div>
+    `;
+
+    banner.innerHTML = `
+        <div style="font-weight:700;color:#dc2626;font-size:1rem;margin-bottom:8px;">${title}</div>
+        <div style="font-size:0.92rem;color:#374151;margin-bottom:6px;"><strong>${name}</strong>様</div>
+        <ul style="font-size:0.9rem;color:#374151;margin:6px 0 8px 20px;padding:0;">${sourcesHtml}</ul>
+        <div style="font-size:0.85rem;color:#7f1d1d;line-height:1.5;">${footer}</div>
+        ${overwriteBtnHtml}
+        ${cancelBtnHtml}
+    `;
+    banner.style.display = 'block';
+
+    const btn = document.getElementById('abs-submit-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.dupBlocked = '1';
+        btn.textContent = 'すでに申請済み';
+    }
+}
+
+// 重複警告から「やっぱり登録しない」ボタンの処理（2026-05-16追加・社長指摘）
+// バナーを閉じてフォームを最初に戻す
+function absCancelDuplicateForm() {
+    absHideDuplicateWarning();
+    if (typeof absClearName === 'function') absClearName();
+    showToast('登録をキャンセルしました');
+}
+
+// 警告バナー非表示（送信ボタン復活）
+function absHideDuplicateWarning() {
+    const banner = document.getElementById('abs-dup-warning');
+    if (banner) {
+        banner.innerHTML = '';
+        banner.style.display = 'none';
+    }
+    const btn = document.getElementById('abs-submit-btn');
+    if (btn && btn.dataset.dupBlocked === '1') {
+        btn.disabled = false;
+        delete btn.dataset.dupBlocked;
+        btn.textContent = 'この内容で登録する';
+    }
+}
+
+// 既存の単発登録を取り消して、入力中の内容で再登録する（上書き）
+async function absOverwriteAbsence() {
+    if (!absState.selectedUser || !absState.dateFrom) return;
+    if (absState.dateType === 'longterm') return; // 長期休みは対象外
+
+    const name = absState.selectedUser.name;
+    const dateStr = absState.dateFrom;
+    const dateLabel = absFormatDate(dateStr);
+
+    if (!confirm(`${name}様の ${dateLabel} の登録を、今入力した内容で上書きします。よろしいですか？`)) {
+        return;
+    }
+
+    // ボタン二度押し防止
+    const ovBtn = document.getElementById('abs-overwrite-btn');
+    if (ovBtn) {
+        ovBtn.disabled = true;
+        ovBtn.textContent = '上書き中...';
+    }
+
+    // 1) 既存登録をキャンセル
+    let cancelOk = false;
+    try {
+        cancelOk = await gasPostAbsenceWithVerify(
+            { action: 'cancel_absence', name, date: dateStr, unit: '終日', canceller: absReceptionist || '' },
+            `${name}様の${dateLabel}の登録取消（上書き準備）`
+        );
+    } catch (e) {
+        cancelOk = false;
+    }
+
+    if (!cancelOk) {
+        showToast('⚠️ 既存登録のキャンセルに失敗しました。時間をおいて再度お試しください', 5000);
+        if (ovBtn) {
+            ovBtn.disabled = false;
+            ovBtn.textContent = '📝 この内容で上書きする';
+        }
+        return;
+    }
+
+    // 重複バナーを閉じて送信ボタンを復活
+    absHideDuplicateWarning();
+
+    // 2) 通常の送信フローを呼ぶ（absSubmit 内で新規登録される・成功/失敗トーストは内蔵側に任せる）
+    absSubmit({ skipDuplicateCheck: true });
+}
+
+// GAS最新データで重複チェック（JSONP・確認ステップ表示時に呼ぶ）
+function absRefreshGasDuplicateCheck() {
+    if (!absState.selectedUser || !absState.dateFrom) return;
+    const isLongterm = absState.dateType === 'longterm';
+    const dates = absBuildTargetDates();
+    if (dates.length === 0) return;
+
+    // まずキャッシュベースで即座に判定（バナーが既に出ている場合の維持）
+    const cachedDup = absDetectDuplicates(absState.selectedUser.name, dates, isLongterm);
+    if (cachedDup.dupDates.length > 0) {
+        absShowDuplicateWarning(absState.selectedUser.name, cachedDup, isLongterm);
+    } else {
+        absHideDuplicateWarning();
+    }
+
+    // ユニット判定
+    let unit = '午前';
+    if (absState.selectedUser.pattern && absState.selectedUser.pattern.length > 0) {
+        const hasAm = absState.selectedUser.pattern.some(p => p.unit === 'am');
+        const hasPm = absState.selectedUser.pattern.some(p => p.unit === 'pm');
+        if (hasAm && hasPm) unit = '終日';
+        else if (hasPm) unit = '午後';
+    }
+
+    // GAS最新データ問い合わせ
+    absCheckDuplicateGas({
+        name: absState.selectedUser.name,
+        dates: dates,
+        unit: unit,
+        type: isLongterm ? 'longterm' : 'absence',
+        startDate: isLongterm ? dates[0] : ''
+    }).then(res => {
+        if (!res || !res.success) return; // エラー時はキャッシュ判定のまま
+        if (isLongterm) {
+            if (res.duplicate && res.existing) {
+                const dup = {
+                    dupDates: [res.existing.startDate],
+                    dupSources: [{ date: res.existing.startDate, reporter: res.existing.reporter, timestamp: res.existing.timestamp }]
+                };
+                absShowDuplicateWarning(absState.selectedUser.name, dup, true);
+            } else if (cachedDup.dupDates.length === 0) {
+                absHideDuplicateWarning();
+            }
+        } else {
+            const list = res.existingDates || [];
+            if (list.length > 0) {
+                const dup = {
+                    dupDates: list.map(x => x.date).sort(),
+                    dupSources: list.map(x => ({ date: x.date, reporter: x.reporter, timestamp: x.timestamp }))
+                };
+                absShowDuplicateWarning(absState.selectedUser.name, dup, false);
+            } else if (cachedDup.dupDates.length === 0) {
+                absHideDuplicateWarning();
+            }
+        }
+    });
+}
+
+// JSONP で GAS check_duplicate_absence を呼ぶ
+function absCheckDuplicateGas(opts) {
+    return new Promise(resolve => {
+        const cbName = '_chkDup_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        const params = new URLSearchParams({
+            action: 'check_duplicate_absence',
+            callback: cbName,
+            name: opts.name,
+            type: opts.type || 'absence'
+        });
+        if (opts.type === 'longterm') {
+            params.set('startDate', opts.startDate || '');
+        } else {
+            params.set('dates', (opts.dates || []).join(','));
+            params.set('unit', opts.unit || '午前');
+        }
+        const script = document.createElement('script');
+        script.src = ABS_BOARD_API_URL + '?' + params.toString() + '&t=' + Date.now();
+        const timeout = setTimeout(() => {
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve({ success: false, error: 'timeout' });
+        }, 8000);
+        window[cbName] = function (data) {
+            clearTimeout(timeout);
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve(data || { success: false });
+        };
+        script.onerror = () => {
+            clearTimeout(timeout);
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve({ success: false, error: 'network' });
+        };
+        document.body.appendChild(script);
+    });
 }
 
 // ----- 登録 -----
-function absSubmit() {
+async function absSubmit(opts) {
+    opts = opts || {};
     if (!absState.selectedUser || !absState.reason || !absState.contact || !absState.method || !absState.contactDate) {
         alert('すべての項目を入力してください');
         return;
@@ -4962,61 +5688,17 @@ function absSubmit() {
         dates.push(absState.dateFrom);
     }
 
-    // ===== 重複チェック（長期休み以外） =====
-    // 同じ利用者・同じ日付ですでに登録があれば、上書き確認する
-    if (absState.dateType !== 'longterm') {
+    // ===== 重複チェック（2026-05-08二重申請防止・上書きモード完全廃止） =====
+    // 重複ありなら警告バナー表示＋送信中止。再送が必要なら「先にキャンセル→再登録」の運用
+    // 上書きフロー（absOverwriteAbsence）から呼ばれた場合は skipDuplicateCheck=true でスキップ
+    if (!opts.skipDuplicateCheck) {
         const targetName = absState.selectedUser.name;
-        const existingLocal = absGetRecords();
-        const cachedGas = window._cachedGasAbsences || [];
-
-        // 重複している日付を集める
-        const dupDates = [];           // 重複した日付の文字列リスト
-        const dupLocalIds = new Set(); // 削除対象のlocalStorage ID
-
-        dates.forEach(targetDate => {
-            // localStorage側のチェック
-            existingLocal.forEach(r => {
-                if (r.userName !== targetName) return;
-                let match = false;
-                if (r.dateType === 'range' && r.dateFrom && r.dateTo) {
-                    match = (r.dateFrom <= targetDate && targetDate <= r.dateTo);
-                } else {
-                    match = (r.dateFrom === targetDate);
-                }
-                if (match) {
-                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
-                    dupLocalIds.add(r.id);
-                }
-            });
-            // GAS側のチェック
-            cachedGas.forEach(g => {
-                if (g.name === targetName && g.date === targetDate) {
-                    if (!dupDates.includes(targetDate)) dupDates.push(targetDate);
-                }
-            });
-        });
-
-        if (dupDates.length > 0) {
-            const dupDateText = dupDates
-                .sort()
-                .map(d => absFormatDate(d))
-                .join('、');
-            const ok = confirm(
-                `${targetName}さんは以下の日付ですでに欠席登録されています。\n\n${dupDateText}\n\n上書きしますか？\n（古い登録を取り消して、新しい内容で登録します）\n\n「キャンセル」を押すと登録を中止します。`
-            );
-            if (!ok) return;
-
-            // 古いlocalStorageレコードを削除
-            if (dupLocalIds.size > 0) {
-                let recs = absGetRecords();
-                recs = recs.filter(r => !dupLocalIds.has(r.id));
-                absSaveRecords(recs);
-            }
-
-            // 古いGASレコードも削除（重複日ごとにキャンセル送信）
-            dupDates.forEach(dateStr => {
-                gasPost({ action: 'cancel_absence', name: targetName, date: dateStr, unit: '終日' }, '重複取消');
-            });
+        const isLongterm = absState.dateType === 'longterm';
+        const dup = absDetectDuplicates(targetName, dates, isLongterm);
+        if (dup.dupDates.length > 0) {
+            absShowDuplicateWarning(targetName, dup, isLongterm);
+            showToast('⚠️ すでに申請済みです。先に登録済みの行をキャンセルしてください', 5000);
+            return;
         }
     }
 
@@ -5025,14 +5707,46 @@ function absSubmit() {
     btn.disabled = true;
     btn.textContent = '登録中...';
 
-    // 午前/午後判定
-    let unit = '午前';
-    if (absState.selectedUser.pattern && absState.selectedUser.pattern.length > 0) {
-        const hasAm = absState.selectedUser.pattern.some(p => p.unit === 'am');
-        const hasPm = absState.selectedUser.pattern.some(p => p.unit === 'pm');
-        if (hasAm && hasPm) unit = '終日';
-        else if (hasPm) unit = '午後';
+    // 単位判定（2026-05-16: 各日付の曜日から自動判定・unit別dates グループ化）
+    // 宮崎さん（月午後+木午前）が期間欠席するケースに対応
+    const sectionEl = document.getElementById('abs-unit-section');
+    const checkedRadio = document.querySelector('input[name="abs-unit-radio"]:checked');
+    const dateGroups = { '午前': [], '午後': [] };
+
+    if (sectionEl && sectionEl.style.display !== 'none') {
+        // pattern取得失敗 → ラジオ必須・全日付に同じunit を適用
+        if (!checkedRadio) {
+            alert('単位（午前/午後）を選択してください');
+            btn.disabled = false;
+            btn.textContent = 'この内容で登録する';
+            return;
+        }
+        dateGroups[checkedRadio.value] = dates.slice();
+    } else {
+        // 通常: 各日付の曜日からunit判定
+        const pat = absState.selectedUser.pattern || [];
+        for (const dateStr of dates) {
+            const d = new Date(dateStr);
+            const dow = d.getDay();
+            const matched = pat.filter(p => p.day === dow);
+            if (matched.length === 0) continue; // 通所日でない → スキップ
+            for (const m of matched) {
+                const u = m.unit === 'pm' ? '午後' : '午前';
+                if (!dateGroups[u].includes(dateStr)) dateGroups[u].push(dateStr);
+            }
+        }
     }
+
+    // 有効unit（dates が1件以上ある unit）の抽出
+    const activeUnits = Object.keys(dateGroups).filter(u => dateGroups[u].length > 0);
+    if (activeUnits.length === 0) {
+        alert('指定期間内に通所予定日がありません');
+        btn.disabled = false;
+        btn.textContent = 'この内容で登録する';
+        return;
+    }
+    const units = activeUnits;
+    const unit = units[0];  // 既存コード互換用フォールバック（cmEmail判定など）
 
     // 長期休みの場合は別アクション
     if (absState.dateType === 'longterm') {
@@ -5040,6 +5754,7 @@ function absSubmit() {
             action: 'long_term_absence',
             name: absState.selectedUser.name,
             startDate: absState.dateFrom,
+            units: units,  // 2026-05-16: units 配列で送信（「終日」廃止）
             reason: reason,
             reporter: absReceptionist || '',
             contact: contact,
@@ -5047,38 +5762,118 @@ function absSubmit() {
         };
         gasPostAbsenceWithVerify(ltData, absState.selectedUser.name + '様の長期休み登録').then(ok => {
             if (!ok) console.error('長期休み登録: GAS送信失敗');
+            // 検証完了後に最新データで再描画（2026-05-06追加・上書き表示遅延対策）
+            try {
+                const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+                delete cache[absCurrentMonth];
+                localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+            } catch {}
+            absLoadLongTermList();
+            absRenderUpcomingList();
         });
 
         absClearName();
         btn.disabled = false;
         btn.textContent = 'この内容で登録する';
         showToast('長期休みを登録中...', 3000);
-        setTimeout(() => absLoadLongTermList(), 4000);
         return;
     }
 
-    // GASにPOST送信
-    const postData = {
-        action: 'absence',
-        name: absState.selectedUser.name,
-        dates: dates,
-        unit: unit,
-        reason: reason,
-        reporter: absReceptionist || contact,
-        contact: contact,
-        method: absState.method,
-        contactDate: absState.contactDate,
-        cmOffice: absState.selectedUser.cmOffice || '',
-        cmEmail: '',
-        cmName: ''
-    };
+    // ★ 2026-05-10: ケアマネメール送信確認ポップアップ
+    // ★ 2026-05-13: 電話派ケアマネ判定追加（method≠メール→電話モード）
+    const cmOffice = absState.selectedUser.cmOffice || '';
+    const cmNameInit = absState.selectedUser.cmName || '';
+    let cmEmailInit = '';
+    let cmMethod = '';
+    if (cmOffice && cmNameInit) {
+        const c = await fetchCmContact(cmOffice, cmNameInit);
+        if (c.found) {
+            cmEmailInit = c.email || '';
+            cmMethod = c.method || '';
+        }
+    }
+    let mailCmName = cmNameInit;
+    let mailCmEmail = '';
+    let mailSend = false;
+    let mailCustomBody = '';
+    let phoneCalled = false;
+    if (cmOffice) {
+        if (isCmPhoneMode(cmMethod)) {
+            // 電話派モード
+            const r = await showAbsencePhoneConfirm({
+                userName: absState.selectedUser.name,
+                dates: dates,
+                reason: reason,
+                cmOffice: cmOffice,
+                cmName: cmNameInit
+            });
+            if (r.phoneCalled) phoneCalled = true;
+        } else {
+            // メール派モード（未登録含む・従来通り）
+            const r = await showAbsenceMailConfirm({
+                userName: absState.selectedUser.name,
+                dates: dates,
+                reason: reason,
+                supplement: '',
+                cmOffice: cmOffice,
+                cmName: cmNameInit,
+                cmEmail: cmEmailInit,
+                reporter: (absReceptionist || contact || '')
+            });
+            if (r.send) {
+                mailSend = true;
+                mailCmName = r.cmName;
+                mailCmEmail = r.email;
+                mailCustomBody = r.body || '';
+            }
+        }
+    }
 
-    // GAS送信（検証付きリトライ・バックグラウンドで実行）
-    gasPostAbsenceWithVerify(postData, absState.selectedUser.name + '様の欠席登録').then(ok => {
-        if (!ok) console.error('欠席登録: GAS送信失敗（' + absState.selectedUser.name + '）');
-    });
+    // GASにPOST送信（2026-05-16: unit別 dates グループで送信）
+    // 宮崎さん（月午後+木午前）の期間欠席時、月曜午後と木曜午前を別々に登録
+    // メール送信は1件目のみ（2件目以降は cmEmail を空にして再送防止）
+    for (let uIdx = 0; uIdx < units.length; uIdx++) {
+        const u = units[uIdx];
+        const datesForUnit = dateGroups[u];
+        const isFirst = (uIdx === 0);
+        const postData = {
+            action: 'absence',
+            name: absState.selectedUser.name,
+            dates: datesForUnit,
+            unit: u,
+            reason: reason,
+            reporter: absReceptionist || contact,
+            contact: contact,
+            method: absState.method,
+            contactDate: absState.contactDate,
+            cmOffice: cmOffice,
+            cmEmail: isFirst && mailSend ? mailCmEmail : '',
+            cmName: mailCmName,
+            cmCustomBody: isFirst && mailSend ? mailCustomBody : '',
+            contactMethod: phoneCalled ? 'phone' : (isFirst && mailSend ? 'mail' : '')
+        };
+
+        // GAS送信（検証付きリトライ・バックグラウンドで実行）
+        gasPostAbsenceWithVerify(postData, absState.selectedUser.name + '様の' + u + '欠席登録').then(ok => {
+            if (!ok) console.error('欠席登録: GAS送信失敗（' + absState.selectedUser.name + ' / ' + u + '）');
+            // 検証完了後に最新データで再描画（2026-05-06追加・上書き表示遅延対策）
+            try {
+                const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+                delete cache[absCurrentMonth];
+                localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+            } catch {}
+            absRenderUpcomingList();
+        });
+    }
 
     // localStorageにも保存（即座に画面反映するため）
+    // 2026-05-18: ケアマネ連絡ステータス（cmNotified/cmNotifiedAt）も保存し、
+    // 施設PC自身でも即「✉ ケアマネ連絡済」バッジが出るようにする
+    const nowLocal = new Date();
+    let localCmNotified = '';
+    if (mailSend) localCmNotified = '送信済';
+    else if (phoneCalled) localCmNotified = '電話連絡済';
+    else localCmNotified = 'メールなし';
     const record = {
         id: Date.now(),
         userName: absState.selectedUser.name,
@@ -5089,8 +5884,12 @@ function absSubmit() {
         contact: contact,
         method: absState.method,
         contactDate: absState.contactDate,
-        registeredAt: new Date().toISOString(),
-        registeredBy: absReceptionist
+        registeredAt: nowLocal.toISOString(),
+        registeredBy: absReceptionist,
+        cmNotified: localCmNotified,
+        cmNotifiedAt: (mailSend || phoneCalled) ? nowLocal.toISOString() : '',
+        cmOffice: cmOffice,
+        cmName: mailCmName || cmNameInit
     };
 
     const records = absGetRecords();
@@ -5284,7 +6083,12 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             registeredBy: r.registeredBy,
             contactDate: r.contactDate || '',
             needsDetail: !!r.needsDetail,
-            isLongTerm: false
+            isLongTerm: false,
+            // 2026-05-18: ケアマネ連絡ステータスも引き継ぎ（施設PC自身で即バッジ反映）
+            cmNotified: r.cmNotified || '',
+            cmNotifiedAt: r.cmNotifiedAt || '',
+            cmOffice: r.cmOffice || '',
+            cmName: r.cmName || ''
         });
     });
 
@@ -5303,6 +6107,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             contact: g.reporter || '', method: '',
             registeredBy: '',
             contactDate: g.contactDate || '',
+            cmNotified: g.cmNotified || '',
             isLongTerm: false
         });
     });
@@ -5330,7 +6135,27 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         });
     });
 
-    merged.sort((a, b) => b.dateFrom.localeCompare(a.dateFrom));
+    // 2026-05-16: 「今日に近い順」ソート（社長指摘・今日の欠席が埋もれる問題対応）
+    // 今日以降は昇順（今日→未来）、過去は降順（近い過去→遠い過去）でその下に
+    // 長期休み継続中（再開予定日が未定 or 今日以降）は「今日」扱いで未来側の先頭付近へ
+    const _nowSort = new Date();
+    const _todaySort = _nowSort.getFullYear() + '-' +
+        String(_nowSort.getMonth() + 1).padStart(2, '0') + '-' +
+        String(_nowSort.getDate()).padStart(2, '0');
+    const _sortKey = (r) => {
+        if (r.isLongTerm && (!r.resumeDate || r.resumeDate >= _todaySort)) return _todaySort;
+        return r.dateFrom;
+    };
+    merged.sort((a, b) => {
+        const aKey = _sortKey(a);
+        const bKey = _sortKey(b);
+        const aFuture = aKey >= _todaySort;
+        const bFuture = bKey >= _todaySort;
+        if (aFuture && !bFuture) return -1;       // 今日以降 を上に
+        if (!aFuture && bFuture) return 1;
+        if (aFuture) return aKey.localeCompare(bKey);  // 今日以降同士は昇順
+        return bKey.localeCompare(aKey);                // 過去同士は降順
+    });
 
     // 件数表示を更新
     const countEl = document.getElementById('abs-upcoming-count');
@@ -5363,13 +6188,50 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         const needsDetail = !r.isLongTerm && (r.needsDetail || (!r.contact && !r.method));
         const warnTag = needsDetail ? '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">⚠ 詳細未入力</span>' : '';
         const ltTag = r.isLongTerm ? '<span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">長期休み</span>' : '';
+        let mailTag = '';
+        if (!r.isLongTerm) {
+            // 2026-05-18: 送信時刻と送信先をバッジに表示（詳細はメール本文で確認の方針）
+            const cmTooltip = [r.cmOffice, r.cmName ? r.cmName + '様' : ''].filter(Boolean).join(' / ');
+            const sentTimeStr = (function() {
+                if (!r.cmNotifiedAt) return '';
+                try {
+                    const dt = new Date(r.cmNotifiedAt);
+                    if (isNaN(dt.getTime())) return '';
+                    const mm = dt.getMonth() + 1;
+                    const dd = dt.getDate();
+                    const hh = String(dt.getHours()).padStart(2,'0');
+                    const mi = String(dt.getMinutes()).padStart(2,'0');
+                    return ' ' + mm + '/' + dd + ' ' + hh + ':' + mi;
+                } catch { return ''; }
+            })();
+            if (r.cmNotified === '送信済') {
+                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ボード経由でメール送信されました（送信先: ' + cmTooltip + ' / 詳細は r.d-yawaragi@ 受信トレイで確認できます）">✉ メール送信済（自動）' + sentTimeStr + '</span>';
+            } else if (r.cmNotified === '手動メール送信済') {
+                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + cmTooltip + ' にGmailから手動で送信したものとして記録されています">✉ メール送信済（手動）' + sentTimeStr + '</span>';
+            } else if (r.cmNotified === '下書き保存') {
+                mailTag = '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="下書きとして保存されたため未送信です。Gmail下書きから送信してください">⚠ 下書きのまま（未送信）</span>';
+            } else if (r.cmNotified === '電話連絡済') {
+                mailTag = '<span style="background:#3182ce;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + cmTooltip + ' に電話で連絡済み">📞 電話連絡済' + sentTimeStr + '</span>';
+            } else if (r.cmNotified && r.cmNotified.indexOf('エラー') === 0) {
+                mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + r.cmNotified.replace(/"/g,'&quot;') + '">⚠ メール失敗</span>';
+            } else if (r.cmNotified === 'メールなし' || !r.cmNotified) {
+                const safeName = r.userName.replace(/'/g,"\\'");
+                mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネへの連絡がまだです">🔴 ケアマネ連絡未</span>'
+                    + '<button onclick="markCmPhoneCalled(\'' + safeName + '\',\'' + r.dateFrom + '\')" '
+                    + 'style="margin-left:6px;padding:2px 8px;font-size:0.7rem;background:#3182ce;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
+                    + 'title="電話で連絡済みにマーク">📞済にする</button>'
+                    + '<button onclick="markCmMailSent(\'' + safeName + '\',\'' + r.dateFrom + '\')" '
+                    + 'style="margin-left:4px;padding:2px 8px;font-size:0.7rem;background:#16a085;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
+                    + 'title="Gmailから手動でメール送信した場合はこちら">✉ メール済にする</button>';
+            }
+        }
         let rowStyle = '';
         if (r.isLongTerm) rowStyle = 'border-left:4px solid #e53e3e;background:#fff5f5;';
         else if (needsDetail) rowStyle = 'border-left:4px solid #fb923c;background:#fff7ed;';
         return `
         <div class="abs-record" style="${rowStyle}">
             <div class="abs-record-main">
-                <div class="abs-record-name">${r.userName}${ltTag}${warnTag}</div>
+                <div class="abs-record-name">${r.userName}${ltTag}${mailTag}${warnTag}</div>
                 <div class="abs-record-detail">
                     ${dateText}　理由: ${r.reason}${r.contact ? '　連絡者: ' + r.contact : ''}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
                 </div>
@@ -5381,66 +6243,72 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
 }
 
 function absDeleteRecord(id) {
-    if (!confirm('この欠席記録を取り消しますか？')) return;
-    let records = absGetRecords();
-    const target = records.find(r => r.id === id);
+    const targetPreview = absGetRecords().find(r => r.id === id);
+    const nameLabel = targetPreview ? (targetPreview.userName + '様の欠席記録') : 'この欠席記録';
+    absPromptCanceller('欠席を取り消す', nameLabel + 'を取り消します', function(canceller) {
+        let records = absGetRecords();
+        const target = records.find(r => r.id === id);
 
-    // GAS側のデータも削除
-    if (target) {
-        const dates = [];
-        if (target.dateType === 'range' && target.dateFrom && target.dateTo) {
-            const start = new Date(target.dateFrom);
-            const end = new Date(target.dateTo);
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                dates.push(toLocalDateStr(d));
+        // GAS側のデータも削除
+        if (target) {
+            const dates = [];
+            if (target.dateType === 'range' && target.dateFrom && target.dateTo) {
+                const start = new Date(target.dateFrom);
+                const end = new Date(target.dateTo);
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    dates.push(toLocalDateStr(d));
+                }
+            } else {
+                dates.push(target.dateFrom);
             }
-        } else {
-            dates.push(target.dateFrom);
+            // 各日付のGASデータを削除
+            dates.forEach(dateStr => {
+                gasPost({ action: 'cancel_absence', name: target.userName, date: dateStr, unit: '終日', canceller: canceller }, '欠席取消');
+            });
         }
-        // 各日付のGASデータを削除
-        dates.forEach(dateStr => {
-            gasPost({ action: 'cancel_absence', name: target.userName, date: dateStr, unit: '終日' }, '欠席取消');
-        });
-    }
 
-    // ローカルデータ削除
-    records = records.filter(r => r.id !== id);
-    absSaveRecords(records);
+        // ローカルデータ削除
+        records = records.filter(r => r.id !== id);
+        absSaveRecords(records);
 
-    // 出席予定キャッシュもクリア（次回GASから再取得）
-    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+        // 出席予定キャッシュもクリア（次回GASから再取得）
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
 
-    absRenderTodayList();
-    absRenderUpcomingList();
-    showToast('欠席を取り消しました');
+        absRenderTodayList();
+        absRenderUpcomingList();
+        showToast('欠席を取り消しました');
 
-    // 出席予定タブを再読み込み
-    attLoad();
+        // 出席予定タブを再読み込み
+        attLoad();
+    });
 }
 
 // GAS登録済み（ローカルに無い）欠席の取消
 function absDeleteGasRecord(userName, dateFrom) {
-    if (!confirm(userName + '様 ' + absFormatDate(dateFrom) + ' の欠席を取り消しますか？')) return;
-    gasPost({ action: 'cancel_absence', name: userName, date: dateFrom, unit: '終日' }, '欠席取消');
+    absPromptCanceller('欠席を取り消す', userName + '様 ' + absFormatDate(dateFrom) + ' の欠席を取り消します', function(canceller) {
+        gasPost({ action: 'cancel_absence', name: userName, date: dateFrom, unit: '終日', canceller: canceller }, '欠席取消');
 
-    // 出席予定キャッシュもクリア（次回GASから再取得）
-    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+        // 出席予定キャッシュもクリア（次回GASから再取得）
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
 
-    // UIから即座に削除（楽観的更新）
-    if (window._cachedGasAbsences) {
-        window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === userName && g.date === dateFrom));
-        absRenderUpcomingListFromData(window._cachedGasAbsences);
-    } else {
-        absRenderUpcomingList();
-    }
-    absRenderTodayList();
-    showToast('欠席を取り消しました');
-    attLoad();
+        // UIから即座に削除（楽観的更新）
+        if (window._cachedGasAbsences) {
+            window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === userName && g.date === dateFrom));
+            absRenderUpcomingListFromData(window._cachedGasAbsences);
+        } else {
+            absRenderUpcomingList();
+        }
+        absRenderTodayList();
+        showToast('欠席を取り消しました');
+        attLoad();
+    });
 }
 
 // ===== 長期休み一覧 =====
 // 長期休み利用者の再開予定マップ（出席予定タブからも参照）
 let absLongTermMap = {};
+// 当日が再開日の利用者リスト（再開バッジ用・出席予定タブで参照）
+let attResumedTodayNames = [];
 
 function absRenderLongTermList(longTermData) {
     // 重複排除（名前単位で最新レコードのみ残す＝開始日が一番新しいもの）
@@ -5473,6 +6341,9 @@ function absRenderLongTermList(longTermData) {
         try { attRender(attLastData); } catch(e) {}
     }
 
+    // キャッシュ更新（連絡入力ダイアログから参照）
+    absLongTermFullCache = longTermData || [];
+
     const el = document.getElementById('abs-longterm-list');
     if (!longTermData || longTermData.length === 0) {
         el.innerHTML = '<span style="color:#a0aec0;font-size:0.85rem;">長期休み中の利用者はいません</span>';
@@ -5481,31 +6352,222 @@ function absRenderLongTermList(longTermData) {
     let html = '';
     longTermData.forEach(lt => {
         const startDate = absFormatDate(lt.date);
-        const resumeText = lt.resumeDate ? `<span style="font-size:0.82rem;color:#38a169;font-weight:700;margin-left:8px;">${absFormatDate(lt.resumeDate)}より再開予定</span>` : '';
-        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 8px;border-bottom:1px solid #f0f4f8;flex-wrap:wrap;gap:6px;">
-            <div>
-                <span style="font-weight:700;font-size:0.95rem;">${lt.name}</span>
-                <span style="font-size:0.82rem;color:#e53e3e;margin-left:8px;">${lt.reason}</span>
-                <span style="font-size:0.78rem;color:#718096;margin-left:8px;">${startDate}〜</span>
-                ${resumeText}
+        const elapsed = lt.elapsedDays != null ? `<span style="font-size:0.78rem;color:#718096;margin-left:6px;">（${lt.elapsedDays}日目）</span>` : '';
+
+        // 再開予定日表示（明日なら「（明日）」追記）
+        let resumeText = '';
+        if (lt.resumeDate) {
+            const tomorrow = lt.daysUntilReturn === 1 ? '<span style="color:#d69e2e;font-weight:700;margin-left:4px;">（明日）</span>' : '';
+            resumeText = `<span style="font-size:0.82rem;color:#38a169;font-weight:700;margin-left:8px;">${absFormatDate(lt.resumeDate)}より再開予定${tomorrow}</span>`;
+        }
+
+        // 最終連絡情報行
+        let contactRow = '';
+        if (lt.lastContact && lt.contactLog) {
+            const lastLogLines = String(lt.contactLog).split('\n').filter(s => s);
+            const latest = lastLogLines.length ? lastLogLines[lastLogLines.length - 1] : '';
+            if (latest) contactRow = `<div style="margin-top:4px;font-size:0.8rem;color:#4a5568;">📞 ${latest}</div>`;
+        }
+        // 次回連絡予定日バッジ
+        let nextBadge = '';
+        if (lt.nextContactDue) {
+            let bg = '#edf2f7', fg = '#4a5568', icon = '⏳';
+            if (lt.contactOverdue) { bg = '#fed7d7'; fg = '#c53030'; icon = '🔴'; }
+            else if (lt.contactWarning) { bg = '#feebc8'; fg = '#c05621'; icon = '⚠️'; }
+            nextBadge = `<div style="margin-top:4px;display:inline-block;padding:3px 10px;background:${bg};color:${fg};border-radius:10px;font-size:0.78rem;font-weight:700;">${icon} 次回連絡 ${absFormatDate(lt.nextContactDue)}</div>`;
+        } else if (!lt.lastContact) {
+            nextBadge = `<div style="margin-top:4px;display:inline-block;padding:3px 10px;background:#fed7d7;color:#c53030;border-radius:10px;font-size:0.78rem;font-weight:700;">🔴 まだ連絡なし</div>`;
+        }
+
+        const safeName = lt.name.replace(/'/g, "\\'");
+        html += `<div style="padding:10px 8px;border-bottom:1px solid #f0f4f8;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+                <div>
+                    <span style="font-weight:700;font-size:0.95rem;">${lt.name}</span>
+                    <span style="font-size:0.82rem;color:#e53e3e;margin-left:8px;">${lt.reason}</span>
+                    <span style="font-size:0.78rem;color:#718096;margin-left:8px;">${startDate}〜</span>
+                    ${elapsed}
+                    ${resumeText}
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <button onclick="absOpenContactDialog('${safeName}')" style="background:#fff5f5;color:#c53030;border:1.5px solid #fc8181;padding:8px 16px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;">📞 連絡入力</button>
+                    <button onclick="attEditAbsence('${safeName}','${lt.date}')" style="background:#ebf8ff;color:#2c5282;border:1.5px solid #90cdf4;padding:8px 16px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;">編集</button>
+                </div>
             </div>
-            <button onclick="attEditAbsence('${lt.name.replace(/'/g, "\\'")}','${lt.date}')" style="background:#ebf8ff;color:#2c5282;border:1.5px solid #90cdf4;padding:8px 16px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;">編集</button>
+            ${contactRow}
+            ${nextBadge}
         </div>`;
     });
     el.innerHTML = html;
 }
 
+// 長期休み利用者キャッシュ（連絡入力ダイアログから検索する用）
+let absLongTermFullCache = [];
+function absFindLongTermByName(name) {
+    return absLongTermFullCache.find(lt => lt.name === name) || null;
+}
+
+// ===== 長期休み連絡結果入力ダイアログ =====
+let absContactState = { name: '', staff: '', method: '', resultType: '' };
+
+function absOpenContactDialog(name) {
+    absContactState = { name: name, staff: '', method: '', resultType: '' };
+
+    document.getElementById('contact-dialog-name').textContent = name;
+    document.getElementById('contact-content').value = '';
+    document.getElementById('contact-next-due').value = '';
+    document.getElementById('contact-new-expected').value = '';
+    document.getElementById('contact-new-expected').style.display = 'none';
+    document.querySelectorAll('input[name="contact-result"]').forEach(r => r.checked = false);
+    document.querySelectorAll('.contact-method-btn').forEach(b => { b.style.background = '#fff'; b.style.color = '#000'; });
+    const otherInput = document.getElementById('contact-method-other');
+    if (otherInput) { otherInput.value = ''; otherInput.style.display = 'none'; }
+
+    // 担当者ボタン生成（DEFAULT_STAFF を使用）
+    const staffSource = (typeof DEFAULT_STAFF !== 'undefined' && DEFAULT_STAFF.length) ? DEFAULT_STAFF : ['比嘉','看護師','相談員'];
+    const staffBtns = document.getElementById('contact-staff-btns');
+    staffBtns.innerHTML = staffSource.map(s =>
+        `<button class="contact-staff-btn" onclick="absSelectStaffContact('${String(s).replace(/'/g, "\\'")}')" style="padding:6px 12px;border:1.5px solid #cbd5e0;background:#fff;border-radius:8px;cursor:pointer;font-size:0.85rem;">${s}</button>`
+    ).join('');
+
+    // 過去履歴
+    const lt = absFindLongTermByName(name);
+    document.getElementById('contact-history').textContent = lt && lt.contactLog ? lt.contactLog : '(履歴なし)';
+
+    // 延長時の日付ピッカーに既存復帰予定日をプリセット
+    if (lt && lt.expectedReturn && lt.expectedReturn !== '未定') {
+        document.getElementById('contact-new-expected').value = lt.expectedReturn;
+    }
+
+    document.getElementById('abs-contact-dialog').style.display = 'flex';
+}
+
+function absCloseContactDialog() {
+    document.getElementById('abs-contact-dialog').style.display = 'none';
+}
+
+function absSelectStaffContact(val) {
+    absContactState.staff = val;
+    document.querySelectorAll('.contact-staff-btn').forEach(b => {
+        const sel = b.textContent === val;
+        b.style.background = sel ? '#e53e3e' : '#fff';
+        b.style.color = sel ? '#fff' : '#000';
+    });
+}
+
+function absSelectMethodContact(val) {
+    absContactState.method = val;
+    document.querySelectorAll('.contact-method-btn').forEach(b => {
+        const sel = b.dataset.val === val;
+        b.style.background = sel ? '#e53e3e' : '#fff';
+        b.style.color = sel ? '#fff' : '#000';
+    });
+    const otherInput = document.getElementById('contact-method-other');
+    if (otherInput) {
+        otherInput.style.display = (val === 'その他') ? 'block' : 'none';
+        if (val === 'その他') otherInput.focus();
+    }
+}
+
+function absToggleContactResult() {
+    const checked = document.querySelector('input[name="contact-result"]:checked');
+    if (!checked) return;
+    absContactState.resultType = checked.value;
+
+    const dateInput = document.getElementById('contact-new-expected');
+    dateInput.style.display = checked.value === 'extend' ? 'inline-block' : 'none';
+
+    // 次回連絡予定日を自動計算
+    const nextDueInput = document.getElementById('contact-next-due');
+    const today = new Date();
+    if (checked.value === 'pending') {
+        const d = new Date(today); d.setDate(d.getDate() + 14);
+        nextDueInput.value = d.toISOString().slice(0, 10);
+    } else if (checked.value === 'extend') {
+        const newRet = dateInput.value;
+        if (newRet) {
+            const d = new Date(newRet); d.setDate(d.getDate() - 7);
+            nextDueInput.value = d.toISOString().slice(0, 10);
+        } else {
+            nextDueInput.value = '';
+        }
+    } else {
+        nextDueInput.value = '';
+    }
+}
+
+function absSubmitContact() {
+    if (!absContactState.staff) { alert('担当者を選んでください'); return; }
+    if (!absContactState.method) { alert('連絡方法を選んでください'); return; }
+    if (!absContactState.resultType) { alert('結果を選んでください'); return; }
+    const content = document.getElementById('contact-content').value.trim();
+    // メモは任意（10文字制限は撤廃）
+
+    // 連絡方法「その他」の自由入力チェック＆組み立て
+    let methodToSend = absContactState.method;
+    if (methodToSend === 'その他') {
+        const otherText = document.getElementById('contact-method-other').value.trim();
+        if (!otherText) { alert('「その他」の連絡方法を入力してください'); return; }
+        methodToSend = 'その他(' + otherText + ')';
+    }
+
+    const newExpected = document.getElementById('contact-new-expected').value;
+    if (absContactState.resultType === 'extend' && !newExpected) {
+        alert('延長を選んだ場合は新しい再開予定日を入力してください'); return;
+    }
+    const nextDue = document.getElementById('contact-next-due').value;
+    if (nextDue) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (nextDue <= today) { alert('次回連絡予定日は今日より未来にしてください'); return; }
+    }
+
+    const btn = document.getElementById('contact-submit-btn');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    const postData = {
+        action: 'add_contact_log',
+        name: absContactState.name,
+        contact: absContactState.staff,
+        method: methodToSend,
+        resultType: absContactState.resultType,
+        newExpectedReturn: newExpected,
+        nextContactDue: nextDue,
+        content: content
+    };
+
+    gasPost(postData, '長期休み連絡結果').then(ok => {
+        btn.disabled = false;
+        btn.textContent = '保存';
+        if (ok) {
+            showToast('✅ 連絡結果を記録しました', 3000);
+            absCloseContactDialog();
+            setTimeout(() => absLoadLongTermList(), 1500);
+        }
+    });
+}
+
 function absLoadLongTermList() {
+    // 再描画でスクロール位置が飛ぶのを防ぐためロード前に保存
+    const _scrollY = window.scrollY;
     const cbName = '_absLtCb_' + Date.now();
     const script = document.createElement('script');
     script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
     window[cbName] = function(data) {
         delete window[cbName];
         let longTermData = [];
+        let resumedTodayData = [];
         if (data && data.absences) {
             if (data.absences.longTerm) longTermData = data.absences.longTerm;
+            if (data.absences.resumedToday) resumedTodayData = data.absences.resumedToday;
         }
+        // 再開バッジ用の名前リスト更新
+        attResumedTodayNames = (resumedTodayData || [])
+            .filter(item => item && item.name)
+            .map(item => item.name);
         absRenderLongTermList(longTermData);
+        // 再描画後にスクロール位置を復元
+        requestAnimationFrame(() => window.scrollTo({ top: _scrollY, behavior: 'instant' }));
     };
     document.body.appendChild(script);
 }
@@ -5570,7 +6632,8 @@ function absSubmitResume() {
         resumeDate: resumeDate,
         contact: absResumeState.contact,
         method: absResumeState.method,
-        reporter: absResumeState.staff
+        reporter: absResumeState.staff,
+        canceler: absResumeState.staff
     };
 
     const resumeName = absResumeState.name;
@@ -5653,12 +6716,14 @@ function attUpdateDateLabel() {
 
 function attChangeDate(offset) {
     attCurrentDate.setDate(attCurrentDate.getDate() + offset);
+    attLastOrder = { am: [], pm: [] }; // 日付変更時は並び順リセット（次回は出席→欠席ソート）
     attUpdateDateLabel();
     attLoad();
 }
 
 function attGoToday() {
     attCurrentDate = new Date();
+    attLastOrder = { am: [], pm: [] };
     attUpdateDateLabel();
     attLoad();
 }
@@ -5669,8 +6734,33 @@ function attOnDatePicked() {
     if (!v) return;
     const [y, m, d] = v.split('-').map(Number);
     attCurrentDate = new Date(y, m - 1, d);
+    attLastOrder = { am: [], pm: [] };
     attUpdateDateLabel();
     attLoad();
+}
+
+// 並び順安定化ヘルパー：前回順序があればそれに従う、新規ユーザーは末尾に追加
+function attApplyStableOrder(list, lastOrderNames) {
+    if (!lastOrderNames || lastOrderNames.length === 0) {
+        // 初回：出席→欠席でソート
+        return list.slice().sort((a, b) => {
+            if (a.status === '出席' && b.status !== '出席') return -1;
+            if (a.status !== '出席' && b.status === '出席') return 1;
+            return 0;
+        });
+    }
+    // 2回目以降：前回の表示順を維持。新顔は末尾に追加
+    const byName = {};
+    list.forEach(u => { byName[u.name] = u; });
+    const ordered = [];
+    lastOrderNames.forEach(name => {
+        if (byName[name]) {
+            ordered.push(byName[name]);
+            delete byName[name];
+        }
+    });
+    Object.keys(byName).forEach(name => ordered.push(byName[name]));
+    return ordered;
 }
 
 // 日付ラベルクリック時にカレンダーを明示的に開く（2026/4/29追加）
@@ -5821,12 +6911,10 @@ function attRender(data) {
     if (data.am.length === 0) {
         html += '<div class="att-empty">通所予定の利用者がいません</div>';
     } else {
-        // 出席を先に、欠席を後に
-        const amSorted = data.am.slice().sort((a, b) => {
-            if (a.status === '出席' && b.status !== '出席') return -1;
-            if (a.status !== '出席' && b.status === '出席') return 1;
-            return 0;
-        });
+        // 並び順安定化：初回は出席→欠席でソート、2回目以降は前回の表示順を維持
+        // → 自動更新で誰かが欠席登録されても、その人が下にジャンプせず元の位置のまま欠に変わる
+        const amSorted = attApplyStableOrder(data.am, attLastOrder.am);
+        attLastOrder.am = amSorted.map(u => u.name);
         amSorted.forEach(u => {
             html += attRenderUser(u);
         });
@@ -5844,11 +6932,8 @@ function attRender(data) {
     if (data.pm.length === 0) {
         html += '<div class="att-empty">通所予定の利用者がいません</div>';
     } else {
-        const pmSorted = data.pm.slice().sort((a, b) => {
-            if (a.status === '出席' && b.status !== '出席') return -1;
-            if (a.status !== '出席' && b.status === '出席') return 1;
-            return 0;
-        });
+        const pmSorted = attApplyStableOrder(data.pm, attLastOrder.pm);
+        attLastOrder.pm = pmSorted.map(u => u.name);
         pmSorted.forEach(u => {
             html += attRenderUser(u);
         });
@@ -5885,9 +6970,15 @@ function attRenderUser(u) {
         } catch(e) {}
     }
 
+    // 当日が再開日なら再開バッジを表示
+    const resumedBadge = (!isAbsent && attResumedTodayNames.indexOf(u.name) >= 0)
+        ? '<span style="display:inline-block;background:#a7f3d0;color:#065f46;font-size:0.7rem;font-weight:900;padding:2px 8px;border-radius:10px;margin-left:6px;">再開</span>'
+        : '';
+
     return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
         '<span class="att-user-name">' + u.name + '</span>' +
+        resumedBadge +
         (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
         (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
         resumeText +
@@ -5922,7 +7013,7 @@ function attShowAbsentMenu(name) {
         '<div style="background:#fff;border-radius:12px;padding:20px;min-width:280px;max-width:90%;box-shadow:0 10px 30px rgba(0,0,0,0.3);">' +
         '<div style="font-size:1.05rem;font-weight:700;margin-bottom:4px;">' + name + '様</div>' +
         '<div style="font-size:0.9rem;color:#666;margin-bottom:14px;">' + dateLabel + ' 欠席登録済み</div>' +
-        '<button onclick="attCancelAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #e53e3e;color:#e53e3e;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✕ 欠席を取消（出席に戻す）</button>' +
+        '<button onclick="attCancelAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #e53e3e;color:#e53e3e;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✕ 欠席を取り消す（出席に戻す）</button>' +
         '<button onclick="attMoveAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #3182ce;color:#3182ce;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">→ 別の日に移動</button>' +
         '<button onclick="attEditAbsence(\'' + name.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\',\'' + dateStr + '\')" style="display:block;width:100%;padding:12px;margin-bottom:8px;background:#fff;border:2px solid #38a169;color:#38a169;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;">✎ 編集（理由・連絡者・種別など）</button>' +
         '<button onclick="document.getElementById(\'att-absent-menu\').remove()" style="display:block;width:100%;padding:10px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
@@ -5933,11 +7024,47 @@ function attShowAbsentMenu(name) {
     document.body.appendChild(menu);
 }
 
-function attCancelAbsence(name, dateStr) {
-    if (!confirm(name + '様 ' + absFormatDate(dateStr) + ' の欠席を取り消しますか？')) return;
+async function attCancelAbsence(name, dateStr) {
+    // 2026-05-12: confirm() → 取消操作者選択モーダルに変更
+    const canceller = await absPromptCanceller(
+        '欠席を取り消す',
+        name + '様 ' + absFormatDate(dateStr) + ' の欠席を取り消します'
+    );
+    if (!canceller) return;
 
-    // GASに取消送信
-    gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席取消');
+    // ★ 2026-05-10: ケアマネにメール送信確認ポップアップ
+    const cached = (typeof absUserCache !== 'undefined') ? absUserCache.find(c => c.name === name) : null;
+    const cmOffice = cached ? (cached.cmOffice || '') : '';
+    const cmNameInit = (cached && cached.cmName) ? cached.cmName : '';
+    let cmEmailInit = '';
+    if (cmOffice && cmNameInit) {
+        const c = await fetchCmContact(cmOffice, cmNameInit);
+        if (c.found) cmEmailInit = c.email || '';
+    }
+    let mailCmName = cmNameInit;
+    let mailCmEmail = '';
+    let mailSend = false;
+    if (cmOffice) {
+        const r = await showCancelMailConfirm({
+            userName: name, dateStr: dateStr,
+            cmOffice: cmOffice, cmName: cmNameInit, cmEmail: cmEmailInit,
+            reporter: canceller || ''
+        });
+        if (r.send) {
+            mailSend = true;
+            mailCmName = r.cmName;
+            mailCmEmail = r.email;
+        }
+    }
+
+    // GASに取消送信（cmEmail がある場合は GAS 側で sendCancelEmail 自動実行）
+    gasPost({
+        action: 'cancel_absence',
+        name: name, date: dateStr, unit: '終日',
+        canceller: canceller,
+        cmOffice: cmOffice, cmName: mailCmName,
+        cmEmail: mailSend ? mailCmEmail : ''
+    }, '欠席取消');
 
     // ローカル欠席記録からも削除
     let records = absGetRecords();
@@ -6008,8 +7135,8 @@ function attMoveAbsence(name, dateStr) {
         if (!newDate) { alert('日付を選んでください'); return; }
         if (newDate === dateStr) { alert('同じ日付です'); return; }
 
-        // 1) 旧日取消
-        gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席移動:旧日取消');
+        // 1) 旧日取消（取消操作者は元連絡者を引き継ぐ＝移動なので「同一人物の訂正」とみなす）
+        gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日', canceller: existing.reporter || existing.contact || '' }, '欠席移動:旧日取消');
 
         // ローカル欠席記録からも旧日削除
         let recs = absGetRecords();
@@ -6085,6 +7212,64 @@ function yawaragiConfirmDelete(title, detail, onConfirm) {
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
 }
 
+// 2026-05-12: 欠席取消の操作者を聞くモーダル
+// onConfirm(canceller) を渡す or Promise を await できる。
+// キャンセル時は callback 版は呼ばれない / Promise 版は null を返す。
+function absPromptCanceller(title, detail, onConfirm) {
+    return new Promise(function(resolve) {
+        let picked = '';
+        const modal = document.createElement('div');
+        modal.id = 'abs-canceller-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+        const staffHtml = DEFAULT_STAFF.map(s =>
+            '<button class="abs-canceller-staff-btn" data-staff="' + s + '" style="padding:10px 14px;background:#fff;border:2px solid #cbd5e0;border-radius:8px;font-size:0.95rem;font-weight:700;cursor:pointer;">' + s + '</button>'
+        ).join('');
+        modal.innerHTML =
+            '<div style="background:#fff;border-radius:14px;padding:24px;width:min(460px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);">' +
+            '<div style="font-size:1.1rem;font-weight:800;text-align:center;color:#2d3748;margin-bottom:6px;">' + title + '</div>' +
+            '<div style="font-size:0.9rem;color:#4a5568;text-align:center;margin-bottom:14px;">' + detail + '</div>' +
+            '<div style="font-size:0.9rem;font-weight:700;color:#2d3748;margin-bottom:8px;">取消操作者を選んでください：</div>' +
+            '<div id="abs-canceller-btns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;">' + staffHtml + '</div>' +
+            '<button id="abs-canceller-ok" disabled style="display:block;width:100%;padding:14px;background:#cbd5e0;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:800;cursor:not-allowed;margin-bottom:8px;">取り消す</button>' +
+            '<button id="abs-canceller-cancel" style="display:block;width:100%;padding:12px;background:#f7fafc;border:1.5px solid #cbd5e0;color:#2d3748;border-radius:10px;font-size:0.95rem;font-weight:700;cursor:pointer;">やめる</button>' +
+            '</div>';
+        document.body.appendChild(modal);
+
+        function close(result) {
+            if (!modal.parentNode) return;
+            modal.remove();
+            if (result && typeof onConfirm === 'function') onConfirm(result);
+            resolve(result || null);
+        }
+
+        modal.querySelectorAll('.abs-canceller-staff-btn').forEach(btn => {
+            btn.onclick = function() {
+                picked = btn.dataset.staff;
+                modal.querySelectorAll('.abs-canceller-staff-btn').forEach(b => {
+                    if (b.dataset.staff === picked) {
+                        b.style.background = '#3182ce'; b.style.color = '#fff'; b.style.borderColor = '#2c5282';
+                    } else {
+                        b.style.background = '#fff'; b.style.color = '#2d3748'; b.style.borderColor = '#cbd5e0';
+                    }
+                });
+                const okBtn = document.getElementById('abs-canceller-ok');
+                okBtn.disabled = false;
+                okBtn.style.background = '#e53e3e';
+                okBtn.style.cursor = 'pointer';
+            };
+        });
+        document.getElementById('abs-canceller-ok').onclick = function() {
+            if (!picked) {
+                alert('取消操作者を選んでください\n（上のスタッフ名ボタンを押してから「取り消す」を押してください）');
+                return;
+            }
+            close(picked);
+        };
+        document.getElementById('abs-canceller-cancel').onclick = function() { close(null); };
+        modal.addEventListener('click', function(e) { if (e.target === modal) close(null); });
+    });
+}
+
 // 編集モーダルの種別切替で長期休み期間フィールドの表示/非表示
 function attEditToggleLongTermFields() {
     const t = document.getElementById('att-edit-type');
@@ -6095,12 +7280,12 @@ function attEditToggleLongTermFields() {
 
 // 編集モーダル内からの削除
 function attEditDelete(name, dateStr) {
-    yawaragiConfirmDelete(
+    absPromptCanceller(
         '欠席記録を削除',
         name + '様（' + absFormatDate(dateStr) + '）の欠席記録を削除します',
-        function() {
+        function(canceller) {
             // GASに取消送信
-            gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '欠席削除');
+            gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日', canceller: canceller }, '欠席削除');
 
             // ローカル欠席記録からも削除
             let records = absGetRecords();
@@ -6127,7 +7312,8 @@ function attEditDelete(name, dateStr) {
     );
 }
 
-// 欠席の編集（理由・連絡者・方法・種別・受付日）
+// 欠席の編集（理由・連絡者・方法・種別・受付日・単位）
+// 2026-05-16: 単位（午前/午後）ラジオ追加 + 保存を update_absence に変更
 function attEditAbsence(name, dateStr) {
     // 既存データ取得
     let existing = null;
@@ -6137,20 +7323,27 @@ function attEditAbsence(name, dateStr) {
         existing = {
             reason: lr.reason || '', contact: lr.contact || '',
             method: lr.method || '', reporter: lr.registeredBy || '',
-            contactDate: lr.contactDate || '', type: 'normal'
+            contactDate: lr.contactDate || '', type: 'normal',
+            unit: lr.unit || ''
         };
     } else if (window._cachedGasAbsences) {
         const gr = window._cachedGasAbsences.find(g => g.name === name && g.date === dateStr);
         if (gr) existing = {
             reason: gr.reason || '', contact: gr.reporter || '',
             method: '', reporter: gr.reporter || '',
-            contactDate: gr.contactDate || '', type: 'normal'
+            contactDate: gr.contactDate || '', type: 'normal',
+            unit: gr.unit || ''
         };
     }
     if (!existing) {
         const all = (attLastData.am || []).concat(attLastData.pm || []);
         const u = all.find(x => x.name === name);
-        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '', type: 'normal' };
+        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '', type: 'normal', unit: '' };
+    }
+
+    // 単位の初期値補正（移行期間: 「終日」や空は午前にフォールバック）
+    if (existing.unit === '終日' || !existing.unit) {
+        existing.unit = '午前';
     }
 
     // 長期休みか判定
@@ -6199,6 +7392,15 @@ function attEditAbsence(name, dateStr) {
         '<option value="longterm"' + (existing.type === 'longterm' ? ' selected' : '') + '>長期休み</option>' +
         '</select>' +
 
+        // 単位（午前/午後）2026-05-16追加・「終日」廃止
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:6px;">単位：</div>' +
+        '<div style="margin-bottom:14px;">' +
+        '<label style="display:inline-flex;align-items:center;margin-right:18px;cursor:pointer;font-size:0.95rem;">' +
+        '<input type="radio" name="att-edit-unit" value="午前"' + (existing.unit === '午前' ? ' checked' : '') + ' style="width:18px;height:18px;margin-right:6px;">午前</label>' +
+        '<label style="display:inline-flex;align-items:center;cursor:pointer;font-size:0.95rem;">' +
+        '<input type="radio" name="att-edit-unit" value="午後"' + (existing.unit === '午後' ? ' checked' : '') + ' style="width:18px;height:18px;margin-right:6px;">午後</label>' +
+        '</div>' +
+
         // 長期休み用の期間フィールド
         '<div id="att-edit-longterm-fields" style="display:' + (existing.type === 'longterm' ? 'block' : 'none') + ';background:#fff5f5;border:1px solid #fed7d7;border-radius:6px;padding:10px;margin-bottom:12px;">' +
         '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;color:#c53030;">いつから休み？</div>' +
@@ -6245,66 +7447,106 @@ function attEditAbsence(name, dateStr) {
         const newStartDate = startDateInput ? (startDateInput.value || dateStr) : dateStr;
         const newResumeDate = resumeDateInput ? resumeDateInput.value : '';
 
-        // 1) 旧記録を取消
-        gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日' }, '編集:旧記録取消');
+        // 2026-05-16: 単位（午前/午後）必須・「終日」廃止
+        const newUnitRadio = document.querySelector('input[name="att-edit-unit"]:checked');
+        if (!newUnitRadio) {
+            alert('単位（午前/午後）を選択してください');
+            return;
+        }
+        const newUnit = newUnitRadio.value;
 
-        let recs = absGetRecords();
-        recs = recs.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
-
-        // 2) 新記録を登録（種別により分岐）
         const userCache = absUserCache.find(u => u.name === name) || {};
-        if (newType === 'longterm') {
-            // 長期休みは 旧取消 → 2秒待って登録 → さらに2秒待って再開予定日設定
-            // (GAS側の処理順を確実にして重複を防ぐ)
-            setTimeout(function() {
-                gasPost({
-                    action: 'long_term_absence',
-                    name: name,
-                    startDate: newStartDate,
-                    date: newStartDate,
-                    reason: newReason,
-                    reporter: newContact,
-                    contact: newContact,
-                    method: newMethod,
-                    contactDate: newContactDate,
-                    cmOffice: userCache.cmOffice || '',
-                    cmEmail: '', cmName: ''
-                }, '編集:長期休み登録');
-                if (newResumeDate) {
-                    setTimeout(function() {
-                        gasPost({
-                            action: 'resume',
-                            name: name,
-                            resumeDate: newResumeDate,
-                            contact: newContact,
-                            method: newMethod,
-                            reporter: newContact
-                        }, '編集:再開予定日設定');
-                    }, 2000);
-                }
-            }, 2000);
-        } else {
+        const typeChanged = (newType !== existing.type);
+
+        if (!typeChanged) {
+            // 種別不変: update_absence で直接更新（cancel→新規を廃止）
             gasPost({
-                action: 'absence',
+                action: 'update_absence',
                 name: name,
-                dates: [dateStr],
-                unit: '終日',
+                date: dateStr,
+                originalUnit: existing.unit || '午前',
+                newUnit: newUnit,
                 reason: newReason,
-                reporter: newContact,
                 contact: newContact,
                 method: newMethod,
-                contactDate: newContactDate,
-                cmOffice: userCache.cmOffice || '',
-                cmEmail: '', cmName: ''
-            }, '編集:通常欠席登録');
+                contactDate: newContactDate
+            }, '編集:欠席更新');
+
+            // 種別が長期休みなら再開予定日の更新も
+            if (newType === 'longterm' && newResumeDate) {
+                setTimeout(function() {
+                    gasPost({
+                        action: 'resume',
+                        name: name,
+                        resumeDate: newResumeDate,
+                        contact: newContact,
+                        method: newMethod,
+                        reporter: newContact
+                    }, '編集:再開予定日設定');
+                }, 1000);
+            }
+        } else {
+            // 種別変更: 旧フロー (cancel → 新規登録)
+            gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: existing.unit || '午前', canceller: existing.reporter || existing.contact || '' }, '編集:旧記録取消');
+
+            if (newType === 'longterm') {
+                setTimeout(function() {
+                    gasPost({
+                        action: 'long_term_absence',
+                        name: name,
+                        startDate: newStartDate,
+                        date: newStartDate,
+                        units: [newUnit],
+                        reason: newReason,
+                        reporter: newContact,
+                        contact: newContact,
+                        method: newMethod,
+                        contactDate: newContactDate,
+                        cmOffice: userCache.cmOffice || '',
+                        cmEmail: '', cmName: ''
+                    }, '編集:長期休み登録');
+                    if (newResumeDate) {
+                        setTimeout(function() {
+                            gasPost({
+                                action: 'resume',
+                                name: name,
+                                resumeDate: newResumeDate,
+                                contact: newContact,
+                                method: newMethod,
+                                reporter: newContact
+                            }, '編集:再開予定日設定');
+                        }, 2000);
+                    }
+                }, 2000);
+            } else {
+                // longterm → normal: 通常欠席として再登録
+                setTimeout(function() {
+                    gasPost({
+                        action: 'absence',
+                        name: name,
+                        dates: [dateStr],
+                        unit: newUnit,
+                        reason: newReason,
+                        reporter: newContact,
+                        contact: newContact,
+                        method: newMethod,
+                        contactDate: newContactDate,
+                        cmOffice: userCache.cmOffice || '',
+                        cmEmail: '', cmName: ''
+                    }, '編集:通常欠席登録');
+                }, 2000);
+            }
         }
 
         // ローカル更新
+        let recs = absGetRecords();
+        recs = recs.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
         recs.push({
             id: Date.now(),
             userName: name,
             dateFrom: dateStr, dateTo: dateStr,
             dateType: 'single',
+            unit: newUnit,
             reason: newReason,
             contact: newContact,
             method: newMethod,
@@ -6328,6 +7570,9 @@ function attEditAbsence(name, dateStr) {
 
 // 出席予定タブから取得したデータを保持
 let attLastData = { am: [], pm: [] };
+
+// 表示順を保持（初回は出席→欠席ソート、以降は同じ順序を維持して画面ジャンプ防止）
+let attLastOrder = { am: [], pm: [] };
 
 function attStartAbsence(name) {
     // 欠席登録タブに切り替え
@@ -6400,11 +7645,67 @@ function attInit() {
     // 長期休み一覧も読み込み（再開予定日の表示用）
     if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
     // 30秒ごとに出席予定を自動更新（欠席登録のリアルタイム反映）
+    // 他アプリと同じガード方式：タブ非表示・他アプリへの切替中は再描画を止める
     setInterval(() => {
-        // キャッシュをクリアしてGASから最新データを取得
-        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+        if (document.hidden) return;
+        // 出席予定タブを実際に見ている時だけ更新（他タブ表示中は不要な再描画を抑制）
+        const tabBtn = document.querySelector('.tab-btn[data-tab="attendance"]');
+        if (tabBtn && !tabBtn.classList.contains('active')) return;
+        // キャッシュは消さずに attLoad を呼ぶ → 既存リストが表示されたまま裏で取得し、
+        // 結果が返ってきたら attRender で上書き（「読み込み中...」表示でチラつかない）
         attLoad();
     }, 30000);
+}
+
+// GAS getUserPatterns の戻り値（{days,unit}）を pattern配列 [{day,unit:'am'|'pm'}] に変換
+// 2026-05-19: 「午後の利用者が欠席登録時に午前デフォルトで登録されるバグ」修正のため新規
+function _ywBuildPatternArray(p) {
+    const DAY_MAP = { '日': 0, '月': 1, '火': 2, '水': 3, '木': 4, '金': 5, '土': 6 };
+    const days = String((p && p.days) || '');
+    const unit = String((p && p.unit) || '').replace(/\s/g, '');
+    const result = [];
+
+    // 複合パターン例: '月午前、木午後' / '月午前,木午後'
+    if (unit && /[、,]/.test(unit)) {
+        const parts = unit.split(/[、,]/);
+        const hasDay = parts.some(s => /[月火水木金土日]/.test(s));
+        if (hasDay) {
+            parts.forEach(s => {
+                s = s.trim();
+                let dayChar = null;
+                for (const k of Object.keys(DAY_MAP)) {
+                    if (s.indexOf(k) >= 0) { dayChar = k; break; }
+                }
+                if (dayChar === null) return;
+                const dow = DAY_MAP[dayChar];
+                if (s.indexOf('午後') >= 0) result.push({ day: dow, unit: 'pm' });
+                else if (s.indexOf('午前') >= 0) result.push({ day: dow, unit: 'am' });
+                else { result.push({ day: dow, unit: 'am' }); result.push({ day: dow, unit: 'pm' }); }
+            });
+            return result;
+        }
+    }
+
+    // 単純パターン: days文字列の各曜日に unit を当てる
+    const targetUnits = [];
+    if (!unit || unit === '両方' || unit === '午前午後' ||
+        (unit.indexOf('午前') >= 0 && unit.indexOf('午後') >= 0)) {
+        targetUnits.push('am', 'pm');
+    } else if (unit === '午前' || unit === '1') {
+        targetUnits.push('am');
+    } else if (unit === '午後' || unit === '2') {
+        targetUnits.push('pm');
+    } else {
+        targetUnits.push('am', 'pm');
+    }
+
+    for (const dayChar of Object.keys(DAY_MAP)) {
+        if (days.indexOf(dayChar) >= 0) {
+            const dow = DAY_MAP[dayChar];
+            targetUnits.forEach(u => result.push({ day: dow, unit: u }));
+        }
+    }
+    return result;
 }
 
 // 全利用者データを取得（欠席登録の検索用、patternsから全員取得）
@@ -6421,13 +7722,17 @@ function attLoadAllUsers() {
         if (data.patterns) {
             Object.keys(data.patterns).forEach(name => {
                 const p = data.patterns[name];
+                const patternArr = _ywBuildPatternArray(p);
                 const existing = absUserCache.find(c => c.name === name);
                 if (existing) {
                     if (!existing.reading && p.kana) existing.reading = p.kana;
                     if (!existing.care && p.care) existing.care = p.care;
+                    if (!existing.pattern || existing.pattern.length === 0) {
+                        existing.pattern = patternArr;
+                    }
                 } else {
                     absUserCache.push({
-                        name: name, reading: p.kana || '', pattern: [],
+                        name: name, reading: p.kana || '', pattern: patternArr,
                         care: p.care || '', cmOffice: ''
                     });
                 }
@@ -7070,11 +8375,13 @@ function trmRenderCard(t) {
     // 要支援判定（介護度に「要支援」を含むか）。空なら不明→要介護扱い（ADL必要）
     const isShienMode = (t.careLevel || '').indexOf('要支援') !== -1;
 
-    // 段階的有効化の判定
-    const stage1Done = t.tasks.tsusho && t.tasks.kotraining && t.tasks.koukou;
-    // 段階2: 要支援なら科学的のみ、要介護なら科学的＋ADL両方
-    const stage2Done = stage1Done && t.tasks.kagakuteki && (isShienMode || t.tasks.adl);
-    const allDone = stage2Done;
+    // 段階的有効化の判定（要支援は個訓非対象→通所＋口腔のみで段階1完了）
+    const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isShienMode || t.tasks.kotraining);
+    // 段階2: リハブクラウドで利用中止操作（請求対象から外す・必須・2026-05-20順序変更）
+    const stage2Done = stage1Done && t.tasks.rihab_chushi;
+    // 段階3: 要支援なら科学的のみ、要介護なら科学的＋ADL両方
+    const stage3Done = stage2Done && t.tasks.kagakuteki && (isShienMode || t.tasks.adl);
+    const allDone = stage3Done;
 
     const lastUseJP = trmFormatDateJP(t.lastUseDate);
     const terminateJP = trmFormatDateJP(t.terminateDate);
@@ -7104,20 +8411,28 @@ function trmRenderCard(t) {
                 '<button class="trm-help-btn" onclick="trmShowHelp()" title="手順を見る">？ やり方</button>' +
             '</div>' +
 
-            // 段階1: 通所/個訓/口腔（順不同）
-            '<div class="trm-task-step-label active">段階1: この3つを完了させる（順不同）</div>' +
+            // 段階1: 通所/個訓/口腔（順不同）。要支援は個訓非対象なので非表示
+            '<div class="trm-task-step-label active">段階1: ' + (isShienMode ? 'この2つを完了させる（順不同）' : 'この3つを完了させる（順不同）') + '</div>' +
             trmTaskItem(t, 'tsusho', '通所計画書', false) +
-            trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false) +
+            (isShienMode ? '' : trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false)) +
             trmTaskItem(t, 'koukou', '口腔機能向上計画書', false) +
 
-            // 段階2: 科学的＋ADL（段階1完了で両方同時有効化、要支援はADL非表示）
+            // 段階2: リハブクラウドで利用中止操作（段階1完了後・科学的/ADLの前に必須・2026-05-20順序変更）
             '<div class="trm-task-step-label ' + (stage1Done ? 'active' : '') + '" style="margin-top:8px;">' +
                 '段階2: ' + (stage1Done
-                    ? '段階1完了 → ' + (isShienMode ? '科学的介護をチェック（要支援はADL不要）' : '科学的介護とADLをチェック')
+                    ? '段階1完了 → リハブで利用中止操作（請求対象から外す）'
                     : '段階1完了後にチェック可能') +
             '</div>' +
-            trmTaskItem(t, 'kagakuteki', '科学的介護推進体制', !stage1Done) +
-            (isShienMode ? '' : trmTaskItem(t, 'adl', 'ADL維持等加算', !stage1Done)) +
+            trmTaskItem(t, 'rihab_chushi', 'リハブクラウドで利用中止操作', !stage1Done) +
+
+            // 段階3: 科学的＋ADL（段階2完了後＝リハブ中止操作後に作業）
+            '<div class="trm-task-step-label ' + (stage2Done ? 'active' : '') + '" style="margin-top:8px;">' +
+                '段階3: ' + (stage2Done
+                    ? '段階2完了 → ' + (isShienMode ? '科学的介護をチェック（要支援はADL不要）' : '科学的介護とADLをチェック')
+                    : '段階2完了後にチェック可能') +
+            '</div>' +
+            trmTaskItem(t, 'kagakuteki', '科学的介護推進体制', !stage2Done) +
+            (isShienMode ? '' : trmTaskItem(t, 'adl', 'ADL維持等加算', !stage2Done)) +
         '</div>' +
 
         '<div class="trm-card-actions">' +
@@ -7147,7 +8462,8 @@ function trmShowHelp() {
                     '<h4>📋 全体の流れ</h4>' +
                     '<ol>' +
                         '<li><b>段階1</b>: 通所・個別機能訓練・口腔 の3つを完成（順不同）</li>' +
-                        '<li><b>段階2</b>: 科学的介護＋ADL維持等 を完成（要支援はADL不要）</li>' +
+                        '<li><b>段階2</b>: リハブクラウドで利用中止操作（請求対象から外す）</li>' +
+                        '<li><b>段階3</b>: 科学的介護＋ADL維持等 を完成（要支援はADL不要）</li>' +
                         '<li>完成後にLIFEへ提出</li>' +
                     '</ol>' +
                 '</div>' +
@@ -7179,7 +8495,18 @@ function trmShowHelp() {
                 '</div>' +
 
                 '<div class="trm-help-section trm-help-important">' +
-                    '<h4>④ 科学的介護推進体制加算（中止時も必要！）</h4>' +
+                    '<h4>④ リハブクラウドで利用中止操作（科学的・ADLの前にやる！）</h4>' +
+                    '<ul>' +
+                        '<li>リハブクラウド → 「利用者一覧」 → 該当利用者を選択</li>' +
+                        '<li>「利用終了日」に最終利用日を入力</li>' +
+                        '<li>必要に応じて「中止理由」等を入力して保存</li>' +
+                        '<li><b>これをやらないと毎月の請求対象に残り続ける</b>（来月以降も利用者として表示される）</li>' +
+                        '<li><b>※ ⑤⑥（科学的・ADL）の作業はこれを終えてから</b></li>' +
+                    '</ul>' +
+                '</div>' +
+
+                '<div class="trm-help-section trm-help-important">' +
+                    '<h4>⑤ 科学的介護推進体制加算（中止時も必要！）</h4>' +
                     '<ul>' +
                         '<li>「科学的介護推進体制加算」タブ → 該当利用者を選択</li>' +
                         '<li>必須項目を入力（①〜③の値から自動入力される部分あり）</li>' +
@@ -7188,7 +8515,7 @@ function trmShowHelp() {
                 '</div>' +
 
                 '<div class="trm-help-section trm-help-important">' +
-                    '<h4>⑤ ADL維持等加算（要介護者のみ）</h4>' +
+                    '<h4>⑥ ADL維持等加算（要介護者のみ）</h4>' +
                     '<ul>' +
                         '<li>「ADL維持等加算」タブ → 該当利用者を選択</li>' +
                         '<li>退所時のバーセルインデックス（ADL評価）を入力</li>' +
@@ -7239,7 +8566,7 @@ function trmToggleTask(lastUseDate, name, task, checked) {
 }
 
 function trmCancelTermination(lastUseDate, name) {
-    if (!confirm(name + '様の中止登録を取消します。\n\n' +
+    if (!confirm(name + '様の中止登録を取り消します。\n\n' +
         '・利用者台帳のステータスが元に戻ります\n' +
         '・中止履歴から削除されます\n\n' +
         'よろしいですか？')) return;
@@ -7323,6 +8650,11 @@ function escapeHtml(str) {
 function escapeAttr(str) {
     if (str == null) return '';
     return String(str).replace(/'/g, '\\\'').replace(/"/g, '&quot;');
+}
+
+// JS文字列リテラル用エスケープ（onclick属性内のシングルクオート文字列向け）
+function escapeJsString(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 // ===== 実績送付タブは 実績まわり.html に分離（2026/4/29） =====
@@ -7920,6 +9252,51 @@ function loadKubunHenkouList() {
     loadKubunDelayList();
 }
 
+// 区変フォロー: スタッフ識別（既存 getStaff() 流用、毎回プルダウン選択、前回値はデフォルト）
+const KUBUN_STAFF_KEY = 'yawaragi_kubun_staff_name';
+
+function getKubunStaffName(callback) {
+    var saved = '';
+    try { saved = localStorage.getItem(KUBUN_STAFF_KEY) || ''; } catch (e) {}
+
+    var staffList = (typeof getStaff === 'function')
+        ? getStaff()
+        : ['比嘉', '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'];
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center;';
+
+    var options = staffList.map(function(s) {
+        return '<option value="' + escapeAttr(s) + '"' + (s === saved ? ' selected' : '') + '>' + escapeHtml(s) + '</option>';
+    }).join('');
+
+    modal.innerHTML =
+        '<div style="background:#fff; padding:24px; border-radius:8px; min-width:280px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">' +
+            '<h3 style="margin:0 0 12px; font-size:1.1rem;">登録者を選択</h3>' +
+            '<p style="margin:0 0 12px; font-size:0.85rem; color:#718096;">保険情報を入手したスタッフを選んでください。</p>' +
+            '<select id="kubun-staff-select" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px;">' + options + '</select>' +
+            '<div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">' +
+                '<button id="kubun-staff-cancel" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">キャンセル</button>' +
+                '<button id="kubun-staff-ok" style="padding:8px 16px; background:#48bb78; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">OK</button>' +
+            '</div>' +
+        '</div>';
+
+    document.body.appendChild(modal);
+    var sel = document.getElementById('kubun-staff-select');
+    if (sel) sel.focus();
+
+    document.getElementById('kubun-staff-cancel').onclick = function() {
+        modal.remove();
+        callback(null);
+    };
+    document.getElementById('kubun-staff-ok').onclick = function() {
+        var name = document.getElementById('kubun-staff-select').value;
+        try { localStorage.setItem(KUBUN_STAFF_KEY, name); } catch (e) {}
+        modal.remove();
+        callback(name);
+    };
+}
+
 function loadKubunDelayList() {
     const cbName = 'kubunDelayCb_' + Date.now();
     window[cbName] = function(data) {
@@ -7929,14 +9306,35 @@ function loadKubunDelayList() {
             let html = '<div style="border:1px solid #fbd38d; border-radius:8px; overflow:hidden;">';
             data.items.forEach(function(u, i) {
                 const bg = i % 2 === 0 ? '#fffaf0' : '#fff5e6';
-                html += '<div style="padding:10px 14px; background:' + bg + ';">';
-                html += '<div style="font-weight:700;">' + u.name + '様</div>';
+                const received = !!u.insuranceReceivedAt;
+                const cardStyle = received
+                    ? 'padding:10px 14px; background:#f0fff4; border-left:4px solid #38a169;'
+                    : 'padding:10px 14px; background:' + bg + ';';
+                html += '<div style="' + cardStyle + '" data-row="' + u.rowIndex + '">';
+                html += '<div style="font-weight:700;">' + escapeHtml(u.name) + '様</div>';
                 html += '<div style="font-size:0.85rem; color:#718096; margin-top:4px;">';
                 html += '<span title="ケアマネさんが言う「申請日」と同じ日付です">区変日（=申請日）</span> ' + (u.applyDate || '?') + ' / ' + (u.prevCare || '?') + ' → ' + (u.newCare || '?');
                 html += '</div>';
                 html += '<div style="margin-top:6px; color:#c53030; font-weight:600; font-size:0.9rem;">';
                 html += '月遅れ対象: ' + u.months.join('、');
                 html += '</div>';
+                if (received) {
+                    html += '<div style="margin-top:8px; padding:8px; background:#fff; border:1px solid #c6f6d5; border-radius:4px; font-size:0.85rem;">';
+                    html += '<div style="color:#22543d; font-weight:600;">✅ 保険情報 入手済</div>';
+                    html += '<div style="color:#4a5568; margin-top:4px;">' + escapeHtml(u.insuranceReceivedAt) + ' / ' + escapeHtml(u.insuranceReceivedBy || '(未入力)') + ' が登録</div>';
+                    if (u.insuranceMemo) {
+                        html += '<div style="color:#4a5568; margin-top:4px;">メモ: ' + escapeHtml(u.insuranceMemo) + '</div>';
+                    }
+                    html += '<div style="margin-top:6px;">';
+                    html += '<button type="button" onclick="kubunDelayEditMemo(' + u.rowIndex + ')" style="margin-right:6px; padding:4px 10px; font-size:0.8rem; background:#e2e8f0; border:none; border-radius:4px; cursor:pointer;">メモ編集</button>';
+                    html += '<button type="button" onclick="kubunDelayUnset(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:4px 10px; font-size:0.8rem; background:#fed7d7; color:#742a2a; border:none; border-radius:4px; cursor:pointer;">取り消し</button>';
+                    html += '</div>';
+                    html += '</div>';
+                } else {
+                    html += '<div style="margin-top:8px;">';
+                    html += '<button type="button" onclick="kubunDelaySet(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#48bb78; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">🟢 保険情報 入手済にする</button>';
+                    html += '</div>';
+                }
                 html += '</div>';
             });
             html += '</div>';
@@ -7956,6 +9354,96 @@ function loadKubunDelayList() {
         delete window[cbName];
     };
     document.body.appendChild(script);
+}
+
+// ===== 月遅れ請求対象: 保険情報入手の登録/取消/メモ編集（共通JSONPヘルパー） =====
+function kubunDelayJsonp(params, onOk, onError) {
+    var cbName = 'cbKubunDelay_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    window[cbName] = function(res) {
+        if (res && res.ok) {
+            if (typeof onOk === 'function') onOk(res);
+        } else {
+            if (typeof onError === 'function') {
+                onError(res && res.error ? res.error : '不明');
+            } else {
+                alert('処理失敗: ' + (res && res.error ? res.error : '不明'));
+            }
+        }
+        delete window[cbName];
+        var s = document.getElementById('jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    var qs = '?action=updateKubunDelayInsurance';
+    Object.keys(params).forEach(function(k) {
+        if (params[k] === undefined || params[k] === null) return;
+        qs += '&' + k + '=' + encodeURIComponent(params[k]);
+    });
+    qs += '&callback=' + cbName + '&t=' + Date.now();
+    var script = document.createElement('script');
+    script.id = 'jsonp-' + cbName;
+    script.src = ABS_BOARD_API_URL + qs;
+    script.onerror = function() {
+        alert('通信エラー');
+        delete window[cbName];
+        var s2 = document.getElementById('jsonp-' + cbName);
+        if (s2) s2.remove();
+    };
+    document.body.appendChild(script);
+}
+
+function kubunDelaySet(rowIndex, name) {
+    getKubunStaffName(function(staff) {
+        if (!staff) return;
+        var memo = prompt(name + '様の保険情報入手を登録します。\nメモ（任意・空でOK）:\nケアマネから電話で受けた内容など', '');
+        if (memo === null) return; // キャンセル
+        memo = memo.trim();
+        kubunDelayJsonp(
+            { rowIndex: rowIndex, operation: 'set', receivedBy: staff, memo: memo },
+            function() {
+                alert(name + '様の保険情報入手を登録しました。yawaragi.notify宛にメール送信。');
+                loadKubunDelayList();
+            },
+            function(err) { alert('登録失敗: ' + err); }
+        );
+    });
+}
+
+function kubunDelayUnset(rowIndex, name) {
+    if (!confirm(name + '様の保険情報入手を取り消しますか？\n（取り消し通知が yawaragi.notify に届きます）')) return;
+    getKubunStaffName(function(staff) {
+        if (!staff) return;
+        kubunDelayJsonp(
+            { rowIndex: rowIndex, operation: 'unset', receivedBy: staff },
+            function() {
+                alert('取り消しました。');
+                loadKubunDelayList();
+            },
+            function(err) { alert('取り消し失敗: ' + err); }
+        );
+    });
+}
+
+function kubunDelayEditMemo(rowIndex) {
+    var current = '';
+    var card = document.querySelector('[data-row="' + rowIndex + '"]');
+    if (card) {
+        var memoDiv = Array.from(card.querySelectorAll('div')).find(function(d) {
+            return d.textContent.indexOf('メモ:') === 0;
+        });
+        if (memoDiv) current = memoDiv.textContent.replace(/^メモ:\s*/, '');
+    }
+    var memo = prompt('メモを編集します:', current);
+    if (memo === null) return;
+    memo = memo.trim();
+
+    // メモ編集はスタッフ選択不要（記録上は最初に押した人が入手者として残る）
+    var savedStaff = '';
+    try { savedStaff = localStorage.getItem(KUBUN_STAFF_KEY) || ''; } catch (e) {}
+    kubunDelayJsonp(
+        { rowIndex: rowIndex, operation: 'editMemo', receivedBy: savedStaff, memo: memo },
+        function() { loadKubunDelayList(); },
+        function(err) { alert('メモ編集失敗: ' + err); }
+    );
 }
 
 function renderKubunBanner(data) {
@@ -9386,7 +10874,7 @@ function buildIntakeModalHtml(r) {
             <div class="intake-check-grid">
                 ${(() => {
                     const reasons = ['立地・送迎範囲が良い','半日型である','リハビリ・運動メニューが魅力','価格・金額','雰囲気・スタッフ対応','ケアマネの推薦','知人・家族の紹介','HP・SNSを見て','体験で本人が気に入った','その他'];
-                    const selected = (r.決定理由 || '').split(',').map(s => s.trim()).filter(Boolean);
+                    const selected = (typeof r.決定理由 === 'string' ? r.決定理由 : '').split(',').map(s => s.trim()).filter(Boolean);
                     return reasons.map(item => intakeCheckItem('m-決定理由-' + item, item, selected.indexOf(item) >= 0, false)).join('');
                 })()}
             </div>
@@ -9587,6 +11075,7 @@ async function syncIntakeToUserListAction(id) {
 // 体験者を「体験中」ステータスで利用者台帳に仮登録（2026-05-11追加）
 async function intakeAddAsTrialAction(id) {
     if (!id) { alert('まず「💾保存」してから押してください'); return; }
+    // モーダル未保存の値があれば先に保存する案内
     const planDate = document.getElementById('m-予定日')?.value || '';
     const pickupTime = document.getElementById('m-体験お迎え時間')?.value || '';
     if (!planDate) {
@@ -9654,6 +11143,443 @@ async function deleteIntakeAction(id) {
 }
 
 // ===== 利用者イベント機能は契約担会ケアマネ.html に分離（2026/4/29） =====
+
+// ===== ケアマネ欠席連絡 即時方式 Phase 1（2026-05-10） =====
+function formatDateForCmMail(dateStr) {
+    const parts = String(dateStr).split('-');
+    if (parts.length < 3) return String(dateStr);
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    const w = ['日','月','火','水','木','金','土'][new Date(y, m-1, d).getDay()];
+    return m + '月' + d + '日(' + w + ')';
+}
+
+function formatDatesForCmMail(dates) {
+    return (dates || []).map(formatDateForCmMail).join('、');
+}
+
+function buildAbsenceMailBody(opts) {
+    const dateLabel = formatDatesForCmMail(opts.dates);
+    const reporterLabel = opts.reporter ? (' ' + opts.reporter) : '';
+    return (opts.cmOffice || '【ケアマネ事業所】') + '\n' +
+        (opts.cmName || '【ケアマネ氏名】') + '様\n\n' +
+        'いつもお世話になっております。\n' +
+        'リハビリデイサービス yawaragi' + reporterLabel + 'です。\n\n' +
+        dateLabel + '、' + opts.userName + '様より「' + (opts.reason || '体調不良') + '」とのご連絡があり、\n' +
+        'yawaragiをお休みされる旨伺いましたのでご報告いたします。\n' +
+        (opts.supplement ? '\n［備考： ' + opts.supplement + '］\n' : '') +
+        '\nご確認のほどよろしくお願いいたします。\n\n' +
+        '━━━━━━━━━━━━━━━━━━\n' +
+        'リハビリデイサービス yawaragi\n' +
+        'https://www.keepfitlife-yawaragi.com\n' +
+        '✉ r.d-yawaragi@keepfitlife.com\n' +
+        'TEL/FAX: 0493-81-5125\n' +
+        '━━━━━━━━━━━━━━━━━━';
+}
+
+function buildCancelMailBody(opts) {
+    const dateLabel = formatDateForCmMail(opts.dateStr);
+    const reporterLabel = opts.reporter ? (' ' + opts.reporter) : '';
+    return (opts.cmOffice || '【ケアマネ事業所】') + '\n' +
+        (opts.cmName || '【ケアマネ氏名】') + '様\n\n' +
+        'いつもお世話になっております。\n' +
+        'リハビリデイサービス yawaragi' + reporterLabel + 'です。\n\n' +
+        '先ほどお休み連絡をさせていただいた' + dateLabel + ' ' + opts.userName + '様ですが、\n' +
+        'やはりご利用されることになりましたのでご報告いたします。\n' +
+        '実績として計上されます。\n\n' +
+        'ご確認のほどよろしくお願いいたします。\n\n' +
+        '━━━━━━━━━━━━━━━━━━\n' +
+        'リハビリデイサービス yawaragi\n' +
+        'https://www.keepfitlife-yawaragi.com\n' +
+        '✉ r.d-yawaragi@keepfitlife.com\n' +
+        'TEL/FAX: 0493-81-5125\n' +
+        '━━━━━━━━━━━━━━━━━━';
+}
+
+// office+name でマスターからメアド/送付方法取得（fetch GET）
+async function fetchCmContact(office, name) {
+    if (!office || !name) return { found: false, email: '', method: '' };
+    try {
+        const url = ABS_BOARD_API_URL + '?action=getCmContact&office=' + encodeURIComponent(office) + '&name=' + encodeURIComponent(name);
+        const r = await fetch(url);
+        const j = await r.json();
+        if (j.success && j.found) return { found: true, email: j.email || '', method: j.method || '' };
+        return { found: false, email: '', method: '' };
+    } catch(e) {
+        console.warn('fetchCmContact エラー:', e);
+        return { found: false, email: '', method: '' };
+    }
+}
+
+// 電話派かどうか判定（method列の値を見る）
+// メール・空欄 → false（メールモード）/ それ以外（FAX/持参/データ連携） → true（電話モード）
+function isCmPhoneMode(method) {
+    const m = String(method || '').trim();
+    if (!m) return false;
+    if (m.indexOf('メール') >= 0) return false;
+    return true;
+}
+
+// 既存欠席を「📞 電話で連絡済み」に手動マーク（2026-05-13）
+async function markCmPhoneCalled(userName, dateStr) {
+    const dt = absFormatDate(dateStr);
+    if (!confirm(userName + '様 ' + dt + ' の欠席を\n「📞 電話で連絡済み」にマークしますか？')) return;
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'updateAbsenceCmNotified',
+                name: userName,
+                date: dateStr,
+                cmNotified: '電話連絡済'
+            })
+        });
+        // localStorage 上のレコードも即時更新（GAS反映待ちの間のチラつき防止）
+        try {
+            const records = absGetRecords();
+            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
+            if (target) {
+                target.cmNotified = '電話連絡済';
+                target.cmNotifiedAt = new Date().toISOString();
+                absSaveRecords(records);
+            }
+        } catch {}
+        showToast('📞 電話連絡済みにマークしました', 2000);
+        // キャッシュクリア＆再描画
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            delete cache[absCurrentMonth];
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+        setTimeout(() => absRenderUpcomingList(), 800);
+    } catch (e) {
+        alert('マーク失敗: ' + (e && e.message || e));
+    }
+}
+
+// 既存欠席を「✉ Gmailから手動でメール送信済み」に手動マーク（2026-05-19）
+async function markCmMailSent(userName, dateStr) {
+    const dt = absFormatDate(dateStr);
+    if (!confirm(userName + '様 ' + dt + ' の欠席を\n「✉ メール送信済（手動）」にマークしますか？\n\n※ Gmailから直接ケアマネにメールを送ったときに使います。\n（ボードのフォームから自動送信した場合はマーク不要です）')) return;
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'updateAbsenceCmNotified',
+                name: userName,
+                date: dateStr,
+                cmNotified: '手動メール送信済'
+            })
+        });
+        try {
+            const records = absGetRecords();
+            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
+            if (target) {
+                target.cmNotified = '手動メール送信済';
+                target.cmNotifiedAt = new Date().toISOString();
+                absSaveRecords(records);
+            }
+        } catch {}
+        showToast('✉ 手動メール送信済みにマークしました', 2000);
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            delete cache[absCurrentMonth];
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+        setTimeout(() => absRenderUpcomingList(), 800);
+    } catch (e) {
+        alert('マーク失敗: ' + (e && e.message || e));
+    }
+}
+
+// マスターにメアド保存（POST・no-cors なのでレスポンスは読まない）
+async function saveCmContact(office, name, email) {
+    if (!office || !name || !email) return;
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'updateCmContact', office: office, name: name, email: email })
+        });
+    } catch(e) {
+        console.warn('saveCmContact エラー（送信は続行）:', e);
+    }
+}
+
+// ===== 欠席連絡 確認ポップアップ =====
+// opts: { userName, dates, reason, supplement, cmOffice, cmName, cmEmail, reporter }
+// 戻り値: { send: true, email, cmName, body } / { send: false }
+// 2026-05-13: 備考欄 + 自由編集モード（C案）
+async function showAbsenceMailConfirm(opts) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;';
+
+        const dateLabel = formatDatesForCmMail(opts.dates);
+        const subject = '【yawaragi】' + dateLabel + ' ' + opts.userName + '様 お休み連絡';
+
+        const cmNameEditable = !opts.cmName;
+        const emailEditable = !opts.cmEmail;
+        let advancedMode = false;
+
+        function renderBody() {
+            const cmNameVal = cmNameEditable ? (document.getElementById('cmNameInputAbs')?.value || '') : opts.cmName;
+            const supplementVal = (document.getElementById('cmSupplementInput')?.value || '').trim() || opts.supplement || '';
+            return buildAbsenceMailBody({
+                userName: opts.userName, dates: opts.dates, reason: opts.reason, supplement: supplementVal,
+                cmOffice: opts.cmOffice, cmName: cmNameVal, reporter: opts.reporter
+            });
+        }
+
+        function refreshBodyView() {
+            const previewEl = document.getElementById('absMailBodyPreview');
+            const textareaEl = document.getElementById('absMailBodyTextarea');
+            const supplementBox = document.getElementById('cmSupplementBox');
+            const editBtn = document.getElementById('btnToggleEdit');
+            const editHint = document.getElementById('absEditHint');
+            if (advancedMode) {
+                if (!textareaEl.dataset.initialized) {
+                    textareaEl.value = renderBody();
+                    textareaEl.dataset.initialized = '1';
+                }
+                previewEl.style.display = 'none';
+                textareaEl.style.display = 'block';
+                supplementBox.style.display = 'none';
+                editBtn.textContent = '↶ 自動生成に戻す';
+                editHint.textContent = '✏ 直接編集モード：好きに変更できます（戻すと編集内容は破棄）';
+                editHint.style.color = '#3182ce';
+            } else {
+                previewEl.style.display = 'block';
+                textareaEl.style.display = 'none';
+                supplementBox.style.display = 'block';
+                editBtn.textContent = '✏ もっと自由に編集する';
+                editHint.textContent = '※ 備考欄に書いた内容が本文に自動で挿入されます';
+                editHint.style.color = '#718096';
+                previewEl.textContent = renderBody();
+                textareaEl.dataset.initialized = '';
+            }
+        }
+
+        const cmNameFieldHtml = cmNameEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ ケアマネ氏名が未登録</div>' +
+              '<input type="text" id="cmNameInputAbs" placeholder="例：田中 花子" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">👤 ケアマネ: ' + escapeHtml(opts.cmName) + '</div>';
+
+        const emailFieldHtml = emailEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ メールアドレスが未登録（次回から自動表示されます）</div>' +
+              '<input type="email" id="cmEmailInputAbs" placeholder="例：example@careplan.com" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">📧 送信先: ' + escapeHtml(opts.cmEmail) + '</div>';
+
+        const supplementBoxHtml = '<div id="cmSupplementBox" style="margin:10px 0;padding:8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #16a085;">' +
+            '<div style="font-size:13px;font-weight:bold;margin-bottom:4px;color:#0f5132;">📝 付け足したいこと（任意・本文に追記されます）</div>' +
+            '<textarea id="cmSupplementInput" rows="2" style="width:100%;padding:6px;font-size:13px;border:1px solid #ccc;border-radius:3px;resize:vertical;box-sizing:border-box;" placeholder="例：明日以降は未定とのことです／お迎えは不要"></textarea>' +
+            '</div>';
+
+        overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:680px;width:96%;max-height:92vh;overflow-y:auto;">' +
+            '<h3 style="margin:0 0 12px;color:#16a085;font-size:18px;">✉ ケアマネにお休み連絡メールを送信</h3>' +
+            '<div style="font-size:13px;color:#7f8c8d;margin-bottom:8px;">差出人: r.d-yawaragi@keepfitlife.com</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📍 ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
+            cmNameFieldHtml +
+            emailFieldHtml +
+            supplementBoxHtml +
+            '<div style="font-weight:bold;margin:10px 0 4px;font-size:14px;">件名:</div>' +
+            '<div style="padding:6px;background:#f8f9fa;border-radius:3px;margin-bottom:10px;font-size:13px;">' + escapeHtml(subject) + '</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+                '<div style="font-weight:bold;font-size:14px;">本文プレビュー:</div>' +
+                '<button id="btnToggleEdit" type="button" style="font-size:12px;color:#3182ce;background:none;border:none;cursor:pointer;text-decoration:underline;padding:0;">✏ もっと自由に編集する</button>' +
+            '</div>' +
+            '<div id="absEditHint" style="font-size:11px;color:#718096;margin-bottom:4px;">※ 備考欄に書いた内容が本文に自動で挿入されます</div>' +
+            '<pre id="absMailBodyPreview" style="padding:10px;background:#f8f9fa;border-radius:3px;white-space:pre-wrap;font-size:12px;font-family:inherit;margin-bottom:10px;max-height:280px;overflow-y:auto;">' + escapeHtml(renderBody()) + '</pre>' +
+            '<textarea id="absMailBodyTextarea" style="display:none;width:100%;min-height:280px;padding:10px;font-size:12px;font-family:inherit;border:1px solid #3182ce;border-radius:3px;margin-bottom:10px;resize:vertical;box-sizing:border-box;"></textarea>' +
+            '<div style="text-align:right;margin-top:12px;">' +
+            '<button id="btnAbsMailCancel" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">送信しない</button>' +
+            '<button id="btnAbsMailSend" style="padding:10px 18px;background:#16a085;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">送信する</button>' +
+            '</div></div>';
+
+        document.body.appendChild(overlay);
+
+        // cmName編集時に本文プレビュー更新
+        if (cmNameEditable) {
+            const inp = document.getElementById('cmNameInputAbs');
+            inp.addEventListener('input', () => {
+                if (!advancedMode) document.getElementById('absMailBodyPreview').textContent = renderBody();
+            });
+        }
+        // 備考欄入力時に本文プレビュー更新
+        document.getElementById('cmSupplementInput').addEventListener('input', () => {
+            if (!advancedMode) document.getElementById('absMailBodyPreview').textContent = renderBody();
+        });
+        // 自由編集モード切替
+        document.getElementById('btnToggleEdit').onclick = () => {
+            advancedMode = !advancedMode;
+            refreshBodyView();
+        };
+
+        document.getElementById('btnAbsMailCancel').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ send: false });
+        };
+        document.getElementById('btnAbsMailSend').onclick = async () => {
+            const cmNameFinal = cmNameEditable ? (document.getElementById('cmNameInputAbs').value || '').trim() : opts.cmName;
+            const emailFinal = emailEditable ? (document.getElementById('cmEmailInputAbs').value || '').trim() : opts.cmEmail;
+            if (!cmNameFinal) { alert('ケアマネ氏名を入力してください'); return; }
+            if (!emailFinal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFinal)) {
+                alert('メールアドレスを正しく入力してください'); return;
+            }
+            const finalBody = advancedMode
+                ? (document.getElementById('absMailBodyTextarea').value || '').trim()
+                : renderBody();
+            if (!finalBody) { alert('本文が空です'); return; }
+            // 最終確認（二重確認・誤送信防止）
+            const confirmMsg = '【最終確認】\n\n' +
+                opts.userName + '様 のお休み連絡を\n' +
+                cmNameFinal + '様（' + emailFinal + '）\n' +
+                'にこの内容で送信します。\n\n' +
+                '本当によろしいですか？';
+            if (!confirm(confirmMsg)) return;
+            // マスター保存（office+nameは正規化前のものでOK・GAS側で正規化照合）
+            if ((emailEditable || cmNameEditable) && opts.cmOffice) {
+                saveCmContact(opts.cmOffice, cmNameFinal, emailFinal);
+            }
+            document.body.removeChild(overlay);
+            resolve({ send: true, email: emailFinal, cmName: cmNameFinal, body: finalBody });
+        };
+    });
+}
+
+// ===== 電話派ケアマネ用 電話連絡確認ポップアップ（2026-05-13） =====
+// opts: { userName, dates, reason, supplement, cmOffice, cmName }
+// 戻り値: { phoneCalled: true/false }
+async function showAbsencePhoneConfirm(opts) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;';
+
+        const dateLabel = formatDatesForCmMail(opts.dates);
+
+        overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:520px;width:96%;max-height:92vh;overflow-y:auto;">' +
+            '<h3 style="margin:0 0 12px;color:#3182ce;font-size:18px;">📞 ケアマネに電話で連絡</h3>' +
+            '<div style="background:#ebf8ff;border-left:4px solid #3182ce;padding:10px;border-radius:4px;margin-bottom:14px;">' +
+                '<div style="font-weight:bold;color:#2c5282;margin-bottom:4px;">⚠ このケアマネは電話派です</div>' +
+                '<div style="font-size:13px;color:#4a5568;">送付方法マスタが「メール」以外のため、メール送信は行いません。<br>電話で連絡してから下のボタンを押してください。</div>' +
+            '</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📍 事業所: ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">👤 担当: ' + escapeHtml(opts.cmName || '【未設定】') + '様</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📅 日付: ' + escapeHtml(dateLabel) + '</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">🧑 利用者: ' + escapeHtml(opts.userName) + '様</div>' +
+            '<div style="font-size:14px;margin-bottom:12px;">📝 理由: ' + escapeHtml(opts.reason || '体調不良') + '</div>' +
+            '<div style="text-align:right;margin-top:12px;">' +
+                '<button id="btnPhoneSkip" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">あとで（連絡未のまま）</button>' +
+                '<button id="btnPhoneDone" style="padding:10px 18px;background:#3182ce;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">📞 電話で連絡済み</button>' +
+            '</div></div>';
+
+        document.body.appendChild(overlay);
+
+        document.getElementById('btnPhoneSkip').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ phoneCalled: false });
+        };
+        document.getElementById('btnPhoneDone').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ phoneCalled: true });
+        };
+    });
+}
+
+// ===== 取消（やっぱり利用） 確認ポップアップ =====
+async function showCancelMailConfirm(opts) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;';
+
+        const dateLabel = formatDateForCmMail(opts.dateStr);
+        const subject = '【yawaragi】' + dateLabel + ' ' + opts.userName + '様 ご利用に変更（休み→利用）';
+
+        const cmNameEditable = !opts.cmName;
+        const emailEditable = !opts.cmEmail;
+
+        function renderBody() {
+            const cmNameVal = cmNameEditable ? (document.getElementById('cmNameInputCancel')?.value || '') : opts.cmName;
+            return buildCancelMailBody({
+                userName: opts.userName, dateStr: opts.dateStr,
+                cmOffice: opts.cmOffice, cmName: cmNameVal, reporter: opts.reporter
+            });
+        }
+
+        const cmNameFieldHtml = cmNameEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ ケアマネ氏名が未登録</div>' +
+              '<input type="text" id="cmNameInputCancel" placeholder="例：田中 花子" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">👤 ケアマネ: ' + escapeHtml(opts.cmName) + '</div>';
+
+        const emailFieldHtml = emailEditable
+            ? '<div style="margin:8px 0;padding:8px;background:#fef9e7;border-radius:4px;">' +
+              '<div style="color:#d35400;font-weight:bold;margin-bottom:4px;">⚠ メールアドレスが未登録</div>' +
+              '<input type="email" id="cmEmailInputCancel" placeholder="例：example@careplan.com" style="width:100%;padding:6px;font-size:14px;border:1px solid #ccc;border-radius:3px;">' +
+              '</div>'
+            : '<div style="margin:4px 0;color:#27ae60;">📧 送信先: ' + escapeHtml(opts.cmEmail) + '</div>';
+
+        overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:680px;width:96%;max-height:92vh;overflow-y:auto;">' +
+            '<h3 style="margin:0 0 12px;color:#27ae60;font-size:18px;">↩ ケアマネに「やっぱり利用」連絡を送信</h3>' +
+            '<div style="font-size:13px;color:#7f8c8d;margin-bottom:8px;">差出人: r.d-yawaragi@keepfitlife.com</div>' +
+            '<div style="font-size:14px;margin-bottom:6px;">📍 ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
+            cmNameFieldHtml +
+            emailFieldHtml +
+            '<div style="font-weight:bold;margin:10px 0 4px;font-size:14px;">件名:</div>' +
+            '<div style="padding:6px;background:#f8f9fa;border-radius:3px;margin-bottom:10px;font-size:13px;">' + escapeHtml(subject) + '</div>' +
+            '<div style="font-weight:bold;margin-bottom:4px;font-size:14px;">本文プレビュー:</div>' +
+            '<pre id="cancelMailBodyPreview" style="padding:10px;background:#f8f9fa;border-radius:3px;white-space:pre-wrap;font-size:12px;font-family:inherit;margin-bottom:10px;max-height:280px;overflow-y:auto;">' + escapeHtml(renderBody()) + '</pre>' +
+            '<div style="text-align:right;margin-top:12px;">' +
+            '<button id="btnCancelMailNo" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">送信しない</button>' +
+            '<button id="btnCancelMailYes" style="padding:10px 18px;background:#27ae60;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">送信する</button>' +
+            '</div></div>';
+
+        document.body.appendChild(overlay);
+
+        if (cmNameEditable) {
+            const inp = document.getElementById('cmNameInputCancel');
+            inp.addEventListener('input', () => {
+                document.getElementById('cancelMailBodyPreview').textContent = renderBody();
+            });
+        }
+
+        document.getElementById('btnCancelMailNo').onclick = () => {
+            document.body.removeChild(overlay);
+            resolve({ send: false });
+        };
+        document.getElementById('btnCancelMailYes').onclick = async () => {
+            const cmNameFinal = cmNameEditable ? (document.getElementById('cmNameInputCancel').value || '').trim() : opts.cmName;
+            const emailFinal = emailEditable ? (document.getElementById('cmEmailInputCancel').value || '').trim() : opts.cmEmail;
+            if (!cmNameFinal) { alert('ケアマネ氏名を入力してください'); return; }
+            if (!emailFinal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFinal)) {
+                alert('メールアドレスを正しく入力してください'); return;
+            }
+            // 最終確認（二重確認・誤送信防止）
+            const confirmMsg = '【最終確認】\n\n' +
+                opts.userName + '様 の「やっぱり利用」連絡を\n' +
+                cmNameFinal + '様（' + emailFinal + '）\n' +
+                'に送信します。\n\n' +
+                '本当によろしいですか？';
+            if (!confirm(confirmMsg)) return;
+            if ((emailEditable || cmNameEditable) && opts.cmOffice) {
+                saveCmContact(opts.cmOffice, cmNameFinal, emailFinal);
+            }
+            document.body.removeChild(overlay);
+            resolve({ send: true, email: emailFinal, cmName: cmNameFinal });
+        };
+    });
+}
 
 </script>
 </body>
