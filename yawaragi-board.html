@@ -6041,18 +6041,34 @@ function absRenderUpcomingList() {
     }
 
     // GASからJSONPで取得（裏で最新取得→差し替え）
-    const cbName = '_absUpCb_' + Date.now();
+    // cbName はミリ秒＋乱数で衝突回避（同一ms内の二重呼び出し対策）
+    const cbName = '_absUpCb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     const script = document.createElement('script');
     script.src = ABS_BOARD_API_URL + '?action=absences&month=' + absCurrentMonth + '&callback=' + cbName + '&t=' + Date.now();
 
+    // 後始末：コールバックは delete せず空関数に差し替える。
+    // GAS応答がタイムアウト後に遅れて届いても _absUpCb_ 未定義エラーでクラッシュさせない。
+    let absUpSettled = false;
+    function absUpCleanup() {
+        clearTimeout(timeout);
+        window[cbName] = function () {};
+        if (script.parentNode) script.parentNode.removeChild(script);
+        // 遅延応答の猶予を取ってから window から完全に消す（メモリリーク防止）
+        setTimeout(function () { try { delete window[cbName]; } catch (e) {} }, 60000);
+    }
+
+    // GASはコールドスタート時に応答が遅い。旧5秒では遅延応答が頻発したため15秒に延長
     const timeout = setTimeout(() => {
-        delete window[cbName];
+        if (absUpSettled) return;
+        absUpSettled = true;
+        absUpCleanup();
         if (!cacheShown) absRenderUpcomingListFromData([]);
-    }, 5000);
+    }, 15000);
 
     window[cbName] = function(data) {
-        clearTimeout(timeout);
-        delete window[cbName];
+        if (absUpSettled) return;
+        absUpSettled = true;
+        absUpCleanup();
         let gasAbsences = [];
         let longTermData = [];
         if (data && data.absences) {
@@ -6075,8 +6091,9 @@ function absRenderUpcomingList() {
         } catch {}
     };
     script.onerror = () => {
-        clearTimeout(timeout);
-        delete window[cbName];
+        if (absUpSettled) return;
+        absUpSettled = true;
+        absUpCleanup();
         if (!cacheShown) absRenderUpcomingListFromData([]);
     };
     document.body.appendChild(script);
