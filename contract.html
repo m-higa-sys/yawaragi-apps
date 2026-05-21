@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>担会・契約/ケアマネ・曜日変更 | yawaragi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
+    background: #f0f4f8;
+    min-height: 100vh;
+    color: #2d3748;
+}
+header {
+    padding: 16px 24px;
+    border-bottom: 2px solid #2c7a7b;
+    background: #f7fafc;
+}
+header h1 {
+    margin: 0;
+    font-size: 1.4rem;
+    color: #2d3748;
+}
+header p {
+    margin: 4px 0 0 0;
+    font-size: 0.85rem;
+    color: #718096;
+}
+main {
+    padding: 20px;
+    max-width: 960px;
+    margin: 0 auto;
+}
+button {
+    font-family: inherit;
+}
+input, select, textarea {
+    font-family: inherit;
+}
+
+/* ===== モーダル（yawaragiボード.html から流用） ===== */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 1000;
+    align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+
+/* ===== トースト ===== */
+.toast {
+    position: fixed; bottom: 30px; left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #2d3748; color: white; padding: 12px 24px;
+    border-radius: 10px; font-weight: 600; font-size: 0.9rem;
+    z-index: 2000; transition: transform 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>📋 担会・契約/ケアマネ・曜日変更</h1>
+    <p>契約後・担会後・ケアマネ変更・利用曜日変更のチェックリストを管理します。🟡項目は今日のタスクボードに自動連動します。</p>
+</header>
+
+<main>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+        <!-- 登録ボタン群 -->
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button onclick="evtOpenModal('contract_after')" style="padding:12px 20px; background:#2c7a7b; color:white; border:none; border-radius:8px; font-size:1rem; font-weight:bold; cursor:pointer;">+ 契約後</button>
+            <button onclick="evtOpenCmChangeModal()" style="padding:12px 20px; background:#9c4221; color:white; border:none; border-radius:8px; font-size:1rem; font-weight:bold; cursor:pointer;">+ ケアマネ変更</button>
+            <button onclick="udcOpenWizard()" style="padding:12px 20px; background:#2b6cb0; color:white; border:none; border-radius:8px; font-size:1rem; font-weight:bold; cursor:pointer;">+ 利用曜日変更</button>
+            <!-- 担会後ボタンは設計見直し中（2026/4/29） -->
+        </div>
+        <button onclick="evtLoadList()" style="background:#3182ce; color:#fff; border:none; padding:10px 16px; border-radius:8px; font-size:0.9rem; cursor:pointer;">🔄 再読込</button>
+    </div>
+
+    <!-- イベントカード一覧 -->
+    <div id="user-events-list" style="display:flex; flex-direction:column; gap:12px;">
+        <p style="color:#888; padding:20px; text-align:center;">読み込み中…</p>
+    </div>
+</main>
+
+<!-- 利用者イベント登録モーダル -->
+<div id="event-modal" class="modal-overlay">
+    <div class="modal-content" style="background:#fff; border-radius:12px; padding:20px; max-width:480px; width:96%; max-height:92vh; overflow-y:auto;">
+        <h3 id="event-modal-title" style="font-size:1.2rem; margin:0 0 16px 0;">+ 契約後</h3>
+        <form id="event-form" onsubmit="return evtSubmitForm(event)">
+            <input type="hidden" id="event-type" value="contract_after">
+
+            <label style="display:block; margin-bottom:12px;">
+                利用者名 <span style="color:red;">*</span><br>
+                <input type="text" id="event-userName" required style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:8px; box-sizing:border-box;">
+            </label>
+
+            <label style="display:block; margin-bottom:12px;">
+                契約日 <span style="color:red;">*</span><br>
+                <input type="date" id="event-eventDate" required style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:8px; box-sizing:border-box;">
+            </label>
+
+            <label style="display:block; margin-bottom:12px;">
+                利用開始日 <span style="color:red;">*</span><br>
+                <input type="date" id="event-meta-startDate" required style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:8px; box-sizing:border-box;">
+            </label>
+
+            <label style="display:block; margin-bottom:12px;">
+                要介護度 <span style="color:red;">*</span><br>
+                <select id="event-meta-careLevel" required style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:8px; box-sizing:border-box;">
+                    <option value="">選択</option>
+                    <option value="要支援1">要支援1</option>
+                    <option value="要支援2">要支援2</option>
+                    <option value="要介護1">要介護1</option>
+                    <option value="要介護2">要介護2</option>
+                    <option value="要介護3">要介護3</option>
+                    <option value="要介護4">要介護4</option>
+                    <option value="要介護5">要介護5</option>
+                </select>
+            </label>
+
+            <label style="display:block; margin-bottom:16px;">
+                入力者 <span style="color:red;">*</span><br>
+                <select id="event-createdBy" required style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:8px; box-sizing:border-box; background:white;">
+                    <option value="">あなたの名前を選んでください</option>
+                </select>
+            </label>
+
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button type="button" onclick="evtCloseModal()" style="padding:10px 20px; background:#edf2f7; color:#4a5568; border:none; border-radius:8px; cursor:pointer;">キャンセル</button>
+                <button type="submit" style="padding:10px 20px; background:#2c7a7b; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ケアマネ変更モーダル（2026/5/2追加） -->
+<div id="cm-change-modal" class="modal-overlay">
+    <div class="modal-content" style="background:#fff; border-radius:12px; padding:20px; max-width:680px; width:96%; max-height:92vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 style="font-size:1.2rem; margin:0;">+ ケアマネ変更</h3>
+            <button onclick="evtCloseCmChangeModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">×</button>
+        </div>
+
+        <!-- 利用者選択 -->
+        <div style="background:#f7fafc; padding:12px; border-radius:8px; margin-bottom:16px;">
+            <label style="display:block; font-size:0.85rem; color:#4a5568; margin-bottom:6px;"><b>👤 利用者を選ぶ</b></label>
+            <input type="text" id="cm-user-search" autocomplete="off" placeholder="氏名またはカナで検索" style="width:100%; padding:10px; font-size:1rem; border:2px solid #2c7a7b; border-radius:6px; box-sizing:border-box;">
+            <div id="cm-user-suggestions" style="background:white; border:1px solid #ccc; border-top:none; max-height:200px; overflow-y:auto; display:none;"></div>
+            <div id="cm-user-selected" style="margin-top:6px; font-size:0.9rem; color:#2c7a7b; font-weight:bold;"></div>
+        </div>
+
+        <!-- 左右分割：現在 / 新規 -->
+        <div style="display:flex; gap:12px; margin-bottom:16px;">
+            <!-- 現在のケアマネ -->
+            <div style="flex:1; background:#fff5f0; padding:12px; border-radius:8px;">
+                <div style="font-size:0.8rem; color:#9c4221; margin-bottom:8px;"><b>🔵 現在のケアマネ</b></div>
+                <div id="cm-current-display">
+                    <div style="color:#888; font-size:0.85rem;">利用者を選んでください</div>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; font-size:1.5rem; color:#2c7a7b;">→</div>
+
+            <!-- 新ケアマネ -->
+            <div style="flex:1; background:#f0fff4; padding:12px; border-radius:8px;">
+                <div style="font-size:0.8rem; color:#22543d; margin-bottom:8px;"><b>🟢 新ケアマネ</b></div>
+
+                <div style="margin-bottom:8px;">
+                    <label style="display:block; font-size:0.75rem; color:#666; margin-bottom:2px;">事業所</label>
+                    <!-- カスタムドロップダウン（事業所） -->
+                    <div class="cm-dropdown" id="cm-office-dropdown" style="position:relative;">
+                        <div onclick="evtToggleDropdown('office')" id="cm-office-trigger" style="background:white; border:1px solid #ccc; border-radius:4px; padding:8px; cursor:pointer; font-size:0.9rem;">
+                            <span id="cm-office-display" style="color:#888;">▼ 事業所を選ぶ</span>
+                        </div>
+                        <div id="cm-office-list" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #ccc; border-top:none; max-height:300px; overflow-y:auto; z-index:100; box-shadow:0 4px 8px rgba(0,0,0,0.1);"></div>
+                    </div>
+                    <!-- 隠し input（値保持用） -->
+                    <input type="hidden" id="cm-new-office-value" value="">
+                    <input type="text" id="cm-new-office-input" placeholder="新規事業所名" style="width:100%; padding:6px; margin-top:4px; font-size:0.9rem; border:1px solid #ccc; border-radius:4px; display:none; box-sizing:border-box;">
+                    <div id="cm-back-to-existing" style="display:none; font-size:0.75rem; color:#2c7a7b; margin-top:4px; cursor:pointer;" onclick="evtBackToExistingOffice()">← 既存事業所から選ぶに戻る</div>
+                </div>
+
+                <div>
+                    <label style="display:block; font-size:0.75rem; color:#666; margin-bottom:2px;">担当者</label>
+                    <!-- カスタムドロップダウン（担当者） -->
+                    <div class="cm-dropdown" id="cm-staff-dropdown" style="position:relative;">
+                        <div onclick="evtToggleDropdown('staff')" id="cm-staff-trigger" style="background:white; border:1px solid #ccc; border-radius:4px; padding:8px; cursor:pointer; font-size:0.9rem;">
+                            <span id="cm-staff-display" style="color:#888;">▼ 事業所を先に選んでください</span>
+                        </div>
+                        <div id="cm-staff-list" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #ccc; border-top:none; max-height:300px; overflow-y:auto; z-index:100; box-shadow:0 4px 8px rgba(0,0,0,0.1);"></div>
+                    </div>
+                    <!-- 隠し input（値保持用） -->
+                    <input type="hidden" id="cm-new-staff-value" value="">
+                    <input type="text" id="cm-new-staff-input" placeholder="新規担当者名" style="width:100%; padding:6px; margin-top:4px; font-size:0.9rem; border:1px solid #ccc; border-radius:4px; display:none; box-sizing:border-box;">
+                </div>
+            </div>
+        </div>
+
+        <!-- 変更日・入力者 -->
+        <div style="margin-bottom:12px;">
+            <label style="display:block; font-size:0.85rem; color:#4a5568; margin-bottom:4px;">変更日 <span style="color:red;">*</span></label>
+            <input type="date" id="cm-change-date" style="width:100%; padding:8px; font-size:1rem; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:16px;">
+            <label style="display:block; font-size:0.85rem; color:#4a5568; margin-bottom:4px;">入力者 <span style="color:red;">*</span></label>
+            <select id="cm-created-by" style="width:100%; padding:8px; font-size:1rem; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; background:white;">
+                <option value="">あなたの名前を選んでください</option>
+            </select>
+        </div>
+
+        <!-- ボタン -->
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button onclick="evtCloseCmChangeModal()" style="padding:10px 20px; background:#e2e8f0; color:#4a5568; border:none; border-radius:6px; cursor:pointer;">キャンセル</button>
+            <button onclick="evtSubmitCmChange()" style="padding:10px 20px; background:#9c4221; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">登録 → 15項目チェックリストへ</button>
+        </div>
+    </div>
+</div>
+
+<!-- 利用曜日変更ウィザードモーダル（2026/5/10追加） -->
+<div id="udc-wizard-modal" class="modal-overlay">
+    <div class="modal-content" style="background:#fff; border-radius:12px; padding:20px; max-width:560px; width:96%; max-height:92vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="font-size:1.2rem; margin:0; color:#2b6cb0;">+ 利用曜日変更</h3>
+            <button onclick="udcCloseWizard()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#718096;">×</button>
+        </div>
+
+        <!-- 進捗インジケーター -->
+        <div style="background:#ebf8ff; border-radius:6px; padding:8px 12px; margin-bottom:16px; font-size:0.9rem; color:#2b6cb0; font-weight:bold;">
+            <span id="udc-step-indicator">Step 1 / 10</span>
+        </div>
+
+        <!-- Step 1: 利用者選択 -->
+        <div class="wizard-step" data-step="1" style="display:block;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">1. 利用者 <span style="color:red;">*</span></label>
+            <select id="udc-user-select" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box; background:white;">
+                <option value="">読み込み中…</option>
+            </select>
+        </div>
+
+        <!-- Step 2: 記入者 -->
+        <div class="wizard-step" data-step="2" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">2. 記入者 <span style="color:red;">*</span></label>
+            <select id="udc-recorder-select" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box; background:white;">
+                <option value="">あなたの名前を選んでください</option>
+            </select>
+        </div>
+
+        <!-- Step 3: 連絡日 -->
+        <div class="wizard-step" data-step="3" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">3. 連絡日 <span style="color:red;">*</span></label>
+            <input type="date" id="udc-contact-date" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box;">
+        </div>
+
+        <!-- Step 4: ケアマネ事業所 -->
+        <div class="wizard-step" data-step="4" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">4. ケアマネ事業所 <span style="color:red;">*</span></label>
+            <select id="udc-cm-office" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box; background:white;">
+                <option value="">選択してください</option>
+            </select>
+            <input type="text" id="udc-cm-office-other" placeholder="事業所名を入力（本人／家族の場合は『本人』『家族』など）" style="display:none; width:100%; padding:10px; margin-top:8px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box;">
+        </div>
+
+        <!-- Step 5: ケアマネ担当者 -->
+        <div class="wizard-step" data-step="5" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">5. ケアマネ担当者 <span style="color:red;">*</span></label>
+            <select id="udc-cm-contact" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box; background:white;">
+                <option value="">先に事業所を選んでください</option>
+            </select>
+            <input type="text" id="udc-cm-contact-other" placeholder="担当者名を入力" style="display:none; width:100%; padding:10px; margin-top:8px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box;">
+        </div>
+
+        <!-- Step 6: 現在の曜日 -->
+        <div class="wizard-step" data-step="6" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:10px;">6. 現在の利用曜日（変更前） <span style="color:red;">*</span></label>
+            <div id="udc-current-days" style="display:flex; flex-wrap:wrap; gap:4px; padding:10px; background:#f7fafc; border-radius:6px;"></div>
+        </div>
+
+        <!-- Step 7: 変更後の曜日 -->
+        <div class="wizard-step" data-step="7" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:10px;">7. 変更後の利用曜日 <span style="color:red;">*</span></label>
+            <div id="udc-new-days" style="display:flex; flex-wrap:wrap; gap:4px; padding:10px; background:#f0fff4; border-radius:6px;"></div>
+        </div>
+
+        <!-- Step 8: 適用開始日 -->
+        <div class="wizard-step" data-step="8" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">8. 適用開始日 <span style="color:red;">*</span></label>
+            <input type="date" id="udc-effective-date" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box;">
+        </div>
+
+        <!-- Step 9: 主導権メモ（任意） -->
+        <div class="wizard-step" data-step="9" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">9. 主導権メモ <span style="color:#718096; font-size:0.85rem; font-weight:normal;">（任意）</span></label>
+            <textarea id="udc-leadership-memo" rows="3" placeholder="例：ケアマネから提案 / 家族希望 / 本人希望 など" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box; resize:vertical;"></textarea>
+        </div>
+
+        <!-- Step 10: メモ（任意） -->
+        <div class="wizard-step" data-step="10" style="display:none;">
+            <label style="font-weight:bold; display:block; margin-bottom:6px;">10. メモ <span style="color:#718096; font-size:0.85rem; font-weight:normal;">（任意）</span></label>
+            <textarea id="udc-memo" rows="3" placeholder="その他の備考・連絡事項など" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box; resize:vertical;"></textarea>
+        </div>
+
+        <!-- ナビゲーションボタン -->
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:20px;">
+            <button id="udc-btn-cancel" onclick="udcCloseWizard()" style="padding:10px 20px; background:#edf2f7; color:#4a5568; border:none; border-radius:6px; cursor:pointer;">キャンセル</button>
+            <button id="udc-btn-prev" onclick="udcPrev()" style="display:none; padding:10px 20px; background:#e2e8f0; color:#4a5568; border:none; border-radius:6px; cursor:pointer;">← 戻る</button>
+            <button id="udc-btn-next" onclick="udcNext()" style="padding:10px 20px; background:#2b6cb0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">次へ →</button>
+            <button id="udc-btn-submit" onclick="udcSubmit()" style="display:none; padding:10px 20px; background:#276749; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">登録</button>
+        </div>
+    </div>
+</div>
+
+<!-- 利用者イベント詳細モーダル -->
+<div id="event-detail-modal" class="modal-overlay">
+    <div class="modal-content" style="background:#fff; border-radius:12px; padding:20px; max-width:720px; width:96%; max-height:92vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 id="event-detail-title" style="font-size:1.15rem; margin:0;"></h3>
+            <button onclick="evtCloseDetail()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; padding:4px 12px;">×</button>
+        </div>
+        <div id="event-detail-body"></div>
+    </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== GAS API URL =====
+const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+
+// ===== 共通ユーティリティ（yawaragiボード.html から流用） =====
+function showToast(msg, duration) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), duration || 2000);
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// ===== リトライ付きGAS POST送信 =====
+// 3回まで再試行。失敗時はスタッフに警告表示
+async function gasPost(data, label) {
+    const maxRetries = 3;
+    for (let i = 1; i <= maxRetries; i++) {
+        try {
+            await fetch(ABS_BOARD_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return true; // ネットワーク送信成功
+        } catch (err) {
+            console.error('GAS送信エラー (' + i + '/' + maxRetries + '): ' + (label || ''), err);
+            if (i < maxRetries) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+    }
+    showToast('⚠️ 送信失敗！ネットワークを確認してください', 5000);
+    return false;
+}
+
+// ============================================================
+// ===== 利用者イベント（契約後35項目チェックリスト） 2026/4/29 =====
+// ============================================================
+const EVT_API_URL = ABS_BOARD_API_URL; // 同じGAS（既存定数を再利用）
+const EVT_LABEL_MAP = { contract_after: '契約後', meeting_after: '担会後', caremanager_change: 'ケアマネ変更', usage_days_change: '利用曜日変更' };
+let _evtCache = [];          // 一覧キャッシュ
+let _evtCurrent = null;      // 詳細表示中のイベント
+
+// ----- 一覧取得（JSONP） -----
+function evtLoadList(_retryCount) {
+    _retryCount = _retryCount || 0;
+    const host = document.getElementById('user-events-list');
+    if (!host) return;
+    host.innerHTML = '<p style="color:#888; padding:20px; text-align:center;">' +
+        (_retryCount > 0 ? '再読み込み中... (' + _retryCount + ')' : '読み込み中…') + '</p>';
+
+    const cbName = 'evtListCb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const url = EVT_API_URL + '?action=user_events&callback=' + cbName;
+
+    window[cbName] = function(resp) {
+        try {
+            const events = (resp && resp.user_events) ? resp.user_events : [];
+            _evtCache = events;
+            evtRenderList(events);
+        } catch (e) {
+            host.innerHTML = '<p style="color:red; padding:20px;">描画エラー: ' + escapeHtml(e && e.message || String(e)) + '</p>';
+        } finally {
+            try { delete window[cbName]; } catch(e) {}
+        }
+    };
+
+    const script = document.createElement('script');
+    script.src = url;
+    script.onerror = function() {
+        host.innerHTML = '<p style="color:red; padding:20px;">通信エラー：GASに接続できません。Ctrl+Shift+R でリロードしてください。</p>';
+        try { delete window[cbName]; } catch(e) {}
+    };
+    document.body.appendChild(script);
+    setTimeout(() => {
+        try { script.remove(); } catch(e) {}
+        if (typeof window[cbName] === 'function') {
+            try { delete window[cbName]; } catch(e) {}
+            if (_retryCount < 2) {
+                setTimeout(() => evtLoadList(_retryCount + 1), 500);
+            } else {
+                host.innerHTML = '<p style="color:red; padding:20px;">取得タイムアウト：GAS応答なし（リトライ2回失敗）</p>';
+            }
+        }
+    }, 8000);
+}
+
+function evtRenderList(events) {
+    const host = document.getElementById('user-events-list');
+    if (!events || events.length === 0) {
+        host.innerHTML = '<p style="color:#888; padding:30px; text-align:center;">進行中のイベントはありません。</p>';
+        return;
+    }
+    host.innerHTML = '';
+    events.forEach(evt => host.appendChild(evtBuildCard(evt)));
+}
+
+function evtBuildCard(evt) {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:14px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.05); transition:box-shadow 0.15s;';
+    card.onmouseover = () => { card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; };
+    card.onmouseout = () => { card.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'; };
+    const isDone = evt.status === 'completed';
+    const statusBadge = isDone
+        ? '<span style="background:#2c7a7b; color:#fff; padding:3px 10px; border-radius:4px; font-size:0.8rem;">✅完了</span>'
+        : '<span style="background:#d69e2e; color:#fff; padding:3px 10px; border-radius:4px; font-size:0.8rem;">進行中</span>';
+    const meta = evt.metadata || {};
+    if (isDone) card.style.opacity = '0.7';
+
+    // ===== 利用曜日変更カード =====
+    if (evt.eventType === 'usage_days_change') {
+        const effDate = meta.effectiveDate || evt.eventDate || '';
+        const prevDays = meta.currentDays || '';
+        const newDays = meta.newDays || '';
+        const prevCount = prevDays.split(',').filter(Boolean).length;
+        const newCount = newDays.split(',').filter(Boolean).length;
+        const recorderInfo = meta.recorder ? '📝 記入：' + escapeHtml(meta.recorder) : '';
+        const cmInfo = meta.cmOffice ? '📞 ' + escapeHtml(meta.cmOffice) + (meta.cmContact ? ' ' + escapeHtml(meta.cmContact) : '') : '';
+        const contactInfo = meta.contactDate ? '📅 連絡日 ' + escapeHtml(meta.contactDate) : '';
+        const leadership = meta.leadershipMemo ? '<div style="color:#4a5568; font-size:0.85rem; margin-top:6px;">💬 ' + escapeHtml(meta.leadershipMemo) + '</div>' : '';
+        card.innerHTML =
+            '<div style="font-size:1.4rem; font-weight:bold; color:#d35400; margin-bottom:6px;">🗓️ ' + escapeHtml(effDate) + ' から</div>' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+                '<div style="font-size:1.05rem; font-weight:bold; color:#2d3748;">' +
+                    escapeHtml(evt.userName) + ' 様 利用曜日変更（' + escapeHtml(prevDays) + ' 週' + prevCount + ' → ' + escapeHtml(newDays) + ' 週' + newCount + '）' +
+                '</div>' +
+                '<div>' + statusBadge + '</div>' +
+            '</div>' +
+            '<div style="color:#4a5568; font-size:0.9rem; margin-bottom:6px;">進捗: <b>' + evt.itemDone + '/' + evt.itemTotal + '</b></div>' +
+            '<div style="color:#718096; font-size:0.82rem;">' + [recorderInfo, cmInfo, contactInfo].filter(Boolean).join(' ／ ') + '</div>' +
+            leadership;
+        card.onclick = () => evtOpenDetail(evt);
+        return card;
+    }
+
+    // ===== 通常カード（契約後・担会後・ケアマネ変更） =====
+    const startInfo = meta['利用開始日'] ? ' / 利用開始: ' + escapeHtml(meta['利用開始日']) : '';
+    const careInfo = meta['要介護度'] ? ' / ' + escapeHtml(meta['要介護度']) : '';
+
+    card.innerHTML =
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
+            '<div style="font-size:1.05rem; font-weight:bold; color:#2d3748;">' +
+                escapeHtml(evt.userName) + ' 様 / ' + escapeHtml(EVT_LABEL_MAP[evt.eventType] || evt.eventType) +
+            '</div>' +
+            '<div>' + statusBadge + '</div>' +
+        '</div>' +
+        '<div style="color:#4a5568; font-size:0.9rem; margin-bottom:6px;">進捗: <b>' + evt.itemDone + '/' + evt.itemTotal + '</b></div>' +
+        '<div style="color:#718096; font-size:0.82rem;">' +
+            '登録: ' + escapeHtml(evt.createdAt || '') + ' / イベント日: ' + escapeHtml(evt.eventDate || '') + careInfo + startInfo +
+        '</div>';
+    card.onclick = () => evtOpenDetail(evt);
+    return card;
+}
+
+// ----- 登録モーダル -----
+function evtOpenModal(eventType) {
+    document.getElementById('event-type').value = eventType;
+    document.getElementById('event-modal-title').textContent =
+        eventType === 'contract_after' ? '+ 契約後' :
+        eventType === 'meeting_after' ? '+ 担会後' : '+ ケアマネ変更';
+    // ログインスタッフを受付者初期値に
+    try {
+        const staff = localStorage.getItem('yawaragi_staff') || '';
+        document.getElementById('event-createdBy').value = staff;
+    } catch(e) {}
+    document.getElementById('event-modal').classList.add('show');
+}
+
+function evtCloseModal() {
+    document.getElementById('event-modal').classList.remove('show');
+    document.getElementById('event-form').reset();
+}
+
+async function evtSubmitForm(ev) {
+    ev.preventDefault();
+    const userName = document.getElementById('event-userName').value.trim();
+    const eventDate = document.getElementById('event-eventDate').value;
+    const startDate = document.getElementById('event-meta-startDate').value;
+    const careLevel = document.getElementById('event-meta-careLevel').value;
+    const createdBy = document.getElementById('event-createdBy').value.trim();
+    if (!userName || !eventDate || !startDate || !careLevel || !createdBy) {
+        alert('必須項目をすべて入力してください');
+        return false;
+    }
+    const payload = {
+        action: 'add_user_event',
+        eventType: document.getElementById('event-type').value,
+        userName: userName,
+        eventDate: eventDate,
+        metadata: { '利用開始日': startDate, '要介護度': careLevel },
+        createdBy: createdBy
+    };
+    const ok = await gasPost(payload, '利用者イベント登録');
+    if (ok) {
+        alert('✅ 保存しました！フロアの状況を確認してください。');
+        evtCloseModal();
+        setTimeout(evtLoadList, 1200);
+    }
+    return false;
+}
+
+// ----- 詳細モーダル -----
+function evtOpenDetail(evt) {
+    _evtCurrent = evt;
+    evtRenderDetailHeader(evt);
+    evtRenderDetailBody(evt);
+    document.getElementById('event-detail-modal').classList.add('show');
+}
+
+function evtCloseDetail() {
+    document.getElementById('event-detail-modal').classList.remove('show');
+    _evtCurrent = null;
+}
+
+function evtRenderDetailHeader(evt) {
+    document.getElementById('event-detail-title').textContent =
+        evt.userName + ' 様 / ' + (EVT_LABEL_MAP[evt.eventType] || evt.eventType) +
+        '（' + evt.itemDone + '/' + evt.itemTotal + '）';
+}
+
+function evtRenderDetailBody(evt) {
+    const body = document.getElementById('event-detail-body');
+    const ownerLabel = { boss: '🔵社長', consultant: '🟢相談員', anyone: '🟡誰でも可' };
+    if (!evt.items || evt.items.length === 0) {
+        body.innerHTML = '<p style="color:#888; padding:20px; text-align:center;">項目がありません。</p>';
+        return;
+    }
+    const html = evt.items.map(item => {
+        const isDone = item.status === 'done';
+        const safeId = escapeHtml(item.id).replace(/'/g, "\\'");
+        const checkedAttr = isDone ? 'checked disabled' : '';
+        const onChange = isDone ? '' : "onchange=\"evtCheckItem('" + safeId + "')\"";
+        const doneLine = isDone
+            ? '<div style="font-size:0.78rem; color:#888; margin-top:2px;">完了: ' + escapeHtml(item.doneAt) + ' by ' + escapeHtml(item.doneBy) + '</div>'
+            : '';
+        // 急ぎ・タグセレクト・編集ボタン（完了済みは編集不可）
+        const urgentBtn = isDone
+            ? (item.isUrgent ? '<span style="color:#e53e3e; font-weight:bold; margin-right:4px;">🚨</span>' : '')
+            : '<span onclick="evtToggleUrgent(\'' + safeId + '\', ' + (item.isUrgent ? 'false' : 'true') + ')" title="急ぎ切替" style="cursor:pointer; user-select:none; margin-right:4px;' + (item.isUrgent ? ' color:#e53e3e; font-weight:bold;' : ' opacity:0.3;') + '">🚨</span>';
+        const tagSelect = isDone
+            ? '<span style="font-size:0.78rem; color:#718096; margin-left:6px;">' + (ownerLabel[item.ownerTag] || escapeHtml(item.ownerTag)) + '</span>'
+            : '<select onchange="evtUpdateOwnerTag(\'' + safeId + '\', this.value)" style="font-size:0.78rem; margin-left:6px; padding:2px 4px; border:1px solid #cbd5e0; border-radius:3px; background:#f7fafc; cursor:pointer;">' +
+                '<option value="boss"' + (item.ownerTag === 'boss' ? ' selected' : '') + '>🔵社長</option>' +
+                '<option value="consultant"' + (item.ownerTag === 'consultant' ? ' selected' : '') + '>🟢相談員</option>' +
+                '<option value="anyone"' + (item.ownerTag === 'anyone' ? ' selected' : '') + '>🟡誰でも可</option>' +
+              '</select>';
+        const editBtn = isDone
+            ? ''
+            : ' <span onclick="evtEditLabel(\'' + safeId + '\')" title="文言編集" style="cursor:pointer; color:#4299e1; margin-left:6px; font-size:0.85rem;">✏️</span>';
+        return '<div style="display:flex; align-items:flex-start; padding:10px 4px; border-bottom:1px solid #edf2f7; ' + (isDone ? 'opacity:0.55;' : '') + '">' +
+            '<input type="checkbox" ' + checkedAttr + ' ' + onChange + ' style="margin-right:12px; margin-top:4px; transform:scale(1.3); cursor:' + (isDone ? 'default' : 'pointer') + ';">' +
+            '<div style="flex:1;">' +
+                '<div style="font-size:0.95rem; line-height:1.4;">' +
+                    urgentBtn + item.seq + '. ' + escapeHtml(item.label) + editBtn +
+                    tagSelect +
+                '</div>' +
+                doneLine +
+            '</div>' +
+        '</div>';
+    }).join('');
+    body.innerHTML = html;
+}
+
+// タグ変更（boss/consultant/anyone）
+async function evtUpdateOwnerTag(itemId, newTag) {
+    const ok = await gasPost({ action: 'update_event_item', itemId: itemId, ownerTag: newTag }, '項目タグ更新');
+    if (!ok) { alert('タグ更新に失敗しました'); return; }
+    setTimeout(() => evtRefreshAfterUpdate(), 800);
+}
+
+// 急ぎフラグ切替
+async function evtToggleUrgent(itemId, newIsUrgent) {
+    const ok = await gasPost({ action: 'update_event_item', itemId: itemId, isUrgent: newIsUrgent }, '項目急ぎ切替');
+    if (!ok) { alert('急ぎ切替に失敗しました'); return; }
+    setTimeout(() => evtRefreshAfterUpdate(), 800);
+}
+
+// 文言編集
+async function evtEditLabel(itemId) {
+    if (!_evtCurrent) return;
+    const item = _evtCurrent.items.find(it => it.id === itemId);
+    if (!item) return;
+    const newLabel = prompt('項目の文言を編集', item.label);
+    if (newLabel === null) return;  // キャンセル
+    const trimmed = String(newLabel).trim();
+    if (!trimmed) { alert('文言は空にできません'); return; }
+    if (trimmed === item.label) return;  // 変更なし
+    const ok = await gasPost({ action: 'update_event_item', itemId: itemId, label: trimmed }, '項目文言更新');
+    if (!ok) { alert('文言更新に失敗しました'); return; }
+    setTimeout(() => evtRefreshAfterUpdate(), 800);
+}
+
+// 編集後の一覧再取得＆モーダル再描画
+async function evtRefreshAfterUpdate() {
+    const updated = await evtFetchList();
+    _evtCache = updated;
+    evtRenderList(updated);
+    if (_evtCurrent) {
+        const refreshed = updated.find(e => e.id === _evtCurrent.id);
+        if (refreshed) {
+            _evtCurrent = refreshed;
+            evtRenderDetailHeader(refreshed);
+            evtRenderDetailBody(refreshed);
+        }
+    }
+}
+
+async function evtCheckItem(itemId) {
+    const doneBy = prompt('完了者を入力してください', localStorage.getItem('yawaragi_staff') || '');
+    if (!doneBy || !doneBy.trim()) {
+        alert('完了者が必要です');
+        // チェック状態をリセットするため再描画
+        if (_evtCurrent) evtRenderDetailBody(_evtCurrent);
+        return;
+    }
+    const ok = await gasPost({
+        action: 'complete_event_item',
+        itemId: itemId,
+        doneBy: doneBy.trim()
+    }, '利用者イベント項目完了');
+    if (!ok) {
+        // gasPost失敗時はrender戻し
+        if (_evtCurrent) evtRenderDetailBody(_evtCurrent);
+        return;
+    }
+    // 1秒待ってから一覧再取得 → モーダル更新
+    setTimeout(async () => {
+        const updated = await evtFetchList();
+        _evtCache = updated;
+        evtRenderList(updated);
+        if (_evtCurrent) {
+            const refreshed = updated.find(e => e.id === _evtCurrent.id);
+            if (refreshed) {
+                _evtCurrent = refreshed;
+                evtRenderDetailHeader(refreshed);
+                evtRenderDetailBody(refreshed);
+                if (refreshed.status === 'completed') {
+                    alert('🎉 全項目完了しました！通知メールを送信しました。');
+                }
+            }
+        }
+    }, 1200);
+}
+
+// JSONPでイベント一覧を取得（Promise化）
+function evtFetchList() {
+    return new Promise(resolve => {
+        const cbName = 'evtFetchCb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        const url = EVT_API_URL + '?action=user_events&callback=' + cbName;
+        let resolved = false;
+        window[cbName] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            const events = (resp && resp.user_events) ? resp.user_events : [];
+            try { delete window[cbName]; } catch(e) {}
+            resolve(events);
+        };
+        const script = document.createElement('script');
+        script.src = url;
+        script.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cbName]; } catch(e) {}
+            resolve([]);
+        };
+        document.body.appendChild(script);
+        setTimeout(() => {
+            try { script.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cbName]; } catch(e) {}
+                resolve([]);
+            }
+        }, 8000);
+    });
+}
+
+// ============================================================
+// ===== ケアマネ変更モーダル（2026/5/2追加・Phase 3）=====
+// ============================================================
+let _cmUserList = null;       // 利用者一覧キャッシュ
+let _cmContactsList = null;   // ケアマネ連絡先キャッシュ
+let _cmSelectedUser = null;   // 選択中の利用者
+
+// ----- モーダル開閉 -----
+function evtOpenCmChangeModal() {
+    // 入力欄リセット
+    document.getElementById('cm-user-search').value = '';
+    document.getElementById('cm-user-suggestions').style.display = 'none';
+    document.getElementById('cm-user-selected').textContent = '';
+    document.getElementById('cm-current-display').innerHTML = '<div style="color:#888; font-size:0.85rem;">利用者を選んでください</div>';
+    // カスタムドロップダウンのリセット
+    document.getElementById('cm-new-office-value').value = '';
+    document.getElementById('cm-office-display').textContent = '▼ 事業所を選ぶ';
+    document.getElementById('cm-office-display').style.color = '#888';
+    document.getElementById('cm-office-list').style.display = 'none';
+    document.getElementById('cm-new-office-input').value = '';
+    document.getElementById('cm-new-office-input').style.display = 'none';
+    document.getElementById('cm-back-to-existing').style.display = 'none';
+    document.getElementById('cm-new-staff-value').value = '';
+    document.getElementById('cm-staff-display').textContent = '▼ 事業所を先に選んでください';
+    document.getElementById('cm-staff-display').style.color = '#888';
+    document.getElementById('cm-staff-list').style.display = 'none';
+    document.getElementById('cm-new-staff-input').value = '';
+    document.getElementById('cm-new-staff-input').style.display = 'none';
+    document.getElementById('cm-change-date').value = new Date().toISOString().slice(0, 10);
+    try {
+        document.getElementById('cm-created-by').value = localStorage.getItem('yawaragi_staff') || '';
+    } catch(e) {}
+    _cmSelectedUser = null;
+
+    // 利用者一覧 + ケアマネ連絡先を非同期取得（キャッシュなければ）
+    Promise.all([_cmFetchUserList(), _cmFetchContacts()]).then(() => {
+        _cmPopulateOfficeSelect();
+    });
+
+    document.getElementById('cm-change-modal').classList.add('show');
+}
+
+function evtCloseCmChangeModal() {
+    document.getElementById('cm-change-modal').classList.remove('show');
+}
+
+// ----- JSONPで利用者一覧を取得 -----
+function _cmFetchUserList() {
+    if (_cmUserList) return Promise.resolve(_cmUserList);
+    return new Promise(resolve => {
+        const cb = '_cmCb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        let resolved = false;
+        window[cb] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            _cmUserList = (resp && resp.user_list) || [];
+            try { delete window[cb]; } catch(e) {}
+            resolve(_cmUserList);
+        };
+        const s = document.createElement('script');
+        s.src = EVT_API_URL + '?action=user_list&callback=' + cb;
+        s.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            _cmUserList = [];
+            resolve([]);
+        };
+        document.body.appendChild(s);
+        setTimeout(() => {
+            try { s.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cb]; } catch(e) {}
+                _cmUserList = [];
+                resolve([]);
+            }
+        }, 8000);
+    });
+}
+
+// ----- JSONPでスタッフ一覧を取得（シフト希望SSのスタッフシートから） -----
+let _staffList = null;
+function _fetchStaffList() {
+    if (_staffList) return Promise.resolve(_staffList);
+    return new Promise(resolve => {
+        const cb = '_stCb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        let resolved = false;
+        window[cb] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            _staffList = (resp && resp.staff) || [];
+            try { delete window[cb]; } catch(e) {}
+            resolve(_staffList);
+        };
+        const s = document.createElement('script');
+        s.src = EVT_API_URL + '?action=staff_list&callback=' + cb;
+        s.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            _staffList = [];
+            resolve([]);
+        };
+        document.body.appendChild(s);
+        setTimeout(() => {
+            try { s.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cb]; } catch(e) {}
+                _staffList = [];
+                resolve([]);
+            }
+        }, 8000);
+    });
+}
+
+// ----- 入力者プルダウンにスタッフ名を流し込む -----
+async function _populateStaffSelects() {
+    const list = await _fetchStaffList();
+    const ids = ['event-createdBy', 'cm-created-by', 'udc-recorder-select'];
+    ids.forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const current = sel.value;
+        // 1個目（プレースホルダ）を残して残りを削除
+        while (sel.options.length > 1) sel.remove(1);
+        list.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+    });
+}
+
+// ----- JSONPでケアマネ連絡先を取得 -----
+function _cmFetchContacts() {
+    if (_cmContactsList) return Promise.resolve(_cmContactsList);
+    return new Promise(resolve => {
+        const cb = '_cmCcb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        let resolved = false;
+        window[cb] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            _cmContactsList = (resp && resp.cmContacts) || [];
+            try { delete window[cb]; } catch(e) {}
+            resolve(_cmContactsList);
+        };
+        const s = document.createElement('script');
+        s.src = EVT_API_URL + '?action=contacts&callback=' + cb;
+        s.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            _cmContactsList = [];
+            resolve([]);
+        };
+        document.body.appendChild(s);
+        setTimeout(() => {
+            try { s.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cb]; } catch(e) {}
+                _cmContactsList = [];
+                resolve([]);
+            }
+        }, 8000);
+    });
+}
+
+// ----- 利用者選択 -----
+function evtSelectUser(userName) {
+    const user = (_cmUserList || []).find(u => u.userName === userName);
+    if (!user) return;
+    _cmSelectedUser = user;
+    document.getElementById('cm-user-search').value = userName;
+    document.getElementById('cm-user-suggestions').style.display = 'none';
+    document.getElementById('cm-user-selected').textContent = '✓ ' + userName + ' 様 を選択中';
+    evtUpdateCurrentCmDisplay(user);
+}
+
+// ----- 現ケアマネ自動表示（Task 10）-----
+function evtUpdateCurrentCmDisplay(user) {
+    const display = document.getElementById('cm-current-display');
+    const hasOffice = user.currentCmOffice && user.currentCmOffice.length > 0;
+    const hasStaff = user.currentCmStaff && user.currentCmStaff.length > 0;
+
+    // 事業所と担当者を個別に判定（片方だけ登録済みのケースに対応）
+    const officeBlock = hasOffice
+        ? '<div style="background:white; padding:8px; border-radius:4px; margin-bottom:4px;">' +
+              '<div style="font-size:0.7rem; color:#666;">事業所名</div>' +
+              '<div style="font-size:0.9rem; font-weight:bold;">' + escapeHtml(user.currentCmOffice) + '</div>' +
+          '</div>'
+        : '<div style="background:#fff5f5; padding:6px 8px; border-radius:4px; font-size:0.8rem; color:#c53030; margin-bottom:4px;">事業所：未登録</div>' +
+          '<input type="text" id="cm-current-office-manual" placeholder="現在の事業所名" style="width:100%; padding:6px; font-size:0.85rem; border:1px solid #ccc; border-radius:4px; margin-bottom:4px; box-sizing:border-box;">';
+
+    const staffBlock = hasStaff
+        ? '<div style="background:white; padding:8px; border-radius:4px;">' +
+              '<div style="font-size:0.7rem; color:#666;">担当者名</div>' +
+              '<div style="font-size:0.9rem; font-weight:bold;">' + escapeHtml(user.currentCmStaff) + '</div>' +
+          '</div>'
+        : '<div style="background:#fff5f5; padding:6px 8px; border-radius:4px; font-size:0.8rem; color:#c53030; margin-bottom:4px;">担当者：未登録</div>' +
+          '<input type="text" id="cm-current-staff-manual" placeholder="現在の担当者名" style="width:100%; padding:6px; font-size:0.85rem; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;">';
+
+    const note = (hasOffice || hasStaff)
+        ? '<div style="font-size:0.7rem; color:#888; margin-top:6px;">利用者台帳から自動表示（未登録分は手動入力で補完できます）</div>'
+        : '<div style="font-size:0.75rem; color:#666; margin-top:6px;">分かっている情報を入れてください（あとで利用者台帳にも反映されます）</div>';
+
+    display.innerHTML = officeBlock + staffBlock + note;
+}
+
+// ----- 事業所プルダウン埋め込み（Task 11）-----
+// 非表示事業所のSet（office名のみで非表示判定）
+function _cmGetHiddenOffices() {
+    // 事業所全体非表示は「name=空 + hidden=TRUE」の行 OR その事業所の全行が hidden=TRUE
+    const officeAllRows = {};
+    (_cmContactsList || []).forEach(c => {
+        if (!c.office) return;
+        if (!officeAllRows[c.office]) officeAllRows[c.office] = { total: 0, hidden: 0, hasNameEmpty: false };
+        officeAllRows[c.office].total++;
+        if (c.hidden) officeAllRows[c.office].hidden++;
+        if (c.hidden && (!c.name || c.name.length === 0)) officeAllRows[c.office].hasNameEmpty = true;
+    });
+    const hidden = new Set();
+    Object.keys(officeAllRows).forEach(office => {
+        const r = officeAllRows[office];
+        // 「name=空+hidden=TRUE」のダミー行があるなら事業所全体非表示
+        if (r.hasNameEmpty) hidden.add(office);
+    });
+    return hidden;
+}
+
+// 非表示担当者のSet（"office\nname" キー）
+function _cmGetHiddenStaffKeys() {
+    const set = new Set();
+    (_cmContactsList || []).forEach(c => {
+        if (c.hidden && c.name && c.name.length > 0) set.add(c.office + '\n' + c.name);
+    });
+    return set;
+}
+
+// cmContacts と 利用者台帳の両方から「yawaragi接点のあった事業所」を集計（非表示除外）
+function _cmGetAllOffices() {
+    const hiddenOffices = _cmGetHiddenOffices();
+    const fromContacts = (_cmContactsList || []).map(c => c.office);
+    const fromUsers = (_cmUserList || []).map(u => u.currentCmOffice);
+    return Array.from(new Set([...fromContacts, ...fromUsers].filter(o => o && o.length > 0 && !hiddenOffices.has(o))))
+        .sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+// cmContacts と 利用者台帳の両方から「指定事業所の担当者」を集計（非表示除外）
+function _cmGetStaffsByOffice(office) {
+    const hiddenStaffKeys = _cmGetHiddenStaffKeys();
+    const fromContacts = (_cmContactsList || [])
+        .filter(c => c.office === office && c.name && c.name.length > 0 && !c.hidden)
+        .map(c => c.name);
+    const fromUsers = (_cmUserList || [])
+        .filter(u => u.currentCmOffice === office && u.currentCmStaff && u.currentCmStaff.length > 0)
+        .filter(u => !hiddenStaffKeys.has(office + '\n' + u.currentCmStaff))
+        .map(u => u.currentCmStaff);
+    return Array.from(new Set([...fromContacts, ...fromUsers]))
+        .sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+// ===== カスタムドロップダウン（事業所/担当者）=====
+
+function _cmPopulateOfficeSelect() {
+    // 起動時の初期化（事業所リストを内部に持つだけ）
+    _cmRenderOfficeList();
+}
+
+// 事業所リスト再描画
+function _cmRenderOfficeList() {
+    const list = document.getElementById('cm-office-list');
+    const offices = _cmGetAllOffices();
+    list.innerHTML = offices.map(o => {
+        const safe = escapeHtml(o).replace(/'/g, "&#39;");
+        const safeJs = o.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return '<div class="cm-dd-item" style="display:flex; align-items:center; padding:8px 10px; border-bottom:1px solid #f0f0f0; cursor:pointer; font-size:0.9rem;" onmouseover="this.style.background=\'#f0f9ff\'" onmouseout="this.style.background=\'\'">' +
+            '<span onclick="evtSelectOfficeItem(\'' + safeJs + '\')" style="flex:1;">' + safe + '</span>' +
+            '<button type="button" onclick="event.stopPropagation(); evtHideOfficeItem(\'' + safeJs + '\')" title="この事業所を非表示にする" style="background:none; border:none; color:#c53030; cursor:pointer; font-size:1rem; padding:0 4px;">❌</button>' +
+        '</div>';
+    }).join('') +
+    '<div onclick="evtSelectNewOffice()" style="padding:8px 10px; color:#2c7a7b; cursor:pointer; font-size:0.9rem; font-weight:bold;" onmouseover="this.style.background=\'#f0f9ff\'" onmouseout="this.style.background=\'\'">+ 新規事業所を追加</div>';
+}
+
+// 担当者リスト再描画
+function _cmRenderStaffList(office) {
+    const list = document.getElementById('cm-staff-list');
+    if (!office) {
+        list.innerHTML = '<div style="padding:10px; color:#888; font-size:0.85rem;">事業所を先に選んでください</div>';
+        return;
+    }
+    const staffs = _cmGetStaffsByOffice(office);
+    if (staffs.length === 0) {
+        list.innerHTML = '<div style="padding:10px; color:#888; font-size:0.85rem;">登録された担当者がいません</div>' +
+            '<div onclick="evtSelectNewStaff()" style="padding:8px 10px; color:#2c7a7b; cursor:pointer; font-size:0.9rem; font-weight:bold;" onmouseover="this.style.background=\'#f0f9ff\'" onmouseout="this.style.background=\'\'">+ 新規担当者を追加</div>';
+        return;
+    }
+    list.innerHTML = staffs.map(s => {
+        const safe = escapeHtml(s);
+        const safeJs = s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return '<div class="cm-dd-item" style="display:flex; align-items:center; padding:8px 10px; border-bottom:1px solid #f0f0f0; cursor:pointer; font-size:0.9rem;" onmouseover="this.style.background=\'#f0f9ff\'" onmouseout="this.style.background=\'\'">' +
+            '<span onclick="evtSelectStaffItem(\'' + safeJs + '\')" style="flex:1;">' + safe + '</span>' +
+            '<button type="button" onclick="event.stopPropagation(); evtHideStaffItem(\'' + safeJs + '\')" title="この担当者を非表示にする" style="background:none; border:none; color:#c53030; cursor:pointer; font-size:1rem; padding:0 4px;">❌</button>' +
+        '</div>';
+    }).join('') +
+    '<div onclick="evtSelectNewStaff()" style="padding:8px 10px; color:#2c7a7b; cursor:pointer; font-size:0.9rem; font-weight:bold;" onmouseover="this.style.background=\'#f0f9ff\'" onmouseout="this.style.background=\'\'">+ 新規担当者を追加</div>';
+}
+
+// プルダウンの開閉
+function evtToggleDropdown(which) {
+    const id = which === 'office' ? 'cm-office-list' : 'cm-staff-list';
+    const list = document.getElementById(id);
+    const isOpen = list.style.display !== 'none';
+    // 他方を閉じる
+    document.getElementById('cm-office-list').style.display = 'none';
+    document.getElementById('cm-staff-list').style.display = 'none';
+    if (!isOpen) {
+        if (which === 'office') {
+            _cmRenderOfficeList();
+        } else {
+            const office = document.getElementById('cm-new-office-value').value;
+            _cmRenderStaffList(office);
+        }
+        list.style.display = 'block';
+    }
+}
+
+// 事業所候補を選択
+function evtSelectOfficeItem(office) {
+    document.getElementById('cm-new-office-value').value = office;
+    const display = document.getElementById('cm-office-display');
+    display.textContent = office;
+    display.style.color = '#2d3748';
+    document.getElementById('cm-office-list').style.display = 'none';
+    // 担当者プルダウンを連動初期化
+    document.getElementById('cm-new-staff-value').value = '';
+    const staffDisplay = document.getElementById('cm-staff-display');
+    staffDisplay.textContent = '▼ 担当者を選ぶ';
+    staffDisplay.style.color = '#888';
+    // 新規入力欄を非表示
+    document.getElementById('cm-new-office-input').style.display = 'none';
+    document.getElementById('cm-back-to-existing').style.display = 'none';
+    document.getElementById('cm-new-staff-input').style.display = 'none';
+}
+
+// 担当者候補を選択
+function evtSelectStaffItem(staff) {
+    document.getElementById('cm-new-staff-value').value = staff;
+    const display = document.getElementById('cm-staff-display');
+    display.textContent = staff;
+    display.style.color = '#2d3748';
+    document.getElementById('cm-staff-list').style.display = 'none';
+    document.getElementById('cm-new-staff-input').style.display = 'none';
+}
+
+// 「+ 新規事業所を追加」を選択
+function evtSelectNewOffice() {
+    document.getElementById('cm-office-list').style.display = 'none';
+    document.getElementById('cm-new-office-value').value = '__NEW__';
+    document.getElementById('cm-office-display').textContent = '+ 新規事業所を追加';
+    document.getElementById('cm-office-display').style.color = '#2c7a7b';
+    document.getElementById('cm-new-office-input').style.display = 'block';
+    document.getElementById('cm-new-office-input').focus();
+    document.getElementById('cm-back-to-existing').style.display = 'block';
+    // 担当者も新規入力モード
+    document.getElementById('cm-new-staff-value').value = '__NEW__';
+    document.getElementById('cm-staff-display').textContent = '+ 新規担当者を追加';
+    document.getElementById('cm-staff-display').style.color = '#2c7a7b';
+    document.getElementById('cm-new-staff-input').style.display = 'block';
+    document.getElementById('cm-new-staff-input').value = '';
+}
+
+// 「+ 新規担当者を追加」を選択
+function evtSelectNewStaff() {
+    document.getElementById('cm-staff-list').style.display = 'none';
+    const office = document.getElementById('cm-new-office-value').value;
+    document.getElementById('cm-new-staff-value').value = '__NEW__';
+    document.getElementById('cm-staff-display').textContent = '+ 新規担当者を追加';
+    document.getElementById('cm-staff-display').style.color = '#2c7a7b';
+    document.getElementById('cm-new-staff-input').style.display = 'block';
+    document.getElementById('cm-new-staff-input').placeholder = '新規担当者名（' + (office === '__NEW__' ? '新規事業所' : office) + '）';
+    document.getElementById('cm-new-staff-input').focus();
+}
+
+// 「← 既存事業所から選ぶに戻る」
+function evtBackToExistingOffice() {
+    document.getElementById('cm-new-office-value').value = '';
+    document.getElementById('cm-office-display').textContent = '▼ 事業所を選ぶ';
+    document.getElementById('cm-office-display').style.color = '#888';
+    document.getElementById('cm-new-office-input').style.display = 'none';
+    document.getElementById('cm-new-office-input').value = '';
+    document.getElementById('cm-back-to-existing').style.display = 'none';
+    document.getElementById('cm-new-staff-value').value = '';
+    document.getElementById('cm-staff-display').textContent = '▼ 事業所を先に選んでください';
+    document.getElementById('cm-staff-display').style.color = '#888';
+    document.getElementById('cm-new-staff-input').style.display = 'none';
+}
+
+// 事業所を非表示（プルダウン内❌）
+async function evtHideOfficeItem(office) {
+    if (!confirm('「' + office + '」を非表示にしますか？\n（次回からプルダウンに出なくなります。スプレッドシート上で「非表示」列を空にすれば戻せます）')) return;
+    const ok = await gasPost({ action: 'hideOffice', office: office }, '事業所非表示');
+    if (!ok) { alert('非表示に失敗しました'); return; }
+    _cmContactsList = null;
+    setTimeout(async () => {
+        await _cmFetchContacts();
+        _cmRenderOfficeList();
+        // 選択中の事業所が消されたなら選択解除
+        if (document.getElementById('cm-new-office-value').value === office) {
+            document.getElementById('cm-new-office-value').value = '';
+            document.getElementById('cm-office-display').textContent = '▼ 事業所を選ぶ';
+            document.getElementById('cm-office-display').style.color = '#888';
+        }
+    }, 800);
+}
+
+// 担当者を非表示（プルダウン内❌）
+async function evtHideStaffItem(staff) {
+    const office = document.getElementById('cm-new-office-value').value;
+    if (!office || office === '__NEW__') { alert('事業所を選んでから操作してください'); return; }
+    if (!confirm('「' + office + ' / ' + staff + '」を非表示にしますか？\n（次回からプルダウンに出なくなります）')) return;
+    const ok = await gasPost({ action: 'hideContact', office: office, staff: staff }, '担当者非表示');
+    if (!ok) { alert('非表示に失敗しました'); return; }
+    _cmContactsList = null;
+    setTimeout(async () => {
+        await _cmFetchContacts();
+        _cmRenderStaffList(office);
+        // 選択中の担当者が消されたなら選択解除
+        if (document.getElementById('cm-new-staff-value').value === staff) {
+            document.getElementById('cm-new-staff-value').value = '';
+            document.getElementById('cm-staff-display').textContent = '▼ 担当者を選ぶ';
+            document.getElementById('cm-staff-display').style.color = '#888';
+        }
+    }, 800);
+}
+
+// プルダウン外クリックで閉じる
+document.addEventListener('click', function(e) {
+    const officeDd = document.getElementById('cm-office-dropdown');
+    const staffDd = document.getElementById('cm-staff-dropdown');
+    if (officeDd && !officeDd.contains(e.target)) {
+        document.getElementById('cm-office-list').style.display = 'none';
+    }
+    if (staffDd && !staffDd.contains(e.target)) {
+        document.getElementById('cm-staff-list').style.display = 'none';
+    }
+});
+
+// ----- 登録処理（Task 12）-----
+async function evtSubmitCmChange() {
+    // 利用者必須
+    if (!_cmSelectedUser) {
+        alert('利用者を選んでください');
+        return;
+    }
+    const userName = _cmSelectedUser.userName;
+
+    // 新ケアマネ事業所取得（カスタムドロップダウン）
+    const officeVal = document.getElementById('cm-new-office-value').value;
+    let newOffice;
+    if (officeVal === '__NEW__') {
+        newOffice = document.getElementById('cm-new-office-input').value.trim();
+    } else {
+        newOffice = officeVal.trim();
+    }
+    if (!newOffice) {
+        alert('新ケアマネの事業所を選んでください');
+        return;
+    }
+
+    // 新ケアマネ担当者取得（カスタムドロップダウン）
+    const staffVal = document.getElementById('cm-new-staff-value').value;
+    let newStaff;
+    if (staffVal === '__NEW__') {
+        newStaff = document.getElementById('cm-new-staff-input').value.trim();
+    } else {
+        newStaff = staffVal.trim();
+    }
+    if (!newStaff) {
+        alert('新ケアマネの担当者を選んでください');
+        return;
+    }
+
+    // 変更日・入力者
+    const changeDate = document.getElementById('cm-change-date').value;
+    const createdBy = document.getElementById('cm-created-by').value.trim();
+    if (!changeDate) { alert('変更日を入力してください'); return; }
+    if (!createdBy)  { alert('入力者を入れてください'); return; }
+    try { localStorage.setItem('yawaragi_staff', createdBy); } catch(e) {}
+
+    // 同じケアマネへの変更警告
+    if (newOffice === _cmSelectedUser.currentCmOffice && newStaff === _cmSelectedUser.currentCmStaff) {
+        if (!confirm('現ケアマネと新ケアマネが同じです。本当に登録しますか？')) return;
+    }
+
+    // 1. cmContacts に新規追加が必要なら追加
+    const isNewOffice = !((_cmContactsList || []).some(c => c.office === newOffice));
+    const isNewStaff = !((_cmContactsList || []).some(c => c.office === newOffice && c.name === newStaff));
+    if (isNewOffice || isNewStaff) {
+        await gasPost({ action: 'addContact', office: newOffice, staff: newStaff }, 'ケアマネ連絡先追加');
+    }
+
+    // 2. 利用者台帳のケアマネを「変更後」に更新
+    await gasPost({
+        action: 'update_user_caremanager',
+        userName: userName,
+        cmOffice: newOffice,
+        cmStaff: newStaff,
+        updatedBy: createdBy
+    }, '利用者台帳ケアマネ更新');
+
+    // 3. ケアマネ変更イベント登録
+    await gasPost({
+        action: 'add_user_event',
+        eventType: 'caremanager_change',
+        userName: userName,
+        eventDate: changeDate,
+        metadata: {
+            旧ケアマネ事業所: _cmSelectedUser.currentCmOffice || '（未登録）',
+            旧ケアマネ担当者: _cmSelectedUser.currentCmStaff || '（未登録）',
+            新ケアマネ事業所: newOffice,
+            新ケアマネ担当者: newStaff
+        },
+        createdBy: createdBy
+    }, 'ケアマネ変更イベント登録');
+
+    // キャッシュ無効化（次回開いた時に最新データを取得）
+    _cmUserList = null;
+    _cmContactsList = null;
+
+    alert('登録しました！画面を閉じてチェックリストを開きます。');
+    evtCloseCmChangeModal();
+
+    // 4. 一覧再取得 → 詳細モーダル開く（最新の登録イベント＝末尾）
+    setTimeout(async () => {
+        const updated = await evtFetchList();
+        _evtCache = updated;
+        evtRenderList(updated);
+        // 直近で登録した（同じ userName + caremanager_change）を見つけて詳細を開く
+        const target = updated.filter(e =>
+            e.userName === userName && e.eventType === 'caremanager_change'
+        ).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0];
+        if (target) evtOpenDetail(target);
+    }, 1500);
+}
+
+// ============================================================
+// ===== 利用曜日変更ウィザード（2026/5/10追加）=====
+// ============================================================
+var udcCurrentStep = 1;
+var UDC_TOTAL_STEPS = 10;
+const UDC_WEEKDAYS = ['月', '火', '水', '木', '金', '土'];
+
+// ----- モーダル開閉 -----
+function udcOpenWizard() {
+    udcCurrentStep = 1;
+    udcInitForm();
+    // 記入者プルダウン: _staffListが既にキャッシュされていれば即時再流し込み
+    // (DOMContentLoadedの_populateStaffSelectsで udc-recorder-select も対象になっているが、
+    //  ウィザードHTML挿入タイミングによっては未流し込みの場合があるため安全のため再実行)
+    _populateStaffSelects().then(() => {
+        try {
+            const s = localStorage.getItem('yawaragi_staff') || '';
+            if (s) document.getElementById('udc-recorder-select').value = s;
+        } catch(e) {}
+    });
+    document.getElementById('udc-wizard-modal').classList.add('show');
+    udcShowStep(1);
+}
+
+function udcCloseWizard() {
+    document.getElementById('udc-wizard-modal').classList.remove('show');
+}
+
+function udcShowStep(n) {
+    document.querySelectorAll('.wizard-step').forEach(el => {
+        el.style.display = 'none';
+    });
+    const target = document.querySelector('.wizard-step[data-step="' + n + '"]');
+    if (target) target.style.display = 'block';
+    document.getElementById('udc-step-indicator').textContent = 'Step ' + n + ' / ' + UDC_TOTAL_STEPS;
+    // 戻るボタン
+    document.getElementById('udc-btn-prev').style.display = (n > 1) ? 'inline-block' : 'none';
+    // 次へ／登録 ボタン
+    if (n < UDC_TOTAL_STEPS) {
+        document.getElementById('udc-btn-next').style.display = 'inline-block';
+        document.getElementById('udc-btn-submit').style.display = 'none';
+    } else {
+        document.getElementById('udc-btn-next').style.display = 'none';
+        document.getElementById('udc-btn-submit').style.display = 'inline-block';
+    }
+}
+
+function udcNext() {
+    if (!udcValidateStep(udcCurrentStep)) return;
+    udcCurrentStep++;
+    udcShowStep(udcCurrentStep);
+}
+
+function udcPrev() {
+    if (udcCurrentStep > 1) {
+        udcCurrentStep--;
+        udcShowStep(udcCurrentStep);
+    }
+}
+
+function udcValidateStep(n) {
+    switch (n) {
+        case 1: {
+            const v = document.getElementById('udc-user-select').value;
+            if (!v) { alert('利用者を選んでください'); return false; }
+            return true;
+        }
+        case 2: {
+            const v = document.getElementById('udc-recorder-select').value.trim();
+            if (!v) { alert('記入者を選んでください'); return false; }
+            return true;
+        }
+        case 3: {
+            const v = document.getElementById('udc-contact-date').value;
+            if (!v) { alert('連絡日を入力してください'); return false; }
+            return true;
+        }
+        case 4: {
+            const sel = document.getElementById('udc-cm-office');
+            const v = sel.value;
+            if (!v) { alert('ケアマネ事業所を選んでください'); return false; }
+            if (v === '__OTHER__') {
+                const manual = document.getElementById('udc-cm-office-other').value.trim();
+                if (!manual) { alert('事業所名を入力してください'); return false; }
+            }
+            return true;
+        }
+        case 5: {
+            const sel = document.getElementById('udc-cm-contact');
+            const v = sel.value;
+            if (!v) { alert('ケアマネ担当者を選んでください'); return false; }
+            if (v === '__OTHER__') {
+                const manual = document.getElementById('udc-cm-contact-other').value.trim();
+                if (!manual) { alert('担当者名を入力してください'); return false; }
+            }
+            return true;
+        }
+        case 6: {
+            const days = udcGetCheckedDays('udc-current-days');
+            if (days.length === 0) { alert('現在の利用曜日を1つ以上選んでください'); return false; }
+            return true;
+        }
+        case 7: {
+            const days = udcGetCheckedDays('udc-new-days');
+            if (days.length === 0) { alert('変更後の利用曜日を1つ以上選んでください'); return false; }
+            return true;
+        }
+        case 8: {
+            const v = document.getElementById('udc-effective-date').value;
+            if (!v) { alert('適用開始日を入力してください'); return false; }
+            return true;
+        }
+        case 9:
+        case 10:
+            return true; // 任意
+        default:
+            return true;
+    }
+}
+
+function udcGetCheckedDays(containerId) {
+    return Array.from(document.querySelectorAll('#' + containerId + ' input:checked')).map(function(el) { return el.value; });
+}
+
+// ----- フォーム初期化（Task 9）-----
+function udcInitForm() {
+    // ウィザードStepのリセット（Step 1を表示）
+    udcShowStep(1);
+
+    // 1. 利用者プルダウン
+    _cmFetchUserList().then(function(users) {
+        const sel = document.getElementById('udc-user-select');
+        sel.innerHTML = '<option value="">選択してください</option>';
+        (users || []).forEach(function(u) {
+            const opt = document.createElement('option');
+            opt.value = u.userName;
+            opt.textContent = u.userName + (u.userNameKana ? ' (' + u.userNameKana + ')' : '');
+            opt.dataset.days = u.days || '';
+            sel.appendChild(opt);
+        });
+        // 利用者選択時に曜日を自動セット（Task 10）
+        sel.onchange = function() {
+            const opt = sel.options[sel.selectedIndex];
+            const days = opt ? (opt.dataset.days || '') : '';
+            udcSetWeekdayCheckboxes('udc-current-days', days);
+            udcSetWeekdayCheckboxes('udc-new-days', days);
+        };
+    });
+
+    // 2. デフォルト日付
+    document.getElementById('udc-contact-date').value = udcToday();
+    document.getElementById('udc-effective-date').value = udcNextMonthFirst();
+
+    // 3. 曜日チェックボックス初期化（Task 11）
+    udcInitWeekdayCheckboxes();
+
+    // 4. ケアマネプルダウン初期化（Task 12）
+    udcInitCmDropdowns();
+
+    // 5. メモ欄クリア
+    document.getElementById('udc-leadership-memo').value = '';
+    document.getElementById('udc-memo').value = '';
+}
+
+function udcToday() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function udcNextMonthFirst() {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return y + '-' + m + '-01';
+}
+
+// ----- 曜日チェックボックス（Task 10 + 11）-----
+function udcInitWeekdayCheckboxes() {
+    ['udc-current-days', 'udc-new-days'].forEach(function(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+        UDC_WEEKDAYS.forEach(function(d) {
+            const label = document.createElement('label');
+            label.style.cssText = 'margin-right:14px; font-size:1.1rem; cursor:pointer; user-select:none; display:inline-flex; align-items:center; gap:4px;';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = d;
+            cb.style.cssText = 'transform:scale(1.4); cursor:pointer;';
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' ' + d));
+            container.appendChild(label);
+        });
+    });
+}
+
+function udcSetWeekdayCheckboxes(containerId, daysString) {
+    const checked = (daysString || '').split(/[,、・\s]/).filter(Boolean);
+    document.querySelectorAll('#' + containerId + ' input').forEach(function(el) {
+        el.checked = checked.indexOf(el.value) >= 0;
+    });
+}
+
+// ----- ケアマネ事業所＋担当者（Task 12）-----
+function udcInitCmDropdowns() {
+    // コンテンツをリセット
+    document.getElementById('udc-cm-office').innerHTML = '<option value="">選択してください</option>';
+    document.getElementById('udc-cm-contact').innerHTML = '<option value="">先に事業所を選んでください</option>';
+    document.getElementById('udc-cm-office-other').style.display = 'none';
+    document.getElementById('udc-cm-office-other').value = '';
+    document.getElementById('udc-cm-contact-other').style.display = 'none';
+    document.getElementById('udc-cm-contact-other').value = '';
+
+    _cmFetchContacts().then(function() {
+        const officeSel = document.getElementById('udc-cm-office');
+        officeSel.innerHTML = '<option value="">選択してください</option>' +
+            '<option value="__OTHER__">その他（手入力）</option>';
+        _cmGetAllOffices().forEach(function(office) {
+            const opt = document.createElement('option');
+            opt.value = office;
+            opt.textContent = office;
+            officeSel.appendChild(opt);
+        });
+        // 担当者連動
+        officeSel.onchange = function() { udcOnOfficeChange(); };
+
+        // 担当者初期化
+        const staffSel = document.getElementById('udc-cm-contact');
+        staffSel.innerHTML = '<option value="">先に事業所を選んでください</option>';
+    });
+}
+
+function udcOnOfficeChange() {
+    const officeSel = document.getElementById('udc-cm-office');
+    const office = officeSel.value;
+    const staffSel = document.getElementById('udc-cm-contact');
+    const officeOther = document.getElementById('udc-cm-office-other');
+    const contactOther = document.getElementById('udc-cm-contact-other');
+
+    if (office === '__OTHER__') {
+        officeOther.style.display = 'block';
+        officeOther.focus();
+        staffSel.innerHTML = '<option value="__OTHER__">手入力</option>';
+        staffSel.value = '__OTHER__';
+        contactOther.style.display = 'block';
+    } else if (office) {
+        officeOther.style.display = 'none';
+        officeOther.value = '';
+        contactOther.style.display = 'none';
+        contactOther.value = '';
+        staffSel.innerHTML = '<option value="">選択してください</option>' +
+            '<option value="__OTHER__">その他（手入力）</option>';
+        _cmGetStaffsByOffice(office).forEach(function(s) {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            staffSel.appendChild(opt);
+        });
+        staffSel.onchange = function() {
+            contactOther.style.display = (staffSel.value === '__OTHER__') ? 'block' : 'none';
+            if (staffSel.value === '__OTHER__') contactOther.focus();
+        };
+    } else {
+        officeOther.style.display = 'none';
+        officeOther.value = '';
+        contactOther.style.display = 'none';
+        contactOther.value = '';
+        staffSel.innerHTML = '<option value="">先に事業所を選んでください</option>';
+    }
+}
+
+// ----- 登録処理（Task 13）-----
+async function udcSubmit() {
+    // 全ステップ再バリデーション
+    for (var i = 1; i <= UDC_TOTAL_STEPS; i++) {
+        if (!udcValidateStep(i)) {
+            udcCurrentStep = i;
+            udcShowStep(i);
+            return;
+        }
+    }
+
+    const userName = document.getElementById('udc-user-select').value;
+    const recorder = document.getElementById('udc-recorder-select').value.trim();
+    const contactDate = document.getElementById('udc-contact-date').value;
+
+    let cmOffice = document.getElementById('udc-cm-office').value;
+    let cmContact = document.getElementById('udc-cm-contact').value;
+    if (cmOffice === '__OTHER__') cmOffice = document.getElementById('udc-cm-office-other').value.trim();
+    if (cmContact === '__OTHER__') cmContact = document.getElementById('udc-cm-contact-other').value.trim();
+
+    const currentDays = udcGetCheckedDays('udc-current-days').join(',');
+    const newDays = udcGetCheckedDays('udc-new-days').join(',');
+    const effectiveDate = document.getElementById('udc-effective-date').value;
+    const leadershipMemo = document.getElementById('udc-leadership-memo').value;
+    const memo = document.getElementById('udc-memo').value;
+
+    if (currentDays === newDays) {
+        if (!confirm('現在の曜日と変更後の曜日が同じですが、登録しますか？')) return;
+    }
+
+    try { localStorage.setItem('yawaragi_staff', recorder); } catch(e) {}
+
+    const payload = {
+        action: 'add_user_event',
+        eventType: 'usage_days_change',
+        userName: userName,
+        eventDate: effectiveDate,
+        createdBy: recorder,
+        metadata: {
+            recorder: recorder,
+            contactDate: contactDate,
+            cmOffice: cmOffice,
+            cmContact: cmContact,
+            currentDays: currentDays,
+            newDays: newDays,
+            effectiveDate: effectiveDate,
+            leadershipMemo: leadershipMemo,
+            memo: memo
+        }
+    };
+
+    const ok = await gasPost(payload, '利用曜日変更イベント登録');
+    if (ok) {
+        alert('✅ 登録しました：' + userName + ' 様 利用曜日変更（' + currentDays + ' → ' + newDays + '）');
+        udcCloseWizard();
+        setTimeout(evtLoadList, 1200);
+    }
+}
+
+// ===== 起動時に一覧を自動ロード =====
+window.addEventListener('DOMContentLoaded', function() {
+    evtLoadList();
+    _populateStaffSelects(); // 入力者プルダウンにスタッフ名を流し込む
+
+    // 利用者検索オートコンプリートのリスナー（Task 9）
+    const searchInput = document.getElementById('cm-user-search');
+    const suggestions = document.getElementById('cm-user-suggestions');
+    if (searchInput && suggestions) {
+        searchInput.addEventListener('input', () => {
+            const q = searchInput.value.trim();
+            if (!q || !_cmUserList) {
+                suggestions.style.display = 'none';
+                return;
+            }
+            const matches = _cmUserList.filter(u =>
+                u.userName.indexOf(q) === 0 ||
+                (u.userNameKana && u.userNameKana.indexOf(q) === 0)
+            ).slice(0, 10);
+            if (matches.length === 0) {
+                suggestions.style.display = 'none';
+                return;
+            }
+            suggestions.innerHTML = matches.map(u =>
+                '<div style="padding:6px 10px; cursor:pointer; font-size:0.9rem; border-bottom:1px solid #f0f0f0;" onclick="evtSelectUser(\'' +
+                u.userName.replace(/'/g, "\\'") + '\')">' + escapeHtml(u.userName) +
+                (u.userNameKana ? ' <span style="color:#888; font-size:0.75rem;">(' + escapeHtml(u.userNameKana) + ')</span>' : '') +
+                '</div>'
+            ).join('');
+            suggestions.style.display = 'block';
+        });
+    }
+});
+</script>
+</body>
+</html>
