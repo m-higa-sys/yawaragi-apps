@@ -635,6 +635,19 @@
         .usage-trend-table td.trend-label { color: #666; white-space: nowrap; }
         .usage-trend-table td.trend-rate { font-weight: bold; text-align: right; white-space: nowrap; }
         .usage-trend-table td.trend-count { color: #444; white-space: nowrap; }
+        /* ----- 前回お休みマーク（声かけトリガー） ----- */
+        .att-prev-absent {
+          display: inline-block;
+          margin-left: 6px;
+          padding: 1px 7px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: bold;
+          background: #ffe8d6;
+          color: #9a4a00;
+          border: 1px solid #ffcfa3;
+          vertical-align: middle;
+        }
 
         /* 実績確認タブのCSSは 実績まわり.html に分離（2026/4/29） */
 
@@ -7141,6 +7154,19 @@ function attRender(data) {
     if (typeof renderUsageRedSummary === 'function') renderUsageRedSummary();
 }
 
+// 表示日より前の、契約曜日に当たる直近の利用予定日を 'YYYY-MM-DD' で返す（前回お休み判定用）
+function attPrevScheduledDate(weekdaysRaw, baseDate) {
+    if (!weekdaysRaw) return null;
+    var d = new Date(baseDate.getTime());
+    for (var i = 0; i < 14; i++) {           // 最大2週間さかのぼれば週1契約でも見つかる
+        d.setDate(d.getDate() - 1);
+        if (weekdaysRaw.indexOf(ATT_DAY_NAMES[d.getDay()]) >= 0) {
+            return attFormatDate(d);
+        }
+    }
+    return null;
+}
+
 function attRenderUser(u) {
     const isAbsent = u.status === '欠席';
     const iconClass = isAbsent ? 'absent' : 'present';
@@ -7176,9 +7202,19 @@ function attRenderUser(u) {
             'onclick="event.stopPropagation();showUsageDetail(\'' + escapedName + '\')">' + bicon + '</span>';
     }
 
+    // 前回お休みマーク（前回の利用予定日に欠席していた出席者に表示・声かけトリガー）
+    var prevAbsentBadge = '';
+    if (!isAbsent && ua && ua.weekdaysRaw && ua.recentAbsences && ua.recentAbsences.length) {
+        var prevSchedDate = attPrevScheduledDate(ua.weekdaysRaw, attCurrentDate);
+        if (prevSchedDate && ua.recentAbsences.some(function(a) { return a.date === prevSchedDate; })) {
+            prevAbsentBadge = '<span class="att-prev-absent">前回お休み</span>';
+        }
+    }
+
     return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
         '<span class="att-user-name">' + u.name + '</span>' +
+        prevAbsentBadge +
         usageBadge +
         resumedBadge +
         (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
