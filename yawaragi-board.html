@@ -630,6 +630,11 @@
         .usage-day-cell { padding: 4px 8px; border-radius: 6px; background: #f3f3f3; font-size: 13px; }
         .usage-day-cell.worst { background: #f8d7da; color: #842029; font-weight: bold; }
         .usage-action-box { margin-top: 10px; padding: 8px; background: #f0f7ff; border-radius: 6px; font-size: 13px; }
+        .usage-trend-table { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-size: 13px; }
+        .usage-trend-table td { padding: 3px 6px; border-bottom: 1px solid #eee; }
+        .usage-trend-table td.trend-label { color: #666; white-space: nowrap; }
+        .usage-trend-table td.trend-rate { font-weight: bold; text-align: right; white-space: nowrap; }
+        .usage-trend-table td.trend-count { color: #444; white-space: nowrap; }
 
         /* 実績確認タブのCSSは 実績まわり.html に分離（2026/4/29） */
 
@@ -6899,6 +6904,20 @@ function showUsageDetail(name) {
   var weekText = (ov.rate == null) ? '' : '（実質 週' + Math.round(ov.rate * (ua.contractCount || 0) / 100 * 10) / 10 + '回）';
   html += '<div class="usage-modal-row"><span class="usage-modal-label">全体利用率</span>' +
           '<span>' + rateText + ' ' + weekText + '</span></div>';
+  // 利用率の推移（直近1/2/3ヶ月）
+  if (ua.periods && ua.periods.length) {
+    html += '<div class="usage-modal-label" style="margin-top:8px;">📊 利用率の推移</div>';
+    html += '<table class="usage-trend-table">';
+    ua.periods.forEach(function(p) {
+      var rt = (p.rate == null) ? 'データ不足' : (p.rate + '%');
+      var cnt = (p.rate == null) ? '' :
+        ('週' + p.contractPerWeek + '回 → 週' + p.actualPerWeek + '回');
+      html += '<tr><td class="trend-label">' + p.label + '</td>' +
+              '<td class="trend-rate">' + rt + '</td>' +
+              '<td class="trend-count">' + cnt + '</td></tr>';
+    });
+    html += '</table>';
+  }
   // 曜日別
   html += '<div class="usage-day-grid">';
   Object.keys(ua.byDay || {}).forEach(function(d) {
