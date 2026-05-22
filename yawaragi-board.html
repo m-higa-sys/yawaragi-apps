@@ -630,18 +630,27 @@
         .att-empty { text-align: center; padding: 20px; color: #a0aec0; font-size: 0.9rem; }
 
         /* ----- 利用率アラート ----- */
-        .att-usage-badge {
-          display: inline-block;
-          margin-left: 6px;
-          padding: 1px 6px;
-          border-radius: 8px;
+        /* 利用率バッジ＋プレースホルダ（2026-05-23：3カラム化に伴い同サイズの円で統一） */
+        .att-usage-badge, .att-usage-placeholder {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
           font-size: 12px;
           font-weight: bold;
-          cursor: pointer;
           vertical-align: middle;
+          flex-shrink: 0;
+          box-sizing: border-box;
         }
+        .att-usage-badge { cursor: pointer; }
         .att-usage-badge.warn { background: #fff3cd; color: #856404; border: 1px solid #ffe69c; }
         .att-usage-badge.danger { background: #f8d7da; color: #842029; border: 1px solid #f1aeb5; }
+        .att-usage-placeholder {
+          background: #fff;
+          border: 1.5px solid #cbd5e0;
+        }
         .att-redsummary {
           margin: 6px 0;
           padding: 8px 10px;
@@ -7516,7 +7525,7 @@ function attRenderUser(u) {
         ? '<span style="display:inline-block;background:#a7f3d0;color:#065f46;font-size:0.7rem;font-weight:900;padding:2px 8px;border-radius:10px;margin-left:6px;">再開</span>'
         : '';
 
-    // 利用率バッジ（usageAlertMap から引く。黄/赤のみ表示・無印は何も出さない）
+    // 利用率バッジ（usageAlertMap から引く。黄/赤のみ表示・無印は白丸プレースホルダで列揃え）
     var usageBadge = '';
     var ua = usageAlertMap[usageNormalizeName(u.name)];
     if (ua && ua.badge) {
@@ -7524,6 +7533,9 @@ function attRenderUser(u) {
         var bicon = ua.badge === 'red' ? '🔴' : '🟡';
         usageBadge = '<span class="att-usage-badge ' + bcls + '" ' +
             'onclick="event.stopPropagation();showUsageDetail(\'' + escapedName + '\')">' + bicon + '</span>';
+    } else {
+        // 列揃え用プレースホルダ（2026-05-23・社長指示）
+        usageBadge = '<span class="att-usage-placeholder" aria-hidden="true"></span>';
     }
 
     // 前回お休みマーク（前回の利用予定日に欠席していた出席者に表示・声かけトリガー）
