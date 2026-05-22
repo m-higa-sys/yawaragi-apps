@@ -576,9 +576,9 @@
         @media (max-width: 700px) { .att-user-list { grid-template-columns: 1fr 1fr; } }
         @media (max-width: 450px) { .att-user-list { grid-template-columns: 1fr; } }
         .att-user-row {
-            display: flex; align-items: center; gap: 10px;
+            display: flex; align-items: flex-start; gap: 10px;
             padding: 10px 8px; border-bottom: 1px solid #f0f4f8;
-            flex-wrap: wrap; overflow: hidden;
+            overflow: hidden;
         }
         .att-user-icon {
             width: 32px; height: 32px; border-radius: 50%;
@@ -597,15 +597,32 @@
         /* 出席予定タブ: 名前spanの介護度背景色（2026-05-23・pillから移行） */
         .att-user-name.care-kaigo { background: #fde2e2; padding: 2px 8px; border-radius: 8px; }
         .att-user-name.care-shien { background: #dbeafe; padding: 2px 8px; border-radius: 8px; }
-        /* 出席予定タブ: 連絡状況チップ（欠席利用者のみ・2026-05-23） */
-        .att-contact-chip {
-            display: inline-block; padding: 2px 8px; border-radius: 10px;
-            font-size: 0.75rem; font-weight: 700; white-space: nowrap;
-            vertical-align: middle;
+        /* 出席予定タブ: 3カラム構造（左=利用率+出欠マーク、右body=名前/理由/連絡状況）2026-05-23 */
+        .att-row-left {
+            display: flex; align-items: center; gap: 4px; flex-shrink: 0;
         }
-        .att-contact-chip.unsent { background: #fff5f5; color: #c53030; }
-        .att-contact-chip.done   { background: #f0fff4; color: #276749; }
-        .att-contact-chip.aware  { background: #ebf8ff; color: #2b6cb0; }
+        .att-row-body {
+            display: flex; flex-direction: column; gap: 4px;
+            flex: 1 1 auto; min-width: 0;
+        }
+        .att-row-name-line {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        /* 欠席理由をピル化（理由問わず統一色・薄赤背景・黒文字） */
+        .att-reason-pill {
+            display: inline-block; align-self: flex-start;
+            padding: 2px 10px; border-radius: 10px;
+            font-size: 0.78rem; font-weight: 600;
+            background: #fef2f2; color: #2d3748;
+        }
+        /* 連絡状況テキスト（欠席利用者のみ・テキスト色だけで識別） */
+        .att-contact-text {
+            font-size: 0.85rem; font-weight: 700;
+        }
+        .att-contact-text.unsent { color: #e53e3e; }
+        .att-contact-text.done   { color: #3182ce; }
+        .att-contact-text.aware  { color: #3182ce; }
+        /* 旧 .att-contact-chip は dead だが温存（戻し用） */
         .att-user-reason {
             width: 100%; margin-left: 42px; font-size: 0.78rem; color: #e53e3e; font-weight: 600;
         }
@@ -7524,8 +7541,9 @@ function attRenderUser(u) {
         careCls = (String(u.care).indexOf('要支援') !== -1) ? 'care-shien' : 'care-kaigo';
     }
 
-    // 連絡状況チップ（欠席利用者のみ・2026-05-23）
-    var contactChip = '';
+    // 連絡状況テキスト（欠席利用者のみ・2026-05-23 モックに合わせテキスト形式に）
+    var contactCls = '';
+    var contactLabel = '';
     if (isAbsent) {
         var lookupDate = attFormatDate(attCurrentDate);
         if (absLongTermMap && absLongTermMap[u.name] && absLongTermMap[u.name].startDate) {
@@ -7534,19 +7552,26 @@ function attRenderUser(u) {
         try {
             var rec = absFindAbsenceRecord(u.name, lookupDate);
             var st = absContactStatus(rec.cmNotified);
-            contactChip = '<span class="att-contact-chip ' + st.cls + '">' + st.chipLabel + '</span>';
-        } catch(e) { /* 取得失敗時はチップなし */ }
+            contactCls = st.cls;
+            contactLabel = st.label;  // 連絡未 / 連絡済み / ケアマネ連絡
+        } catch(e) { /* 取得失敗時はラベル空のまま */ }
     }
 
     return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
-        '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
-        '<span class="att-user-name ' + careCls + '">' + u.name + '</span>' +
-        prevAbsentBadge +
-        usageBadge +
-        resumedBadge +
-        contactChip +
-        (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
-        resumeText +
+        '<span class="att-row-left">' +
+            usageBadge +
+            '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
+        '</span>' +
+        '<div class="att-row-body">' +
+            '<div class="att-row-name-line">' +
+                '<span class="att-user-name ' + careCls + '">' + u.name + '</span>' +
+                prevAbsentBadge +
+                resumedBadge +
+            '</div>' +
+            (isAbsent && u.reason ? '<span class="att-reason-pill">' + u.reason + '</span>' : '') +
+            (contactLabel ? '<span class="att-contact-text ' + contactCls + '">' + contactLabel + '</span>' : '') +
+            resumeText +
+        '</div>' +
         '</div>';
 }
 
