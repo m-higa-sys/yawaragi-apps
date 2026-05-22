@@ -618,6 +618,7 @@
             font-size: 0.85rem; font-weight: 700;
         }
         /* 連絡未だけ赤背景pillで強調（2026-05-23・「要対応」感を出す） */
+        /* タップで電話連絡済にマークできる（2026-05-23 社長指示） */
         .att-contact-text.unsent {
             color: #c53030;
             background: #fed7d7;
@@ -625,7 +626,10 @@
             border-radius: 10px;
             font-weight: 800;
             border: 1px solid #fc8181;
+            cursor: pointer;
+            transition: filter 0.15s;
         }
+        .att-contact-text.unsent:active { filter: brightness(0.9); }
         .att-contact-text.done   { color: #3182ce; }
         .att-contact-text.aware  { color: #3182ce; }
         /* 旧 .att-contact-chip は dead だが温存（戻し用） */
@@ -7562,8 +7566,9 @@ function attRenderUser(u) {
     // 連絡状況テキスト（欠席利用者のみ・2026-05-23 モックに合わせテキスト形式に）
     var contactCls = '';
     var contactLabel = '';
+    var lookupDate = '';
     if (isAbsent) {
-        var lookupDate = attFormatDate(attCurrentDate);
+        lookupDate = attFormatDate(attCurrentDate);
         if (absLongTermMap && absLongTermMap[u.name] && absLongTermMap[u.name].startDate) {
             lookupDate = absLongTermMap[u.name].startDate;
         }
@@ -7579,6 +7584,12 @@ function attRenderUser(u) {
     var contactDisplay = contactLabel;
     if (contactLabel && (contactCls === 'done' || contactCls === 'aware')) {
         contactDisplay = '✓' + contactLabel;
+    }
+
+    // 連絡未pillはタップで「電話連絡済」にマークできる（2026-05-23 社長指示）
+    var contactClick = '';
+    if (contactCls === 'unsent' && lookupDate) {
+        contactClick = ' onclick="event.stopPropagation();markCmPhoneCalled(\'' + escapedName + '\',\'' + lookupDate + '\')"';
     }
 
     // 理由ピル表示（長期休みは括弧内の詳細を省略して「長期休み」のみ・2026-05-23）
@@ -7602,7 +7613,7 @@ function attRenderUser(u) {
             prevAbsentBadge +
             resumedBadge +
             (reasonDisplay ? '<span class="att-reason-pill">' + reasonDisplay + '</span>' : '') +
-            (contactDisplay ? '<span class="att-contact-text ' + contactCls + '">' + contactDisplay + '</span>' : '') +
+            (contactDisplay ? '<span class="att-contact-text ' + contactCls + '"' + contactClick + '>' + contactDisplay + '</span>' : '') +
             resumeText +
         '</div>' +
         '</div>';
@@ -11849,7 +11860,10 @@ async function markCmPhoneCalled(userName, dateStr) {
             delete cache[absCurrentMonth];
             localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
         } catch {}
-        setTimeout(() => absRenderUpcomingList(), 800);
+        setTimeout(() => {
+            if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+            if (typeof attLoad === 'function') attLoad();
+        }, 800);
     } catch (e) {
         alert('マーク失敗: ' + (e && e.message || e));
     }
@@ -11886,7 +11900,10 @@ async function markCmMailSent(userName, dateStr) {
             delete cache[absCurrentMonth];
             localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
         } catch {}
-        setTimeout(() => absRenderUpcomingList(), 800);
+        setTimeout(() => {
+            if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+            if (typeof attLoad === 'function') attLoad();
+        }, 800);
     } catch (e) {
         alert('マーク失敗: ' + (e && e.message || e));
     }
@@ -11926,7 +11943,10 @@ async function markCmAware(userName, dateStr) {
             delete cache[absCurrentMonth];
             localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
         } catch {}
-        setTimeout(() => absRenderUpcomingList(), 800);
+        setTimeout(() => {
+            if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+            if (typeof attLoad === 'function') attLoad();
+        }, 800);
     } catch (e) {
         alert('マーク失敗: ' + (e && e.message || e));
     }
