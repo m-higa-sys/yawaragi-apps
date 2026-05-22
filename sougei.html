@@ -1535,7 +1535,7 @@ function renderUnit(title,key){
       } else {
         const ust=stop.user?userCellClass(unit.userStatus[stop.user]):'';
         h+='<td class="user-cell drop-target'+ust+'"'
-          +(stop.user&&!isAbsent?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.pick['+ri+'].stops['+si+'].user\')"':'')
+          +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.pick['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
           +' ondragleave="this.classList.remove(\'drag-over\')"'
           +' ondrop="onDrop(event,\'D.'+key+'.pick['+ri+'].stops['+si+'].user\',this)"'
@@ -1637,7 +1637,7 @@ function renderUnit(title,key){
       } else {
         const ust=stop.user?userCellClass(unit.userStatus[stop.user]):'';
         h+='<td class="user-cell drop-target'+ust+'"'
-          +(stop.user&&!isAbsent?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
+          +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
           +' ondragleave="this.classList.remove(\'drag-over\')"'
           +' ondrop="onDrop(event,\'D.'+key+'.drop['+ri+'].stops['+si+'].user\',this)"'
@@ -1753,7 +1753,7 @@ function renderDropOnly(key){
       } else {
         const ust=stop.user?userCellClass(unit.userStatus[stop.user]):'';
         h+='<td class="user-cell drop-target'+ust+'"'
-          +(stop.user&&!isAbsent?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
+          +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
           +' ondragleave="this.classList.remove(\'drag-over\')"'
           +' ondrop="onDrop(event,\'D.'+key+'.drop['+ri+'].stops['+si+'].user\',this)"'
@@ -5270,6 +5270,7 @@ function changeDate(dateStr){
 
   // yawaragiボードから欠席連動
   applyBoardAbsences(dateStr);
+  applyBoardTrials(dateStr);   // 2026-05-22追加: yawaragiボードの体験予約を反映
 
   // 自動追加：当日＋未来日付の場合のみ（過去日付・閲覧専用は除外）
   if(!IS_READONLY) addNewUsers({auto:true});
@@ -6459,6 +6460,59 @@ function fetchBoardAbsences(dateStr, onSuccess, onError){
   script.onerror=function(){ cleanup(); if(onError) onError('スクリプト読み込み失敗'); };
   document.head.appendChild(script);
 }
+
+// yawaragiボードから指定日の体験予約を取得（2026-05-22追加・fetchBoardAbsencesと同型のJSONP）
+function fetchBoardTrials(dateStr, onSuccess, onError){
+  const cbName='_boardTrialCb_'+Date.now()+'_'+Math.floor(Math.random()*10000);
+  const script=document.createElement('script');
+  let timeout=setTimeout(()=>{ cleanup(); if(onError) onError('タイムアウト'); },10000);
+  function cleanup(){
+    clearTimeout(timeout);
+    try{ delete window[cbName]; }catch(e){ window[cbName]=undefined; }
+    if(script.parentNode) script.parentNode.removeChild(script);
+  }
+  window[cbName]=function(data){
+    cleanup();
+    if(data && data.success && Array.isArray(data.trials)){
+      onSuccess(data.trials);
+    } else if(onError){
+      onError('取得失敗');
+    }
+  };
+  script.src=ABS_BOARD_API_URL+'?action=getTrials&date='+encodeURIComponent(dateStr)+'&callback='+cbName+'&t='+Date.now();
+  script.onerror=function(){ cleanup(); if(onError) onError('スクリプト読み込み失敗'); };
+  document.head.appendChild(script);
+}
+
+// ボード由来の体験予約を D.events に完全置換注入する（2026-05-22追加）
+function applyBoardTrials(dateStr){
+  if(!dateStr) return;
+  // 土日は出勤＆送迎表に枠がないのでスキップ
+  const dow=new Date(dateStr+'T00:00:00').getDay();
+  if(dow===0||dow===6) return;
+  fetchBoardTrials(dateStr, function(trials){
+    // 非同期完了時に表示日が変わっていたら無視
+    if(!D || D.date!==dateStr) return;
+    if(!D.events) D.events=[];
+    const before=JSON.stringify(D.events);
+    // ボード由来(source==='board')の体験イベントだけ全削除して入れ直す。手動「＋追加」分は温存
+    D.events=D.events.filter(ev=>ev.source!=='board');
+    trials.forEach(t=>{
+      const nm=String(t.氏名||'').trim();
+      if(!nm) return;
+      const unit=(t.ampm==='pm')?'pm':(t.ampm==='both')?'both':'am';
+      D.events.push({type:'体験', time:String(t.お迎え時間||''), name:nm, note:'', unit:unit, source:'board'});
+    });
+    if(JSON.stringify(D.events)!==before){
+      syncTrialUsers();
+      if(!IS_READONLY) autoSave();
+      render();
+    }
+  }, function(err){
+    // 取得失敗時は既存のボード由来イベントを残す（空ガード）
+    console.warn('[trial] ボード体験の取得に失敗:', err);
+  });
+}
 // 理由から目的のstatusを判定
 function statusFromReason(reason){
   const r=reason||'';
@@ -6594,6 +6648,7 @@ function startAbsenceSync(){
   _absencePollTimer = setInterval(() => {
     const ds = _absenceCurrentDate();
     if(ds && typeof applyBoardAbsences === 'function') applyBoardAbsences(ds);
+    if(ds && typeof applyBoardTrials === 'function') applyBoardTrials(ds);
   }, ABSENCE_POLL_MS);
 
   // (B) タブをアクティブにした瞬間に即取得
@@ -6601,6 +6656,7 @@ function startAbsenceSync(){
     if(document.visibilityState === 'visible'){
       const ds = _absenceCurrentDate();
       if(ds && typeof applyBoardAbsences === 'function') applyBoardAbsences(ds);
+      if(ds && typeof applyBoardTrials === 'function') applyBoardTrials(ds);
     }
   });
 
@@ -6713,6 +6769,7 @@ async function initApp(){
   loadDay(defaultDate);
   render();
   applyBoardAbsences(defaultDate);
+  applyBoardTrials(defaultDate);   // 2026-05-22追加: yawaragiボードの体験予約を反映
   startAbsenceSync();  // 2026-05-06追加: 10秒ポーリング + visibilitychange + BroadcastChannelで applyBoardAbsences 再呼び出し
   if(!IS_READONLY) addNewUsers({auto:true});
   if(!IS_READONLY) opsAutoBackup();
