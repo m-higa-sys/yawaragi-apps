@@ -4240,7 +4240,7 @@ function mmGetAllTasks() {
                 name: t.name,
                 priority: t.priority || 'normal',
                 deadline: '',
-                estimatedMin: t.time ? parseInt(t.time) : 0,
+                estimatedMin: t.estimatedMin || 0,
                 source: 'スタッフ',
                 staff: t.staff || '',
                 fromGas: false,
@@ -7403,6 +7403,14 @@ function attMoveAbsence(name, dateStr) {
         if (!newDate) { alert('日付を選んでください'); return; }
         if (newDate === dateStr) { alert('同じ日付です'); return; }
 
+        // 新日の単位（午前/午後）を通所パターンから判定（GASは「終日」を拒否・2026-05-23）
+        // ※取消より前に判定。判定不可ならここで中止し、旧日の欠席を消さない
+        const moveUnit = absDetectUnit(name, newDate);
+        if (!moveUnit) {
+            alert('移動先の日付の通所パターン（午前/午後）が取得できませんでした。\nお手数ですが「欠席登録」タブから登録し直してください。');
+            return;
+        }
+
         // 1) 旧日取消（取消操作者は元連絡者を引き継ぐ＝移動なので「同一人物の訂正」とみなす）
         gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: '終日', canceller: existing.reporter || existing.contact || '' }, '欠席移動:旧日取消');
 
@@ -7416,7 +7424,7 @@ function attMoveAbsence(name, dateStr) {
             action: 'absence',
             name: name,
             dates: [newDate],
-            unit: '終日',
+            unit: moveUnit,
             reason: existing.reason,
             reporter: existing.reporter || existing.contact,
             contact: existing.contact,
@@ -8137,6 +8145,17 @@ function absQuickCheckReady() {
     }
 }
 
+// 利用者の通所パターンから対象日の単位（午前/午後）を判定（2026-05-23: GASの「終日」廃止対応）
+// 戻り値: '午前' | '午後' | null（パターン不明）
+function absDetectUnit(userName, dateStr) {
+    const u = (absUserCache || []).find(x => x.name === userName);
+    const pat = (u && u.pattern) || [];
+    const dow = new Date(dateStr).getDay();
+    const matched = pat.filter(p => p.day === dow);
+    if (matched.length === 0) return null;
+    return matched[0].unit === 'pm' ? '午後' : '午前';
+}
+
 function absQuickSubmit() {
     if (!absQuickState.name || !absQuickState.reason) return;
 
@@ -8144,13 +8163,20 @@ function absQuickSubmit() {
     const date = absQuickState.date;
     const reason = absQuickState.reason;
 
+    // 単位（午前/午後）を通所パターンから判定（GASは「終日」を拒否する・2026-05-23）
+    const unit = absDetectUnit(name, date);
+    if (!unit) {
+        alert('この利用者の通所パターン（午前/午後）が取得できませんでした。\nお手数ですが「欠席登録」タブから登録してください。');
+        return;
+    }
+
     // GAS送信
     const userCache = absUserCache.find(u => u.name === name) || {};
     gasPost({
         action: 'absence',
         name: name,
         dates: [date],
-        unit: '終日',
+        unit: unit,
         reason: reason,
         reporter: absReceptionist,
         contact: '',
