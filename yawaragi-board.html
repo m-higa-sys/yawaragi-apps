@@ -7786,61 +7786,19 @@ function attEditDelete(name, dateStr) {
 // 欠席の編集（理由・連絡者・方法・種別・受付日・単位）
 // 2026-05-16: 単位（午前/午後）ラジオ追加 + 保存を update_absence に変更
 function attEditAbsence(name, dateStr) {
-    // 既存データ取得
-    let existing = null;
-    const localRecs = absGetRecords();
-    const lr = localRecs.find(r => r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr);
-    if (lr) {
-        existing = {
-            reason: lr.reason || '', contact: lr.contact || '',
-            method: lr.method || '', reporter: lr.registeredBy || '',
-            contactDate: lr.contactDate || '', type: 'normal',
-            unit: lr.unit || ''
-        };
-    } else if (window._cachedGasAbsences) {
-        const gr = window._cachedGasAbsences.find(g => g.name === name && g.date === dateStr);
-        if (gr) existing = {
-            reason: gr.reason || '', contact: gr.reporter || '',
-            method: '', reporter: gr.reporter || '',
-            contactDate: gr.contactDate || '', type: 'normal',
-            unit: gr.unit || ''
-        };
-    }
-    if (!existing) {
-        const all = (attLastData.am || []).concat(attLastData.pm || []);
-        const u = all.find(x => x.name === name);
-        existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '', type: 'normal', unit: '' };
-    }
-
-    // 単位の初期値補正（移行期間: 「終日」や空は午前にフォールバック）
-    if (existing.unit === '終日' || !existing.unit) {
-        existing.unit = '午前';
-    }
-
-    // 長期休みか判定
-    existing.type = 'normal';
-    existing.startDate = dateStr;
-    existing.resumeDate = '';
-    // その日付の長期休みレコードを探す
-    if (window._cachedLongTerm) {
-        const ltHit = window._cachedLongTerm.find(lt => lt.name === name && lt.date === dateStr);
-        if (ltHit) {
-            existing.type = 'longterm';
-            existing.startDate = ltHit.date || dateStr;
-            existing.resumeDate = ltHit.resumeDate || '';
-            existing.reason = (ltHit.reason || existing.reason).replace(/^長期休み[（(]|[）)]$/g, '') || existing.reason;
-        }
-    }
-    // 日付マッチしなくても、その人が長期休み中ならlongterm扱い
-    if (existing.type === 'normal' && absLongTermMap && absLongTermMap[name]) {
-        const ltInfo = absLongTermMap[name];
-        existing.type = 'longterm';
-        existing.startDate = ltInfo.startDate || dateStr;
-        existing.resumeDate = ltInfo.resumeDate || '';
-        if (ltInfo.reason) {
-            existing.reason = (ltInfo.reason).replace(/^長期休み[（(]|[）)]$/g, '') || existing.reason;
-        }
-    }
+    // 既存データ取得（通常欠席・長期休みを統合・連絡者と単位も正しく読み込む / 2026-05-23）
+    var found = absFindAbsenceRecord(name, dateStr);
+    const existing = {
+        reason: found.reason || '',
+        contact: found.contact || '',
+        method: found.method || '',
+        reporter: found.registeredBy || found.contact || '',
+        contactDate: found.contactDate || '',
+        type: found.isLongTerm ? 'longterm' : 'normal',
+        unit: found.unit || absDeriveUnit(name) || '午前',
+        startDate: found.startDate || dateStr,
+        resumeDate: found.resumeDate || ''
+    };
 
     // 今開いてるメニュー閉じる
     const m = document.getElementById('att-absent-menu');
@@ -7863,14 +7821,9 @@ function attEditAbsence(name, dateStr) {
         '<option value="longterm"' + (existing.type === 'longterm' ? ' selected' : '') + '>長期休み</option>' +
         '</select>' +
 
-        // 単位（午前/午後）2026-05-16追加・「終日」廃止
-        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:6px;">単位：</div>' +
-        '<div style="margin-bottom:14px;">' +
-        '<label style="display:inline-flex;align-items:center;margin-right:18px;cursor:pointer;font-size:0.95rem;">' +
-        '<input type="radio" name="att-edit-unit" value="午前"' + (existing.unit === '午前' ? ' checked' : '') + ' style="width:18px;height:18px;margin-right:6px;">午前</label>' +
-        '<label style="display:inline-flex;align-items:center;cursor:pointer;font-size:0.95rem;">' +
-        '<input type="radio" name="att-edit-unit" value="午後"' + (existing.unit === '午後' ? ' checked' : '') + ' style="width:18px;height:18px;margin-right:6px;">午後</label>' +
-        '</div>' +
+        // 単位（表示のみ・2026-05-23 本人の契約で決まるため編集不可）
+        '<div style="font-size:0.85rem;font-weight:700;margin-bottom:4px;">単位：</div>' +
+        '<div style="margin-bottom:14px;font-size:0.95rem;">' + (existing.unit || '—') + '</div>' +
 
         // 長期休み用の期間フィールド
         '<div id="att-edit-longterm-fields" style="display:' + (existing.type === 'longterm' ? 'block' : 'none') + ';background:#fff5f5;border:1px solid #fed7d7;border-radius:6px;padding:10px;margin-bottom:12px;">' +
@@ -7918,13 +7871,8 @@ function attEditAbsence(name, dateStr) {
         const newStartDate = startDateInput ? (startDateInput.value || dateStr) : dateStr;
         const newResumeDate = resumeDateInput ? resumeDateInput.value : '';
 
-        // 2026-05-16: 単位（午前/午後）必須・「終日」廃止
-        const newUnitRadio = document.querySelector('input[name="att-edit-unit"]:checked');
-        if (!newUnitRadio) {
-            alert('単位（午前/午後）を選択してください');
-            return;
-        }
-        const newUnit = newUnitRadio.value;
+        // 単位は表示のみ（2026-05-23）。既存の単位をそのまま使う
+        const newUnit = existing.unit || '午前';
 
         const userCache = absUserCache.find(u => u.name === name) || {};
         const typeChanged = (newType !== existing.type);
