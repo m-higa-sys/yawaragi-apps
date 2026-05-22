@@ -7455,15 +7455,12 @@ function attUserClick(name, isAbsent) {
         attStartAbsence(name);
         return;
     }
-    // 長期休み中の人は直接編集モーダルへ（メニューはスキップ）
-    if (absLongTermMap && absLongTermMap[name]) {
-        const lt = absLongTermMap[name];
-        const ltStart = lt.startDate || attFormatDate(attCurrentDate);
-        attEditAbsence(name, ltStart);
-        return;
+    // 欠席（通常欠席・長期休みとも）→ 統一詳細ポップアップ（2026-05-23）
+    var dateStr = attFormatDate(attCurrentDate);
+    if (absLongTermMap && absLongTermMap[name] && absLongTermMap[name].startDate) {
+        dateStr = absLongTermMap[name].startDate;
     }
-    // 通常欠席 → 訂正メニュー表示
-    attShowAbsentMenu(name);
+    absShowCardDetail(name, dateStr);
 }
 
 function attShowAbsentMenu(name) {
