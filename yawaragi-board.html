@@ -6150,6 +6150,78 @@ function absRenderUpcomingList() {
     document.body.appendChild(script);
 }
 
+// ===== 欠席カードの連絡ステータス3分類＋詳細ポップアップ（2026-05-22） =====
+
+// cmNotified の値を欠席カード表示用の3分類に変換
+function absContactStatus(cmNotified) {
+    var v = String(cmNotified || '').trim();
+    if (v === '送信済' || v === '手動メール送信済' || v === '電話連絡済') {
+        return { label: '連絡済み', cls: 'done' };
+    }
+    if (v === 'ケアマネ把握済') {
+        return { label: 'ケアマネ連絡', cls: 'aware' };
+    }
+    // メールなし / 空 / 下書き保存 / エラー:… → 連絡未
+    return { label: '連絡未', cls: 'unsent' };
+}
+
+// 詳細ポップアップ内の1行を組み立てる
+function absDetailRow(label, value) {
+    return '<div class="abs-detail-row"><span class="abs-detail-label">' + label +
+           '</span><span>' + value + '</span></div>';
+}
+
+// 詳細ポップアップを閉じる
+function absDetailClose() {
+    var ov = document.getElementById('abs-detail-overlay');
+    if (ov) ov.remove();
+}
+
+// 欠席カードをタップしたときの詳細ポップアップ
+function absShowCardDetail(name, dateFrom) {
+    var list = window._absUpcomingRecords || [];
+    var r = list.find(function(x){ return x.userName === name && x.dateFrom === dateFrom; });
+    if (!r) return;
+    var st = absContactStatus(r.cmNotified);
+    var u = (typeof absGetUsers === 'function')
+        ? absGetUsers().find(function(x){ return x.name === name; })
+        : null;
+    var care = (u && u.care) ? u.care : '—';
+    var safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+    var rows = '';
+    rows += absDetailRow('欠席日', absFormatDate(r.dateFrom));
+    rows += absDetailRow('理由', r.reason || '—');
+    rows += absDetailRow('連絡状況', st.label);
+    rows += absDetailRow('受付日', r.contactDate ? absFormatDate(r.contactDate) : '—');
+    rows += absDetailRow('連絡者', r.contact || '—');
+    rows += absDetailRow('要介護度', care);
+
+    var btns = '';
+    if (st.cls === 'unsent') {
+        btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();markCmPhoneCalled(\'' + safeName + '\',\'' + r.dateFrom + '\')">📞 電話連絡済にする</button>';
+        btns += '<button class="abs-detail-btn" style="border-color:#16a085;color:#16a085;" onclick="absDetailClose();markCmMailSent(\'' + safeName + '\',\'' + r.dateFrom + '\')">✉ メール送信済にする</button>';
+        btns += '<button class="abs-detail-btn" style="border-color:#718096;color:#718096;" onclick="absDetailClose();markCmAware(\'' + safeName + '\',\'' + r.dateFrom + '\')">👤 ケアマネ把握にする</button>';
+    }
+    btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">📊 利用率の詳細を見る</button>';
+    btns += '<button class="abs-detail-btn" style="border-color:#2c5282;color:#2c5282;" onclick="absDetailClose();attEditAbsence(\'' + safeName + '\',\'' + r.dateFrom + '\')">✏️ 編集</button>';
+    btns += '<button class="abs-detail-btn" style="border-color:#e53e3e;color:#e53e3e;" onclick="absDetailClose();attCancelAbsence(\'' + safeName + '\',\'' + r.dateFrom + '\')">✕ 欠席を取り消す</button>';
+    btns += '<button class="abs-detail-btn" style="border-color:#a0aec0;color:#4a5568;" onclick="absDetailClose()">閉じる</button>';
+
+    var overlay = document.createElement('div');
+    overlay.className = 'abs-detail-overlay';
+    overlay.id = 'abs-detail-overlay';
+    overlay.innerHTML =
+        '<div class="abs-detail-card">' +
+          '<div style="font-size:1.1rem;font-weight:700;margin-bottom:2px;">' + name + '様</div>' +
+          '<div style="font-size:0.85rem;color:#718096;margin-bottom:10px;">欠席の詳細</div>' +
+          rows +
+          '<div style="margin-top:12px;">' + btns + '</div>' +
+        '</div>';
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) absDetailClose(); });
+    document.body.appendChild(overlay);
+}
+
 function absRenderUpcomingListFromData(gasAbsences, longTermData) {
     // 重複チェック用にGASデータをキャッシュ（absSubmitで参照）
     window._cachedGasAbsences = gasAbsences || [];
