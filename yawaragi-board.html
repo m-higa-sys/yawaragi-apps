@@ -6357,6 +6357,9 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         return bKey.localeCompare(aKey);                // 過去同士は降順
     });
 
+    // 詳細ポップアップから参照するため merged を保持（2026-05-22）
+    window._absUpcomingRecords = merged;
+
     // 件数表示を更新
     const countEl = document.getElementById('abs-upcoming-count');
     if (countEl) {
@@ -6377,73 +6380,35 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         } else if (r.dateType === 'range' && r.dateTo && r.dateTo !== r.dateFrom) {
             dateText = `${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}`;
         }
-        let deleteBtn = '';
+        // 長期休みは従来表示のまま（今回のカード化対象外）
         if (r.isLongTerm) {
-            // 長期休みは「編集」のみ（再開予定日は編集モーダル内で設定可能）
-            deleteBtn = `<button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;" onclick="attEditAbsence('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">編集</button>`;
-        } else {
-            // 通常欠席（local/gas共通）: 編集ボタンのみ（削除は編集モーダル内）
-            deleteBtn = `<button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;" onclick="attEditAbsence('${r.userName.replace(/'/g,"\\'")}','${r.dateFrom}')">編集</button>`;
-        }
-        const needsDetail = !r.isLongTerm && (r.needsDetail || (!r.contact && !r.method));
-        const warnTag = needsDetail ? '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">⚠ 詳細未入力</span>' : '';
-        const ltTag = r.isLongTerm ? '<span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">長期休み</span>' : '';
-        let mailTag = '';
-        if (!r.isLongTerm) {
-            // 2026-05-18: 送信時刻と送信先をバッジに表示（詳細はメール本文で確認の方針）
-            const cmTooltip = [r.cmOffice, r.cmName ? r.cmName + '様' : ''].filter(Boolean).join(' / ');
-            const sentTimeStr = (function() {
-                if (!r.cmNotifiedAt) return '';
-                try {
-                    const dt = new Date(r.cmNotifiedAt);
-                    if (isNaN(dt.getTime())) return '';
-                    const mm = dt.getMonth() + 1;
-                    const dd = dt.getDate();
-                    const hh = String(dt.getHours()).padStart(2,'0');
-                    const mi = String(dt.getMinutes()).padStart(2,'0');
-                    return ' ' + mm + '/' + dd + ' ' + hh + ':' + mi;
-                } catch { return ''; }
-            })();
-            if (r.cmNotified === '送信済') {
-                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ボード経由でメール送信されました（送信先: ' + cmTooltip + ' / 詳細は r.d-yawaragi@ 受信トレイで確認できます）">✉ メール送信済（自動）' + sentTimeStr + '</span>';
-            } else if (r.cmNotified === '手動メール送信済') {
-                mailTag = '<span style="background:#16a085;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + cmTooltip + ' にGmailから手動で送信したものとして記録されています">✉ メール送信済（手動）' + sentTimeStr + '</span>';
-            } else if (r.cmNotified === '下書き保存') {
-                mailTag = '<span style="background:#fb923c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="下書きとして保存されたため未送信です。Gmail下書きから送信してください">⚠ 下書きのまま（未送信）</span>';
-            } else if (r.cmNotified === '電話連絡済') {
-                mailTag = '<span style="background:#3182ce;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + cmTooltip + ' に電話で連絡済み">📞 電話連絡済' + sentTimeStr + '</span>';
-            } else if (r.cmNotified === 'ケアマネ把握済') {
-                mailTag = '<span style="background:#718096;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネ本人から連絡が来た欠席です。ケアマネへの連絡は不要です">✅ ケアマネ把握済</span>';
-            } else if (r.cmNotified && r.cmNotified.indexOf('エラー') === 0) {
-                mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="' + r.cmNotified.replace(/"/g,'&quot;') + '">⚠ メール失敗</span>';
-            } else if (r.cmNotified === 'メールなし' || !r.cmNotified) {
-                const safeName = r.userName.replace(/'/g,"\\'");
-                mailTag = '<span style="background:#e74c3c;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;" title="ケアマネへの連絡がまだです">🔴 ケアマネ連絡未</span>'
-                    + '<button onclick="markCmPhoneCalled(\'' + safeName + '\',\'' + r.dateFrom + '\')" '
-                    + 'style="margin-left:6px;padding:2px 8px;font-size:0.7rem;background:#3182ce;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
-                    + 'title="電話で連絡済みにマーク">📞済にする</button>'
-                    + '<button onclick="markCmMailSent(\'' + safeName + '\',\'' + r.dateFrom + '\')" '
-                    + 'style="margin-left:4px;padding:2px 8px;font-size:0.7rem;background:#16a085;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
-                    + 'title="Gmailから手動でメール送信した場合はこちら">✉ メール済にする</button>'
-                    + '<button onclick="markCmAware(\'' + safeName + '\',\'' + r.dateFrom + '\')" '
-                    + 'style="margin-left:4px;padding:2px 8px;font-size:0.7rem;background:#718096;color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:700;" '
-                    + 'title="ケアマネ本人から連絡が来た欠席のとき。ケアマネへの連絡を不要にします">👤 ケアマネ把握にする</button>';
-            }
-        }
-        let rowStyle = '';
-        if (r.isLongTerm) rowStyle = 'border-left:4px solid #e53e3e;background:#fff5f5;';
-        else if (needsDetail) rowStyle = 'border-left:4px solid #fb923c;background:#fff7ed;';
-        return `
-        <div class="abs-record" style="${rowStyle}">
+            const ltEsc = r.userName.replace(/'/g,"\\'");
+            return `
+        <div class="abs-record" style="border-left:4px solid #e53e3e;background:#fff5f5;">
             <div class="abs-record-main">
-                <div class="abs-record-name">${r.userName}${ltTag}${mailTag}${warnTag}</div>
-                <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}${r.contact ? '　連絡者: ' + r.contact : ''}${r.method ? '（' + r.method + '）' : ''}${r.contactDate ? '　受付日: ' + absFormatDate(r.contactDate) : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
-                </div>
+                <div class="abs-record-name">${r.userName}<span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">長期休み</span></div>
+                <div class="abs-record-detail">${dateText}　理由: ${r.reason}${r.contact ? '　連絡者: ' + r.contact : ''}</div>
             </div>
-            ${deleteBtn}
-        </div>
-        `;
+            <button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;" onclick="attEditAbsence('${ltEsc}','${r.dateFrom}')">編集</button>
+        </div>`;
+        }
+        // 通常欠席 → コンパクトカード（タップで詳細ポップアップ）
+        const escName = r.userName.replace(/'/g,"\\'");
+        const st = absContactStatus(r.cmNotified);
+        const needsDetail = (r.needsDetail || (!r.contact && !r.method));
+        const cardStyle = needsDetail ? ' style="border-left:4px solid #fb923c;"' : '';
+        return `
+        <div class="abs-card"${cardStyle} onclick="absShowCardDetail('${escName}','${r.dateFrom}')">
+            <div class="abs-card-mark">欠</div>
+            <div class="abs-card-body">
+                <div class="abs-card-line1">
+                    <span class="abs-card-name">${r.userName}</span>
+                    <span class="abs-card-date">${dateText}</span>
+                </div>
+                <div class="abs-card-reason">${r.reason || ''}</div>
+                <div class="abs-card-status ${st.cls}">${st.label}</div>
+            </div>
+        </div>`;
     }).join('');
 }
 
