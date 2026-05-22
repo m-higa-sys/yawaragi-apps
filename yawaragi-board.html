@@ -6287,35 +6287,40 @@ function absDetailClose() {
     if (ov) ov.remove();
 }
 
-// 欠席カードをタップしたときの詳細ポップアップ
-function absShowCardDetail(name, dateFrom) {
-    var list = window._absUpcomingRecords || [];
-    var r = list.find(function(x){ return x.userName === name && x.dateFrom === dateFrom; });
-    if (!r) return;
-    var st = absContactStatus(r.cmNotified);
-    var u = (typeof absGetUsers === 'function')
-        ? absGetUsers().find(function(x){ return x.name === name; })
-        : null;
-    var care = (u && u.care) ? u.care : '—';
+// 欠席をタップしたときの統一詳細ポップアップ（2026-05-23 2セクション構成）
+// 欠席一覧のカード・出席予定タブ日表示のどちらから開いても同じ詳細を出す
+function absShowCardDetail(name, dateStr) {
+    var rec = absFindAbsenceRecord(name, dateStr);
+    var st = absContactStatus(rec.cmNotified);
     var safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
-    var rows = '';
-    rows += absDetailRow('欠席日', absFormatDate(r.dateFrom));
-    rows += absDetailRow('理由', r.reason || '—');
-    rows += absDetailRow('連絡状況', st.label);
-    rows += absDetailRow('受付日', r.contactDate ? absFormatDate(r.contactDate) : '—');
-    rows += absDetailRow('連絡者', r.contact || '—');
-    rows += absDetailRow('要介護度', care);
+    // ① お休みの情報
+    var dateLabel = rec.isLongTerm
+        ? (absFormatDate(rec.startDate) + ' 〜 ' + (rec.resumeDate ? absFormatDate(rec.resumeDate) : '未定'))
+        : absFormatDate(dateStr);
+    var sec1 = '<div class="abs-detail-section">🏠 お休みの情報</div>';
+    sec1 += absDetailRow('種別', rec.isLongTerm ? '長期休み' : '通常欠席');
+    sec1 += absDetailRow(rec.isLongTerm ? '期間' : '欠席日', dateLabel);
+    sec1 += absDetailRow('単位', rec.unit || '—');
+    sec1 += absDetailRow('理由', rec.reason || '—');
 
+    // ② 連絡・受付の経緯
+    var sec2 = '<div class="abs-detail-section">📞 連絡・受付の経緯</div>';
+    sec2 += absDetailRow('連絡状況', st.label);
+    sec2 += absDetailRow('連絡者', rec.contact || '—');
+    sec2 += absDetailRow('受付日', rec.contactDate ? absFormatDate(rec.contactDate) : '—');
+
+    // 操作ボタン
     var btns = '';
     if (st.cls === 'unsent') {
-        btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();markCmPhoneCalled(\'' + safeName + '\',\'' + r.dateFrom + '\')">📞 電話連絡済にする</button>';
-        btns += '<button class="abs-detail-btn" style="border-color:#16a085;color:#16a085;" onclick="absDetailClose();markCmMailSent(\'' + safeName + '\',\'' + r.dateFrom + '\')">✉ メール送信済にする</button>';
-        btns += '<button class="abs-detail-btn" style="border-color:#718096;color:#718096;" onclick="absDetailClose();markCmAware(\'' + safeName + '\',\'' + r.dateFrom + '\')">👤 ケアマネ把握にする</button>';
+        btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();markCmPhoneCalled(\'' + safeName + '\',\'' + dateStr + '\')">📞 電話連絡済にする</button>';
+        btns += '<button class="abs-detail-btn" style="border-color:#16a085;color:#16a085;" onclick="absDetailClose();markCmMailSent(\'' + safeName + '\',\'' + dateStr + '\')">✉ メール送信済にする</button>';
+        btns += '<button class="abs-detail-btn" style="border-color:#718096;color:#718096;" onclick="absDetailClose();markCmAware(\'' + safeName + '\',\'' + dateStr + '\')">👤 ケアマネ把握にする</button>';
     }
-    btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">📊 利用率の詳細を見る</button>';
-    btns += '<button class="abs-detail-btn" style="border-color:#2c5282;color:#2c5282;" onclick="absDetailClose();attEditAbsence(\'' + safeName + '\',\'' + r.dateFrom + '\')">✏️ 編集</button>';
-    btns += '<button class="abs-detail-btn" style="border-color:#e53e3e;color:#e53e3e;" onclick="absDetailClose();attCancelAbsence(\'' + safeName + '\',\'' + r.dateFrom + '\')">✕ 欠席を取り消す</button>';
+    btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">👤 利用者情報（介護度・利用率）</button>';
+    btns += '<button class="abs-detail-btn" style="border-color:#2c5282;color:#2c5282;" onclick="absDetailClose();attEditAbsence(\'' + safeName + '\',\'' + dateStr + '\')">✏️ 編集</button>';
+    btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();attMoveAbsence(\'' + safeName + '\',\'' + dateStr + '\')">→ 別の日に移動</button>';
+    btns += '<button class="abs-detail-btn" style="border-color:#e53e3e;color:#e53e3e;" onclick="absDetailClose();attCancelAbsence(\'' + safeName + '\',\'' + dateStr + '\')">✕ 欠席を取り消す</button>';
     btns += '<button class="abs-detail-btn" style="border-color:#a0aec0;color:#4a5568;" onclick="absDetailClose()">閉じる</button>';
 
     var overlay = document.createElement('div');
@@ -6323,10 +6328,10 @@ function absShowCardDetail(name, dateFrom) {
     overlay.id = 'abs-detail-overlay';
     overlay.innerHTML =
         '<div class="abs-detail-card">' +
-          '<div style="font-size:1.1rem;font-weight:700;margin-bottom:2px;">' + name + '様</div>' +
-          '<div style="font-size:0.85rem;color:#718096;margin-bottom:10px;">欠席の詳細</div>' +
-          rows +
-          '<div style="margin-top:12px;">' + btns + '</div>' +
+          '<div style="font-size:1.1rem;font-weight:700;margin-bottom:10px;">' + name + '様' + absCareBadge(name) + '</div>' +
+          sec1 +
+          sec2 +
+          '<div style="margin-top:14px;">' + btns + '</div>' +
         '</div>';
     overlay.addEventListener('click', function(e){ if (e.target === overlay) absDetailClose(); });
     document.body.appendChild(overlay);
