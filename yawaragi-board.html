@@ -11560,6 +11560,46 @@ async function markCmMailSent(userName, dateStr) {
     }
 }
 
+// 既存欠席を「✅ ケアマネ把握済」に手動マーク（2026-05-22）
+// ケアマネ本人から連絡が来た欠席に使う（ケアマネへの連絡は不要）
+async function markCmAware(userName, dateStr) {
+    const dt = absFormatDate(dateStr);
+    if (!confirm(userName + '様 ' + dt + ' の欠席を\n「✅ ケアマネ把握済」にマークしますか？\n\n※ ケアマネ本人から連絡が来た欠席に使います。\n（ケアマネへの連絡は不要なものとして扱います）')) return;
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'updateAbsenceCmNotified',
+                name: userName,
+                date: dateStr,
+                cmNotified: 'ケアマネ把握済'
+            })
+        });
+        // localStorage 上のレコードも即時更新（GAS反映待ちの間のチラつき防止）
+        try {
+            const records = absGetRecords();
+            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
+            if (target) {
+                target.cmNotified = 'ケアマネ把握済';
+                target.cmNotifiedAt = new Date().toISOString();
+                absSaveRecords(records);
+            }
+        } catch {}
+        showToast('✅ ケアマネ把握済にマークしました', 2000);
+        // キャッシュクリア＆再描画
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            delete cache[absCurrentMonth];
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+        setTimeout(() => absRenderUpcomingList(), 800);
+    } catch (e) {
+        alert('マーク失敗: ' + (e && e.message || e));
+    }
+}
+
 // マスターにメアド保存（POST・no-cors なのでレスポンスは読まない）
 async function saveCmContact(office, name, email) {
     if (!office || !name || !email) return;
