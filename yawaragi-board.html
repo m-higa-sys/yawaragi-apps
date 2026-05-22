@@ -7157,6 +7157,18 @@ function showUsageDetail(name) {
       openModal('usage-detail-modal');
       return;
   }
+  // 除外利用者（長期休み中・新規利用者）は利用率を判定しない（2026-05-23追加）
+  // GAS 側は excluded:true で返し contractCount / overall を含めないため、
+  // ガードしないと「週0回・データ不足・現在は良好です」と誤表示される
+  if (ua.excluded) {
+      html += '<div class="usage-modal-row"><span class="usage-modal-label">契約曜日</span>' +
+              '<span>' + (ua.weekdaysRaw || '-') + '</span></div>';
+      html += '<div class="usage-action-box">' + (ua.excludeReason || '対象外') +
+              'のため、利用率は判定していません。</div>';
+      body.innerHTML = html;
+      openModal('usage-detail-modal');
+      return;
+  }
   var ov = ua.overall || {};
   html += '<div class="usage-modal-row"><span class="usage-modal-label">契約曜日</span>' +
           '<span>' + (ua.weekdaysRaw || '-') + '（週' + (ua.contractCount || 0) + '回）</span></div>';
