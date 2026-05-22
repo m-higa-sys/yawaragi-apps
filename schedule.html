@@ -1457,7 +1457,7 @@ function toggleDateMode() {
     dayWrap.style.opacity = '0.3';
     dayWrap.style.pointerEvents = 'none';
     if (!STATE.selectedDate) {
-      STATE.selectedDate = new Date().toISOString().slice(0, 10);
+      STATE.selectedDate = (function(){var _t=new Date();return _t.getFullYear()+'-'+String(_t.getMonth()+1).padStart(2,'0')+'-'+String(_t.getDate()).padStart(2,'0');})();
       dateInput.value = STATE.selectedDate;
     }
     onScheduleDateChange();
@@ -1670,12 +1670,22 @@ function fetchBoardAbsences(dateStr, onSuccess, onError) {
   document.head.appendChild(script);
 }
 
+// 厳格正規化（NFKC + スペース除去 + 様除去）。yawaragiボード等の外部由来名前との照合用
+function normNameStrict(n){
+  return String(n||'').normalize('NFKC').replace(/[\s\u3000]/g,'').replace(/様$/,'');
+}
+
 function mergeBoardAbsences(boardAbsentNames) {
   if (!Array.isArray(boardAbsentNames) || boardAbsentNames.length === 0) return false;
   let added = false;
+  // 既存の名前セット（正規化キー）
+  const existingNorm = new Set(STATE.absentNames.map(n => normNameStrict(n)));
   boardAbsentNames.forEach(name => {
-    if (name && STATE.absentNames.indexOf(name) < 0) {
+    if (!name) return;
+    const norm = normNameStrict(name);
+    if (!existingNorm.has(norm)) {
       STATE.absentNames.push(name);
+      existingNorm.add(norm);
       added = true;
     }
   });
@@ -1770,7 +1780,8 @@ function refreshOrderedDayUsers() {
 
 // 休み切替（ダブルタップ / ダブルクリック）
 function toggleAbsent(userName) {
-  const idx = STATE.absentNames.indexOf(userName);
+  const targetNorm = normNameStrict(userName);
+  const idx = STATE.absentNames.findIndex(n => normNameStrict(n) === targetNorm);
   if (idx >= 0) {
     // 休み解除
     STATE.absentNames.splice(idx, 1);
@@ -1784,7 +1795,8 @@ function toggleAbsent(userName) {
 }
 
 function isAbsent(userName) {
-  return STATE.absentNames.indexOf(userName) >= 0;
+  const targetNorm = normNameStrict(userName);
+  return STATE.absentNames.some(n => normNameStrict(n) === targetNorm);
 }
 
 // ラインナップ → 待機エリア
@@ -5936,6 +5948,13 @@ async function init() {
     const todayIdx = new Date().getDay();
     STATE.currentDay = todayIdx >= 1 && todayIdx <= 6 ? DAYS[todayIdx - 1] : '月';
   }
+  // 起動時は日付モード強制（曜日モードのまま運用すると欠席が見えず事故るため）
+  if (!STATE.selectedDate) STATE.selectedDate = (function(){var _t=new Date();return _t.getFullYear()+'-'+String(_t.getMonth()+1).padStart(2,'0')+'-'+String(_t.getDate()).padStart(2,'0');})();
+  const _chkDM = document.getElementById('chkDateMode');
+  const _inpDM = document.getElementById('schedDateInput');
+  if (_chkDM) _chkDM.checked = true;
+  if (_inpDM) _inpDM.value = STATE.selectedDate;
+  if (typeof toggleDateMode === 'function') toggleDateMode();
   loadLocks(); // ロック状態を復元
   renderUserTable();
   updateScheduleTab(); // 最初から対象者を表示
