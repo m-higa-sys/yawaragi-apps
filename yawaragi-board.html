@@ -677,7 +677,7 @@
           border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer;
           border: 2px solid; background: #fff;
         }
-        /* 要介護/要支援バッジ（2026-05-23） */
+        /* 要介護/要支援バッジ（2026-05-23・詳細ポップアップタイトル用） */
         .abs-care-badge {
           display: inline-block; margin-left: 8px;
           padding: 2px 8px; border-radius: 8px;
@@ -687,6 +687,20 @@
         .abs-care-badge.shien {
           background: #d9f2e3; color: #276749;
         }
+        /* 連絡状況チップ（2026-05-23：欠席カード1行目右に表示） */
+        .abs-card-chip {
+          display: inline-block; padding: 2px 8px; border-radius: 10px;
+          font-size: 0.75rem; font-weight: 700; white-space: nowrap;
+          vertical-align: middle;
+        }
+        .abs-card-chip.unsent { background: #fff5f5; color: #c53030; }
+        .abs-card-chip.done   { background: #f0fff4; color: #276749; }
+        .abs-card-chip.aware  { background: #ebf8ff; color: #2b6cb0; }
+        /* 介護度を名前の背景色で表現（2026-05-23：欠席カード用） */
+        .abs-card-name.care-kaigo { background: #fde2e2; padding: 1px 8px; border-radius: 8px; }
+        .abs-card-name.care-shien { background: #dbeafe; padding: 1px 8px; border-radius: 8px; }
+        /* line1の左側グループ（名前＋チップを横並びに） */
+        .abs-card-line1-left { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
         /* 詳細ポップアップのセクション見出し */
         .abs-detail-section {
           font-size: 0.9rem; font-weight: 700; color: #2d3748;
@@ -6184,6 +6198,7 @@ function absDeriveUnit(name) {
 }
 
 // 利用者名の横に出す要介護/要支援バッジのHTML（介護度に「要支援」を含むかで判定）
+// 詳細ポップアップタイトル等で使用。欠席カードの名前部は absCareNameClass を使う。
 function absCareBadge(name) {
     var u = (typeof absUserCache !== 'undefined' && absUserCache)
         ? absUserCache.find(function(x){ return x.name === name; }) : null;
@@ -6192,6 +6207,16 @@ function absCareBadge(name) {
     var isShien = care.indexOf('要支援') !== -1;
     return '<span class="abs-care-badge' + (isShien ? ' shien' : '') + '">' +
            (isShien ? '要支援' : '要介護') + '</span>';
+}
+
+// 欠席カードの名前 span に追加する介護度クラス（薄い背景色用・2026-05-23追加）
+// 要介護 → 薄い赤背景、要支援 → 薄い青背景、不明 → 背景なし
+function absCareNameClass(name) {
+    var u = (typeof absUserCache !== 'undefined' && absUserCache)
+        ? absUserCache.find(function(x){ return x.name === name; }) : null;
+    var care = (u && u.care) ? String(u.care) : '';
+    if (!care) return '';
+    return care.indexOf('要支援') !== -1 ? 'care-shien' : 'care-kaigo';
 }
 
 // 欠席情報を各キャッシュから統合して取得（通常欠席・長期休み両対応）
@@ -6264,16 +6289,17 @@ function absFindAbsenceRecord(name, dateStr) {
 // ===== 欠席カードの連絡ステータス3分類＋詳細ポップアップ（2026-05-22） =====
 
 // cmNotified の値を欠席カード表示用の3分類に変換
+// chipLabel: 欠席カード1行目のチップに使うアイコン付き短文（2026-05-23追加）
 function absContactStatus(cmNotified) {
     var v = String(cmNotified || '').trim();
     if (v === '送信済' || v === '手動メール送信済' || v === '電話連絡済') {
-        return { label: '連絡済み', cls: 'done' };
+        return { label: '連絡済み', cls: 'done', chipLabel: '✓ 連絡済' };
     }
     if (v === 'ケアマネ把握済') {
-        return { label: 'ケアマネ連絡', cls: 'aware' };
+        return { label: 'ケアマネ連絡', cls: 'aware', chipLabel: '👤 ケアマネ' };
     }
     // メールなし / 空 / 下書き保存 / エラー:… → 連絡未
-    return { label: '連絡未', cls: 'unsent' };
+    return { label: '連絡未', cls: 'unsent', chipLabel: '📞 未連絡' };
 }
 
 // 詳細ポップアップ内の1行を組み立てる
@@ -6529,11 +6555,13 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             <div class="abs-card-mark">欠</div>
             <div class="abs-card-body">
                 <div class="abs-card-line1">
-                    <span class="abs-card-name">${r.userName}${absCareBadge(r.userName)}</span>
+                    <span class="abs-card-line1-left">
+                        <span class="abs-card-name ${absCareNameClass(r.userName)}">${r.userName}</span>
+                        <span class="abs-card-chip ${st.cls}">${st.chipLabel}</span>
+                    </span>
                     <span class="abs-card-date">${dateText}</span>
                 </div>
                 <div class="abs-card-reason">${r.reason || ''}</div>
-                <div class="abs-card-status ${st.cls}">${st.label}</div>
             </div>
         </div>`;
     }).join('');
