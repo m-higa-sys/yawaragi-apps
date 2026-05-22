@@ -7589,10 +7589,10 @@ function attRenderUser(u) {
         contactDisplay = '✓' + contactLabel;
     }
 
-    // 連絡未pillはタップで「電話連絡済」にマークできる（2026-05-23 社長指示）
+    // 連絡未pillはタップで連絡方法選択モーダルを開く（4ボタン構成・2026-05-23 社長指示）
     var contactClick = '';
     if (contactCls === 'unsent' && lookupDate) {
-        contactClick = ' onclick="event.stopPropagation();markCmPhoneCalled(\'' + escapedName + '\',\'' + lookupDate + '\')"';
+        contactClick = ' onclick="event.stopPropagation();showContactMethodModal(\'' + escapedName + '\',\'' + lookupDate + '\')"';
     }
 
     // 理由ピル表示（長期休みは括弧内の詳細を省略して「長期休み」のみ・2026-05-23）
@@ -11831,6 +11831,70 @@ function isCmPhoneMode(method) {
 }
 
 // 既存欠席を「📞 電話で連絡済み」に手動マーク（2026-05-13）
+// 連絡状況マークの共通処理（confirm無し版・モーダル等からの直接実行用・2026-05-23）
+async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage) {
+    try {
+        await fetch(ABS_BOARD_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'updateAbsenceCmNotified',
+                name: userName,
+                date: dateStr,
+                cmNotified: cmNotifiedValue
+            })
+        });
+        try {
+            const records = absGetRecords();
+            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
+            if (target) {
+                target.cmNotified = cmNotifiedValue;
+                target.cmNotifiedAt = new Date().toISOString();
+                absSaveRecords(records);
+            }
+        } catch {}
+        showToast(toastMessage, 2000);
+        try {
+            const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
+            delete cache[absCurrentMonth];
+            localStorage.setItem(ABS_CACHE_KEY, JSON.stringify(cache));
+        } catch {}
+        setTimeout(() => {
+            if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
+            if (typeof attLoad === 'function') attLoad();
+        }, 800);
+    } catch (e) {
+        alert('マーク失敗: ' + (e && e.message || e));
+    }
+}
+
+// 連絡方法選択モーダル（出席予定タブ「連絡未」pillから呼ぶ・2026-05-23）
+// 4ボタン: 電話連絡済 / メール連絡済 / ケアマネ把握済 / 閉じる
+function showContactMethodModal(userName, dateStr) {
+    const dt = absFormatDate(dateStr);
+    const escName = userName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const modal = document.createElement('div');
+    modal.id = 'contact-method-modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const btnBase = 'display:block;width:100%;padding:14px;margin-bottom:8px;background:#fff;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;';
+    function mkBtn(label, color, cmValue, toast) {
+        return '<button onclick="_markCmInternal(\'' + escName + '\',\'' + dateStr + '\',\'' + cmValue + '\',\'' + toast + '\');document.getElementById(\'contact-method-modal\').remove();" ' +
+               'style="' + btnBase + 'border:2px solid ' + color + ';color:' + color + ';">' + label + '</button>';
+    }
+    modal.innerHTML =
+        '<div style="background:#fff;border-radius:14px;padding:24px;width:min(360px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);">' +
+        '<div style="font-size:1.05rem;font-weight:800;margin-bottom:4px;">' + userName + '様</div>' +
+        '<div style="font-size:0.85rem;color:#718096;margin-bottom:16px;">' + dt + ' の連絡状況をマーク</div>' +
+        mkBtn('📞 電話連絡済', '#3182ce', '電話連絡済', '📞 電話連絡済みにマークしました') +
+        mkBtn('✉ メール連絡済', '#16a085', '手動メール送信済', '✉ メール連絡済にマークしました') +
+        mkBtn('👤 ケアマネ把握済', '#718096', 'ケアマネ把握済', '✅ ケアマネ把握済にマークしました') +
+        '<button onclick="document.getElementById(\'contact-method-modal\').remove()" style="display:block;width:100%;padding:10px;margin-top:6px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
+        '</div>';
+    document.body.appendChild(modal);
+    modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
 async function markCmPhoneCalled(userName, dateStr) {
     const dt = absFormatDate(dateStr);
     if (!confirm(userName + '様 ' + dt + ' の欠席を\n「📞 電話で連絡済み」にマークしますか？')) return;
