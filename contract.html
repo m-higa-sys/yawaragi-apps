@@ -235,12 +235,12 @@ input, select, textarea {
             <span id="udc-step-indicator">Step 1 / 10</span>
         </div>
 
-        <!-- Step 1: 利用者選択 -->
+        <!-- Step 1: 利用者選択（検索ボックス・2026-05-22） -->
         <div class="wizard-step" data-step="1" style="display:block;">
             <label style="font-weight:bold; display:block; margin-bottom:6px;">1. 利用者 <span style="color:red;">*</span></label>
-            <select id="udc-user-select" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box; background:white;">
-                <option value="">読み込み中…</option>
-            </select>
+            <input type="text" id="udc-user-search" autocomplete="off" placeholder="氏名またはカナで検索" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px; box-sizing:border-box;">
+            <div id="udc-user-suggestions" style="background:white; border:1px solid #ccc; border-top:none; max-height:200px; overflow-y:auto; display:none;"></div>
+            <div id="udc-user-selected" style="margin-top:6px; font-size:0.9rem; color:#2b6cb0; font-weight:bold;"></div>
         </div>
 
         <!-- Step 2: 記入者 -->
@@ -1270,6 +1270,7 @@ async function evtSubmitCmChange() {
 // ===== 利用曜日変更ウィザード（2026/5/10追加）=====
 // ============================================================
 var udcCurrentStep = 1;
+var udcSelectedUser = null;   // 選択中の利用者（検索ボックスで確定したオブジェクト）
 var UDC_TOTAL_STEPS = 10;
 const UDC_WEEKDAYS = ['月', '火', '水', '木', '金', '土'];
 
@@ -1329,8 +1330,7 @@ function udcPrev() {
 function udcValidateStep(n) {
     switch (n) {
         case 1: {
-            const v = document.getElementById('udc-user-select').value;
-            if (!v) { alert('利用者を選んでください'); return false; }
+            if (!udcSelectedUser) { alert('利用者を選んでください'); return false; }
             return true;
         }
         case 2: {
@@ -1395,25 +1395,33 @@ function udcInitForm() {
     // ウィザードStepのリセット（Step 1を表示）
     udcShowStep(1);
 
-    // 1. 利用者プルダウン
-    _cmFetchUserList().then(function(users) {
-        const sel = document.getElementById('udc-user-select');
-        sel.innerHTML = '<option value="">選択してください</option>';
-        (users || []).forEach(function(u) {
-            const opt = document.createElement('option');
-            opt.value = u.userName;
-            opt.textContent = u.userName + (u.userNameKana ? ' (' + u.userNameKana + ')' : '');
-            opt.dataset.days = u.days || '';
-            sel.appendChild(opt);
-        });
-        // 利用者選択時に曜日を自動セット（Task 10）
-        sel.onchange = function() {
-            const opt = sel.options[sel.selectedIndex];
-            const days = opt ? (opt.dataset.days || '') : '';
-            udcSetWeekdayCheckboxes('udc-current-days', days);
-            udcSetWeekdayCheckboxes('udc-new-days', days);
+    // 1. 利用者検索ボックス（2026-05-22 検索ボックス化）
+    udcSelectedUser = null;
+    document.getElementById('udc-user-search').value = '';
+    document.getElementById('udc-user-suggestions').style.display = 'none';
+    document.getElementById('udc-user-selected').textContent = '';
+    _cmFetchUserList(); // 利用者一覧をキャッシュにロード（候補表示で使用）
+    (function() {
+        const searchInput = document.getElementById('udc-user-search');
+        const suggestions = document.getElementById('udc-user-suggestions');
+        // oninput プロパティ代入：udcInitForm が複数回呼ばれても重複登録しない
+        searchInput.oninput = function() {
+            const q = searchInput.value.trim();
+            if (!q || !_cmUserList) { suggestions.style.display = 'none'; return; }
+            const matches = _cmUserList.filter(function(u) {
+                return u.userName.indexOf(q) !== -1 ||
+                       (u.userNameKana && u.userNameKana.indexOf(q) !== -1);
+            }).slice(0, 10);
+            if (matches.length === 0) { suggestions.style.display = 'none'; return; }
+            suggestions.innerHTML = matches.map(function(u) {
+                return '<div style="padding:6px 10px; cursor:pointer; font-size:0.9rem; border-bottom:1px solid #f0f0f0;" onclick="udcSelectUser(\'' +
+                    u.userName.replace(/'/g, "\\'") + '\')">' + escapeHtml(u.userName) +
+                    (u.userNameKana ? ' <span style="color:#888; font-size:0.75rem;">(' + escapeHtml(u.userNameKana) + ')</span>' : '') +
+                    '</div>';
+            }).join('');
+            suggestions.style.display = 'block';
         };
-    });
+    })();
 
     // 2. デフォルト日付
     document.getElementById('udc-contact-date').value = udcToday();
@@ -1428,6 +1436,20 @@ function udcInitForm() {
     // 5. メモ欄クリア
     document.getElementById('udc-leadership-memo').value = '';
     document.getElementById('udc-memo').value = '';
+}
+
+// ----- 利用者検索ボックス：候補クリックで確定（2026-05-22）-----
+function udcSelectUser(userName) {
+    const user = (_cmUserList || []).find(function(u) { return u.userName === userName; });
+    if (!user) return;
+    udcSelectedUser = user;
+    document.getElementById('udc-user-search').value = userName;
+    document.getElementById('udc-user-suggestions').style.display = 'none';
+    document.getElementById('udc-user-selected').textContent = '✓ ' + userName + ' 様 を選択中';
+    // 曜日を利用者台帳から Step 6 / Step 7 に自動セット
+    const days = user.days || '';
+    udcSetWeekdayCheckboxes('udc-current-days', days);
+    udcSetWeekdayCheckboxes('udc-new-days', days);
 }
 
 function udcToday() {
@@ -1549,7 +1571,7 @@ async function udcSubmit() {
         }
     }
 
-    const userName = document.getElementById('udc-user-select').value;
+    const userName = udcSelectedUser ? udcSelectedUser.userName : '';
     const recorder = document.getElementById('udc-recorder-select').value.trim();
     const contactDate = document.getElementById('udc-contact-date').value;
 
