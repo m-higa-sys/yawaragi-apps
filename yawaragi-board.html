@@ -6167,6 +6167,99 @@ function absRenderUpcomingList() {
     document.body.appendChild(script);
 }
 
+// ===== 欠席情報の統合取得・単位導出・介護度バッジ（2026-05-23） =====
+
+// 利用者の契約パターンから単位（午前/午後）を導出する
+function absDeriveUnit(name) {
+    var u = (typeof absUserCache !== 'undefined' && absUserCache)
+        ? absUserCache.find(function(x){ return x.name === name; }) : null;
+    if (!u || !u.pattern || !u.pattern.length) return '';
+    var hasAm = u.pattern.some(function(p){ return p.unit === 'am'; });
+    var hasPm = u.pattern.some(function(p){ return p.unit === 'pm'; });
+    if (hasAm && hasPm) return '午前・午後';
+    if (hasPm) return '午後';
+    if (hasAm) return '午前';
+    return '';
+}
+
+// 利用者名の横に出す要介護/要支援バッジのHTML（介護度に「要支援」を含むかで判定）
+function absCareBadge(name) {
+    var u = (typeof absUserCache !== 'undefined' && absUserCache)
+        ? absUserCache.find(function(x){ return x.name === name; }) : null;
+    var care = (u && u.care) ? String(u.care) : '';
+    if (!care) return '';
+    var isShien = care.indexOf('要支援') !== -1;
+    return '<span class="abs-care-badge' + (isShien ? ' shien' : '') + '">' +
+           (isShien ? '要支援' : '要介護') + '</span>';
+}
+
+// 欠席情報を各キャッシュから統合して取得（通常欠席・長期休み両対応）
+// 長期休みでも連絡者(contact)・単位(unit)を正しく拾う（従来バグの解消）
+function absFindAbsenceRecord(name, dateStr) {
+    var rec = { found: false, isLongTerm: false, reason: '', contact: '',
+                unit: '', method: '', contactDate: '', cmNotified: '',
+                registeredBy: '', startDate: dateStr, resumeDate: '' };
+    // 1. ローカル記録
+    var lr = absGetRecords().find(function(r){
+        return r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr;
+    });
+    if (lr) {
+        rec.found = true;
+        rec.reason = lr.reason || '';
+        rec.contact = lr.contact || '';
+        rec.unit = lr.unit || '';
+        rec.method = lr.method || '';
+        rec.contactDate = lr.contactDate || '';
+        rec.cmNotified = lr.cmNotified || '';
+        rec.registeredBy = lr.registeredBy || '';
+    }
+    // 2. GASキャッシュ（通常欠席）
+    if (!rec.found && window._cachedGasAbsences) {
+        var gr = window._cachedGasAbsences.find(function(g){ return g.name === name && g.date === dateStr; });
+        if (gr) {
+            rec.found = true;
+            rec.reason = gr.reason || '';
+            rec.contact = gr.reporter || '';
+            rec.unit = gr.unit || '';
+            rec.contactDate = gr.contactDate || '';
+            rec.cmNotified = gr.cmNotified || '';
+            rec.registeredBy = gr.reporter || '';
+        }
+    }
+    // 2.5 出席予定の日表示データ（理由だけでも拾う）
+    if (!rec.found && typeof attLastData !== 'undefined' && attLastData) {
+        var allAtt = (attLastData.am || []).concat(attLastData.pm || []);
+        var au = allAtt.find(function(x){ return x.name === name; });
+        if (au) { rec.found = true; rec.reason = au.reason || ''; }
+    }
+    // 3. 長期休み（_cachedLongTerm を優先・無ければ absLongTermMap）
+    var ltHit = null;
+    if (window._cachedLongTerm) {
+        ltHit = window._cachedLongTerm.find(function(lt){ return lt.name === name && lt.date === dateStr; })
+             || window._cachedLongTerm.find(function(lt){ return lt.name === name; });
+    }
+    if (ltHit) {
+        rec.found = true;
+        rec.isLongTerm = true;
+        rec.startDate = ltHit.date || dateStr;
+        rec.resumeDate = ltHit.resumeDate || '';
+        rec.reason = String(ltHit.reason || rec.reason).replace(/^長期休み[（(]|[）)]$/g, '') || rec.reason;
+        if (ltHit.reporter) rec.contact = ltHit.reporter;
+    } else if (typeof absLongTermMap !== 'undefined' && absLongTermMap && absLongTermMap[name]) {
+        var lm = absLongTermMap[name];
+        rec.found = true;
+        rec.isLongTerm = true;
+        rec.startDate = lm.startDate || dateStr;
+        rec.resumeDate = lm.resumeDate || '';
+        if (lm.reason) rec.reason = String(lm.reason).replace(/^長期休み[（(]|[）)]$/g, '') || rec.reason;
+    }
+    // 4. 単位: 記録に無い／「終日」のときは契約パターンから導出
+    if (!rec.unit || rec.unit === '終日') {
+        rec.unit = absDeriveUnit(name) || rec.unit;
+    }
+    return rec;
+}
+
 // ===== 欠席カードの連絡ステータス3分類＋詳細ポップアップ（2026-05-22） =====
 
 // cmNotified の値を欠席カード表示用の3分類に変換
