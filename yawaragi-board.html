@@ -594,6 +594,18 @@
             font-size: 0.75rem; color: #718096; background: #edf2f7;
             padding: 1px 8px; border-radius: 8px;
         }
+        /* 出席予定タブ: 名前spanの介護度背景色（2026-05-23・pillから移行） */
+        .att-user-name.care-kaigo { background: #fde2e2; padding: 2px 8px; border-radius: 8px; }
+        .att-user-name.care-shien { background: #dbeafe; padding: 2px 8px; border-radius: 8px; }
+        /* 出席予定タブ: 連絡状況チップ（欠席利用者のみ・2026-05-23） */
+        .att-contact-chip {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 0.75rem; font-weight: 700; white-space: nowrap;
+            vertical-align: middle;
+        }
+        .att-contact-chip.unsent { background: #fff5f5; color: #c53030; }
+        .att-contact-chip.done   { background: #f0fff4; color: #276749; }
+        .att-contact-chip.aware  { background: #ebf8ff; color: #2b6cb0; }
         .att-user-reason {
             width: 100%; margin-left: 42px; font-size: 0.78rem; color: #e53e3e; font-weight: 600;
         }
@@ -7506,13 +7518,33 @@ function attRenderUser(u) {
         }
     }
 
+    // 介護度クラス（要支援→薄青背景、要介護→薄赤背景・2026-05-23 pill から移行）
+    var careCls = '';
+    if (u.care) {
+        careCls = (String(u.care).indexOf('要支援') !== -1) ? 'care-shien' : 'care-kaigo';
+    }
+
+    // 連絡状況チップ（欠席利用者のみ・2026-05-23）
+    var contactChip = '';
+    if (isAbsent) {
+        var lookupDate = attFormatDate(attCurrentDate);
+        if (absLongTermMap && absLongTermMap[u.name] && absLongTermMap[u.name].startDate) {
+            lookupDate = absLongTermMap[u.name].startDate;
+        }
+        try {
+            var rec = absFindAbsenceRecord(u.name, lookupDate);
+            var st = absContactStatus(rec.cmNotified);
+            contactChip = '<span class="att-contact-chip ' + st.cls + '">' + st.chipLabel + '</span>';
+        } catch(e) { /* 取得失敗時はチップなし */ }
+    }
+
     return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
-        '<span class="att-user-name">' + u.name + '</span>' +
+        '<span class="att-user-name ' + careCls + '">' + u.name + '</span>' +
         prevAbsentBadge +
         usageBadge +
         resumedBadge +
-        (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
+        contactChip +
         (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
         resumeText +
         '</div>';
