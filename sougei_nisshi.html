@@ -347,16 +347,23 @@ async function onUndoneClick(){
   };
 
   try {
-    await fetch(UNDONE_BOARD_API_URL, {
+    // GASレスポンスを検証して成否を確定（no-corsでの「常に成功扱い」を廃止・2026-05-23）
+    const res = await fetch(UNDONE_BOARD_API_URL, {
       method: 'POST',
-      mode: 'no-cors',
       headers: {'Content-Type': 'text/plain;charset=utf-8'},
       body: JSON.stringify(payload),
       redirect: 'follow'
     });
-    // no-cors では response.json() 読めない。送信成功と仮定してUIを切替（optimistic update）。
+    let json = null;
+    try { json = await res.json(); } catch(e) {}
+    // 取消は「サーバーに記録なし」もローカルを idle に戻す扱い（実態に合わせる）
+    const ok = json && (json.success || (toggle === 'cancel' && /no active report/.test(json.error || '')));
+    if (!ok) {
+      _undoneSetState('error', {message: (json && json.error) || 'サーバー応答を確認できませんでした。画面を再読込してください'});
+      return;
+    }
     if (toggle === 'report') {
-      const localData = {id: 'pending', reportedAt: new Date().toISOString()};
+      const localData = {id: (json && json.id) || 'pending', reportedAt: new Date().toISOString()};
       localStorage.setItem(_undoneStorageKey(), JSON.stringify(localData));
       _undoneSetState('reported', localData);
     } else {
@@ -779,9 +786,10 @@ function loadDate(){
 }
 
 function changeDate(offset){
-  const d = new Date(currentDate || new Date());
+  const d = currentDate ? new Date(currentDate + 'T00:00:00') : new Date();
   d.setDate(d.getDate() + offset);
-  document.getElementById('dateInput').value = d.toISOString().slice(0,10);
+  document.getElementById('dateInput').value =
+    d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   loadDate();
 }
 
