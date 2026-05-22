@@ -7581,6 +7581,17 @@ function attRenderUser(u) {
         contactDisplay = '✓' + contactLabel;
     }
 
+    // 理由ピル表示（長期休みは括弧内の詳細を省略して「長期休み」のみ・2026-05-23）
+    // 詳細（例: 入院）は欠席詳細ポップアップで確認する
+    var reasonDisplay = '';
+    if (isAbsent) {
+        if (absLongTermMap && absLongTermMap[u.name]) {
+            reasonDisplay = '長期休み';
+        } else if (u.reason) {
+            reasonDisplay = String(u.reason);
+        }
+    }
+
     return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<span class="att-row-left">' +
             usageBadge +
@@ -7590,7 +7601,7 @@ function attRenderUser(u) {
             '<span class="att-user-name ' + careCls + '">' + u.name + '</span>' +
             prevAbsentBadge +
             resumedBadge +
-            (isAbsent && u.reason ? '<span class="att-reason-pill">' + u.reason + '</span>' : '') +
+            (reasonDisplay ? '<span class="att-reason-pill">' + reasonDisplay + '</span>' : '') +
             (contactDisplay ? '<span class="att-contact-text ' + contactCls + '">' + contactDisplay + '</span>' : '') +
             resumeText +
         '</div>' +
