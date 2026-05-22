@@ -222,6 +222,30 @@ input, select, textarea {
     </div>
 </div>
 
+<!-- 完了項目の訂正モーダル（2026-05-22追加） -->
+<div id="evt-edit-completion-modal" class="modal-overlay">
+    <div class="modal-content" style="background:#fff; border-radius:12px; padding:20px; max-width:380px; width:94%;">
+        <h3 style="font-size:1.15rem; margin:0 0 14px 0; color:#2d3748;">完了情報の訂正</h3>
+        <div id="evt-edit-completion-label" style="font-size:0.95rem; color:#4a5568; margin-bottom:14px;"></div>
+        <input type="hidden" id="evt-edit-completion-itemid" value="">
+        <label style="display:block; margin-bottom:12px; font-size:0.95rem;">
+            完了日<br>
+            <input type="date" id="evt-edit-completion-date" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:8px; box-sizing:border-box;">
+        </label>
+        <label style="display:block; margin-bottom:16px; font-size:0.95rem;">
+            完了者<br>
+            <input type="text" id="evt-edit-completion-by" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:8px; box-sizing:border-box;">
+        </label>
+        <div style="display:flex; gap:8px; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+            <button id="evt-edit-completion-reopen" onclick="evtReopenItem()" style="padding:10px 14px; background:#fff5f5; color:#c53030; border:1px solid #fc8181; border-radius:8px; cursor:pointer; font-size:0.9rem;">未完了に戻す</button>
+            <div style="display:flex; gap:8px;">
+                <button onclick="evtCloseEditCompletion()" style="padding:10px 16px; background:#edf2f7; color:#4a5568; border:none; border-radius:8px; cursor:pointer;">キャンセル</button>
+                <button id="evt-edit-completion-save" onclick="evtSubmitEditCompletion()" style="padding:10px 16px; background:#276749; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 利用曜日変更ウィザードモーダル（2026/5/10追加） -->
 <div id="udc-wizard-modal" class="modal-overlay">
     <div class="modal-content" style="background:#fff; border-radius:12px; padding:20px; max-width:560px; width:96%; max-height:92vh; overflow-y:auto;">
@@ -605,7 +629,8 @@ function evtRenderDetailBody(evt) {
         const checkedAttr = isDone ? 'checked disabled' : '';
         const onChange = isDone ? '' : "onchange=\"evtCheckItem('" + safeId + "')\"";
         const doneLine = isDone
-            ? '<div style="font-size:0.78rem; color:#888; margin-top:2px;">完了: ' + escapeHtml(item.doneAt) + ' by ' + escapeHtml(item.doneBy) + '</div>'
+            ? '<div style="font-size:0.78rem; color:#888; margin-top:2px;">完了: ' + escapeHtml(item.doneAt) + ' by ' + escapeHtml(item.doneBy) +
+              ' <span onclick="evtOpenEditCompletion(\'' + safeId + '\')" title="完了日・完了者を訂正" style="cursor:pointer; color:#4299e1; margin-left:6px; font-size:0.82rem;">✏️訂正</span></div>'
             : '';
         // 急ぎ・タグセレクト・編集ボタン（完了済みは編集不可）
         const urgentBtn = isDone
@@ -632,7 +657,9 @@ function evtRenderDetailBody(evt) {
             '</div>' +
         '</div>';
     }).join('');
-    body.innerHTML = html;
+    body.innerHTML = html +
+        '<div style="font-size:0.8rem; color:#718096; padding:10px 4px 2px; margin-top:4px; border-top:1px dashed #e2e8f0;">' +
+        'ℹ️ 全項目を完了すると、代表に通知メールが届きます。</div>';
 }
 
 // タグ変更（boss/consultant/anyone）
@@ -714,6 +741,65 @@ async function evtCheckItem(itemId) {
             }
         }
     }, 1200);
+}
+
+// ===== 完了項目の訂正（2026-05-22追加）=====
+function evtOpenEditCompletion(itemId) {
+    if (!_evtCurrent) return;
+    const item = (_evtCurrent.items || []).find(it => it.id === itemId);
+    if (!item) return;
+    document.getElementById('evt-edit-completion-itemid').value = itemId;
+    document.getElementById('evt-edit-completion-label').textContent = item.seq + '. ' + item.label;
+    document.getElementById('evt-edit-completion-date').value = (item.doneAt || '').slice(0, 10);
+    document.getElementById('evt-edit-completion-by').value = item.doneBy || '';
+    document.getElementById('evt-edit-completion-modal').classList.add('show');
+}
+
+function evtCloseEditCompletion() {
+    document.getElementById('evt-edit-completion-modal').classList.remove('show');
+}
+
+async function evtSubmitEditCompletion() {
+    const itemId = document.getElementById('evt-edit-completion-itemid').value;
+    const doneDate = document.getElementById('evt-edit-completion-date').value;
+    const doneBy = document.getElementById('evt-edit-completion-by').value.trim();
+    if (!doneDate) { alert('完了日を入れてください'); return; }
+    if (!doneBy) { alert('完了者を入れてください'); return; }
+    const _btn = lockSubmitBtn('evt-edit-completion-save', '保存中…');
+    if (_btn === false) return;
+    try {
+        const ok = await gasPost({
+            action: 'edit_event_completion',
+            itemId: itemId,
+            doneDate: doneDate,
+            doneBy: doneBy
+        }, '完了情報の訂正');
+        if (ok) {
+            evtCloseEditCompletion();
+            setTimeout(() => evtRefreshAfterUpdate(), 1000);
+        }
+    } finally {
+        unlockSubmitBtn(_btn);
+    }
+}
+
+async function evtReopenItem() {
+    const itemId = document.getElementById('evt-edit-completion-itemid').value;
+    if (!confirm('この項目を未完了に戻しますか？完了日と完了者の記録は消えます。')) return;
+    const _btn = lockSubmitBtn('evt-edit-completion-reopen', '処理中…');
+    if (_btn === false) return;
+    try {
+        const ok = await gasPost({
+            action: 'reopen_event_item',
+            itemId: itemId
+        }, '項目を未完了に戻す');
+        if (ok) {
+            evtCloseEditCompletion();
+            setTimeout(() => evtRefreshAfterUpdate(), 1000);
+        }
+    } finally {
+        unlockSubmitBtn(_btn);
+    }
 }
 
 // JSONPでイベント一覧を取得（Promise化）
