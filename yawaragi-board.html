@@ -597,16 +597,14 @@
         /* 出席予定タブ: 名前spanの介護度背景色（2026-05-23・pillから移行） */
         .att-user-name.care-kaigo { background: #fde2e2; padding: 2px 8px; border-radius: 8px; }
         .att-user-name.care-shien { background: #dbeafe; padding: 2px 8px; border-radius: 8px; }
-        /* 出席予定タブ: 3カラム構造（左=利用率+出欠マーク、右body=名前/理由/連絡状況）2026-05-23 */
+        /* 出席予定タブ: 横並びレイアウト（2026-05-23・社長モック2版に合わせ作り替え） */
         .att-row-left {
             display: flex; align-items: center; gap: 4px; flex-shrink: 0;
         }
         .att-row-body {
-            display: flex; flex-direction: column; gap: 4px;
+            display: flex; flex-direction: row; align-items: center;
+            gap: 10px; flex-wrap: wrap;
             flex: 1 1 auto; min-width: 0;
-        }
-        .att-row-name-line {
-            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
         }
         /* 欠席理由をピル化（理由問わず統一色・薄赤背景・黒文字） */
         .att-reason-pill {
@@ -7569,19 +7567,23 @@ function attRenderUser(u) {
         } catch(e) { /* 取得失敗時はラベル空のまま */ }
     }
 
+    // 連絡済み・ケアマネ連絡には ✓ プリフィックス（社長モック2版・2026-05-23）
+    var contactDisplay = contactLabel;
+    if (contactLabel && (contactCls === 'done' || contactCls === 'aware')) {
+        contactDisplay = '✓' + contactLabel;
+    }
+
     return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
         '<span class="att-row-left">' +
             usageBadge +
             '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
         '</span>' +
         '<div class="att-row-body">' +
-            '<div class="att-row-name-line">' +
-                '<span class="att-user-name ' + careCls + '">' + u.name + '</span>' +
-                prevAbsentBadge +
-                resumedBadge +
-            '</div>' +
+            '<span class="att-user-name ' + careCls + '">' + u.name + '</span>' +
+            prevAbsentBadge +
+            resumedBadge +
             (isAbsent && u.reason ? '<span class="att-reason-pill">' + u.reason + '</span>' : '') +
-            (contactLabel ? '<span class="att-contact-text ' + contactCls + '">' + contactLabel + '</span>' : '') +
+            (contactDisplay ? '<span class="att-contact-text ' + contactCls + '">' + contactDisplay + '</span>' : '') +
             resumeText +
         '</div>' +
         '</div>';
