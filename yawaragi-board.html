@@ -6517,7 +6517,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             <div class="abs-card-mark">欠</div>
             <div class="abs-card-body">
                 <div class="abs-card-line1">
-                    <span class="abs-card-name">${r.userName}</span>
+                    <span class="abs-card-name">${r.userName}${absCareBadge(r.userName)}</span>
                     <span class="abs-card-date">${dateText}</span>
                 </div>
                 <div class="abs-card-reason">${r.reason || ''}</div>
@@ -7131,11 +7131,22 @@ function loadUsageAlerts() {
 // 利用率詳細モーダルを開く
 function showUsageDetail(name) {
   var ua = usageAlertMap[usageNormalizeName(name)];
-  if (!ua) return;
-  document.getElementById('usage-detail-title').textContent = name + ' さんの利用率';
+  document.getElementById('usage-detail-title').textContent = name + ' さんの情報';
   var body = document.getElementById('usage-detail-body');
-  var ov = ua.overall || {};
   var html = '';
+  // 介護度（利用者台帳キャッシュから・2026-05-23追加）
+  var careU = (typeof absUserCache !== 'undefined' && absUserCache)
+      ? absUserCache.find(function(x){ return x.name === name; }) : null;
+  if (careU && careU.care) {
+      html += '<div class="usage-modal-row"><span class="usage-modal-label">介護度</span><span>' + careU.care + '</span></div>';
+  }
+  if (!ua) {
+      html += '<div class="usage-action-box">利用率データはまだありません。</div>';
+      body.innerHTML = html;
+      openModal('usage-detail-modal');
+      return;
+  }
+  var ov = ua.overall || {};
   html += '<div class="usage-modal-row"><span class="usage-modal-label">契約曜日</span>' +
           '<span>' + (ua.weekdaysRaw || '-') + '（週' + (ua.contractCount || 0) + '回）</span></div>';
   var rateText = (ov.rate == null) ? 'データ不足' : (ov.rate + '%');
