@@ -11843,6 +11843,30 @@ function isCmPhoneMode(method) {
     return true;
 }
 
+// 連絡状況マーク後の localStorage 同期更新（通常欠席と長期休みキャッシュ両方・2026-05-23）
+function _updateLocalCmCache(userName, dateStr, value) {
+    // 通常欠席の localStorage
+    try {
+        const records = absGetRecords();
+        const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
+        if (target) {
+            target.cmNotified = value;
+            target.cmNotifiedAt = new Date().toISOString();
+            absSaveRecords(records);
+        }
+    } catch {}
+    // 長期休みキャッシュ（_cachedLongTerm は GAS 取得後にセットされる長期休み一覧）
+    try {
+        if (window._cachedLongTerm) {
+            window._cachedLongTerm.forEach(function(lt) {
+                if (lt.name === userName && lt.date === dateStr) {
+                    lt.cmNotified = value;
+                }
+            });
+        }
+    } catch {}
+}
+
 // 既存欠席を「📞 電話で連絡済み」に手動マーク（2026-05-13）
 // 連絡状況マークの共通処理（confirm無し版・モーダル等からの直接実行用・2026-05-23）
 async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage) {
@@ -11858,15 +11882,7 @@ async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage)
                 cmNotified: cmNotifiedValue
             })
         });
-        try {
-            const records = absGetRecords();
-            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
-            if (target) {
-                target.cmNotified = cmNotifiedValue;
-                target.cmNotifiedAt = new Date().toISOString();
-                absSaveRecords(records);
-            }
-        } catch {}
+        _updateLocalCmCache(userName, dateStr, cmNotifiedValue);
         showToast(toastMessage, 2000);
         try {
             const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
@@ -11924,15 +11940,7 @@ async function markCmPhoneCalled(userName, dateStr) {
             })
         });
         // localStorage 上のレコードも即時更新（GAS反映待ちの間のチラつき防止）
-        try {
-            const records = absGetRecords();
-            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
-            if (target) {
-                target.cmNotified = '電話連絡済';
-                target.cmNotifiedAt = new Date().toISOString();
-                absSaveRecords(records);
-            }
-        } catch {}
+        _updateLocalCmCache(userName, dateStr, '電話連絡済');
         showToast('📞 電話連絡済みにマークしました', 2000);
         // キャッシュクリア＆再描画
         try {
@@ -11965,15 +11973,7 @@ async function markCmMailSent(userName, dateStr) {
                 cmNotified: '手動メール送信済'
             })
         });
-        try {
-            const records = absGetRecords();
-            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
-            if (target) {
-                target.cmNotified = '手動メール送信済';
-                target.cmNotifiedAt = new Date().toISOString();
-                absSaveRecords(records);
-            }
-        } catch {}
+        _updateLocalCmCache(userName, dateStr, '手動メール送信済');
         showToast('✉ 手動メール送信済みにマークしました', 2000);
         try {
             const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
@@ -12007,15 +12007,7 @@ async function markCmAware(userName, dateStr) {
             })
         });
         // localStorage 上のレコードも即時更新（GAS反映待ちの間のチラつき防止）
-        try {
-            const records = absGetRecords();
-            const target = records.find(r => r.userName === userName && r.dateFrom === dateStr);
-            if (target) {
-                target.cmNotified = 'ケアマネ把握済';
-                target.cmNotifiedAt = new Date().toISOString();
-                absSaveRecords(records);
-            }
-        } catch {}
+        _updateLocalCmCache(userName, dateStr, 'ケアマネ把握済');
         showToast('✅ ケアマネ把握済にマークしました', 2000);
         // キャッシュクリア＆再描画
         try {
