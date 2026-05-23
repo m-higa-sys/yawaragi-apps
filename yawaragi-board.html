@@ -7205,6 +7205,7 @@ function attShowDatePicker(ev) {
 // ===== 利用率アラート =====
 var usageAlertMap = {};   // 正規化なしの利用者名 → アラートデータ
 var usageRedList = [];    // 赤バッジの利用者一覧
+var usageYellowList = []; // 黄バッジの利用者一覧
 var lastAttData = null;   // 最後に attRender へ渡した attendance データ（利用率データ後着時の再描画用）
 
 // 利用者名の正規化（GAS側 _normalizeUserName と同一仕様）
@@ -7233,7 +7234,22 @@ function usagePeriod() {
   return { from: fromYM, to: toYM };
 }
 
-// GAS の usage_alerts を JSONP で取得し、usageAlertMap / usageRedList を更新する
+// users 配列から黄バッジの利用者リストを組み立てる（赤の redList と同形式）
+function buildUsageYellowList(users) {
+  var list = [];
+  (users || []).forEach(function(u) {
+    if (u && u.badge === 'yellow') {
+      list.push({
+        name: u.name,
+        rate: (u.overall && u.overall.rate != null) ? u.overall.rate : null,
+        worstDay: u.worstDay || null
+      });
+    }
+  });
+  return list;
+}
+
+// GAS の usage_alerts を JSONP で取得し、usageAlertMap / usageRedList / usageYellowList を更新する
 function loadUsageAlerts() {
   var p = usagePeriod();
   var cbName = 'usageAlertCallback_' + Date.now();
@@ -7246,6 +7262,7 @@ function loadUsageAlerts() {
         usageAlertMap = {};
         ua.users.forEach(function(u) { usageAlertMap[usageNormalizeName(u.name)] = u; });
         usageRedList = ua.redList || [];
+        usageYellowList = buildUsageYellowList(ua.users);
       }
     } catch (err) { /* 取得失敗時はバッジなしで継続 */ }
     // attendance が既に描画済みなら、利用率データを反映して再描画
