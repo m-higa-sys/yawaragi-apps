@@ -4846,6 +4846,28 @@ const ABS_USER_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPD
 // yawaragiボードGAS（欠席登録・伝達事項・ケアマネ通知）
 const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 
+// 2026-05-23: 4ボタンモーダルの操作者プルダウン用キャッシュ
+// 「比嘉」は staff_list（運転スタッフ）に含まれないので先頭固定
+window._cachedStaffList = ['比嘉'];
+function _loadStaffList() {
+  try {
+    var cbName = '_onStaffList_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    window[cbName] = function (data) {
+      try {
+        if (data && data.success && Array.isArray(data.staff)) {
+          window._cachedStaffList = ['比嘉'].concat(data.staff);
+        }
+      } catch (err) {}
+      try { delete window[cbName]; } catch (err) {}
+    };
+    var script = document.createElement('script');
+    script.src = ABS_BOARD_API_URL + '?action=staff_list&callback=' + cbName;
+    script.onerror = function () { try { delete window[cbName]; } catch (err) {} };
+    document.head.appendChild(script);
+  } catch (e) {}
+}
+_loadStaffList();
+
 // 画面右下のバージョン表示をタップ → 最新版に再読み込み（タブレットはF12が無いのでこれで更新）
 function ywReloadLatest() {
     if (confirm('最新版に更新します。\n入力中の内容があれば消えます。よろしいですか？')) {
