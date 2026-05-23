@@ -6583,16 +6583,24 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         } else if (r.dateType === 'range' && r.dateTo && r.dateTo !== r.dateFrom) {
             dateText = `${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}`;
         }
-        // 長期休みは従来表示のまま（今回のカード化対象外）
+        // 長期休み → 通常欠席と同じコンパクトカード（連絡pillを含む・2026-05-23 統一）
         if (r.isLongTerm) {
-            const ltEsc = r.userName.replace(/'/g,"\\'");
+            const escName = r.userName.replace(/'/g,"\\'");
+            const st = absContactStatus(r.cmNotified);
             return `
-        <div class="abs-record" style="border-left:4px solid #e53e3e;background:#fff5f5;">
-            <div class="abs-record-main">
-                <div class="abs-record-name">${r.userName}<span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">長期休み</span></div>
-                <div class="abs-record-detail">${dateText}　理由: ${r.reason}${r.contact ? '　連絡者: ' + r.contact : ''}</div>
+        <div class="abs-card" style="border-left:4px solid #e53e3e;" onclick="absShowCardDetail('${escName}','${r.dateFrom}')">
+            <div class="abs-card-mark">欠</div>
+            <div class="abs-card-body">
+                <div class="abs-card-line1">
+                    <span class="abs-card-line1-left">
+                        <span class="abs-card-name ${absCareNameClass(r.userName)}">${r.userName}</span>
+                        <span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:2px;">長期休み</span>
+                        <span class="abs-card-chip ${st.cls}">${st.chipLabel}</span>
+                    </span>
+                    <span class="abs-card-date">${dateText}</span>
+                </div>
+                <div class="abs-card-reason">${r.reason || ''}</div>
             </div>
-            <button class="abs-record-delete" style="background:#ebf8ff;color:#2c5282;border-color:#90cdf4;" onclick="attEditAbsence('${ltEsc}','${r.dateFrom}')">編集</button>
         </div>`;
         }
         // 通常欠席 → コンパクトカード（タップで詳細ポップアップ）
