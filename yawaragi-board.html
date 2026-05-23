@@ -6393,13 +6393,14 @@ function absFindAbsenceRecord(name, dateStr) {
 
 // cmNotified の値を欠席カード表示用の3分類に変換
 // chipLabel: 欠席カード1行目のチップに使うアイコン付き短文
-// 2026-05-23: 手段別の絵文字に変更（自動メール=📧 / 手動メール=✉ / 電話=📞 / FAX=📠）
+// 2026-05-23: 手段別の絵文字に変更（自動メール=📧 / 手動メール=✉ / 電話=📞 / SMS=💬）
+// FAX は欠席連絡では使わない運用
 function absContactStatus(cmNotified) {
     var v = String(cmNotified || '').trim();
     if (v === '送信済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ 📧 連絡済', emoji: '📧' };
     if (v === '手動メール送信済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ ✉ 連絡済', emoji: '✉' };
     if (v === '電話連絡済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ 📞 連絡済', emoji: '📞' };
-    if (v === 'FAX送信済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ 📠 連絡済', emoji: '📠' };
+    if (v === 'SMS送信済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ 💬 連絡済', emoji: '💬' };
     if (v === 'ケアマネ把握済') {
         return { label: 'ケアマネ連絡', cls: 'aware', chipLabel: '👤 ケアマネ', emoji: '👤' };
     }
@@ -6461,7 +6462,7 @@ function absShowCardDetail(name, dateStr) {
         // 連絡未のときだけ連絡操作ボタンを出す（通常欠席と同じパターン・2026-05-23追加）
         if (st.cls === 'unsent') {
             // 2026-05-23: 3ボタンを1ボタンに統合（操作者選択モーダル経由・履歴シート記録のため）
-            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/FAX/把握済）</button>';
+            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/SMS/把握済）</button>';
         }
         // 長期休み固有ボタン
         btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">👤 利用者情報（介護度・利用率）</button>';
@@ -6472,7 +6473,7 @@ function absShowCardDetail(name, dateStr) {
         // 通常欠席: 連絡操作・利用者情報・編集・移動・取消・閉じる
         if (st.cls === 'unsent') {
             // 2026-05-23: 3ボタンを1ボタンに統合（操作者選択モーダル経由・履歴シート記録のため）
-            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/FAX/把握済）</button>';
+            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/SMS/把握済）</button>';
         }
         btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">👤 利用者情報（介護度・利用率）</button>';
         btns += '<button class="abs-detail-btn" style="border-color:#2c5282;color:#2c5282;" onclick="absDetailClose();attEditAbsence(\'' + safeName + '\',\'' + dateStr + '\')">✏️ 編集</button>';
@@ -6518,7 +6519,7 @@ function loadCmLogIntoDetail(userName, dateStr) {
                 list.innerHTML = data.log.map(function (entry) {
                     var emoji = ({
                         '自動メール': '📧', '手動メール': '✉', '電話': '📞',
-                        'FAX': '📠', 'ケアマネ把握済': '👤', '連絡なし': '⚠'
+                        'SMS': '💬', 'ケアマネ把握済': '👤', '連絡なし': '⚠'
                     })[entry.method] || '・';
                     var resultColor = (entry.result === '成功' || entry.result === 'マーク') ? '#48bb78'
                                     : (entry.result === 'バウンス' || entry.result === '送信失敗') ? '#e53e3e'
@@ -12047,7 +12048,7 @@ function _updateLocalCmCache(userName, dateStr, value, operator) {
                 target.lastMethod = (function (v) {
                     if (v === '電話連絡済') return '電話';
                     if (v === '手動メール送信済') return '手動メール';
-                    if (v === 'FAX送信済') return 'FAX';
+                    if (v === 'SMS送信済') return 'SMS';
                     if (v === 'ケアマネ把握済') return 'ケアマネ把握済';
                     return '';
                 })(value);
@@ -12101,7 +12102,7 @@ async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage,
 }
 
 // 連絡方法選択モーダル（出席予定タブ「連絡未」pillから呼ぶ）
-// 2026-05-23: 操作者プルダウン必須化＋📠 FAX送信済ボタン追加
+// 2026-05-23: 操作者プルダウン必須化＋💬 SMS送信済ボタン追加
 function showContactMethodModal(userName, dateStr) {
     if (document.getElementById('contact-method-modal')) return;
     const dt = absFormatDate(dateStr);
@@ -12141,7 +12142,7 @@ function showContactMethodModal(userName, dateStr) {
         operatorSelectHtml +
         mkBtn('📞 電話連絡済', '#3182ce', '電話連絡済', '📞 電話連絡済みにマークしました') +
         mkBtn('✉ メール連絡済', '#16a085', '手動メール送信済', '✉ メール連絡済にマークしました') +
-        mkBtn('📠 FAX送信済', '#d69e2e', 'FAX送信済', '📠 FAX送信済にマークしました') +
+        mkBtn('💬 SMS送信済', '#d69e2e', 'SMS送信済', '💬 SMS送信済にマークしました') +
         mkBtn('👤 ケアマネ把握済', '#718096', 'ケアマネ把握済', '✅ ケアマネ把握済にマークしました') +
         '<button onclick="document.getElementById(\'contact-method-modal\').remove()" style="display:block;width:100%;padding:10px;margin-top:6px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
         '</div>';
