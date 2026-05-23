@@ -6481,6 +6481,13 @@ function absShowCardDetail(name, dateStr) {
         btns += '<button class="abs-detail-btn" style="border-color:#a0aec0;color:#4a5568;" onclick="absDetailClose()">閉じる</button>';
     }
 
+    // 2026-05-23: 連絡履歴タイムラインセクション（cm_log API から非同期取得）
+    var historyHtml =
+        '<div id="cm-log-section" style="margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0;">' +
+          '<div style="font-size:0.9rem;font-weight:700;color:#4a5568;margin-bottom:8px;">📋 連絡履歴</div>' +
+          '<div id="cm-log-list" style="font-size:0.85rem;color:#718096;max-height:200px;overflow-y:auto;">読み込み中...</div>' +
+        '</div>';
+
     var overlay = document.createElement('div');
     overlay.className = 'abs-detail-overlay';
     overlay.id = 'abs-detail-overlay';
@@ -6489,10 +6496,62 @@ function absShowCardDetail(name, dateStr) {
           '<div style="font-size:1.1rem;font-weight:700;margin-bottom:10px;">' + name + '様' + absCareBadge(name) + '</div>' +
           sec1 +
           sec2 +
+          historyHtml +
           '<div style="margin-top:14px;">' + btns + '</div>' +
         '</div>';
     overlay.addEventListener('click', function(e){ if (e.target === overlay) absDetailClose(); });
     document.body.appendChild(overlay);
+    // 履歴を非同期ロード
+    loadCmLogIntoDetail(safeName, dateStr);
+}
+
+// 2026-05-23: 詳細ポップアップに連絡履歴を読み込む
+function loadCmLogIntoDetail(userName, dateStr) {
+    try {
+        var cbName = '_onCmLog_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        window[cbName] = function (data) {
+            var list = document.getElementById('cm-log-list');
+            if (!list) { try { delete window[cbName]; } catch (err) {} return; }
+            if (!data || !data.success || !data.log || data.log.length === 0) {
+                list.innerHTML = '<div style="color:#a0aec0;">履歴なし</div>';
+            } else {
+                list.innerHTML = data.log.map(function (entry) {
+                    var emoji = ({
+                        '自動メール': '📧', '手動メール': '✉', '電話': '📞',
+                        'FAX': '📠', 'ケアマネ把握済': '👤', '連絡なし': '⚠'
+                    })[entry.method] || '・';
+                    var resultColor = (entry.result === '成功' || entry.result === 'マーク') ? '#48bb78'
+                                    : (entry.result === 'バウンス' || entry.result === '送信失敗') ? '#e53e3e'
+                                    : '#718096';
+                    var addrPart = entry.contactedAddr ? '<span style="color:#a0aec0;">（' + entry.contactedAddr + '）</span>' : '';
+                    var notePart = entry.note ? '<div style="color:#718096;font-size:0.8rem;margin-top:2px;">※' + entry.note + '</div>' : '';
+                    return '<div style="padding:6px 0;border-bottom:1px solid #f0f0f0;">' +
+                        '<div style="font-size:0.75rem;color:#a0aec0;">' + entry.ts + '</div>' +
+                        '<div>' + emoji + ' <strong>' + entry.action + '</strong> / ' + entry.method + addrPart +
+                          ' by <strong>' + (entry.operator || '?') + '</strong>' +
+                          ' → <span style="color:' + resultColor + ';font-weight:600;">' + entry.result + '</span>' +
+                          notePart +
+                        '</div>' +
+                    '</div>';
+                }).join('');
+            }
+            try { delete window[cbName]; } catch (err) {}
+        };
+        var script = document.createElement('script');
+        script.src = ABS_BOARD_API_URL +
+            '?action=cm_log&callback=' + cbName +
+            '&name=' + encodeURIComponent(userName) +
+            '&date=' + encodeURIComponent(dateStr);
+        script.onerror = function () {
+            var list = document.getElementById('cm-log-list');
+            if (list) list.innerHTML = '<div style="color:#e53e3e;">履歴取得失敗</div>';
+            try { delete window[cbName]; } catch (err) {}
+        };
+        document.head.appendChild(script);
+    } catch (e) {
+        var list = document.getElementById('cm-log-list');
+        if (list) list.innerHTML = '<div style="color:#e53e3e;">履歴取得失敗</div>';
+    }
 }
 
 function absRenderUpcomingListFromData(gasAbsences, longTermData) {
