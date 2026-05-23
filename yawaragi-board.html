@@ -5997,15 +5997,18 @@ async function absSubmit(opts) {
     }
 
     // ★ 2026-05-10: ケアマネメール送信確認ポップアップ
-    // ★ 2026-05-23: method分岐廃止 → 取消フローと同様、常にメールプレビューを表示
-    //   （メアド有るのに method=持参 で電話モードに飛んでしまう問題の解消）
+    // ★ 2026-05-23: absMethod (休み連絡_手段) 列で手段別分岐
+    //   メール/空欄かつメアドあり → メール確認ポップアップ（中身編集可）
+    //   電話/SMS or メアド無し → 電話/SMS連絡確認ポップアップ
     const cmOffice = absState.selectedUser.cmOffice || '';
     const cmNameInit = absState.selectedUser.cmName || '';
     let cmEmailInit = '';
+    let cmAbsMethod = '';
     if (cmOffice && cmNameInit) {
         const c = await fetchCmContact(cmOffice, cmNameInit);
         if (c.found) {
             cmEmailInit = c.email || '';
+            cmAbsMethod = c.absMethod || '';
         }
     }
     let mailCmName = cmNameInit;
@@ -6014,9 +6017,21 @@ async function absSubmit(opts) {
     let mailCustomBody = '';
     let phoneCalled = false;
     if (cmOffice && contact !== 'ケアマネ') {
-        // 常にメール確認ポップアップ（取消フローと統一）
-        // メアド未登録の場合はその場で入力可。メール送らないなら「送信しない」でスキップ
-        {
+        // 休み連絡_手段 で分岐:
+        //   '電話' / 'SMS' → 手動連絡確認ポップアップ
+        //   'メール' / 空欄 → メール確認ポップアップ（メアド未登録なら入力欄あり）
+        const usePhoneMode = (cmAbsMethod === '電話' || cmAbsMethod === 'SMS');
+        if (usePhoneMode) {
+            const r = await showAbsencePhoneConfirm({
+                userName: absState.selectedUser.name,
+                dates: dates,
+                reason: reason,
+                cmOffice: cmOffice,
+                cmName: cmNameInit,
+                absMethod: cmAbsMethod  // '電話' or 'SMS'
+            });
+            if (r.phoneCalled) phoneCalled = true;
+        } else {
             const r = await showAbsenceMailConfirm({
                 userName: absState.selectedUser.name,
                 dates: dates,
@@ -11884,17 +11899,23 @@ function buildCancelMailBody(opts) {
 }
 
 // office+name でマスターからメアド/送付方法取得（fetch GET）
+// 2026-05-23: absMethod（休み連絡_手段: メール/電話/SMS）も取得
 async function fetchCmContact(office, name) {
-    if (!office || !name) return { found: false, email: '', method: '' };
+    if (!office || !name) return { found: false, email: '', method: '', absMethod: '' };
     try {
         const url = ABS_BOARD_API_URL + '?action=getCmContact&office=' + encodeURIComponent(office) + '&name=' + encodeURIComponent(name);
         const r = await fetch(url);
         const j = await r.json();
-        if (j.success && j.found) return { found: true, email: j.email || '', method: j.method || '' };
-        return { found: false, email: '', method: '' };
+        if (j.success && j.found) return {
+            found: true,
+            email: j.email || '',
+            method: j.method || '',
+            absMethod: j.absMethod || ''
+        };
+        return { found: false, email: '', method: '', absMethod: '' };
     } catch(e) {
         console.warn('fetchCmContact エラー:', e);
-        return { found: false, email: '', method: '' };
+        return { found: false, email: '', method: '', absMethod: '' };
     }
 }
 
@@ -12248,8 +12269,9 @@ async function showAbsenceMailConfirm(opts) {
     });
 }
 
-// ===== 電話派ケアマネ用 電話連絡確認ポップアップ（2026-05-13） =====
-// opts: { userName, dates, reason, supplement, cmOffice, cmName }
+// ===== 電話/SMS派ケアマネ用 手動連絡確認ポップアップ（2026-05-13、2026-05-23 SMS対応） =====
+// opts: { userName, dates, reason, supplement, cmOffice, cmName, absMethod }
+//   absMethod: '電話' / 'SMS' / その他（電話扱い）
 // 戻り値: { phoneCalled: true/false }
 async function showAbsencePhoneConfirm(opts) {
     return new Promise((resolve) => {
@@ -12258,11 +12280,19 @@ async function showAbsencePhoneConfirm(opts) {
 
         const dateLabel = formatDatesForCmMail(opts.dates);
 
+        // SMS or 電話 でラベル切替
+        const isSms = (opts.absMethod === 'SMS');
+        const mediumLabel = isSms ? 'SMS' : '電話';
+        const mediumIcon = isSms ? '💬' : '📞';
+        const headerLabel = mediumIcon + ' ケアマネに' + mediumLabel + 'で連絡';
+        const doneLabel = mediumIcon + ' ' + mediumLabel + 'で連絡済み';
+        const noticeLabel = '休み連絡_手段が「' + mediumLabel + '」のため、メール送信は行いません。<br>' + mediumLabel + 'で連絡してから下のボタンを押してください。';
+
         overlay.innerHTML = '<div style="background:white;border-radius:8px;padding:20px;max-width:520px;width:96%;max-height:92vh;overflow-y:auto;">' +
-            '<h3 style="margin:0 0 12px;color:#3182ce;font-size:18px;">📞 ケアマネに電話で連絡</h3>' +
+            '<h3 style="margin:0 0 12px;color:#3182ce;font-size:18px;">' + escapeHtml(headerLabel) + '</h3>' +
             '<div style="background:#ebf8ff;border-left:4px solid #3182ce;padding:10px;border-radius:4px;margin-bottom:14px;">' +
-                '<div style="font-weight:bold;color:#2c5282;margin-bottom:4px;">⚠ このケアマネは電話派です</div>' +
-                '<div style="font-size:13px;color:#4a5568;">送付方法マスタが「メール」以外のため、メール送信は行いません。<br>電話で連絡してから下のボタンを押してください。</div>' +
+                '<div style="font-weight:bold;color:#2c5282;margin-bottom:4px;">⚠ このケアマネは' + escapeHtml(mediumLabel) + '派です</div>' +
+                '<div style="font-size:13px;color:#4a5568;">' + noticeLabel + '</div>' +
             '</div>' +
             '<div style="font-size:14px;margin-bottom:6px;">📍 事業所: ' + escapeHtml(opts.cmOffice || '【事業所未設定】') + '</div>' +
             '<div style="font-size:14px;margin-bottom:6px;">👤 担当: ' + escapeHtml(opts.cmName || '【未設定】') + '様</div>' +
@@ -12271,7 +12301,7 @@ async function showAbsencePhoneConfirm(opts) {
             '<div style="font-size:14px;margin-bottom:12px;">📝 理由: ' + escapeHtml(opts.reason || '体調不良') + '</div>' +
             '<div style="text-align:right;margin-top:12px;">' +
                 '<button id="btnPhoneSkip" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">あとで（連絡未のまま）</button>' +
-                '<button id="btnPhoneDone" style="padding:10px 18px;background:#3182ce;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">📞 電話で連絡済み</button>' +
+                '<button id="btnPhoneDone" style="padding:10px 18px;background:#3182ce;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">' + escapeHtml(doneLabel) + '</button>' +
             '</div></div>';
 
         document.body.appendChild(overlay);
@@ -12285,7 +12315,7 @@ async function showAbsencePhoneConfirm(opts) {
             const confirmMsg = '【最終確認】\n\n' +
                 (opts.cmName || 'ケアマネ') + '様 に\n' +
                 opts.userName + '様 のお休みを\n' +
-                '電話で連絡しましたか？\n\n' +
+                mediumLabel + 'で連絡しましたか？\n\n' +
                 '※間違えて押していませんか？';
             if (!confirm(confirmMsg)) return;
             document.body.removeChild(overlay);
