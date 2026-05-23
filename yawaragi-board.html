@@ -6445,9 +6445,8 @@ function absShowCardDetail(name, dateStr) {
     if (rec.isLongTerm) {
         // 連絡未のときだけ連絡操作ボタンを出す（通常欠席と同じパターン・2026-05-23追加）
         if (st.cls === 'unsent') {
-            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();markCmPhoneCalled(\'' + safeName + '\',\'' + dateStr + '\')">📞 電話連絡済にする</button>';
-            btns += '<button class="abs-detail-btn" style="border-color:#16a085;color:#16a085;" onclick="absDetailClose();markCmMailSent(\'' + safeName + '\',\'' + dateStr + '\')">✉ メール送信済にする</button>';
-            btns += '<button class="abs-detail-btn" style="border-color:#718096;color:#718096;" onclick="absDetailClose();markCmAware(\'' + safeName + '\',\'' + dateStr + '\')">👤 ケアマネ把握にする</button>';
+            // 2026-05-23: 3ボタンを1ボタンに統合（操作者選択モーダル経由・履歴シート記録のため）
+            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/FAX/把握済）</button>';
         }
         // 長期休み固有ボタン
         btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">👤 利用者情報（介護度・利用率）</button>';
@@ -6457,9 +6456,8 @@ function absShowCardDetail(name, dateStr) {
     } else {
         // 通常欠席: 連絡操作・利用者情報・編集・移動・取消・閉じる
         if (st.cls === 'unsent') {
-            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();markCmPhoneCalled(\'' + safeName + '\',\'' + dateStr + '\')">📞 電話連絡済にする</button>';
-            btns += '<button class="abs-detail-btn" style="border-color:#16a085;color:#16a085;" onclick="absDetailClose();markCmMailSent(\'' + safeName + '\',\'' + dateStr + '\')">✉ メール送信済にする</button>';
-            btns += '<button class="abs-detail-btn" style="border-color:#718096;color:#718096;" onclick="absDetailClose();markCmAware(\'' + safeName + '\',\'' + dateStr + '\')">👤 ケアマネ把握にする</button>';
+            // 2026-05-23: 3ボタンを1ボタンに統合（操作者選択モーダル経由・履歴シート記録のため）
+            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/FAX/把握済）</button>';
         }
         btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">👤 利用者情報（介護度・利用率）</button>';
         btns += '<button class="abs-detail-btn" style="border-color:#2c5282;color:#2c5282;" onclick="absDetailClose();attEditAbsence(\'' + safeName + '\',\'' + dateStr + '\')">✏️ 編集</button>';
@@ -11951,7 +11949,7 @@ function isCmPhoneMode(method) {
 }
 
 // 連絡状況マーク後の localStorage 同期更新（通常欠席と長期休みキャッシュ両方・2026-05-23）
-function _updateLocalCmCache(userName, dateStr, value) {
+function _updateLocalCmCache(userName, dateStr, value, operator) {
     // 通常欠席の localStorage
     try {
         const records = absGetRecords();
@@ -11959,6 +11957,16 @@ function _updateLocalCmCache(userName, dateStr, value) {
         if (target) {
             target.cmNotified = value;
             target.cmNotifiedAt = new Date().toISOString();
+            if (operator) {
+                target.lastOperator = operator;
+                target.lastMethod = (function (v) {
+                    if (v === '電話連絡済') return '電話';
+                    if (v === '手動メール送信済') return '手動メール';
+                    if (v === 'FAX送信済') return 'FAX';
+                    if (v === 'ケアマネ把握済') return 'ケアマネ把握済';
+                    return '';
+                })(value);
+            }
             absSaveRecords(records);
         }
     } catch {}
@@ -11968,15 +11976,16 @@ function _updateLocalCmCache(userName, dateStr, value) {
             window._cachedLongTerm.forEach(function(lt) {
                 if (lt.name === userName && lt.date === dateStr) {
                     lt.cmNotified = value;
+                    if (operator) lt.lastOperator = operator;
                 }
             });
         }
     } catch {}
 }
 
-// 既存欠席を「📞 電話で連絡済み」に手動マーク（2026-05-13）
-// 連絡状況マークの共通処理（confirm無し版・モーダル等からの直接実行用・2026-05-23）
-async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage) {
+// 既存欠席の連絡状況マーク共通処理（confirm無し版・モーダル等からの直接実行用）
+// 2026-05-23: operator パラメータ追加（4ボタンモーダルのプルダウンから渡される）
+async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage, operator) {
     try {
         await fetch(ABS_BOARD_API_URL, {
             method: 'POST',
@@ -11986,10 +11995,11 @@ async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage)
                 action: 'updateAbsenceCmNotified',
                 name: userName,
                 date: dateStr,
-                cmNotified: cmNotifiedValue
+                cmNotified: cmNotifiedValue,
+                operator: operator || ''
             })
         });
-        _updateLocalCmCache(userName, dateStr, cmNotifiedValue);
+        _updateLocalCmCache(userName, dateStr, cmNotifiedValue, operator);
         showToast(toastMessage, 2000);
         try {
             const cache = JSON.parse(localStorage.getItem(ABS_CACHE_KEY) || '{}');
@@ -12005,25 +12015,48 @@ async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage)
     }
 }
 
-// 連絡方法選択モーダル（出席予定タブ「連絡未」pillから呼ぶ・2026-05-23）
-// 4ボタン: 電話連絡済 / メール連絡済 / ケアマネ把握済 / 閉じる
+// 連絡方法選択モーダル（出席予定タブ「連絡未」pillから呼ぶ）
+// 2026-05-23: 操作者プルダウン必須化＋📠 FAX送信済ボタン追加
 function showContactMethodModal(userName, dateStr) {
+    if (document.getElementById('contact-method-modal')) return;
     const dt = absFormatDate(dateStr);
     const escName = userName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const modal = document.createElement('div');
     modal.id = 'contact-method-modal';
     modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
     const btnBase = 'display:block;width:100%;padding:14px;margin-bottom:8px;background:#fff;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;';
+
+    // 操作者プルダウン（必須）
+    const staffList = window._cachedStaffList || ['比嘉'];
+    const staffOptions = staffList.map(function (s) {
+        return '<option value="' + s + '">' + s + '</option>';
+    }).join('');
+    const operatorSelectHtml =
+        '<div style="margin-bottom:14px;">' +
+            '<label style="font-size:0.85rem;color:#4a5568;display:block;margin-bottom:4px;font-weight:600;">操作者（必須）</label>' +
+            '<select id="cm-operator-select" style="width:100%;padding:10px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;">' +
+                '<option value="">選んでください</option>' +
+                staffOptions +
+            '</select>' +
+        '</div>';
+
     function mkBtn(label, color, cmValue, toast) {
-        return '<button onclick="_markCmInternal(\'' + escName + '\',\'' + dateStr + '\',\'' + cmValue + '\',\'' + toast + '\');document.getElementById(\'contact-method-modal\').remove();" ' +
-               'style="' + btnBase + 'border:2px solid ' + color + ';color:' + color + ';">' + label + '</button>';
+        return '<button onclick="' +
+            'var op=document.getElementById(\'cm-operator-select\').value;' +
+            'if(!op){alert(\'操作者を選択してください\');return;}' +
+            '_markCmInternal(\'' + escName + '\',\'' + dateStr + '\',\'' + cmValue + '\',\'' + toast + '\',op);' +
+            'document.getElementById(\'contact-method-modal\').remove();" ' +
+            'style="' + btnBase + 'border:2px solid ' + color + ';color:' + color + ';">' + label + '</button>';
     }
+
     modal.innerHTML =
-        '<div style="background:#fff;border-radius:14px;padding:24px;width:min(360px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);">' +
+        '<div style="background:#fff;border-radius:14px;padding:24px;width:min(380px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);">' +
         '<div style="font-size:1.05rem;font-weight:800;margin-bottom:4px;">' + userName + '様</div>' +
-        '<div style="font-size:0.85rem;color:#718096;margin-bottom:16px;">' + dt + ' の連絡状況をマーク</div>' +
+        '<div style="font-size:0.85rem;color:#718096;margin-bottom:14px;">' + dt + ' の連絡状況をマーク</div>' +
+        operatorSelectHtml +
         mkBtn('📞 電話連絡済', '#3182ce', '電話連絡済', '📞 電話連絡済みにマークしました') +
         mkBtn('✉ メール連絡済', '#16a085', '手動メール送信済', '✉ メール連絡済にマークしました') +
+        mkBtn('📠 FAX送信済', '#d69e2e', 'FAX送信済', '📠 FAX送信済にマークしました') +
         mkBtn('👤 ケアマネ把握済', '#718096', 'ケアマネ把握済', '✅ ケアマネ把握済にマークしました') +
         '<button onclick="document.getElementById(\'contact-method-modal\').remove()" style="display:block;width:100%;padding:10px;margin-top:6px;background:#f7fafc;border:1px solid #cbd5e0;color:#4a5568;border-radius:8px;font-size:0.95rem;cursor:pointer;">閉じる</button>' +
         '</div>';
