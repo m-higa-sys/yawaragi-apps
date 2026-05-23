@@ -33,7 +33,7 @@ body.editing #toolbar::after { content:"編集中"; background:#f9a825; color:#f
 .status-label { font-weight:bold; font-size:16px; }
 #controls { margin:8px 0; display:flex; flex-direction:column; gap:6px; }
 #search-box { padding:10px; font-size:16px; border:1px solid #bbb; border-radius:8px; }
-#filter-row, #kana-row, #opt-row, #schedule-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+#filter-row, #kana-row, #opt-row, #day-row, #ampm-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
 .filter-label { font-size:13px; color:#555; font-weight:bold; margin-right:2px; }
 .sbtn, .ambtn { padding:6px 10px; font-size:14px; border:2px solid #ccc; border-radius:6px; background:#fff; cursor:pointer; min-width:36px; }
 .sbtn.on, .ambtn.on { border-color:#1976d2; font-weight:bold; background:#e3f2fd; }
@@ -72,7 +72,7 @@ body.editing #toolbar::after { content:"編集中"; background:#f9a825; color:#f
       <button class="fbtn st-ng" data-status="NG">NG</button>
       <button class="fbtn st-none" data-status="未設定">未設定</button>
     </div>
-    <div id="schedule-row">
+    <div id="day-row">
       <span class="filter-label">曜日:</span>
       <button class="sbtn on" data-day="">全</button>
       <button class="sbtn" data-day="月">月</button>
@@ -80,6 +80,8 @@ body.editing #toolbar::after { content:"編集中"; background:#f9a825; color:#f
       <button class="sbtn" data-day="水">水</button>
       <button class="sbtn" data-day="木">木</button>
       <button class="sbtn" data-day="金">金</button>
+    </div>
+    <div id="ampm-row">
       <span class="filter-label">単位:</span>
       <button class="ambtn on" data-ampm="">全</button>
       <button class="ambtn" data-ampm="午前">午前</button>
@@ -623,20 +625,19 @@ document.getElementById('btn-sort').addEventListener('click', e => {
   e.target.classList.toggle('on', state.sortBy === 'changed');
   render();
 });
-document.getElementById('schedule-row').addEventListener('click', e => {
+document.getElementById('day-row').addEventListener('click', e => {
   const sb = e.target.closest('.sbtn');
-  if (sb) {
-    state.filter.day = sb.dataset.day;
-    document.querySelectorAll('#schedule-row .sbtn').forEach(x => x.classList.toggle('on', x === sb));
-    render();
-    return;
-  }
+  if (!sb) return;
+  state.filter.day = sb.dataset.day;
+  document.querySelectorAll('#day-row .sbtn').forEach(x => x.classList.toggle('on', x === sb));
+  render();
+});
+document.getElementById('ampm-row').addEventListener('click', e => {
   const ab = e.target.closest('.ambtn');
-  if (ab) {
-    state.filter.ampm = ab.dataset.ampm;
-    document.querySelectorAll('#schedule-row .ambtn').forEach(x => x.classList.toggle('on', x === ab));
-    render();
-  }
+  if (!ab) return;
+  state.filter.ampm = ab.dataset.ampm;
+  document.querySelectorAll('#ampm-row .ambtn').forEach(x => x.classList.toggle('on', x === ab));
+  render();
 });
 
 loadLocal();
