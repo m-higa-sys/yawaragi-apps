@@ -1417,7 +1417,10 @@
         <button class="att-today-btn" onclick="attGoToday()">今日</button>
         <div class="att-status-bar" id="att-status-bar"></div>
     </div>
-    <div class="att-redsummary" id="att-redsummary" style="display:none;"></div>
+    <div class="att-usagesummary-wrap" id="att-usagesummary-wrap" style="display:none;">
+      <div class="att-redsummary" id="att-redsummary" style="display:none;"></div>
+      <div class="att-yellowsummary" id="att-yellowsummary" style="display:none;"></div>
+    </div>
     <div id="att-content">
         <div class="att-loading">読み込み中...</div>
     </div>
@@ -7365,23 +7368,53 @@ function showUsageDetail(name) {
   openModal('usage-detail-modal');
 }
 
-// 赤サマリー（要調整の利用者一覧）を描画する
-function renderUsageRedSummary() {
-  var box = document.getElementById('att-redsummary');
+// 利用率サマリーの1パネルを描画する（赤・黄共通ヘルパー）
+// box: DOM要素 / icon: '🔴'|'🟡' / title: 見出し語 / list: [{name,rate,worstDay}] / cssPrefix: 'att-redsummary'|'att-yellowsummary'
+function renderUsageSummaryPanel(box, icon, title, list, cssPrefix) {
   if (!box) return;
-  if (!usageRedList || !usageRedList.length) {
+  if (!list || !list.length) {
     box.style.display = 'none';
+    box.innerHTML = '';
     return;
   }
-  var html = '<div class="att-redsummary-title">🔴 利用枠の見直し検討（' + usageRedList.length + '名）</div>';
-  usageRedList.forEach(function(r) {
+  var html = '<div class="' + cssPrefix + '-title">' + icon + ' ' + title +
+             '（' + list.length + '名）</div>';
+  list.forEach(function(r) {
     var escaped = String(r.name).replace(/'/g, "\\'");
     var worst = r.worstDay ? ' / 最悪 ' + r.worstDay.day + '曜' + r.worstDay.rate + '%' : '';
-    html += '<div class="att-redsummary-item" onclick="showUsageDetail(\'' + escaped + '\')">' +
-            r.name + '（利用率' + (r.rate == null ? '-' : r.rate + '%') + worst + '）</div>';
+    var rateText = (r.rate == null ? '-' : r.rate + '%');
+    html += '<div class="' + cssPrefix + '-item" onclick="showUsageDetail(\'' + escaped + '\')">' +
+            '<div class="att-usagesummary-name">' + r.name + '</div>' +
+            '<div class="att-usagesummary-sub">利用率' + rateText + worst + '</div>' +
+            '</div>';
   });
   box.innerHTML = html;
   box.style.display = 'block';
+}
+
+// 赤サマリー（利用枠の見直し検討）を描画する
+function renderUsageRedSummary() {
+  renderUsageSummaryPanel(
+    document.getElementById('att-redsummary'),
+    '🔴', '利用枠の見直し検討', usageRedList, 'att-redsummary');
+}
+
+// 黄サマリー（声かけ・様子見）を描画する
+function renderUsageYellowSummary() {
+  renderUsageSummaryPanel(
+    document.getElementById('att-yellowsummary'),
+    '🟡', '声かけ・様子見', usageYellowList, 'att-yellowsummary');
+}
+
+// 利用率サマリー全体（赤・黄2列）を描画する
+function renderUsageSummary() {
+  renderUsageRedSummary();
+  renderUsageYellowSummary();
+  var wrap = document.getElementById('att-usagesummary-wrap');
+  if (!wrap) return;
+  var hasRed = !!(usageRedList && usageRedList.length);
+  var hasYellow = !!(usageYellowList && usageYellowList.length);
+  wrap.style.display = (hasRed || hasYellow) ? 'flex' : 'none';
 }
 
 function attLoad() {
@@ -7549,7 +7582,7 @@ function attRender(data) {
         const el = document.getElementById('att-content');
         if (el && _savedAttScroll) el.scrollTop = _savedAttScroll;
     });
-    if (typeof renderUsageRedSummary === 'function') renderUsageRedSummary();
+    if (typeof renderUsageSummary === 'function') renderUsageSummary();
 }
 
 // 表示日より前の、契約曜日に当たる直近の利用予定日を 'YYYY-MM-DD' で返す（前回お休み判定用）
