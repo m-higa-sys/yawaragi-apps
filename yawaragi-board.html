@@ -6392,17 +6392,32 @@ function absFindAbsenceRecord(name, dateStr) {
 // ===== 欠席カードの連絡ステータス3分類＋詳細ポップアップ（2026-05-22） =====
 
 // cmNotified の値を欠席カード表示用の3分類に変換
-// chipLabel: 欠席カード1行目のチップに使うアイコン付き短文（2026-05-23追加）
+// chipLabel: 欠席カード1行目のチップに使うアイコン付き短文
+// 2026-05-23: 手段別の絵文字に変更（自動メール=📧 / 手動メール=✉ / 電話=📞 / FAX=📠）
 function absContactStatus(cmNotified) {
     var v = String(cmNotified || '').trim();
-    if (v === '送信済' || v === '手動メール送信済' || v === '電話連絡済') {
-        return { label: '連絡済み', cls: 'done', chipLabel: '✓ 連絡済' };
-    }
+    if (v === '送信済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ 📧 連絡済', emoji: '📧' };
+    if (v === '手動メール送信済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ ✉ 連絡済', emoji: '✉' };
+    if (v === '電話連絡済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ 📞 連絡済', emoji: '📞' };
+    if (v === 'FAX送信済') return { label: '連絡済み', cls: 'done', chipLabel: '✓ 📠 連絡済', emoji: '📠' };
     if (v === 'ケアマネ把握済') {
-        return { label: 'ケアマネ連絡', cls: 'aware', chipLabel: '👤 ケアマネ' };
+        return { label: 'ケアマネ連絡', cls: 'aware', chipLabel: '👤 ケアマネ', emoji: '👤' };
     }
-    // メールなし / 空 / 下書き保存 / エラー:… → 連絡未
-    return { label: '連絡未', cls: 'unsent', chipLabel: '📞 未連絡' };
+    if (v.indexOf('エラー') === 0) {
+        return { label: 'メール失敗', cls: 'err', chipLabel: '⚠ メール失敗', emoji: '⚠' };
+    }
+    // メールなし / 空 / 下書き保存 → 連絡未
+    return { label: '連絡未', cls: 'unsent', chipLabel: '📞 未連絡', emoji: '🔴' };
+}
+
+// chipLabel に operator を付ける（カード描画時に使う・2026-05-23）
+// 「✓ 📞 連絡済（下浦）」のように手段絵文字＋操作者付きに
+function absContactChipWithOperator(rec) {
+    var st = absContactStatus(rec && rec.cmNotified);
+    if (st.cls === 'done' && rec && rec.lastOperator) {
+        return st.chipLabel + '（' + rec.lastOperator + '）';
+    }
+    return st.chipLabel;
 }
 
 // 詳細ポップアップ内の1行を組み立てる
@@ -6546,7 +6561,10 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             cmNotified: r.cmNotified || '',
             cmNotifiedAt: r.cmNotifiedAt || '',
             cmOffice: r.cmOffice || '',
-            cmName: r.cmName || ''
+            cmName: r.cmName || '',
+            // 2026-05-23: 履歴シート最終操作者
+            lastOperator: r.lastOperator || '',
+            lastMethod: r.lastMethod || ''
         });
     });
 
@@ -6566,6 +6584,9 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             registeredBy: '',
             contactDate: g.contactDate || '',
             cmNotified: g.cmNotified || '',
+            // 2026-05-23: 履歴シート最終操作者
+            lastOperator: g.lastOperator || '',
+            lastMethod: g.lastMethod || '',
             isLongTerm: false
         });
     });
@@ -6589,6 +6610,9 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             registeredBy: '',
             contactDate: '',
             cmNotified: lt.cmNotified || '',
+            // 2026-05-23: 履歴シート最終操作者
+            lastOperator: lt.lastOperator || '',
+            lastMethod: lt.lastMethod || '',
             isLongTerm: true,
             resumeDate: resumeDate
         });
@@ -6643,6 +6667,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         if (r.isLongTerm) {
             const escName = r.userName.replace(/'/g,"\\'");
             const st = absContactStatus(r.cmNotified);
+            const chipText = absContactChipWithOperator(r);
             return `
         <div class="abs-card" style="border-left:4px solid #e53e3e;" onclick="absShowCardDetail('${escName}','${r.dateFrom}')">
             <div class="abs-card-mark">欠</div>
@@ -6651,7 +6676,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
                     <span class="abs-card-line1-left">
                         <span class="abs-card-name ${absCareNameClass(r.userName)}">${r.userName}</span>
                         <span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:2px;">長期休み</span>
-                        <span class="abs-card-chip ${st.cls}">${st.chipLabel}</span>
+                        <span class="abs-card-chip ${st.cls}">${chipText}</span>
                     </span>
                     <span class="abs-card-date">${dateText}</span>
                 </div>
@@ -6662,6 +6687,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
         // 通常欠席 → コンパクトカード（タップで詳細ポップアップ）
         const escName = r.userName.replace(/'/g,"\\'");
         const st = absContactStatus(r.cmNotified);
+        const chipText = absContactChipWithOperator(r);
         const needsDetail = (r.needsDetail || (!r.contact && !r.method));
         const cardStyle = needsDetail ? ' style="border-left:4px solid #fb923c;"' : '';
         return `
@@ -6671,7 +6697,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
                 <div class="abs-card-line1">
                     <span class="abs-card-line1-left">
                         <span class="abs-card-name ${absCareNameClass(r.userName)}">${r.userName}</span>
-                        <span class="abs-card-chip ${st.cls}">${st.chipLabel}</span>
+                        <span class="abs-card-chip ${st.cls}">${chipText}</span>
                     </span>
                     <span class="abs-card-date">${dateText}</span>
                 </div>
