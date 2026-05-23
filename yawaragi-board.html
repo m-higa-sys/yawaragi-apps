@@ -5997,16 +5997,15 @@ async function absSubmit(opts) {
     }
 
     // ★ 2026-05-10: ケアマネメール送信確認ポップアップ
-    // ★ 2026-05-13: 電話派ケアマネ判定追加（method≠メール→電話モード）
+    // ★ 2026-05-23: method分岐廃止 → 取消フローと同様、常にメールプレビューを表示
+    //   （メアド有るのに method=持参 で電話モードに飛んでしまう問題の解消）
     const cmOffice = absState.selectedUser.cmOffice || '';
     const cmNameInit = absState.selectedUser.cmName || '';
     let cmEmailInit = '';
-    let cmMethod = '';
     if (cmOffice && cmNameInit) {
         const c = await fetchCmContact(cmOffice, cmNameInit);
         if (c.found) {
             cmEmailInit = c.email || '';
-            cmMethod = c.method || '';
         }
     }
     let mailCmName = cmNameInit;
@@ -6015,18 +6014,9 @@ async function absSubmit(opts) {
     let mailCustomBody = '';
     let phoneCalled = false;
     if (cmOffice && contact !== 'ケアマネ') {
-        if (isCmPhoneMode(cmMethod)) {
-            // 電話派モード
-            const r = await showAbsencePhoneConfirm({
-                userName: absState.selectedUser.name,
-                dates: dates,
-                reason: reason,
-                cmOffice: cmOffice,
-                cmName: cmNameInit
-            });
-            if (r.phoneCalled) phoneCalled = true;
-        } else {
-            // メール派モード（未登録含む・従来通り）
+        // 常にメール確認ポップアップ（取消フローと統一）
+        // メアド未登録の場合はその場で入力可。メール送らないなら「送信しない」でスキップ
+        {
             const r = await showAbsenceMailConfirm({
                 userName: absState.selectedUser.name,
                 dates: dates,
