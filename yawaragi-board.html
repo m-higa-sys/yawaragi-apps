@@ -6458,11 +6458,17 @@ function absShowCardDetail(name, dateStr) {
 
     // 操作ボタン（種別で出し分け）
     var btns = '';
+    // 2026-05-23: モーダル呼び出し用の引数を準備（isLongTerm + contactNote）
+    var safeNote = (rec.contactNote || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     if (rec.isLongTerm) {
         // 連絡未のときだけ連絡操作ボタンを出す（通常欠席と同じパターン・2026-05-23追加）
         if (st.cls === 'unsent') {
             // 2026-05-23: 3ボタンを1ボタンに統合（操作者選択モーダル経由・履歴シート記録のため）
-            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/SMS/把握済）</button>';
+            // 2026-05-23: 長期休みフラグ＋注意事項も渡す
+            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\',true,\'' + safeNote + '\')">📋 連絡記録（電話/メール/SMS/把握済）</button>';
+        } else {
+            // 連絡済でも、長期休みは月1回必ず連絡したいので「追加で連絡記録する」ボタンを常時出す
+            btns += '<button class="abs-detail-btn" style="border-color:#38a169;color:#38a169;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\',true,\'' + safeNote + '\')">📋 もう一度 連絡記録（月次更新）</button>';
         }
         // 長期休み固有ボタン
         btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">👤 利用者情報（介護度・利用率）</button>';
@@ -6473,7 +6479,7 @@ function absShowCardDetail(name, dateStr) {
         // 通常欠席: 連絡操作・利用者情報・編集・移動・取消・閉じる
         if (st.cls === 'unsent') {
             // 2026-05-23: 3ボタンを1ボタンに統合（操作者選択モーダル経由・履歴シート記録のため）
-            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\')">📋 連絡記録（電話/メール/SMS/把握済）</button>';
+            btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showContactMethodModal(\'' + safeName + '\',\'' + dateStr + '\',false,\'' + safeNote + '\')">📋 連絡記録（電話/メール/SMS/把握済）</button>';
         }
         btns += '<button class="abs-detail-btn" style="border-color:#3182ce;color:#3182ce;" onclick="absDetailClose();showUsageDetail(\'' + safeName + '\')">👤 利用者情報（介護度・利用率）</button>';
         btns += '<button class="abs-detail-btn" style="border-color:#2c5282;color:#2c5282;" onclick="absDetailClose();attEditAbsence(\'' + safeName + '\',\'' + dateStr + '\')">✏️ 編集</button>';
@@ -6673,6 +6679,16 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             // 2026-05-23: 履歴シート最終操作者
             lastOperator: lt.lastOperator || '',
             lastMethod: lt.lastMethod || '',
+            // 2026-05-23: 長期休み連絡管理拡張
+            contactNote: lt.contactNote || '',
+            lastContact: lt.lastContact || '',
+            daysSinceLastContact: lt.daysSinceLastContact,
+            nextContactDue: lt.nextContactDue || '',
+            daysUntilNextContact: lt.daysUntilNextContact,
+            contactOverdue: !!lt.contactOverdue,
+            contactWarning: !!lt.contactWarning,
+            elapsedDays: lt.elapsedDays,
+            contactLog: lt.contactLog || '',
             isLongTerm: true,
             resumeDate: resumeDate
         });
@@ -6728,6 +6744,20 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             const escName = r.userName.replace(/'/g,"\\'");
             const st = absContactStatus(r.cmNotified);
             const chipText = absContactChipWithOperator(r);
+            // 2026-05-23: 注意事項バッジ + 経過情報（最終連絡からの日数・次回予定日）
+            const noteBadge = r.contactNote ? `<span style="background:#f56565;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:2px;" title="${r.contactNote}">⚠ ${r.contactNote}</span>` : '';
+            // 連絡経過の色分け
+            let contactStateHtml = '';
+            if (r.contactOverdue) {
+                contactStateHtml = `<span style="color:#e53e3e;font-weight:700;">🚨 連絡期限超過（最終 ${r.daysSinceLastContact != null ? r.daysSinceLastContact + '日前' : '未連絡'}）</span>`;
+            } else if (r.contactWarning) {
+                contactStateHtml = `<span style="color:#d69e2e;font-weight:600;">⏰ 連絡期限間近（あと ${r.daysUntilNextContact}日）</span>`;
+            } else if (r.daysSinceLastContact != null) {
+                contactStateHtml = `<span style="color:#718096;">最終連絡 ${r.daysSinceLastContact}日前</span>`;
+            } else {
+                contactStateHtml = `<span style="color:#a0aec0;">連絡履歴なし</span>`;
+            }
+            const nextDueHtml = r.nextContactDue ? ` / 次回 ${absFormatDate(r.nextContactDue)}` : '';
             return `
         <div class="abs-card" style="border-left:4px solid #e53e3e;" onclick="absShowCardDetail('${escName}','${r.dateFrom}')">
             <div class="abs-card-mark">欠</div>
@@ -6737,10 +6767,12 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
                         <span class="abs-card-name ${absCareNameClass(r.userName)}">${r.userName}</span>
                         <span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:2px;">長期休み</span>
                         <span class="abs-card-chip ${st.cls}">${chipText}</span>
+                        ${noteBadge}
                     </span>
                     <span class="abs-card-date">${dateText}</span>
                 </div>
                 <div class="abs-card-reason">${r.reason || ''}</div>
+                <div style="font-size:0.78rem;margin-top:4px;">${contactStateHtml}${nextDueHtml}</div>
             </div>
         </div>`;
         }
@@ -7788,9 +7820,12 @@ function attRenderUser(u) {
     }
 
     // 連絡未pillはタップで連絡方法選択モーダルを開く（4ボタン構成・2026-05-23 社長指示）
+    // 2026-05-23: 長期休みなら isLongTerm/contactNote をモーダルに渡す（注意事項表示+次回予定日入力）
     var contactClick = '';
     if (contactCls === 'unsent' && lookupDate) {
-        contactClick = ' onclick="event.stopPropagation();showContactMethodModal(\'' + escapedName + '\',\'' + lookupDate + '\')"';
+        var pillIsLT = !!(rec && rec.isLongTerm);
+        var pillNote = (rec && rec.contactNote ? rec.contactNote : '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        contactClick = ' onclick="event.stopPropagation();showContactMethodModal(\'' + escapedName + '\',\'' + lookupDate + '\',' + pillIsLT + ',\'' + pillNote + '\')"';
     }
 
     // 理由ピル表示（長期休みは括弧内の詳細を省略して「長期休み」のみ・2026-05-23）
@@ -12070,8 +12105,8 @@ function _updateLocalCmCache(userName, dateStr, value, operator) {
 }
 
 // 既存欠席の連絡状況マーク共通処理（confirm無し版・モーダル等からの直接実行用）
-// 2026-05-23: operator パラメータ追加（4ボタンモーダルのプルダウンから渡される）
-async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage, operator) {
+// 2026-05-23: operator + nextContactDue + resultNote パラメータ追加
+async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage, operator, nextContactDue, resultNote) {
     try {
         await fetch(ABS_BOARD_API_URL, {
             method: 'POST',
@@ -12082,7 +12117,9 @@ async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage,
                 name: userName,
                 date: dateStr,
                 cmNotified: cmNotifiedValue,
-                operator: operator || ''
+                operator: operator || '',
+                nextContactDue: nextContactDue || '',
+                note: resultNote || ''
             })
         });
         _updateLocalCmCache(userName, dateStr, cmNotifiedValue, operator);
@@ -12103,14 +12140,20 @@ async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage,
 
 // 連絡方法選択モーダル（出席予定タブ「連絡未」pillから呼ぶ）
 // 2026-05-23: 操作者プルダウン必須化＋💬 SMS送信済ボタン追加
-function showContactMethodModal(userName, dateStr) {
+// 2026-05-23: 長期休み連絡管理拡張 — 注意事項表示 + 次回連絡予定日 + 結果メモ入力
+function showContactMethodModal(userName, dateStr, isLongTerm, contactNote) {
     if (document.getElementById('contact-method-modal')) return;
     const dt = absFormatDate(dateStr);
     const escName = userName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const modal = document.createElement('div');
     modal.id = 'contact-method-modal';
-    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px;';
     const btnBase = 'display:block;width:100%;padding:14px;margin-bottom:8px;background:#fff;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;';
+
+    // 注意事項バナー（あれば最上部に赤帯で表示）
+    const noteBanner = contactNote ?
+        '<div style="background:#fff5f5;border:2px solid #f56565;color:#c53030;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:0.9rem;font-weight:600;">⚠ 連絡時注意：' + contactNote + '</div>'
+        : '';
 
     // 操作者プルダウン（必須）
     const staffList = window._cachedStaffList || ['比嘉'];
@@ -12126,20 +12169,46 @@ function showContactMethodModal(userName, dateStr) {
             '</select>' +
         '</div>';
 
+    // 長期休みのときだけ：次回連絡予定日＋結果メモ入力
+    let longTermFieldsHtml = '';
+    if (isLongTerm) {
+        // 次回連絡予定日のデフォルト = 今日+28日（4週間後）
+        const defaultNext = (function () {
+            const d = new Date();
+            d.setDate(d.getDate() + 28);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        })();
+        longTermFieldsHtml =
+            '<div style="margin-bottom:14px;padding:10px;background:#f7fafc;border-radius:8px;border:1px solid #e2e8f0;">' +
+                '<div style="font-size:0.85rem;color:#4a5568;font-weight:600;margin-bottom:6px;">📅 長期休み 連絡管理</div>' +
+                '<label style="font-size:0.8rem;color:#4a5568;display:block;margin-bottom:2px;">次回連絡予定日</label>' +
+                '<input type="date" id="cm-next-due" value="' + defaultNext + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:8px;">' +
+                '<label style="font-size:0.8rem;color:#4a5568;display:block;margin-bottom:2px;">結果メモ（例：状態変わらず・あと2週間で再評価）</label>' +
+                '<textarea id="cm-result-note" rows="2" placeholder="連絡内容のサマリー" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.9rem;resize:vertical;box-sizing:border-box;"></textarea>' +
+            '</div>';
+    }
+
     function mkBtn(label, color, cmValue, toast) {
+        // 長期休みのときは nextContactDue / note も拾う
+        const collectExtras = isLongTerm
+            ? 'var nx=document.getElementById(\'cm-next-due\').value;var nt=document.getElementById(\'cm-result-note\').value;'
+            : 'var nx=\'\';var nt=\'\';';
         return '<button onclick="' +
             'var op=document.getElementById(\'cm-operator-select\').value;' +
             'if(!op){alert(\'操作者を選択してください\');return;}' +
-            '_markCmInternal(\'' + escName + '\',\'' + dateStr + '\',\'' + cmValue + '\',\'' + toast + '\',op);' +
+            collectExtras +
+            '_markCmInternal(\'' + escName + '\',\'' + dateStr + '\',\'' + cmValue + '\',\'' + toast + '\',op,nx,nt);' +
             'document.getElementById(\'contact-method-modal\').remove();" ' +
             'style="' + btnBase + 'border:2px solid ' + color + ';color:' + color + ';">' + label + '</button>';
     }
 
     modal.innerHTML =
-        '<div style="background:#fff;border-radius:14px;padding:24px;width:min(380px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);">' +
-        '<div style="font-size:1.05rem;font-weight:800;margin-bottom:4px;">' + userName + '様</div>' +
+        '<div style="background:#fff;border-radius:14px;padding:24px;width:min(420px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);max-height:90vh;overflow-y:auto;">' +
+        '<div style="font-size:1.05rem;font-weight:800;margin-bottom:4px;">' + userName + '様' + (isLongTerm ? '<span style="background:#e53e3e;color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:10px;margin-left:8px;">長期休み</span>' : '') + '</div>' +
         '<div style="font-size:0.85rem;color:#718096;margin-bottom:14px;">' + dt + ' の連絡状況をマーク</div>' +
+        noteBanner +
         operatorSelectHtml +
+        longTermFieldsHtml +
         mkBtn('📞 電話連絡済', '#3182ce', '電話連絡済', '📞 電話連絡済みにマークしました') +
         mkBtn('✉ メール連絡済', '#16a085', '手動メール送信済', '✉ メール連絡済にマークしました') +
         mkBtn('💬 SMS送信済', '#d69e2e', 'SMS送信済', '💬 SMS送信済にマークしました') +
