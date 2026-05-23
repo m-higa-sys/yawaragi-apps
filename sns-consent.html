@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SNS顔出し可否一覧</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; background: #f4f6f8; color: #222; font-size: 16px; }
+#app-root { max-width: 960px; margin: 0 auto; padding: 12px; }
+.summary { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; }
+.badge { padding:6px 10px; border-radius:14px; font-size:14px; font-weight:bold; }
+table.list { width:100%; border-collapse:collapse; background:#fff; }
+table.list th, table.list td { border:1px solid #d6dade; padding:8px 10px; text-align:left; font-size:16px; }
+table.list th { background:#37474f; color:#fff; font-size:14px; }
+td.name { font-weight:bold; white-space:nowrap; }
+td.changed { white-space:nowrap; color:#666; font-size:14px; }
+.empty { text-align:center; color:#888; padding:20px; }
+.st-ok { background:#e7f6e7; } .st-cond { background:#fff6da; }
+.st-ng { background:#fde3e3; } .st-none { background:#eceff1; }
+.badge.st-ok { background:#43a047; color:#fff; } .badge.st-cond { background:#f9a825; color:#fff; }
+.badge.st-ng { background:#e53935; color:#fff; } .badge.st-none { background:#90a4ae; color:#fff; }
+.new-mark { font-size:13px; }
+.tool-btn { padding:10px 14px; font-size:15px; border:none; border-radius:8px; background:#1976d2; color:#fff; font-weight:bold; cursor:pointer; }
+.tool-btn:active { opacity:.8; }
+.edit-toggle { font-size:15px; font-weight:bold; cursor:pointer; }
+body.editing #app-root { box-shadow: inset 0 0 0 4px #f9a825; }
+body.editing #toolbar::after { content:"編集中"; background:#f9a825; color:#fff; padding:2px 8px; border-radius:6px; font-size:13px; }
+.status-btns { display:flex; gap:4px; flex-wrap:wrap; }
+.stbtn { padding:8px 10px; font-size:14px; border:2px solid transparent; border-radius:6px; cursor:pointer; opacity:.55; }
+.stbtn.on { opacity:1; border-color:#222; font-weight:bold; }
+.note-input { width:100%; padding:6px; font-size:15px; border:1px solid #bbb; border-radius:5px; }
+.status-label { font-weight:bold; font-size:16px; }
+#controls { margin:8px 0; display:flex; flex-direction:column; gap:6px; }
+#search-box { padding:10px; font-size:16px; border:1px solid #bbb; border-radius:8px; }
+#filter-row, #kana-row, #opt-row, #schedule-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.filter-label { font-size:13px; color:#555; font-weight:bold; margin-right:2px; }
+.sbtn, .ambtn { padding:6px 10px; font-size:14px; border:2px solid #ccc; border-radius:6px; background:#fff; cursor:pointer; min-width:36px; }
+.sbtn.on, .ambtn.on { border-color:#1976d2; font-weight:bold; background:#e3f2fd; }
+.sched-info { font-size:13px; color:#666; font-weight:normal; }
+.fbtn, .kbtn { padding:8px 12px; font-size:14px; border:2px solid #ccc; border-radius:6px; background:#fff; cursor:pointer; }
+.fbtn.on, .kbtn.on { border-color:#1976d2; font-weight:bold; background:#e3f2fd; }
+.inactive-toggle { font-size:14px; }
+@media (max-width: 640px) {
+  table.list thead { display:none; }
+  table.list, table.list tbody, table.list tr, table.list td { display:block; width:100%; }
+  table.list tr { margin-bottom:10px; border:2px solid #d6dade; border-radius:8px; overflow:hidden; }
+  table.list td { border:none; border-bottom:1px solid #e3e6e8; }
+  table.list td.name { font-size:18px; padding:10px; }
+  table.list td:last-child { border-bottom:none; }
+  td.status-cell::before { content:"顔出し: "; font-weight:bold; color:#555; }
+  td.note-cell::before { content:"条件: "; font-weight:bold; color:#555; }
+  td.changed::before { content:"更新日: "; font-weight:bold; color:#555; }
+  .tool-btn { width:100%; }
+}
+</style>
+</head>
+<body>
+<div id="app-root">
+  <h1 style="font-size:20px;padding:8px 0;">SNS顔出し可否一覧</h1>
+  <div id="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:4px 0;">
+    <button id="btn-roster" class="tool-btn">🔄 利用者台帳から取得</button>
+    <label class="edit-toggle"><input type="checkbox" id="chk-edit"> ✏ 編集モード</label>
+    <span id="sync-status" style="font-size:13px;color:#666;"></span>
+  </div>
+  <div id="controls">
+    <input id="search-box" type="search" placeholder="🔍 氏名・フリガナで検索">
+    <div id="filter-row">
+      <button class="fbtn on" data-status="">全員</button>
+      <button class="fbtn st-ok" data-status="OK">OK</button>
+      <button class="fbtn st-cond" data-status="条件付き">条件付き</button>
+      <button class="fbtn st-ng" data-status="NG">NG</button>
+      <button class="fbtn st-none" data-status="未設定">未設定</button>
+    </div>
+    <div id="schedule-row">
+      <span class="filter-label">曜日:</span>
+      <button class="sbtn on" data-day="">全</button>
+      <button class="sbtn" data-day="月">月</button>
+      <button class="sbtn" data-day="火">火</button>
+      <button class="sbtn" data-day="水">水</button>
+      <button class="sbtn" data-day="木">木</button>
+      <button class="sbtn" data-day="金">金</button>
+      <span class="filter-label">単位:</span>
+      <button class="ambtn on" data-ampm="">全</button>
+      <button class="ambtn" data-ampm="午前">午前</button>
+      <button class="ambtn" data-ampm="午後">午後</button>
+    </div>
+    <div id="kana-row"></div>
+    <div id="opt-row">
+      <button id="btn-sort" class="fbtn">並べ替え: あいうえお順</button>
+      <label class="inactive-toggle"><input type="checkbox" id="chk-inactive"> 退所者も表示</label>
+    </div>
+  </div>
+  <div id="content"></div>
+</div>
+
+<script id="logic">
+// ===== 純粋ロジック（副作用なし。runSelfTests()で検証） =====
+const SELF_TESTS = [];
+function _assert(name, cond) { SELF_TESTS.push({ name: name, pass: !!cond }); }
+function runSelfTests() {
+  SELF_TESTS.length = 0;
+  _registerTests();
+  const failed = SELF_TESTS.filter(t => !t.pass);
+  SELF_TESTS.forEach(t => console.log((t.pass ? '✅' : '❌') + ' ' + t.name));
+  console.log(failed.length === 0
+    ? ('✅ 全' + SELF_TESTS.length + '件 PASS')
+    : ('❌ ' + failed.length + '/' + SELF_TESTS.length + '件 FAIL'));
+  return failed.length === 0;
+}
+
+// 氏名を照合用に正規化（NFKC・「様」除去・全半角空白除去）
+function normalizeName(s) {
+  if (!s) return '';
+  return String(s).normalize('NFKC').replace(/\s+/g, '').replace(/様$/, '');
+}
+
+// 利用者台帳（roster）を現データにマージ。可否情報は保持し、kana・days・ampm更新・新規追加・在籍判定を行う
+function mergeRosterIntoData(current, roster) {
+  const byName = {};
+  current.forEach(r => { byName[normalizeName(r.name)] = Object.assign({}, r); });
+  const rosterKeys = {};
+  roster.forEach(u => {
+    const key = normalizeName(u.name);
+    rosterKeys[key] = true;
+    if (byName[key]) {
+      byName[key].kana = u.kana || byName[key].kana || '';
+      byName[key].days = u.days || byName[key].days || '';
+      byName[key].ampm = u.ampm || byName[key].ampm || '';
+      byName[key].active = true;
+    } else {
+      byName[key] = {
+        name: u.name, kana: u.kana || '',
+        days: u.days || '', ampm: u.ampm || '',
+        status: '未設定', note: '',
+        statusChangedAt: '', updatedAt: '', active: true
+      };
+    }
+  });
+  Object.keys(byName).forEach(key => {
+    if (!rosterKeys[key]) byName[key].active = false;
+  });
+  return Object.keys(byName).map(k => byName[k]);
+}
+
+// 利用者の利用曜日・午前午後が、指定フィルタ（day・ampm）と合致するか判定。
+// day/ampm が空なら制約なし。複合パターン（例: 'ampm'="月午前、木午後"）にも対応。
+function matchesSchedule(user, day, ampm) {
+  if (!day && !ampm) return true;
+  if (day) {
+    if (!user.days || String(user.days).indexOf(day) < 0) return false;
+  }
+  if (!ampm) return true;
+  const ap = String(user.ampm || '');
+  if (ap === ampm) return true;
+  // 複合パターン: 「月午前、木午後」を曜日とセットで判定
+  if (day) {
+    const parts = ap.split(/[、,]/);
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (p.indexOf(day) >= 0) return p.indexOf(ampm) >= 0;
+    }
+  }
+  return ap.indexOf(ampm) >= 0;
+}
+
+// 日付っぽい値を YYYY-MM-DD 形式に正規化する
+function normalizeDateStr(s) {
+  if (!s) return '';
+  const str = String(s);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// リモート（専用GAS）レコードをローカルにマージ。updatedAtが新しい方を採用。空ガードあり
+// statusChangedAtはGAS側で日付型に変換される事故があるため normalizeDateStr で揃える
+function mergeRemoteIntoLocal(local, remote) {
+  if (!remote || remote.length === 0) return local.slice();
+  const byName = {};
+  local.forEach(r => { byName[normalizeName(r.name)] = Object.assign({}, r); });
+  remote.forEach(rr => {
+    const key = normalizeName(rr.name);
+    const cur = byName[key];
+    if (!cur) {
+      byName[key] = {
+        name: rr.name, kana: '',
+        status: rr.status || '未設定', note: rr.note || '',
+        statusChangedAt: normalizeDateStr(rr.statusChangedAt),
+        updatedAt: rr.updatedAt || '',
+        active: true
+      };
+    } else if ((rr.updatedAt || '') > (cur.updatedAt || '')) {
+      cur.status = rr.status || '未設定';
+      cur.note = rr.note || '';
+      cur.statusChangedAt = normalizeDateStr(rr.statusChangedAt);
+      cur.updatedAt = rr.updatedAt || '';
+    }
+  });
+  return Object.keys(byName).map(k => byName[k]);
+}
+
+const STATUS_LIST = ['OK', '条件付き', 'NG', '未設定'];
+
+// ステータス別件数を集計
+function computeSummary(data) {
+  const s = { OK: 0, '条件付き': 0, NG: 0, '未設定': 0 };
+  data.forEach(r => { if (s[r.status] !== undefined) s[r.status]++; });
+  return s;
+}
+
+// かな頭文字を行グループ（あ/か/さ/た/な/は/ま/や/ら/わ）に変換
+function kanaGroupOf(kana) {
+  if (!kana) return '#';
+  const c = String(kana).normalize('NFKC').charAt(0);
+  const map = [
+    ['あ', 'あいうえおぁぃぅぇぉ'], ['か', 'かきくけこがぎぐげご'],
+    ['さ', 'さしすせそざじずぜぞ'], ['た', 'たちつてとだぢづでどっ'],
+    ['な', 'なにぬねの'], ['は', 'はひふへほばびぶべぼぱぴぷぺぽ'],
+    ['ま', 'まみむめも'], ['や', 'やゆよゃゅょ'],
+    ['ら', 'らりるれろ'], ['わ', 'わをんゐゑ']
+  ];
+  const hira = c.replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+  for (let i = 0; i < map.length; i++) {
+    if (map[i][1].indexOf(hira) >= 0) return map[i][0];
+  }
+  return '#';
+}
+
+// 可否更新日が基準日から30日以内かどうか
+function isRecentlyChanged(statusChangedAt, today) {
+  if (!statusChangedAt) return false;
+  const d = new Date(statusChangedAt);
+  if (isNaN(d.getTime())) return false;
+  const diff = (today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+  return diff >= 0 && diff <= 30;
+}
+
+// 絞り込み: opts = { status, search, kanaGroup, includeInactive, day, ampm }
+function filterRecords(data, opts) {
+  opts = opts || {};
+  return data.filter(r => {
+    if (!opts.includeInactive && r.active === false) return false;
+    if (opts.status && r.status !== opts.status) return false;
+    if (opts.kanaGroup && kanaGroupOf(r.kana) !== opts.kanaGroup) return false;
+    if ((opts.day || opts.ampm) && !matchesSchedule(r, opts.day || '', opts.ampm || '')) return false;
+    if (opts.search) {
+      const q = String(opts.search).normalize('NFKC');
+      const hay = (String(r.name) + String(r.kana || '')).normalize('NFKC');
+      if (hay.indexOf(q) < 0) return false;
+    }
+    return true;
+  });
+}
+
+function _registerTests() {
+  // --- normalizeName (Task 3) ---
+  _assert('normalizeName: 様を除去', normalizeName('山田太郎 様') === '山田太郎');
+  _assert('normalizeName: 全角空白除去', normalizeName('山田　太郎') === '山田太郎');
+  _assert('normalizeName: 半角空白除去', normalizeName(' 山田 太郎 ') === '山田太郎');
+  _assert('normalizeName: NFKC正規化', normalizeName('ﾔﾏﾀﾞ') === normalizeName('ヤマダ'));
+  _assert('normalizeName: null安全', normalizeName(null) === '');
+
+  // --- mergeRosterIntoData (Task 4) ---
+  (function() {
+    const cur = [
+      { name: '山田太郎', kana: 'やまだ', status: 'OK', note: 'メモ', statusChangedAt: '2026-05-01', updatedAt: '2026-05-01T00:00:00.000Z', active: true }
+    ];
+    const roster = [
+      { name: '山田太郎', kana: 'やまだたろう' },
+      { name: '鈴木花子', kana: 'すずきはなこ' }
+    ];
+    const merged = mergeRosterIntoData(cur, roster);
+    const yamada = merged.find(r => r.name === '山田太郎');
+    const suzuki = merged.find(r => r.name === '鈴木花子');
+    _assert('roster: 既存の可否は保持', yamada.status === 'OK' && yamada.note === 'メモ');
+    _assert('roster: kanaは台帳で更新', yamada.kana === 'やまだたろう');
+    _assert('roster: 新規は未設定で追加', suzuki && suzuki.status === '未設定');
+    _assert('roster: 在籍者はactive=true', yamada.active === true && suzuki.active === true);
+  })();
+  (function() {
+    const cur = [{ name: '退所者', kana: 'たいしょ', status: 'NG', note: '', statusChangedAt: '', updatedAt: '', active: true }];
+    const merged = mergeRosterIntoData(cur, [{ name: '山田太郎', kana: 'やまだ' }]);
+    const taisho = merged.find(r => r.name === '退所者');
+    _assert('roster: 退所者はactive=falseで残す', taisho && taisho.active === false && taisho.status === 'NG');
+  })();
+  (function() {
+    const merged = mergeRosterIntoData([], [{ name: '山田太郎', kana: 'やまだ', days: '火木', ampm: '午前' }]);
+    const y = merged[0];
+    _assert('roster: days/ampmを台帳から取り込む', y.days === '火木' && y.ampm === '午前');
+  })();
+
+  // --- matchesSchedule ---
+  _assert('sched: 制約なしで全員true', matchesSchedule({days:'月', ampm:'午前'}, '', '') === true);
+  _assert('sched: 曜日が含まれればtrue', matchesSchedule({days:'火木', ampm:'午前'}, '火', '') === true);
+  _assert('sched: 曜日が含まれなければfalse', matchesSchedule({days:'月', ampm:'午前'}, '火', '') === false);
+  _assert('sched: 単純ampm一致', matchesSchedule({days:'火木', ampm:'午前'}, '火', '午前') === true);
+  _assert('sched: ampm不一致', matchesSchedule({days:'火木', ampm:'午後'}, '火', '午前') === false);
+  _assert('sched: 複合 月午前は月午前true', matchesSchedule({days:'月木', ampm:'月午前、木午後'}, '月', '午前') === true);
+  _assert('sched: 複合 月午後はfalse', matchesSchedule({days:'月木', ampm:'月午前、木午後'}, '月', '午後') === false);
+
+  // --- normalizeDateStr (Task 5前半) ---
+  _assert('date: YYYY-MM-DDはそのまま', normalizeDateStr('2026-05-23') === '2026-05-23');
+  _assert('date: JS Date文字列を正規化', normalizeDateStr('Sat May 23 2026 00:00:00 GMT+0900 (日本標準時)') === '2026-05-23');
+  _assert('date: ISO文字列も処理', normalizeDateStr('2026-05-23T00:00:00.000Z').match(/^\d{4}-\d{2}-\d{2}$/) !== null);
+  _assert('date: 空文字は空', normalizeDateStr('') === '');
+
+  // --- mergeRemoteIntoLocal (Task 5後半) ---
+  (function() {
+    const local = [
+      { name: '山田太郎', kana: 'やまだ', status: 'OK', note: '', statusChangedAt: '', updatedAt: '2026-05-10T00:00:00.000Z', active: true }
+    ];
+    const remote = [
+      { name: '山田太郎', status: 'NG', note: '変更後', statusChangedAt: '2026-05-20', updatedAt: '2026-05-20T00:00:00.000Z' },
+      { name: '佐藤次郎', status: 'OK', note: '', statusChangedAt: '', updatedAt: '2026-05-15T00:00:00.000Z' }
+    ];
+    const merged = mergeRemoteIntoLocal(local, remote);
+    const yamada = merged.find(r => r.name === '山田太郎');
+    const sato = merged.find(r => r.name === '佐藤次郎');
+    _assert('sync: updatedAtが新しい側を採用', yamada.status === 'NG' && yamada.note === '変更後');
+    _assert('sync: ローカルのkanaを保持', yamada.kana === 'やまだ');
+    _assert('sync: リモートのみのレコードを追加', sato && sato.status === 'OK');
+  })();
+  (function() {
+    const local = [{ name: '山田太郎', kana: 'やまだ', status: 'OK', note: '', statusChangedAt: '', updatedAt: '2026-05-10T00:00:00.000Z', active: true }];
+    _assert('sync: リモート空ならローカル維持', mergeRemoteIntoLocal(local, []).length === 1);
+  })();
+  (function() {
+    const local = [{ name: '山田太郎', kana: 'やまだ', status: 'NG', note: '', statusChangedAt: '', updatedAt: '2026-05-25T00:00:00.000Z', active: true }];
+    const remote = [{ name: '山田太郎', status: 'OK', note: '', statusChangedAt: '', updatedAt: '2026-05-20T00:00:00.000Z' }];
+    _assert('sync: ローカルが新しければローカル採用', mergeRemoteIntoLocal(local, remote)[0].status === 'NG');
+  })();
+
+  // --- computeSummary (Task 6) ---
+  (function() {
+    const data = [
+      { status: 'OK' }, { status: 'OK' }, { status: '条件付き' }, { status: 'NG' }, { status: '未設定' }
+    ];
+    const s = computeSummary(data);
+    _assert('summary: 集計が正しい', s.OK === 2 && s['条件付き'] === 1 && s.NG === 1 && s['未設定'] === 1);
+  })();
+  // --- kanaGroupOf (Task 6) ---
+  _assert('kanaGroup: あ行', kanaGroupOf('あおき') === 'あ');
+  _assert('kanaGroup: か行(が)', kanaGroupOf('がんだ') === 'か');
+  _assert('kanaGroup: カタカナも判定', kanaGroupOf('サトウ') === 'さ');
+  _assert('kanaGroup: 該当なしは#', kanaGroupOf('') === '#');
+  // --- isRecentlyChanged (Task 6) ---
+  _assert('recent: 30日以内はtrue', isRecentlyChanged('2026-05-20', new Date('2026-05-23')) === true);
+  _assert('recent: 31日以上前はfalse', isRecentlyChanged('2026-04-10', new Date('2026-05-23')) === false);
+  _assert('recent: 空はfalse', isRecentlyChanged('', new Date('2026-05-23')) === false);
+  // --- filterRecords (Task 6) ---
+  (function() {
+    const data = [
+      { name: '青木一郎', kana: 'あおきいちろう', status: 'OK', note: '', active: true },
+      { name: '佐藤花子', kana: 'さとうはなこ', status: 'NG', note: '', active: true },
+      { name: '退所者', kana: 'たいしょ', status: 'OK', note: '', active: false }
+    ];
+    _assert('filter: 既定は在籍者のみ', filterRecords(data, {}).length === 2);
+    _assert('filter: ステータス絞り込み', filterRecords(data, { status: 'NG' }).length === 1);
+    _assert('filter: 氏名検索', filterRecords(data, { search: '青木' }).length === 1);
+    _assert('filter: フリガナ検索', filterRecords(data, { search: 'さとう' }).length === 1);
+    _assert('filter: あ行索引', filterRecords(data, { kanaGroup: 'あ' }).length === 1);
+    _assert('filter: 退所者を含める', filterRecords(data, { includeInactive: true }).length === 3);
+  })();
+  // --- filterRecords + schedule ---
+  (function() {
+    const data = [
+      { name: 'A', kana: 'あ', status: 'OK', days: '火木', ampm: '午前', active: true },
+      { name: 'B', kana: 'い', status: 'OK', days: '月水', ampm: '午後', active: true },
+      { name: 'C', kana: 'う', status: 'OK', days: '火金', ampm: '午後', active: true }
+    ];
+    _assert('filter: 曜日=火で2件', filterRecords(data, { day: '火' }).length === 2);
+    _assert('filter: 火＋午前で1件', filterRecords(data, { day: '火', ampm: '午前' }).length === 1);
+    _assert('filter: 午後だけで2件', filterRecords(data, { ampm: '午後' }).length === 2);
+  })();
+}
+</script>
+
+<script id="app">
+// ===== 状態・描画・同期・イベント =====
+const STORAGE_KEY = 'yawaragi_sns_kaodashi';
+const SNS_API_URL = 'https://script.google.com/macros/s/AKfycbyl6-9s3fzqWN91600Kh6ML6eRqFZWt5pjVaTzK9iEoj48PQmwwzy24rRCYrEE83QnV/exec';
+const ROSTER_GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+
+let state = { records: [], editMode: false, filter: { status: '', search: '', kanaGroup: '', day: '', ampm: '' }, includeInactive: false, sortBy: 'kana' };
+
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) state.records = JSON.parse(raw) || [];
+  } catch (e) { console.warn('localStorage読み込み失敗', e); }
+}
+function saveLocal() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records)); }
+  catch (e) { console.warn('localStorage保存失敗', e); }
+}
+
+function sortRecords(list) {
+  const arr = list.slice();
+  if (state.sortBy === 'changed') {
+    // 可否更新日が新しい順（空欄は末尾）
+    arr.sort((a, b) => (b.statusChangedAt || '').localeCompare(a.statusChangedAt || ''));
+  } else {
+    arr.sort((a, b) => (a.kana || '').localeCompare(b.kana || '', 'ja'));
+  }
+  return arr;
+}
+
+function statusClass(status) {
+  return { 'OK': 'st-ok', '条件付き': 'st-cond', 'NG': 'st-ng', '未設定': 'st-none' }[status] || 'st-none';
+}
+
+function render() {
+  const today = new Date();
+  const visible = sortRecords(filterRecords(state.records, {
+    status: state.filter.status, search: state.filter.search,
+    kanaGroup: state.filter.kanaGroup, includeInactive: state.includeInactive,
+    day: state.filter.day, ampm: state.filter.ampm
+  }));
+  const s = computeSummary(state.records.filter(r => r.active !== false));
+  let html = '';
+  html += '<div class="summary">'
+    + '<span class="badge st-ok">🟢OK ' + s.OK + '</span>'
+    + '<span class="badge st-cond">🟡条件付き ' + s['条件付き'] + '</span>'
+    + '<span class="badge st-ng">🔴NG ' + s.NG + '</span>'
+    + '<span class="badge st-none">⚪未設定 ' + s['未設定'] + '</span></div>';
+  html += '<table class="list"><thead><tr><th>氏名</th><th>顔出し</th><th>条件メモ</th><th>更新日</th></tr></thead><tbody>';
+  if (visible.length === 0) {
+    html += '<tr><td colspan="4" class="empty">該当者なし。「🔄 利用者台帳から取得」で読み込んでください</td></tr>';
+  }
+  visible.forEach(r => {
+    const idx = state.records.indexOf(r);
+    const recent = isRecentlyChanged(r.statusChangedAt, today) ? ' <span class="new-mark">🆕</span>' : '';
+    const sched = (r.days || r.ampm) ? ' <span class="sched-info">' + escapeHtml(r.days || '') + (r.ampm ? ' ' + escapeHtml(r.ampm) : '') + '</span>' : '';
+    html += '<tr class="' + statusClass(r.status) + '">';
+    html += '<td class="name">' + escapeHtml(r.name) + recent + sched + '</td>';
+    html += '<td class="status-cell" data-idx="' + idx + '">' + renderStatusCell(r, idx) + '</td>';
+    html += '<td class="note-cell" data-idx="' + idx + '">' + renderNoteCell(r, idx) + '</td>';
+    html += '<td class="changed">' + escapeHtml(r.statusChangedAt || '—') + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('content').innerHTML = html;
+}
+
+function renderStatusCell(r, idx) {
+  if (!state.editMode) return '<span class="status-label">' + escapeHtml(r.status) + '</span>';
+  let h = '<div class="status-btns">';
+  STATUS_LIST.forEach(st => {
+    const on = (r.status === st) ? ' on' : '';
+    h += '<button class="stbtn ' + statusClass(st) + on + '" data-idx="' + idx + '" data-status="' + st + '">' + st + '</button>';
+  });
+  return h + '</div>';
+}
+function renderNoteCell(r, idx) {
+  if (!state.editMode) return escapeHtml(r.note || '');
+  return '<input class="note-input" data-idx="' + idx + '" value="' + escapeHtml(r.note || '') + '" placeholder="条件をメモ">';
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function showStatus(msg) {
+  const el = document.getElementById('sync-status');
+  if (el) el.textContent = msg;
+}
+
+// 利用者台帳GASからJSONPで利用者一覧を取得
+function loadRoster() {
+  showStatus('📋 利用者台帳から取得中…');
+  const cbName = 'rosterCb_' + Date.now();
+  const timeout = setTimeout(() => {
+    delete window[cbName];
+    showStatus('⚠ 取得に時間がかかっています');
+  }, 15000);
+  window[cbName] = function(data) {
+    clearTimeout(timeout);
+    delete window[cbName];
+    if (script.parentNode) script.parentNode.removeChild(script);
+    try {
+      const roster = (data.users || [])
+        .map(u => ({ name: u.name || '', kana: u.kana || '', days: u.days || '', ampm: u.ampm || '' }))
+        .filter(u => u.name);
+      if (roster.length === 0) { showStatus('⚠ 利用者が見つかりません'); return; }
+      state.records = mergeRosterIntoData(state.records, roster);
+      saveLocal();
+      render();
+      showStatus('✅ ' + roster.length + '名を取得しました');
+    } catch (err) {
+      console.error(err);
+      showStatus('⚠ データ解析に失敗しました');
+    }
+  };
+  const script = document.createElement('script');
+  script.src = ROSTER_GAS_URL + '?callback=' + cbName;
+  script.onerror = function() {
+    clearTimeout(timeout);
+    delete window[cbName];
+    showStatus('⚠ 取得失敗。ネット接続を確認してください');
+  };
+  document.head.appendChild(script);
+}
+
+document.getElementById('btn-roster').addEventListener('click', loadRoster);
+
+let _syncTimer = null;
+
+// ローカルの全レコードを専用GASへ送信（空ガード付き・debounce）
+function scheduleSync() {
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(syncToCloud, 2500);
+}
+function syncToCloud() {
+  if (!state.records || state.records.length === 0) {
+    console.log('☁️ ローカルが空のため送信スキップ（空ガード）');
+    return;
+  }
+  const body = JSON.stringify({
+    records: state.records.map(r => ({
+      name: r.name, status: r.status, note: r.note,
+      statusChangedAt: r.statusChangedAt || '', updatedAt: r.updatedAt || ''
+    }))
+  });
+  try {
+    navigator.sendBeacon(SNS_API_URL, body);
+    console.log('☁️ 顔出しデータ同期完了');
+  } catch (e) {
+    fetch(SNS_API_URL, { method: 'POST', mode: 'no-cors', body: body, keepalive: true }).catch(() => {});
+  }
+}
+
+// 専用GASから取得してローカルにマージ
+function loadFromCloud(silent) {
+  return fetch(SNS_API_URL + '?t=' + Date.now())
+    .then(r => r.json())
+    .then(res => {
+      if (!res || !res.ok) return;
+      const before = JSON.stringify(state.records);
+      state.records = mergeRemoteIntoLocal(state.records, res.records || []);
+      saveLocal();
+      if (JSON.stringify(state.records) !== before) render();
+      if (!silent) showStatus('✅ 最新データを取得しました');
+    })
+    .catch(e => { console.warn('cloud load error', e); });
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function setStatus(idx, newStatus) {
+  const r = state.records[idx];
+  if (!r || r.status === newStatus) return;
+  r.status = newStatus;
+  r.statusChangedAt = todayStr();   // 可否更新日はstatus変更時のみ更新
+  r.updatedAt = new Date().toISOString();
+  saveLocal();
+  render();
+  scheduleSync();
+}
+function setNote(idx, newNote) {
+  const r = state.records[idx];
+  if (!r || r.note === newNote) return;
+  r.note = newNote;
+  r.updatedAt = new Date().toISOString();  // メモ変更ではstatusChangedAtは更新しない
+  saveLocal();
+  scheduleSync();
+}
+
+document.getElementById('chk-edit').addEventListener('change', e => {
+  state.editMode = e.target.checked;
+  document.body.classList.toggle('editing', state.editMode);
+  render();
+});
+
+// テーブルはinnerHTMLで再描画するためイベント委譲で受ける
+document.getElementById('content').addEventListener('click', e => {
+  const btn = e.target.closest('.stbtn');
+  if (btn) setStatus(parseInt(btn.dataset.idx, 10), btn.dataset.status);
+});
+document.getElementById('content').addEventListener('change', e => {
+  if (e.target.classList.contains('note-input')) {
+    setNote(parseInt(e.target.dataset.idx, 10), e.target.value);
+  }
+});
+
+const KANA_GROUPS = ['あ', 'か', 'さ', 'た', 'な', 'は', 'ま', 'や', 'ら', 'わ'];
+
+function renderKanaRow() {
+  let h = '<button class="kbtn on" data-kana="">全</button>';
+  KANA_GROUPS.forEach(g => { h += '<button class="kbtn" data-kana="' + g + '">' + g + '</button>'; });
+  document.getElementById('kana-row').innerHTML = h;
+}
+renderKanaRow();
+
+document.getElementById('search-box').addEventListener('input', e => {
+  state.filter.search = e.target.value;
+  render();
+});
+document.getElementById('filter-row').addEventListener('click', e => {
+  const b = e.target.closest('.fbtn');
+  if (!b) return;
+  state.filter.status = b.dataset.status;
+  document.querySelectorAll('#filter-row .fbtn').forEach(x => x.classList.toggle('on', x === b));
+  render();
+});
+document.getElementById('kana-row').addEventListener('click', e => {
+  const b = e.target.closest('.kbtn');
+  if (!b) return;
+  state.filter.kanaGroup = b.dataset.kana;
+  document.querySelectorAll('#kana-row .kbtn').forEach(x => x.classList.toggle('on', x === b));
+  render();
+});
+document.getElementById('chk-inactive').addEventListener('change', e => {
+  state.includeInactive = e.target.checked;
+  render();
+});
+document.getElementById('btn-sort').addEventListener('click', e => {
+  state.sortBy = (state.sortBy === 'kana') ? 'changed' : 'kana';
+  e.target.textContent = '並べ替え: ' + (state.sortBy === 'kana' ? 'あいうえお順' : '更新日が新しい順');
+  e.target.classList.toggle('on', state.sortBy === 'changed');
+  render();
+});
+document.getElementById('schedule-row').addEventListener('click', e => {
+  const sb = e.target.closest('.sbtn');
+  if (sb) {
+    state.filter.day = sb.dataset.day;
+    document.querySelectorAll('#schedule-row .sbtn').forEach(x => x.classList.toggle('on', x === sb));
+    render();
+    return;
+  }
+  const ab = e.target.closest('.ambtn');
+  if (ab) {
+    state.filter.ampm = ab.dataset.ampm;
+    document.querySelectorAll('#schedule-row .ambtn').forEach(x => x.classList.toggle('on', x === ab));
+    render();
+  }
+});
+
+loadLocal();
+render();
+loadFromCloud(true);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadFromCloud(true);
+});
+setInterval(() => {
+  if (document.visibilityState === 'visible') loadFromCloud(true);
+}, 30000);
+</script>
+</body>
+</html>
