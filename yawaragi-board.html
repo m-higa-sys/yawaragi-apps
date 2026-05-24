@@ -6746,6 +6746,11 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
             // 長期休みは月1回の経過連絡ルール。期間欠席の「未連絡」と意味が違うので
             // ラベルを「今月未連絡」に差し替える（2026-05-24 社長指摘）
             const chipText = absContactChipWithOperator(r).replace('未連絡', '今月未連絡');
+            // 「今月未連絡」バッジ自体をタップで詳細入力ダイアログを直接開ける
+            // （詳細ポップアップ経由せず1タップで内容入力に到達・2026-05-24 社長指示）
+            const chipClickable = st.cls === 'unsent'
+                ? ` onclick="event.stopPropagation(); absOpenContactDialog('${escName}')" style="cursor:pointer;" title="タップして連絡内容を入力"`
+                : '';
             // 2026-05-23: 注意事項バッジ + 経過情報（最終連絡からの日数・次回予定日）
             const noteBadge = r.contactNote ? `<span style="background:#f56565;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:2px;" title="${r.contactNote}">⚠ ${r.contactNote}</span>` : '';
             // 連絡経過の色分け
@@ -6768,7 +6773,7 @@ function absRenderUpcomingListFromData(gasAbsences, longTermData) {
                     <span class="abs-card-line1-left">
                         <span class="abs-card-name ${absCareNameClass(r.userName)}">${r.userName}</span>
                         <span style="background:#e53e3e;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:2px;">長期休み</span>
-                        <span class="abs-card-chip ${st.cls}">${chipText}</span>
+                        <span class="abs-card-chip ${st.cls}"${chipClickable}>${chipText}</span>
                         ${noteBadge}
                     </span>
                     <span class="abs-card-date">${dateText}</span>
