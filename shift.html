@@ -1067,25 +1067,11 @@ function renderCalendar() {
       cell.appendChild(label);
     }
 
-    // 他人で休む人を集計：外せない予定 + 希望休 をユニーク化
-    const otherAbsentSet = new Set(absenceNames.filter(n => n !== currentUser));
-    allWishes.forEach(w => {
-      if (w.day === d && w.staff !== currentUser) {
-        otherAbsentSet.add(w.staff);
-      }
-    });
-    const otherAbsentCount = otherAbsentSet.size;
-
-    if ((hasMineAbsence || otherAbsentCount > 0) && !isWeekend) {
-      let text = '';
-      if (hasMineAbsence) text += '自分の予定';
-      if (otherAbsentCount > 0) {
-        if (text) text += ' / ';
-        text += '他 ' + otherAbsentCount + '名';
-      }
+    // 自分の外せない予定のみ表示（他人情報は出さない＝気を使わず申請できるように）
+    if (hasMineAbsence && !isWeekend) {
       const absLabel = document.createElement('div');
       absLabel.className = 'cal-absence-label';
-      absLabel.textContent = text;
+      absLabel.textContent = '外せない予定';
       cell.appendChild(absLabel);
     }
 
