@@ -6038,6 +6038,10 @@ async function absSubmit(opts) {
     let mailSend = false;
     let mailCustomBody = '';
     let phoneCalled = false;
+    // 2026-05-24: メール派ケアマネで「メール送らない」を選んだ時の理由（phone/aware/manual/other）
+    let mailSkipReason = '';
+    let mailSkipReasonLabel = '';
+    let mailSkipReasonNote = '';
     if (cmOffice && contact !== 'ケアマネ') {
         // 休み連絡_手段 で分岐:
         //   '電話' / 'SMS' → 手動連絡確認ポップアップ
@@ -6069,6 +6073,10 @@ async function absSubmit(opts) {
                 mailCmName = r.cmName;
                 mailCmEmail = r.email;
                 mailCustomBody = r.body || '';
+            } else if (r.skipReason) {
+                mailSkipReason = r.skipReason;
+                mailSkipReasonLabel = r.skipReasonLabel || '';
+                mailSkipReasonNote = r.skipReasonNote || '';
             }
         }
     }
@@ -6094,7 +6102,12 @@ async function absSubmit(opts) {
             cmEmail: isFirst && mailSend ? mailCmEmail : '',
             cmName: mailCmName,
             cmCustomBody: isFirst && mailSend ? mailCustomBody : '',
-            contactMethod: phoneCalled ? 'phone' : (isFirst && mailSend ? 'mail' : '')
+            contactMethod: phoneCalled ? 'phone' : (isFirst && mailSend ? 'mail' : ''),
+            // 2026-05-24: メール派ケアマネで「メール送らない」を選んだ時の理由
+            // GAS側でcmNotifiedに反映+notify@へ通知メール送信（1件目のみ）
+            mailSkipReason: isFirst ? mailSkipReason : '',
+            mailSkipReasonLabel: isFirst ? mailSkipReasonLabel : '',
+            mailSkipReasonNote: isFirst ? mailSkipReasonNote : ''
         };
 
         // GAS送信（検証付きリトライ・バックグラウンドで実行）
@@ -6118,6 +6131,9 @@ async function absSubmit(opts) {
     if (contact === 'ケアマネ') localCmNotified = 'ケアマネ把握済';
     else if (mailSend) localCmNotified = '送信済';
     else if (phoneCalled) localCmNotified = '電話連絡済';
+    else if (mailSkipReason === 'phone') localCmNotified = '電話連絡済';
+    else if (mailSkipReason === 'aware') localCmNotified = 'ケアマネ把握済';
+    else if (mailSkipReason === 'manual') localCmNotified = '手動メール送信済';
     else localCmNotified = 'メールなし';
     const record = {
         id: Date.now(),
@@ -12113,7 +12129,8 @@ function _updateLocalCmCache(userName, dateStr, value, operator) {
 
 // 既存欠席の連絡状況マーク共通処理（confirm無し版・モーダル等からの直接実行用）
 // 2026-05-23: operator + nextContactDue + resultNote パラメータ追加
-async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage, operator, nextContactDue, resultNote) {
+// 2026-05-24: expectedReturn パラメータ追加（長期休みの再開予定日同時更新）
+async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage, operator, nextContactDue, resultNote, expectedReturn) {
     try {
         await fetch(ABS_BOARD_API_URL, {
             method: 'POST',
@@ -12126,7 +12143,8 @@ async function _markCmInternal(userName, dateStr, cmNotifiedValue, toastMessage,
                 cmNotified: cmNotifiedValue,
                 operator: operator || '',
                 nextContactDue: nextContactDue || '',
-                note: resultNote || ''
+                note: resultNote || '',
+                expectedReturn: expectedReturn || ''
             })
         });
         _updateLocalCmCache(userName, dateStr, cmNotifiedValue, operator);
@@ -12176,35 +12194,63 @@ function showContactMethodModal(userName, dateStr, isLongTerm, contactNote) {
             '</select>' +
         '</div>';
 
-    // 長期休みのときだけ：次回連絡予定日＋結果メモ入力
+    // 長期休みのときだけ：再開予定日＋結果メモ＋（折りたたみ）次回連絡予定日
     let longTermFieldsHtml = '';
     if (isLongTerm) {
-        // 次回連絡予定日のデフォルト = 今日+28日（4週間後）
+        // 次回連絡予定日のデフォルト = 今日+28日（4週間後・月1回ルール）
         const defaultNext = (function () {
             const d = new Date();
             d.setDate(d.getDate() + 28);
             return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         })();
+        // 既存の再開予定日を取得（_cachedLongTerm から該当利用者を探す）
+        let currentExpected = '';
+        try {
+            const lt = (window._cachedLongTerm || []).find(function (x) { return x.name === userName; });
+            if (lt && lt.expectedReturn && lt.expectedReturn !== '未定') currentExpected = lt.expectedReturn;
+        } catch (e) {}
+        const undecidedChecked = currentExpected ? '' : 'checked';
+        const dateDisabled = currentExpected ? '' : 'disabled';
         longTermFieldsHtml =
             '<div style="margin-bottom:14px;padding:10px;background:#f7fafc;border-radius:8px;border:1px solid #e2e8f0;">' +
                 '<div style="font-size:0.85rem;color:#4a5568;font-weight:600;margin-bottom:6px;">📅 長期休み 連絡管理</div>' +
-                '<label style="font-size:0.8rem;color:#4a5568;display:block;margin-bottom:2px;">次回連絡予定日</label>' +
-                '<input type="date" id="cm-next-due" value="' + defaultNext + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;margin-bottom:8px;">' +
+                // 再開予定日
+                '<label style="font-size:0.8rem;color:#4a5568;display:block;margin-bottom:2px;">再開予定日（利用再開はいつ？）</label>' +
+                '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">' +
+                    '<input type="date" id="cm-expected-return" value="' + currentExpected + '" ' + dateDisabled + ' style="flex:1;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;">' +
+                    '<label style="display:flex;align-items:center;gap:4px;font-size:0.85rem;color:#4a5568;cursor:pointer;">' +
+                        '<input type="checkbox" id="cm-expected-undecided" ' + undecidedChecked + ' onchange="document.getElementById(\'cm-expected-return\').disabled=this.checked;if(this.checked)document.getElementById(\'cm-expected-return\').value=\'\';">' +
+                        '未定' +
+                    '</label>' +
+                '</div>' +
+                // 結果メモ
                 '<label style="font-size:0.8rem;color:#4a5568;display:block;margin-bottom:2px;">結果メモ（例：状態変わらず・あと2週間で再評価）</label>' +
-                '<textarea id="cm-result-note" rows="2" placeholder="連絡内容のサマリー" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.9rem;resize:vertical;box-sizing:border-box;"></textarea>' +
+                '<textarea id="cm-result-note" rows="2" placeholder="連絡内容のサマリー" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.9rem;resize:vertical;box-sizing:border-box;margin-bottom:8px;"></textarea>' +
+                // 次回連絡予定日（折りたたみ：普段は隠して28日後固定）
+                '<details style="margin-top:4px;">' +
+                    '<summary style="font-size:0.78rem;color:#718096;cursor:pointer;user-select:none;">⚙ 次回連絡予定日を変える（普段は4週間後で自動）</summary>' +
+                    '<div style="margin-top:6px;">' +
+                        '<input type="date" id="cm-next-due" value="' + defaultNext + '" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;">' +
+                    '</div>' +
+                '</details>' +
             '</div>';
     }
 
     function mkBtn(label, color, cmValue, toast) {
-        // 長期休みのときは nextContactDue / note も拾う
+        // 長期休みのときは nextContactDue / note / expectedReturn も拾う
+        // expectedReturn: 「未定」チェック時は '未定' 文字列、日付選択時はYYYY-MM-DD、未入力は ''（更新しない）
         const collectExtras = isLongTerm
-            ? 'var nx=document.getElementById(\'cm-next-due\').value;var nt=document.getElementById(\'cm-result-note\').value;'
-            : 'var nx=\'\';var nt=\'\';';
+            ? 'var nx=document.getElementById(\'cm-next-due\').value;'
+              + 'var nt=document.getElementById(\'cm-result-note\').value;'
+              + 'var und=document.getElementById(\'cm-expected-undecided\').checked;'
+              + 'var er=document.getElementById(\'cm-expected-return\').value;'
+              + 'var ex=und?\'未定\':(er||\'\');'
+            : 'var nx=\'\';var nt=\'\';var ex=\'\';';
         return '<button onclick="' +
             'var op=document.getElementById(\'cm-operator-select\').value;' +
             'if(!op){alert(\'操作者を選択してください\');return;}' +
             collectExtras +
-            '_markCmInternal(\'' + escName + '\',\'' + dateStr + '\',\'' + cmValue + '\',\'' + toast + '\',op,nx,nt);' +
+            '_markCmInternal(\'' + escName + '\',\'' + dateStr + '\',\'' + cmValue + '\',\'' + toast + '\',op,nx,nt,ex);' +
             'document.getElementById(\'contact-method-modal\').remove();" ' +
             'style="' + btnBase + 'border:2px solid ' + color + ';color:' + color + ';">' + label + '</button>';
     }
@@ -12433,7 +12479,24 @@ async function showAbsenceMailConfirm(opts) {
             '<div style="text-align:right;margin-top:12px;">' +
             '<button id="btnAbsMailCancel" style="padding:10px 18px;margin-right:8px;background:#bdc3c7;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;">登録のみ（メール送らない）</button>' +
             '<button id="btnAbsMailSend" style="padding:10px 18px;background:#16a085;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">登録＋メール送信</button>' +
-            '</div></div>';
+            '</div>' +
+            // 2026-05-24: 「メール送らない」を押した時の理由必須選択（最初は非表示）
+            '<div id="absMailSkipReason" style="display:none;margin-top:14px;padding:14px;background:#fff5f5;border:2px solid #fc8181;border-radius:8px;">' +
+                '<div style="font-weight:bold;color:#c53030;margin-bottom:8px;font-size:14px;">⚠ メールを送らない理由を選んでください（必須）</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">' +
+                    '<button data-reason="phone" class="absSkipReasonBtn" style="padding:12px 8px;background:#fff;border:2px solid #3182ce;color:#3182ce;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;">📞 電話で連絡した</button>' +
+                    '<button data-reason="aware" class="absSkipReasonBtn" style="padding:12px 8px;background:#fff;border:2px solid #718096;color:#4a5568;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;">👤 ケアマネが把握済み</button>' +
+                    '<button data-reason="manual" class="absSkipReasonBtn" style="padding:12px 8px;background:#fff;border:2px solid #16a085;color:#16a085;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;">📧 手動Gmailで送った</button>' +
+                    '<button data-reason="other" class="absSkipReasonBtn" style="padding:12px 8px;background:#fff;border:2px solid #d69e2e;color:#b7791f;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;">✏ その他</button>' +
+                '</div>' +
+                // 「その他」選択時のみ表示される自由記述欄
+                '<div id="absSkipReasonOtherBox" style="display:none;margin-top:8px;">' +
+                    '<textarea id="absSkipReasonOtherText" rows="2" placeholder="理由を入力してください（必須）" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>' +
+                    '<button id="absSkipReasonOtherSubmit" style="margin-top:6px;padding:8px 16px;background:#d69e2e;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;">この理由で登録する</button>' +
+                '</div>' +
+                '<button id="absSkipReasonBack" style="margin-top:6px;padding:6px 12px;background:transparent;border:1px solid #cbd5e0;color:#718096;border-radius:6px;font-size:12px;cursor:pointer;">← 戻る（やっぱりメール送る）</button>' +
+            '</div>' +
+            '</div>';
 
         document.body.appendChild(overlay);
 
@@ -12454,9 +12517,52 @@ async function showAbsenceMailConfirm(opts) {
             refreshBodyView();
         };
 
+        // 「登録のみ（メール送らない）」→ 理由必須選択セクション展開（即resolveしない）
         document.getElementById('btnAbsMailCancel').onclick = () => {
+            document.getElementById('absMailSkipReason').style.display = 'block';
+            // 元の2ボタンは無効化（戻るボタンで復活）
+            document.getElementById('btnAbsMailCancel').disabled = true;
+            document.getElementById('btnAbsMailSend').disabled = true;
+            document.getElementById('btnAbsMailCancel').style.opacity = '0.4';
+            document.getElementById('btnAbsMailSend').style.opacity = '0.4';
+        };
+
+        // 理由ボタン群のハンドラ（phone/aware/manual はワンタップで確定、otherはtextarea展開）
+        const reasonLabels = {
+            phone: '📞 電話で連絡した',
+            aware: '👤 ケアマネが把握済み',
+            manual: '📧 手動Gmailで送った',
+            other: '✏ その他'
+        };
+        document.querySelectorAll('.absSkipReasonBtn').forEach(btn => {
+            btn.onclick = () => {
+                const reason = btn.getAttribute('data-reason');
+                if (reason === 'other') {
+                    document.getElementById('absSkipReasonOtherBox').style.display = 'block';
+                    document.getElementById('absSkipReasonOtherText').focus();
+                    return;
+                }
+                // ワンタップで確定
+                document.body.removeChild(overlay);
+                resolve({ send: false, skipReason: reason, skipReasonLabel: reasonLabels[reason], skipReasonNote: '' });
+            };
+        });
+        // 「その他」の確定ボタン
+        document.getElementById('absSkipReasonOtherSubmit').onclick = () => {
+            const note = (document.getElementById('absSkipReasonOtherText').value || '').trim();
+            if (!note) { alert('理由を入力してください'); return; }
             document.body.removeChild(overlay);
-            resolve({ send: false });
+            resolve({ send: false, skipReason: 'other', skipReasonLabel: reasonLabels.other, skipReasonNote: note });
+        };
+        // 戻るボタン（理由選択キャンセル→メール送信モーダルへ戻る）
+        document.getElementById('absSkipReasonBack').onclick = () => {
+            document.getElementById('absMailSkipReason').style.display = 'none';
+            document.getElementById('absSkipReasonOtherBox').style.display = 'none';
+            document.getElementById('absSkipReasonOtherText').value = '';
+            document.getElementById('btnAbsMailCancel').disabled = false;
+            document.getElementById('btnAbsMailSend').disabled = false;
+            document.getElementById('btnAbsMailCancel').style.opacity = '1';
+            document.getElementById('btnAbsMailSend').style.opacity = '1';
         };
         document.getElementById('btnAbsMailSend').onclick = async () => {
             const cmNameFinal = cmNameEditable ? (document.getElementById('cmNameInputAbs').value || '').trim() : opts.cmName;
