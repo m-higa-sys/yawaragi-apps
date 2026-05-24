@@ -1046,12 +1046,13 @@ function renderCalendar() {
     const isHoliday = HOLIDAYS[dateStr];
     const isMine = myDaySet.has(d);
     const absenceNames = getAbsenceNames(d);
+    const hasMineAbsence = absenceNames.includes(currentUser);
 
     let cls = 'cal-cell';
     if (isWeekend) cls += ' weekend';
     else if (isMine) cls += ' mine';
     if (isHoliday && !isWeekend) cls += ' holiday';
-    if (absenceNames.length > 0 && !isWeekend) cls += ' has-absence';
+    if (hasMineAbsence && !isWeekend) cls += ' has-absence';
     cell.className = cls;
 
     const dayDiv = document.createElement('div');
@@ -1066,14 +1067,21 @@ function renderCalendar() {
       cell.appendChild(label);
     }
 
-    if (absenceNames.length > 0 && !isWeekend) {
-      const others = absenceNames.filter(n => n !== currentUser);
-      const hasMine = absenceNames.includes(currentUser);
+    // 他人で休む人を集計：外せない予定 + 希望休 をユニーク化
+    const otherAbsentSet = new Set(absenceNames.filter(n => n !== currentUser));
+    allWishes.forEach(w => {
+      if (w.day === d && w.staff !== currentUser) {
+        otherAbsentSet.add(w.staff);
+      }
+    });
+    const otherAbsentCount = otherAbsentSet.size;
+
+    if ((hasMineAbsence || otherAbsentCount > 0) && !isWeekend) {
       let text = '';
-      if (hasMine) text += '自分の予定';
-      if (others.length > 0) {
+      if (hasMineAbsence) text += '自分の予定';
+      if (otherAbsentCount > 0) {
         if (text) text += ' / ';
-        text += '他 ' + others.length + '名';
+        text += '他 ' + otherAbsentCount + '名';
       }
       const absLabel = document.createElement('div');
       absLabel.className = 'cal-absence-label';
