@@ -238,15 +238,25 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .modal .btn-row .block-mitei { background: #4a5568; color: #fff; }
 .modal .btn-row .unblock { background: #718096; color: #fff; }
 
-/* 保留セル（リハブで計画書作れない月）*/
-.check-cell.blocked {
+/* 保留セル: 保険未登録（オレンジ・⚠） */
+.check-cell.blocked-hoken {
     background: #fef3c7 !important;
     box-shadow: inset 0 0 0 2px #b7791f !important;
     color: #78350f !important;
     font-weight: bold;
 }
-.check-cell.blocked::before { content: '⚠ '; }
-.check-cell.blocked.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #b7791f !important; }
+.check-cell.blocked-hoken::before { content: '⚠ '; }
+.check-cell.blocked-hoken.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #b7791f !important; }
+
+/* 保留セル: 利用継続未確定（グレー・⏸） */
+.check-cell.blocked-mitei {
+    background: #e2e8f0 !important;
+    box-shadow: inset 0 0 0 2px #4a5568 !important;
+    color: #2d3748 !important;
+    font-weight: bold;
+}
+.check-cell.blocked-mitei::before { content: '⏸ '; }
+.check-cell.blocked-mitei.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #4a5568 !important; }
 
 .toast {
     position: fixed;
@@ -659,8 +669,9 @@ function renderTable() {
                     return;
                 }
                 const val = rec[sub.field] || '';
-                if (isBlocked) cls += ' blocked';
-                else if (allDone) cls += ' all-done has-value';
+                if (isBlocked) {
+                    cls += (rec.blocked_reason === '利用継続未確定') ? ' blocked-mitei' : ' blocked-hoken';
+                } else if (allDone) cls += ' all-done has-value';
                 else if (val) cls += ' checked';
                 else if (isPast) cls += ' highlight-undone';
                 if (isCurrent) cls += ' current';
