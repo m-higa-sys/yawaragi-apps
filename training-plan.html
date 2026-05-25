@@ -234,6 +234,18 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .modal .btn-row .ok { background: #2c7a7b; color: #fff; }
 .modal .btn-row .clear { background: #9c4221; color: #fff; }
 .modal .btn-row .cancel { background: #edf2f7; color: #4a5568; }
+.modal .btn-row .block { background: #b7791f; color: #fff; }
+.modal .btn-row .unblock { background: #718096; color: #fff; }
+
+/* 保留セル（リハブで計画書作れない月）*/
+.check-cell.blocked {
+    background: #fef3c7 !important;
+    box-shadow: inset 0 0 0 2px #b7791f !important;
+    color: #78350f !important;
+    font-weight: bold;
+}
+.check-cell.blocked::before { content: '⚠ '; }
+.check-cell.blocked.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #b7791f !important; }
 
 .toast {
     position: fixed;
@@ -348,8 +360,10 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
             <button class="ok" onclick="saveDateFromDialog()">OK</button>
         </div>
         <div class="btn-row" style="margin-top:6px;">
+            <button id="blockBtn" class="block" onclick="toggleBlocked()">⚠ 保留にする</button>
             <button class="cancel" onclick="closeDateDialog()">キャンセル</button>
         </div>
+        <div id="blockedSub" style="display:none; font-size:0.85rem; color:#78350f; margin-top:8px; padding:8px 10px; background:#fef3c7; border-left:3px solid #b7791f; border-radius:6px;"></div>
     </div>
 </div>
 
@@ -536,7 +550,8 @@ async function loadFiscalYearData() {
                 newRecords[key] = {
                     kyoumi_date: rec.kyoumi_date || '',
                     seikatsu_date: rec.seikatsu_date || '',
-                    keikaku_date: rec.keikaku_date || ''
+                    keikaku_date: rec.keikaku_date || '',
+                    blocked_reason: rec.blocked_reason || ''
                 };
             });
         });
@@ -620,12 +635,13 @@ function renderTable() {
         MONTHS.forEach(mo => {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
-            const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '' };
+            const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
             const isPlan = isPlanMonth(u.planStart, cellYear, mo.m);
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
             const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
             const filled = SUB_COLS.filter(s => rec[s.field]).length;
             const allDone = filled === 3;
+            const isBlocked = !!rec.blocked_reason;
 
             SUB_COLS.forEach((sub, si) => {
                 let cls = 'check-cell';
@@ -636,7 +652,8 @@ function renderTable() {
                     return;
                 }
                 const val = rec[sub.field] || '';
-                if (allDone) cls += ' all-done has-value';
+                if (isBlocked) cls += ' blocked';
+                else if (allDone) cls += ' all-done has-value';
                 else if (val) cls += ' checked';
                 else if (isPast) cls += ' highlight-undone';
                 if (isCurrent) cls += ' current';
@@ -712,22 +729,93 @@ function onCellTap(td) {
     const field = td.dataset.field;
     const fieldLabel = td.dataset.fieldlabel;
     const key = userId + '_' + year + '_' + month;
-    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '' };
+    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
     const current = rec[field] || '';
-    if (!current) {
+    const isBlocked = !!rec.blocked_reason;
+    // 保留中セルは無条件でダイアログを開く（解除ボタンを使えるように）
+    if (!current && !isBlocked) {
         applyValue(userId, name, year, month, field, fieldLabel, formatTodayISO());
     } else {
-        openDateDialog(userId, name, year, month, field, fieldLabel, current);
+        openDateDialog(userId, name, year, month, field, fieldLabel, current, rec.blocked_reason || '');
     }
 }
 
-function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue) {
-    dialogState = { userId, name, year, month, field, fieldLabel, currentValue };
+function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue, blockedReason) {
+    dialogState = { userId, name, year, month, field, fieldLabel, currentValue, blockedReason: blockedReason || '' };
     const labelMap = { kyoumi_date: '興味関心', seikatsu_date: '生活機能', keikaku_date: '計画書' };
     document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月の' + labelMap[field];
-    document.getElementById('dateDialogSub').textContent = '現在: ' + currentValue;
+    document.getElementById('dateDialogSub').textContent = '現在: ' + (currentValue || '(未入力)');
     document.getElementById('dateInput').value = currentValue;
+    const blockedSub = document.getElementById('blockedSub');
+    const blockBtn = document.getElementById('blockBtn');
+    if (blockedReason) {
+        blockedSub.style.display = 'block';
+        blockedSub.textContent = '⚠ 保留中: ' + blockedReason;
+        blockBtn.textContent = '⚠ 保留解除';
+        blockBtn.className = 'unblock';
+    } else {
+        blockedSub.style.display = 'none';
+        blockBtn.textContent = '⚠ 保留にする';
+        blockBtn.className = 'block';
+    }
     document.getElementById('dateDialog').classList.add('show');
+}
+
+async function toggleBlocked() {
+    const ds = dialogState;
+    if (ds.blockedReason) {
+        // 保留解除
+        if (!confirm(ds.name + ' ' + ds.month + '月の保留を解除しますか？')) return;
+        closeDateDialog();
+        await applyBlockedReason(ds.userId, ds.name, ds.year, ds.month, '');
+    } else {
+        // 保留にする
+        if (!confirm(ds.name + ' ' + ds.month + '月を「保険未登録のため保留」にしますか？\n\n・タスクボードに相談員依頼が自動登録されます\n・セルがオレンジ＋⚠表示になります')) return;
+        closeDateDialog();
+        await applyBlockedReason(ds.userId, ds.name, ds.year, ds.month, '保険未登録');
+    }
+}
+
+async function applyBlockedReason(userId, name, year, month, reason) {
+    const key = userId + '_' + year + '_' + month;
+    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+    rec.blocked_reason = reason;
+    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason) {
+        delete state.records[key];
+    } else {
+        state.records[key] = rec;
+    }
+    saveCache();
+    renderTable();
+
+    try {
+        const url = API_BASE + '?action=updateKeikakusho'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&year=' + year + '&month=' + month
+            + '&field=blocked_reason'
+            + '&value=' + encodeURIComponent(reason)
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        if (reason) {
+            const tb = json.taskBoard;
+            if (tb && tb.added) {
+                showToast('⚠ ' + name + ' ' + month + '月 保留設定。タスクボードに相談員依頼を登録しました', 'warn');
+            } else if (tb && !tb.added && tb.reason === 'already exists') {
+                showToast('⚠ ' + name + ' ' + month + '月 保留設定。タスクボードに既存依頼あり', 'warn');
+            } else {
+                showToast('⚠ ' + name + ' ' + month + '月 保留設定', 'warn');
+            }
+        } else {
+            showToast('✅ ' + name + ' ' + month + '月 保留解除', '');
+        }
+        hideOffline();
+    } catch (e) {
+        console.error('updateKeikakusho (blocked_reason) error:', e);
+        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        showOffline();
+    }
 }
 
 function closeDateDialog() {
@@ -751,9 +839,9 @@ async function clearCheckDate() {
 
 async function applyValue(userId, name, year, month, field, fieldLabel, value) {
     const key = userId + '_' + year + '_' + month;
-    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '' };
+    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
     rec[field] = value;
-    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date) {
+    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason) {
         delete state.records[key];
     } else {
         state.records[key] = rec;
