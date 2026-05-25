@@ -312,6 +312,20 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         <button class="filter-btn" onclick="setAmpmFilter('午前', event)">午前</button>
         <button class="filter-btn" onclick="setAmpmFilter('午後', event)">午後</button>
     </div>
+    <span class="label" style="margin-left:8px;">行:</span>
+    <div id="groupFilters" style="display:flex; gap:4px; flex-wrap:wrap;">
+        <button class="filter-btn active" onclick="setGroupFilter('', event)">全て</button>
+        <button class="filter-btn" onclick="setGroupFilter('ア', event)">あ</button>
+        <button class="filter-btn" onclick="setGroupFilter('カ', event)">か</button>
+        <button class="filter-btn" onclick="setGroupFilter('サ', event)">さ</button>
+        <button class="filter-btn" onclick="setGroupFilter('タ', event)">た</button>
+        <button class="filter-btn" onclick="setGroupFilter('ナ', event)">な</button>
+        <button class="filter-btn" onclick="setGroupFilter('ハ', event)">は</button>
+        <button class="filter-btn" onclick="setGroupFilter('マ', event)">ま</button>
+        <button class="filter-btn" onclick="setGroupFilter('ヤ', event)">や</button>
+        <button class="filter-btn" onclick="setGroupFilter('ラ', event)">ら</button>
+        <button class="filter-btn" onclick="setGroupFilter('ワ', event)">わ</button>
+    </div>
     <span class="filter-count" id="filterCount"></span>
 </div>
 
@@ -370,9 +384,9 @@ const MONTHS = [
     { m: 3, label: '3月', nextYear: true }
 ];
 const SUB_COLS = [
-    { field: 'kyoumi_date', label: '興' },
-    { field: 'seikatsu_date', label: '生' },
-    { field: 'keikaku_date', label: '計' }
+    { field: 'kyoumi_date', label: '興味' },
+    { field: 'seikatsu_date', label: '生活' },
+    { field: 'keikaku_date', label: '計画' }
 ];
 
 // ============ 状態 ============
@@ -384,6 +398,7 @@ let state = {
 };
 let filterDay = '';
 let filterAmpm = '';
+let filterGroup = '';
 let dialogState = { userId: '', name: '', year: 0, month: 0, field: '', fieldLabel: '', currentValue: '' };
 let planStartDialogState = { userId: '', name: '', currentValue: '' };
 
@@ -580,7 +595,7 @@ function renderTable() {
     const filteredUsers = state.users.filter(u => matchesFilter(u));
     document.getElementById('filterBar').style.display = state.users.some(u => u.days) ? 'flex' : 'none';
     const fcEl = document.getElementById('filterCount');
-    fcEl.textContent = (filterDay || filterAmpm)
+    fcEl.textContent = (filterDay || filterAmpm || filterGroup)
         ? filteredUsers.length + ' / ' + state.users.length + '名 表示中'
         : '';
 
@@ -646,6 +661,7 @@ function renderTable() {
 function matchesFilter(u) {
     if (filterDay && (!u.days || u.days.indexOf(filterDay) < 0)) return false;
     if (filterAmpm && u.ampm !== filterAmpm) return false;
+    if (filterGroup && getGroup(u.furigana) !== filterGroup) return false;
     return true;
 }
 
@@ -677,6 +693,12 @@ function setAmpmFilter(a, ev) {
     filterAmpm = a;
     document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
     ev.target.classList.add('active-ampm');
+    renderTable();
+}
+function setGroupFilter(g, ev) {
+    filterGroup = g;
+    document.querySelectorAll('#groupFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    ev.target.classList.add('active');
     renderTable();
 }
 
