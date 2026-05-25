@@ -238,6 +238,29 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .modal .btn-row .block-mitei { background: #4a5568; color: #fff; }
 .modal .btn-row .unblock { background: #718096; color: #fff; }
 
+/* 保留中バナー（ダイアログ最上部・最大の目立ち度） */
+#blockedBanner {
+    font-size: 1.25rem;
+    font-weight: bold;
+    padding: 16px 18px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+#blockedBanner.banner-hoken {
+    background: #fef3c7;
+    color: #78350f;
+    border: 3px solid #b7791f;
+    box-shadow: 0 0 0 2px #fef3c7, 0 4px 12px rgba(183,121,31,0.25);
+}
+#blockedBanner.banner-mitei {
+    background: #e2e8f0;
+    color: #2d3748;
+    border: 3px solid #4a5568;
+    box-shadow: 0 0 0 2px #e2e8f0, 0 4px 12px rgba(74,85,104,0.25);
+}
+
 /* 保留セル: 保険未登録（オレンジ・⚠） */
 .check-cell.blocked-hoken {
     background: #fef3c7 !important;
@@ -363,6 +386,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 <!-- 日付編集ダイアログ -->
 <div class="modal-overlay" id="dateDialog">
     <div class="modal">
+        <div id="blockedBanner" style="display:none;"></div>
         <h3 id="dateDialogTitle">日付編集</h3>
         <div class="sub" id="dateDialogSub"></div>
         <input type="date" id="dateInput">
@@ -765,15 +789,20 @@ function openDateDialog(userId, name, year, month, field, fieldLabel, currentVal
     document.getElementById('dateDialogSub').textContent = '現在: ' + (currentValue || '(未入力)');
     document.getElementById('dateInput').value = currentValue;
     const blockedSub = document.getElementById('blockedSub');
+    const blockedBanner = document.getElementById('blockedBanner');
     const blockBtnRow = document.getElementById('blockBtnRow');
     const unblockBtnRow = document.getElementById('unblockBtnRow');
     if (blockedReason) {
-        blockedSub.style.display = 'block';
-        blockedSub.textContent = '⚠ 保留中: ' + blockedReason;
+        blockedSub.style.display = 'none';
+        const isMitei = (blockedReason === '利用継続未確定');
+        blockedBanner.textContent = (isMitei ? '⏸ 保留中: ' : '⚠ 保留中: ') + blockedReason;
+        blockedBanner.className = isMitei ? 'banner-mitei' : 'banner-hoken';
+        blockedBanner.style.display = 'block';
         blockBtnRow.style.display = 'none';
         unblockBtnRow.style.display = 'flex';
     } else {
         blockedSub.style.display = 'none';
+        blockedBanner.style.display = 'none';
         blockBtnRow.style.display = 'flex';
         unblockBtnRow.style.display = 'none';
     }
