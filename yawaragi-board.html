@@ -597,6 +597,9 @@
         /* 出席予定タブ: 名前spanの介護度背景色（2026-05-23・pillから移行） */
         .att-user-name.care-kaigo { background: #fde2e2; padding: 2px 8px; border-radius: 8px; }
         .att-user-name.care-shien { background: #dbeafe; padding: 2px 8px; border-radius: 8px; }
+        /* 出席予定タブ: 名前タップで月次利用状況モーダル（2026-05-26追加・hoverで下線表示） */
+        .att-user-name { transition: text-decoration-color 0.15s; text-decoration: underline; text-decoration-color: transparent; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+        .att-user-name:hover { text-decoration-color: #2c5282; }
         /* 出席予定タブ: 横並びレイアウト（2026-05-23・社長モック2版に合わせ作り替え） */
         .att-row-left {
             display: flex; align-items: center; gap: 4px; flex-shrink: 0;
@@ -7864,13 +7867,21 @@ function attRenderUser(u) {
         }
     }
 
-    return '<div class="att-user-row" onclick="attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" style="cursor:pointer;">' +
+    // クリック分岐（2026-05-26リファクタ）:
+    //   .att-user-icon → 既存 attUserClick（欠席登録 or 欠席詳細）
+    //   .att-user-name → 新規 attShowMonthlyUsage（月次利用状況モーダル）
+    //   行の余白部分はクリック反応なし
+    return '<div class="att-user-row">' +
         '<span class="att-row-left">' +
             usageBadge +
-            '<div class="att-user-icon ' + iconClass + '">' + iconText + '</div>' +
+            '<div class="att-user-icon ' + iconClass + '" ' +
+                'onclick="event.stopPropagation();attUserClick(\'' + escapedName + '\',' + (isAbsent ? 'true' : 'false') + ')" ' +
+                'style="cursor:pointer;">' + iconText + '</div>' +
         '</span>' +
         '<div class="att-row-body">' +
-            '<span class="att-user-name ' + careCls + '">' + u.name + '</span>' +
+            '<span class="att-user-name ' + careCls + '" ' +
+                'onclick="event.stopPropagation();attShowMonthlyUsage(\'' + escapedName + '\')" ' +
+                'style="cursor:pointer;">' + u.name + '</span>' +
             prevAbsentBadge +
             resumedBadge +
             (reasonDisplay ? '<span class="att-reason-pill">' + reasonDisplay + '</span>' : '') +
@@ -7878,6 +7889,12 @@ function attRenderUser(u) {
             resumeText +
         '</div>' +
         '</div>';
+}
+
+// 出席予定タブで名前タップ時：月次利用状況モーダルを開く（2026-05-26追加）
+// Task 6 以降でモーダル本体を実装する。それまでは alert スタブで導線確認のみ。
+function attShowMonthlyUsage(name) {
+    alert('月次利用状況モーダル（実装中）：' + name);
 }
 
 // 出席予定タブで利用者クリック時の分岐
