@@ -336,6 +336,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     <button class="primary" onclick="loadFiscalYearData()">🔄 再読込</button>
     <button class="secondary" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
     <button onclick="window.print()">🖨 印刷</button>
+    <button onclick="openOperatorDialog()" id="operatorBtn" style="background:#edf2f7;">👤 操作者: <span id="operatorLabel">未選択</span></button>
     <div class="stats">
         登録: <strong id="totalUsers">0</strong> 名 ／ 今月該当: <strong id="thisMonthCount">0</strong> ／ 完了: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
     </div>
@@ -383,6 +384,15 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999;">読み込み中...</div>
 </div>
 
+<!-- 操作者選択モーダル（起動時に1回） -->
+<div class="modal-overlay" id="operatorDialog">
+    <div class="modal">
+        <h3>操作者を選択してください</h3>
+        <div class="sub">操作ログに記録します。後でツールバーの「操作者」ボタンから変更できます。</div>
+        <div id="operatorList" style="display:flex; flex-wrap:wrap; gap:8px; margin:14px 0;"></div>
+    </div>
+</div>
+
 <!-- 日付編集ダイアログ -->
 <div class="modal-overlay" id="dateDialog">
     <div class="modal">
@@ -390,7 +400,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         <h3 id="dateDialogTitle">日付編集</h3>
         <div class="sub" id="dateDialogSub"></div>
         <input type="date" id="dateInput">
-        <div class="btn-row">
+        <div class="btn-row" id="dateInputBtnRow">
             <button class="clear" onclick="clearCheckDate()">取消</button>
             <button class="ok" onclick="saveDateFromDialog()">OK</button>
         </div>
@@ -430,6 +440,8 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const CACHE_PREFIX = 'yawaragi_keikakusho_v1_';
+const OPERATOR_KEY = 'yawaragi_keikakusho_operator';
+const OPERATOR_FIXED = ['代表'];  // スタッフ一覧APIに含まれない・先頭固定
 const MONTHS = [
     { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
     { m: 7, label: '7月' }, { m: 8, label: '8月' }, { m: 9, label: '9月' },
@@ -449,7 +461,8 @@ let state = {
     fiscalYear: getCurrentFiscalYear(),
     users: [],            // [{ userId, name, furigana, category, days, ampm, planStart }]
     records: {},          // key: "userId_year_month" → { kyoumi_date, seikatsu_date, keikaku_date }
-    isLoading: false
+    isLoading: false,
+    operator: ''          // 操作者（localStorage 経由）
 };
 let filterDay = '';
 let filterAmpm = '';
@@ -785,15 +798,20 @@ function onCellTap(td) {
 function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue, blockedReason) {
     dialogState = { userId, name, year, month, field, fieldLabel, currentValue, blockedReason: blockedReason || '' };
     const labelMap = { kyoumi_date: '興味関心', seikatsu_date: '生活機能', keikaku_date: '計画書' };
-    document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月の' + labelMap[field];
-    document.getElementById('dateDialogSub').textContent = '現在: ' + (currentValue || '(未入力)');
-    document.getElementById('dateInput').value = currentValue;
     const blockedSub = document.getElementById('blockedSub');
     const blockedBanner = document.getElementById('blockedBanner');
     const blockBtnRow = document.getElementById('blockBtnRow');
     const unblockBtnRow = document.getElementById('unblockBtnRow');
+    const dateInput = document.getElementById('dateInput');
+    const dateInputBtnRow = document.getElementById('dateInputBtnRow');
+    const dateDialogSub = document.getElementById('dateDialogSub');
+
     if (blockedReason) {
-        blockedSub.style.display = 'none';
+        // 保留中: シンプル表示（タイトルは「○○さん N月」のみ・日付入力欄も非表示）
+        document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月';
+        dateDialogSub.style.display = 'none';
+        dateInput.style.display = 'none';
+        dateInputBtnRow.style.display = 'none';
         const isMitei = (blockedReason === '利用継続未確定');
         blockedBanner.textContent = (isMitei ? '⏸ 保留中: ' : '⚠ 保留中: ') + blockedReason;
         blockedBanner.className = isMitei ? 'banner-mitei' : 'banner-hoken';
@@ -801,6 +819,13 @@ function openDateDialog(userId, name, year, month, field, fieldLabel, currentVal
         blockBtnRow.style.display = 'none';
         unblockBtnRow.style.display = 'flex';
     } else {
+        // 通常: 日付入力欄表示
+        document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月の' + labelMap[field];
+        dateDialogSub.style.display = 'block';
+        dateDialogSub.textContent = '現在: ' + (currentValue || '(未入力)');
+        dateInput.style.display = 'block';
+        dateInput.value = currentValue;
+        dateInputBtnRow.style.display = 'flex';
         blockedSub.style.display = 'none';
         blockedBanner.style.display = 'none';
         blockBtnRow.style.display = 'flex';
@@ -841,6 +866,7 @@ async function applyBlockedReason(userId, name, year, month, reason) {
             + '&year=' + year + '&month=' + month
             + '&field=blocked_reason'
             + '&value=' + encodeURIComponent(reason)
+            + '&operator=' + encodeURIComponent(getOperator())
             + '&t=' + Date.now();
         const res = await fetch(url);
         const json = await res.json();
@@ -902,6 +928,7 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value) {
             + '&year=' + year + '&month=' + month
             + '&field=' + field
             + '&value=' + encodeURIComponent(value)
+            + '&operator=' + encodeURIComponent(getOperator())
             + '&t=' + Date.now();
         const res = await fetch(url);
         const json = await res.json();
@@ -960,6 +987,7 @@ async function applyPlanStart(userId, name, value) {
         const url = API_BASE + '?action=updatePlanStart'
             + '&userId=' + encodeURIComponent(userId)
             + '&value=' + encodeURIComponent(value)
+            + '&operator=' + encodeURIComponent(getOperator())
             + '&t=' + Date.now();
         const res = await fetch(url);
         const json = await res.json();
@@ -975,9 +1003,51 @@ async function applyPlanStart(userId, name, value) {
 }
 
 // ============ 起動 ============
+// ============ 操作者管理 ============
+function getOperator() {
+    return state.operator || localStorage.getItem(OPERATOR_KEY) || '';
+}
+function setOperator(name) {
+    state.operator = name;
+    if (name) localStorage.setItem(OPERATOR_KEY, name);
+    else localStorage.removeItem(OPERATOR_KEY);
+    document.getElementById('operatorLabel').textContent = name || '未選択';
+    document.getElementById('operatorBtn').style.background = name ? '#e6fffa' : '#fff5f0';
+}
+async function fetchStaffList() {
+    try {
+        const res = await fetch(API_BASE + '?action=staff_list&t=' + Date.now());
+        const json = await res.json();
+        return (json && json.staff) || [];
+    } catch (e) {
+        console.warn('staff_list fetch failed', e);
+        return [];
+    }
+}
+async function openOperatorDialog() {
+    const list = document.getElementById('operatorList');
+    list.innerHTML = '<div style="padding:8px; color:#718096;">読み込み中...</div>';
+    document.getElementById('operatorDialog').classList.add('show');
+    const staff = await fetchStaffList();
+    const all = OPERATOR_FIXED.concat(staff);
+    list.innerHTML = all.map(s =>
+        '<button onclick="selectOperator(\'' + s.replace(/'/g, "\\'") + '\')" '
+        + 'style="padding:10px 16px; min-height:40px; border:2px solid #2c7a7b; background:#fff; '
+        + 'color:#2c3e50; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit;">'
+        + s + (state.operator === s ? ' ✓' : '') + '</button>'
+    ).join('');
+}
+function selectOperator(name) {
+    setOperator(name);
+    document.getElementById('operatorDialog').classList.remove('show');
+    showToast('✅ 操作者: ' + name);
+}
+
 window.addEventListener('load', async () => {
+    setOperator(getOperator());  // 起動時に状態を同期
     populateFiscalYearSelect();
     loadCache();
+    if (!getOperator()) openOperatorDialog();  // 未選択なら強制モーダル
     await loadFiscalYearData();
 });
 document.addEventListener('visibilitychange', () => {
