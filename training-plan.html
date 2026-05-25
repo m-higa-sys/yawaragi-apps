@@ -235,6 +235,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .modal .btn-row .clear { background: #9c4221; color: #fff; }
 .modal .btn-row .cancel { background: #edf2f7; color: #4a5568; }
 .modal .btn-row .block { background: #b7791f; color: #fff; }
+.modal .btn-row .block-mitei { background: #4a5568; color: #fff; }
 .modal .btn-row .unblock { background: #718096; color: #fff; }
 
 /* 保留セル（リハブで計画書作れない月）*/
@@ -359,8 +360,14 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
             <button class="clear" onclick="clearCheckDate()">取消</button>
             <button class="ok" onclick="saveDateFromDialog()">OK</button>
         </div>
+        <div class="btn-row" id="blockBtnRow" style="margin-top:6px;">
+            <button id="blockBtnHoken" class="block" onclick="setBlocked('保険未登録')">⚠ 保険未登録</button>
+            <button id="blockBtnMitei" class="block-mitei" onclick="setBlocked('利用継続未確定')">⏸ 利用未確定</button>
+        </div>
+        <div class="btn-row" id="unblockBtnRow" style="margin-top:6px; display:none;">
+            <button class="unblock" onclick="setBlocked('')">⚠ 保留解除</button>
+        </div>
         <div class="btn-row" style="margin-top:6px;">
-            <button id="blockBtn" class="block" onclick="toggleBlocked()">⚠ 保留にする</button>
             <button class="cancel" onclick="closeDateDialog()">キャンセル</button>
         </div>
         <div id="blockedSub" style="display:none; font-size:0.85rem; color:#78350f; margin-top:8px; padding:8px 10px; background:#fef3c7; border-left:3px solid #b7791f; border-radius:6px;"></div>
@@ -747,33 +754,33 @@ function openDateDialog(userId, name, year, month, field, fieldLabel, currentVal
     document.getElementById('dateDialogSub').textContent = '現在: ' + (currentValue || '(未入力)');
     document.getElementById('dateInput').value = currentValue;
     const blockedSub = document.getElementById('blockedSub');
-    const blockBtn = document.getElementById('blockBtn');
+    const blockBtnRow = document.getElementById('blockBtnRow');
+    const unblockBtnRow = document.getElementById('unblockBtnRow');
     if (blockedReason) {
         blockedSub.style.display = 'block';
         blockedSub.textContent = '⚠ 保留中: ' + blockedReason;
-        blockBtn.textContent = '⚠ 保留解除';
-        blockBtn.className = 'unblock';
+        blockBtnRow.style.display = 'none';
+        unblockBtnRow.style.display = 'flex';
     } else {
         blockedSub.style.display = 'none';
-        blockBtn.textContent = '⚠ 保留にする';
-        blockBtn.className = 'block';
+        blockBtnRow.style.display = 'flex';
+        unblockBtnRow.style.display = 'none';
     }
     document.getElementById('dateDialog').classList.add('show');
 }
 
-async function toggleBlocked() {
+async function setBlocked(reason) {
     const ds = dialogState;
-    if (ds.blockedReason) {
+    if (!reason) {
         // 保留解除
         if (!confirm(ds.name + ' ' + ds.month + '月の保留を解除しますか？')) return;
-        closeDateDialog();
-        await applyBlockedReason(ds.userId, ds.name, ds.year, ds.month, '');
-    } else {
-        // 保留にする
+    } else if (reason === '保険未登録') {
         if (!confirm(ds.name + ' ' + ds.month + '月を「保険未登録のため保留」にしますか？\n\n・タスクボードに相談員依頼が自動登録されます\n・セルがオレンジ＋⚠表示になります')) return;
-        closeDateDialog();
-        await applyBlockedReason(ds.userId, ds.name, ds.year, ds.month, '保険未登録');
+    } else if (reason === '利用継続未確定') {
+        if (!confirm(ds.name + ' ' + ds.month + '月を「利用継続未確定」で保留にしますか？\n\n・来月の利用が決まってから計画書作成する目印です\n・タスクボードには登録されません（社長メモ扱い）')) return;
     }
+    closeDateDialog();
+    await applyBlockedReason(ds.userId, ds.name, ds.year, ds.month, reason);
 }
 
 async function applyBlockedReason(userId, name, year, month, reason) {
