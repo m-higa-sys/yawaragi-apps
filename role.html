@@ -358,6 +358,18 @@ input, select, textarea { font-family: inherit; }
 .task-card .badge-warn.subwarn { background: #ffc107; color: var(--navy-0); right: 30%; }
 .task-card .badge-warn.overdue { background: #888; color: #fff; }
 
+.task-card .deadline-row {
+    margin-top: 6px;
+    color: #c53030;
+    font-weight: 800;
+    font-size: 13px;
+    background: #fff5f5;
+    border: 1.5px dashed #c53030;
+    border-radius: 4px;
+    padding: 4px 8px;
+    display: inline-block;
+}
+
 .stat-bar { display: flex; gap: 16px; flex-wrap: wrap; margin: 18px 0 0; }
 .stat-chip {
     background: #fff;
@@ -605,8 +617,8 @@ input, select, textarea { font-family: inherit; }
                 <select id="addSecondaryId"></select>
             </div>
             <div class="form-row">
-                <label>終了日（単発時）</label>
-                <input type="date" id="addEndDate">
+                <label>締切（自由記述）</label>
+                <input type="text" id="addEndDate" placeholder="例：毎月10日17時／月25日／2026-06-15">
             </div>
             <div class="form-row">
                 <label>メモ</label>
@@ -683,8 +695,8 @@ input, select, textarea { font-family: inherit; }
                 <select id="approveSecondaryId"></select>
             </div>
             <div class="form-row">
-                <label>終了日（単発時）</label>
-                <input type="date" id="approveEndDate">
+                <label>締切（自由記述）</label>
+                <input type="text" id="approveEndDate" placeholder="例：毎月10日17時／月25日／2026-06-15">
             </div>
             <div class="form-row">
                 <label>メモ</label>
@@ -730,8 +742,8 @@ input, select, textarea { font-family: inherit; }
                 <select id="editSecondaryId"></select>
             </div>
             <div class="form-row">
-                <label>終了日（単発時）</label>
-                <input type="date" id="editEndDate">
+                <label>締切（自由記述）</label>
+                <input type="text" id="editEndDate" placeholder="例：毎月10日17時／月25日／2026-06-15">
             </div>
             <div class="form-row">
                 <label>メモ</label>
@@ -951,9 +963,10 @@ function makeTaskCard(t) {
     if (t.approval_status === 'approved') {
         if (!t.primary_id) warnHtml += '<span class="badge-warn">⚠担当未設定</span>';
         else if (!t.secondary_id) warnHtml += '<span class="badge-warn subwarn">⚠カバーなし</span>';
-        if (t.kind === '単発' && t.end_date) {
+        // 締切が日付フォーマット(YYYY-MM-DD)で過去なら超過警告
+        if (t.kind === '単発' && t.end_date && /^\d{4}-\d{2}-\d{2}$/.test(t.end_date)) {
             const today = new Date().toISOString().slice(0, 10);
-            if (t.end_date < today) warnHtml += '<span class="badge-warn overdue">⏱終了日超過</span>';
+            if (t.end_date < today) warnHtml += '<span class="badge-warn overdue">⏱締切超過</span>';
         }
     }
 
@@ -972,8 +985,8 @@ function makeTaskCard(t) {
             <div class="task-name">${escapeHtml(t.task_name)}</div>
             <div><span class="badge-primary">主</span>${escapeHtml(getStaffName(t.primary_id) || '-')}</div>
             <div style="margin-top:4px; font-size:14px;">副: ${escapeHtml(getStaffName(t.secondary_id) || '-')}</div>
-            ${t.memo ? `<div style="margin-top:6px; font-size:13px; color:#5b6477;">⏰ ${escapeHtml(t.memo)}</div>` : ''}
-            ${t.kind === '単発' && t.end_date ? `<div style="margin-top:4px; font-size:13px;">📅 〜${escapeHtml(t.end_date)}</div>` : ''}
+            ${t.end_date ? `<div class="deadline-row">⏰ 締切: ${escapeHtml(t.end_date)}</div>` : ''}
+            ${t.memo ? `<div style="margin-top:6px; font-size:13px; color:#5b6477;">📝 ${escapeHtml(t.memo)}</div>` : ''}
             ${t.rejected_reason ? `<div style="margin-top:6px; font-size:12px; color:#888;">却下: ${escapeHtml(t.rejected_reason)}</div>` : ''}
         `;
     }
@@ -1060,14 +1073,22 @@ function renderStatBar() {
 function renderOneshotView() {
     const container = document.getElementById('oneshotContainer');
     container.innerHTML = '';
+    const isDateStr = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+    const today = new Date().toISOString().slice(0, 10);
     const oneshots = TASKS
         .filter(t => t.status !== 'archived' && t.approval_status === 'approved' && t.kind === '単発')
         .sort((a, b) => {
-            const today = new Date().toISOString().slice(0, 10);
-            const aOver = a.end_date && a.end_date < today;
-            const bOver = b.end_date && b.end_date < today;
-            if (aOver !== bOver) return aOver ? 1 : -1;
-            return (a.end_date || '9999') < (b.end_date || '9999') ? -1 : 1;
+            const aIsDate = isDateStr(a.end_date);
+            const bIsDate = isDateStr(b.end_date);
+            if (aIsDate && bIsDate) {
+                const aOver = a.end_date < today;
+                const bOver = b.end_date < today;
+                if (aOver !== bOver) return aOver ? 1 : -1;
+                return a.end_date < b.end_date ? -1 : 1;
+            }
+            if (aIsDate) return -1;  // 日付指定が先
+            if (bIsDate) return 1;
+            return String(a.end_date || '').localeCompare(String(b.end_date || ''));
         });
     if (oneshots.length === 0) return;
     const sec = document.createElement('div');
