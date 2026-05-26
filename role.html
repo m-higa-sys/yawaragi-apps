@@ -574,7 +574,50 @@ input, select, textarea { font-family: inherit; }
     </div>
 </div>
 
-<!-- 提案モーダル -->
+<!-- 新規業務モーダル（代表用・直接登録） -->
+<div class="modal-overlay" id="modalAddTask">
+    <div class="modal-content modal-lg">
+        <h2>＋ 新規業務（直接登録）</h2>
+        <p style="margin-bottom: 16px; color: #5b6477; font-size: 14px;">代表は提案を経由せず、最初から正式登録できます。</p>
+        <form id="formAddTask">
+            <div class="form-row">
+                <label>業務名 <span class="req">*</span></label>
+                <input type="text" id="addName" required>
+            </div>
+            <div class="form-row">
+                <label>カテゴリ</label>
+                <select id="addCategoryId"></select>
+            </div>
+            <div class="form-row">
+                <label>種別</label><br>
+                <label style="display:inline-block;"><input type="radio" name="addKind" value="定期" checked> 定期</label>
+                <label style="display:inline-block;"><input type="radio" name="addKind" value="単発"> 単発</label>
+            </div>
+            <div class="form-row">
+                <label>主担当</label>
+                <select id="addPrimaryId"></select>
+            </div>
+            <div class="form-row">
+                <label>副担当</label>
+                <select id="addSecondaryId"></select>
+            </div>
+            <div class="form-row">
+                <label>終了日（単発時）</label>
+                <input type="date" id="addEndDate">
+            </div>
+            <div class="form-row">
+                <label>メモ</label>
+                <input type="text" id="addMemo">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-sm" id="btnAddCancel">キャンセル</button>
+                <button type="submit" class="btn-sm primary">登録</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 提案モーダル（スタッフ用） -->
 <div class="modal-overlay" id="modalPropose">
     <div class="modal-content modal-md">
         <h2>💡 仕事を提案する</h2>
@@ -825,6 +868,15 @@ function setStoredOperator(operator) {
 function renderOperatorBar() {
     document.getElementById('operatorName').textContent =
         CURRENT_OPERATOR ? CURRENT_OPERATOR.name : '未選択';
+    // 操作者=代表ならボタンを「+ 新規業務」に、スタッフなら「💡仕事を提案」に切替
+    const btn = document.getElementById('btnPropose');
+    if (CURRENT_OPERATOR && CURRENT_OPERATOR.id === 'daihyo') {
+        btn.innerHTML = '<span class="plus">+</span>新規業務';
+        btn.dataset.mode = 'add';
+    } else {
+        btn.innerHTML = '<span class="plus">💡</span>仕事を提案';
+        btn.dataset.mode = 'propose';
+    }
 }
 
 function showOperatorModal() {
@@ -1018,13 +1070,58 @@ function renderOneshotView() {
     container.appendChild(sec);
 }
 
-// ===== 提案モーダル =====
+// ===== 新規業務 / 提案モーダル（操作者で切替）=====
 document.getElementById('btnPropose').addEventListener('click', () => {
     if (!CURRENT_OPERATOR) { showToast('操作者を選択してください'); return; }
+    if (CURRENT_OPERATOR.id === 'daihyo') {
+        openAddTaskModal();
+    } else {
+        openProposeModal();
+    }
+});
+function openProposeModal() {
     document.getElementById('proposeName').value = '';
     document.getElementById('proposeNote').value = '';
     document.getElementById('proposeOperatorName').textContent = CURRENT_OPERATOR.name;
     openModal('modalPropose');
+}
+function openAddTaskModal() {
+    document.getElementById('addName').value = '';
+    document.getElementById('addMemo').value = '';
+    document.getElementById('addEndDate').value = '';
+    const catSel = document.getElementById('addCategoryId');
+    catSel.innerHTML = '<option value="">(未選択)</option>' +
+        CATEGORIES.map(c => `<option value="${escapeHtml(c.category_id)}">${escapeHtml(c.name)}</option>`).join('');
+    const staffOptions = '<option value="">(未選択)</option>' +
+        STAFF_LIST.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('');
+    document.getElementById('addPrimaryId').innerHTML = staffOptions;
+    document.getElementById('addSecondaryId').innerHTML = staffOptions;
+    document.querySelectorAll('input[name="addKind"]').forEach(r => r.checked = (r.value === '定期'));
+    openModal('modalAddTask');
+}
+document.getElementById('btnAddCancel').addEventListener('click', () => closeModal('modalAddTask'));
+document.getElementById('formAddTask').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!CURRENT_OPERATOR) { showToast('操作者を選択してください'); return; }
+    const data = await callGas({
+        action: 'add_task',
+        task_name: document.getElementById('addName').value,
+        category_id: document.getElementById('addCategoryId').value,
+        kind: document.querySelector('input[name="addKind"]:checked').value,
+        primary_id: document.getElementById('addPrimaryId').value,
+        secondary_id: document.getElementById('addSecondaryId').value,
+        end_date: document.getElementById('addEndDate').value,
+        memo: document.getElementById('addMemo').value,
+        operator_id: CURRENT_OPERATOR.id,
+        is_proposal: 'false'
+    });
+    if (data.ok) {
+        closeModal('modalAddTask');
+        showToast('登録しました');
+        await loadTasks();
+    } else {
+        alert('登録失敗: ' + (data.error || ''));
+    }
 });
 document.getElementById('btnProposeCancel').addEventListener('click', () => closeModal('modalPropose'));
 document.getElementById('formPropose').addEventListener('submit', async (ev) => {
