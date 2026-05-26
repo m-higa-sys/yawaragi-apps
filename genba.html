@@ -822,6 +822,57 @@
             cursor: pointer; transition: all 0.2s;
         }
         .trm-cancel-btn:hover { background: #fff5f5; }
+        .trm-edit-btn {
+            padding: 6px 14px; border: 1px solid #cbd5e0; border-radius: 6px;
+            background: white; color: #2d3748; font-size: 0.8rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .trm-edit-btn:hover { background: #f7fafc; border-color: #a0aec0; }
+        /* 編集モーダル */
+        .trm-edit-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            z-index: 9000; align-items: flex-start; justify-content: center;
+            padding: 32px 16px; overflow-y: auto;
+        }
+        .trm-edit-overlay.active { display: flex; }
+        .trm-edit-modal {
+            background: white; border-radius: 12px; width: 100%; max-width: 480px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 20px 22px; box-sizing: border-box;
+        }
+        .trm-edit-modal h3 {
+            margin: 0 0 12px 0; font-size: 1.1rem; color: #c0392b;
+            border-bottom: 2px solid #fed7d7; padding-bottom: 8px;
+        }
+        .trm-edit-modal .trm-edit-row { margin-bottom: 12px; }
+        .trm-edit-modal label {
+            display: block; font-size: 0.8rem; font-weight: 700;
+            color: #2d3748; margin-bottom: 4px;
+        }
+        .trm-edit-modal input[type="date"],
+        .trm-edit-modal select,
+        .trm-edit-modal textarea {
+            width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e0;
+            border-radius: 6px; font-size: 0.95rem; font-family: inherit;
+            box-sizing: border-box;
+        }
+        .trm-edit-modal textarea { min-height: 60px; resize: vertical; }
+        .trm-edit-warning {
+            font-size: 0.75rem; color: #c05621; background: #fffaf0;
+            border: 1px solid #feebc8; border-radius: 6px; padding: 8px 10px;
+            margin-bottom: 12px;
+        }
+        .trm-edit-actions {
+            display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;
+            border-top: 1px dashed #e2e8f0; padding-top: 12px;
+        }
+        .trm-edit-actions button {
+            padding: 8px 16px; border-radius: 6px; font-size: 0.9rem;
+            font-weight: 700; cursor: pointer; border: none;
+        }
+        .trm-edit-cancel { background: #edf2f7; color: #4a5568; }
+        .trm-edit-save { background: #c0392b; color: white; }
+        .trm-edit-save:disabled { opacity: 0.5; cursor: not-allowed; }
         .trm-all-done-badge {
             display: inline-block; padding: 3px 10px; border-radius: 12px;
             background: #38a169; color: white; font-size: 0.75rem; font-weight: 700;
@@ -988,10 +1039,125 @@
         .rmd-filter-bar { display: flex; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e2e8f0; align-items: center; }
         .rmd-filter-btn { padding: 4px 12px; border-radius: 16px; font-size: 0.8rem; font-weight: 600; border: 1.5px solid #cbd5e0; background: #fff; color: #4a5568; cursor: pointer; }
         .rmd-filter-btn.active { background: #2c7a7b; color: #fff; border-color: #2c7a7b; }
+
+        /* ===== 業務かるた取り ===== */
+        .karuta-section {
+            background: white; border-radius: 12px; padding: 14px 16px;
+            margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .karuta-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
+        }
+        .karuta-header h3 { font-size: 1rem; font-weight: 700; color: #2d3748; }
+        .karuta-count { font-size: 0.85rem; color: #718096; margin-left: 8px; }
+        .karuta-count strong { color: #c53030; font-weight: 800; }
+        .karuta-toggle {
+            font-size: 0.8rem; padding: 6px 12px; border: 1px solid #e2e8f0;
+            border-radius: 6px; background: white; color: #4a5568; cursor: pointer;
+        }
+        .karuta-toggle:hover { background: #f7fafc; }
+        .karuta-hint {
+            font-size: 0.8rem; color: #4a5568; background: #edf2f7;
+            padding: 6px 10px; border-radius: 6px; margin-bottom: 10px;
+        }
+        .karuta-body.collapsed { display: none; }
+        .karuta-hint.hidden { display: none; }
+        .karuta-group { margin-bottom: 10px; }
+        .karuta-group h4 { font-size: 0.85rem; margin: 6px 0; color: #4a5568; font-weight: 700; }
+        .card-row { display: flex; flex-wrap: wrap; gap: 6px; }
+        .karuta-empty { color: #38a169; font-size: 0.9rem; text-align: center; padding: 16px; font-weight: 700; }
+
+        .task-card {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 10px; border-radius: 8px; cursor: pointer;
+            border-left: 4px solid; background: white;
+            transition: transform 0.1s, box-shadow 0.1s;
+            font-size: 0.85rem; font-weight: 600;
+        }
+        .task-card:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+        .task-card.level-red    { border-left-color: #dc2626; background: #fef2f2; color: #991b1b; }
+        .task-card.level-yellow { border-left-color: #d97706; background: #fef3c7; color: #92400e; }
+        .task-card.level-green  { border-left-color: #059669; background: #ecfdf5; color: #065f46; }
+        .task-card.level-white  { border-left-color: #64748b; background: #f8fafc; color: #334155; }
+        .task-card.always-on { cursor: default; opacity: 0.92; }
+        .task-card.always-on:hover { transform: none; box-shadow: none; }
+        .karuta-group.always-on {
+            background: #fff5f5; border: 1px dashed #fc8181;
+            border-radius: 8px; padding: 8px 10px; margin-bottom: 12px;
+        }
+        .karuta-group.always-on h4 { color: #c53030; }
+        .card-pos {
+            font-size: 0.7rem; padding: 1px 7px; border-radius: 10px;
+            background: #2c7a7b; color: white; font-weight: 700; margin-left: 4px;
+        }
+        .card-detail-link {
+            font-size: 0.7rem; padding: 2px 7px; border-radius: 6px;
+            background: #4299e1; color: white !important; text-decoration: none;
+            font-weight: 700; margin-left: 4px; display: inline-block;
+        }
+        .card-detail-link:hover { background: #2b6cb0; }
+        .card-timing {
+            font-size: 0.7rem; padding: 1px 6px; border-radius: 4px;
+            background: #f1f5f9; color: #64748b; font-weight: 600;
+            margin-left: 4px; border: 1px solid #cbd5e0;
+        }
+
+        .staff-chip-wrap {
+            display: inline-flex; flex-direction: column; gap: 3px;
+            align-items: flex-start; margin: 2px 4px 2px 0;
+        }
+        .staff-tasks {
+            display: flex; flex-direction: column; gap: 3px;
+            margin-left: 4px; max-width: 220px;
+        }
+        .task-badge {
+            font-size: 0.72rem; padding: 2px 7px; border-radius: 4px;
+            border-left: 3px solid; background: white; cursor: pointer;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-weight: 600;
+        }
+        .task-badge.level-red    { border-left-color: #dc2626; color: #991b1b; background: #fee2e2; }
+        .task-badge.level-yellow { border-left-color: #d97706; color: #92400e; background: #fef3c7; }
+        .task-badge.level-green  { border-left-color: #059669; color: #065f46; background: #d1fae5; }
+        .task-badge.level-white  { border-left-color: #64748b; color: #334155; background: #f1f5f9; }
+
+        .catch-recommend {
+            background: #f0fff4; border-left: 4px solid #38a169;
+            padding: 8px 12px; border-radius: 6px; margin-bottom: 12px;
+            font-size: 0.9rem; font-weight: 700; color: #22543d;
+        }
+        .catch-staff-grid {
+            display: grid; grid-template-columns: 1fr; gap: 8px;
+        }
+        .catch-staff-btn {
+            padding: 12px 14px; border: 2px solid #e2e8f0; border-radius: 8px;
+            background: white; font-size: 0.95rem; font-weight: 600; cursor: pointer;
+            text-align: left; transition: all 0.15s;
+        }
+        .catch-staff-btn:hover { border-color: #2c7a7b; background: #f0fff4; }
+        .catch-staff-btn.recommended {
+            border-color: #38a169; background: #f0fff4; color: #22543d;
+        }
+        .catch-staff-btn.recommended::before { content: '⭐ '; }
+        .catch-empty { color: #c53030; font-size: 0.9rem; padding: 12px; text-align: center; }
+
+        .return-card-confirm {
+            padding: 12px; background: #fef3c7; border-radius: 8px;
+            margin-bottom: 12px; font-size: 0.9rem; color: #92400e;
+        }
+        .return-card-actions {
+            display: flex; gap: 8px; justify-content: flex-end;
+        }
+        .return-card-actions button {
+            padding: 8px 16px; border-radius: 6px; border: none;
+            font-size: 0.9rem; font-weight: 600; cursor: pointer;
+        }
+        .return-card-actions .cancel-btn { background: #e2e8f0; color: #4a5568; }
+        .return-card-actions .confirm-btn { background: #c53030; color: white; }
     </style>
 </head>
 <body>
-<script src="auto-refresh-patch.js"></script>
 
 <div class="header">
     <div>
@@ -1281,6 +1447,41 @@
         <h3 class="abs-section-title">今月の中止サマリー</h3>
         <div id="trm-summary"></div>
     </div>
+
+    <!-- 中止情報 編集モーダル -->
+    <div class="trm-edit-overlay" id="trm-edit-overlay" onclick="if(event.target===this)trmCloseEditModal()">
+        <div class="trm-edit-modal">
+            <h3>中止情報の編集</h3>
+            <div id="trm-edit-target" style="font-size:0.9rem;color:#4a5568;margin-bottom:10px;font-weight:700;"></div>
+            <div class="trm-edit-warning">
+                ⚠️ 最終利用日を変更すると中止日も同じ日に更新されます。リハブクラウド側との整合性に注意してください。
+            </div>
+            <div class="trm-edit-row">
+                <label>最終利用日（=中止日）</label>
+                <input type="date" id="trm-edit-lastuse">
+            </div>
+            <div class="trm-edit-row">
+                <label>連絡日</label>
+                <input type="date" id="trm-edit-contact">
+            </div>
+            <div class="trm-edit-row">
+                <label>中止理由</label>
+                <select id="trm-edit-reason"></select>
+            </div>
+            <div class="trm-edit-row">
+                <label>補足（任意）</label>
+                <textarea id="trm-edit-supplement" placeholder="例: 入院先の病院名、家族の連絡先等"></textarea>
+            </div>
+            <div class="trm-edit-row">
+                <label>受付者</label>
+                <select id="trm-edit-reporter"></select>
+            </div>
+            <div class="trm-edit-actions">
+                <button class="trm-edit-cancel" onclick="trmCloseEditModal()">キャンセル</button>
+                <button class="trm-edit-save" id="trm-edit-save-btn" onclick="trmSubmitEdit()">保存</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- ===== 実績確認タブ ===== -->
@@ -1409,6 +1610,17 @@
         <button class="save-btn secondary" onclick="loadAssignment()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
     </div>
     <div id="busy-notice"></div>
+
+    <!-- ===== 今日の業務 ===== -->
+    <div class="karuta-section" id="karuta-section">
+        <div class="karuta-header">
+            <h3>📋 今日の業務<span class="karuta-count">未割当 <strong id="karuta-available-count">0</strong> / <span id="karuta-total-count">0</span></span></h3>
+            <button class="karuta-toggle" id="karuta-toggle-btn" onclick="toggleKaruta()">折りたたむ ▲</button>
+        </div>
+        <div class="karuta-hint">👆 業務をタップ → 担当スタッフを選ぶ → 推奨配置に自動で入ります</div>
+        <div class="karuta-body" id="karuta-body"></div>
+    </div>
+
     <div class="floor-map" id="floor-map"></div>
     <div class="memo-area">
         <h3>メモ（申し送り等）</h3>
@@ -1478,6 +1690,14 @@
         </div>
     </div>
     <div class="data-section">
+        <h3>🚧 開発中の機能（社長専用）</h3>
+        <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;">未完成のため、現場で使う前は非表示推奨。チェックを入れたPC・ブラウザだけに表示されます。</p>
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.95rem; cursor:pointer;">
+            <input type="checkbox" id="karuta-toggle-visible" onchange="onKarutaVisibleToggle()" style="width:18px; height:18px; cursor:pointer;">
+            📋 今日の業務（業務かるた取り）を表示する
+        </label>
+    </div>
+    <div class="data-section">
         <h3>データ削除</h3>
         <div class="data-btns">
             <button class="data-btn danger" onclick="clearAllData()">配置データを全削除</button>
@@ -1499,6 +1719,28 @@
     </div>
 </div>
 
+<!-- モーダル: 業務カードキャッチ -->
+<div class="modal-overlay" id="catch-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span id="catch-modal-title">業務をキャッチ</span>
+            <button class="modal-close" onclick="closeModal('catch-modal')">&times;</button>
+        </div>
+        <div class="modal-body" id="catch-modal-body"></div>
+    </div>
+</div>
+
+<!-- モーダル: カードを山に戻す確認 -->
+<div class="modal-overlay" id="return-card-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span id="return-card-title">山に戻す</span>
+            <button class="modal-close" onclick="closeModal('return-card-modal')">&times;</button>
+        </div>
+        <div class="modal-body" id="return-card-body"></div>
+    </div>
+</div>
+
 <!-- モーダル: 仕事移動先選択 -->
 <div class="modal-overlay" id="move-modal">
     <div class="modal">
@@ -1514,6 +1756,61 @@
 
 <script>
 // ========== 配置管理データ定義 ==========
+
+// ========== 業務カードマスタ（業務優先順位マトリクス連動） ==========
+const TASK_CARDS = [
+    // 🔴 最優先（5枚）→ 全員で常時守る・取得対象外
+    { id: 'r1', label: '利用者の安全',                 level: 'red',    tags: [],                       recommendedPos: 1, alwaysOn: true },
+    { id: 'r2', label: '利用者の誘導',                 level: 'red',    tags: [],                       recommendedPos: 1, alwaysOn: true },
+    { id: 'r3', label: '急変対応',                     level: 'red',    tags: [],                       recommendedPos: 1, alwaysOn: true },
+    { id: 'r4', label: '送迎の定刻発車',               level: 'red',    tags: ['time'],                 recommendedPos: 1, alwaysOn: true },
+    { id: 'r5', label: '時間を持て余してる利用者対応', level: 'red',    tags: [],                       recommendedPos: 5, alwaysOn: true },
+
+    // 🟡 高優先・中断不可（7枚）
+    { id: 'y1', label: '通所モニタリング（要支援）',   level: 'yellow', tags: ['time', 'no-interrupt'], recommendedPos: 4, timing: '対象月の1〜3週',                     detailUrl: '測定・計画書・タスク一覧.html' },
+    { id: 'y3', label: '口腔機能向上モニタリング',     level: 'yellow', tags: ['time', 'no-interrupt'], recommendedPos: 4, timing: '対象月の1〜3週',                     detailUrl: '口腔チェック.html' },
+    { id: 'y4', label: 'ADL評価',                      level: 'yellow', tags: ['time', 'no-interrupt'], recommendedPos: 4, timing: '対象月の1〜3週',                     detailUrl: '測定・計画書・タスク一覧.html' },
+    { id: 'y5', label: '体力測定（計画書用）',         level: 'yellow', tags: ['time', 'no-interrupt'], recommendedPos: 1, timing: '対象月の初日〜月末',                detailUrl: '測定・計画書・タスク一覧.html' },
+    { id: 'y5b', label: '体重測定（月1・変動者）',     level: 'yellow', tags: ['time', 'no-interrupt'], recommendedPos: 1, timing: '毎月1回（±2kg変動者）' },
+    { id: 'y6', label: '見学・体験・新規受入対応',     level: 'yellow', tags: ['time', 'no-interrupt'], recommendedPos: 1, timing: '予約日' },
+    { id: 'y7', label: '担当者会議出席',               level: 'yellow', tags: ['time', 'no-interrupt'], recommendedPos: 1, timing: '開催日（事前通知あり）' },
+
+    // 🟡 高優先・期限あり（10枚）
+    { id: 'y8',  label: '口腔機能向上LIFE提出',        level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '毎月3〜10日',                       detailUrl: '口腔チェック.html' },
+    { id: 'y17', label: 'ADL維持等LIFE提出',           level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '毎月3〜10日' },
+    { id: 'y10', label: '科学的介護LIFE入力',          level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '毎月3〜10日' },
+    { id: 'y9',  label: 'ケアマネ実績送付',            level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '月末〜翌月初' },
+    { id: 'y11', label: '計画書作成・更新',            level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '期限月の1〜3週',                    detailUrl: '測定・計画書・タスク一覧.html' },
+    { id: 'y18', label: 'ケアマネ照会への回答（担会代替）', level: 'yellow', tags: ['deadline'],         recommendedPos: 4, timing: '依頼後3〜5日以内' },
+    { id: 'y13', label: 'ケアマネへの急ぎ連絡・報告',  level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '即時（受信後すぐ）' },
+    { id: 'y14', label: '契約書類作成',                level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '利用開始日の前日まで' },
+    { id: 'y15', label: '担当者会議後の作業',          level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '会議後1週間以内' },
+    { id: 'y16', label: '新規契約後の登録作業',        level: 'yellow', tags: ['deadline'],             recommendedPos: 4, timing: '契約日〜利用開始日' },
+
+    // 🟢 中優先（6枚）→ うち3枚は全員で常時
+    { id: 'g1', label: '見守り・声かけ',               level: 'green',  tags: [],                       recommendedPos: 5, alwaysOn: true },
+    { id: 'g2', label: '水分補給(お茶出し等)',         level: 'green',  tags: [],                       recommendedPos: 1, alwaysOn: true },
+    { id: 'g3', label: '動画の再生・見守り',           level: 'green',  tags: [],                       recommendedPos: 5, alwaysOn: true },
+    { id: 'g4', label: 'ケアマネへの通常連絡・報告',   level: 'green',  tags: [],                       recommendedPos: 4, timing: '状況に応じて' },
+    { id: 'g5', label: '計画書サイン取得',             level: 'green',  tags: ['time'],                 recommendedPos: 1, timing: '計画書作成直後',                   detailUrl: '測定・計画書・タスク一覧.html' },
+    { id: 'g6', label: '誕生日写真の撮影・プリント',   level: 'green',  tags: ['time'],                 recommendedPos: 2, timing: '誕生月中',                         detailUrl: '測定・訪問・誕生日一覧.html' },
+
+    // ⚪ 低優先（6枚）
+    { id: 'w1', label: '日々の記録入力',               level: 'white',  tags: [],                       recommendedPos: 5, timing: '日々' },
+    { id: 'w2', label: '清掃・午後準備',               level: 'white',  tags: [],                       recommendedPos: 5, timing: '日々（午後の前）' },
+    { id: 'w3', label: '備品補充・整理',               level: 'white',  tags: [],                       recommendedPos: 4, timing: '気づいた時' },
+    { id: 'w4', label: '一般事務',                     level: 'white',  tags: [],                       recommendedPos: 4, timing: '随時' },
+    { id: 'w5', label: 'リマインダー作業',             level: 'white',  tags: [],                       recommendedPos: 4, timing: '月次' },
+    { id: 'w6', label: '電話対応(通常)',               level: 'white',  tags: [],                       recommendedPos: 1, timing: '随時' },
+];
+
+const TASK_LEVEL_LABELS = {
+    red: '🔴 最優先',
+    yellow: '🟡 高優先',
+    green: '🟢 中優先',
+    white: '⚪ 低優先'
+};
+
 const POS_COLORS = { 1: '#3182ce', 2: '#dd6b20', 3: '#38a169', 4: '#805ad5', 5: '#d69e2e' };
 
 const POSITIONS = [
@@ -1603,7 +1900,7 @@ function getEffectiveJobs(posId) {
 }
 
 const DEFAULT_STAFF = [
-    '比嘉', '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'
+    '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'
 ];
 
 const STAFF_COLORS = {};
@@ -1626,7 +1923,7 @@ function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
 function getAssignmentKey(date, unit) { return date + '_' + unit; }
 
 function emptyAssignment() {
-    return { positions: {1:[], 2:[], 3:[], 4:[], 5:[]}, jobChecks: {}, jobMoves: {}, customJobs: {}, memo: '' };
+    return { positions: {1:[], 2:[], 3:[], 4:[], 5:[]}, jobChecks: {}, jobMoves: {}, customJobs: {}, memo: '', cardCatches: {} };
 }
 
 function getAssignment(date, unit) {
@@ -1636,6 +1933,7 @@ function getAssignment(date, unit) {
     if (!a.jobChecks) a.jobChecks = {};
     if (!a.jobMoves) a.jobMoves = {};
     if (!a.customJobs) a.customJobs = {};
+    if (!a.cardCatches) a.cardCatches = {};
     return a;
 }
 
@@ -1674,6 +1972,7 @@ function init() {
     setupUnitBtns();
     renderFloorMap();
     loadAssignment();
+    applyKarutaVisibility();
     renderStaffManage();
     // タスクボード初期化
     tbInit();
@@ -1751,9 +2050,23 @@ function renderAssignments() {
             area.innerHTML = '<span class="assign-placeholder">タップしてスタッフを配置</span>';
             area.classList.remove('has-staff');
         } else {
-            area.innerHTML = staff.map(s =>
-                `<span class="staff-chip ${STAFF_COLORS[s] || 'staff-color-0'}" onclick="event.stopPropagation(); removeStaff(${pos.id}, '${s}')">${s}<span class="remove-x">&times;</span></span>`
-            ).join('');
+            area.innerHTML = staff.map(s => {
+                const cards = getStaffCards(s);
+                const colorCls = STAFF_COLORS[s] || 'staff-color-0';
+                const safeS = s.replace(/'/g, "\\'");
+                let html = `<div class="staff-chip-wrap">`;
+                html += `<span class="staff-chip ${colorCls}" onclick="event.stopPropagation(); removeStaff(${pos.id}, '${safeS}')">${s}<span class="remove-x">&times;</span></span>`;
+                if (cards.length > 0) {
+                    html += `<div class="staff-tasks">`;
+                    cards.forEach(c => {
+                        const icons = renderTaskBadgeIcons(c);
+                        html += `<span class="task-badge level-${c.level}" onclick="event.stopPropagation(); openReturnCardModal('${c.id}')">${icons}${icons ? ' ' : ''}${c.label}</span>`;
+                    });
+                    html += `</div>`;
+                }
+                html += `</div>`;
+                return html;
+            }).join('');
             area.classList.add('has-staff');
         }
         renderJobChecklist(pos.id);
@@ -1962,6 +2275,7 @@ function loadAssignment() {
     currentAssignment = getAssignment(currentDate, currentUnit);
     openChecklists = {};
     renderAssignments();
+    renderKarutaPile();
     document.getElementById('assign-memo').value = currentAssignment.memo || '';
     updateBusyNotice();
 }
@@ -2025,7 +2339,267 @@ function removeStaff(posId, name) {
     const arr = currentAssignment.positions[posId] || [];
     const idx = arr.indexOf(name);
     if (idx >= 0) arr.splice(idx, 1);
+    returnAllCardsOfStaff(name);
     renderAssignments();
+    renderKarutaPile();
+}
+
+// ========== 業務かるた取り ==========
+
+function getCardById(taskId) {
+    return TASK_CARDS.find(c => c.id === taskId);
+}
+
+function getCardCatcher(taskId) {
+    return (currentAssignment.cardCatches || {})[taskId] || null;
+}
+
+function isCardAvailable(taskId) {
+    return !getCardCatcher(taskId);
+}
+
+function getStaffCards(staffName) {
+    const catches = currentAssignment.cardCatches || {};
+    return Object.entries(catches)
+        .filter(([_, s]) => s === staffName)
+        .map(([taskId]) => getCardById(taskId))
+        .filter(c => !!c);
+}
+
+function findStaffPosition(staffName) {
+    for (const posId of [1,2,3,4,5]) {
+        if ((currentAssignment.positions[posId] || []).includes(staffName)) return posId;
+    }
+    return null;
+}
+
+function getAvailableCardsByLevel() {
+    const grouped = { red: [], yellow: [], green: [], white: [] };
+    TASK_CARDS.forEach(card => {
+        if (card.alwaysOn) return;
+        if (isCardAvailable(card.id)) grouped[card.level].push(card);
+    });
+    return grouped;
+}
+
+function getAlwaysOnCards() {
+    return TASK_CARDS.filter(c => c.alwaysOn);
+}
+
+function getCatchableCardsTotal() {
+    return TASK_CARDS.filter(c => !c.alwaysOn).length;
+}
+
+function catchCard(taskId, staffName) {
+    if (!currentAssignment.cardCatches) currentAssignment.cardCatches = {};
+    currentAssignment.cardCatches[taskId] = staffName;
+
+    const card = getCardById(taskId);
+    const currentPos = findStaffPosition(staffName);
+
+    if (currentPos === null) {
+        // 未配置 → 推奨配置に自動配置
+        if (!currentAssignment.positions[card.recommendedPos]) {
+            currentAssignment.positions[card.recommendedPos] = [];
+        }
+        currentAssignment.positions[card.recommendedPos].push(staffName);
+        showToast(`✅ ${staffName}さんを${card.recommendedPos}に配置しました`, 2500);
+    } else if (currentPos !== card.recommendedPos) {
+        // 既に別配置 → 警告のみ（強制移動はしない）
+        showToast(`⚠ ${staffName}さんは${currentPos}にいます。これは${card.recommendedPos}の業務です`, 3500);
+    }
+
+    autoSave();
+    renderKarutaPile();
+    renderAssignments();
+}
+
+function returnCard(taskId) {
+    if (currentAssignment.cardCatches && currentAssignment.cardCatches[taskId]) {
+        delete currentAssignment.cardCatches[taskId];
+        autoSave();
+    }
+    renderKarutaPile();
+    renderAssignments();
+}
+
+function returnAllCardsOfStaff(staffName) {
+    if (!currentAssignment.cardCatches) return;
+    const taskIds = Object.entries(currentAssignment.cardCatches)
+        .filter(([_, s]) => s === staffName)
+        .map(([taskId]) => taskId);
+    taskIds.forEach(taskId => {
+        delete currentAssignment.cardCatches[taskId];
+    });
+    if (taskIds.length > 0) autoSave();
+}
+
+function renderTaskBadgeIcons(card) {
+    const icons = [];
+    if (card.tags.includes('no-interrupt')) icons.push('🚫');
+    if (card.tags.includes('time')) icons.push('⏰');
+    if (card.tags.includes('deadline')) icons.push('📅');
+    return icons.join('');
+}
+
+function renderKarutaPile() {
+    const body = document.getElementById('karuta-body');
+    if (!body) return;
+    const grouped = getAvailableCardsByLevel();
+    const totalAvailable = grouped.yellow.length + grouped.green.length + grouped.white.length;
+    const totalCatchable = getCatchableCardsTotal();
+
+    document.getElementById('karuta-available-count').textContent = totalAvailable;
+    document.getElementById('karuta-total-count').textContent = totalCatchable;
+
+    let html = '';
+
+    // 全員で常時守る業務（取得対象外・常時表示）
+    const alwaysOn = getAlwaysOnCards();
+    if (alwaysOn.length > 0) {
+        html += `<div class="karuta-group always-on">`;
+        html += `<h4>🛡️ 常に意識（全員で守る・担当割当なし）</h4>`;
+        html += `<div class="card-row">`;
+        alwaysOn.forEach(card => {
+            const icons = renderTaskBadgeIcons(card);
+            html += `<div class="task-card level-${card.level} always-on">`;
+            html += `<span class="card-label">${icons}${icons ? ' ' : ''}${card.label}</span>`;
+            html += `</div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    if (totalAvailable === 0) {
+        html += '<div class="karuta-empty">🎉 すべての業務に担当が決まりました</div>';
+        body.innerHTML = html;
+        return;
+    }
+
+    // 担当を決める業務（取得対象）
+    const levels = ['yellow', 'green', 'white'];
+    levels.forEach(level => {
+        const cards = grouped[level];
+        if (cards.length === 0) return;
+        html += `<div class="karuta-group level-${level}">`;
+        html += `<h4>${TASK_LEVEL_LABELS[level]}（${cards.length}枚）</h4>`;
+        html += `<div class="card-row">`;
+        cards.forEach(card => {
+            const icons = renderTaskBadgeIcons(card);
+            html += `<div class="task-card level-${level}" onclick="openCatchModal('${card.id}')">`;
+            html += `<span class="card-label">${icons}${icons ? ' ' : ''}${card.label}</span>`;
+            html += `<span class="card-pos">推奨${'①②③④⑤'[card.recommendedPos - 1]}</span>`;
+            if (card.timing) {
+                html += `<span class="card-timing">🗓️ ${card.timing}</span>`;
+            }
+            if (card.detailUrl) {
+                html += `<a class="card-detail-link" href="${card.detailUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation();" title="詳細・対象者を確認">📋詳細</a>`;
+            }
+            html += `</div>`;
+        });
+        html += `</div></div>`;
+    });
+    body.innerHTML = html;
+}
+
+function toggleKaruta() {
+    const body = document.getElementById('karuta-body');
+    const btn = document.getElementById('karuta-toggle-btn');
+    const hint = document.querySelector('.karuta-hint');
+    const isCollapsed = body.classList.toggle('collapsed');
+    if (hint) hint.classList.toggle('hidden', isCollapsed);
+    btn.textContent = isCollapsed ? '展開する ▼' : '折りたたむ ▲';
+}
+
+function openCatchModal(taskId) {
+    const card = getCardById(taskId);
+    if (!card) return;
+
+    document.getElementById('catch-modal-title').textContent = `「${card.label}」を誰が担当？`;
+
+    const recPos = card.recommendedPos;
+    const recPosObj = POSITIONS.find(p => p.id === recPos);
+    const recHtml = `<div class="catch-recommend">推奨配置: ${recPos} ${recPosObj ? recPosObj.name : ''}（未配置の場合はここに自動配置）</div>`;
+
+    const allStaff = getStaff();
+
+    let staffHtml = '';
+    if (allStaff.length === 0) {
+        staffHtml = '<div class="catch-empty">スタッフが登録されていません</div>';
+    } else {
+        staffHtml = '<div class="catch-staff-grid">';
+        allStaff.forEach(staff => {
+            const pos = findStaffPosition(staff);
+            const isRec = (pos === recPos);
+            let cls = 'catch-staff-btn';
+            let posLabel;
+            if (pos === null) {
+                posLabel = `(未配置 → ${recPos}に配置)`;
+            } else if (isRec) {
+                cls = 'catch-staff-btn recommended';
+                posLabel = `(${pos}にいます・推奨配置)`;
+            } else {
+                posLabel = `(${pos}にいます)`;
+            }
+            const safeStaff = staff.replace(/'/g, "\\'");
+            staffHtml += `<button class="${cls}" onclick="onCatchStaffClick('${taskId}', '${safeStaff}')">${staff}さん ${posLabel}</button>`;
+        });
+        staffHtml += '</div>';
+    }
+
+    document.getElementById('catch-modal-body').innerHTML = recHtml + staffHtml;
+    openModal('catch-modal');
+}
+
+function onCatchStaffClick(taskId, staffName) {
+    catchCard(taskId, staffName);
+    closeModal('catch-modal');
+}
+
+function openReturnCardModal(taskId) {
+    const card = getCardById(taskId);
+    if (!card) return;
+    const catcher = getCardCatcher(taskId);
+
+    document.getElementById('return-card-title').textContent = '業務カードを山に戻す';
+    document.getElementById('return-card-body').innerHTML = `
+        <div class="return-card-confirm">
+            「${card.label}」（${catcher}さんがキャッチ中）を山に戻しますか？
+        </div>
+        <div class="return-card-actions">
+            <button class="cancel-btn" onclick="closeModal('return-card-modal')">キャンセル</button>
+            <button class="confirm-btn" onclick="onReturnCardConfirm('${taskId}')">山に戻す</button>
+        </div>
+    `;
+    openModal('return-card-modal');
+}
+
+function onReturnCardConfirm(taskId) {
+    returnCard(taskId);
+    closeModal('return-card-modal');
+}
+
+// ========== 業務かるた表示フラグ（開発中・社長のみ表示） ==========
+const KARUTA_VISIBLE_KEY = 'yawaragi_haichi_show_karuta';
+
+function getKarutaVisible() {
+    return localStorage.getItem(KARUTA_VISIBLE_KEY) === '1';
+}
+
+function setKarutaVisible(visible) {
+    localStorage.setItem(KARUTA_VISIBLE_KEY, visible ? '1' : '0');
+    applyKarutaVisibility();
+}
+
+function applyKarutaVisibility() {
+    const sec = document.getElementById('karuta-section');
+    if (sec) sec.style.display = getKarutaVisible() ? '' : 'none';
+    const cb = document.getElementById('karuta-toggle-visible');
+    if (cb) cb.checked = getKarutaVisible();
+}
+
+function onKarutaVisibleToggle() {
+    const cb = document.getElementById('karuta-toggle-visible');
+    setKarutaVisible(cb.checked);
 }
 
 // ========== 集計 ==========
@@ -2083,7 +2657,9 @@ function showStats() {
             const val = c[pid]; let cls = '';
             if (val === 0) cls = 'count-zero';
             else if (val === maxPos && c.total > 3 && maxPos > c.total * 0.6) cls = 'count-high';
-            html += `<td class="${cls}">${val}</td>`;
+            const pct = c.total > 0 ? Math.round(val / c.total * 100) : 0;
+            const display = val === 0 ? '0' : `${val} <span style="font-size:0.75rem; color:#718096; font-weight:600;">(${pct}%)</span>`;
+            html += `<td class="${cls}">${display}</td>`;
         }
         html += `<td class="total-col">${c.total}</td></tr>`;
     });
@@ -4832,6 +5408,7 @@ function trmRenderCard(t) {
         '</div>' +
 
         '<div class="trm-card-actions">' +
+            '<button class="trm-edit-btn" onclick="trmOpenEditModal(\'' + t.lastUseDate + '\', \'' + escapeAttr(t.name) + '\')">✏️ 編集</button>' +
             '<button class="trm-cancel-btn" onclick="trmCancelTermination(\'' + t.lastUseDate + '\', \'' + escapeAttr(t.name) + '\')">↩ 中止を取消す</button>' +
         '</div>' +
     '</div>';
@@ -4883,6 +5460,109 @@ function trmCancelTermination(lastUseDate, name) {
     gasPost(payload, '中止取消').then(ok => {
         if (ok) showToast('✅ ' + name + '様の中止を取消しました', 3000);
         setTimeout(() => trmLoadList(), 800);
+    });
+}
+
+// ===== 中止情報の編集 =====
+let trmEditTarget = null;  // 編集中の {oldLastUseDate, name}
+
+function trmOpenEditModal(lastUseDate, name) {
+    const t = trmState.list.find(x => x.lastUseDate === lastUseDate && x.name === name);
+    if (!t) {
+        alert('対象データが見つかりません');
+        return;
+    }
+    trmEditTarget = { oldLastUseDate: lastUseDate, name: name };
+
+    document.getElementById('trm-edit-target').textContent = name + '様';
+    document.getElementById('trm-edit-lastuse').value = t.lastUseDate || '';
+    document.getElementById('trm-edit-contact').value = t.contactDate || '';
+    document.getElementById('trm-edit-supplement').value = t.supplement || '';
+
+    // 理由セレクト
+    const reasonSel = document.getElementById('trm-edit-reason');
+    reasonSel.innerHTML = '';
+    TRM_REASONS.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r;
+        opt.textContent = r;
+        if (r === t.reason) opt.selected = true;
+        reasonSel.appendChild(opt);
+    });
+    // 既存値がマスタに無い場合は先頭に追加して選択
+    if (t.reason && !TRM_REASONS.includes(t.reason)) {
+        const opt = document.createElement('option');
+        opt.value = t.reason;
+        opt.textContent = t.reason + '（旧値）';
+        opt.selected = true;
+        reasonSel.insertBefore(opt, reasonSel.firstChild);
+    }
+
+    // 受付者セレクト
+    const reporterSel = document.getElementById('trm-edit-reporter');
+    reporterSel.innerHTML = '';
+    const staffList = (typeof getStaff === 'function') ? getStaff() : ['比嘉', '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'];
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '（未記入）';
+    reporterSel.appendChild(blank);
+    staffList.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = n;
+        if (n === t.reporter) opt.selected = true;
+        reporterSel.appendChild(opt);
+    });
+    if (t.reporter && !staffList.includes(t.reporter)) {
+        const opt = document.createElement('option');
+        opt.value = t.reporter;
+        opt.textContent = t.reporter + '（旧）';
+        opt.selected = true;
+        reporterSel.appendChild(opt);
+    }
+
+    document.getElementById('trm-edit-overlay').classList.add('active');
+}
+
+function trmCloseEditModal() {
+    document.getElementById('trm-edit-overlay').classList.remove('active');
+    trmEditTarget = null;
+}
+
+function trmSubmitEdit() {
+    if (!trmEditTarget) return;
+    const lastUseDate = document.getElementById('trm-edit-lastuse').value;
+    const contactDate = document.getElementById('trm-edit-contact').value;
+    const reason = document.getElementById('trm-edit-reason').value;
+    const supplement = document.getElementById('trm-edit-supplement').value.trim();
+    const reporter = document.getElementById('trm-edit-reporter').value;
+
+    if (!lastUseDate) { alert('最終利用日を入力してください'); return; }
+    if (!reason) { alert('中止理由を選択してください'); return; }
+
+    const saveBtn = document.getElementById('trm-edit-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中...';
+
+    const payload = {
+        action: 'update_terminate_info',
+        oldLastUseDate: trmEditTarget.oldLastUseDate,
+        name: trmEditTarget.name,
+        lastUseDate: lastUseDate,
+        contactDate: contactDate,
+        reason: reason,
+        supplement: supplement,
+        reporter: reporter
+    };
+
+    gasPost(payload, '中止情報更新').then(ok => {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '保存';
+        if (ok) {
+            showToast('✅ ' + trmEditTarget.name + '様の中止情報を更新しました', 3000);
+            trmCloseEditModal();
+            setTimeout(() => trmLoadList(), 600);
+        }
     });
 }
 
