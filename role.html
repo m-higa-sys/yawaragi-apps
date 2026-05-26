@@ -816,8 +816,16 @@ function escapeHtml(s) {
 function getStaffName(id) {
     if (!id) return '';
     if (id === 'guest') return 'ゲスト';
+    if (id === 'daihyo') return '代表';
     const s = STAFF_LIST.find(x => String(x.id) === String(id));
     return s ? s.name : String(id);
+}
+
+// 主・副担当select用：代表＋スタッフ全員
+function staffSelectOptions() {
+    return '<option value="">(未選択)</option>' +
+        '<option value="daihyo">代表</option>' +
+        STAFF_LIST.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('');
 }
 
 function showToast(msg) {
@@ -1095,8 +1103,7 @@ function openAddTaskModal() {
     const catSel = document.getElementById('addCategoryId');
     catSel.innerHTML = '<option value="">(未選択)</option>' +
         CATEGORIES.map(c => `<option value="${escapeHtml(c.category_id)}">${escapeHtml(c.name)}</option>`).join('');
-    const staffOptions = '<option value="">(未選択)</option>' +
-        STAFF_LIST.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('');
+    const staffOptions = staffSelectOptions();
     document.getElementById('addPrimaryId').innerHTML = staffOptions;
     document.getElementById('addSecondaryId').innerHTML = staffOptions;
     document.querySelectorAll('input[name="addKind"]').forEach(r => r.checked = (r.value === '定期'));
@@ -1177,8 +1184,7 @@ async function openProposalModal(task) {
     catSel.innerHTML = '<option value="">(未選択)</option>' +
         CATEGORIES.map(c => `<option value="${escapeHtml(c.category_id)}">${escapeHtml(c.name)}</option>`).join('');
 
-    const staffOptions = '<option value="">(未選択)</option>' +
-        STAFF_LIST.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('');
+    const staffOptions = staffSelectOptions();
     document.getElementById('approvePrimaryId').innerHTML = staffOptions;
     document.getElementById('approveSecondaryId').innerHTML = staffOptions;
 
@@ -1271,8 +1277,7 @@ async function openEditModal(task) {
 
     document.querySelectorAll('input[name="editKind"]').forEach(r => r.checked = (r.value === (task.kind || '定期')));
 
-    const staffOptions = '<option value="">(未選択)</option>' +
-        STAFF_LIST.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('');
+    const staffOptions = staffSelectOptions();
     const primSel = document.getElementById('editPrimaryId');
     const secSel = document.getElementById('editSecondaryId');
     primSel.innerHTML = staffOptions; primSel.value = task.primary_id || '';
@@ -1343,14 +1348,16 @@ document.getElementById('btnArchiveTask').addEventListener('click', async () => 
 function renderPersonView() {
     const container = document.getElementById('personViewContainer');
     container.innerHTML = '';
+    // 代表＋スタッフ全員を初期化
+    const personList = [{ id: 'daihyo', name: '代表' }, ...STAFF_LIST];
     const byStaff = {};
-    STAFF_LIST.forEach(s => byStaff[s.id] = { primary: [], secondary: [] });
+    personList.forEach(s => byStaff[s.id] = { primary: [], secondary: [] });
     TASKS.filter(t => t.status !== 'archived' && t.approval_status === 'approved').forEach(t => {
         if (t.primary_id && byStaff[t.primary_id]) byStaff[t.primary_id].primary.push(t);
         if (t.secondary_id && byStaff[t.secondary_id]) byStaff[t.secondary_id].secondary.push(t);
     });
     let any = false;
-    STAFF_LIST.forEach(s => {
+    personList.forEach(s => {
         const b = byStaff[s.id];
         if (b.primary.length === 0 && b.secondary.length === 0) return;
         any = true;
@@ -1368,7 +1375,7 @@ function renderPersonView() {
         `;
         container.appendChild(block);
     });
-    if (!any) container.innerHTML = '<div style="padding: 16px; color:#888;">担当業務が登録されているスタッフはまだいません。</div>';
+    if (!any) container.innerHTML = '<div style="padding: 16px; color:#888;">担当業務が登録されている人はまだいません。</div>';
 }
 
 document.getElementById('btnPersonView').addEventListener('click', () => {
