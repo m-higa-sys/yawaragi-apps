@@ -87,6 +87,14 @@ body {
 .filter-btn.active-ampm {
     background: #2196F3; color: #fff; border-color: #2196F3; font-weight: bold;
 }
+.search-input {
+    padding: 6px 12px; border: 1px solid #ccc; border-radius: 20px;
+    font-size: 14px; min-height: 36px; width: 180px;
+    background: #fff; color: #333; touch-action: manipulation;
+}
+.search-input:focus {
+    outline: none; border-color: #4CAF50; box-shadow: 0 0 0 2px rgba(76,175,80,0.2);
+}
 .filter-count { font-size: 13px; color: #888; align-self: center; }
 
 .table-container { overflow-x: auto; padding: 15px; }
@@ -256,7 +264,9 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 </div>
 
 <div class="filter-bar" id="filterBar" style="display:none;">
-    <span class="filter-label">曜日:</span>
+    <span class="filter-label">🔍 検索:</span>
+    <input type="text" id="searchInput" class="search-input" placeholder="氏名・フリガナ" oninput="setSearchFilter(this.value)" />
+    <span class="filter-label" style="margin-left:8px;">曜日:</span>
     <div class="filter-group" id="dayFilters">
         <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
         <button class="filter-btn" onclick="setDayFilter('月')">月</button>
@@ -332,6 +342,7 @@ let monitoringState = {
 };
 let filterDay = '';
 let filterAmpm = '';
+let filterSearch = '';
 let dialogState = { userId: '', name: '', year: 0, month: 0, field: '', currentValue: '' };
 
 // ============ ユーティリティ ============
@@ -399,6 +410,16 @@ function sortUsers() {
 }
 
 // ============ 曜日・午前午後フィルター ============
+function setSearchFilter(v) {
+    filterSearch = (v || '').normalize('NFKC').toLowerCase();
+    renderTable();
+}
+function matchesSearch(user) {
+    if (!filterSearch) return true;
+    const name = (user.name || '').normalize('NFKC').toLowerCase();
+    const kana = (user.furigana || '').normalize('NFKC').toLowerCase();
+    return name.indexOf(filterSearch) >= 0 || kana.indexOf(filterSearch) >= 0;
+}
 function setDayFilter(day) {
     filterDay = day;
     document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
@@ -568,10 +589,21 @@ function renderTable() {
 
     // 並び替え＋フィルター
     sortUsers();
-    const filteredUsers = monitoringState.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+    const filteredUsers = monitoringState.users.filter(u =>
+        matchesSchedule(u, filterDay, filterAmpm) && matchesSearch(u)
+    );
 
+    // 検索ボックスは常に出す。曜日・午前午後ボタンは days データがあれば出す。
+    const hasUsers = monitoringState.users.length > 0;
+    document.getElementById('filterBar').style.display = hasUsers ? 'flex' : 'none';
     const hasScheduleData = monitoringState.users.some(u => u.days);
-    document.getElementById('filterBar').style.display = hasScheduleData ? 'flex' : 'none';
+    document.getElementById('dayFilters').style.display = hasScheduleData ? 'flex' : 'none';
+    document.getElementById('ampmFilters').style.display = hasScheduleData ? 'flex' : 'none';
+    // 「曜日:」「時間:」ラベルも一緒に隠す
+    document.querySelectorAll('.filter-bar .filter-label').forEach((el, i) => {
+        if (i === 0) return; // 「🔍 検索:」は残す
+        el.style.display = hasScheduleData ? 'inline' : 'none';
+    });
     const fcEl = document.getElementById('filterCount');
     fcEl.textContent = (filterDay || filterAmpm)
         ? filteredUsers.length + ' / ' + monitoringState.users.length + '名 表示中'
@@ -585,7 +617,9 @@ function renderTable() {
         const group = getGroup(u.furigana);
         if (group !== currentGroup) {
             currentGroup = group;
-            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + MONTHS.length * SUB_COLS.length) + '" style="background:#f1f8e9;"></td></tr>';
+            if (!filterSearch) {
+                html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + MONTHS.length * SUB_COLS.length) + '" style="background:#f1f8e9;"></td></tr>';
+            }
         }
         const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
 
