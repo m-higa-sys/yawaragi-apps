@@ -752,6 +752,7 @@ input, select, textarea { font-family: inherit; }
 // ===== 設定 =====
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const CURRENT_OPERATOR_KEY = 'tasks_app_operator_v1';
+const OPERATOR_EXCLUDED = ['小野', '林'];  // 操作者選択モーダルから除外（主・副担当selectには残す）
 
 // ===== グローバル状態 =====
 let CURRENT_OPERATOR = null;  // { id, name }
@@ -829,13 +830,15 @@ function renderOperatorBar() {
 function showOperatorModal() {
     const grid = document.getElementById('operatorButtonGrid');
     grid.innerHTML = '';
-    STAFF_LIST.forEach(s => {
-        const btn = document.createElement('button');
-        btn.className = 'btn-sm';
-        btn.textContent = s.name;
-        btn.addEventListener('click', () => onOperatorSelect(s.id, s.name));
-        grid.appendChild(btn);
-    });
+    STAFF_LIST
+        .filter(s => !OPERATOR_EXCLUDED.includes(s.name))
+        .forEach(s => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-sm';
+            btn.textContent = s.name;
+            btn.addEventListener('click', () => onOperatorSelect(s.id, s.name));
+            grid.appendChild(btn);
+        });
     openModal('modalOperator');
 }
 
