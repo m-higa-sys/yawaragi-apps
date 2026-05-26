@@ -6226,9 +6226,28 @@ async function absSubmit(opts) {
     records.push(record);
     absSaveRecords(records);
 
+    // 2026-05-26: ケアマネ連絡ステータス入りトースト（absClearName 前に算出）
+    // localCmNotified（上で算出済）と mailCmEmail で文言分岐
+    // showToast は textContent ベースなので改行不可 → ' / ' で区切る
+    const userNameForToast = record.userName + '様';
+    let cmLine;
+    if (localCmNotified === '送信済' && mailCmEmail) {
+        cmLine = '📧 ' + mailCmEmail + ' へ送信';
+    } else if (localCmNotified === '電話連絡済') {
+        cmLine = '☎ ケアマネ電話連絡済';
+    } else if (localCmNotified === 'ケアマネ把握済') {
+        cmLine = '✅ ケアマネ把握済（連絡不要）';
+    } else if (localCmNotified === '手動メール送信済') {
+        cmLine = '✉ 手動メール送信済';
+    } else if (localCmNotified === 'メールなし') {
+        cmLine = '⚠ 自動連絡なし（要手動確認）';
+    } else {
+        cmLine = '⚠ ケアマネ連絡：' + localCmNotified;
+    }
+
     // フォームリセット
     absClearName();
-    showToast('欠席を登録しました');
+    showToast('✅ ' + userNameForToast + ' 欠席登録完了 / ' + cmLine, 5000);
 
     // 一覧を更新
     absRenderTodayList();
