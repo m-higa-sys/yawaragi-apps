@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>📋 個別機能訓練計画書チェック | yawaragi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
+    background: #f0f4f8;
+    color: #2d3748;
+    min-height: 100vh;
+}
+header {
+    padding: 16px 24px;
+    border-bottom: 2px solid #2c7a7b;
+    background: #f7fafc;
+}
+header h1 { font-size: 1.4rem; }
+header p { margin-top: 4px; font-size: 0.85rem; color: #718096; }
+
+.toolbar {
+    padding: 12px 24px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.toolbar select, .toolbar button {
+    font-family: inherit;
+    font-size: 0.9rem;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e0;
+    background: #fff;
+    cursor: pointer;
+    color: #2d3748;
+    min-height: 40px;
+}
+.toolbar button.primary {
+    background: #2c7a7b;
+    color: #fff;
+    border-color: #2c7a7b;
+    font-weight: bold;
+}
+.toolbar button.secondary {
+    background: #2b6cb0;
+    color: #fff;
+    border-color: #2b6cb0;
+}
+.toolbar .stats {
+    margin-left: auto;
+    font-size: 0.9rem;
+    color: #4a5568;
+}
+.toolbar .stats strong { color: #2c7a7b; }
+
+.filter-bar {
+    padding: 10px 24px;
+    background: #f7fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 0.85rem;
+}
+.filter-bar .label { font-weight: bold; color: #4a5568; }
+.filter-btn {
+    padding: 5px 12px;
+    border: 1px solid #cbd5e0;
+    border-radius: 16px;
+    background: #fff;
+    color: #4a5568;
+    font-size: 0.85rem;
+    cursor: pointer;
+    min-height: 32px;
+}
+.filter-btn.active {
+    background: #2c7a7b;
+    color: #fff;
+    border-color: #2c7a7b;
+    font-weight: bold;
+}
+.filter-btn.active-ampm {
+    background: #2b6cb0;
+    color: #fff;
+    border-color: #2b6cb0;
+    font-weight: bold;
+}
+.filter-count { color: #718096; }
+
+.table-container { overflow-x: auto; padding: 16px 24px; }
+table {
+    border-collapse: collapse;
+    width: 100%;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+th, td {
+    border: 1px solid #e2e8f0;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 0.85rem;
+}
+th {
+    background: #2c7a7b;
+    color: #fff;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+th.month-header {
+    background: #285e61;
+    border-left: 3px solid #234e52;
+}
+th.sub-header {
+    background: #2c7a7b;
+    font-size: 0.75rem;
+    min-width: 48px;
+}
+th.sub-header.month-start { border-left: 3px solid #234e52; }
+
+.name-cell {
+    text-align: left;
+    padding-left: 10px;
+    font-weight: bold;
+    min-width: 110px;
+    white-space: nowrap;
+    cursor: pointer;
+    background: #fff;
+    position: sticky;
+    left: 30px;
+    z-index: 5;
+}
+.name-cell:hover { background: #f0fff4; }
+.group-cell {
+    font-weight: bold;
+    color: #2c7a7b;
+    background: #e6fffa;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    min-width: 30px;
+}
+.care-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 4px;
+    font-weight: normal;
+    background: #fef5e7;
+    color: #9c4221;
+}
+.row-even { background: #f7fafc; }
+.row-even .name-cell { background: #f7fafc; }
+
+.check-cell {
+    cursor: pointer;
+    min-width: 48px;
+    min-height: 36px;
+    font-size: 0.8rem;
+    transition: background 0.15s;
+}
+.check-cell:hover { background: #edf2f7; }
+.check-cell.checked { background: #b2f5ea; color: #234e52; font-weight: bold; }
+.check-cell.all-done { background: #e6fffa; color: #234e52; font-weight: bold; }
+.check-cell.all-done.has-value { background: #2c7a7b; color: #fff; }
+.check-cell.highlight-undone {
+    background: #fff5f0;
+    box-shadow: inset 0 0 0 2px #9c4221;
+}
+.check-cell.current { box-shadow: inset 0 0 0 3px #2b6cb0; }
+.check-cell.current.highlight-undone { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #9c4221; }
+.check-cell.disabled {
+    background: #edf2f7;
+    color: #a0aec0;
+    cursor: default;
+}
+.check-cell.disabled:hover { background: #edf2f7; }
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 360px;
+    width: 90%;
+}
+.modal h3 { margin-bottom: 8px; font-size: 1.1rem; }
+.modal .sub { color: #718096; font-size: 0.85rem; margin-bottom: 14px; }
+.modal input[type="date"], .modal input[type="month"], .modal input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    font-size: 1rem;
+    border: 2px solid #2c7a7b;
+    border-radius: 8px;
+    margin-bottom: 14px;
+}
+.modal .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.modal .btn-row button {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: inherit;
+}
+.modal .btn-row .ok { background: #2c7a7b; color: #fff; }
+.modal .btn-row .clear { background: #9c4221; color: #fff; }
+.modal .btn-row .cancel { background: #edf2f7; color: #4a5568; }
+.modal .btn-row .block { background: #b7791f; color: #fff; }
+.modal .btn-row .block-mitei { background: #4a5568; color: #fff; }
+.modal .btn-row .unblock { background: #718096; color: #fff; }
+
+/* 保留中バナー（ダイアログ最上部・最大の目立ち度） */
+#blockedBanner {
+    font-size: 1.25rem;
+    font-weight: bold;
+    padding: 16px 18px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+#blockedBanner.banner-hoken {
+    background: #fef3c7;
+    color: #78350f;
+    border: 3px solid #b7791f;
+    box-shadow: 0 0 0 2px #fef3c7, 0 4px 12px rgba(183,121,31,0.25);
+}
+#blockedBanner.banner-mitei {
+    background: #e2e8f0;
+    color: #2d3748;
+    border: 3px solid #4a5568;
+    box-shadow: 0 0 0 2px #e2e8f0, 0 4px 12px rgba(74,85,104,0.25);
+}
+
+/* 保留セル: 保険未登録（オレンジ・⚠） */
+.check-cell.blocked-hoken {
+    background: #fef3c7 !important;
+    box-shadow: inset 0 0 0 2px #b7791f !important;
+    color: #78350f !important;
+    font-weight: bold;
+}
+.check-cell.blocked-hoken::before { content: '⚠ '; }
+.check-cell.blocked-hoken.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #b7791f !important; }
+
+/* 保留セル: 利用継続未確定（グレー・⏸） */
+.check-cell.blocked-mitei {
+    background: #e2e8f0 !important;
+    box-shadow: inset 0 0 0 2px #4a5568 !important;
+    color: #2d3748 !important;
+    font-weight: bold;
+}
+.check-cell.blocked-mitei::before { content: '⏸ '; }
+.check-cell.blocked-mitei.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #4a5568 !important; }
+
+.toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(120px);
+    background: #2d3748;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #9c4221; }
+.toast.warn { background: #b7791f; }
+
+#offlineBanner {
+    background: #fff5f0;
+    color: #9c4221;
+    padding: 8px 24px;
+    border-left: 4px solid #9c4221;
+    font-size: 0.85rem;
+    display: none;
+}
+
+@media print {
+    body { background: #fff; }
+    header { background: #fff; border-bottom: 1px solid #000; }
+    .toolbar, .filter-bar, #offlineBanner, .no-print { display: none !important; }
+    .table-container { padding: 0; overflow: visible; }
+    table { box-shadow: none; }
+    th, td { padding: 2px 1px; font-size: 9px; }
+    .name-cell, .group-cell { position: static; }
+    .check-cell.disabled { background: #f0f0f0; }
+    @page { size: A4 landscape; margin: 8mm; }
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>📋 個別機能訓練計画書チェック</h1>
+    <p>要介護のみ 3 ヶ月サイクル。作成月の「興味関心」「生活機能」「計画書」を管理します。名前タップで計画書開始月を変更できます。</p>
+</header>
+
+<div id="offlineBanner">⚠ オフライン表示中(最新データの取得に失敗しています)</div>
+
+<div class="toolbar">
+    <select id="fiscalYearSelect" onchange="onYearChange()"></select>
+    <button class="primary" onclick="loadFiscalYearData()">🔄 再読込</button>
+    <button class="secondary" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
+    <button onclick="window.print()">🖨 印刷</button>
+    <button onclick="openOperatorDialog()" id="operatorBtn" style="background:#edf2f7;">👤 操作者: <span id="operatorLabel">未選択</span></button>
+    <div class="stats">
+        登録: <strong id="totalUsers">0</strong> 名 ／ 今月該当: <strong id="thisMonthCount">0</strong> ／ 完了: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
+    </div>
+</div>
+
+<div class="filter-bar" id="filterBar" style="display:none;">
+    <span class="label">曜日:</span>
+    <div id="dayFilters" style="display:flex; gap:4px; flex-wrap:wrap;">
+        <button class="filter-btn active" onclick="setDayFilter('', event)">全</button>
+        <button class="filter-btn" onclick="setDayFilter('月', event)">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火', event)">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水', event)">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木', event)">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金', event)">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土', event)">土</button>
+    </div>
+    <span class="label" style="margin-left:8px;">時間:</span>
+    <div id="ampmFilters" style="display:flex; gap:4px;">
+        <button class="filter-btn active-ampm" onclick="setAmpmFilter('', event)">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前', event)">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後', event)">午後</button>
+    </div>
+    <span class="label" style="margin-left:8px;">行:</span>
+    <div id="groupFilters" style="display:flex; gap:4px; flex-wrap:wrap;">
+        <button class="filter-btn active" onclick="setGroupFilter('', event)">全て</button>
+        <button class="filter-btn" onclick="setGroupFilter('ア', event)">あ</button>
+        <button class="filter-btn" onclick="setGroupFilter('カ', event)">か</button>
+        <button class="filter-btn" onclick="setGroupFilter('サ', event)">さ</button>
+        <button class="filter-btn" onclick="setGroupFilter('タ', event)">た</button>
+        <button class="filter-btn" onclick="setGroupFilter('ナ', event)">な</button>
+        <button class="filter-btn" onclick="setGroupFilter('ハ', event)">は</button>
+        <button class="filter-btn" onclick="setGroupFilter('マ', event)">ま</button>
+        <button class="filter-btn" onclick="setGroupFilter('ヤ', event)">や</button>
+        <button class="filter-btn" onclick="setGroupFilter('ラ', event)">ら</button>
+        <button class="filter-btn" onclick="setGroupFilter('ワ', event)">わ</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
+    <label style="margin-left:auto; display:flex; align-items:center; gap:6px; font-size:0.85rem; color:#4a5568; cursor:pointer;">
+        <input type="checkbox" id="includeCancelledChk" onchange="toggleIncludeCancelled(this.checked)">
+        中止者も表示
+    </label>
+</div>
+
+<div class="table-container">
+    <table id="matrixTable">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+    <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999;">読み込み中...</div>
+</div>
+
+<!-- 操作者選択モーダル（起動時に1回） -->
+<div class="modal-overlay" id="operatorDialog">
+    <div class="modal">
+        <h3>操作者を選択してください</h3>
+        <div class="sub">操作ログに記録します。後でツールバーの「操作者」ボタンから変更できます。</div>
+        <div id="operatorList" style="display:flex; flex-wrap:wrap; gap:8px; margin:14px 0;"></div>
+    </div>
+</div>
+
+<!-- 日付編集ダイアログ -->
+<div class="modal-overlay" id="dateDialog">
+    <div class="modal">
+        <div id="blockedBanner" style="display:none;"></div>
+        <h3 id="dateDialogTitle">日付編集</h3>
+        <div class="sub" id="dateDialogSub"></div>
+        <input type="date" id="dateInput">
+        <div class="btn-row" id="dateInputBtnRow">
+            <button class="clear" onclick="clearCheckDate()">取消</button>
+            <button class="ok" onclick="saveDateFromDialog()">OK</button>
+        </div>
+        <div class="btn-row" id="blockBtnRow" style="margin-top:6px;">
+            <button id="blockBtnHoken" class="block" onclick="setBlocked('保険未登録')">⚠ 保険未登録</button>
+            <button id="blockBtnMitei" class="block-mitei" onclick="setBlocked('利用継続未確定')">⏸ 利用未確定</button>
+        </div>
+        <div class="btn-row" id="unblockBtnRow" style="margin-top:6px; display:none;">
+            <button class="unblock" onclick="setBlocked('')">⚠ 保留解除</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+            <button class="cancel" onclick="closeDateDialog()">キャンセル</button>
+        </div>
+        <div id="blockedSub" style="display:none; font-size:0.85rem; color:#78350f; margin-top:8px; padding:8px 10px; background:#fef3c7; border-left:3px solid #b7791f; border-radius:6px;"></div>
+    </div>
+</div>
+
+<!-- 計画書開始月編集ダイアログ -->
+<div class="modal-overlay" id="planStartDialog">
+    <div class="modal">
+        <h3 id="planStartTitle">計画書開始月の編集</h3>
+        <div class="sub" id="planStartSub"></div>
+        <input type="month" id="planStartInput">
+        <div class="btn-row">
+            <button class="clear" onclick="clearPlanStart()">クリア</button>
+            <button class="ok" onclick="savePlanStartFromDialog()">OK</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+            <button class="cancel" onclick="closePlanStartDialog()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ============ 定数 ============
+const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const CACHE_PREFIX = 'yawaragi_keikakusho_v1_';
+const OPERATOR_KEY = 'yawaragi_keikakusho_operator';
+const OPERATOR_FIXED = ['代表'];  // スタッフ一覧APIに含まれない・先頭固定
+const MONTHS = [
+    { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
+    { m: 7, label: '7月' }, { m: 8, label: '8月' }, { m: 9, label: '9月' },
+    { m: 10, label: '10月' }, { m: 11, label: '11月' }, { m: 12, label: '12月' },
+    { m: 1, label: '1月', nextYear: true },
+    { m: 2, label: '2月', nextYear: true },
+    { m: 3, label: '3月', nextYear: true }
+];
+const SUB_COLS = [
+    { field: 'kyoumi_date', label: '興味' },
+    { field: 'seikatsu_date', label: '生活' },
+    { field: 'keikaku_date', label: '計画' }
+];
+
+// ============ 状態 ============
+let state = {
+    fiscalYear: getCurrentFiscalYear(),
+    users: [],            // [{ userId, name, furigana, category, days, ampm, planStart, cancelled }]
+    records: {},          // key: "userId_year_month" → { kyoumi_date, seikatsu_date, keikaku_date }
+    isLoading: false,
+    operator: '',         // 操作者（localStorage 経由）
+    includeCancelled: false  // 中止者も表示するか
+};
+let filterDay = '';
+let filterAmpm = '';
+let filterGroup = '';
+let dialogState = { userId: '', name: '', year: 0, month: 0, field: '', fieldLabel: '', currentValue: '' };
+let planStartDialogState = { userId: '', name: '', currentValue: '' };
+
+// ============ ユーティリティ ============
+function getCurrentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[<>&"]/g, c => ({
+        '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'
+    }[c]));
+}
+function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+function formatTodayISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function formatMD(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const parts = String(yyyymmdd).split('-');
+    if (parts.length < 3) return yyyymmdd;
+    return parseInt(parts[1], 10) + '/' + parseInt(parts[2], 10);
+}
+function showToast(msg, kind) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (kind ? ' ' + kind : '');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+function showOffline() { document.getElementById('offlineBanner').style.display = 'block'; }
+function hideOffline() { document.getElementById('offlineBanner').style.display = 'none'; }
+
+// ============ 3ヶ月サイクル判定 ============
+function isPlanMonth(planStart, year, month) {
+    if (!planStart) return false;
+    const m = planStart.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return false;
+    const py = parseInt(m[1], 10);
+    const pm = parseInt(m[2], 10);
+    const diff = (year - py) * 12 + (month - pm);
+    return diff >= 0 && diff % 3 === 0;
+}
+
+// ============ ふりがなグループ ============
+function getGroup(kana) {
+    if (!kana) return '他';
+    const c = kana.charAt(0);
+    if ('あいうえおアイウエオ'.indexOf(c) >= 0) return 'ア';
+    if ('かきくけこがぎぐげごカキクケコガギグゲゴ'.indexOf(c) >= 0) return 'カ';
+    if ('さしすせそざじずぜぞサシスセソザジズゼゾ'.indexOf(c) >= 0) return 'サ';
+    if ('たちつてとだぢづでどタチツテトダヂヅデド'.indexOf(c) >= 0) return 'タ';
+    if ('なにぬねのナニヌネノ'.indexOf(c) >= 0) return 'ナ';
+    if ('はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ'.indexOf(c) >= 0) return 'ハ';
+    if ('まみむめもマミムメモ'.indexOf(c) >= 0) return 'マ';
+    if ('やゆよヤユヨ'.indexOf(c) >= 0) return 'ヤ';
+    if ('らりるれろラリルレロ'.indexOf(c) >= 0) return 'ラ';
+    if ('わをんワヲン'.indexOf(c) >= 0) return 'ワ';
+    return '他';
+}
+
+function sortUsers() {
+    state.users.sort((a, b) =>
+        (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja')
+    );
+}
+
+// ============ 年度セレクタ ============
+function populateFiscalYearSelect() {
+    const sel = document.getElementById('fiscalYearSelect');
+    const current = getCurrentFiscalYear();
+    sel.innerHTML = '';
+    for (let y = current + 1; y >= 2024; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y + '年度（' + y + '/4〜' + (y + 1) + '/3）';
+        if (y === current) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    state.fiscalYear = current;
+}
+function onYearChange() {
+    state.fiscalYear = parseInt(document.getElementById('fiscalYearSelect').value, 10);
+    loadCache();
+    loadFiscalYearData();
+}
+
+// ============ キャッシュ ============
+function saveCache() {
+    try {
+        const key = CACHE_PREFIX + state.fiscalYear;
+        localStorage.setItem(key, JSON.stringify({
+            fetchedAt: new Date().toISOString(),
+            users: state.users,
+            records: state.records
+        }));
+    } catch (e) { console.warn('cache save failed', e); }
+}
+function loadCache() {
+    try {
+        const key = CACHE_PREFIX + state.fiscalYear;
+        const raw = localStorage.getItem(key);
+        if (!raw) { state.users = []; state.records = {}; renderTable(); return; }
+        const c = JSON.parse(raw);
+        state.users = c.users || [];
+        state.records = c.records || {};
+        renderTable();
+    } catch (e) { console.warn('cache load failed', e); }
+}
+
+// ============ API ============
+async function fetchYear(year) {
+    const inc = state.includeCancelled ? '&includeCancelled=1' : '';
+    const res = await fetch(API_BASE + '?action=getKeikakushoYear&year=' + year + inc + '&t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+}
+async function loadFiscalYearData() {
+    if (state.isLoading) return;
+    state.isLoading = true;
+    const fy = state.fiscalYear;
+    try {
+        const [r1, r2] = await Promise.all([fetchYear(fy), fetchYear(fy + 1)]);
+        if (!r1 || !r1.ok || !r2 || !r2.ok) { showOffline(); return; }
+        if (!(r1.users || []).length) {
+            showToast('⚠ 利用者データが空でした。キャッシュを維持します', 'warn');
+            return;
+        }
+        state.users = r1.users;
+        const newRecords = {};
+        [r1, r2].forEach(r => {
+            (r.records || []).forEach(rec => {
+                const key = rec.userId + '_' + rec.year + '_' + rec.month;
+                newRecords[key] = {
+                    kyoumi_date: rec.kyoumi_date || '',
+                    seikatsu_date: rec.seikatsu_date || '',
+                    keikaku_date: rec.keikaku_date || '',
+                    blocked_reason: rec.blocked_reason || ''
+                };
+            });
+        });
+        state.records = newRecords;
+        saveCache();
+        hideOffline();
+        renderTable();
+    } catch (e) {
+        console.error('loadFiscalYearData error:', e);
+        showOffline();
+        showToast('⚠ データ取得失敗（オフライン表示）', 'error');
+    } finally {
+        state.isLoading = false;
+    }
+}
+
+// ============ テーブル描画 ============
+function renderTable() {
+    const fy = state.fiscalYear;
+    const thead = document.querySelector('#matrixTable thead');
+    const tbody = document.querySelector('#matrixTable tbody');
+    const emptyEl = document.getElementById('emptyMessage');
+
+    if (!state.users || state.users.length === 0) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = state.isLoading ? '読み込み中...' : '対象者がいません';
+        document.getElementById('filterBar').style.display = 'none';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth() + 1;
+
+    // ヘッダ
+    let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="background:#2c7a7b; left:30px; min-width:110px;">氏名</th>';
+    MONTHS.forEach(mo => {
+        h1 += '<th class="month-header" colspan="' + SUB_COLS.length + '">' + mo.label + '</th>';
+    });
+    h1 += '</tr>';
+    let h2 = '<tr>';
+    MONTHS.forEach(mo => {
+        SUB_COLS.forEach((sub, si) => {
+            const cls = 'sub-header' + (si === 0 ? ' month-start' : '');
+            h2 += '<th class="' + cls + '">' + sub.label + '</th>';
+        });
+    });
+    h2 += '</tr>';
+    thead.innerHTML = h1 + h2;
+
+    // ソート＆フィルタ
+    sortUsers();
+    const filteredUsers = state.users.filter(u => matchesFilter(u));
+    document.getElementById('filterBar').style.display = state.users.some(u => u.days) ? 'flex' : 'none';
+    const fcEl = document.getElementById('filterCount');
+    fcEl.textContent = (filterDay || filterAmpm || filterGroup)
+        ? filteredUsers.length + ' / ' + state.users.length + '名 表示中'
+        : '';
+
+    // 行描画
+    let html = '';
+    let currentGroup = '';
+    let rowIndex = 0;
+    filteredUsers.forEach(u => {
+        const group = getGroup(u.furigana);
+        if (group !== currentGroup) {
+            currentGroup = group;
+            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + MONTHS.length * SUB_COLS.length) + '" style="background:#e6fffa;"></td></tr>';
+        }
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+        const careMatch = (u.category || '').match(/要介護(\d)/);
+        const badge = careMatch ? '<span class="care-badge">介' + careMatch[1] + '</span>' : '';
+        const cancelBadge = u.cancelled ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;background:#c0392b;color:white;font-size:0.7rem;font-weight:700;">中止</span>' : '';
+        html += '<tr class="' + rowClass + '"' + (u.cancelled ? ' style="opacity:0.7;background:#fef5f5;"' : '') + '>';
+        html += '<td class="group-cell"></td>';
+        html += '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-planstart="' + escapeAttr(u.planStart || '') + '" onclick="openPlanStartDialog(this)">'
+              + escapeHtml(u.name) + badge + cancelBadge + '</td>';
+
+        MONTHS.forEach(mo => {
+            const cellYear = mo.nextYear ? fy + 1 : fy;
+            const key = u.userId + '_' + cellYear + '_' + mo.m;
+            const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+            const isPlan = isPlanMonth(u.planStart, cellYear, mo.m);
+            const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
+            const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
+            const filled = SUB_COLS.filter(s => rec[s.field]).length;
+            const allDone = filled === 3;
+            const isBlocked = !!rec.blocked_reason;
+
+            SUB_COLS.forEach((sub, si) => {
+                let cls = 'check-cell';
+                if (si === 0) cls += ' month-border';
+                if (!isPlan) {
+                    cls += ' disabled';
+                    html += '<td class="' + cls + '">-</td>';
+                    return;
+                }
+                const val = rec[sub.field] || '';
+                if (isBlocked) {
+                    cls += (rec.blocked_reason === '利用継続未確定') ? ' blocked-mitei' : ' blocked-hoken';
+                } else if (allDone) cls += ' all-done has-value';
+                else if (val) cls += ' checked';
+                else if (isPast) cls += ' highlight-undone';
+                if (isCurrent) cls += ' current';
+                const display = val ? formatMD(val) : '';
+                html += '<td class="' + cls + '"'
+                      + ' data-userid="' + escapeAttr(u.userId) + '"'
+                      + ' data-name="' + escapeAttr(u.name) + '"'
+                      + ' data-year="' + cellYear + '"'
+                      + ' data-month="' + mo.m + '"'
+                      + ' data-field="' + sub.field + '"'
+                      + ' data-fieldlabel="' + sub.label + '"'
+                      + ' onclick="onCellTap(this)">' + display + '</td>';
+            });
+        });
+        html += '</tr>';
+        rowIndex++;
+    });
+    tbody.innerHTML = html;
+    updateStats();
+}
+
+function matchesFilter(u) {
+    if (filterDay && (!u.days || u.days.indexOf(filterDay) < 0)) return false;
+    if (filterAmpm && u.ampm !== filterAmpm) return false;
+    if (filterGroup && getGroup(u.furigana) !== filterGroup) return false;
+    return true;
+}
+
+function updateStats() {
+    document.getElementById('totalUsers').textContent = state.users.length;
+    const now = new Date();
+    const ny = now.getFullYear();
+    const nm = now.getMonth() + 1;
+    let thisMonth = 0, done = 0;
+    state.users.forEach(u => {
+        if (!isPlanMonth(u.planStart, ny, nm)) return;
+        thisMonth++;
+        const key = u.userId + '_' + ny + '_' + nm;
+        const rec = state.records[key];
+        if (rec && rec.kyoumi_date && rec.seikatsu_date && rec.keikaku_date) done++;
+    });
+    document.getElementById('thisMonthCount').textContent = thisMonth;
+    document.getElementById('progressCount').textContent = done;
+    document.getElementById('progressTotal').textContent = thisMonth;
+}
+
+function setDayFilter(d, ev) {
+    filterDay = d;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    ev.target.classList.add('active');
+    renderTable();
+}
+function setAmpmFilter(a, ev) {
+    filterAmpm = a;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
+    ev.target.classList.add('active-ampm');
+    renderTable();
+}
+function setGroupFilter(g, ev) {
+    filterGroup = g;
+    document.querySelectorAll('#groupFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    ev.target.classList.add('active');
+    renderTable();
+}
+function toggleIncludeCancelled(checked) {
+    state.includeCancelled = !!checked;
+    loadFiscalYearData();  // 再取得で中止者を含めた一覧に切り替え
+}
+
+// ============ セルクリック処理＆日付編集ダイアログ ============
+function onCellTap(td) {
+    if (td.classList.contains('disabled')) return;
+    const userId = td.dataset.userid;
+    const name = td.dataset.name;
+    const year = parseInt(td.dataset.year, 10);
+    const month = parseInt(td.dataset.month, 10);
+    const field = td.dataset.field;
+    const fieldLabel = td.dataset.fieldlabel;
+    const key = userId + '_' + year + '_' + month;
+    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+    const current = rec[field] || '';
+    const isBlocked = !!rec.blocked_reason;
+    // 保留中セルは無条件でダイアログを開く（解除ボタンを使えるように）
+    if (!current && !isBlocked) {
+        applyValue(userId, name, year, month, field, fieldLabel, formatTodayISO());
+    } else {
+        openDateDialog(userId, name, year, month, field, fieldLabel, current, rec.blocked_reason || '');
+    }
+}
+
+function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue, blockedReason) {
+    dialogState = { userId, name, year, month, field, fieldLabel, currentValue, blockedReason: blockedReason || '' };
+    const labelMap = { kyoumi_date: '興味関心', seikatsu_date: '生活機能', keikaku_date: '計画書' };
+    const blockedSub = document.getElementById('blockedSub');
+    const blockedBanner = document.getElementById('blockedBanner');
+    const blockBtnRow = document.getElementById('blockBtnRow');
+    const unblockBtnRow = document.getElementById('unblockBtnRow');
+    const dateInput = document.getElementById('dateInput');
+    const dateInputBtnRow = document.getElementById('dateInputBtnRow');
+    const dateDialogSub = document.getElementById('dateDialogSub');
+
+    if (blockedReason) {
+        // 保留中: シンプル表示（タイトルは「○○さん N月」のみ・日付入力欄も非表示）
+        document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月';
+        dateDialogSub.style.display = 'none';
+        dateInput.style.display = 'none';
+        dateInputBtnRow.style.display = 'none';
+        const isMitei = (blockedReason === '利用継続未確定');
+        blockedBanner.textContent = (isMitei ? '⏸ 保留中: ' : '⚠ 保留中: ') + blockedReason;
+        blockedBanner.className = isMitei ? 'banner-mitei' : 'banner-hoken';
+        blockedBanner.style.display = 'block';
+        blockBtnRow.style.display = 'none';
+        unblockBtnRow.style.display = 'flex';
+    } else {
+        // 通常: 日付入力欄表示
+        document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月の' + labelMap[field];
+        dateDialogSub.style.display = 'block';
+        dateDialogSub.textContent = '現在: ' + (currentValue || '(未入力)');
+        dateInput.style.display = 'block';
+        dateInput.value = currentValue;
+        dateInputBtnRow.style.display = 'flex';
+        blockedSub.style.display = 'none';
+        blockedBanner.style.display = 'none';
+        blockBtnRow.style.display = 'flex';
+        unblockBtnRow.style.display = 'none';
+    }
+    document.getElementById('dateDialog').classList.add('show');
+}
+
+async function setBlocked(reason) {
+    const ds = dialogState;
+    if (!reason) {
+        // 保留解除
+        if (!confirm(ds.name + ' ' + ds.month + '月の保留を解除しますか？')) return;
+    } else if (reason === '保険未登録') {
+        if (!confirm(ds.name + ' ' + ds.month + '月を「保険未登録のため保留」にしますか？\n\n・タスクボードに相談員依頼が自動登録されます\n・セルがオレンジ＋⚠表示になります')) return;
+    } else if (reason === '利用継続未確定') {
+        if (!confirm(ds.name + ' ' + ds.month + '月を「利用継続未確定」で保留にしますか？\n\n・来月の利用が決まってから計画書作成する目印です\n・タスクボードには登録されません（社長メモ扱い）')) return;
+    }
+    closeDateDialog();
+    await applyBlockedReason(ds.userId, ds.name, ds.year, ds.month, reason);
+}
+
+async function applyBlockedReason(userId, name, year, month, reason) {
+    const key = userId + '_' + year + '_' + month;
+    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+    rec.blocked_reason = reason;
+    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason) {
+        delete state.records[key];
+    } else {
+        state.records[key] = rec;
+    }
+    saveCache();
+    renderTable();
+
+    try {
+        const url = API_BASE + '?action=updateKeikakusho'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&year=' + year + '&month=' + month
+            + '&field=blocked_reason'
+            + '&value=' + encodeURIComponent(reason)
+            + '&operator=' + encodeURIComponent(getOperator())
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        if (reason) {
+            const tb = json.taskBoard;
+            if (tb && tb.added) {
+                showToast('⚠ ' + name + ' ' + month + '月 保留設定。タスクボードに相談員依頼を登録しました', 'warn');
+            } else if (tb && !tb.added && tb.reason === 'already exists') {
+                showToast('⚠ ' + name + ' ' + month + '月 保留設定。タスクボードに既存依頼あり', 'warn');
+            } else {
+                showToast('⚠ ' + name + ' ' + month + '月 保留設定', 'warn');
+            }
+        } else {
+            showToast('✅ ' + name + ' ' + month + '月 保留解除', '');
+        }
+        hideOffline();
+    } catch (e) {
+        console.error('updateKeikakusho (blocked_reason) error:', e);
+        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        showOffline();
+    }
+}
+
+function closeDateDialog() {
+    document.getElementById('dateDialog').classList.remove('show');
+}
+
+async function saveDateFromDialog() {
+    const v = document.getElementById('dateInput').value;
+    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
+    const ds = dialogState;
+    closeDateDialog();
+    await applyValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.fieldLabel, v);
+}
+
+async function clearCheckDate() {
+    const ds = dialogState;
+    if (!confirm(ds.name + ' ' + ds.month + '月の値をクリアしますか？')) return;
+    closeDateDialog();
+    await applyValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.fieldLabel, '');
+}
+
+async function applyValue(userId, name, year, month, field, fieldLabel, value) {
+    const key = userId + '_' + year + '_' + month;
+    const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+    rec[field] = value;
+    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason) {
+        delete state.records[key];
+    } else {
+        state.records[key] = rec;
+    }
+    saveCache();
+    renderTable();
+
+    try {
+        const url = API_BASE + '?action=updateKeikakusho'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&year=' + year + '&month=' + month
+            + '&field=' + field
+            + '&value=' + encodeURIComponent(value)
+            + '&operator=' + encodeURIComponent(getOperator())
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        showToast(value
+            ? '✅ ' + name + ' ' + month + '月 ' + fieldLabel + '=' + formatMD(value)
+            : '🗑 ' + name + ' ' + month + '月 ' + fieldLabel + ' クリア',
+            value ? '' : 'warn');
+        hideOffline();
+    } catch (e) {
+        console.error('updateKeikakusho error:', e);
+        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        showOffline();
+    }
+}
+
+// ============ 計画書開始月編集ダイアログ ============
+function openPlanStartDialog(td) {
+    const userId = td.dataset.userid;
+    const name = td.dataset.name;
+    const currentValue = td.dataset.planstart || '';
+    planStartDialogState = { userId, name, currentValue };
+    document.getElementById('planStartTitle').textContent = name + ' の計画書開始月';
+    document.getElementById('planStartSub').textContent = '現在: ' + (currentValue || '未設定') + '（変更すると 3 ヶ月サイクルが再計算されます）';
+    document.getElementById('planStartInput').value = currentValue || '';
+    document.getElementById('planStartDialog').classList.add('show');
+}
+
+function closePlanStartDialog() {
+    document.getElementById('planStartDialog').classList.remove('show');
+}
+
+async function savePlanStartFromDialog() {
+    const v = document.getElementById('planStartInput').value;
+    if (!v) { showToast('⚠ 月が選択されていません', 'error'); return; }
+    const ds = planStartDialogState;
+    closePlanStartDialog();
+    await applyPlanStart(ds.userId, ds.name, v);
+}
+
+async function clearPlanStart() {
+    const ds = planStartDialogState;
+    if (!confirm(ds.name + ' の計画書開始月をクリアしますか？（サイクル対象外になります）')) return;
+    closePlanStartDialog();
+    await applyPlanStart(ds.userId, ds.name, '');
+}
+
+async function applyPlanStart(userId, name, value) {
+    // 楽観更新
+    const u = state.users.find(x => x.userId === userId);
+    if (u) u.planStart = value;
+    saveCache();
+    renderTable();
+
+    try {
+        const url = API_BASE + '?action=updatePlanStart'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&value=' + encodeURIComponent(value)
+            + '&operator=' + encodeURIComponent(getOperator())
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        showToast(value ? '✅ ' + name + ' 計画書開始月 → ' + value : '🗑 ' + name + ' 計画書開始月 クリア',
+                  value ? '' : 'warn');
+        hideOffline();
+    } catch (e) {
+        console.error('updatePlanStart error:', e);
+        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        showOffline();
+    }
+}
+
+// ============ 起動 ============
+// ============ 操作者管理 ============
+function getOperator() {
+    return state.operator || localStorage.getItem(OPERATOR_KEY) || '';
+}
+function setOperator(name) {
+    state.operator = name;
+    if (name) localStorage.setItem(OPERATOR_KEY, name);
+    else localStorage.removeItem(OPERATOR_KEY);
+    document.getElementById('operatorLabel').textContent = name || '未選択';
+    document.getElementById('operatorBtn').style.background = name ? '#e6fffa' : '#fff5f0';
+}
+async function fetchStaffList() {
+    try {
+        const res = await fetch(API_BASE + '?action=staff_list&t=' + Date.now());
+        const json = await res.json();
+        return (json && json.staff) || [];
+    } catch (e) {
+        console.warn('staff_list fetch failed', e);
+        return [];
+    }
+}
+async function openOperatorDialog() {
+    const list = document.getElementById('operatorList');
+    list.innerHTML = '<div style="padding:8px; color:#718096;">読み込み中...</div>';
+    document.getElementById('operatorDialog').classList.add('show');
+    const staff = await fetchStaffList();
+    const all = OPERATOR_FIXED.concat(staff);
+    list.innerHTML = all.map(s =>
+        '<button onclick="selectOperator(\'' + s.replace(/'/g, "\\'") + '\')" '
+        + 'style="padding:10px 16px; min-height:40px; border:2px solid #2c7a7b; background:#fff; '
+        + 'color:#2c3e50; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit;">'
+        + s + (state.operator === s ? ' ✓' : '') + '</button>'
+    ).join('');
+}
+function selectOperator(name) {
+    setOperator(name);
+    document.getElementById('operatorDialog').classList.remove('show');
+    showToast('✅ 操作者: ' + name);
+}
+
+window.addEventListener('load', async () => {
+    setOperator(getOperator());  // 起動時に状態を同期
+    populateFiscalYearSelect();
+    loadCache();
+    if (!getOperator()) openOperatorDialog();  // 未選択なら強制モーダル
+    await loadFiscalYearData();
+});
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible'
+        && !document.getElementById('dateDialog').classList.contains('show')
+        && !document.getElementById('planStartDialog').classList.contains('show')) {
+        loadFiscalYearData();
+    }
+});
+</script>
+</body>
+</html>
