@@ -1028,6 +1028,57 @@
             cursor: pointer; transition: all 0.2s;
         }
         .trm-cancel-btn:hover { background: #fff5f5; }
+        .trm-edit-btn {
+            padding: 6px 14px; border: 1px solid #cbd5e0; border-radius: 6px;
+            background: white; color: #2d3748; font-size: 0.8rem; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .trm-edit-btn:hover { background: #f7fafc; border-color: #a0aec0; }
+        /* 編集モーダル */
+        .trm-edit-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            z-index: 9000; align-items: flex-start; justify-content: center;
+            padding: 32px 16px; overflow-y: auto;
+        }
+        .trm-edit-overlay.active { display: flex; }
+        .trm-edit-modal {
+            background: white; border-radius: 12px; width: 100%; max-width: 480px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 20px 22px; box-sizing: border-box;
+        }
+        .trm-edit-modal h3 {
+            margin: 0 0 12px 0; font-size: 1.1rem; color: #c0392b;
+            border-bottom: 2px solid #fed7d7; padding-bottom: 8px;
+        }
+        .trm-edit-modal .trm-edit-row { margin-bottom: 12px; }
+        .trm-edit-modal label {
+            display: block; font-size: 0.8rem; font-weight: 700;
+            color: #2d3748; margin-bottom: 4px;
+        }
+        .trm-edit-modal input[type="date"],
+        .trm-edit-modal select,
+        .trm-edit-modal textarea {
+            width: 100%; padding: 8px 10px; border: 1.5px solid #cbd5e0;
+            border-radius: 6px; font-size: 0.95rem; font-family: inherit;
+            box-sizing: border-box;
+        }
+        .trm-edit-modal textarea { min-height: 60px; resize: vertical; }
+        .trm-edit-warning {
+            font-size: 0.75rem; color: #c05621; background: #fffaf0;
+            border: 1px solid #feebc8; border-radius: 6px; padding: 8px 10px;
+            margin-bottom: 12px;
+        }
+        .trm-edit-actions {
+            display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px;
+            border-top: 1px dashed #e2e8f0; padding-top: 12px;
+        }
+        .trm-edit-actions button {
+            padding: 8px 16px; border-radius: 6px; font-size: 0.9rem;
+            font-weight: 700; cursor: pointer; border: none;
+        }
+        .trm-edit-cancel { background: #edf2f7; color: #4a5568; }
+        .trm-edit-save { background: #c0392b; color: white; }
+        .trm-edit-save:disabled { opacity: 0.5; cursor: not-allowed; }
         .trm-all-done-badge {
             display: inline-block; padding: 3px 10px; border-radius: 12px;
             background: #38a169; color: white; font-size: 0.75rem; font-weight: 700;
@@ -1698,6 +1749,46 @@
             <div id="abs-contactdate-input" style="margin-top:8px;"></div>
         </div>
 
+        <!-- STEP7: ケアマネへの連絡（長期休みのみ・2026-05-26追加） -->
+        <div class="abs-step" id="abs-step-cm-contact" style="display:none;">
+            <label class="abs-label">7. ケアマネへの連絡</label>
+            <div style="background:#fef9c3;border:2px solid #facc15;border-radius:10px;padding:14px;margin:8px 0;">
+                <div style="font-size:0.85rem;color:#92400e;margin-bottom:10px;font-weight:600;">長期休み開始時のCM連絡を記録します（あとから「連絡未」pillから操作することもできます）</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;">
+                        <input type="radio" name="abs-cm-contact-type" value="phone" style="width:18px;height:18px;">
+                        <span style="font-size:1rem;">📞 電話連絡済</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;">
+                        <input type="radio" name="abs-cm-contact-type" value="mail" style="width:18px;height:18px;">
+                        <span style="font-size:1rem;">✉ メール連絡済</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;">
+                        <input type="radio" name="abs-cm-contact-type" value="sms" style="width:18px;height:18px;">
+                        <span style="font-size:1rem;">💬 SMS送信済</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;">
+                        <input type="radio" name="abs-cm-contact-type" value="aware" style="width:18px;height:18px;">
+                        <span style="font-size:1rem;">👤 ケアマネ把握済（CMから連絡など）</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px;border:1.5px solid #e2e8f0;border-radius:8px;">
+                        <input type="radio" name="abs-cm-contact-type" value="later" style="width:18px;height:18px;">
+                        <span style="font-size:1rem;">➖ あとで（連絡未のまま登録）</span>
+                    </label>
+                </div>
+                <div style="margin-top:12px;">
+                    <label style="display:block;font-size:0.9rem;font-weight:600;margin-bottom:4px;">操作者（必須・あとで以外）</label>
+                    <select id="abs-cm-operator" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;">
+                        <option value="">選択してください</option>
+                    </select>
+                </div>
+                <div style="margin-top:12px;">
+                    <label style="display:block;font-size:0.9rem;font-weight:600;margin-bottom:4px;">結果メモ（任意）</label>
+                    <input type="text" id="abs-cm-result-note" placeholder="例: 次回再開予定6/15と伝達" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;">
+                </div>
+            </div>
+        </div>
+
         <!-- 登録ボタン -->
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
@@ -1815,6 +1906,41 @@
     <div class="abs-today-card" style="margin-top:16px;">
         <h3 class="abs-section-title">今月の中止サマリー</h3>
         <div id="trm-summary"></div>
+    </div>
+
+    <!-- 中止情報 編集モーダル -->
+    <div class="trm-edit-overlay" id="trm-edit-overlay" onclick="if(event.target===this)trmCloseEditModal()">
+        <div class="trm-edit-modal">
+            <h3>中止情報の編集</h3>
+            <div id="trm-edit-target" style="font-size:0.9rem;color:#4a5568;margin-bottom:10px;font-weight:700;"></div>
+            <div class="trm-edit-warning">
+                ⚠️ 最終利用日を変更すると中止日も同じ日に更新されます。リハブクラウド側との整合性に注意してください。
+            </div>
+            <div class="trm-edit-row">
+                <label>最終利用日（=中止日）</label>
+                <input type="date" id="trm-edit-lastuse">
+            </div>
+            <div class="trm-edit-row">
+                <label>連絡日</label>
+                <input type="date" id="trm-edit-contact">
+            </div>
+            <div class="trm-edit-row">
+                <label>中止理由</label>
+                <select id="trm-edit-reason"></select>
+            </div>
+            <div class="trm-edit-row">
+                <label>補足（任意）</label>
+                <textarea id="trm-edit-supplement" placeholder="例: 入院先の病院名、家族の連絡先等"></textarea>
+            </div>
+            <div class="trm-edit-row">
+                <label>受付者</label>
+                <select id="trm-edit-reporter"></select>
+            </div>
+            <div class="trm-edit-actions">
+                <button class="trm-edit-cancel" onclick="trmCloseEditModal()">キャンセル</button>
+                <button class="trm-edit-save" id="trm-edit-save-btn" onclick="trmSubmitEdit()">保存</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -5394,6 +5520,24 @@ function absClearName() {
 // ----- 日付選択 -----
 function absSelectDateType(type) {
     absState.dateType = type;
+    // 2026-05-26: 長期休みモードのときだけCM連絡セクションを表示
+    var cmSection = document.getElementById('abs-step-cm-contact');
+    if (cmSection) {
+        cmSection.style.display = (type === 'longterm') ? 'block' : 'none';
+    }
+    // 操作者プルダウンの選択肢を埋める（初回のみ）
+    if (type === 'longterm') {
+        var opSel = document.getElementById('abs-cm-operator');
+        if (opSel && opSel.options.length <= 1) {
+            var staffList = (typeof getStaff === 'function') ? getStaff() : ['比嘉','星野','勝又','下浦','工藤','髙山','春山','大久保','石井'];
+            staffList.forEach(function(s) {
+                var opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                opSel.appendChild(opt);
+            });
+        }
+    }
     document.querySelectorAll('.abs-date-type-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.type === type);
     });
@@ -9603,6 +9747,7 @@ function trmRenderCard(t) {
         '</div>' +
 
         '<div class="trm-card-actions">' +
+            '<button class="trm-edit-btn" onclick="trmOpenEditModal(\'' + t.lastUseDate + '\', \'' + escapeAttr(t.name) + '\')">✏️ 編集</button>' +
             '<button class="trm-cancel-btn" onclick="trmCancelTermination(\'' + t.lastUseDate + '\', \'' + escapeAttr(t.name) + '\')">↩ 中止を取消す</button>' +
         '</div>' +
     '</div>';
@@ -9747,6 +9892,108 @@ function trmCancelTermination(lastUseDate, name) {
     gasPost(payload, '中止取消').then(ok => {
         if (ok) showToast('✅ ' + name + '様の中止を取消しました', 3000);
         setTimeout(() => trmLoadList(), 800);
+    });
+}
+
+// ===== 中止情報の編集 =====
+let trmEditTarget = null;  // 編集中の {oldLastUseDate, name}
+
+function trmOpenEditModal(lastUseDate, name) {
+    const t = trmState.list.find(x => x.lastUseDate === lastUseDate && x.name === name);
+    if (!t) {
+        alert('対象データが見つかりません');
+        return;
+    }
+    trmEditTarget = { oldLastUseDate: lastUseDate, name: name };
+
+    document.getElementById('trm-edit-target').textContent = name + '様';
+    document.getElementById('trm-edit-lastuse').value = t.lastUseDate || '';
+    document.getElementById('trm-edit-contact').value = t.contactDate || '';
+    document.getElementById('trm-edit-supplement').value = t.supplement || '';
+
+    // 理由セレクト
+    const reasonSel = document.getElementById('trm-edit-reason');
+    reasonSel.innerHTML = '';
+    TRM_REASONS.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r;
+        opt.textContent = r;
+        if (r === t.reason) opt.selected = true;
+        reasonSel.appendChild(opt);
+    });
+    if (t.reason && !TRM_REASONS.includes(t.reason)) {
+        const opt = document.createElement('option');
+        opt.value = t.reason;
+        opt.textContent = t.reason + '（旧値）';
+        opt.selected = true;
+        reasonSel.insertBefore(opt, reasonSel.firstChild);
+    }
+
+    // 受付者セレクト
+    const reporterSel = document.getElementById('trm-edit-reporter');
+    reporterSel.innerHTML = '';
+    const staffList = (typeof getStaff === 'function') ? getStaff() : ['比嘉', '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'];
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '（未記入）';
+    reporterSel.appendChild(blank);
+    staffList.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = n;
+        if (n === t.reporter) opt.selected = true;
+        reporterSel.appendChild(opt);
+    });
+    if (t.reporter && !staffList.includes(t.reporter)) {
+        const opt = document.createElement('option');
+        opt.value = t.reporter;
+        opt.textContent = t.reporter + '（旧）';
+        opt.selected = true;
+        reporterSel.appendChild(opt);
+    }
+
+    document.getElementById('trm-edit-overlay').classList.add('active');
+}
+
+function trmCloseEditModal() {
+    document.getElementById('trm-edit-overlay').classList.remove('active');
+    trmEditTarget = null;
+}
+
+function trmSubmitEdit() {
+    if (!trmEditTarget) return;
+    const lastUseDate = document.getElementById('trm-edit-lastuse').value;
+    const contactDate = document.getElementById('trm-edit-contact').value;
+    const reason = document.getElementById('trm-edit-reason').value;
+    const supplement = document.getElementById('trm-edit-supplement').value.trim();
+    const reporter = document.getElementById('trm-edit-reporter').value;
+
+    if (!lastUseDate) { alert('最終利用日を入力してください'); return; }
+    if (!reason) { alert('中止理由を選択してください'); return; }
+
+    const saveBtn = document.getElementById('trm-edit-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = '保存中...';
+
+    const payload = {
+        action: 'update_terminate_info',
+        oldLastUseDate: trmEditTarget.oldLastUseDate,
+        name: trmEditTarget.name,
+        lastUseDate: lastUseDate,
+        contactDate: contactDate,
+        reason: reason,
+        supplement: supplement,
+        reporter: reporter
+    };
+
+    gasPost(payload, '中止情報更新').then(ok => {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '保存';
+        if (ok) {
+            showToast('✅ ' + trmEditTarget.name + '様の中止情報を更新しました', 3000);
+            trmCloseEditModal();
+            setTimeout(() => trmLoadList(), 600);
+        }
     });
 }
 
