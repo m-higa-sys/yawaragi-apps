@@ -6202,6 +6202,23 @@ async function absSubmit(opts) {
 
     // 長期休みの場合は別アクション
     if (absState.dateType === 'longterm') {
+        // 2026-05-26: ケアマネ連絡の入力バリデーション
+        var cmTypeEl = document.querySelector('input[name="abs-cm-contact-type"]:checked');
+        var cmContactType = cmTypeEl ? cmTypeEl.value : '';
+        if (!cmContactType) {
+            alert('ケアマネへの連絡を選んでください');
+            btn.disabled = false;
+            btn.textContent = 'この内容で登録する';
+            return;
+        }
+        var cmOperator = (document.getElementById('abs-cm-operator') || {}).value || '';
+        var cmResultNote = (document.getElementById('abs-cm-result-note') || {}).value || '';
+        if (cmContactType !== 'later' && !cmOperator) {
+            alert('操作者を選んでください');
+            btn.disabled = false;
+            btn.textContent = 'この内容で登録する';
+            return;
+        }
         const ltData = {
             action: 'long_term_absence',
             name: absState.selectedUser.name,
@@ -6210,7 +6227,11 @@ async function absSubmit(opts) {
             reason: reason,
             reporter: absReceptionist || '',
             contact: contact,
-            method: absState.method
+            method: absState.method,
+            // 2026-05-26: ケアマネ連絡記録
+            cmContactType: cmContactType,
+            cmOperator: cmOperator,
+            cmResultNote: cmResultNote
         };
         gasPostAbsenceWithVerify(ltData, absState.selectedUser.name + '様の長期休み登録').then(ok => {
             if (!ok) console.error('長期休み登録: GAS送信失敗');
