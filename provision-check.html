@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>提供票受領チェック - yawaragi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', 'Meiryo', sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    font-size: 16px;
+}
+.header {
+    background: linear-gradient(135deg, #4CAF50, #66BB6A);
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.header h1 { font-size: 22px; }
+.header-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.year-select {
+    font-size: 18px; padding: 8px 12px; border: none;
+    border-radius: 6px; background: rgba(255,255,255,0.9);
+    color: #333; cursor: pointer; min-height: 44px;
+}
+.btn {
+    padding: 10px 16px; border: none; border-radius: 6px;
+    font-size: 14px; cursor: pointer; font-weight: bold;
+    min-height: 44px; min-width: 44px; touch-action: manipulation;
+}
+.btn-white { background: white; color: #4CAF50; }
+.btn-white:hover { background: #e8f5e9; }
+.btn-red { background: #f44336; color: white; }
+.btn-red:hover { background: #d32f2f; }
+
+.notice {
+    background: #fff8e1; color: #e65100; padding: 10px 20px;
+    border-left: 4px solid #ffa000; font-size: 14px; line-height: 1.6;
+}
+
+.toolbar {
+    padding: 12px 20px; background: white; border-bottom: 1px solid #ddd;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px;
+}
+.toolbar-left { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+.stats { font-size: 15px; color: #666; }
+.stats strong { color: #4CAF50; font-size: 18px; }
+
+.legend { display: flex; gap: 12px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-color {
+    width: 18px; height: 18px; border-radius: 4px; border: 1px solid #ccc;
+}
+
+#offlineBanner {
+    background: #ffebee; color: #c62828; padding: 8px 20px;
+    border-left: 4px solid #c62828; font-size: 14px;
+}
+
+/* 曜日＋午前/午後フィルター */
+.filter-bar {
+    padding: 8px 20px; background: #fff; border-bottom: 1px solid #ddd;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.filter-label { font-size: 13px; font-weight: bold; color: #555; white-space: nowrap; }
+.filter-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.filter-btn {
+    padding: 6px 14px; border: 1px solid #ccc; border-radius: 20px;
+    background: #fff; color: #555; font-size: 14px; cursor: pointer;
+    min-height: 36px; touch-action: manipulation; transition: all 0.15s;
+}
+.filter-btn:hover { background: #f5f5f5; }
+.filter-btn.active {
+    background: #4CAF50; color: #fff; border-color: #4CAF50; font-weight: bold;
+}
+.filter-btn.active-ampm {
+    background: #2196F3; color: #fff; border-color: #2196F3; font-weight: bold;
+}
+.search-input {
+    padding: 6px 12px; border: 1px solid #ccc; border-radius: 20px;
+    font-size: 14px; min-height: 36px; width: 180px;
+    background: #fff; color: #333; touch-action: manipulation;
+}
+.search-input:focus {
+    outline: none; border-color: #4CAF50; box-shadow: 0 0 0 2px rgba(76,175,80,0.2);
+}
+.filter-count { font-size: 13px; color: #888; align-self: center; }
+
+.table-container { overflow-x: auto; padding: 15px; }
+table {
+    border-collapse: collapse; width: 100%; background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;
+}
+th, td {
+    border: 1px solid #e0e0e0; text-align: center;
+    padding: 6px 3px; font-size: 14px;
+}
+th {
+    background: #4CAF50; color: white; font-weight: bold;
+    position: sticky; top: 0; z-index: 10;
+}
+th.month-header {
+    background: #388E3C; font-size: 15px;
+    border-left: 3px solid #1B5E20;
+}
+th.sub-header {
+    background: #4CAF50; font-size: 12px; min-width: 56px;
+}
+th.sub-header.month-start { border-left: 3px solid #1B5E20; }
+
+.month-border { border-left: 3px solid #a5d6a7 !important; }
+
+.name-cell {
+    text-align: left; padding-left: 10px; font-weight: bold;
+    min-width: 90px; white-space: nowrap;
+    position: sticky; left: 30px; background: white; z-index: 5;
+}
+.group-cell {
+    font-weight: bold; color: #4CAF50; background: #f1f8e9;
+    position: sticky; left: 0; z-index: 5; min-width: 30px;
+}
+.care-badge {
+    display: inline-block; font-size: 10px; padding: 1px 4px;
+    border-radius: 3px; margin-left: 4px; font-weight: normal;
+    vertical-align: middle;
+}
+.care-shien1 { background: #E1F5FE; color: #01579B; }
+.care-shien2 { background: #B3E5FC; color: #01579B; }
+.care-jigyou { background: #FFE0B2; color: #E65100; }
+.care-kaigo { background: #FFCDD2; color: #B71C1C; }
+
+.check-cell {
+    cursor: pointer; min-width: 56px; min-height: 44px;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+    transition: background 0.15s; font-size: 13px; font-weight: bold;
+}
+.check-cell:hover { background: #f5f5f5; }
+.check-cell.checked {
+    background: #e8f5e9; color: #2E7D32;
+}
+.check-cell.highlight-undone {
+    background: #ffebee;
+    box-shadow: inset 0 0 0 2px #f44336;
+}
+.check-cell.current {
+    box-shadow: inset 0 0 0 3px #1976d2;
+}
+.check-cell.current.highlight-undone {
+    box-shadow: inset 0 0 0 3px #1976d2, inset 0 0 0 5px #ffebee;
+}
+.check-cell.both-done {
+    background: #c8e6c9;
+}
+.check-cell.disabled {
+    background: #e0e0e0; color: #999;
+    cursor: default; font-size: 14px;
+}
+.check-cell.disabled:hover { background: #e0e0e0; }
+
+.row-even { background: #fafafa; }
+.row-even .name-cell { background: #fafafa; }
+
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 100;
+    justify-content: center; align-items: center;
+}
+.modal-overlay.active { display: flex; }
+
+.toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    padding: 12px 24px; border-radius: 8px; color: white;
+    font-weight: bold; z-index: 200; transition: opacity 0.3s; font-size: 15px;
+    opacity: 0; pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+.print-title { display: none; }
+
+@media print {
+    @page { size: A4 landscape; margin: 8mm; }
+    body { background: white; font-size: 10px; }
+    .header, .toolbar, .filter-bar, .notice, #offlineBanner, .modal-overlay, button { display: none !important; }
+    .table-container { padding: 0; overflow: visible; }
+    table { box-shadow: none; font-size: 10px; }
+    th, td { padding: 2px 1px; font-size: 10px; }
+    .name-cell, .group-cell { position: static; }
+    .check-cell.checked { font-size: 10px; }
+    .check-cell.highlight-undone { box-shadow: inset 0 0 0 1px #f44336; }
+    .check-cell.current { box-shadow: none; }
+    .care-badge { font-size: 8px; }
+    .print-title {
+        display: block; font-size: 13px; font-weight: bold;
+        text-align: center; padding: 4px 0 8px;
+    }
+}
+
+@media (max-width: 768px) {
+    .header { padding: 10px 15px; }
+    .header h1 { font-size: 18px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📄 提供票受領チェック</h1>
+    <div class="header-controls">
+        <select id="fiscalYearSelect" class="year-select" onchange="onYearChange()"></select>
+        <button class="btn btn-white" onclick="loadFiscalYearData()">📥 最新を取得</button>
+        <button class="btn btn-white" onclick="window.print()">🖨 印刷</button>
+    </div>
+</div>
+
+<div class="notice">
+    📄 <strong>運用ルール</strong>：毎月月末にケアマネから届く提供票の受領チェック表。
+    未入力セルをタップ＝✓が入る／入力済セルをタップ＝取消（クリア）。
+</div>
+
+<div id="offlineBanner" style="display:none;">⚠ オフライン中（キャッシュ表示）。ネット復帰後、最新を取得してください。</div>
+
+<div class="toolbar">
+    <div class="toolbar-left">
+        <div class="stats">
+            対象: <strong id="totalUsers">0</strong>名
+            ｜ 今月受領: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
+        </div>
+    </div>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#e8f5e9;"></div> 受領済</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffebee;border:2px solid #f44336;"></div> 過去未受領</div>
+        <div class="legend-item"><div class="legend-color" style="border:3px solid #1976d2;"></div> 当月</div>
+    </div>
+</div>
+
+<div class="filter-bar" id="filterBar" style="display:none;">
+    <span class="filter-label">🔍 検索:</span>
+    <input type="text" id="searchInput" class="search-input" placeholder="氏名・フリガナ" oninput="setSearchFilter(this.value)" />
+    <span class="filter-label" style="margin-left:8px;">曜日:</span>
+    <div class="filter-group" id="dayFilters">
+        <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
+        <button class="filter-btn" onclick="setDayFilter('月')">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火')">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水')">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木')">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金')">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+    </div>
+    <span class="filter-label" style="margin-left:8px;">時間:</span>
+    <div class="filter-group" id="ampmFilters">
+        <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
+</div>
+
+<div class="print-title" id="printTitle"></div>
+
+<div class="table-container">
+    <table id="monitoringTable">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+    <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999; font-size:18px;">
+        読み込み中...
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ============ 定数 ============
+const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const CACHE_PREFIX = 'provision_cache_';
+// 運用開始年月（これより前のセルは「対象外」灰色表示）
+const START_YEAR = 2026;
+const START_MONTH = 5;
+const MONTHS = [
+    { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
+    { m: 7, label: '7月' }, { m: 8, label: '8月' }, { m: 9, label: '9月' },
+    { m: 10, label: '10月' }, { m: 11, label: '11月' }, { m: 12, label: '12月' },
+    { m: 1, label: '1月', nextYear: true },
+    { m: 2, label: '2月', nextYear: true },
+    { m: 3, label: '3月', nextYear: true }
+];
+const SUB_COLS = [
+    { field: 'received', label: '提供票' }
+];
+
+// ============ 状態 ============
+let provisionState = {
+    fiscalYear: getCurrentFiscalYear(),
+    users: [],
+    records: {},  // key: "userId_year_month" → { received: true }
+    isLoading: false,
+};
+let filterDay = '';
+let filterAmpm = '';
+let filterSearch = '';
+
+// ============ ユーティリティ ============
+function getCurrentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[<>&"]/g, c => ({
+        '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'
+    }[c]));
+}
+function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+function formatTodayShort() {
+    const d = new Date();
+    return (d.getMonth() + 1) + '/' + d.getDate();
+}
+function formatTodayISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function formatMD(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const parts = String(yyyymmdd).split('-');
+    if (parts.length < 3) return yyyymmdd;
+    return parseInt(parts[1], 10) + '/' + parseInt(parts[2], 10);
+}
+function showToast(msg, color) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = color || '#4CAF50';
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+function showOfflineBanner() {
+    document.getElementById('offlineBanner').style.display = 'block';
+}
+function hideOfflineBanner() {
+    document.getElementById('offlineBanner').style.display = 'none';
+}
+
+// ============ ふりがなグループ分け ============
+function getGroup(kana) {
+    if (!kana) return '他';
+    const c = kana.charAt(0);
+    if ('あいうえおアイウエオ'.indexOf(c) >= 0) return 'ア';
+    if ('かきくけこがぎぐげごカキクケコガギグゲゴ'.indexOf(c) >= 0) return 'カ';
+    if ('さしすせそざじずぜぞサシスセソザジズゼゾ'.indexOf(c) >= 0) return 'サ';
+    if ('たちつてとだぢづでどタチツテトダヂヅデド'.indexOf(c) >= 0) return 'タ';
+    if ('なにぬねのナニヌネノ'.indexOf(c) >= 0) return 'ナ';
+    if ('はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ'.indexOf(c) >= 0) return 'ハ';
+    if ('まみむめもマミムメモ'.indexOf(c) >= 0) return 'マ';
+    if ('やゆよヤユヨ'.indexOf(c) >= 0) return 'ヤ';
+    if ('らりるれろラリルレロ'.indexOf(c) >= 0) return 'ラ';
+    if ('わをんワヲン'.indexOf(c) >= 0) return 'ワ';
+    return '他';
+}
+
+function sortUsers() {
+    provisionState.users.sort((a, b) =>
+        (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja')
+    );
+}
+
+// ============ 曜日・午前午後フィルター ============
+function setSearchFilter(v) {
+    filterSearch = (v || '').normalize('NFKC').toLowerCase();
+    renderTable();
+}
+function matchesSearch(user) {
+    if (!filterSearch) return true;
+    const name = (user.name || '').normalize('NFKC').toLowerCase();
+    const kana = (user.furigana || '').normalize('NFKC').toLowerCase();
+    return name.indexOf(filterSearch) >= 0 || kana.indexOf(filterSearch) >= 0;
+}
+function setDayFilter(day) {
+    filterDay = day;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    renderTable();
+}
+function setAmpmFilter(ampm) {
+    filterAmpm = ampm;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active-ampm'));
+    event.target.classList.add('active-ampm');
+    renderTable();
+}
+function matchesSchedule(user, day, ampm) {
+    if (!day) return true;
+    if (!user.days || user.days.indexOf(day) < 0) return false;
+    if (!ampm) return true;
+    const ap = user.ampm || '';
+    if (ap === '午前' || ap === '午後') return ap === ampm;
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) return p.indexOf(ampm) >= 0;
+    }
+    return false;
+}
+
+// ============ 年度セレクタ ============
+function populateFiscalYearSelect() {
+    const sel = document.getElementById('fiscalYearSelect');
+    const current = getCurrentFiscalYear();
+    sel.innerHTML = '';
+    for (let y = current + 1; y >= 2024; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y + '年度（' + y + '/4〜' + (y + 1) + '/3）';
+        if (y === current) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    provisionState.fiscalYear = current;
+}
+
+function onYearChange() {
+    provisionState.fiscalYear = parseInt(document.getElementById('fiscalYearSelect').value, 10);
+    loadCache();
+    loadFiscalYearData();
+}
+
+// ============ キャッシュ ============
+function saveCache() {
+    try {
+        const key = CACHE_PREFIX + provisionState.fiscalYear;
+        localStorage.setItem(key, JSON.stringify({
+            fetchedAt: new Date().toISOString(),
+            users: provisionState.users,
+            records: provisionState.records
+        }));
+    } catch (e) { console.warn('cache save failed', e); }
+}
+
+function loadCache() {
+    try {
+        const key = CACHE_PREFIX + provisionState.fiscalYear;
+        const raw = localStorage.getItem(key);
+        if (!raw) {
+            provisionState.users = [];
+            provisionState.records = {};
+            renderTable();
+            updateStats();
+            return;
+        }
+        const c = JSON.parse(raw);
+        provisionState.users = c.users || [];
+        provisionState.records = c.records || {};
+        renderTable();
+        updateStats();
+    } catch (e) { console.warn('cache load failed', e); }
+}
+
+// ============ API ============
+async function fetchProvisionYear(year) {
+    const res = await fetch(API_BASE + '?action=getProvisionYear&year=' + year + '&t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+}
+
+async function loadFiscalYearData() {
+    if (provisionState.isLoading) return;
+    provisionState.isLoading = true;
+    const fy = provisionState.fiscalYear;
+    try {
+        const [r1, r2] = await Promise.all([
+            fetchProvisionYear(fy),
+            fetchProvisionYear(fy + 1)
+        ]);
+        if (!r1 || !r1.ok || !r2 || !r2.ok) {
+            console.warn('API returned non-ok', r1, r2);
+            showOfflineBanner();
+            return;
+        }
+        if (!r1.users || r1.users.length === 0) {
+            console.warn('users empty — keep cache');
+            showToast('⚠ 利用者データが空でした。キャッシュを維持します', '#ff9800');
+            return;
+        }
+        provisionState.users = r1.users;
+        const newRecords = {};
+        [r1, r2].forEach(r => {
+            (r.records || []).forEach(rec => {
+                const key = rec.userId + '_' + rec.year + '_' + rec.month;
+                newRecords[key] = { received: !!rec.received };
+            });
+        });
+        provisionState.records = newRecords;
+        saveCache();
+        hideOfflineBanner();
+        renderTable();
+        updateStats();
+    } catch (e) {
+        console.error('loadFiscalYearData error:', e);
+        showOfflineBanner();
+        showToast('⚠ データ取得に失敗（オフライン表示）', '#f44336');
+    } finally {
+        provisionState.isLoading = false;
+    }
+}
+
+// ============ テーブル描画 ============
+function renderTable() {
+    const fy = provisionState.fiscalYear;
+    const thead = document.querySelector('#monitoringTable thead');
+    const tbody = document.querySelector('#monitoringTable tbody');
+    const emptyEl = document.getElementById('emptyMessage');
+
+    if (!provisionState.users || provisionState.users.length === 0) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = provisionState.isLoading ? '読み込み中...' : '対象者がいません';
+        document.getElementById('filterBar').style.display = 'none';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth() + 1;
+
+    // ヘッダー（2段）
+    let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="position:sticky;left:30px;background:#4CAF50;">氏名</th>';
+    MONTHS.forEach(mo => {
+        h1 += '<th class="month-header" colspan="' + SUB_COLS.length + '">' + mo.label + '</th>';
+    });
+    h1 += '</tr>';
+
+    let h2 = '<tr>';
+    MONTHS.forEach(mo => {
+        SUB_COLS.forEach((sub, si) => {
+            const borderCls = si === 0 ? ' month-start' : '';
+            h2 += '<th class="sub-header' + borderCls + '">' + sub.label + '</th>';
+        });
+    });
+    h2 += '</tr>';
+    thead.innerHTML = h1 + h2;
+
+    // 並び替え＋フィルター
+    sortUsers();
+    const filteredUsers = provisionState.users.filter(u =>
+        matchesSchedule(u, filterDay, filterAmpm) && matchesSearch(u)
+    );
+
+    // 検索ボックスは常に出す。曜日・午前午後ボタンは days データがあれば出す。
+    const hasUsers = provisionState.users.length > 0;
+    document.getElementById('filterBar').style.display = hasUsers ? 'flex' : 'none';
+    const hasScheduleData = provisionState.users.some(u => u.days);
+    document.getElementById('dayFilters').style.display = hasScheduleData ? 'flex' : 'none';
+    document.getElementById('ampmFilters').style.display = hasScheduleData ? 'flex' : 'none';
+    // 「曜日:」「時間:」ラベルも一緒に隠す
+    document.querySelectorAll('.filter-bar .filter-label').forEach((el, i) => {
+        if (i === 0) return; // 「🔍 検索:」は残す
+        el.style.display = hasScheduleData ? 'inline' : 'none';
+    });
+    const fcEl = document.getElementById('filterCount');
+    fcEl.textContent = (filterDay || filterAmpm)
+        ? filteredUsers.length + ' / ' + provisionState.users.length + '名 表示中'
+        : '';
+
+    let html = '';
+    let currentGroup = '';
+    let rowIndex = 0;
+
+    filteredUsers.forEach(u => {
+        const group = getGroup(u.furigana);
+        if (group !== currentGroup) {
+            currentGroup = group;
+            if (!filterSearch) {
+                html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + MONTHS.length * SUB_COLS.length) + '" style="background:#f1f8e9;"></td></tr>';
+            }
+        }
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+
+        // カテゴリバッジ（要支援1/2/事業/要介護に対応）
+        let badgeCls = 'care-shien1';
+        let badgeText = '支1';
+        if (u.category === '要支援2') { badgeCls = 'care-shien2'; badgeText = '支2'; }
+        else if (u.category && u.category.indexOf('事業') >= 0) { badgeCls = 'care-jigyou'; badgeText = '事業'; }
+        else if (u.category && u.category.indexOf('要介護') >= 0) {
+            badgeCls = 'care-kaigo';
+            badgeText = u.category.replace('要介護', '介');
+        }
+
+        html += '<tr class="' + rowClass + '">';
+        html += '<td class="group-cell"></td>';
+        html += '<td class="name-cell">' + escapeHtml(u.name) + '<span class="care-badge ' + badgeCls + '">' + badgeText + '</span></td>';
+
+        MONTHS.forEach(mo => {
+            const cellYear = mo.nextYear ? fy + 1 : fy;
+            const key = u.userId + '_' + cellYear + '_' + mo.m;
+            const rec = provisionState.records[key] || { received: false };
+            const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
+            const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
+            // 運用開始月より前は対象外
+            const isBeforeStart = (cellYear < START_YEAR) || (cellYear === START_YEAR && mo.m < START_MONTH);
+
+            SUB_COLS.forEach((sub, si) => {
+                const received = !!rec.received;
+                let cls = 'check-cell';
+                if (si === 0) cls += ' month-border';
+                if (isBeforeStart) {
+                    cls += ' disabled';
+                    html += '<td class="' + cls + '">-</td>';
+                    return;
+                }
+                if (received) cls += ' both-done';
+                else if (isPast) cls += ' highlight-undone';
+                if (isCurrent) cls += ' current';
+
+                const display = received ? '✓' : '';
+                html += '<td class="' + cls + '"'
+                    + ' data-userid="' + escapeAttr(u.userId) + '"'
+                    + ' data-name="' + escapeAttr(u.name) + '"'
+                    + ' data-year="' + cellYear + '"'
+                    + ' data-month="' + mo.m + '"'
+                    + ' data-received="' + (received ? '1' : '0') + '"'
+                    + ' onclick="onCellTap(this)">' + display + '</td>';
+            });
+        });
+        html += '</tr>';
+        rowIndex++;
+    });
+    tbody.innerHTML = html;
+    updateStats();
+    updatePrintTitle();
+}
+
+function updateStats() {
+    document.getElementById('totalUsers').textContent = provisionState.users.length;
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    let done = 0;
+    provisionState.users.forEach(u => {
+        const key = u.userId + '_' + y + '_' + m;
+        const r = provisionState.records[key];
+        if (r && r.received) done++;
+    });
+    document.getElementById('progressCount').textContent = done;
+    document.getElementById('progressTotal').textContent = provisionState.users.length;
+}
+
+function updatePrintTitle() {
+    const fy = provisionState.fiscalYear;
+    document.getElementById('printTitle').textContent =
+        '提供票受領チェック ' + fy + '年度（' + fy + '/4〜' + (fy + 1) + '/3）';
+}
+
+// ============ セルクリック処理（✓トグル方式） ============
+async function onCellTap(td) {
+    const userId = td.dataset.userid;
+    const name = td.dataset.name;
+    const year = parseInt(td.dataset.year, 10);
+    const month = parseInt(td.dataset.month, 10);
+    const currentReceived = td.dataset.received === '1';
+    const newReceived = !currentReceived;
+
+    const key = userId + '_' + year + '_' + month;
+    if (newReceived) {
+        provisionState.records[key] = { received: true };
+    } else {
+        delete provisionState.records[key];
+    }
+    saveCache();
+    renderTable();
+
+    try {
+        const url = API_BASE + '?action=updateProvision'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&year=' + year + '&month=' + month
+            + '&received=' + (newReceived ? 'true' : 'false')
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        showToast(newReceived ? '✅ ' + name + ' ' + month + '月 受領' : '🗑 ' + name + ' ' + month + '月 取消',
+                  newReceived ? '#4CAF50' : '#ff9800');
+        hideOfflineBanner();
+    } catch (e) {
+        console.error('updateProvision error:', e);
+        showToast('⚠ 保存失敗。ネット接続を確認してください', '#f44336');
+        showOfflineBanner();
+    }
+}
+
+// ============ 起動 ============
+window.addEventListener('load', async () => {
+    populateFiscalYearSelect();
+    loadCache();
+    await loadFiscalYearData();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        loadFiscalYearData();
+    }
+});
+</script>
+</body>
+</html>
