@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>通所介護計画モニタリング - yawaragi</title>
+<title>通所介護計画管理 - yawaragi</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -227,12 +227,116 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     .header { padding: 10px 15px; }
     .header h1 { font-size: 18px; }
 }
+
+/* ========= タブ ========= */
+.tab-bar {
+    display: flex;
+    gap: 0;
+    background: #fff;
+    border-bottom: 2px solid #4CAF50;
+    padding: 0 20px;
+}
+.tab-btn {
+    padding: 14px 24px;
+    border: none;
+    background: transparent;
+    font-size: 16px;
+    font-weight: bold;
+    color: #888;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    min-height: 44px;
+    touch-action: manipulation;
+}
+.tab-btn.active { color: #4CAF50; border-bottom-color: #4CAF50; }
+.tab-btn small {
+    font-size: 12px;
+    font-weight: normal;
+    color: #aaa;
+    margin-left: 4px;
+}
+.tab-btn.active small { color: #66BB6A; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ========= 計画書タブ ========= */
+.unsent-section {
+    margin: 15px;
+    padding: 14px;
+    background: #fff8e1;
+    border-left: 4px solid #ffa000;
+    border-radius: 8px;
+}
+.unsent-section h3 {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+    color: #e65100;
+}
+.unsent-list { margin: 0; padding-left: 20px; font-size: 14px; }
+.unsent-list li { margin-bottom: 4px; }
+.unsent-list li.over-2weeks { color: #c62828; font-weight: bold; }
+
+.plan-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    padding: 15px;
+}
+.plan-card {
+    background: #fff;
+    border-left: 4px solid #9E9E9E;
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.plan-card.status-ok { border-left-color: #4CAF50; }
+.plan-card.status-warn { border-left-color: #FFC107; }
+.plan-card.status-danger { border-left-color: #F44336; }
+.plan-card .plan-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.plan-card .plan-user-name { font-weight: bold; font-size: 17px; }
+.plan-card .plan-user-sub { font-size: 12px; color: #888; }
+.plan-card .plan-status-emoji { font-size: 22px; }
+.plan-card .plan-row { margin-top: 10px; font-size: 13px; }
+.plan-card .plan-row .cycle-select,
+.plan-card .plan-row .plan-date-input {
+    font-size: 14px;
+    padding: 4px 6px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    min-height: 36px;
+}
+.plan-card .plan-sent-row {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #e0e0e0;
+    font-size: 13px;
+}
+.plan-card .plan-sent-row label { cursor: pointer; }
+.plan-card .plan-sent-row .sent-date {
+    color: #888;
+    margin-left: 6px;
+    font-size: 12px;
+}
+.plans-loading { padding: 30px; text-align: center; color: #888; font-size: 16px; }
+.plans-error {
+    margin: 15px;
+    padding: 14px;
+    background: #ffebee;
+    color: #c62828;
+    border-left: 4px solid #c62828;
+    border-radius: 8px;
+}
 </style>
 </head>
 <body>
 
 <div class="header">
-    <h1>📋 通所介護計画モニタリング</h1>
+    <h1>📋 通所介護計画管理</h1>
     <div class="header-controls">
         <select id="fiscalYearSelect" class="year-select" onchange="onYearChange()"></select>
         <button class="btn btn-white" onclick="loadFiscalYearData()">📥 最新を取得</button>
@@ -240,6 +344,12 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     </div>
 </div>
 
+<div class="tab-bar">
+    <button class="tab-btn active" data-tab="monitoring">📋 モニタリング <small>(要支援のみ)</small></button>
+    <button class="tab-btn" data-tab="plans">📝 計画書 <small>(全員)</small></button>
+</div>
+
+<div class="tab-panel active" id="panel-monitoring">
 <div class="notice">
     📋 <strong>モニタリングルール</strong>：要支援1・要支援2・事業対象者を毎月モニタリング。①記録作成日と②ケアマネ送付用PDF保存日の2項目を月次でチェック。<br>
     未入力セルをタップ＝今日の日付が入る／入力済セルをタップ＝日付編集ダイアログ（変更/取消）。
@@ -294,6 +404,14 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     </table>
     <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999; font-size:18px;">
         読み込み中...
+    </div>
+</div>
+</div><!-- /panel-monitoring -->
+
+<div class="tab-panel" id="panel-plans">
+    <div id="plans-unsent"></div>
+    <div id="plans-container">
+        <div class="plans-loading">📡 計画書タブを開くと読み込みます</div>
     </div>
 </div>
 
@@ -792,16 +910,229 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value, d
     }
 }
 
+// ============================================================
+// 📝 計画書タブ（Phase 1-B 2026-05-27）
+// ============================================================
+let TSUSHO_PLANS_CACHE = null;
+let TSUSHO_PLANS_YEAR = null;
+let TSUSHO_PLANS_LOADED = false;
+
+async function loadTsushoPlans(force) {
+    const container = document.getElementById('plans-container');
+    const year = new Date().getFullYear();
+    if (!force && TSUSHO_PLANS_CACHE && TSUSHO_PLANS_YEAR === year) {
+        renderTsushoPlans();
+        return;
+    }
+    container.innerHTML = '<div class="plans-loading">📡 読み込み中...</div>';
+    try {
+        const url = API_BASE + '?action=getTsushoPlansYear&year=' + year + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'API error');
+        TSUSHO_PLANS_CACHE = json;
+        TSUSHO_PLANS_YEAR = year;
+        TSUSHO_PLANS_LOADED = true;
+        renderTsushoPlans();
+    } catch (err) {
+        container.innerHTML = '<div class="plans-error">⚠️ 計画書データ取得失敗: ' + escapeHtml(err.message) + '<br><button class="btn btn-white" style="margin-top:8px;" onclick="loadTsushoPlans(true)">🔄 再試行</button></div>';
+    }
+}
+
+function computeTsushoStatus(planDate, cycleMonths) {
+    if (!planDate) return 'none';
+    const d = new Date(planDate);
+    if (isNaN(d.getTime())) return 'none';
+    const now = new Date();
+    const monthsElapsed = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+    if (monthsElapsed >= cycleMonths) return 'danger';
+    if (monthsElapsed >= cycleMonths * 5 / 6) return 'warn';
+    return 'ok';
+}
+
+function renderTsushoPlans() {
+    const container = document.getElementById('plans-container');
+    if (!TSUSHO_PLANS_CACHE) return;
+    const users = TSUSHO_PLANS_CACHE.users || [];
+    const records = TSUSHO_PLANS_CACHE.records || [];
+
+    // 利用者ごとに最新の plan_date 集計
+    const byUser = {};
+    records.forEach(function (r) {
+        if (!byUser[r.userId]) byUser[r.userId] = [];
+        byUser[r.userId].push(r);
+    });
+    Object.keys(byUser).forEach(function (u) {
+        byUser[u].sort(function (a, b) { return (b.plan_date || '').localeCompare(a.plan_date || ''); });
+    });
+
+    const statusColors = { ok: '#4CAF50', warn: '#FFC107', danger: '#F44336', none: '#9E9E9E' };
+    const statusEmoji = { ok: '🟢', warn: '🟡', danger: '🔴', none: '⚪' };
+
+    let html = '<div class="plan-cards">';
+    users.forEach(function (u) {
+        const rec = (byUser[u.userId] && byUser[u.userId][0]) || null;
+        const lastDate = rec ? rec.plan_date : '';
+        const status = computeTsushoStatus(lastDate, u.cycleMonths || 12);
+        html += '<div class="plan-card status-' + status + '" data-user="' + escapeHtml(u.userId) + '">';
+        html += '<div class="plan-card-head">';
+        html += '<div>';
+        html += '<div class="plan-user-name">' + escapeHtml(u.name) + '</div>';
+        html += '<div class="plan-user-sub">' + escapeHtml(u.furigana || '') + ' / ' + escapeHtml(u.category || '') + '</div>';
+        html += '</div>';
+        html += '<div class="plan-status-emoji">' + statusEmoji[status] + '</div>';
+        html += '</div>';
+        html += '<div class="plan-row">サイクル: <select class="cycle-select" data-user="' + escapeHtml(u.userId) + '">';
+        [3, 6, 12].forEach(function (c) {
+            html += '<option value="' + c + '"' + ((u.cycleMonths || 12) === c ? ' selected' : '') + '>' + c + 'ヶ月</option>';
+        });
+        html += '</select></div>';
+        html += '<div class="plan-row">最終作成日: <input type="date" class="plan-date-input" data-user="' + escapeHtml(u.userId) + '" value="' + escapeHtml(lastDate) + '"></div>';
+        if (rec) {
+            html += '<div class="plan-sent-row">';
+            html += '<label><input type="checkbox" class="sent-check" data-user="' + escapeHtml(u.userId) + '" data-year="' + rec.year + '" data-month="' + rec.month + '"' + (rec.sent_to_cm ? ' checked' : '') + '> ケアマネ送付済み</label>';
+            if (rec.sent_date) html += '<span class="sent-date">(' + escapeHtml(rec.sent_date) + ')</span>';
+            html += '</div>';
+        }
+        html += '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+
+    renderUnsentSection();
+    attachPlansEventHandlers();
+}
+
+function renderUnsentSection() {
+    const section = document.getElementById('plans-unsent');
+    if (!section || !TSUSHO_PLANS_CACHE) return;
+    const unsent = (TSUSHO_PLANS_CACHE.records || []).filter(function (r) {
+        return r.plan_date && !r.sent_to_cm;
+    });
+    if (unsent.length === 0) {
+        section.innerHTML = '';
+        return;
+    }
+    let html = '<div class="unsent-section">';
+    html += '<h3>📤 未送付計画書 (' + unsent.length + '件)</h3>';
+    html += '<ul class="unsent-list">';
+    unsent.forEach(function (r) {
+        const d = new Date(r.plan_date);
+        const days = isNaN(d.getTime()) ? 0 : Math.floor((new Date() - d) / (1000 * 60 * 60 * 24));
+        const cls = days >= 14 ? ' class="over-2weeks"' : '';
+        html += '<li' + cls + '>' + escapeHtml(r.userId) + ' (' + escapeHtml(r.plan_date) + ' 作成・' + days + '日経過)</li>';
+    });
+    html += '</ul></div>';
+    section.innerHTML = html;
+}
+
+function getCurrentStaffName() {
+    return localStorage.getItem('currentStaffName') || '';
+}
+
+async function postTsushoPlan(params, successMsg) {
+    const qs = Object.keys(params).map(function (k) {
+        return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    }).join('&');
+    const url = API_BASE + '?' + qs + '&t=' + Date.now();
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || '保存失敗');
+    showToast(successMsg, '#4CAF50');
+    TSUSHO_PLANS_CACHE = null;
+    await loadTsushoPlans();
+}
+
+function attachPlansEventHandlers() {
+    document.querySelectorAll('#panel-plans .plan-date-input').forEach(function (input) {
+        input.addEventListener('change', async function () {
+            const userId = input.dataset.user;
+            const value = input.value;
+            if (!value) return;
+            const d = new Date(value);
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            try {
+                await postTsushoPlan({
+                    action: 'updateTsushoPlan',
+                    userId: userId, year: year, month: month,
+                    field: 'plan_date', value: value,
+                    operator: getCurrentStaffName()
+                }, '📝 ' + userId + ' 作成日=' + value);
+            } catch (err) {
+                showToast('⚠ 保存失敗: ' + err.message, '#f44336');
+            }
+        });
+    });
+
+    document.querySelectorAll('#panel-plans .cycle-select').forEach(function (sel) {
+        sel.addEventListener('change', async function () {
+            const userId = sel.dataset.user;
+            const cycle = parseInt(sel.value, 10);
+            try {
+                await postTsushoPlan({
+                    action: 'updateTsushoConfig',
+                    userId: userId, cycleMonths: cycle
+                }, '🔁 ' + userId + ' サイクル=' + cycle + 'ヶ月');
+            } catch (err) {
+                showToast('⚠ サイクル保存失敗: ' + err.message, '#f44336');
+            }
+        });
+    });
+
+    document.querySelectorAll('#panel-plans .sent-check').forEach(function (chk) {
+        chk.addEventListener('change', async function () {
+            const userId = chk.dataset.user;
+            const year = chk.dataset.year;
+            const month = chk.dataset.month;
+            const value = chk.checked ? 'true' : 'false';
+            try {
+                await postTsushoPlan({
+                    action: 'updateTsushoPlan',
+                    userId: userId, year: year, month: month,
+                    field: 'sent_to_cm', value: value,
+                    operator: getCurrentStaffName()
+                }, chk.checked ? '📤 ' + userId + ' 送付済み' : '↩️ ' + userId + ' 送付取消');
+            } catch (err) {
+                showToast('⚠ 送付済み保存失敗: ' + err.message, '#f44336');
+                chk.checked = !chk.checked;
+            }
+        });
+    });
+}
+
+function setupTabs() {
+    document.querySelectorAll('.tab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const tab = btn.dataset.tab;
+            document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+            document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
+            btn.classList.add('active');
+            const panel = document.getElementById('panel-' + tab);
+            if (panel) panel.classList.add('active');
+            if (tab === 'plans' && !TSUSHO_PLANS_LOADED) {
+                loadTsushoPlans();
+            }
+        });
+    });
+}
+
 // ============ 起動 ============
 window.addEventListener('load', async () => {
     populateFiscalYearSelect();
     loadCache();
+    setupTabs();
     await loadFiscalYearData();
 });
 
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !document.getElementById('dateDialog').classList.contains('active')) {
         loadFiscalYearData();
+        // 計画書タブが既に開かれていたら最新化
+        const plansActive = document.getElementById('panel-plans').classList.contains('active');
+        if (plansActive && TSUSHO_PLANS_LOADED) {
+            loadTsushoPlans(true);
+        }
     }
 });
 </script>
