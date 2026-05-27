@@ -118,6 +118,24 @@
         .row-even { background: #fafafa; }
         .row-even .name-cell { background: #fafafa; }
 
+        /* 中止者セクション（記録保持・2026-05-27社長指示） */
+        .terminated-divider-row td {
+            background: #fafafa; color: #555; padding: 16px 12px;
+            text-align: left; font-size: 15px; font-weight: bold;
+            border-top: 3px solid #bbb; border-bottom: 2px solid #ddd;
+        }
+        .row-terminated { background: #f5f5f5; }
+        .row-terminated .name-cell {
+            background: #f5f5f5; color: #555;
+        }
+        .row-terminated .height-cell { opacity: 0.85; }
+        .row-terminated .height-cell:hover { background: #ebebeb; opacity: 1; }
+        .terminated-badge {
+            display: inline-block; background: #e0e0e0; color: #616161;
+            padding: 2px 8px; border-radius: 10px; font-size: 11px;
+            margin-left: 6px; font-weight: normal; vertical-align: middle;
+        }
+
         /* モーダル */
         .modal-overlay {
             display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -603,6 +621,36 @@ function computeThisMonthTargets() {
     return targets;
 }
 
+// 中止者抽出：appData.heightsに測定履歴があるが、現users配列に居ない名前
+// 社長指示2026-05-27「中止になっても記録は大事だから絶対消さない」
+function getTerminatedUsers() {
+    const activeNames = new Set(appData.users.map(u => u.name));
+    const terminated = new Map();
+    Object.keys(appData.heights).forEach(fyStr => {
+        const fy = parseInt(fyStr);
+        if (isNaN(fy)) return;
+        const yearData = appData.heights[fy];
+        Object.keys(yearData || {}).forEach(name => {
+            if (activeNames.has(name)) return;
+            const userData = yearData[name];
+            for (const m of HEIGHT_MONTHS) {
+                const v = userData[m];
+                if (v === undefined || v === null || v === '') continue;
+                const monthNum = parseInt(m);
+                const calYear = monthLabelToCalYear(m, fy);
+                const sortKey = calYear * 100 + monthNum;
+                const existing = terminated.get(name);
+                if (!existing || sortKey > existing.sortKey) {
+                    terminated.set(name, { name, sortKey, year: calYear, monthNum, value: v });
+                }
+            }
+        });
+    });
+    return Array.from(terminated.values()).sort((a, b) => {
+        return a.name.normalize('NFKC').localeCompare(b.name.normalize('NFKC'), 'ja');
+    });
+}
+
 // 特定ユーザーが今月対象か判定（セル強調用）
 function isUserDueThisMonth(userName) {
     const latest = findLatestMeasurement(userName);
@@ -696,6 +744,32 @@ function renderTable() {
         }
         rowIndex++;
     }
+
+    // 中止者セクション（記録保持・社長指示2026-05-27）
+    const terminatedUsers = getTerminatedUsers();
+    if (terminatedUsers.length > 0) {
+        html += '<tr class="terminated-divider-row"><td colspan="' + (2 + DISPLAY_MONTHS.length) + '">⛔ 中止者（記録保持・' + terminatedUsers.length + '名）　※測定対象判定からは除外。過去データは編集可能。</td></tr>';
+        for (const t of terminatedUsers) {
+            if (!yearData[t.name]) yearData[t.name] = {};
+            html += '<tr class="row-terminated">';
+            html += '<td class="group-cell"></td>';
+            html += '<td class="name-cell">' + escapeHtml(t.name) +
+                    '<span class="terminated-badge">最終 ' + t.year + '/' + t.monthNum + '月</span></td>';
+            for (let mi = 0; mi < DISPLAY_MONTHS.length; mi++) {
+                const m = DISPLAY_MONTHS[mi];
+                const height = yearData[t.name][m];
+                let cls = 'height-cell';
+                let content = '';
+                if (height !== undefined && height !== null && height !== '') {
+                    cls += ' has-value';
+                    content = '<span class="height-value">' + height + '</span><span class="height-unit">cm</span>';
+                }
+                html += '<td class="' + cls + '" onclick="openHeightInput(\'' + escapeAttr(t.name) + '\',\'' + m + '\')">' + content + '</td>';
+            }
+            html += '</tr>';
+        }
+    }
+
     tbody.innerHTML = html;
     document.getElementById('totalCount').textContent = appData.users.length;
     document.getElementById('doneCount').textContent = isCurrentYear ? doneCount : '-';
