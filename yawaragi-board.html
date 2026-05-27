@@ -10926,7 +10926,7 @@ function loadKubunHistoryList() {
                         const style = active
                             ? 'padding:4px 12px; background:' + opt.activeBg + '; color:' + opt.activeColor + '; border:1.5px solid ' + opt.activeColor + '; border-radius:6px; font-size:0.8rem; cursor:pointer; font-weight:600;'
                             : 'padding:4px 12px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.8rem; cursor:pointer;';
-                        html += '<button type="button" onclick="kubunHistorySetUsageChange(' + u.rowIndex + ', \'' + opt.val + '\')" style="' + style + '">' + opt.label + '</button>';
+                        html += '<button type="button" onclick="kubunHistorySetUsageChange(' + u.rowIndex + ', \'' + opt.val + '\', \'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.prevCare) + '\', \'' + escapeJsString(u.newCare) + '\')" style="' + style + '">' + opt.label + '</button>';
                     });
                     html += '</div>';
                     html += '</div>';
@@ -11001,8 +11001,73 @@ function kubunHistoryToggleAdjust(rowIndex, checked) {
     kubunHistoryUpdateField(rowIndex, 'adjustDone', checked ? 'true' : 'false');
 }
 
-function kubunHistorySetUsageChange(rowIndex, value) {
-    kubunHistoryUpdateField(rowIndex, 'usageChange', value);
+function kubunHistorySetUsageChange(rowIndex, value, name, prevCare, newCare) {
+    // 「あった」を選んだ時はテンプレ8項目をタスクボードに自動投入
+    if (value === 'changed' && name) {
+        const msg = name + '様の利用曜日が変更になりました。\n\n'
+            + '「利用曜日変更時テンプレート」（8項目）を自動投入します:\n'
+            + '  1. リハブクラウドの提供票更新（曜日・回数）\n'
+            + '  2. 出勤＆送迎表の曜日マトリクス更新\n'
+            + '  3. yawaragiボード「出席予定」の更新\n'
+            + '  4. 送迎日誌の更新\n'
+            + '  5. 送迎時間一覧アプリの更新\n'
+            + '  6. 利用率分析アプリの契約週X回を更新\n'
+            + '  7. 利用者台帳の「利用曜日」列を更新\n'
+            + '  8. 翌月の請求チェッカー・提供票チェックで反映確認\n\n'
+            + '投入してOKですか？';
+        if (!confirm(msg)) return;
+        // 先に状態を保存
+        kubunHistoryUpdateField(rowIndex, 'usageChange', value, function() {
+            // テンプレ投入
+            kubunHistoryRegisterEvent(name, prevCare, newCare);
+        });
+    } else {
+        kubunHistoryUpdateField(rowIndex, 'usageChange', value);
+    }
+}
+
+// 利用曜日変更時テンプレートをタスクボードに自動投入
+function kubunHistoryRegisterEvent(name, prevCare, newCare) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const eventDate = yyyy + '-' + mm + '-' + dd;
+    const metadata = JSON.stringify({
+        kubunPrev: prevCare || '',
+        kubunNew: newCare || '',
+        trigger: '介護度変更後フォロー'
+    });
+
+    const cbName = 'kubunEvtCb_' + Date.now();
+    window[cbName] = function(res) {
+        if (res && res.success) {
+            if (typeof showToast === 'function') {
+                showToast('✅ ' + name + '様の利用曜日変更テンプレ8項目を投入しました（id: ' + (res.id || '?') + '）');
+            } else {
+                alert('✅ 利用曜日変更テンプレ8項目を投入しました');
+            }
+        } else {
+            alert('テンプレ投入失敗: ' + (res && res.error ? res.error : '不明') + '\nスタッフに口頭で伝達してください。');
+        }
+        delete window[cbName];
+        const s = document.getElementById('kubun-evt-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 'kubun-evt-jsonp-' + cbName;
+    let url = ABS_BOARD_API_URL + '?action=addUserEventGet&callback=' + cbName + '&t=' + Date.now();
+    url += '&eventType=usage_days_change';
+    url += '&userName=' + encodeURIComponent(name);
+    url += '&eventDate=' + encodeURIComponent(eventDate);
+    url += '&metadata=' + encodeURIComponent(metadata);
+    url += '&createdBy=' + encodeURIComponent('代表');
+    script.src = url;
+    script.onerror = function() {
+        alert('テンプレ投入の通信エラー。スタッフに口頭で伝達してください。');
+        delete window[cbName];
+    };
+    document.body.appendChild(script);
 }
 
 function kubunHistoryMarkAllDone(rowIndex, name) {
