@@ -7321,11 +7321,25 @@ function absRenderLongTermList(longTermData) {
         const startDate = absFormatDate(lt.date);
         const elapsed = lt.elapsedDays != null ? `<span style="font-size:0.78rem;color:#718096;margin-left:6px;">（${lt.elapsedDays}日目）</span>` : '';
 
-        // 再開予定日表示（明日なら「（明日）」追記）
+        // 再開予定日表示（今日/過去/明日/未来で表示と色を変える）
         let resumeText = '';
         if (lt.resumeDate) {
-            const tomorrow = lt.daysUntilReturn === 1 ? '<span style="color:#d69e2e;font-weight:700;margin-left:4px;">（明日）</span>' : '';
-            resumeText = `<span style="font-size:0.82rem;color:#38a169;font-weight:700;margin-left:8px;">${absFormatDate(lt.resumeDate)}より再開予定${tomorrow}</span>`;
+            let d = lt.daysUntilReturn;
+            if (d == null) {
+                try {
+                    const todayMs = new Date(toLocalDateStr() + 'T00:00:00+09:00').getTime();
+                    const rMs = new Date(lt.resumeDate + 'T00:00:00+09:00').getTime();
+                    d = Math.floor((rMs - todayMs) / 86400000);
+                } catch (e) {}
+            }
+            if (d === 0) {
+                resumeText = `<span style="font-size:0.82rem;color:#38a169;font-weight:700;margin-left:8px;">本日より再開予定</span>`;
+            } else if (d != null && d < 0) {
+                resumeText = `<span style="font-size:0.82rem;color:#d97706;font-weight:700;margin-left:8px;">${absFormatDate(lt.resumeDate)}より再開予定だった（${Math.abs(d)}日前）</span>`;
+            } else {
+                const tomorrow = d === 1 ? '<span style="color:#d69e2e;font-weight:700;margin-left:4px;">（明日）</span>' : '';
+                resumeText = `<span style="font-size:0.82rem;color:#38a169;font-weight:700;margin-left:8px;">${absFormatDate(lt.resumeDate)}より再開予定${tomorrow}</span>`;
+            }
         }
 
         // 最終連絡情報行
@@ -7357,6 +7371,7 @@ function absRenderLongTermList(longTermData) {
                     ${resumeText}
                 </div>
                 <div style="display:flex;gap:6px;">
+                    <button onclick="absStartResume('${safeName}')" style="background:#f0fff4;color:#38a169;border:1.5px solid #38a169;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer;">🔄 再開登録</button>
                     <button onclick="absOpenContactDialog('${safeName}')" style="background:#fff5f5;color:#c53030;border:1.5px solid #fc8181;padding:8px 16px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;">📞 連絡入力</button>
                     <button onclick="attEditAbsence('${safeName}','${lt.date}')" style="background:#ebf8ff;color:#2c5282;border:1.5px solid #90cdf4;padding:8px 16px;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;">編集</button>
                 </div>
@@ -7545,7 +7560,14 @@ let absResumeState = { name: '', contact: '', method: '' };
 function absStartResume(name) {
     absResumeState = { name: name, contact: '', method: '', staff: '' };
     document.getElementById('abs-resume-name').textContent = name + ' 様の再開登録';
-    document.getElementById('abs-resume-date').value = toLocalDateStr();
+    // 再開予定日が今日以降ならそれを初期値に、過去または未設定なら今日にする
+    const todayStr = toLocalDateStr();
+    let initDate = todayStr;
+    try {
+        const lt = absFindLongTermByName(name);
+        if (lt && lt.resumeDate && lt.resumeDate >= todayStr) initDate = lt.resumeDate;
+    } catch (e) {}
+    document.getElementById('abs-resume-date').value = initDate;
     document.getElementById('abs-resume-form').style.display = 'block';
     document.getElementById('abs-resume-empty').style.display = 'none';
     // スタッフボタン生成
