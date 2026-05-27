@@ -2124,7 +2124,7 @@
             </div>
             <div style="margin-bottom:12px;">
                 <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
-                <input type="text" id="kubun-set-name" list="kubun-set-users-list" autocomplete="off" placeholder="名前の一部を入力（漢字・ひらがな両方OK）" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                <input type="text" id="kubun-set-name" list="kubun-set-users-list" autocomplete="off" oninput="refreshKubunSetCurrentDays()" onchange="refreshKubunSetCurrentDays()" placeholder="名前の一部を入力（漢字・ひらがな両方OK）" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
                 <datalist id="kubun-set-users-list"></datalist>
                 <div id="kubun-set-name-hint" style="font-size:0.75rem; color:#718096; margin-top:4px;"></div>
             </div>
@@ -2175,11 +2175,55 @@
                     </select>
                 </div>
                 <input type="hidden" id="kubun-set-result-date">
-                <div style="padding:10px; background:#fffaf0; border:1px solid #fbd38d; border-radius:8px;">
+                <div style="padding:10px; background:#fffaf0; border:1px solid #fbd38d; border-radius:8px; margin-bottom:12px;">
                     <label style="display:block; font-weight:600; margin-bottom:4px;">🔴 月遅れ請求対象月</label>
                     <p style="font-size:0.8rem; color:#718096; margin:0 0 8px;">新介護度で再請求が必要な月をチェック（不要なら全部外す）</p>
                     <div id="kubun-set-okure-months" style="display:flex; flex-wrap:wrap; gap:8px;">
                         <div style="color:#a0aec0; font-size:0.85rem;">区変日／更新月を入力すると候補が出ます</div>
+                    </div>
+                </div>
+
+                <!-- 利用曜日変更（オプション） -->
+                <div style="padding:10px; background:#fff; border:1px solid #cbd5e0; border-radius:8px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; margin-bottom:6px;">
+                        <input type="checkbox" id="kubun-set-change-days" onchange="toggleKubunSetChangeDays()"> 📅 利用曜日も変更する
+                    </label>
+                    <div id="kubun-set-days-section" style="display:none;">
+                        <div style="margin-bottom:8px; padding:6px 10px; background:#fff5e6; border:1px solid #fbd38d; border-radius:6px; font-size:0.85rem;">
+                            <span style="color:#7c2d12; font-weight:600;">現在の利用曜日: </span>
+                            <span id="kubun-set-current-days">-</span>
+                        </div>
+                        <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px;">変更後の利用曜日</label>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                                <input type="checkbox" class="kubun-set-days-cb" value="月"> 月
+                            </label>
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                                <input type="checkbox" class="kubun-set-days-cb" value="火"> 火
+                            </label>
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                                <input type="checkbox" class="kubun-set-days-cb" value="水"> 水
+                            </label>
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                                <input type="checkbox" class="kubun-set-days-cb" value="木"> 木
+                            </label>
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                                <input type="checkbox" class="kubun-set-days-cb" value="金"> 金
+                            </label>
+                        </div>
+                        <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px;">変更後の午前／午後</label>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer;">
+                                <input type="radio" name="kubun-set-ampm" value="午前"> 午前
+                            </label>
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer;">
+                                <input type="radio" name="kubun-set-ampm" value="午後"> 午後
+                            </label>
+                            <label style="display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer;">
+                                <input type="radio" name="kubun-set-ampm" value="午前午後"> 午前午後
+                            </label>
+                        </div>
+                        <div style="font-size:0.75rem; color:#718096; margin-top:6px;">保存すると利用者台帳が更新され、出勤＆送迎表等は次回ロードで自動反映されます</div>
                     </div>
                 </div>
             </div>
@@ -5411,6 +5455,8 @@ function absLoadUsersFromAPI() {
                     name: u.name,
                     reading: u.kana || '',
                     pattern: pattern,
+                    days: u.days || '',
+                    ampm: u.ampm || '',
                     care: u.care || '',
                     cmOffice: u.cmOffice || '',
                     cmName: u.cmName || ''
@@ -11500,7 +11546,13 @@ function openKubunSetModal() {
     if (newCareEl) newCareEl.value = '';
     const resultDateEl = document.getElementById('kubun-set-result-date');
     if (resultDateEl) resultDateEl.value = yyyy + '-' + mm + '-' + dd;
+    // 「利用曜日も変更する」もリセット
+    const changeDaysEl = document.getElementById('kubun-set-change-days');
+    if (changeDaysEl) changeDaysEl.checked = false;
+    document.querySelectorAll('.kubun-set-days-cb').forEach(function(cb) { cb.checked = false; });
+    document.querySelectorAll('input[name="kubun-set-ampm"]').forEach(function(r) { r.checked = false; });
     toggleKubunSetHasResult();
+    toggleKubunSetChangeDays();
     onKubunSetApplyChange();
 
     openModal('kubun-set-modal');
@@ -11542,10 +11594,50 @@ function toggleKubunSetHasResult() {
         waitingSection.style.display = 'none';
         resultSection.style.display = '';
         onKubunSetApplyChange();
+        // 利用者選択済みなら現在の利用曜日をプリフィル
+        refreshKubunSetCurrentDays();
     } else {
         waitingSection.style.display = '';
         resultSection.style.display = 'none';
     }
+}
+
+// 「利用曜日も変更する」チェック切替時のセクション表示制御
+function toggleKubunSetChangeDays() {
+    const cb = document.getElementById('kubun-set-change-days');
+    const section = document.getElementById('kubun-set-days-section');
+    if (!cb || !section) return;
+    section.style.display = cb.checked ? '' : 'none';
+    if (cb.checked) refreshKubunSetCurrentDays();
+}
+
+// 利用者の現在の利用曜日を absUserCache から取得してプリフィル
+function refreshKubunSetCurrentDays() {
+    const name = (document.getElementById('kubun-set-name').value || '').trim();
+    const currentDisplay = document.getElementById('kubun-set-current-days');
+    if (!name) {
+        if (currentDisplay) currentDisplay.textContent = '（利用者選択後に表示）';
+        return;
+    }
+    const users = (typeof absUserCache !== 'undefined' && absUserCache) ? absUserCache : [];
+    const target = users.find(function(u) { return String(u.name || '').trim() === name; });
+    if (!target) {
+        if (currentDisplay) currentDisplay.textContent = '（利用者台帳に見つかりません）';
+        return;
+    }
+    const days = target.days || '';
+    const ampm = target.ampm || '';
+    if (currentDisplay) {
+        currentDisplay.textContent = (days || '?') + (ampm ? ' (' + ampm + ')' : '');
+    }
+    // チェックボックスにプリフィル
+    document.querySelectorAll('.kubun-set-days-cb').forEach(function(cb) {
+        cb.checked = days && days.indexOf(cb.value) !== -1;
+    });
+    // 午前/午後ラジオプリフィル
+    document.querySelectorAll('input[name="kubun-set-ampm"]').forEach(function(r) {
+        r.checked = (r.value === ampm);
+    });
 }
 
 // 区変日／更新月が変わったら月遅れ請求対象月チェックボックスを再生成
@@ -11597,6 +11689,7 @@ function submitKubunSet() {
 
     // 「もう結果出てる」モードの場合、結果フィールドも必須チェック
     let newCare = '', resultDate = '', okureMonths = '';
+    let changeDays = false, newDays = '', newAmpm = '';
     if (hasResult) {
         newCare = document.getElementById('kubun-set-newcare').value;
         resultDate = document.getElementById('kubun-set-result-date').value;
@@ -11609,6 +11702,21 @@ function submitKubunSet() {
         okureMonths = Array.from(document.querySelectorAll('.kubun-set-okure-month-cb:checked'))
             .map(function(cb) { return cb.value; })
             .join(',');
+
+        // 「利用曜日も変更する」チェック有無
+        const changeDaysEl = document.getElementById('kubun-set-change-days');
+        changeDays = changeDaysEl && changeDaysEl.checked;
+        if (changeDays) {
+            newDays = Array.from(document.querySelectorAll('.kubun-set-days-cb:checked'))
+                .map(function(cb) { return cb.value; })
+                .join('');
+            const ampmEl = document.querySelector('input[name="kubun-set-ampm"]:checked');
+            newAmpm = ampmEl ? ampmEl.value : '';
+            if (!newAmpm) {
+                alert('利用曜日変更時は午前／午後を選択してください');
+                return;
+            }
+        }
     }
 
     // 利用者台帳 or 中止履歴に存在するかチェック（誤入力防止・中止者も正規）
@@ -11633,7 +11741,7 @@ function submitKubunSet() {
         if (data && data.ok) {
             // Step 2: 結果出てるモードなら続けて kubunClear を呼ぶ
             if (hasResult) {
-                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths);
+                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, changeDays, newDays, newAmpm);
             } else {
                 if (typeof showToast === 'function') showToast('📝 区変開始を登録しました');
                 closeModal('kubun-set-modal');
@@ -11659,7 +11767,7 @@ function submitKubunSet() {
 }
 
 // kubunSet 成功後に kubunClear を呼ぶ（結果登録）
-function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths) {
+function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, changeDays, newDays, newAmpm) {
     const cbName = 'kubunSetClearCb_' + Date.now();
     window[cbName] = function(data) {
         if (data && data.error) {
@@ -11670,8 +11778,14 @@ function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths) {
             let msg = '✅ 介護度変更を登録しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
             if (data.okureMonths) msg += '\n月遅れ対象: ' + data.okureMonths;
             if (typeof showToast === 'function') showToast(msg);
-            closeModal('kubun-set-modal');
-            loadKubunHenkouList();
+
+            // Step 3: 曜日変更ありなら updateUserUsageDays を続けて呼ぶ
+            if (changeDays) {
+                _submitKubunSetDaysStep(name, newDays, newAmpm);
+            } else {
+                closeModal('kubun-set-modal');
+                loadKubunHenkouList();
+            }
         }
         delete window[cbName];
         const s = document.getElementById('kubun-set-clear-jsonp-' + cbName);
@@ -11687,6 +11801,40 @@ function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths) {
     script.src = url;
     script.onerror = function() {
         alert('結果登録の通信エラーが発生しました。カードの「結果を登録」ボタンから手動で結果を入れてください。');
+        delete window[cbName];
+        closeModal('kubun-set-modal');
+        loadKubunHenkouList();
+    };
+    document.body.appendChild(script);
+}
+
+// kubunClear 成功後に updateUserUsageDays を呼ぶ（利用曜日変更）
+function _submitKubunSetDaysStep(name, newDays, newAmpm) {
+    const cbName = 'kubunSetDaysCb_' + Date.now();
+    window[cbName] = function(res) {
+        if (res && res.ok) {
+            const msg = '📅 利用曜日も更新しました: '
+                + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
+                + ' → ' + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+            if (typeof showToast === 'function') showToast(msg);
+        } else {
+            alert('利用曜日の更新でエラー: ' + (res && res.error ? res.error : '不明') + '\nカードの「利用曜日を編集」ボタンから手動で更新してください。');
+        }
+        delete window[cbName];
+        const s = document.getElementById('kubun-set-days-jsonp-' + cbName);
+        if (s) s.remove();
+        closeModal('kubun-set-modal');
+        loadKubunHenkouList();
+    };
+    const script = document.createElement('script');
+    script.id = 'kubun-set-days-jsonp-' + cbName;
+    let url = ABS_BOARD_API_URL + '?action=updateUserUsageDays&callback=' + cbName + '&t=' + Date.now();
+    url += '&name=' + encodeURIComponent(name);
+    url += '&days=' + encodeURIComponent(newDays);
+    url += '&ampm=' + encodeURIComponent(newAmpm);
+    script.src = url;
+    script.onerror = function() {
+        alert('利用曜日更新の通信エラー。カードから手動で更新してください。');
         delete window[cbName];
         closeModal('kubun-set-modal');
         loadKubunHenkouList();
