@@ -2183,12 +2183,18 @@
                     </div>
                 </div>
 
-                <!-- 利用曜日変更（オプション） -->
-                <div style="padding:10px; background:#fff; border:1px solid #cbd5e0; border-radius:8px;">
-                    <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; margin-bottom:6px;">
-                        <input type="checkbox" id="kubun-set-change-days" onchange="toggleKubunSetChangeDays()"> 📅 利用曜日も変更する
-                    </label>
-                    <div id="kubun-set-days-section" style="display:none;">
+                <!-- 利用日の変動（必須3択） -->
+                <div style="padding:10px; background:#fff; border:1.5px solid #c53030; border-radius:8px;">
+                    <label style="display:block; font-weight:600; margin-bottom:6px; color:#c53030;">利用日の変動 <span style="font-size:0.75rem; background:#fed7d7; color:#742a2a; padding:1px 6px; border-radius:4px; margin-left:4px;">必須</span></label>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                        <button type="button" id="kubun-set-usage-changed" onclick="setKubunSetUsageChange('changed')" style="padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;">○あった</button>
+                        <button type="button" id="kubun-set-usage-none" onclick="setKubunSetUsageChange('none')" style="padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;">○なかった</button>
+                        <button type="button" id="kubun-set-usage-unknown" onclick="setKubunSetUsageChange('unknown')" style="padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;">○まだ確認中</button>
+                    </div>
+                    <input type="hidden" id="kubun-set-usage-value" value="">
+
+                    <!-- 「あった」を選んだ時のみ曜日変更UIを表示 -->
+                    <div id="kubun-set-days-section" style="display:none; margin-top:10px; padding:10px; background:#fff5f5; border:1px solid #feb2b2; border-radius:6px;">
                         <div style="margin-bottom:8px; padding:6px 10px; background:#fff5e6; border:1px solid #fbd38d; border-radius:6px; font-size:0.85rem;">
                             <span style="color:#7c2d12; font-weight:600;">現在の利用曜日: </span>
                             <span id="kubun-set-current-days">-</span>
@@ -2223,7 +2229,7 @@
                                 <input type="radio" name="kubun-set-ampm" value="午前午後"> 午前午後
                             </label>
                         </div>
-                        <div style="font-size:0.75rem; color:#718096; margin-top:6px;">保存すると利用者台帳が更新され、出勤＆送迎表等は次回ロードで自動反映されます</div>
+                        <div style="font-size:0.75rem; color:#718096; margin-top:6px;">💡 保存すると利用者台帳が更新され、出勤＆送迎表等は次回ロードで自動反映</div>
                     </div>
                 </div>
             </div>
@@ -11546,13 +11552,18 @@ function openKubunSetModal() {
     if (newCareEl) newCareEl.value = '';
     const resultDateEl = document.getElementById('kubun-set-result-date');
     if (resultDateEl) resultDateEl.value = yyyy + '-' + mm + '-' + dd;
-    // 「利用曜日も変更する」もリセット
-    const changeDaysEl = document.getElementById('kubun-set-change-days');
-    if (changeDaysEl) changeDaysEl.checked = false;
+    // 「利用日の変動」3択もリセット
+    const usageValEl = document.getElementById('kubun-set-usage-value');
+    if (usageValEl) usageValEl.value = '';
+    ['kubun-set-usage-changed','kubun-set-usage-none','kubun-set-usage-unknown'].forEach(function(id) {
+        const btn = document.getElementById(id);
+        if (btn) { btn.style.background = '#fff'; btn.style.color = '#4a5568'; btn.style.border = '1.5px solid #e2e8f0'; }
+    });
     document.querySelectorAll('.kubun-set-days-cb').forEach(function(cb) { cb.checked = false; });
     document.querySelectorAll('input[name="kubun-set-ampm"]').forEach(function(r) { r.checked = false; });
+    const daysSection = document.getElementById('kubun-set-days-section');
+    if (daysSection) daysSection.style.display = 'none';
     toggleKubunSetHasResult();
-    toggleKubunSetChangeDays();
     onKubunSetApplyChange();
 
     openModal('kubun-set-modal');
@@ -11602,13 +11613,34 @@ function toggleKubunSetHasResult() {
     }
 }
 
-// 「利用曜日も変更する」チェック切替時のセクション表示制御
-function toggleKubunSetChangeDays() {
-    const cb = document.getElementById('kubun-set-change-days');
+// 利用日の変動3択ボタン
+function setKubunSetUsageChange(value) {
+    document.getElementById('kubun-set-usage-value').value = value;
+    // ボタン見た目更新
+    const btnMap = {
+        'changed': { id: 'kubun-set-usage-changed', bg: '#fed7d7', color: '#742a2a' },
+        'none':    { id: 'kubun-set-usage-none',    bg: '#c6f6d5', color: '#22543d' },
+        'unknown': { id: 'kubun-set-usage-unknown', bg: '#feebc8', color: '#7c2d12' }
+    };
+    Object.keys(btnMap).forEach(function(k) {
+        const btn = document.getElementById(btnMap[k].id);
+        if (!btn) return;
+        if (k === value) {
+            btn.style.background = btnMap[k].bg;
+            btn.style.color = btnMap[k].color;
+            btn.style.border = '1.5px solid ' + btnMap[k].color;
+        } else {
+            btn.style.background = '#fff';
+            btn.style.color = '#4a5568';
+            btn.style.border = '1.5px solid #e2e8f0';
+        }
+    });
+    // 「あった」を選んだ時のみ曜日変更UIを表示
     const section = document.getElementById('kubun-set-days-section');
-    if (!cb || !section) return;
-    section.style.display = cb.checked ? '' : 'none';
-    if (cb.checked) refreshKubunSetCurrentDays();
+    if (section) {
+        section.style.display = (value === 'changed') ? '' : 'none';
+        if (value === 'changed') refreshKubunSetCurrentDays();
+    }
 }
 
 // 利用者の現在の利用曜日を absUserCache から取得してプリフィル
@@ -11689,7 +11721,7 @@ function submitKubunSet() {
 
     // 「もう結果出てる」モードの場合、結果フィールドも必須チェック
     let newCare = '', resultDate = '', okureMonths = '';
-    let changeDays = false, newDays = '', newAmpm = '';
+    let usageChange = '', changeDays = false, newDays = '', newAmpm = '';
     if (hasResult) {
         newCare = document.getElementById('kubun-set-newcare').value;
         resultDate = document.getElementById('kubun-set-result-date').value;
@@ -11703,17 +11735,23 @@ function submitKubunSet() {
             .map(function(cb) { return cb.value; })
             .join(',');
 
-        // 「利用曜日も変更する」チェック有無
-        const changeDaysEl = document.getElementById('kubun-set-change-days');
-        changeDays = changeDaysEl && changeDaysEl.checked;
-        if (changeDays) {
+        // 「利用日の変動」3択は必須
+        usageChange = document.getElementById('kubun-set-usage-value').value;
+        if (!usageChange) {
+            alert('「利用日の変動」を選択してください（あった／なかった／まだ確認中）');
+            return;
+        }
+
+        // 「あった」を選んだ場合は曜日変更も必須
+        if (usageChange === 'changed') {
+            changeDays = true;
             newDays = Array.from(document.querySelectorAll('.kubun-set-days-cb:checked'))
                 .map(function(cb) { return cb.value; })
                 .join('');
             const ampmEl = document.querySelector('input[name="kubun-set-ampm"]:checked');
             newAmpm = ampmEl ? ampmEl.value : '';
             if (!newAmpm) {
-                alert('利用曜日変更時は午前／午後を選択してください');
+                alert('利用曜日が変わった場合は午前／午後を選択してください');
                 return;
             }
         }
@@ -11741,7 +11779,7 @@ function submitKubunSet() {
         if (data && data.ok) {
             // Step 2: 結果出てるモードなら続けて kubunClear を呼ぶ
             if (hasResult) {
-                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, changeDays, newDays, newAmpm);
+                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm);
             } else {
                 if (typeof showToast === 'function') showToast('📝 区変開始を登録しました');
                 closeModal('kubun-set-modal');
@@ -11766,8 +11804,8 @@ function submitKubunSet() {
     document.body.appendChild(script);
 }
 
-// kubunSet 成功後に kubunClear を呼ぶ（結果登録）
-function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, changeDays, newDays, newAmpm) {
+// kubunSet 成功後に kubunClear を呼ぶ（結果登録＋usageChange）
+function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm) {
     const cbName = 'kubunSetClearCb_' + Date.now();
     window[cbName] = function(data) {
         if (data && data.error) {
@@ -11798,6 +11836,7 @@ function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, chang
     url += '&newCare=' + encodeURIComponent(newCare);
     url += '&resultDate=' + encodeURIComponent(resultDate);
     if (okureMonths) url += '&okureMonths=' + encodeURIComponent(okureMonths);
+    if (usageChange) url += '&usageChange=' + encodeURIComponent(usageChange);
     script.src = url;
     script.onerror = function() {
         alert('結果登録の通信エラーが発生しました。カードの「結果を登録」ボタンから手動で結果を入れてください。');
