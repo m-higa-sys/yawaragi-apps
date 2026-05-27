@@ -2125,19 +2125,46 @@
             <div style="background:#fef3c7; border-left:4px solid #f59e0b; padding:8px 12px; margin-bottom:12px; font-size:0.85rem; color:#78350f;">
                 <strong>区分変更申請</strong>または<strong>更新で介護度が変わった場合</strong>に登録します。役所からの結果通知待ちの状態を管理するためのものです。
             </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-weight:600; margin-bottom:6px;">種別 <span style="font-size:0.75rem; background:#fed7d7; color:#742a2a; padding:1px 6px; border-radius:4px;">必須</span></label>
+                <div style="display:flex; gap:8px;">
+                    <label style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:8px 12px; background:#fff; border:2px solid #e2e8f0; border-radius:8px; cursor:pointer; font-weight:600;">
+                        <input type="radio" name="kubun-set-kind" value="区分変更" onchange="onKubunSetKindChange()"> 区分変更申請
+                    </label>
+                    <label style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:8px 12px; background:#fff; border:2px solid #e2e8f0; border-radius:8px; cursor:pointer; font-weight:600;">
+                        <input type="radio" name="kubun-set-kind" value="更新" onchange="onKubunSetKindChange()"> 更新（有効期間満了）
+                    </label>
+                </div>
+            </div>
+
             <div style="margin-bottom:12px;">
                 <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
                 <input type="text" id="kubun-set-name" list="kubun-set-users-list" autocomplete="off" oninput="refreshKubunSetCurrentDays()" onchange="refreshKubunSetCurrentDays()" placeholder="名前の一部を入力（漢字・ひらがな両方OK）" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
                 <datalist id="kubun-set-users-list"></datalist>
                 <div id="kubun-set-name-hint" style="font-size:0.75rem; color:#718096; margin-top:4px;"></div>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-weight:600; margin-bottom:4px;">区変日／更新月</label>
-                <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">区変は区変をかけた日／更新は更新月の1日を入れてください</div>
+
+            <!-- 区分変更を選んだ時のみ表示 -->
+            <div id="kubun-set-apply-section" style="display:none; margin-bottom:12px;">
+                <label style="display:block; font-weight:600; margin-bottom:4px;">区変日（申請日）</label>
+                <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">区変をかけた日（ケアマネが役所に申請した日）</div>
                 <input type="date" id="kubun-set-apply" onchange="onKubunSetApplyChange()" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
                 <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.85rem; color:#c53030; cursor:pointer;">
-                    <input type="checkbox" id="kubun-set-unknown" onchange="toggleKubunSetUnknown()"> 区変日／更新月が不明（後でケアマネに確認）
+                    <input type="checkbox" id="kubun-set-unknown" onchange="toggleKubunSetUnknown()"> 区変日が不明（後でケアマネに確認）
                 </label>
+            </div>
+
+            <!-- 認定有効期間（種別が選ばれたら表示） -->
+            <div id="kubun-set-authperiod-section" style="display:none; margin-bottom:12px; padding:10px; background:#ebf8ff; border:1px solid #90cdf4; border-radius:8px;">
+                <label style="display:block; font-weight:600; margin-bottom:6px; color:#2c5282;">認定有効期間（新しい認定）</label>
+                <div style="font-size:0.75rem; color:#2c5282; margin-bottom:6px;" id="kubun-set-authperiod-note">介護保険認定通知書の有効期間（更新は必須・区変はわかれば任意）</div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="date" id="kubun-set-auth-start" onchange="onKubunSetAuthStartChange()" style="flex:1; min-width:140px; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                    <span style="color:#718096;">〜</span>
+                    <input type="date" id="kubun-set-auth-end" style="flex:1; min-width:140px; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                </div>
+                <div style="font-size:0.75rem; color:#718096; margin-top:6px;">💡 開始日は曜日変更の「適用開始日」にも自動で使われます</div>
             </div>
             <div style="margin-bottom:12px; padding:10px 12px; background:#f0fff4; border:1.5px solid #38a169; border-radius:8px;">
                 <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; color:#22543d;">
@@ -2146,20 +2173,9 @@
                 <div style="font-size:0.75rem; color:#22543d; margin-top:4px; margin-left:24px;">更新で気付いた時にはもう結果通知が届いているケース等</div>
             </div>
 
-            <!-- 結果まだ出てないモード（デフォルト） -->
-            <div id="kubun-set-waiting-section" style="margin-bottom:16px;">
-                <label style="display:block; font-weight:600; margin-bottom:4px;">結果待ち目安日（空欄=区変日／更新月+45日）</label>
-                <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">結果予定日を「今月末/来月末/区変+45日」で一発入力できます</div>
-                <div style="display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setExpectPreset('thisMonthEnd')">今月末</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setExpectPreset('nextMonthEnd')">来月末</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setExpectPreset(30)">区変+30日</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setExpectPreset(45)">区変+45日</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setExpectPreset(60)">区変+60日</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem; background:#fed7d7;" onclick="setExpectPreset('clear')">未定(空欄)</button>
-                </div>
-                <input type="date" id="kubun-set-expect" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
-            </div>
+            <!-- 結果待ち目安日は廃止（社長判断・2026-05-27） -->
+            <input type="hidden" id="kubun-set-expect" value="">
+            <div id="kubun-set-waiting-section" style="display:none;"></div>
 
             <!-- もう結果出てるモード -->
             <div id="kubun-set-result-section" style="display:none; margin-bottom:16px; padding:12px; background:#f0fff4; border:1.5px solid #38a169; border-radius:8px;">
@@ -2207,11 +2223,8 @@
                         <div id="kubun-set-perday-grid" style="display:grid; grid-template-columns:auto auto auto; gap:6px 12px; align-items:center;">
                             <!-- JS で動的生成 -->
                         </div>
-                        <div style="margin-top:10px;">
-                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px;">適用開始日（いつから新曜日で利用するか）</label>
-                            <input type="date" id="kubun-set-effective-date" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
-                            <div style="font-size:0.75rem; color:#2c5282; margin-top:4px;">💡 未来日付なら予約として記録。当日が来たら自動反映</div>
-                        </div>
+                        <input type="hidden" id="kubun-set-effective-date" value="">
+                        <div style="font-size:0.75rem; color:#2c5282; margin-top:6px;">💡 上の「認定有効期間 開始日」が適用開始日になります。未来日付なら予約として記録（当日に自動反映）</div>
                     </div>
                 </div>
             </div>
@@ -2228,7 +2241,7 @@
 <div class="modal-overlay" id="kubun-edit-modal">
     <div class="modal">
         <div class="modal-header">
-            ✏️ 区変日／更新月・結果待ち目安日を編集
+            ✏️ 区変日を編集
             <button class="modal-close" onclick="closeModal('kubun-edit-modal')">&times;</button>
         </div>
         <div class="modal-body">
@@ -2236,7 +2249,7 @@
                 <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
                 <div id="kubun-edit-name" style="padding:8px 12px; background:#f7fafc; border-radius:8px; font-weight:700;"></div>
             </div>
-            <div style="margin-bottom:12px;">
+            <div style="margin-bottom:16px;">
                 <label style="display:block; font-weight:600; margin-bottom:4px;">区変日／更新月</label>
                 <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">区変は区変をかけた日／更新は更新月の1日</div>
                 <input type="date" id="kubun-edit-apply" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
@@ -2244,16 +2257,7 @@
                     <input type="checkbox" id="kubun-edit-unknown" onchange="toggleKubunEditUnknown()"> 区変日／更新月が不明（後でケアマネに確認）
                 </label>
             </div>
-            <div style="margin-bottom:16px;">
-                <label style="display:block; font-weight:600; margin-bottom:4px;">結果待ち目安日</label>
-                <div style="display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setEditExpectPreset('thisMonthEnd')">今月末</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setEditExpectPreset('nextMonthEnd')">来月末</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setEditExpectPreset(45)">区変+45日</button>
-                    <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem; background:#fed7d7;" onclick="setEditExpectPreset('clear')">未定(空欄)</button>
-                </div>
-                <input type="date" id="kubun-edit-expect" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
-            </div>
+            <input type="hidden" id="kubun-edit-expect" value="">
             <div style="display:flex; gap:8px; justify-content:flex-end;">
                 <button class="data-btn" onclick="closeModal('kubun-edit-modal')">キャンセル</button>
                 <button class="data-btn" style="background:#3182ce; color:#fff;" onclick="submitKubunEdit()">💾 保存</button>
@@ -11748,6 +11752,13 @@ function openKubunSetModal() {
     if (daysSection) daysSection.style.display = 'none';
     // 曜日グリッドを空でリセット
     buildPerDayGrid('kubun-set-perday-grid', 'kubun-set-perday', {});
+    // 種別ラジオ・認定有効期間もリセット
+    document.querySelectorAll('input[name="kubun-set-kind"]').forEach(function(r) { r.checked = false; });
+    const authStart = document.getElementById('kubun-set-auth-start');
+    const authEnd = document.getElementById('kubun-set-auth-end');
+    if (authStart) authStart.value = '';
+    if (authEnd) authEnd.value = '';
+    onKubunSetKindChange();
     toggleKubunSetHasResult();
     onKubunSetApplyChange();
 
@@ -11778,6 +11789,81 @@ function openKubunSetModal() {
     termScript.src = ABS_BOARD_API_URL + '?action=terminations&period=3m&callback=' + termCbName + '&t=' + Date.now();
     termScript.onerror = function() { delete window[termCbName]; };
     document.body.appendChild(termScript);
+}
+
+// 種別切替（区分変更 or 更新）
+function onKubunSetKindChange() {
+    const kindSel = document.querySelector('input[name="kubun-set-kind"]:checked');
+    const kind = kindSel ? kindSel.value : '';
+    const applySection = document.getElementById('kubun-set-apply-section');
+    const authPeriodSection = document.getElementById('kubun-set-authperiod-section');
+    const authPeriodNote = document.getElementById('kubun-set-authperiod-note');
+
+    if (kind === '区分変更') {
+        if (applySection) applySection.style.display = '';
+        if (authPeriodSection) authPeriodSection.style.display = '';
+        if (authPeriodNote) authPeriodNote.textContent = '介護保険認定通知書の有効期間（わかれば任意・未確定なら空欄でOK）';
+    } else if (kind === '更新') {
+        if (applySection) applySection.style.display = 'none';
+        if (authPeriodSection) authPeriodSection.style.display = '';
+        if (authPeriodNote) authPeriodNote.textContent = '介護保険認定通知書の有効期間（更新は必須・開始日が更新月の1日）';
+        // 区変日関連をクリア
+        document.getElementById('kubun-set-apply').value = '';
+        const unknownEl = document.getElementById('kubun-set-unknown');
+        if (unknownEl) unknownEl.checked = false;
+    } else {
+        if (applySection) applySection.style.display = 'none';
+        if (authPeriodSection) authPeriodSection.style.display = 'none';
+    }
+}
+
+// 認定有効期間 開始日 を変えたら、隠しフィールド effective-date にも同期＆ onKubunSetApplyChange を発火
+function onKubunSetAuthStartChange() {
+    const start = document.getElementById('kubun-set-auth-start').value;
+    // 適用開始日（曜日変更予約用）に同期
+    const effEl = document.getElementById('kubun-set-effective-date');
+    if (effEl) effEl.value = start;
+    // 月遅れ対象月の起点としても使う：applyDateが空なら一時的にstartを使う
+    if (start) {
+        // applyDateフィールドが入力されていれば優先、空なら認定有効期間 開始日を起点に
+        const applyEl = document.getElementById('kubun-set-apply');
+        if (applyEl && !applyEl.value) {
+            // 月遅れ月生成のために一時的にonKubunSetApplyChangeのロジックを流用
+            _updateKubunSetOkureFromStart(start);
+        } else {
+            onKubunSetApplyChange();
+        }
+    }
+}
+
+function _updateKubunSetOkureFromStart(startStr) {
+    const container = document.getElementById('kubun-set-okure-months');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!startStr) {
+        container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">認定有効期間 開始日を入力すると候補が出ます</div>';
+        return;
+    }
+    const apply = new Date(startStr);
+    const today = new Date();
+    const cursor = new Date(apply.getFullYear(), apply.getMonth(), 1);
+    const end = new Date(today.getFullYear(), today.getMonth(), 1);
+    let safety = 0;
+    while (cursor <= end && safety < 24) {
+        const y = cursor.getFullYear();
+        const m = String(cursor.getMonth() + 1).padStart(2, '0');
+        const val = y + '-' + m;
+        const label = y + '年' + (cursor.getMonth() + 1) + '月分';
+        const wrapper = document.createElement('label');
+        wrapper.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:6px 10px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; font-size:0.9rem;';
+        wrapper.innerHTML = '<input type="checkbox" class="kubun-set-okure-month-cb" value="' + val + '" checked> ' + label;
+        container.appendChild(wrapper);
+        cursor.setMonth(cursor.getMonth() + 1);
+        safety++;
+    }
+    if (!container.firstChild) {
+        container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">対象月なし</div>';
+    }
 }
 
 // 「もう結果出てる」チェック切替時のセクション表示制御
@@ -11887,17 +11973,32 @@ function onKubunSetApplyChange() {
 
 function submitKubunSet() {
     const name = (document.getElementById('kubun-set-name').value || '').trim();
-    const applyDate = document.getElementById('kubun-set-apply').value;
+    const kindSel = document.querySelector('input[name="kubun-set-kind"]:checked');
+    const kind = kindSel ? kindSel.value : '';
+    let applyDate = document.getElementById('kubun-set-apply').value;
     const expectDate = document.getElementById('kubun-set-expect').value;
     const unknownEl = document.getElementById('kubun-set-unknown');
     const isUnknown = unknownEl && unknownEl.checked;
+    const authPeriodStart = document.getElementById('kubun-set-auth-start').value;
+    const authPeriodEnd = document.getElementById('kubun-set-auth-end').value;
     const hasResultEl = document.getElementById('kubun-set-has-result');
     const hasResult = hasResultEl && hasResultEl.checked;
 
+    if (!kind) { alert('種別を選択してください（区分変更申請 or 更新）'); return; }
     if (!name) { alert('利用者名を入力してください'); return; }
-    if (!applyDate && !isUnknown) {
-        alert('区変日／更新月を入力してください（不明な場合は「不明」にチェック）');
-        return;
+
+    if (kind === '区分変更') {
+        if (!applyDate && !isUnknown) {
+            alert('区変日を入力してください（不明な場合は「不明」にチェック）');
+            return;
+        }
+    } else if (kind === '更新') {
+        if (!authPeriodStart) {
+            alert('更新の場合は認定有効期間 開始日が必須です');
+            return;
+        }
+        // 更新の場合、applyDate には認定有効期間 開始日を入れる（区変日列はGAS互換のため埋める）
+        applyDate = authPeriodStart;
     }
 
     // 「もう結果出てる」モードの場合、結果フィールドも必須チェック
@@ -11964,7 +12065,7 @@ function submitKubunSet() {
         if (data && data.ok) {
             // Step 2: 結果出てるモードなら続けて kubunClear を呼ぶ
             if (hasResult) {
-                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate);
+                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate, kind, authPeriodStart, authPeriodEnd);
             } else {
                 if (typeof showToast === 'function') showToast('📝 区変開始を登録しました');
                 closeModal('kubun-set-modal');
@@ -11989,8 +12090,8 @@ function submitKubunSet() {
     document.body.appendChild(script);
 }
 
-// kubunSet 成功後に kubunClear を呼ぶ（結果登録＋usageChange）
-function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate) {
+// kubunSet 成功後に kubunClear を呼ぶ（結果登録＋usageChange＋kind＋authPeriod）
+function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate, kind, authPeriodStart, authPeriodEnd) {
     const cbName = 'kubunSetClearCb_' + Date.now();
     window[cbName] = function(data) {
         if (data && data.error) {
@@ -12022,6 +12123,9 @@ function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usage
     url += '&resultDate=' + encodeURIComponent(resultDate);
     if (okureMonths) url += '&okureMonths=' + encodeURIComponent(okureMonths);
     if (usageChange) url += '&usageChange=' + encodeURIComponent(usageChange);
+    if (kind) url += '&kind=' + encodeURIComponent(kind);
+    if (authPeriodStart) url += '&authPeriodStart=' + encodeURIComponent(authPeriodStart);
+    if (authPeriodEnd) url += '&authPeriodEnd=' + encodeURIComponent(authPeriodEnd);
     script.src = url;
     script.onerror = function() {
         alert('結果登録の通信エラーが発生しました。カードの「結果を登録」ボタンから手動で結果を入れてください。');
