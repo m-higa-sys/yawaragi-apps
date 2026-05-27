@@ -10932,21 +10932,22 @@ function kubunHistoryGetExpectedFreq(careLevel) {
     return '';
 }
 
-// 想定利用回数の変動を一言で
+// 利用回数の変動を一言で
 function kubunHistoryDescribeChange(prev, next) {
     const p = kubunHistoryGetExpectedFreq(prev);
     const n = kubunHistoryGetExpectedFreq(next);
-    if (!p || !n) return p && n ? (p + ' → ' + n) : '';
-    if (p === n) return p + ' → ' + n + '（同じ）';
+    if (!p && !n) return '';
+    if (!p || !n) return '利用回数: ' + (p || n);
+    if (p === n) return '利用回数: 変更なし（' + p + '）';
     // 週Nから増減を判定
     const pm = p.match(/週(\d+)回/);
     const nm = n.match(/週(\d+)回/);
     if (pm && nm) {
         const pn = parseInt(pm[1], 10), nn = parseInt(nm[1], 10);
-        if (nn > pn) return p + ' → ' + n + '（増の見込み）';
-        if (nn < pn) return p + ' → ' + n + '（減の見込み）';
+        if (nn > pn) return '利用回数: ' + p + ' → ' + n + '（増）';
+        if (nn < pn) return '利用回数: ' + p + ' → ' + n + '（減）';
     }
-    return p + ' → ' + n;
+    return '利用回数: ' + p + ' → ' + n;
 }
 
 // ===== 介護度変更後 後続作業: 一覧取得＆描画 =====
@@ -11012,10 +11013,10 @@ function _doLoadKubunHistoryList() {
                     html += '<div style="padding:6px 10px; background:#c6f6d5; color:#22543d; border-radius:6px; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ 全部済み（' + escapeHtml(u.completedAt) + '）</div>';
                     html += '<button type="button" onclick="kubunHistoryClearCompleted(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:4px 10px; font-size:0.75rem; background:#edf2f7; border:1px solid #cbd5e0; border-radius:4px; cursor:pointer;">完了を取り消す</button>';
                 } else {
-                    // 想定利用回数（参考表示）
+                    // 利用回数
                     if (changeDesc) {
                         html += '<div style="font-size:0.85rem; color:#4a5568; margin-bottom:8px; padding:6px 10px; background:#edf2f7; border-radius:6px;">';
-                        html += 'ℹ️ 想定利用回数: ' + escapeHtml(changeDesc);
+                        html += '📊 ' + escapeHtml(changeDesc);
                         html += '</div>';
                     }
 
