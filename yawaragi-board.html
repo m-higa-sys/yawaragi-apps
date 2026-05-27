@@ -716,6 +716,7 @@
         .att-highsummary-item { padding: 2px 0; cursor: pointer; break-inside: avoid; }
         .att-highsummary-item:hover { text-decoration: underline; }
         .att-usagesummary-index { display: inline-block; min-width: 1.8em; color: #888; font-variant-numeric: tabular-nums; }
+        .att-usagesummary-period { font-size: 11.5px; color: #666; margin-bottom: 6px; column-span: all; }
         .att-usagesummary-name { font-weight: bold; }
         .att-usagesummary-sub { font-size: 12px; color: #666; }
         .usage-modal-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
@@ -7814,13 +7815,17 @@ function usageNormalizeName(name) {
 // 判定対象期間を YYYY-MM で返す（設計書3章: データ蓄積に応じたローリング）
 function usagePeriod() {
   var now = new Date();
-  var y = now.getFullYear(), m = now.getMonth() + 1;
-  var toYM = y + '-' + String(m).padStart(2, '0');
-  // 直近3ヶ月固定（運用開始 2026-04 にクランプ・低/高出席率の両方で共通）
-  var fd = new Date(y, now.getMonth() - 2, 1);
-  var fromYM = fd.getFullYear() + '-' + String(fd.getMonth() + 1).padStart(2, '0');
-  if (fromYM < '2026-04') fromYM = '2026-04';
-  return { from: fromYM, to: toYM };
+  // 前月末締めの完了3ヶ月。今が 2026-05-28 なら 2026-02-01 〜 2026-04-30
+  // （月途中の未確定データを除外）
+  var toEnd = new Date(now.getFullYear(), now.getMonth(), 0); // 前月の末日
+  var toY = toEnd.getFullYear(), toM = toEnd.getMonth() + 1;
+  var fromStart = new Date(toY, toM - 3, 1);
+  var fromY = fromStart.getFullYear(), fromM = fromStart.getMonth() + 1;
+  var fromYM = fromY + '-' + String(fromM).padStart(2, '0');
+  var toYM = toY + '-' + String(toM).padStart(2, '0');
+  var fromDate = fromYM + '-01';
+  var toDate = toYM + '-' + String(new Date(toY, toM, 0).getDate()).padStart(2, '0');
+  return { from: fromYM, to: toYM, fromDate: fromDate, toDate: toDate };
 }
 
 // users 配列から黄バッジの利用者リストを組み立てる（赤の redList と同形式）
@@ -7986,6 +7991,7 @@ function showUsageDetail(name) {
 // 利用率サマリーの1パネルを描画する（低・高共通ヘルパー）
 // opts.entryIcon: 各行先頭に出すアイコン関数 (entry) => '🔴'|'🟡'|''  （省略時なし）
 // opts.subText:   各行のサブ行テキスト関数 (entry) => string
+// opts.periodText: パネル冒頭に表示する集計期間テキスト（例 '2026-02-01〜2026-04-30'）
 function renderUsageSummaryPanel(box, headerIcon, title, list, cssPrefix, opts) {
   if (!box) return;
   if (!list || !list.length) {
@@ -7996,6 +8002,9 @@ function renderUsageSummaryPanel(box, headerIcon, title, list, cssPrefix, opts) 
   opts = opts || {};
   var html = '<div class="' + cssPrefix + '-title">' + headerIcon + ' ' + title +
              '（' + list.length + '名）</div>';
+  if (opts.periodText) {
+    html += '<div class="att-usagesummary-period">📅 集計期間: ' + opts.periodText + '</div>';
+  }
   list.forEach(function(r, idx) {
     var escaped = String(r.name).replace(/'/g, "\\'");
     var sub = opts.subText ? opts.subText(r) :
@@ -8017,22 +8026,32 @@ function renderUsageSummaryPanel(box, headerIcon, title, list, cssPrefix, opts) 
 
 // 左パネル: 低出席率（赤+黄統合）
 function renderUsageLowSummary() {
+  var p = usagePeriod();
+  var pt = p.fromDate + '〜' + p.toDate;
   renderUsageSummaryPanel(
     document.getElementById('att-redsummary'),
     '📉', '利用率低下（要注意）', usageLowList, 'att-redsummary',
-    { entryIcon: function(r) { return r.badge === 'red' ? '🔴' : '🟡'; } });
+    {
+      entryIcon: function(r) { return r.badge === 'red' ? '🔴' : '🟡'; },
+      periodText: pt
+    });
 }
 
-// 右パネル: 高出席率（要介護のみ・利用枠の余裕あり）
+// 右パネル: 安定通所中（要介護のみ・枠追加余地あり）
 function renderUsageHighSummary() {
+  var p = usagePeriod();
+  var pt = p.fromDate + '〜' + p.toDate;
   renderUsageSummaryPanel(
     document.getElementById('att-highsummary'),
-    '✅', '利用枠の余裕あり（要介護）', usageHighList, 'att-highsummary',
-    { subText: function(r) {
+    '💪', '安定通所中（要介護・枠追加余地あり）', usageHighList, 'att-highsummary',
+    {
+      subText: function(r) {
         var rt = (r.rate == null ? '-' : r.rate + '%');
         var best = r.bestDay ? ' / 最高 ' + r.bestDay.day + '曜' + r.bestDay.rate + '%' : '';
         return '利用率' + rt + best;
-      } });
+      },
+      periodText: pt
+    });
 }
 
 // 利用率サマリー全体（低=左 / 高=右）を描画する
