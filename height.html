@@ -264,7 +264,8 @@
 const STORAGE_KEY = 'yawaragi_weight_check'; // 体重チェック表と共有（同じデータを使う）
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
 const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
-const HEIGHT_MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
+const HEIGHT_MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月']; // 時系列順（データ参照用・年度の月並び）
+const DISPLAY_MONTHS = ['3月','4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月']; // 表示順（3月始まり・社長指示2026-05-27）
 const MEASURE_INTERVAL_MONTHS = 3;
 
 let appData = {
@@ -628,7 +629,7 @@ function renderTable() {
     document.getElementById('emptyMessage').style.display = 'none';
 
     let headerRow = '<tr><th style="min-width:30px;"></th><th style="min-width:55px;">氏名</th>';
-    for (const m of HEIGHT_MONTHS) headerRow += '<th>' + m + '</th>';
+    for (const m of DISPLAY_MONTHS) headerRow += '<th>' + m + '</th>';
     headerRow += '</tr>';
     thead.innerHTML = headerRow;
 
@@ -662,7 +663,7 @@ function renderTable() {
         const group = getGroup(user.furigana);
         if (group !== currentGroup) {
             currentGroup = group;
-            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + HEIGHT_MONTHS.length) + '" style="background:#e8f5e9;"></td></tr>';
+            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + DISPLAY_MONTHS.length) + '" style="background:#e8f5e9;"></td></tr>';
         }
         const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
         if (!yearData[user.name]) yearData[user.name] = {};
@@ -673,8 +674,8 @@ function renderTable() {
         html += '<td class="group-cell"></td>';
         html += '<td class="name-cell">' + escapeHtml(user.name) + '</td>';
 
-        for (let mi = 0; mi < HEIGHT_MONTHS.length; mi++) {
-            const m = HEIGHT_MONTHS[mi];
+        for (let mi = 0; mi < DISPLAY_MONTHS.length; mi++) {
+            const m = DISPLAY_MONTHS[mi];
             const height = yearData[user.name][m];
             let cls = 'height-cell';
             let content = '';
