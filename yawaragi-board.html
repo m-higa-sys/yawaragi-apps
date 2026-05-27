@@ -672,11 +672,13 @@
           border: 1px solid #f1aeb5;
           border-radius: 8px;
           font-size: 13px;
+          column-count: 2;
+          column-gap: 12px;
         }
-        .att-redsummary-title { font-weight: bold; color: #842029; margin-bottom: 4px; }
-        .att-redsummary-item { padding: 2px 0; cursor: pointer; }
+        .att-redsummary-title { font-weight: bold; color: #842029; margin-bottom: 4px; column-span: all; }
+        .att-redsummary-item { padding: 2px 0; cursor: pointer; break-inside: avoid; }
         .att-redsummary-item:hover { text-decoration: underline; }
-        /* ----- 利用率アラート 赤・黄2列パネル ----- */
+        /* ----- 利用率アラート 左:低出席率 / 右:高出席率 2列パネル ----- */
         .att-usagesummary-wrap {
           display: flex;
           flex-wrap: wrap;
@@ -684,7 +686,8 @@
           margin: 6px 0;
         }
         .att-usagesummary-wrap > .att-redsummary,
-        .att-usagesummary-wrap > .att-yellowsummary {
+        .att-usagesummary-wrap > .att-yellowsummary,
+        .att-usagesummary-wrap > .att-highsummary {
           flex: 1 1 280px;
           margin: 0;
         }
@@ -700,6 +703,19 @@
         .att-yellowsummary-title { font-weight: bold; color: #7a5c00; margin-bottom: 4px; column-span: all; }
         .att-yellowsummary-item { padding: 2px 0; cursor: pointer; break-inside: avoid; }
         .att-yellowsummary-item:hover { text-decoration: underline; }
+        .att-highsummary {
+          padding: 8px 10px;
+          background: #e8f5ec;
+          border: 1px solid #b6dfc1;
+          border-radius: 8px;
+          font-size: 13px;
+          column-count: 2;
+          column-gap: 12px;
+        }
+        .att-highsummary-title { font-weight: bold; color: #1f6e3a; margin-bottom: 4px; column-span: all; }
+        .att-highsummary-item { padding: 2px 0; cursor: pointer; break-inside: avoid; }
+        .att-highsummary-item:hover { text-decoration: underline; }
+        .att-usagesummary-index { display: inline-block; min-width: 1.8em; color: #888; font-variant-numeric: tabular-nums; }
         .att-usagesummary-name { font-weight: bold; }
         .att-usagesummary-sub { font-size: 12px; color: #666; }
         .usage-modal-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
@@ -1543,6 +1559,7 @@
     <div class="att-usagesummary-wrap" id="att-usagesummary-wrap" style="display:none;">
       <div class="att-redsummary" id="att-redsummary" style="display:none;"></div>
       <div class="att-yellowsummary" id="att-yellowsummary" style="display:none;"></div>
+      <div class="att-highsummary" id="att-highsummary" style="display:none;"></div>
     </div>
     <div id="att-content">
         <div class="att-loading">読み込み中...</div>
@@ -7784,6 +7801,8 @@ function attShowDatePicker(ev) {
 var usageAlertMap = {};   // 正規化なしの利用者名 → アラートデータ
 var usageRedList = [];    // 赤バッジの利用者一覧
 var usageYellowList = []; // 黄バッジの利用者一覧
+var usageLowList = [];    // 左パネル用: 赤+黄統合（赤→黄の順・各内rate昇順）
+var usageHighList = [];   // 右パネル用: 高出席率（要介護・全体95%+ かつ 全曜日90%+）
 var lastAttData = null;   // 最後に attRender へ渡した attendance データ（利用率データ後着時の再描画用）
 
 // 利用者名の正規化（GAS側 _normalizeUserName と同一仕様）
@@ -7797,18 +7816,10 @@ function usagePeriod() {
   var now = new Date();
   var y = now.getFullYear(), m = now.getMonth() + 1;
   var toYM = y + '-' + String(m).padStart(2, '0');
-  var ymNum = y * 12 + m;
-  var monthsBack;
-  if (ymNum <= 2026 * 12 + 6) monthsBack = null;   // 〜2026-06: 運用開始(2026-04)から
-  else if (ymNum <= 2026 * 12 + 9) monthsBack = 2; // 2026-07〜09: 直近3ヶ月
-  else monthsBack = 5;                             // 2026-10〜: 直近6ヶ月
-  var fromYM;
-  if (monthsBack == null) {
-    fromYM = '2026-04';
-  } else {
-    var fd = new Date(y, now.getMonth() - monthsBack, 1);
-    fromYM = fd.getFullYear() + '-' + String(fd.getMonth() + 1).padStart(2, '0');
-  }
+  // 直近3ヶ月固定（運用開始 2026-04 にクランプ・低/高出席率の両方で共通）
+  var fd = new Date(y, now.getMonth() - 2, 1);
+  var fromYM = fd.getFullYear() + '-' + String(fd.getMonth() + 1).padStart(2, '0');
+  if (fromYM < '2026-04') fromYM = '2026-04';
   return { from: fromYM, to: toYM };
 }
 
@@ -7827,6 +7838,33 @@ function buildUsageYellowList(users) {
   return list;
 }
 
+// 左パネル用: 赤+黄を統合（赤が上、各内 rate 昇順=悪い順）
+function buildUsageLowList(users) {
+  var reds = [], yellows = [];
+  (users || []).forEach(function(u) {
+    if (!u || u.excluded) return;
+    var entry = {
+      name: u.name,
+      rate: (u.overall && u.overall.rate != null) ? u.overall.rate : null,
+      worstDay: u.worstDay || null,
+      badge: u.badge
+    };
+    if (u.badge === 'red') reds.push(entry);
+    else if (u.badge === 'yellow') yellows.push(entry);
+  });
+  var asc = function(a, b) {
+    var ar = a.rate == null ? 999 : a.rate;
+    var br = b.rate == null ? 999 : b.rate;
+    if (ar !== br) return ar - br;
+    var aw = a.worstDay ? a.worstDay.rate : 999;
+    var bw = b.worstDay ? b.worstDay.rate : 999;
+    return aw - bw;
+  };
+  reds.sort(asc);
+  yellows.sort(asc);
+  return reds.concat(yellows);
+}
+
 // GAS の usage_alerts を JSONP で取得し、usageAlertMap / usageRedList / usageYellowList を更新する
 function loadUsageAlerts() {
   var p = usagePeriod();
@@ -7841,6 +7879,8 @@ function loadUsageAlerts() {
         ua.users.forEach(function(u) { usageAlertMap[usageNormalizeName(u.name)] = u; });
         usageRedList = ua.redList || [];
         usageYellowList = buildUsageYellowList(ua.users);
+        usageLowList = buildUsageLowList(ua.users);
+        usageHighList = ua.highList || [];
       }
     } catch (err) { /* 取得失敗時はバッジなしで継続 */ }
     // attendance が既に描画済みなら、利用率データを反映して再描画
@@ -7943,53 +7983,70 @@ function showUsageDetail(name) {
   openModal('usage-detail-modal');
 }
 
-// 利用率サマリーの1パネルを描画する（赤・黄共通ヘルパー）
-// box: DOM要素 / icon: '🔴'|'🟡' / title: 見出し語 / list: [{name,rate,worstDay}] / cssPrefix: 'att-redsummary'|'att-yellowsummary'
-function renderUsageSummaryPanel(box, icon, title, list, cssPrefix) {
+// 利用率サマリーの1パネルを描画する（低・高共通ヘルパー）
+// opts.entryIcon: 各行先頭に出すアイコン関数 (entry) => '🔴'|'🟡'|''  （省略時なし）
+// opts.subText:   各行のサブ行テキスト関数 (entry) => string
+function renderUsageSummaryPanel(box, headerIcon, title, list, cssPrefix, opts) {
   if (!box) return;
   if (!list || !list.length) {
     box.style.display = 'none';
     box.innerHTML = '';
     return;
   }
-  var html = '<div class="' + cssPrefix + '-title">' + icon + ' ' + title +
+  opts = opts || {};
+  var html = '<div class="' + cssPrefix + '-title">' + headerIcon + ' ' + title +
              '（' + list.length + '名）</div>';
-  list.forEach(function(r) {
+  list.forEach(function(r, idx) {
     var escaped = String(r.name).replace(/'/g, "\\'");
-    var worst = r.worstDay ? ' / 最悪 ' + r.worstDay.day + '曜' + r.worstDay.rate + '%' : '';
-    var rateText = (r.rate == null ? '-' : r.rate + '%');
+    var sub = opts.subText ? opts.subText(r) :
+              ('利用率' + (r.rate == null ? '-' : r.rate + '%') +
+               (r.worstDay ? ' / 最悪 ' + r.worstDay.day + '曜' + r.worstDay.rate + '%' : ''));
+    var entryIcon = opts.entryIcon ? (opts.entryIcon(r) || '') : '';
+    var iconHtml = entryIcon ? '<span class="att-usagesummary-entryicon">' + entryIcon + '</span> ' : '';
     html += '<div class="' + cssPrefix + '-item" onclick="showUsageDetail(\'' + escaped + '\')">' +
-            '<div class="att-usagesummary-name">' + r.name + '</div>' +
-            '<div class="att-usagesummary-sub">利用率' + rateText + worst + '</div>' +
+            '<div class="att-usagesummary-name">' +
+              '<span class="att-usagesummary-index">' + (idx + 1) + '.</span>' +
+              iconHtml + r.name +
+            '</div>' +
+            '<div class="att-usagesummary-sub">' + sub + '</div>' +
             '</div>';
   });
   box.innerHTML = html;
   box.style.display = 'block';
 }
 
-// 赤サマリー（利用枠の見直し検討）を描画する
-function renderUsageRedSummary() {
+// 左パネル: 低出席率（赤+黄統合）
+function renderUsageLowSummary() {
   renderUsageSummaryPanel(
     document.getElementById('att-redsummary'),
-    '🔴', '利用枠の見直し検討', usageRedList, 'att-redsummary');
+    '📉', '利用率低下（要注意）', usageLowList, 'att-redsummary',
+    { entryIcon: function(r) { return r.badge === 'red' ? '🔴' : '🟡'; } });
 }
 
-// 黄サマリー（声かけ・様子見）を描画する
-function renderUsageYellowSummary() {
+// 右パネル: 高出席率（要介護のみ・利用枠の余裕あり）
+function renderUsageHighSummary() {
   renderUsageSummaryPanel(
-    document.getElementById('att-yellowsummary'),
-    '🟡', '声かけ・様子見', usageYellowList, 'att-yellowsummary');
+    document.getElementById('att-highsummary'),
+    '✅', '利用枠の余裕あり（要介護）', usageHighList, 'att-highsummary',
+    { subText: function(r) {
+        var rt = (r.rate == null ? '-' : r.rate + '%');
+        var best = r.bestDay ? ' / 最高 ' + r.bestDay.day + '曜' + r.bestDay.rate + '%' : '';
+        return '利用率' + rt + best;
+      } });
 }
 
-// 利用率サマリー全体（赤・黄2列）を描画する
+// 利用率サマリー全体（低=左 / 高=右）を描画する
 function renderUsageSummary() {
-  renderUsageRedSummary();
-  renderUsageYellowSummary();
+  renderUsageLowSummary();
+  renderUsageHighSummary();
+  // 旧パネル（黄）は使わない
+  var oldYellow = document.getElementById('att-yellowsummary');
+  if (oldYellow) { oldYellow.style.display = 'none'; oldYellow.innerHTML = ''; }
   var wrap = document.getElementById('att-usagesummary-wrap');
   if (!wrap) return;
-  var hasRed = !!(usageRedList && usageRedList.length);
-  var hasYellow = !!(usageYellowList && usageYellowList.length);
-  wrap.style.display = (hasRed || hasYellow) ? 'flex' : 'none';
+  var hasLow = !!(usageLowList && usageLowList.length);
+  var hasHigh = !!(usageHighList && usageHighList.length);
+  wrap.style.display = (hasLow || hasHigh) ? 'flex' : 'none';
 }
 
 function attLoad() {
