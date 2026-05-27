@@ -2115,14 +2115,22 @@
             <div style="margin-bottom:12px;">
                 <label style="display:block; font-weight:600; margin-bottom:4px;">区変日／更新月</label>
                 <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">区変は区変をかけた日／更新は更新月の1日を入れてください</div>
-                <input type="date" id="kubun-set-apply" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                <input type="date" id="kubun-set-apply" onchange="onKubunSetApplyChange()" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
                 <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.85rem; color:#c53030; cursor:pointer;">
                     <input type="checkbox" id="kubun-set-unknown" onchange="toggleKubunSetUnknown()"> 区変日／更新月が不明（後でケアマネに確認）
                 </label>
-                <div style="font-size:0.75rem; color:#718096; margin-top:4px;">結果予定日を「今月末/来月末/区変+45日」で一発入力できます</div>
             </div>
-            <div style="margin-bottom:16px;">
+            <div style="margin-bottom:12px; padding:10px 12px; background:#f0fff4; border:1.5px solid #38a169; border-radius:8px;">
+                <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; color:#22543d;">
+                    <input type="checkbox" id="kubun-set-has-result" onchange="toggleKubunSetHasResult()"> 📋 もう結果が出ている（同時に結果も登録する）
+                </label>
+                <div style="font-size:0.75rem; color:#22543d; margin-top:4px; margin-left:24px;">更新で気付いた時にはもう結果通知が届いているケース等</div>
+            </div>
+
+            <!-- 結果まだ出てないモード（デフォルト） -->
+            <div id="kubun-set-waiting-section" style="margin-bottom:16px;">
                 <label style="display:block; font-weight:600; margin-bottom:4px;">結果待ち目安日（空欄=区変日／更新月+45日）</label>
+                <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">結果予定日を「今月末/来月末/区変+45日」で一発入力できます</div>
                 <div style="display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
                     <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setExpectPreset('thisMonthEnd')">今月末</button>
                     <button type="button" class="data-btn" style="padding:4px 10px; font-size:0.8rem;" onclick="setExpectPreset('nextMonthEnd')">来月末</button>
@@ -2133,6 +2141,36 @@
                 </div>
                 <input type="date" id="kubun-set-expect" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
             </div>
+
+            <!-- もう結果出てるモード -->
+            <div id="kubun-set-result-section" style="display:none; margin-bottom:16px; padding:12px; background:#f0fff4; border:1.5px solid #38a169; border-radius:8px;">
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-weight:600; margin-bottom:4px;">新介護度</label>
+                    <select id="kubun-set-newcare" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; background:#fff;">
+                        <option value="">選択してください</option>
+                        <option value="要支援1">要支援1</option>
+                        <option value="要支援2">要支援2</option>
+                        <option value="事業対象者">事業対象者</option>
+                        <option value="要介護1">要介護1</option>
+                        <option value="要介護2">要介護2</option>
+                        <option value="要介護3">要介護3</option>
+                        <option value="要介護4">要介護4</option>
+                        <option value="要介護5">要介護5</option>
+                    </select>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-weight:600; margin-bottom:4px;">結果が出た日（認定結果通知書の日付）</label>
+                    <input type="date" id="kubun-set-result-date" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; background:#fff;">
+                </div>
+                <div style="padding:10px; background:#fffaf0; border:1px solid #fbd38d; border-radius:8px;">
+                    <label style="display:block; font-weight:600; margin-bottom:4px;">🔴 月遅れ請求対象月</label>
+                    <p style="font-size:0.8rem; color:#718096; margin:0 0 8px;">新介護度で再請求が必要な月をチェック（不要なら全部外す）</p>
+                    <div id="kubun-set-okure-months" style="display:flex; flex-wrap:wrap; gap:8px;">
+                        <div style="color:#a0aec0; font-size:0.85rem;">区変日／更新月を入力すると候補が出ます</div>
+                    </div>
+                </div>
+            </div>
+
             <div style="display:flex; gap:8px; justify-content:flex-end;">
                 <button class="data-btn" onclick="closeModal('kubun-set-modal')">キャンセル</button>
                 <button class="data-btn" style="background:#dc3545; color:#fff;" onclick="submitKubunSet()">📝 登録する</button>
@@ -11055,6 +11093,17 @@ function openKubunSetModal() {
     if (unknownEl) unknownEl.checked = false;
     document.getElementById('kubun-set-expect').value = '';
     input.value = '';
+
+    // 「もう結果出てる」モードを初期OFFにリセット
+    const hasResultEl = document.getElementById('kubun-set-has-result');
+    if (hasResultEl) hasResultEl.checked = false;
+    const newCareEl = document.getElementById('kubun-set-newcare');
+    if (newCareEl) newCareEl.value = '';
+    const resultDateEl = document.getElementById('kubun-set-result-date');
+    if (resultDateEl) resultDateEl.value = yyyy + '-' + mm + '-' + dd;
+    toggleKubunSetHasResult();
+    onKubunSetApplyChange();
+
     openModal('kubun-set-modal');
 
     renderList();
@@ -11084,16 +11133,83 @@ function openKubunSetModal() {
     document.body.appendChild(termScript);
 }
 
+// 「もう結果出てる」チェック切替時のセクション表示制御
+function toggleKubunSetHasResult() {
+    const hasResult = document.getElementById('kubun-set-has-result');
+    const waitingSection = document.getElementById('kubun-set-waiting-section');
+    const resultSection = document.getElementById('kubun-set-result-section');
+    if (!hasResult || !waitingSection || !resultSection) return;
+    if (hasResult.checked) {
+        waitingSection.style.display = 'none';
+        resultSection.style.display = '';
+        onKubunSetApplyChange();
+    } else {
+        waitingSection.style.display = '';
+        resultSection.style.display = 'none';
+    }
+}
+
+// 区変日／更新月が変わったら月遅れ請求対象月チェックボックスを再生成
+function onKubunSetApplyChange() {
+    const container = document.getElementById('kubun-set-okure-months');
+    if (!container) return;
+    const applyVal = document.getElementById('kubun-set-apply').value;
+    container.innerHTML = '';
+    if (!applyVal) {
+        container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">区変日／更新月を入力すると候補が出ます</div>';
+        return;
+    }
+    const apply = new Date(applyVal);
+    const today = new Date();
+    const cursor = new Date(apply.getFullYear(), apply.getMonth(), 1);
+    const end = new Date(today.getFullYear(), today.getMonth(), 1);
+    let safety = 0;
+    while (cursor <= end && safety < 24) {
+        const y = cursor.getFullYear();
+        const m = String(cursor.getMonth() + 1).padStart(2, '0');
+        const val = y + '-' + m;
+        const label = y + '年' + (cursor.getMonth() + 1) + '月分';
+        const wrapper = document.createElement('label');
+        wrapper.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:6px 10px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; font-size:0.9rem;';
+        wrapper.innerHTML = '<input type="checkbox" class="kubun-set-okure-month-cb" value="' + val + '" checked> ' + label;
+        container.appendChild(wrapper);
+        cursor.setMonth(cursor.getMonth() + 1);
+        safety++;
+    }
+    if (!container.firstChild) {
+        container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">対象月なし</div>';
+    }
+}
+
 function submitKubunSet() {
     const name = (document.getElementById('kubun-set-name').value || '').trim();
     const applyDate = document.getElementById('kubun-set-apply').value;
     const expectDate = document.getElementById('kubun-set-expect').value;
     const unknownEl = document.getElementById('kubun-set-unknown');
     const isUnknown = unknownEl && unknownEl.checked;
+    const hasResultEl = document.getElementById('kubun-set-has-result');
+    const hasResult = hasResultEl && hasResultEl.checked;
+
     if (!name) { alert('利用者名を入力してください'); return; }
     if (!applyDate && !isUnknown) {
-        alert('区変日を入力してください（不明な場合は「区変日が不明」にチェック）');
+        alert('区変日／更新月を入力してください（不明な場合は「不明」にチェック）');
         return;
+    }
+
+    // 「もう結果出てる」モードの場合、結果フィールドも必須チェック
+    let newCare = '', resultDate = '', okureMonths = '';
+    if (hasResult) {
+        newCare = document.getElementById('kubun-set-newcare').value;
+        resultDate = document.getElementById('kubun-set-result-date').value;
+        if (!newCare) { alert('新介護度を選択してください'); return; }
+        if (!resultDate) { alert('結果が出た日を入力してください'); return; }
+        if (!applyDate) {
+            alert('「もう結果出てる」モードでは区変日／更新月の入力が必要です');
+            return;
+        }
+        okureMonths = Array.from(document.querySelectorAll('.kubun-set-okure-month-cb:checked'))
+            .map(function(cb) { return cb.value; })
+            .join(',');
     }
 
     // 利用者台帳 or 中止履歴に存在するかチェック（誤入力防止・中止者も正規）
@@ -11105,14 +11221,25 @@ function submitKubunSet() {
         if (!confirm('「' + name + '」は利用者台帳にも中止履歴にも見つかりません。このまま登録しますか？\n（候補から選び直すにはキャンセル）')) return;
     }
 
+    // Step 1: kubunSet（区変開始）を呼ぶ
     const cbName = 'kubunSetCb_' + Date.now();
     window[cbName] = function(data) {
         if (data && data.error) {
             alert('エラー: ' + data.error);
-        } else if (data && data.ok) {
-            if (typeof showToast === 'function') showToast('📝 区変開始を登録しました');
-            closeModal('kubun-set-modal');
-            loadKubunHenkouList();
+            delete window[cbName];
+            const s = document.getElementById('kubun-set-jsonp-' + cbName);
+            if (s) s.remove();
+            return;
+        }
+        if (data && data.ok) {
+            // Step 2: 結果出てるモードなら続けて kubunClear を呼ぶ
+            if (hasResult) {
+                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths);
+            } else {
+                if (typeof showToast === 'function') showToast('📝 区変開始を登録しました');
+                closeModal('kubun-set-modal');
+                loadKubunHenkouList();
+            }
         }
         delete window[cbName];
         const s = document.getElementById('kubun-set-jsonp-' + cbName);
@@ -11128,6 +11255,42 @@ function submitKubunSet() {
     script.onerror = function() {
         alert('通信エラーが発生しました');
         delete window[cbName];
+    };
+    document.body.appendChild(script);
+}
+
+// kubunSet 成功後に kubunClear を呼ぶ（結果登録）
+function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths) {
+    const cbName = 'kubunSetClearCb_' + Date.now();
+    window[cbName] = function(data) {
+        if (data && data.error) {
+            alert('区変開始は登録されましたが、結果登録でエラー: ' + data.error + '\nカードの「結果を登録」ボタンから手動で結果を入れてください。');
+            closeModal('kubun-set-modal');
+            loadKubunHenkouList();
+        } else if (data && data.ok) {
+            let msg = '✅ 介護度変更を登録しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
+            if (data.okureMonths) msg += '\n月遅れ対象: ' + data.okureMonths;
+            if (typeof showToast === 'function') showToast(msg);
+            closeModal('kubun-set-modal');
+            loadKubunHenkouList();
+        }
+        delete window[cbName];
+        const s = document.getElementById('kubun-set-clear-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 'kubun-set-clear-jsonp-' + cbName;
+    let url = ABS_BOARD_API_URL + '?action=kubunClear&callback=' + cbName + '&t=' + Date.now();
+    url += '&name=' + encodeURIComponent(name);
+    url += '&newCare=' + encodeURIComponent(newCare);
+    url += '&resultDate=' + encodeURIComponent(resultDate);
+    if (okureMonths) url += '&okureMonths=' + encodeURIComponent(okureMonths);
+    script.src = url;
+    script.onerror = function() {
+        alert('結果登録の通信エラーが発生しました。カードの「結果を登録」ボタンから手動で結果を入れてください。');
+        delete window[cbName];
+        closeModal('kubun-set-modal');
+        loadKubunHenkouList();
     };
     document.body.appendChild(script);
 }
