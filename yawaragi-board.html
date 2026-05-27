@@ -2230,6 +2230,69 @@
     </div>
 </div>
 
+<!-- 利用曜日 編集モーダル（介護度変更後フォロー用） -->
+<div class="modal-overlay" id="usage-days-edit-modal">
+    <div class="modal">
+        <div class="modal-header">
+            📅 利用曜日を編集
+            <button class="modal-close" onclick="closeModal('usage-days-edit-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
+                <div id="usage-days-name-display" style="padding:8px 12px; background:#f7fafc; border-radius:8px; font-weight:600;"></div>
+                <input type="hidden" id="usage-days-name">
+            </div>
+            <div style="margin-bottom:12px; padding:10px; background:#fff5e6; border:1px solid #fbd38d; border-radius:8px; font-size:0.85rem;">
+                <div style="font-weight:600; color:#7c2d12; margin-bottom:4px;">変更前（現在）</div>
+                <div id="usage-days-current">-</div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-weight:600; margin-bottom:6px;">変更後の利用曜日</label>
+                <div id="usage-days-checkboxes" style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                        <input type="checkbox" class="usage-days-cb" value="月"> 月
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                        <input type="checkbox" class="usage-days-cb" value="火"> 火
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                        <input type="checkbox" class="usage-days-cb" value="水"> 水
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                        <input type="checkbox" class="usage-days-cb" value="木"> 木
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer; font-weight:600;">
+                        <input type="checkbox" class="usage-days-cb" value="金"> 金
+                    </label>
+                </div>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-weight:600; margin-bottom:6px;">変更後の午前／午後</label>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer;">
+                        <input type="radio" name="usage-ampm" value="午前"> 午前
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer;">
+                        <input type="radio" name="usage-ampm" value="午後"> 午後
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:#fff; border:1.5px solid #e2e8f0; border-radius:6px; cursor:pointer;">
+                        <input type="radio" name="usage-ampm" value="午前午後"> 午前午後
+                    </label>
+                </div>
+                <div style="font-size:0.75rem; color:#718096; margin-top:6px;">曜日ごとに午前/午後が違う場合（例：月午前、水午後）はスプレッドシート直接編集してください</div>
+            </div>
+            <div style="margin-bottom:12px; padding:10px; background:#ebf8ff; border:1px solid #90cdf4; border-radius:8px; font-size:0.8rem; color:#2c5282;">
+                💡 保存すると利用者台帳が更新され、出勤＆送迎表・yawaragiボード「出席予定」等の社内アプリは次回ロードで自動反映されます（リハブクラウド・LIFEは別途手動更新が必要）。
+            </div>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button class="data-btn" onclick="closeModal('usage-days-edit-modal')">キャンセル</button>
+                <button class="data-btn" style="background:#3182ce; color:#fff;" onclick="submitUsageDaysEdit()">💾 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 区変OFF モーダル -->
 <div class="modal-overlay" id="kubun-clear-modal">
     <div class="modal">
@@ -10948,8 +11011,18 @@ function loadKubunHistoryList() {
                         html += '</label>';
                     }
 
-                    // 全部完了ボタン
-                    html += '<div style="margin-top:10px; display:flex; gap:8px;">';
+                    // 現在の利用曜日表示＋編集ボタン
+                    if (u.currentDays || u.currentAmpm) {
+                        html += '<div style="margin-top:8px; padding:6px 10px; background:#fff5e6; border:1px solid #fbd38d; border-radius:6px; font-size:0.85rem;">';
+                        html += '<span style="color:#7c2d12; font-weight:600;">現在の利用曜日: </span>';
+                        html += '<span>' + escapeHtml(u.currentDays || '?') + '</span>';
+                        if (u.currentAmpm) html += ' <span style="color:#718096;">(' + escapeHtml(u.currentAmpm) + ')</span>';
+                        html += '</div>';
+                    }
+
+                    // ボタン群: 曜日編集＋全部完了
+                    html += '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">';
+                    html += '<button type="button" onclick="openUsageDaysEditModal(\'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.currentDays || '') + '\', \'' + escapeJsString(u.currentAmpm || '') + '\')" style="padding:6px 14px; font-size:0.85rem; background:#3182ce; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">📅 利用曜日を編集</button>';
                     html += '<button type="button" onclick="kubunHistoryMarkAllDone(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#48bb78; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">✅ 全部済んだ</button>';
                     html += '</div>';
                 }
@@ -11089,6 +11162,75 @@ function kubunHistoryMarkAllDone(rowIndex, name) {
 function kubunHistoryClearCompleted(rowIndex, name) {
     if (!confirm(name + '様の完了を取り消しますか？')) return;
     kubunHistoryUpdateField(rowIndex, 'clearCompleted', '');
+}
+
+// ===== 利用曜日 編集モーダル =====
+function openUsageDaysEditModal(name, currentDays, currentAmpm) {
+    document.getElementById('usage-days-name-display').textContent = name + ' 様';
+    document.getElementById('usage-days-name').value = name;
+    const cur = (currentDays || '?') + (currentAmpm ? ' (' + currentAmpm + ')' : '');
+    document.getElementById('usage-days-current').textContent = cur;
+
+    // 現在の曜日をチェックボックスにプリフィル
+    document.querySelectorAll('.usage-days-cb').forEach(function(cb) {
+        cb.checked = currentDays && currentDays.indexOf(cb.value) !== -1;
+    });
+
+    // 午前/午後をラジオにプリフィル
+    document.querySelectorAll('input[name="usage-ampm"]').forEach(function(r) {
+        r.checked = (r.value === currentAmpm);
+    });
+
+    openModal('usage-days-edit-modal');
+}
+
+function submitUsageDaysEdit() {
+    const name = document.getElementById('usage-days-name').value;
+    if (!name) { alert('利用者名が取得できません'); return; }
+
+    const days = Array.from(document.querySelectorAll('.usage-days-cb:checked'))
+        .map(function(cb) { return cb.value; })
+        .join('');
+    const ampmEl = document.querySelector('input[name="usage-ampm"]:checked');
+    const ampm = ampmEl ? ampmEl.value : '';
+
+    if (!days) {
+        if (!confirm('利用曜日が空です。本当にこのまま保存しますか？\n（曜日列が空になります）')) return;
+    }
+    if (!ampm) {
+        alert('午前／午後を選択してください'); return;
+    }
+
+    const cbName = 'usageDaysCb_' + Date.now();
+    window[cbName] = function(res) {
+        if (res && res.ok) {
+            const msg = '✅ ' + name + '様の利用曜日を更新しました\n'
+                + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
+                + ' → '
+                + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+            if (typeof showToast === 'function') showToast(msg);
+            else alert(msg);
+            closeModal('usage-days-edit-modal');
+            loadKubunHistoryList();
+        } else {
+            alert('更新失敗: ' + (res && res.error ? res.error : '不明'));
+        }
+        delete window[cbName];
+        const s = document.getElementById('usage-days-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 'usage-days-jsonp-' + cbName;
+    let url = ABS_BOARD_API_URL + '?action=updateUserUsageDays&callback=' + cbName + '&t=' + Date.now();
+    url += '&name=' + encodeURIComponent(name);
+    url += '&days=' + encodeURIComponent(days);
+    url += '&ampm=' + encodeURIComponent(ampm);
+    script.src = url;
+    script.onerror = function() {
+        alert('通信エラーが発生しました');
+        delete window[cbName];
+    };
+    document.body.appendChild(script);
 }
 
 // ===== 月遅れ請求対象: 保険情報入手の登録/取消/メモ編集（共通JSONPヘルパー） =====
