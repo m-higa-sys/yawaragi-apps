@@ -11256,35 +11256,66 @@ function buildDaysAmpmFromPerDay(perDay) {
 }
 
 // 曜日×時間帯グリッドを生成（containerにDOMを構築）
+// 各曜日に「午前」「午後」のトグルボタン。未選択＝利用しない。両方は不可（排他）。
 function buildPerDayGrid(containerId, namePrefix, perDay) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    container.style.gridTemplateColumns = 'auto auto auto';
     let html = '';
-    // ヘッダー行
-    html += '<div style="font-weight:600; font-size:0.8rem; color:#4a5568;">曜日</div>';
-    html += '<div style="font-weight:600; font-size:0.8rem; color:#4a5568; text-align:center;">なし</div>';
-    html += '<div style="font-weight:600; font-size:0.8rem; color:#4a5568; text-align:center;">午前</div>';
-    html += '<div style="font-weight:600; font-size:0.8rem; color:#4a5568; text-align:center;">午後</div>';
     USAGE_DAY_LIST.forEach(function(d) {
         const val = perDay[d] || '';
-        html += '<div style="font-weight:700; font-size:0.95rem;">' + d + '</div>';
-        ['', '午前', '午後'].forEach(function(opt) {
-            const checked = (val === opt) ? 'checked' : '';
-            html += '<label style="display:flex; justify-content:center; cursor:pointer;">';
-            html += '<input type="radio" name="' + namePrefix + '-' + d + '" value="' + opt + '" ' + checked + '>';
-            html += '</label>';
+        html += '<div style="font-weight:700; font-size:0.95rem; padding:6px 0;">' + d + '</div>';
+        ['午前', '午後'].forEach(function(opt) {
+            const isSelected = (val === opt);
+            const style = isSelected
+                ? 'padding:6px 14px; background:#3182ce; color:#fff; border:1.5px solid #2c5282; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;'
+                : 'padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer;';
+            html += '<button type="button" data-grid="' + namePrefix + '" data-day="' + d + '" data-opt="' + opt + '" data-selected="' + (isSelected ? '1' : '0') + '" onclick="togglePerDayBtn(this)" style="' + style + '">' + opt + '</button>';
         });
     });
     container.innerHTML = html;
 }
 
+// トグルボタンクリック処理
+function togglePerDayBtn(btn) {
+    const grid = btn.dataset.grid;
+    const day = btn.dataset.day;
+    const opt = btn.dataset.opt;
+    const isSelected = btn.dataset.selected === '1';
+
+    if (isSelected) {
+        // すでに選択中 → 解除
+        _setPerDayBtnStyle(btn, false);
+    } else {
+        // この曜日の別ボタン（もう一方）を解除
+        document.querySelectorAll('button[data-grid="' + grid + '"][data-day="' + day + '"]').forEach(function(b) {
+            _setPerDayBtnStyle(b, false);
+        });
+        // 自分を選択
+        _setPerDayBtnStyle(btn, true);
+    }
+}
+
+function _setPerDayBtnStyle(btn, selected) {
+    btn.dataset.selected = selected ? '1' : '0';
+    if (selected) {
+        btn.style.background = '#3182ce';
+        btn.style.color = '#fff';
+        btn.style.border = '1.5px solid #2c5282';
+        btn.style.fontWeight = '600';
+    } else {
+        btn.style.background = '#fff';
+        btn.style.color = '#4a5568';
+        btn.style.border = '1.5px solid #e2e8f0';
+        btn.style.fontWeight = 'normal';
+    }
+}
+
 // グリッドから現在の選択状態を取得
 function readPerDayGrid(namePrefix) {
     const perDay = {};
-    USAGE_DAY_LIST.forEach(function(d) {
-        const sel = document.querySelector('input[name="' + namePrefix + '-' + d + '"]:checked');
-        const v = sel ? sel.value : '';
-        if (v) perDay[d] = v;
+    document.querySelectorAll('button[data-grid="' + namePrefix + '"][data-selected="1"]').forEach(function(btn) {
+        perDay[btn.dataset.day] = btn.dataset.opt;
     });
     return perDay;
 }
