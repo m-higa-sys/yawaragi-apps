@@ -261,6 +261,62 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 .tab-panel.active { display: block; }
 
 /* ========= 計画書タブ ========= */
+.plans-search-bar {
+    background: #fff;
+    border-bottom: 1px solid #e8e8e8;
+    padding: 10px 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+.plans-search-input {
+    flex: 1 1 200px;
+    min-width: 200px;
+    padding: 8px 12px;
+    font-size: 15px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    min-height: 40px;
+}
+.plans-row-group {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.plans-row-group .label-mini { color: #666; font-size: 13px; padding: 0 4px; }
+.plans-row-btn {
+    padding: 6px 10px;
+    background: #fff;
+    color: #555;
+    border: 1px solid #ddd;
+    border-radius: 16px;
+    font-size: 13px;
+    cursor: pointer;
+    min-height: 32px;
+    touch-action: manipulation;
+}
+.plans-row-btn.active { background: #4CAF50; color: white; border-color: #4CAF50; }
+.plans-status-btn {
+    padding: 6px 10px;
+    background: #fff;
+    color: #555;
+    border: 1px solid #ddd;
+    border-radius: 16px;
+    font-size: 13px;
+    cursor: pointer;
+    min-height: 32px;
+    touch-action: manipulation;
+}
+.plans-status-btn.active { background: #4CAF50; color: white; border-color: #4CAF50; }
+.plans-count {
+    font-size: 13px;
+    color: #888;
+    margin-left: auto;
+    padding-right: 4px;
+}
 .unsent-section {
     margin: 15px;
     padding: 14px;
@@ -410,6 +466,31 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 
 <div class="tab-panel" id="panel-plans">
     <div id="plans-unsent"></div>
+    <div class="plans-search-bar">
+        <input type="text" id="plans-search-input" class="plans-search-input" placeholder="🔍 氏名・フリガナ" oninput="setPlansSearch(this.value)">
+        <div class="plans-row-group">
+            <span class="label-mini">行:</span>
+            <button class="plans-row-btn active" data-row="">全て</button>
+            <button class="plans-row-btn" data-row="あ">あ</button>
+            <button class="plans-row-btn" data-row="か">か</button>
+            <button class="plans-row-btn" data-row="さ">さ</button>
+            <button class="plans-row-btn" data-row="た">た</button>
+            <button class="plans-row-btn" data-row="な">な</button>
+            <button class="plans-row-btn" data-row="は">は</button>
+            <button class="plans-row-btn" data-row="ま">ま</button>
+            <button class="plans-row-btn" data-row="や">や</button>
+            <button class="plans-row-btn" data-row="ら">ら</button>
+            <button class="plans-row-btn" data-row="わ">わ</button>
+        </div>
+        <div class="plans-row-group">
+            <span class="label-mini">状態:</span>
+            <button class="plans-status-btn active" data-status="">全</button>
+            <button class="plans-status-btn" data-status="danger">🔴期限超</button>
+            <button class="plans-status-btn" data-status="warn">🟡もうすぐ</button>
+            <button class="plans-status-btn" data-status="none">⚪未入力</button>
+        </div>
+        <div class="plans-count" id="plans-count"></div>
+    </div>
     <div id="plans-container">
         <div class="plans-loading">📡 計画書タブを開くと読み込みます</div>
     </div>
@@ -916,6 +997,42 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value, d
 let TSUSHO_PLANS_CACHE = null;
 let TSUSHO_PLANS_YEAR = null;
 let TSUSHO_PLANS_LOADED = false;
+let plansSearchText = '';
+let plansRowFilter = '';
+let plansStatusFilter = '';
+
+// 五十音マップ（カナ・濁音半濁音を全部含めて頭文字判定）
+const PLANS_ROW_MAP = {
+    'あ': 'アイウエオ',
+    'か': 'カキクケコガギグゲゴ',
+    'さ': 'サシスセソザジズゼゾ',
+    'た': 'タチツテトダヂヅデド',
+    'な': 'ナニヌネノ',
+    'は': 'ハヒフヘホバビブベボパピプペポ',
+    'ま': 'マミムメモ',
+    'や': 'ヤユヨ',
+    'ら': 'ラリルレロ',
+    'わ': 'ワヲン'
+};
+
+function setPlansSearch(v) {
+    plansSearchText = String(v || '').trim();
+    if (TSUSHO_PLANS_CACHE) renderTsushoPlans();
+}
+function setPlansRow(row) {
+    plansRowFilter = row;
+    document.querySelectorAll('.plans-row-btn').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.row === row);
+    });
+    if (TSUSHO_PLANS_CACHE) renderTsushoPlans();
+}
+function setPlansStatus(status) {
+    plansStatusFilter = status;
+    document.querySelectorAll('.plans-status-btn').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.status === status);
+    });
+    if (TSUSHO_PLANS_CACHE) renderTsushoPlans();
+}
 
 async function loadTsushoPlans(force) {
     const container = document.getElementById('plans-container');
@@ -950,10 +1067,28 @@ function computeTsushoStatus(planDate, cycleMonths) {
     return 'ok';
 }
 
+function filterPlansUsers(users) {
+    const q = plansSearchText.toLowerCase();
+    return users.filter(function (u) {
+        if (q) {
+            const inName = (u.name || '').toLowerCase().indexOf(q) >= 0;
+            const inKana = (u.furigana || '').toLowerCase().indexOf(q) >= 0;
+            if (!inName && !inKana) return false;
+        }
+        if (plansRowFilter) {
+            const kana = (u.furigana || '').replace(/\s/g, '');
+            const firstChar = kana.charAt(0);
+            const set = PLANS_ROW_MAP[plansRowFilter] || '';
+            if (set.indexOf(firstChar) < 0) return false;
+        }
+        return true;
+    });
+}
+
 function renderTsushoPlans() {
     const container = document.getElementById('plans-container');
     if (!TSUSHO_PLANS_CACHE) return;
-    const users = TSUSHO_PLANS_CACHE.users || [];
+    const allUsers = TSUSHO_PLANS_CACHE.users || [];
     const records = TSUSHO_PLANS_CACHE.records || [];
 
     // 利用者ごとに最新の plan_date 集計
@@ -968,6 +1103,30 @@ function renderTsushoPlans() {
 
     const statusColors = { ok: '#4CAF50', warn: '#FFC107', danger: '#F44336', none: '#9E9E9E' };
     const statusEmoji = { ok: '🟢', warn: '🟡', danger: '🔴', none: '⚪' };
+
+    // フィルタ適用
+    let users = filterPlansUsers(allUsers);
+    // ステータスフィルタ（status は user × records で決まるので別途）
+    if (plansStatusFilter) {
+        users = users.filter(function (u) {
+            const rec = (byUser[u.userId] && byUser[u.userId][0]) || null;
+            const lastDate = rec ? rec.plan_date : '';
+            const st = computeTsushoStatus(lastDate, u.cycleMonths || 12);
+            return st === plansStatusFilter;
+        });
+    }
+
+    // 件数カウンタ
+    const countEl = document.getElementById('plans-count');
+    if (countEl) {
+        countEl.textContent = users.length + ' / ' + allUsers.length + '名';
+    }
+
+    if (users.length === 0) {
+        container.innerHTML = '<div class="plans-loading">該当する利用者がいません</div>';
+        renderUnsentSection();
+        return;
+    }
 
     let html = '<div class="plan-cards">';
     users.forEach(function (u) {
@@ -1114,6 +1273,13 @@ function setupTabs() {
                 loadTsushoPlans();
             }
         });
+    });
+    // 五十音行・状態フィルタのクリック
+    document.querySelectorAll('.plans-row-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () { setPlansRow(btn.dataset.row); });
+    });
+    document.querySelectorAll('.plans-status-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () { setPlansStatus(btn.dataset.status); });
     });
 }
 
