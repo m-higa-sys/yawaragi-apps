@@ -1502,7 +1502,10 @@
         <h1>yawaragiボード</h1>
         <div class="header-sub">リハビリデイサービス yawaragi</div>
     </div>
-    <a href="https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit" target="_blank" style="background:#4299e1;color:white;padding:8px 16px;border-radius:8px;font-size:0.85rem;font-weight:600;text-decoration:none;white-space:nowrap;">利用者台帳</a>
+    <div style="display:flex; gap:8px;">
+        <a href="portal.html" style="background:#9f7aea;color:white;padding:8px 16px;border-radius:8px;font-size:0.85rem;font-weight:600;text-decoration:none;white-space:nowrap;">📱アプリ一覧</a>
+        <a href="https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit" target="_blank" style="background:#4299e1;color:white;padding:8px 16px;border-radius:8px;font-size:0.85rem;font-weight:600;text-decoration:none;white-space:nowrap;">利用者台帳</a>
+    </div>
 </div>
 
 <!-- ===== 区変中バナー ===== -->
@@ -2200,11 +2203,15 @@
                             <span id="kubun-set-current-days">-</span>
                         </div>
                         <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px;">変更後の利用曜日と時間帯</label>
-                        <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">利用しない曜日は「なし」のままに</div>
-                        <div id="kubun-set-perday-grid" style="display:grid; grid-template-columns:auto auto auto auto; gap:6px 12px; align-items:center;">
+                        <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">利用する曜日に午前または午後をクリック</div>
+                        <div id="kubun-set-perday-grid" style="display:grid; grid-template-columns:auto auto auto; gap:6px 12px; align-items:center;">
                             <!-- JS で動的生成 -->
                         </div>
-                        <div style="font-size:0.75rem; color:#718096; margin-top:6px;">💡 保存すると利用者台帳が更新され、出勤＆送迎表等は次回ロードで自動反映</div>
+                        <div style="margin-top:10px;">
+                            <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px;">適用開始日（いつから新曜日で利用するか）</label>
+                            <input type="date" id="kubun-set-effective-date" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                            <div style="font-size:0.75rem; color:#2c5282; margin-top:4px;">💡 未来日付なら予約として記録。当日が来たら自動反映</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2274,10 +2281,15 @@
             </div>
             <div style="margin-bottom:16px;">
                 <label style="display:block; font-weight:600; margin-bottom:6px;">変更後の利用曜日と時間帯</label>
-                <div style="font-size:0.75rem; color:#718096; margin-bottom:8px;">利用しない曜日は「なし」のままにしてください</div>
-                <div id="usage-perday-grid" style="display:grid; grid-template-columns:auto auto auto auto; gap:6px 12px; align-items:center;">
+                <div style="font-size:0.75rem; color:#718096; margin-bottom:8px;">利用する曜日に午前または午後をクリック</div>
+                <div id="usage-perday-grid" style="display:grid; grid-template-columns:auto auto auto; gap:6px 12px; align-items:center;">
                     <!-- JS で動的生成 -->
                 </div>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-weight:600; margin-bottom:4px;">適用開始日 <span style="font-size:0.75rem; color:#718096; font-weight:normal;">（いつから新曜日で利用するか）</span></label>
+                <input type="date" id="usage-days-effective" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                <div style="font-size:0.75rem; color:#2c5282; margin-top:4px;">💡 未来日付なら予約として記録。当日が来たら自動で利用者台帳が更新されます（出勤送迎表も自動切替）</div>
             </div>
             <div style="margin-bottom:12px; padding:10px; background:#ebf8ff; border:1px solid #90cdf4; border-radius:8px; font-size:0.8rem; color:#2c5282;">
                 💡 保存すると利用者台帳が更新され、出勤＆送迎表・yawaragiボード「出席予定」等の社内アプリは次回ロードで自動反映されます（リハブクラウド・LIFEは別途手動更新が必要）。
@@ -10939,6 +10951,36 @@ function kubunHistoryDescribeChange(prev, next) {
 
 // ===== 介護度変更後 後続作業: 一覧取得＆描画 =====
 function loadKubunHistoryList() {
+    // 先に予約反映APIを呼ぶ（今日が適用開始日に達した予約を台帳反映）
+    _applyScheduledThenLoad();
+}
+
+function _applyScheduledThenLoad() {
+    const cbName = 'applySchedCb_' + Date.now();
+    window[cbName] = function(res) {
+        if (res && res.applied > 0 && res.items && res.items.length > 0) {
+            // 反映した利用者の通知
+            if (typeof showToast === 'function') {
+                const names = res.items.map(function(it) { return it.name; }).join('、');
+                showToast('🔄 ' + names + ' の利用曜日を本日反映しました');
+            }
+        }
+        delete window[cbName];
+        const s = document.getElementById('apply-sched-jsonp-' + cbName);
+        if (s) s.remove();
+        _doLoadKubunHistoryList();
+    };
+    const script = document.createElement('script');
+    script.id = 'apply-sched-jsonp-' + cbName;
+    script.src = ABS_BOARD_API_URL + '?action=applyScheduledUsageDays&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+        delete window[cbName];
+        _doLoadKubunHistoryList();
+    };
+    document.body.appendChild(script);
+}
+
+function _doLoadKubunHistoryList() {
     const cbName = 'kubunHistoryCb_' + Date.now();
     window[cbName] = function(data) {
         const list = document.getElementById('kubun-history-list');
@@ -11021,6 +11063,18 @@ function loadKubunHistoryList() {
                         html += '<span style="color:#7c2d12; font-weight:600;">現在の利用曜日: </span>';
                         html += '<span>' + escapeHtml(u.currentDays || '?') + '</span>';
                         if (u.currentAmpm) html += ' <span style="color:#718096;">(' + escapeHtml(u.currentAmpm) + ')</span>';
+                        html += '</div>';
+                    }
+
+                    // 予約された曜日変更表示
+                    if (u.effectiveDate && u.scheduledDays && !u.appliedAt) {
+                        html += '<div style="margin-top:6px; padding:8px 12px; background:#fef5e7; border:1.5px solid #f59e0b; border-radius:6px; font-size:0.85rem;">';
+                        html += '<div style="color:#7c2d12; font-weight:600;">📅 ' + escapeHtml(u.effectiveDate) + ' から自動反映予約</div>';
+                        html += '<div style="color:#7c2d12; margin-top:2px;">→ ' + escapeHtml(u.scheduledDays) + (u.scheduledAmpm ? ' (' + escapeHtml(u.scheduledAmpm) + ')' : '') + '</div>';
+                        html += '</div>';
+                    } else if (u.appliedAt) {
+                        html += '<div style="margin-top:6px; padding:6px 10px; background:#e6fffa; border:1px solid #38b2ac; border-radius:6px; font-size:0.8rem; color:#234e52;">';
+                        html += '✅ ' + escapeHtml(u.effectiveDate) + ' に曜日変更を自動反映済（' + escapeHtml(u.appliedAt) + '）';
                         html += '</div>';
                     }
 
@@ -11144,6 +11198,10 @@ function openUsageDaysEditModalForHistory(name, curDays, curAmpm, rowIndex, prev
 
     const perDay = parsePerDayAmpm(curDays, curAmpm);
     buildPerDayGrid('usage-perday-grid', 'usage-perday', perDay);
+
+    // 適用開始日リセット
+    const effEl = document.getElementById('usage-days-effective');
+    if (effEl) effEl.value = '';
 
     openModal('usage-days-edit-modal');
 }
@@ -11334,6 +11392,10 @@ function openUsageDaysEditModal(name, currentDays, currentAmpm) {
     const perDay = parsePerDayAmpm(currentDays, currentAmpm);
     buildPerDayGrid('usage-perday-grid', 'usage-perday', perDay);
 
+    // 適用開始日は空でリセット（即時反映の場合は空でOK）
+    const effEl = document.getElementById('usage-days-effective');
+    if (effEl) effEl.value = '';
+
     openModal('usage-days-edit-modal');
 }
 
@@ -11345,9 +11407,14 @@ function submitUsageDaysEdit() {
     const built = buildDaysAmpmFromPerDay(perDay);
     const days = built.days;
     const ampm = built.ampm;
+    const effectiveDate = (document.getElementById('usage-days-effective').value || '').trim();
 
     if (!days) {
         if (!confirm('利用する曜日が選択されていません。本当に空のまま保存しますか？')) return;
+    }
+    if (!effectiveDate) {
+        alert('適用開始日を入力してください（いつから新曜日で利用するか）');
+        return;
     }
 
     const modal = document.getElementById('usage-days-edit-modal');
@@ -11357,10 +11424,18 @@ function submitUsageDaysEdit() {
     const cbName = 'usageDaysCb_' + Date.now();
     window[cbName] = function(res) {
         if (res && res.ok) {
-            const msg = '✅ ' + name + '様の利用曜日を更新しました\n'
-                + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
-                + ' → '
-                + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+            let msg;
+            if (res.reserved) {
+                msg = '📅 ' + name + '様の利用曜日変更を予約しました\n'
+                    + '適用開始日: ' + res.effectiveDate + '\n'
+                    + '新曜日: ' + (res.newDays || '空') + (res.newAmpm ? ' (' + res.newAmpm + ')' : '') + '\n'
+                    + '当日が来たら自動で利用者台帳に反映されます';
+            } else {
+                msg = '✅ ' + name + '様の利用曜日を更新しました\n'
+                    + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
+                    + ' → '
+                    + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+            }
             if (typeof showToast === 'function') showToast(msg);
             else alert(msg);
             closeModal('usage-days-edit-modal');
@@ -11383,6 +11458,8 @@ function submitUsageDaysEdit() {
     url += '&name=' + encodeURIComponent(name);
     url += '&days=' + encodeURIComponent(days);
     url += '&ampm=' + encodeURIComponent(ampm);
+    url += '&effectiveDate=' + encodeURIComponent(effectiveDate);
+    if (historyRowIndex) url += '&historyRowIndex=' + encodeURIComponent(historyRowIndex);
     script.src = url;
     script.onerror = function() {
         alert('通信エラーが発生しました');
@@ -11823,7 +11900,7 @@ function submitKubunSet() {
 
     // 「もう結果出てる」モードの場合、結果フィールドも必須チェック
     let newCare = '', resultDate = '', okureMonths = '';
-    let usageChange = '', changeDays = false, newDays = '', newAmpm = '';
+    let usageChange = '', changeDays = false, newDays = '', newAmpm = '', effectiveDate = '';
     if (hasResult) {
         newCare = document.getElementById('kubun-set-newcare').value;
         resultDate = document.getElementById('kubun-set-result-date').value;
@@ -11851,8 +11928,13 @@ function submitKubunSet() {
             const built = buildDaysAmpmFromPerDay(perDay);
             newDays = built.days;
             newAmpm = built.ampm;
+            effectiveDate = (document.getElementById('kubun-set-effective-date').value || '').trim();
             if (!newDays) {
                 alert('利用日の変動「あった」の場合は変更後の曜日と時間帯を選択してください');
+                return;
+            }
+            if (!effectiveDate) {
+                alert('適用開始日を入力してください（いつから新曜日で利用するか）');
                 return;
             }
         }
@@ -11880,7 +11962,7 @@ function submitKubunSet() {
         if (data && data.ok) {
             // Step 2: 結果出てるモードなら続けて kubunClear を呼ぶ
             if (hasResult) {
-                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm);
+                _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate);
             } else {
                 if (typeof showToast === 'function') showToast('📝 区変開始を登録しました');
                 closeModal('kubun-set-modal');
@@ -11906,7 +11988,7 @@ function submitKubunSet() {
 }
 
 // kubunSet 成功後に kubunClear を呼ぶ（結果登録＋usageChange）
-function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm) {
+function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate) {
     const cbName = 'kubunSetClearCb_' + Date.now();
     window[cbName] = function(data) {
         if (data && data.error) {
@@ -11920,7 +12002,7 @@ function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usage
 
             // Step 3: 曜日変更ありなら updateUserUsageDays を続けて呼ぶ
             if (changeDays) {
-                _submitKubunSetDaysStep(name, newDays, newAmpm);
+                _submitKubunSetDaysStep(name, newDays, newAmpm, effectiveDate, data.historyRowIndex);
             } else {
                 closeModal('kubun-set-modal');
                 loadKubunHenkouList();
@@ -11949,13 +12031,19 @@ function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usage
 }
 
 // kubunClear 成功後に updateUserUsageDays を呼ぶ（利用曜日変更）
-function _submitKubunSetDaysStep(name, newDays, newAmpm) {
+function _submitKubunSetDaysStep(name, newDays, newAmpm, effectiveDate, historyRowIndex) {
     const cbName = 'kubunSetDaysCb_' + Date.now();
     window[cbName] = function(res) {
         if (res && res.ok) {
-            const msg = '📅 利用曜日も更新しました: '
-                + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
-                + ' → ' + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+            let msg;
+            if (res.reserved) {
+                msg = '📅 ' + res.effectiveDate + ' から自動反映予約\n'
+                    + '新曜日: ' + (res.newDays || '空') + (res.newAmpm ? ' (' + res.newAmpm + ')' : '');
+            } else {
+                msg = '📅 利用曜日も更新しました: '
+                    + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
+                    + ' → ' + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+            }
             if (typeof showToast === 'function') showToast(msg);
         } else {
             alert('利用曜日の更新でエラー: ' + (res && res.error ? res.error : '不明') + '\nカードの「利用曜日を編集」ボタンから手動で更新してください。');
@@ -11972,6 +12060,8 @@ function _submitKubunSetDaysStep(name, newDays, newAmpm) {
     url += '&name=' + encodeURIComponent(name);
     url += '&days=' + encodeURIComponent(newDays);
     url += '&ampm=' + encodeURIComponent(newAmpm);
+    if (effectiveDate) url += '&effectiveDate=' + encodeURIComponent(effectiveDate);
+    if (historyRowIndex) url += '&historyRowIndex=' + encodeURIComponent(historyRowIndex);
     script.src = url;
     script.onerror = function() {
         alert('利用曜日更新の通信エラー。カードから手動で更新してください。');
