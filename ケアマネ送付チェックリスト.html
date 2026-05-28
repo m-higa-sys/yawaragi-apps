@@ -1,0 +1,2377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ケアマネ送付 進捗チェックリスト</title>
+<style>
+* { box-sizing: border-box; }
+body { font-family: 'Meiryo', 'Yu Gothic', sans-serif; margin: 0; padding: 0; background: #f5f5f5; color: #2d3748; font-size: 14px; }
+header { background: linear-gradient(135deg, #2c7a7b, #319795); color: white; padding: 16px 24px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+header h1 { margin: 0; font-size: 1.4rem; }
+header .sub { font-size: 0.85rem; opacity: 0.9; margin-top: 4px; }
+.controls { background: white; padding: 12px 24px; border-bottom: 2px solid #e2e8f0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.controls select, .controls button { padding: 6px 14px; font-size: 0.9rem; border: 1px solid #cbd5e0; border-radius: 6px; background: white; cursor: pointer; }
+.controls button:hover { background: #edf2f7; }
+.controls button.primary { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+.controls button.primary:hover { background: #285e61; }
+.progress-wrap { flex: 1; min-width: 240px; }
+.progress-bar { background: #e2e8f0; border-radius: 8px; overflow: hidden; height: 18px; position: relative; }
+.progress-bar-fill { background: linear-gradient(90deg, #48bb78, #38a169); height: 100%; transition: width 0.3s; }
+.progress-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; color: #1a202c; }
+main { padding: 16px 24px 48px; }
+.office-block { background: white; border-radius: 10px; margin-bottom: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+.office-header { padding: 14px 18px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #edf2f7; border-bottom: 1px solid #e2e8f0; }
+.office-header:hover { background: #e2e8f0; }
+.office-name { font-weight: 700; font-size: 1.02rem; }
+.office-meta { font-size: 0.8rem; color: #718096; margin-top: 2px; }
+.office-right { text-align: right; font-size: 0.85rem; color: #4a5568; }
+.office-body { display: none; padding: 12px 16px; }
+.office-block.expanded .office-body { display: block; }
+.office-block.expanded .toggle-icon { transform: rotate(90deg); }
+/* ===== 送付完了セクション（2026/4/29追加） ===== */
+.completed-section { margin-top: 28px; border-top: 2px dashed #cbd5e0; padding-top: 16px; }
+.completed-section-header { background: #e6fffa; padding: 12px 18px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 700; color: #234e52; margin-bottom: 10px; border: 1px solid #b2f5ea; }
+.completed-section-header:hover { background: #b2f5ea; }
+.completed-section-header .toggle-icon { transition: transform 0.2s; }
+.completed-section.expanded .completed-section-header .toggle-icon { transform: rotate(90deg); }
+.completed-section-body { display: none; }
+.completed-section.expanded .completed-section-body { display: block; }
+.completed-section .office-block { opacity: 0.55; }
+.completed-section .office-block:hover { opacity: 0.9; }
+.completed-section .office-header { background: #f0fff4; }
+.toggle-icon { display: inline-block; transition: transform 0.2s; margin-right: 6px; }
+.user-row { padding: 10px 0; border-bottom: 1px solid #edf2f7; }
+.user-row:last-child { border-bottom: none; }
+.user-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.user-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-bottom: 1px dotted #94a3b8;
+  transition: color 0.15s ease, border-bottom-color 0.15s ease;
+}
+.user-name:hover {
+  color: #2563eb;
+  border-bottom: 1px solid #2563eb;
+}
+.badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.badge.shien { background: #feebc8; color: #9c4221; }
+.badge.kaigo { background: #bee3f8; color: #2c5282; }
+.badge.newplan { background: #fed7d7; color: #c53030; }
+/* ===== 区変中表示（2026/4/27追加） ===== */
+.user-row.user-row-kubun {
+  background: #fff5f5;
+  border-left: 4px solid #dc3545;
+  padding-left: 8px;
+}
+.badge-kubun {
+  display: inline-block;
+  background: #dc3545;
+  color: #fff;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 0.92rem;
+  margin-right: 6px;
+  white-space: nowrap;
+  box-shadow: 0 0 0 2px #fecaca, 0 1px 4px rgba(220,53,69,0.4);
+  letter-spacing: 0.02em;
+}
+@media print {
+  .user-row.user-row-kubun {
+    background: #ffe0e0 !important;
+    border-left: 3px solid #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .badge-kubun {
+    background: #000 !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+.user-docs { display: flex; flex-wrap: wrap; gap: 6px; }
+.check-item { display: inline-flex; align-items: center; gap: 2px; padding: 4px 6px 4px 10px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 16px; font-size: 0.78rem; user-select: none; transition: all 0.15s; }
+.check-item .check-main { cursor: pointer; padding: 2px 4px; flex: 1; }
+.check-item .check-main:hover { text-decoration: underline; }
+.check-item .next-flag { cursor: pointer; padding: 2px 6px; border-radius: 12px; opacity: 0.3; transition: all 0.15s; font-size: 0.85rem; margin-left: 2px; }
+.check-item .next-flag:hover { opacity: 0.7; background: #fed7aa; }
+.check-item .next-flag.active { opacity: 1; background: #fb923c; color: white; font-weight: bold; box-shadow: 0 0 0 2px #fed7aa; }
+.check-item.checked { background: #c6f6d5; border-color: #48bb78; color: #1a202c; font-weight: 600; }
+.check-item.has-next { border-color: #f97316; border-width: 2px; }
+.check-item.has-next:not(.checked) { background: #fff7ed; }
+.check-item.locked .check-main { opacity: 0.35; cursor: not-allowed; text-decoration: line-through; }
+.check-item.locked .check-main:hover { text-decoration: line-through; }
+.check-item.locked { background: #f1f5f9; }
+
+/* 個訓評価 PDF/印刷 独立pill */
+.check-item-hyouka { padding: 4px 8px; gap: 6px; }
+.check-item-hyouka .check-label { font-weight: 600; }
+.check-item-hyouka .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.74rem; cursor: pointer; user-select: none; border: 1px solid #cbd5e0; transition: all 0.15s; }
+.check-item-hyouka .pill.off { background: #ffffff; color: #718096; }
+.check-item-hyouka .pill.on { background: #2c7a7b; color: #ffffff; border-color: #2c7a7b; font-weight: 700; }
+.check-item-hyouka .pill:hover { opacity: 0.85; }
+.check-item-hyouka .pill.locked { opacity: 0.35; cursor: not-allowed; text-decoration: line-through; }
+.edit-docs-btn { background: transparent; border: 1px solid #cbd5e0; border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 0.75rem; margin-left: 8px; color: #4a5568; }
+.edit-docs-btn:hover { background: #edf2f7; border-color: #2c7a7b; color: #2c7a7b; }
+.override-indicator { background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 8px; font-size: 0.7rem; margin-left: 4px; font-weight: 600; }
+.office-bulk-actions { padding: 10px 0; margin-bottom: 10px; border-bottom: 1px dashed #e2e8f0; text-align: right; }
+.bulk-sent-btn { padding: 6px 14px; background: #2c7a7b; color: white; border: 1px solid #2c7a7b; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+.bulk-sent-btn:hover { background: #285e61; }
+.bulk-sent-btn:disabled { background: #cbd5e0; border-color: #cbd5e0; cursor: not-allowed; }
+#printWorklistBtn { padding: 6px 14px; background: #805ad5; color: white; border: 1px solid #805ad5; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+#printWorklistBtn:hover { background: #6b46c1; }
+.check-item.carryover { background: #fef3c7; border-color: #f59e0b; color: #78350f; font-style: italic; }
+.check-item.carryover.checked { background: #d9f99d; border-color: #84cc16; color: #365314; }
+.help-hint { background: #fff9e6; border-left: 3px solid #f6ad55; padding: 8px 12px; font-size: 0.8rem; margin: 0 0 12px; border-radius: 4px; color: #744210; }
+.method-tag { background: #e2e8f0; color: #4a5568; padding: 2px 8px; border-radius: 8px; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+.method-tag:hover { opacity: 0.7; background: #cbd5e0; }
+.method-badge { display: inline-block; margin-left: 8px; padding: 3px 10px; border-radius: 12px; font-size: 0.88rem; font-weight: 700; vertical-align: middle; background: #e2e8f0; color: #4a5568; cursor: pointer; }
+.method-badge:hover { opacity: 0.8; outline: 2px solid #4a5568; }
+.method-badge.mail { background: #c6f6d5; color: #22543d; }
+.method-badge.fax { background: #feebc8; color: #9c4221; }
+.method-badge.visit { background: #fbd5f8; color: #702459; }
+.method-badge.mailing { background: #bee3f8; color: #2c5282; }
+.method-badge.unset { background: #fed7d7; color: #c53030; }
+.hold-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: 700; margin-left: 6px; cursor: pointer; vertical-align: middle; }
+.hold-badge.kmcheck { background: #fed7aa; color: #9a3412; }
+.hold-badge.staffcheck { background: #ddd6fe; color: #5b21b6; }
+.hold-badge.tsukiokure { background: #bfdbfe; color: #1e40af; }
+.hold-badge.riyo_nashi { background: #fecaca; color: #991b1b; }
+.hold-badge.jihi { background: #d1fae5; color: #065f46; }
+.hold-badge.nyuin { background: #c4b5fd; color: #4c1d95; }
+.hold-badge.other { background: #e5e7eb; color: #374151; }
+/* 「今月対象外」扱いの保留中ユーザーはチップを薄く表示 */
+.user-row-hold-excluded .check-item { opacity: 0.4; }
+.user-row-hold-excluded .user-name { text-decoration: line-through; opacity: 0.7; }
+/* クイック除外チップ（月遅れ・利用無し・自費の1クリックトグル） */
+.exclude-chip { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 12px; font-size: 0.75rem; cursor: pointer; margin-left: 4px; background: #f8fafc; color: #94a3b8; border: 1px dashed #cbd5e0; user-select: none; transition: all 0.15s; vertical-align: middle; }
+.exclude-chip:hover { background: #edf2f7; color: #475569; border-color: #94a3b8; }
+.exclude-chip.on { font-weight: 700; border-style: solid; }
+.exclude-chip.on.tsukiokure { background: #bfdbfe; color: #1e40af; border-color: #1e40af; }
+.exclude-chip.on.riyo_nashi { background: #fecaca; color: #991b1b; border-color: #991b1b; }
+.exclude-chip.on.jihi { background: #d1fae5; color: #065f46; border-color: #065f46; }
+.hold-badge:hover { opacity: 0.85; text-decoration: underline; }
+.hold-btn-empty { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; cursor: pointer; margin-left: 6px; border: 1px dashed #cbd5e0; color: #a0aec0; background: transparent; vertical-align: middle; }
+.hold-btn-empty:hover { background: #edf2f7; color: #4a5568; border-color: #a0aec0; }
+.hold-summary { display: inline-block; background: #fef3c7; padding: 3px 10px; border-radius: 8px; color: #92400e; font-size: 0.85rem; font-weight: 600; margin-left: 8px; cursor: pointer; user-select: none; transition: background 0.15s; }
+.hold-summary:hover { background: #fde68a; box-shadow: 0 0 0 2px rgba(217,119,6,0.25); }
+.user-row-hold { background: #fffbeb; border-left: 3px solid #f59e0b; }
+/* ===== 保留中リスト ポップアップ（2026/5/5追加） ===== */
+.hold-popup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 9000; display: flex; align-items: flex-start; justify-content: center; padding-top: 80px; }
+.hold-popup { background: white; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 120px); overflow: hidden; display: flex; flex-direction: column; }
+.hold-popup-header { background: #fef3c7; padding: 14px 18px; border-bottom: 1px solid #fde68a; display: flex; align-items: center; justify-content: space-between; }
+.hold-popup-title { font-weight: 700; color: #92400e; font-size: 1rem; }
+.hold-popup-close { background: transparent; border: none; font-size: 1.4rem; cursor: pointer; color: #92400e; line-height: 1; padding: 0 4px; }
+.hold-popup-close:hover { color: #78350f; }
+.hold-popup-body { overflow-y: auto; padding: 8px; }
+.hold-popup-item { display: block; width: 100%; text-align: left; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; font-family: inherit; transition: background 0.15s, transform 0.1s; }
+.hold-popup-item:hover { background: #fef3c7; border-color: #f59e0b; }
+.hold-popup-item:active { transform: scale(0.98); }
+.hold-popup-item .hp-name { font-weight: 700; color: #1a202c; font-size: 0.95rem; }
+.hold-popup-item .hp-office { font-size: 0.78rem; color: #4a5568; margin-top: 2px; }
+.hold-popup-item .hp-cat { display: inline-block; font-size: 0.72rem; padding: 1px 7px; border-radius: 8px; margin-top: 4px; background: #e5e7eb; color: #374151; }
+.hold-popup-item .hp-memo { font-size: 0.78rem; color: #6b7280; margin-top: 4px; font-style: italic; }
+.hold-popup-empty { text-align: center; color: #6b7280; padding: 20px; font-size: 0.9rem; }
+/* スクロールジャンプ時の一時ハイライト */
+@keyframes jumpFlash {
+  0%   { background: #fde68a; box-shadow: 0 0 0 4px #f59e0b; }
+  60%  { background: #fef3c7; box-shadow: 0 0 0 3px #fbbf24; }
+  100% { background: inherit; box-shadow: none; }
+}
+.user-row.jump-flash { animation: jumpFlash 2.4s ease-out; }
+/* ===== 実績OK主張UI（2026/4/29追加） ===== */
+.user-row.user-row-ready {
+  background: #f0fff4;
+  border-left: 4px solid #38a169;
+  padding-left: 8px;
+}
+/* 区変中（赤）が優先：両方付いた場合は赤帯のみを表示 */
+.user-row.user-row-kubun.user-row-ready {
+  background: #fff5f5;
+  border-left: 4px solid #dc3545;
+}
+.badge.badge-ready-strong {
+  background: #38a169;
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.92rem;
+  padding: 4px 12px;
+  border-radius: 14px;
+  box-shadow: 0 0 0 2px #c6f6d5, 0 1px 4px rgba(56,161,105,0.4);
+  letter-spacing: 0.02em;
+}
+@media print {
+  .user-row.user-row-ready {
+    background: #d4f5dd !important;
+    border-left: 3px solid #2f855a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .badge.badge-ready-strong {
+    background: #2f855a !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+/* ===== 月遅れ請求対象（2026/4/30追加） — 区変中赤帯のオレンジ版 ===== */
+.user-row.user-row-okure {
+  background: #fffaf0;
+  border-left: 4px solid #ed8936;
+  padding-left: 8px;
+}
+/* 帯の優先順位：区変中（赤）> 月遅れ（オレンジ）— 両方付いた場合は赤帯のみ */
+.user-row.user-row-kubun.user-row-okure {
+  background: #fff5f5;
+  border-left: 4px solid #dc3545;
+}
+.badge.badge-okure-strong {
+  background: #feebc8;
+  color: #7b341e;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1.5px solid #dd6b20;
+  box-shadow: 0 0 0 2px rgba(237,137,54,0.15);
+}
+@media print {
+  .user-row.user-row-okure {
+    background: #fff3e0 !important;
+    border-left: 3px solid #c05621 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .badge.badge-okure-strong {
+    background: #fed7aa !important;
+    color: #7b341e !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+/* ===== 月遅れ請求対象・保険情報入手済（2026/5/1追加・Phase D） ===== */
+.user-row.user-row-okure-ready {
+  background: #f0fff4;
+  border-left: 4px solid #38a169;
+  padding-left: 8px;
+}
+/* 区変中（赤）が最優先：区変中×入手済が同時付与されることは通常無いが念のため赤帯維持 */
+.user-row.user-row-kubun.user-row-okure-ready {
+  background: #fff5f5;
+  border-left: 4px solid #dc3545;
+}
+.badge.badge-okure-ready {
+  background: #c6f6d5;
+  color: #22543d;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1.5px solid #38a169;
+  box-shadow: 0 0 0 2px rgba(56,161,105,0.15);
+}
+@media print {
+  .user-row.user-row-okure-ready {
+    background: #e6fffa !important;
+    border-left: 3px solid #2f855a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .badge.badge-okure-ready {
+    background: #c6f6d5 !important;
+    color: #22543d !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+/* ===== 同一敷地ペアバッジ（2026/4/29追加） ===== */
+.badge.same-location-badge {
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1.5px dashed #d97706;
+  margin-left: 6px;
+  font-size: 0.82rem;
+}
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.modal-box { background: white; border-radius: 10px; padding: 24px; width: 90%; max-width: 480px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+.modal-box h3 { margin: 0 0 16px; font-size: 1.1rem; }
+.modal-box label { display: block; margin-bottom: 12px; font-size: 0.9rem; font-weight: 600; }
+.modal-box label small { display: block; font-weight: 400; color: #718096; font-size: 0.75rem; margin-top: 2px; }
+.modal-box input, .modal-box select { width: 100%; padding: 8px 12px; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 0.95rem; margin-top: 4px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.modal-actions button { padding: 8px 16px; border-radius: 6px; border: 1px solid #cbd5e0; background: white; cursor: pointer; font-size: 0.9rem; }
+.modal-actions button.save { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+.modal-actions button.save:hover { background: #285e61; }
+.modal-actions button.save:disabled { opacity: 0.5; cursor: not-allowed; }
+#loading { text-align: center; padding: 40px; color: #718096; }
+.empty { text-align: center; padding: 40px; color: #a0aec0; font-size: 0.9rem; }
+.reset-btn { background: #fed7d7; color: #c53030; border-color: #fc8181; }
+.reset-btn:hover { background: #fc8181; color: white; }
+@media (max-width: 600px) {
+  .controls { padding: 10px; }
+  .office-name { font-size: 0.92rem; }
+}
+
+/* ===== 月次利用状況モーダル（2026-05-27追加 / yawaragiボードから移植） ===== */
+.mu-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 10000; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+}
+.mu-modal-box {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 480px;
+    max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.mu-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
+}
+.mu-title { font-size: 1.05rem; font-weight: 700; color: #2d3748; }
+.mu-title-sub { font-weight: 500; color: #4a5568; font-size: 0.95rem; margin-left: 4px; }
+.mu-close-btn {
+    background: none; border: none; font-size: 1.4rem; color: #718096;
+    cursor: pointer; padding: 4px 8px; line-height: 1;
+}
+.mu-month-tabs {
+    display: flex; gap: 8px; padding: 12px 18px; border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+}
+.mu-month-tab {
+    flex: 1; padding: 8px 4px; border: 1px solid #cbd5e0; border-radius: 8px;
+    background: #fff; color: #4a5568; font-size: 0.95rem; font-weight: 600;
+    cursor: pointer; text-align: center; font-family: inherit;
+}
+.mu-month-tab.active { background: #2c5282; color: #fff; border-color: #2c5282; }
+.mu-summary {
+    padding: 12px 18px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #2d3748;
+}
+.mu-summary .mu-summary-main { font-weight: 600; margin-bottom: 6px; }
+.mu-summary .mu-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.mu-badge {
+    display: inline-block; padding: 4px 10px; border-radius: 14px;
+    font-size: 0.82rem; font-weight: 600;
+}
+.mu-badge.danger { background: #fed7d7; color: #c53030; }
+.mu-badge.info   { background: #bee3f8; color: #2c5282; }
+.mu-badge.success{ background: #c6f6d5; color: #22543d; }
+.mu-calendar { padding: 14px 18px; flex: 1; overflow-y: auto; }
+.mu-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mu-cal-head {
+    text-align: center; font-size: 0.78rem; font-weight: 700; color: #718096; padding: 4px 0;
+}
+.mu-cal-cell {
+    aspect-ratio: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; border-radius: 8px;
+    font-size: 0.88rem; color: #2d3748; background: #f7fafc;
+}
+.mu-cal-cell.empty { background: transparent; }
+.mu-cal-cell.scheduled { background: #edf2f7; }
+.mu-cal-cell.attended { background: #c6f6d5; color: #22543d; font-weight: 700; }
+.mu-cal-cell.absent   { background: #fed7d7; color: #c53030; font-weight: 700; }
+.mu-cal-cell.attended.absent { background: linear-gradient(135deg, #c6f6d5 50%, #fed7d7 50%); color: #2d3748; }
+.mu-cal-cell.attended.nopickup::after { content: '🔵'; font-size: 0.6rem; line-height: 1; }
+.mu-cal-cell.today { box-shadow: inset 0 0 0 2px #3182ce; }
+.mu-legend {
+    padding: 10px 18px; font-size: 0.78rem; color: #718096;
+    border-top: 1px solid #f1f5f9; text-align: center;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 ケアマネ送付 進捗チェックリスト</h1>
+  <div class="sub" id="subtitle">読み込み中...</div>
+</header>
+
+<div class="controls">
+  <label>対象月: <select id="monthSel"></select></label>
+  <label style="background:#c6f6d5; padding:4px 10px; border-radius:6px; cursor:pointer; border:2px solid #38a169;">
+    <input type="checkbox" id="filterFinalizableOnly" style="margin-right:6px;">
+    <span style="color:#22543d; font-weight:700;">✅実績OK者だけ表示</span>
+  </label>
+  <label style="background:#bee3f8; padding:4px 10px; border-radius:6px; cursor:pointer; border:2px solid #2b6cb0;">
+    <input type="checkbox" id="filterReadyOfficesOnly" style="margin-right:6px;">
+    <span style="color:#1a365d; font-weight:700;">📬 今すぐ送れる事業所だけ表示</span>
+  </label>
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div><div class="progress-text" id="progressText">0% (0/0)</div></div>
+  </div>
+  <button id="reloadBtn">🔄 データ更新</button>
+  <button id="printWorklistBtn">🖨️ 作業一覧を印刷</button>
+  <button id="exportBtn">📥 CSV出力</button>
+  <button id="resetBtn" class="reset-btn">⚠️ リセット</button>
+</div>
+
+<main id="main">
+  <div class="help-hint" style="margin: 12px 24px 0; line-height:1.7;">
+    💡 <strong>3つの操作を使い分け</strong>:<br>
+    ① <strong>ラベル部分クリック</strong> = 作業完了（☐/✅）<br>
+    ② <strong>右端の 📅 クリック</strong> = 「送付が来月にスライド」<span style="color:#a16207;">（遅延時用・翌月に自動繰越）</span><br>
+    ③ <strong>利用者横の ⚙️ 書類編集</strong> = 「そもそも今月は該当しない書類」を非表示<span style="color:#a16207;">（新計画書を作らない月等・繰越しない）</span>
+  </div>
+  <div id="loading">データ取得中...</div>
+</main>
+
+<script>
+// ===== 設定 =====
+const YAWARAGI_BOARD_API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const USERS_API = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+const MEASURE_API = 'https://script.google.com/macros/s/AKfycbwqfudNXAiZ3E1RoD3MP0s2cjFajKk_94MvjnWoLUElYNEM32BUPbpGLEyVxUSDmjyW/exec';
+const STORAGE_KEY = 'yawaragi_cm_send_progress_v1';
+
+// ===== 保留カテゴリ =====
+// 後で追加する場合はここに1行加えるだけ
+const HOLD_CATEGORIES = {
+  km_check:    { label: 'ケアマネ確認中', icon: '📞', color: 'kmcheck' },
+  staff_check: { label: 'スタッフ確認中', icon: '👥', color: 'staffcheck' },
+  tsukiokure:  { label: '月遅れ',         icon: '📅', color: 'tsukiokure' },
+  riyo_nashi:  { label: '利用無し',       icon: '🚫', color: 'riyo_nashi' },
+  jihi:        { label: '自費',           icon: '💰', color: 'jihi' },
+  nyuin:       { label: '入院中',         icon: '🏥', color: 'nyuin' },
+  other:       { label: 'その他',         icon: '📝', color: 'other' }
+};
+// 完了カウントから除外する保留カテゴリ（=「今月は送らない」確定の人）
+// km_check / staff_check は確認中なので除外しない（送るかもしれない）
+const HOLD_EXCLUDE_FROM_COUNT = new Set(['tsukiokure', 'riyo_nashi', 'jihi', 'nyuin', 'other']);
+// クイックトグルチップに表示する3項目（高頻度のみ・1クリックON/OFF）
+const QUICK_EXCLUDE_FLAGS = ['tsukiokure', 'riyo_nashi', 'jihi'];
+
+// ===== 同一敷地ペア（2026/4/29追加） =====
+// 物理的に同じ敷地内にあり、持参で一緒に届けられる事業所のペア。
+// 表示上は隣接配置＆両方とも当月対象者がいるときだけ「🏢 同一敷地」バッジが出る。
+// 追加するときはこの配列に1行追記すればOK（ペアの順序はどちらでも可）。
+const SAME_LOCATION_PAIRS = [
+  ['わかばの丘地域包括支援センター', '居宅介護支援事業所わかばの丘'],
+  ['総合福祉エリア地域包括支援センター', '総合福祉エリアきらめき居宅介護支援事業所']
+];
+function getPairPartner(office) {
+  for (const pair of SAME_LOCATION_PAIRS) {
+    if (pair[0] === office) return pair[1];
+    if (pair[1] === office) return pair[0];
+  }
+  return null;
+}
+
+// ===== データ取得（JSONP共通関数） =====
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_' + Math.random().toString(36).slice(2);
+    window[cb] = function(data) { delete window[cb]; s.remove(); resolve(data); };
+    const s = document.createElement('script');
+    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+    s.onerror = function() { delete window[cb]; s.remove(); reject(new Error('JSONP failed: ' + url)); };
+    document.body.appendChild(s);
+  });
+}
+
+// 個訓評価 PDF/印刷 pill タップハンドラ
+async function onHyoukaPillTap(el) {
+  if (el.classList.contains('locked')) return;
+  const userName = el.dataset.user;
+  const ym = el.dataset.ym;
+  const field = el.dataset.field;  // hyouka_pdf_date or hyouka_print_date
+  const isOn = el.classList.contains('on');
+  const today = new Date();
+  const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  const newValue = isOn ? '' : todayStr;
+  const [hY, hM] = ym.split('-').map(Number);
+
+  // 楽観更新
+  if (isOn) { el.classList.remove('on'); el.classList.add('off'); }
+  else { el.classList.remove('off'); el.classList.add('on'); }
+
+  try {
+    const url = YAWARAGI_BOARD_API + '?action=updateKeikakusho'
+      + '&userId=' + encodeURIComponent(userName)
+      + '&year=' + hY + '&month=' + hM
+      + '&field=' + field
+      + '&value=' + encodeURIComponent(newValue)
+      + '&operator=' + encodeURIComponent('代表')
+      + '&t=' + Date.now();
+    const json = await jsonp(url);
+    if (!json.ok) throw new Error(json.error || '保存失敗');
+    // ローカルキャッシュも更新
+    if (!allData.keikakushoRecords) allData.keikakushoRecords = [];
+    let rec = allData.keikakushoRecords.find(r => r.userId === userName && r.year === hY && r.month === hM);
+    if (rec) {
+      rec[field] = newValue;
+    } else if (newValue) {
+      allData.keikakushoRecords.push({
+        userId: userName, name: userName, year: hY, month: hM,
+        hyouka_pdf_date: field === 'hyouka_pdf_date' ? newValue : '',
+        hyouka_print_date: field === 'hyouka_print_date' ? newValue : ''
+      });
+    }
+    // 親の check-item に対応するチェック状態は render() で次回反映される
+  } catch (e) {
+    console.error('hyouka pill error:', e);
+    // ロールバック
+    if (isOn) { el.classList.remove('off'); el.classList.add('on'); }
+    else { el.classList.remove('on'); el.classList.add('off'); }
+    alert('⚠ 保存失敗。ネット接続を確認してください');
+  }
+}
+
+// ===== LocalStorage =====
+function loadProgress() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    // マイグレーション: 旧形式 'next' を done=false + _next=true に変換
+    let migrated = false;
+    Object.keys(raw).forEach(ym => {
+      Object.keys(raw[ym] || {}).forEach(name => {
+        Object.keys(raw[ym][name] || {}).forEach(key => {
+          if (raw[ym][name][key] === 'next') {
+            raw[ym][name][key] = false;
+            raw[ym][name][key + '_next'] = true;
+            migrated = true;
+          }
+        });
+      });
+    });
+    if (migrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
+    return raw;
+  } catch { return {}; }
+}
+function saveProgress(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// ===== 対象月ドロップダウン =====
+function initMonthSelector() {
+  const sel = document.getElementById('monthSel');
+  const now = new Date();
+  const months = [];
+  for (let i = -1; i <= 2; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    months.push(ym);
+  }
+  sel.innerHTML = months.map(m => '<option value="' + m + '">' + m + '</option>').join('');
+  // 今月をデフォルト選択
+  const currentYm = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  sel.value = currentYm;
+  // Phase 1-D: 月切替時に getTsushoPlans/getOralPlans を再取得する必要があるため fetchAll を再実行
+  sel.addEventListener('change', async function () {
+    try { await fetchAll(); } catch (e) { console.error('fetchAll on month change failed', e); }
+    render();
+  });
+}
+
+// ===== 書類スキップのグループ定義（モーダル編集用） =====
+const SKIP_GROUPS = {
+  jisseki: { label: '🔴実績', keys: ['jisseki', 'jisseki_print'] },
+  monitoring: { label: '通所モニタリング', keys: ['monitoring', 'monitoring_print'] },
+  train: { label: '個別機能訓練計画書', keys: ['trainPrint', 'trainSign', 'trainScan'] },
+  tsushoPlan: { label: '📝通所計画書', keys: ['tsushoPlan'] },
+  oralPlan: { label: '🦷口腔(II)計画書/モニタリング', keys: ['oralPlan'] },
+  eval: { label: '第一号評価', keys: ['evalPrint', 'evalSign', 'evalScan'] },
+  measure: { label: '体力測定', keys: ['measure', 'measure_print'] }
+};
+
+// ===== キーラベル辞書（繰越表示等で使う） =====
+const KEY_LABELS = {
+  'jisseki': '🔴実績PDF',
+  'jisseki_print': '🔴実績 印刷',
+  'monitoring': '通所モニPDF',
+  'monitoring_print': '通所モニ 印刷',
+  'trainPrint': '個別-印刷',
+  'trainSign': '個別-サイン',
+  'trainScan': '個別-スキャンPDF',
+  'tsushoPlan': '📝通所計画書',
+  'oralPlan': '🦷口腔(II)計画書/モニタリング',
+  'evalPrint': '第一号-印刷',
+  'evalSign': '第一号-サイン',
+  'evalScan': '第一号-スキャンPDF',
+  'measure': '体測PDF',
+  'measure_print': '体測 印刷',
+  'combined': 'PDF結合済',
+  'fax_10page': '⚠️10ページ以内',
+  'envelope': '封筒詰め',
+  'bundle': '書類をまとめる',
+  'sent': '送付済'
+};
+
+// 年月 "2026-05" → 前月 "2026-04"
+function getPrevYm(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+// 年月 "2026-04" → "4月" の表示
+function monthShort(ym) {
+  const m = parseInt(ym.split('-')[1], 10);
+  return m + '月';
+}
+
+// ===== 体力測定の対象月判定 =====
+// 「測定・訪問・誕生日一覧」アプリの isMeasurementMonth() を ym 文字列ベースに移植。
+// 要介護=3ヶ月サイクル / 要支援=4ヶ月サイクル（2026/4/18ルール）
+// 利用開始日(startDate)があれば利用開始月を基準、なければ計画書開始月(planStart)基準。
+// 個訓 目標達成評価月判定: 計画書スタート月の翌々月（=次計画前月）
+// 例: planStart=2026-04 → 評価月: 2026-06 / 2026-09 / 2026-12 / 2027-03
+function isHyoukaMonth(planStart, ym) {
+  if (!planStart) return false;
+  const psMatch = planStart.match(/^(\d{4})-(\d{2})$/);
+  const ymMatch = ym.match(/^(\d{4})-(\d{2})$/);
+  if (!psMatch || !ymMatch) return false;
+  const py = parseInt(psMatch[1], 10);
+  const pm = parseInt(psMatch[2], 10);
+  const cy = parseInt(ymMatch[1], 10);
+  const cm = parseInt(ymMatch[2], 10);
+  const diff = (cy - py) * 12 + (cm - pm);
+  return diff >= 2 && diff % 3 === 2;
+}
+
+function isMeasureMonth(planStart, ym, startDate, care) {
+  if (!planStart) return false;
+  const cycle = (care === 'shien') ? 4 : 3;
+  const [pYear, pMonth] = planStart.split('-').map(Number);
+  if (isNaN(pYear) || isNaN(pMonth)) return false;
+  const [sYear, sMonth] = ym.split('-').map(Number);
+  const selected = sYear * 12 + (sMonth - 1);
+
+  // 新規利用者: 利用開始月を基準にサイクル計算
+  if (startDate) {
+    const [stYear, stMonth] = startDate.split('-').map(Number);
+    if (!isNaN(stYear) && !isNaN(stMonth)) {
+      const startM = stYear * 12 + (stMonth - 1);
+      if (selected < startM) return false;
+      return (selected - startM) % cycle === 0;
+    }
+  }
+
+  // 既存利用者: planStart 基準
+  const planM = pYear * 12 + (pMonth - 1);
+  const diff = selected - (planM - 1);
+  if (diff < 0) return false;
+  return diff % cycle === 0;
+}
+
+// ===== 通所曜日 → 最終利用日の計算 =====
+// 通所曜日（例："月水金" or "火金"）から指定月の最終利用日を返す
+function parseUsageDays(daysStr) {
+  const map = { '月':1, '火':2, '水':3, '木':4, '金':5, '土':6, '日':0 };
+  const result = [];
+  for (let i = 0; i < daysStr.length; i++) {
+    const ch = daysStr.charAt(i);
+    if (map[ch] !== undefined && result.indexOf(map[ch]) < 0) result.push(map[ch]);
+  }
+  return result;
+}
+
+function getLastUseDate(daysStr, ym) {
+  const targetDays = parseUsageDays(daysStr || '');
+  if (targetDays.length === 0) return null;
+  const parts = ym.split('-');
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const lastDay = new Date(y, m, 0).getDate();
+  for (let d = lastDay; d >= 1; d--) {
+    const date = new Date(y, m - 1, d);
+    if (targetDays.indexOf(date.getDay()) >= 0) {
+      return { ym: ym, day: d, isoDate: y + '-' + String(m).padStart(2,'0') + '-' + String(d).padStart(2,'0') };
+    }
+  }
+  return null;
+}
+
+// 実績確定OK判定
+// 最終利用日 < 今日 → OK
+// 最終利用日 == 今日 → ampm別の時刻判定
+//   午前 → 9:00以降OK
+//   午後 → 13:30以降OK
+//   両方/不明 → 13:30以降OK（安全側）
+// 最終利用日 > 今日 → NG
+function canFinalizeJisseki(daysStr, ym, ampm) {
+  const last = getLastUseDate(daysStr, ym);
+  if (!last) return { ok: false, last: null };
+  const t = new Date();
+  const todayIso = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0');
+
+  if (todayIso > last.isoDate) return { ok: true, last: last };
+  if (todayIso < last.isoDate) return { ok: false, last: last };
+
+  // 最終利用日 == 今日：時刻で判定
+  const minutes = t.getHours() * 60 + t.getMinutes();
+  const threshold = (ampm === '午前') ? (9 * 60) : (13 * 60 + 30);
+  return { ok: minutes >= threshold, last: last };
+}
+
+// ===== チェック項目定義 =====
+// 区分×新計画書×送付方法 で項目を出し分け
+// 送付方法別の工程:
+//   メール/FAX: PDF化が必要（スキャン工程あり）
+//   持参/郵送: 紙のまま → スキャン不要・印刷のみ
+function getCheckItems(care, hasNewPlan, method, isMeasure, needsTsushoPlan, needsOralPlan, needsHyouka) {
+  const m = method || '';
+  const isPhysical = m === '持参' || m === '郵送';  // 紙のまま渡す
+  const isDigital = m === 'メール' || m === 'FAX';  // PDF化必要
+
+  const items = [];
+
+  // 🔴 実績（提供票＋別表）: 全員・毎月・最重要
+  if (isPhysical) {
+    items.push({ key: 'jisseki_print', label: '🔴実績 印刷' });
+  } else {
+    items.push({ key: 'jisseki', label: '🔴実績PDF' });
+  }
+
+  // 通所モニタリング（要支援のみ）
+  if (care === 'shien') {
+    if (isPhysical) {
+      items.push({ key: 'monitoring_print', label: '通所モニ 印刷' });
+    } else {
+      items.push({ key: 'monitoring', label: '通所モニPDF' });
+    }
+  }
+
+  // 個別機能訓練計画書（新計画書あり）
+  if (hasNewPlan) {
+    items.push({ key: 'trainPrint', label: '個別-印刷' });
+    items.push({ key: 'trainSign', label: '個別-サイン' });
+    if (!isPhysical) items.push({ key: 'trainScan', label: '個別-スキャンPDF' });
+  }
+
+  // 通所介護計画書（Phase 1-D 追加・3/6/12ヶ月サイクル）
+  if (needsTsushoPlan) {
+    items.push({ key: 'tsushoPlan', label: '📝通所計画書' });
+  }
+
+  // 口腔機能向上(II) 計画書/モニタリング（Phase 1-D 追加・算定対象者の3ヶ月ごと）
+  if (needsOralPlan) {
+    items.push({ key: 'oralPlan', label: '🦷口腔(II)計画書/モニタリング' });
+  }
+
+  // 個訓 目標達成評価（要介護・評価月・3ヶ月サイクル最終月）
+  if (needsHyouka) {
+    items.push({ key: 'hyouka', label: '📊個訓評価' });
+  }
+
+  // 第一号評価（要支援のみ）
+  if (care === 'shien') {
+    items.push({ key: 'evalPrint', label: '第一号-印刷' });
+    items.push({ key: 'evalSign', label: '第一号-サイン' });
+    if (!isPhysical) items.push({ key: 'evalScan', label: '第一号-スキャンPDF' });
+  }
+
+  // 体力測定（要介護=3ヶ月・要支援=4ヶ月のサイクル月のみ）
+  if (isMeasure) {
+    if (isPhysical) {
+      items.push({ key: 'measure_print', label: '体測 印刷' });
+    } else {
+      items.push({ key: 'measure', label: '体測PDF' });
+    }
+  }
+
+  // 送付方法別の最終工程
+  if (m === 'FAX') {
+    items.push({ key: 'fax_10page', label: '⚠️10ページ以内' });
+    items.push({ key: 'sent', label: 'FAX送信済' });
+  } else if (m === 'メール') {
+    items.push({ key: 'combined', label: 'PDF結合済' });
+    items.push({ key: 'sent', label: 'メール送信済' });
+  } else if (m === '郵送') {
+    items.push({ key: 'envelope', label: '封筒詰め' });
+    items.push({ key: 'sent', label: '郵送済' });
+  } else if (m === '持参') {
+    items.push({ key: 'bundle', label: '書類をまとめる' });
+    items.push({ key: 'sent', label: '持参済' });
+  } else {
+    // 未設定の場合は汎用
+    items.push({ key: 'combined', label: '結合配置' });
+    items.push({ key: 'sent', label: '送付済' });
+  }
+
+  return items;
+}
+
+// ===== データ統合 =====
+let allData = { users: [], measure: [], contacts: [] };
+
+async function fetchAll() {
+  // 現在表示月（fetchAll は monthSel 初期化後に呼ばれる前提）
+  const ymForPlans = (function () {
+    const sel = document.getElementById('monthSel');
+    if (sel && sel.value) return sel.value;
+    const now = new Date();
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  })();
+
+  // 年度判定（4月始まり）: ym=2026-06 → fiscalYear=2026, ym=2026-02 → fiscalYear=2025
+  const [_fyY, _fyM] = ymForPlans.split('-').map(Number);
+  const fiscalYear = (_fyM >= 4) ? _fyY : _fyY - 1;
+
+  const [usersRes, measureRes, contactsRes, kubunRes, kubunDelayedRes, tsushoPlansRes, oralPlansRes, keikakushoRes] = await Promise.all([
+    jsonp(USERS_API),
+    jsonp(MEASURE_API),
+    jsonp(YAWARAGI_BOARD_API + '?action=contacts'),
+    jsonp(YAWARAGI_BOARD_API + '?action=kubunList').catch(() => ({ active: [] })),
+    jsonp(YAWARAGI_BOARD_API + '?action=kubunDelayList').catch(() => ({ items: [] })),
+    // Phase 1-D: 通所介護計画書 月次取得
+    jsonp(YAWARAGI_BOARD_API + '?action=getTsushoPlans&ym=' + encodeURIComponent(ymForPlans))
+      .catch(() => ({ ok: false, plans: [], unsent: [] })),
+    // Phase 1-D: 口腔(II)計画書/モニタリング 月次取得
+    jsonp(YAWARAGI_BOARD_API + '?action=getOralPlans&ym=' + encodeURIComponent(ymForPlans))
+      .catch(() => ({ ok: false, plans: [], unsent: [] })),
+    // 個訓 目標達成評価: 年度全体の記録を取得
+    jsonp(YAWARAGI_BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear)
+      .catch(() => ({ ok: false, records: [] }))
+  ]);
+  allData.users = usersRes.users || [];
+  allData.measure = (measureRes.data) || [];
+  allData.contacts = contactsRes.cmContacts || [];
+  allData.kubunActive = (kubunRes && kubunRes.active) ? kubunRes.active : [];
+  allData.kubunDelayed = (kubunDelayedRes && kubunDelayedRes.items) ? kubunDelayedRes.items : [];
+  allData.tsushoPlans = (tsushoPlansRes && tsushoPlansRes.ok) ? tsushoPlansRes : { plans: [], unsent: [] };
+  allData.oralPlans = (oralPlansRes && oralPlansRes.ok) ? oralPlansRes : { plans: [], unsent: [] };
+  allData.keikakushoRecords = (keikakushoRes && keikakushoRes.records) ? keikakushoRes.records : [];
+}
+
+// ===== 対象者抽出 =====
+function buildTargets(ym) {
+  const measureMap = {};
+  allData.measure.forEach(m => { measureMap[m.name] = m; });
+  const contactMap = {};
+  allData.contacts.forEach(c => { contactMap[c.office] = c; });
+
+  // Phase 1-D: 通所計画書・口腔(II)の必要/送付済み Set 構築
+  const tsushoPlans = (allData.tsushoPlans && allData.tsushoPlans.plans) || [];
+  const tsushoUnsent = (allData.tsushoPlans && allData.tsushoPlans.unsent) || [];
+  const tsushoNeededSet = new Set();
+  tsushoPlans.forEach(p => tsushoNeededSet.add(p.userId));
+  tsushoUnsent.forEach(p => tsushoNeededSet.add(p.userId));
+  const tsushoSentSet = new Set();
+  tsushoPlans.forEach(p => { if (p.sentToCm) tsushoSentSet.add(p.userId); });
+
+  const oralPlans = (allData.oralPlans && allData.oralPlans.plans) || [];
+  const oralUnsent = (allData.oralPlans && allData.oralPlans.unsent) || [];
+  const oralNeededSet = new Set();
+  oralPlans.forEach(p => oralNeededSet.add(p.userId));
+  oralUnsent.forEach(p => oralNeededSet.add(p.userId));
+  const oralSentSet = new Set();
+  oralPlans.forEach(p => { if (p.sentToCm) oralSentSet.add(p.userId); });
+
+  const targets = [];
+  // 表示月（ym）の年月数値（例: 2026-04 → 24316）
+  const [_ymY, _ymM] = ym.split('-').map(Number);
+  const _ymMonths = (!isNaN(_ymY) && !isNaN(_ymM)) ? (_ymY * 12 + (_ymM - 1)) : null;
+
+  allData.users.forEach(u => {
+    const m = measureMap[u.name] || {};
+    const planStart = m.planStart || '';
+    const startDate = m.startDate || '';
+
+    // 🔴 利用開始日が表示月より後なら除外（例: 5/1開始の人は4月に出さない）
+    if (startDate && _ymMonths !== null) {
+      const [_stY, _stM] = startDate.split('-').map(Number);
+      if (!isNaN(_stY) && !isNaN(_stM)) {
+        const _startMonths = _stY * 12 + (_stM - 1);
+        if (_startMonths > _ymMonths) return; // 利用開始月より前の月は対象外
+      }
+    }
+
+    // 要介護のみ「個別機能訓練計画書」の作成月判定をする。
+    // 要支援者の planStart は過去の運動器機能向上加算（廃止済）の名残データのため、ここでは無視する。
+    // 要支援者でも例外的に出したい場合は個別設定（override.hasNewPlan = true）で強制可能。
+    const hasNewPlan = (u.care === 'kaigo') && (planStart === ym);
+    // 体測サイクル判定（要介護=3ヶ月・要支援=4ヶ月）。override.hasMeasure で強制ON可能。
+    const isMeasure = isMeasureMonth(planStart, ym, startDate, u.care);
+    // 全員毎月対象（実績送付）
+    // 要支援 → 通所モニ送付も追加
+    // 要介護で計画書月 → 個別計画書送付も追加
+    // 体測サイクル月のみ → 体測項目を追加
+    if (u.care === 'shien') {
+      targets.push({
+        name: u.name,
+        care: u.care,
+        office: u.cmOffice || '(事業所未登録)',
+        hasNewPlan: hasNewPlan,
+        isMeasure: isMeasure,
+        days: u.days || '',
+        ampm: u.ampm || '',
+        needsTsushoPlan: tsushoNeededSet.has(u.name),
+        tsushoPlanSent: tsushoSentSet.has(u.name),
+        needsOralPlan: oralNeededSet.has(u.name),
+        oralPlanSent: oralSentSet.has(u.name)
+      });
+    } else if (u.care === 'kaigo') {
+      // 個訓 目標達成評価: 評価月該当判定とPDF/印刷送付状況
+      const isHyouka = isHyoukaMonth(planStart, ym);
+      const [hY, hM] = ym.split('-').map(Number);
+      const hyoukaRec = (allData.keikakushoRecords || []).find(r =>
+        r.userId === u.name && r.year === hY && r.month === hM
+      );
+      const hyoukaPdfSent = !!(hyoukaRec && hyoukaRec.hyouka_pdf_date);
+      const hyoukaPrintSent = !!(hyoukaRec && hyoukaRec.hyouka_print_date);
+
+      targets.push({
+        name: u.name,
+        care: u.care,
+        office: u.cmOffice || '(事業所未登録)',
+        hasNewPlan: hasNewPlan,
+        isMeasure: isMeasure,
+        days: u.days || '',
+        ampm: u.ampm || '',
+        needsTsushoPlan: tsushoNeededSet.has(u.name),
+        tsushoPlanSent: tsushoSentSet.has(u.name),
+        needsOralPlan: oralNeededSet.has(u.name),
+        oralPlanSent: oralSentSet.has(u.name),
+        needsHyouka: isHyouka,
+        hyoukaPdfSent: hyoukaPdfSent,
+        hyoukaPrintSent: hyoukaPrintSent
+      });
+    }
+  });
+  return { targets, contactMap };
+}
+
+// 展開中の事業所を記憶（再描画で消えないように）
+const expandedOffices = new Set();
+// 「送付完了」セクションの展開状態（セッション内のみ・デフォルト折りたたみ）
+let completedSectionExpanded = false;
+
+// ===== 描画 =====
+function render() {
+  // 現在展開中の事業所を記録（初回render以外）
+  document.querySelectorAll('.office-block.expanded').forEach(b => {
+    expandedOffices.add(b.dataset.office);
+  });
+
+  const ym = document.getElementById('monthSel').value;
+  const { targets, contactMap } = buildTargets(ym);
+
+  // 🔴 前月から繰越対象者を抽出（前月 'next' 状態の項目あり）
+  const progress0 = loadProgress();
+  const prevYm = getPrevYm(ym);
+  const prevProgress = progress0[prevYm] || {};
+  const carryOverMap = {};
+  Object.keys(prevProgress).forEach(name => {
+    Object.keys(prevProgress[name]).forEach(flagKey => {
+      if (!flagKey.endsWith('_next')) return;
+      if (prevProgress[name][flagKey] !== true) return;
+      const originalKey = flagKey.replace(/_next$/, '');
+      if (!carryOverMap[name]) carryOverMap[name] = [];
+      carryOverMap[name].push({ key: originalKey, originYm: prevYm });
+    });
+  });
+  // 繰越対象者を targets に合流
+  Object.keys(carryOverMap).forEach(name => {
+    let t = targets.find(x => x.name === name);
+    if (!t) {
+      const u = allData.users.find(uu => uu.name === name);
+      if (u) {
+        t = { name: name, care: u.care, office: u.cmOffice || '(事業所未登録)', hasNewPlan: false };
+        targets.push(t);
+      }
+    }
+    if (t) t.carryOver = carryOverMap[name];
+  });
+
+  // 保留件数カウント（2026/4/27追加）
+  const progressForCount = loadProgress();
+  const holdCount = (progressForCount[ym] ? Object.values(progressForCount[ym]) : []).filter(p => p && p._hold).length;
+  document.getElementById('subtitle').innerHTML =
+    escapeHtml(ym) + ' 対象者: ' + targets.length + '名 / ' +
+    new Set(targets.map(t => t.office)).size + '事業所' +
+    (holdCount > 0 ? ' <span class="hold-summary" id="holdSummary" title="タップして保留中の利用者を確認">⏸️ 保留中: ' + holdCount + '名</span>' : '');
+
+  // 事業所別グループ化
+  const grouped = {};
+  targets.forEach(t => {
+    if (!grouped[t.office]) grouped[t.office] = [];
+    grouped[t.office].push(t);
+  });
+
+  // 人数多い順にソート
+  const baseSorted = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length);
+
+  // 同一敷地ペアを隣接配置（2026/4/29追加）
+  // 元の人数順を保ちつつ、ペアの片方が出てきた直後にもう片方を挿入する。
+  const sortedOffices = [];
+  const placed = new Set();
+  for (const office of baseSorted) {
+    if (placed.has(office)) continue;
+    sortedOffices.push(office);
+    placed.add(office);
+    const partner = getPairPartner(office);
+    if (partner && grouped[partner] && !placed.has(partner)) {
+      sortedOffices.push(partner);
+      placed.add(partner);
+    }
+  }
+
+  // 進捗計算
+  const progress = loadProgress();
+  const monthKey = ym;
+  if (!progress[monthKey]) progress[monthKey] = {};
+
+  let total = 0, done = 0;
+
+  const main = document.getElementById('main');
+  if (sortedOffices.length === 0) {
+    main.innerHTML = '<div class="empty">' + ym + ' の対象者はいません</div>';
+    updateProgress(0, 0);
+    return;
+  }
+
+  // 🔴 フィルター（2026/4/27 追加）
+  const filterFinalizableOnly = document.getElementById('filterFinalizableOnly')?.checked || false;
+  const filterReadyOfficesOnly = document.getElementById('filterReadyOfficesOnly')?.checked || false;
+
+  // 事業所別「全員実績OK」判定関数
+  const isOfficeReady = (officeUsers) => {
+    if (!officeUsers || officeUsers.length === 0) return false;
+    return officeUsers.every(u => {
+      const fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
+      return fin.ok;
+    });
+  };
+
+  let filteredOffices = sortedOffices;
+  if (filterReadyOfficesOnly) {
+    // 「今すぐ送れる事業所」=全員実績OKの事業所だけ
+    filteredOffices = sortedOffices.filter(office => isOfficeReady(grouped[office]));
+  } else if (filterFinalizableOnly) {
+    // 「実績OK者だけ表示」=実績OK者が1人でもいる事業所
+    filteredOffices = sortedOffices.filter(office => grouped[office].some(u => {
+      const fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
+      return fin.ok;
+    }));
+  }
+
+  if (filteredOffices.length === 0) {
+    const msg = filterReadyOfficesOnly
+      ? '📬 全員実績OKの事業所はまだありません<br><span style="font-size:13px;">事業所内の全員が月内予定消化済みになるとここに表示されます</span>'
+      : filterFinalizableOnly
+      ? '✅実績OKの利用者はまだいません<br><span style="font-size:13px;">月内予定が全部消化された人がいないため、フィルター結果0名です</span>'
+      : ym + ' の対象者はいません';
+    main.innerHTML = '<div class="empty" style="color:#888; padding:40px; text-align:center;">' + msg + '</div>';
+    updateProgress(0, 0);
+    return;
+  }
+
+  const officeBlocks = filteredOffices.map(office => {
+    // フィルター時の utilizers 絞り込み
+    let users;
+    if (filterReadyOfficesOnly) {
+      users = grouped[office]; // 全員OK事業所→そのまま全員表示
+    } else if (filterFinalizableOnly) {
+      users = grouped[office].filter(u => {
+        const fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
+        return fin.ok;
+      });
+    } else {
+      users = grouped[office];
+    }
+    const contact = contactMap[office] || {};
+    const method = contact.method || (contact.email ? 'メール候補' : contact.fax ? 'FAX候補' : '未設定');
+    const methodClass = method.includes('メール') ? 'mail' : method.includes('FAX') ? 'fax' : method.includes('持参') ? 'visit' : method.includes('郵送') ? 'mailing' : 'unset';
+    const methodIcon = method.includes('メール') ? '📧' : method.includes('FAX') ? '📠' : method.includes('持参') ? '🚶' : method.includes('郵送') ? '📮' : '❓';
+    const contactInfo = [contact.email, contact.fax].filter(x => x).join(' / ') || '';
+
+    // 事業所の送付方法を取得（method系判定）
+    const officeMethod = contact.method || '';
+    let officeDone = 0, officeTotal = 0, officeHoldExcluded = 0;
+    const userHtml = users.map(u => {
+      const userKey = u.name;
+      if (!progress[monthKey][userKey]) progress[monthKey][userKey] = {};
+      // 🔴 override 適用（新計画書フラグ＆体測フラグ＆書類スキップ）
+      const override = progress[monthKey][userKey]._override || {};
+      let effectiveNewPlan = u.hasNewPlan;
+      if (override.hasNewPlan === true) effectiveNewPlan = true;
+      else if (override.hasNewPlan === false) effectiveNewPlan = false;
+      let effectiveMeasure = u.isMeasure;
+      if (override.hasMeasure === true) effectiveMeasure = true;
+      else if (override.hasMeasure === false) effectiveMeasure = false;
+      u.effectiveNewPlan = effectiveNewPlan;
+      u.effectiveMeasure = effectiveMeasure;
+      u.override = override;
+      let items = getCheckItems(u.care, effectiveNewPlan, officeMethod, effectiveMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka);
+      if (override.skip) {
+        items = items.filter(it => {
+          for (const gKey in SKIP_GROUPS) {
+            if (override.skip[gKey] && SKIP_GROUPS[gKey].keys.indexOf(it.key) >= 0) return false;
+          }
+          return true;
+        });
+      }
+      // 「送付済」系のロック判定：他の項目が全部 済(true) でないとクリック不可
+      // hyouka はGAS側状態（u.hyoukaPdfSent/PrintSent）を参照
+      const allOthersDone = items.filter(x => x.key !== 'sent').every(x => {
+        if (x.key === 'hyouka') return !!(u.hyoukaPdfSent || u.hyoukaPrintSent);
+        return progress[monthKey][userKey][x.key] === true;
+      });
+
+      // 🔴 「今月送れない」扱いの人はカウントから除外
+      //   ・クイックチップ（月遅れ・利用無し・自費）_excludeFlags
+      //   ・保留カテゴリ（入院中・その他）_hold
+      //   ・区変中（isKubun）
+      //   ・月遅れ・保険情報未入手（isOkureWait）
+      //   ※isOkureReady（緑🟢入手済）は送れるので除外しない
+      const _hold = progress[monthKey][userKey]._hold;
+      const isHoldExcluded = !!(_hold && HOLD_EXCLUDE_FROM_COUNT.has(_hold.category));
+      const _excludeFlags = progress[monthKey][userKey]._excludeFlags || {};
+      const hasQuickExclude = QUICK_EXCLUDE_FLAGS.some(k => _excludeFlags[k] === true);
+      const _kubunUserPre = (allData.kubunActive || []).find(k => k.name === u.name);
+      const _isKubunPre = !!_kubunUserPre;
+      const _delayedEntryPre = (allData.kubunDelayed || []).find(d =>
+        d.name === u.name && (d.months || []).indexOf(monthKey) >= 0
+      );
+      const _isOkurePre = !_isKubunPre && !!_delayedEntryPre;
+      const _delayedReadyPre = !!(_delayedEntryPre && _delayedEntryPre.insuranceReceivedAt);
+      const _isOkureWaitPre = _isOkurePre && !_delayedReadyPre;
+      const isExcludedFromCount = isHoldExcluded || hasQuickExclude || _isKubunPre || _isOkureWaitPre;
+      if (isExcludedFromCount) officeHoldExcluded++;
+
+      // クイック除外チップHTML生成
+      const excludeChipsHtml = QUICK_EXCLUDE_FLAGS.map(flag => {
+        const cat = HOLD_CATEGORIES[flag];
+        const isOn = _excludeFlags[flag] === true;
+        const cls = 'exclude-chip ' + cat.color + (isOn ? ' on' : '');
+        const icon = isOn ? '☑' : '☐';
+        const tip = isOn ? cat.label + 'を解除' : cat.label + 'にする（カウント除外）';
+        return '<span class="' + cls + '" data-user="' + escapeAttr(u.name) + '" data-flag="' + flag + '" title="' + tip + '">' + icon + ' ' + cat.icon + ' ' + cat.label + '</span>';
+      }).join('');
+
+      // 🔴 保留中ロック判定（2026/5/5追加）：_hold が付いている人は全項目ロック
+      const holdLockCat = _hold ? (HOLD_CATEGORIES[_hold.category] || HOLD_CATEGORIES.other) : null;
+      const holdLockTitle = holdLockCat ? ('⏸️ ' + holdLockCat.label + '中：保留解除してから操作してください') : '';
+
+      const chips = items.map(it => {
+        // 個訓評価: PDF/印刷の独立pillで描画（特殊処理）
+        if (it.key === 'hyouka') {
+          if (!isExcludedFromCount) { officeTotal++; total++; }
+          const pdfDone = !!u.hyoukaPdfSent;
+          const printDone = !!u.hyoukaPrintSent;
+          const isHyoukaDone = pdfDone || printDone;
+          if (isHyoukaDone && !isExcludedFromCount) { officeDone++; done++; }
+          const pdfCls = 'pill ' + (pdfDone ? 'on' : 'off') + (holdLockCat ? ' locked' : '');
+          const printCls = 'pill ' + (printDone ? 'on' : 'off') + (holdLockCat ? ' locked' : '');
+          const lockTitle = holdLockCat ? escapeAttr(holdLockTitle) : '';
+          return '<span class="check-item check-item-hyouka" data-user="' + escapeAttr(u.name) + '" data-target-ym="' + monthKey + '">'
+            + '<span class="check-label">' + it.label + '</span>'
+            + '<span class="' + pdfCls + '" data-user="' + escapeAttr(u.name) + '" data-ym="' + monthKey + '" data-field="hyouka_pdf_date" title="' + lockTitle + '" onclick="onHyoukaPillTap(this)">📄PDF</span>'
+            + '<span class="' + printCls + '" data-user="' + escapeAttr(u.name) + '" data-ym="' + monthKey + '" data-field="hyouka_print_date" title="' + lockTitle + '" onclick="onHyoukaPillTap(this)">🖨印刷</span>'
+            + '</span>';
+        }
+
+        if (!isExcludedFromCount) { officeTotal++; total++; }
+        const doneState = progress[monthKey][userKey][it.key];
+        const nextState = progress[monthKey][userKey][it.key + '_next'];
+        const isDone = doneState === true;
+        const hasNext = nextState === true;
+        if (isDone && !isExcludedFromCount) { officeDone++; done++; }
+        let cls = '';
+        if (isDone) cls += ' checked';
+        if (hasNext) cls += ' has-next';
+        // 送付済系ロック（完了したら解除・未完了のまま他項目に戻ったら再ロック）
+        const isSent = it.key === 'sent';
+        const isSentLocked = isSent && !allOthersDone && !isDone;
+        // 保留中ロック（全項目）
+        const isLocked = isSentLocked || !!holdLockCat;
+        if (isLocked) cls += ' locked';
+        const mainIcon = isDone ? '✅' : '☐';
+        const flagCls = hasNext ? 'next-flag active' : 'next-flag';
+        const flagTitle = hasNext ? '📅 来月送付ON（クリックで解除）' : '📅 来月送付にする';
+        const mainTitle = holdLockCat ? holdLockTitle : (isSentLocked ? '他の項目を全て完了してから押せます' : '');
+        return '<span class="check-item' + cls + '" data-user="' + escapeAttr(u.name) + '" data-key="' + it.key + '" data-target-ym="' + monthKey + '">'
+          + '<span class="check-main" title="' + escapeAttr(mainTitle) + '">' + mainIcon + ' ' + it.label + '</span>'
+          + '<span class="' + flagCls + '" title="' + flagTitle + '">📅</span>'
+          + '</span>';
+      }).join('');
+
+      // 🔴 前月からの繰越項目を追加（前月に _next=true のもの）
+      let carryChips = '';
+      if (u.carryOver && u.carryOver.length > 0) {
+        carryChips = u.carryOver.map(co => {
+          if (!isExcludedFromCount) { officeTotal++; total++; }
+          const prevUserProg = (progress[co.originYm] || {})[u.name] || {};
+          const coIsDone = prevUserProg[co.key] === true;
+          if (coIsDone && !isExcludedFromCount) { officeDone++; done++; }
+          const label = KEY_LABELS[co.key] || co.key;
+          const mainIcon = coIsDone ? '✅' : '☐';
+          const carryLocked = !!holdLockCat;
+          return '<span class="check-item carryover' + (coIsDone ? ' checked' : '') + (carryLocked ? ' locked' : '') + '" data-user="' + escapeAttr(u.name) + '" data-key="' + co.key + '" data-target-ym="' + co.originYm + '">'
+            + '<span class="check-main" title="' + escapeAttr(carryLocked ? holdLockTitle : '') + '">' + mainIcon + ' ' + label + '（' + monthShort(co.originYm) + '分）</span>'
+            + '</span>';
+        }).join('');
+      }
+
+      const overrideIndicator = u.override && (u.override.hasNewPlan !== null && u.override.hasNewPlan !== undefined || u.override.hasMeasure !== null && u.override.hasMeasure !== undefined || (u.override.skip && Object.values(u.override.skip).some(Boolean))) ? '<span class="override-indicator">✏️個別設定</span>' : '';
+      // 区変中チェック（2026/4/27追加）
+      const kubunUser = (allData.kubunActive || []).find(k => k.name === u.name);
+      const isKubun = !!kubunUser;
+      // 月遅れ請求対象チェック（2026/4/30追加）— 表示中月が対象月に含まれるか
+      const delayedEntry = (allData.kubunDelayed || []).find(d =>
+        d.name === u.name && (d.months || []).indexOf(monthKey) >= 0
+      );
+      const isOkure = !isKubun && !!delayedEntry;
+      // 保険情報入手済か（2026/5/1追加・Phase D）— 入手済なら計画書作成可（緑帯🟢）／未入手は保険情報待ち（オレンジ帯🟠）
+      const delayedReady = !!(delayedEntry && delayedEntry.insuranceReceivedAt);
+      let okureBadgeHtml = '';
+      if (isOkure) {
+        const _careDelta = escapeHtml(delayedEntry.prevCare || '?') + '→' + escapeHtml(delayedEntry.newCare || '?');
+        if (delayedReady) {
+          const _tipReady = (delayedEntry.resultDate || '?') + ' 区変終了。' + monthKey + '分は新介護度で再請求対象。'
+            + '保険情報入手済（' + (delayedEntry.insuranceReceivedAt || '') + ' ' + (delayedEntry.insuranceReceivedBy || '') + '）。'
+            + (delayedEntry.insuranceMemo || '');
+          okureBadgeHtml = '<span class="badge badge-okure-ready" title="' + escapeAttr(_tipReady) + '">🟢 再請求対象（計画書作成可・' + _careDelta + '）</span>';
+        } else {
+          const _tipWait = (delayedEntry.resultDate || '?') + ' 区変終了。' + monthKey + '分は新介護度で再請求対象。保険情報未入手。';
+          okureBadgeHtml = '<span class="badge badge-okure-strong" title="' + escapeAttr(_tipWait) + '">🟠 再請求対象（保険情報待ち・' + _careDelta + '）</span>';
+        }
+      }
+      // 実績確定OKバッジ：最終利用日が今日以前なら✅
+      // 2026/4/29: 区変中の人には実績OKを出さない（区変中の方が重大・実績は送れないため）
+      const fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
+      let finBadge = '';
+      if (!isKubun && fin.last) {
+        if (fin.ok) {
+          // 2026/4/29: バッジを大型化＆主張強化（緑帯と組み合わせて目立たせる）
+          finBadge = '<span class="badge badge-ready-strong">🟢 実績OK・送れます！</span>';
+        } else {
+          finBadge = '<span class="badge" style="background:#e2e8f0; color:#4a5568;">📅最終 ' + fin.last.day + '日</span>';
+        }
+      }
+      // 保留情報（2026/4/27追加）
+      const holdInfo = progress[monthKey][userKey] && progress[monthKey][userKey]._hold ? progress[monthKey][userKey]._hold : null;
+      // 帯の優先順位（強い順）：区変中（赤）> 月遅れ未入手（オレンジ🟠）> 月遅れ入手済（緑🟢）> 実績OK（緑）
+      // 2026/5/1 Phase D: 月遅れを delayedReady で2段階に分岐
+      const isOkureWait  = isOkure && !delayedReady; // 🟠 保険情報未入手
+      const isOkureReady = isOkure &&  delayedReady; // 🟢 入手済（計画書作成可）
+      const isReady = !isKubun && !isOkure && fin.ok === true;
+      const userRowClass = 'user-row'
+        + (isKubun ? ' user-row-kubun' : '')
+        + (isOkureWait  ? ' user-row-okure' : '')
+        + (isOkureReady ? ' user-row-okure-ready' : '')
+        + (isReady ? ' user-row-ready' : '')
+        + (holdInfo ? ' user-row-hold' : '')
+        + (isExcludedFromCount ? ' user-row-hold-excluded' : '');
+      const kubunBadgeHtml = isKubun ? '<span class="badge-kubun">🔴 区変中・送れません！</span>' : '';
+      let holdBadgeHtml;
+      if (holdInfo) {
+        const cat = HOLD_CATEGORIES[holdInfo.category] || HOLD_CATEGORIES.other;
+        const memoTip = holdInfo.memo ? holdInfo.memo : 'クリックで編集';
+        holdBadgeHtml = '<span class="hold-badge ' + cat.color + '" data-user="' + escapeAttr(u.name) + '" data-action="hold" title="' + escapeAttr(memoTip) + '">⏸️ ' + cat.icon + ' ' + escapeHtml(cat.label) + '</span>';
+      } else {
+        holdBadgeHtml = '<span class="hold-btn-empty" data-user="' + escapeAttr(u.name) + '" data-action="hold" title="保留マークを付ける">⏸ 保留</span>';
+      }
+      return '<div class="' + userRowClass + '"><div class="user-header">' + kubunBadgeHtml + okureBadgeHtml + '<span class="user-name">' + escapeHtml(u.name) + '様</span><span class="badge ' + u.care + '">' + (u.care === 'shien' ? '要支援' : '要介護') + '</span>' + finBadge + (u.effectiveNewPlan ? '<span class="badge newplan">🔴個別計画書作成月</span>' : '') + (u.carryOver && u.carryOver.length ? '<span class="badge" style="background:#fef3c7; color:#92400e;">前月繰越あり</span>' : '') + overrideIndicator + holdBadgeHtml + excludeChipsHtml + '<button class="edit-docs-btn" data-user="' + escapeAttr(u.name) + '" data-care="' + escapeAttr(u.care) + '" data-auto-newplan="' + (u.hasNewPlan ? '1' : '0') + '" data-auto-measure="' + (u.isMeasure ? '1' : '0') + '">⚙️ 書類編集</button></div><div class="user-docs">' + chips + carryChips + '</div></div>';
+    }).join('');
+
+    const percent = officeTotal > 0 ? Math.round(officeDone / officeTotal * 100) : 0;
+    const emailAttr = contact.email || '';
+    const faxAttr = contact.fax || '';
+    const methodAttr = contact.method || '';
+    const cmNameAttr = contact.name || '';
+    // 送付完了ボタンのラベル（送付方法別）
+    let bulkBtnLabel = '全員まとめて送付済';
+    if (method.includes('メール')) bulkBtnLabel = '📧 全員まとめてメール送信済';
+    else if (method.includes('FAX')) bulkBtnLabel = '📠 全員まとめてFAX送信済';
+    else if (method.includes('持参')) bulkBtnLabel = '🚶 全員まとめて持参済';
+    else if (method.includes('郵送')) bulkBtnLabel = '📮 全員まとめて郵送済';
+    const bulkBtnHtml = '<button class="bulk-sent-btn" data-office="' + escapeAttr(office) + '" data-method="' + escapeAttr(methodAttr) + '">' + bulkBtnLabel + '</button>';
+
+    // 🔴 事業所別「実績OK状況」バッジ（2026/4/27 追加）
+    const officeAllUsers = grouped[office]; // フィルター前の全員
+    const okCount = officeAllUsers.filter(u => {
+      const fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
+      return fin.ok;
+    }).length;
+    const totalUsers = officeAllUsers.length;
+    let readyBadge = '';
+    if (okCount === totalUsers && totalUsers > 0) {
+      readyBadge = '<span class="badge" style="background:#38a169; color:#fff; font-weight:900; padding:3px 10px; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.2);">📬 全員揃いました・即送付可</span>';
+    } else if (okCount > 0) {
+      const remain = totalUsers - okCount;
+      readyBadge = '<span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">⏳ ' + okCount + '/' + totalUsers + '名OK・あと' + remain + '名待ち</span>';
+    }
+
+    // 同一敷地ペアバッジ（2026/4/29追加）：両方とも当月対象者がいるときだけ表示
+    let pairBadge = '';
+    const pairPartner = getPairPartner(office);
+    if (pairPartner && grouped[pairPartner] && grouped[pairPartner].length > 0) {
+      pairBadge = '<span class="badge same-location-badge" title="同じ敷地内にあります。持参のときは一緒に届けられます。">🏢 同一敷地：' + escapeHtml(pairPartner) + 'と一緒に持参可</span>';
+    }
+
+    // 完了判定：通常完了 OR 全員「今月対象外」保留中
+    const isOfficeComplete = (officeTotal > 0 && officeDone === officeTotal)
+      || (officeTotal === 0 && officeHoldExcluded > 0 && officeHoldExcluded === users.length);
+    const html = '<div class="office-block" data-office="' + escapeAttr(office) + '">'
+      + '<div class="office-header">'
+      +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + methodClass + '" data-office="' + escapeAttr(office) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + methodIcon + ' ' + escapeHtml(method) + '</span> ' + readyBadge + ' ' + pairBadge
+      +     '<div class="office-meta">' + users.length + '名 ' + (contactInfo ? '／ ' + escapeHtml(contactInfo) : '') + '</div>'
+      +   '</div>'
+      +   '<div class="office-right"><span class="method-tag ' + methodClass + '" data-office="' + escapeAttr(office) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="送付方法を編集">✎ 編集</span><div>' + percent + '% (' + officeDone + '/' + officeTotal + ')</div></div>'
+      + '</div>'
+      + '<div class="office-body">'
+      +   '<div class="office-bulk-actions">' + bulkBtnHtml + '</div>'
+      +   userHtml
+      + '</div>'
+      + '</div>';
+    return { html, isComplete: isOfficeComplete };
+  });
+
+  // 未完了と完了を分離（送付完了セクションを下部に集約）
+  const incompleteHtml = officeBlocks.filter(b => !b.isComplete).map(b => b.html).join('');
+  const completeBlocks = officeBlocks.filter(b => b.isComplete);
+  let completedSectionHtml = '';
+  if (completeBlocks.length > 0) {
+    const expCls = completedSectionExpanded ? ' expanded' : '';
+    completedSectionHtml =
+      '<div class="completed-section' + expCls + '">'
+      + '<div class="completed-section-header" id="completedSectionToggle">'
+      +   '<span class="toggle-icon">▶</span>'
+      +   '<span>✅ 送付完了 (' + completeBlocks.length + '事業所)</span>'
+      + '</div>'
+      + '<div class="completed-section-body">'
+      +   completeBlocks.map(b => b.html).join('')
+      + '</div>'
+      + '</div>';
+  }
+  main.innerHTML = incompleteHtml + completedSectionHtml;
+
+  updateProgress(done, total);
+  saveProgress(progress);
+
+  // 展開状態を復元
+  document.querySelectorAll('.office-block').forEach(b => {
+    if (expandedOffices.has(b.dataset.office)) {
+      b.classList.add('expanded');
+    }
+  });
+
+  bindEvents();
+}
+
+function bindEvents() {
+  document.querySelectorAll('.office-header').forEach(h => {
+    h.onclick = function(e) {
+      // method-tag クリックはアコーディオン展開させない
+      if (e.target.classList && e.target.classList.contains('method-tag')) return;
+      const block = h.parentElement;
+      const nowExpanded = block.classList.toggle('expanded');
+      if (nowExpanded) expandedOffices.add(block.dataset.office);
+      else expandedOffices.delete(block.dataset.office);
+    };
+  });
+
+  // 送付完了セクションの折りたたみトグル
+  const completedToggle = document.getElementById('completedSectionToggle');
+  if (completedToggle) {
+    completedToggle.onclick = function() {
+      const section = completedToggle.parentElement;
+      completedSectionExpanded = section.classList.toggle('expanded');
+    };
+  }
+
+  // クイック除外チップ（月遅れ・利用無し・自費）の1クリックトグル
+  document.querySelectorAll('.exclude-chip').forEach(c => {
+    c.onclick = function(e) {
+      e.stopPropagation();
+      const ym = document.getElementById('monthSel').value;
+      const userKey = c.dataset.user;
+      const flag = c.dataset.flag;
+      const progress = loadProgress();
+      if (!progress[ym]) progress[ym] = {};
+      if (!progress[ym][userKey]) progress[ym][userKey] = {};
+      if (!progress[ym][userKey]._excludeFlags) progress[ym][userKey]._excludeFlags = {};
+      progress[ym][userKey]._excludeFlags[flag] = !progress[ym][userKey]._excludeFlags[flag];
+      saveProgress(progress);
+      render();
+    };
+  });
+
+  // 送付方法タグクリックで編集モーダルを開く（method-tagとmethod-badge両方）
+  document.querySelectorAll('.method-tag, .method-badge').forEach(t => {
+    t.onclick = function(e) {
+      e.stopPropagation();
+      openEditModal({
+        office: t.dataset.office,
+        cmName: t.dataset.cmname || '',
+        email: t.dataset.email || '',
+        fax: t.dataset.fax || '',
+        method: t.dataset.method || ''
+      });
+    };
+  });
+  // チェック本体（ラベル部分）: 済/未 トグル
+  document.querySelectorAll('.check-item .check-main').forEach(m => {
+    m.onclick = function(e) {
+      e.stopPropagation();
+      const c = m.closest('.check-item');
+      // ロック中はクリック拒否（保留中ロックか sentロックかで分岐）
+      if (c.classList.contains('locked')) {
+        const ymCur = document.getElementById('monthSel').value;
+        const progNow = loadProgress();
+        const userProg = (progNow[ymCur] || {})[c.dataset.user] || {};
+        if (userProg._hold) {
+          const cat = HOLD_CATEGORIES[userProg._hold.category] || HOLD_CATEGORIES.other;
+          if (typeof alert === 'function') alert('⏸️ ' + cat.label + '中です。\n保留解除してから操作してください。\n\n（バッジ「⏸️ ' + cat.label + '」をタップで解除できます）');
+        } else {
+          if (typeof alert === 'function') alert('他の項目を全て「✅済」にしてからチェックできます');
+        }
+        return;
+      }
+      const targetYm = c.dataset.targetYm;
+      const name = c.dataset.user;
+      const key = c.dataset.key;
+      const isCarryOver = c.classList.contains('carryover');
+      const progress = loadProgress();
+      if (!progress[targetYm]) progress[targetYm] = {};
+      if (!progress[targetYm][name]) progress[targetYm][name] = {};
+      const current = progress[targetYm][name][key];
+      const newVal = !(current === true);
+      progress[targetYm][name][key] = newVal;
+      // 繰越項目を完了にしたら、元月の _next を解除（送付完了扱い）
+      if (isCarryOver && newVal === true) {
+        progress[targetYm][name][key + '_next'] = false;
+      }
+      saveProgress(progress);
+      render();
+    };
+  });
+
+  // ⚙️ 書類編集ボタン
+  document.querySelectorAll('.edit-docs-btn').forEach(b => {
+    b.onclick = function(e) {
+      e.stopPropagation();
+      openDocsEditModal({
+        name: b.dataset.user,
+        care: b.dataset.care,
+        autoNewPlan: b.dataset.autoNewPlan === '1',
+        autoMeasure: b.dataset.autoMeasure === '1'
+      });
+    };
+  });
+
+  // 利用者名クリック → 月次利用状況モーダル（2026-05-27追加）
+  document.querySelectorAll('.user-name').forEach(el => {
+    el.onclick = function(e) {
+      e.stopPropagation();
+      var name = (el.textContent || '').replace(/様$/, '').trim();
+      if (name) attShowMonthlyUsage(name);
+    };
+  });
+
+  // 事業所一括「送付済」ボタン
+  document.querySelectorAll('.bulk-sent-btn').forEach(b => {
+    b.onclick = function(e) {
+      e.stopPropagation();
+      const office = b.dataset.office;
+      const ym = document.getElementById('monthSel').value;
+      const { targets, contactMap } = buildTargets(ym);
+      const officeUsers = targets.filter(t => t.office === office);
+      const contact = contactMap[office] || {};
+      const officeMethod = contact.method || '';
+
+      // 未完了（他項目が全部済でない）利用者をチェック
+      const progress = loadProgress();
+      if (!progress[ym]) progress[ym] = {};
+      const incomplete = [];
+      officeUsers.forEach(u => {
+        const items = getCheckItems(u.care, u.hasNewPlan, officeMethod, u.isMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka);
+        const prog = progress[ym][u.name] || {};
+        // hyouka はGAS側状態を見る・sentは除外
+        const otherDone = items.filter(x => x.key !== 'sent').every(x => {
+          if (x.key === 'hyouka') return !!(u.hyoukaPdfSent || u.hyoukaPrintSent);
+          return prog[x.key] === true;
+        });
+        if (!otherDone) incomplete.push(u.name);
+      });
+
+      if (incomplete.length > 0) {
+        if (!confirm(incomplete.length + '名が他項目未完了です：\n' + incomplete.slice(0, 5).join('、') + (incomplete.length > 5 ? ' ほか' : '') + '\n\nこの人たちはスキップして、完了済の人だけ「送付済」にしますか？')) return;
+      } else {
+        if (!confirm(officeUsers.length + '名全員を「送付済」にします。よろしいですか？')) return;
+      }
+
+      // 他項目完了済の人だけ sent=true
+      let applied = 0;
+      officeUsers.forEach(u => {
+        const items = getCheckItems(u.care, u.hasNewPlan, officeMethod, u.isMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka);
+        const prog = progress[ym][u.name] || (progress[ym][u.name] = {});
+        const otherDone = items.filter(x => x.key !== 'sent').every(x => {
+          if (x.key === 'hyouka') return !!(u.hyoukaPdfSent || u.hyoukaPrintSent);
+          return prog[x.key] === true;
+        });
+        if (otherDone) {
+          prog.sent = true;
+          applied++;
+        }
+      });
+      saveProgress(progress);
+      render();
+      alert(applied + '名を「送付済」にしました' + (incomplete.length > 0 ? '（' + incomplete.length + '名はスキップ）' : ''));
+    };
+  });
+
+  // 📅 来月送付フラグ: ON/OFF トグル
+  document.querySelectorAll('.check-item .next-flag').forEach(f => {
+    f.onclick = function(e) {
+      e.stopPropagation();
+      const c = f.closest('.check-item');
+      const targetYm = c.dataset.targetYm;
+      const name = c.dataset.user;
+      const key = c.dataset.key;
+      const progress = loadProgress();
+      if (!progress[targetYm]) progress[targetYm] = {};
+      if (!progress[targetYm][name]) progress[targetYm][name] = {};
+      const flagKey = key + '_next';
+      progress[targetYm][name][flagKey] = !(progress[targetYm][name][flagKey] === true);
+      saveProgress(progress);
+      render();
+    };
+  });
+
+  // ⏸保留ボタン: モーダル開く
+  document.querySelectorAll('[data-action="hold"]').forEach(b => {
+    b.onclick = function(e) {
+      e.stopPropagation();
+      openHoldModal(b.dataset.user);
+    };
+  });
+
+  // ⏸️保留中サマリーバッジ: タップで保留中リストポップアップ
+  const holdSummary = document.getElementById('holdSummary');
+  if (holdSummary) {
+    holdSummary.onclick = function(e) {
+      e.stopPropagation();
+      openHoldListPopup();
+    };
+  }
+}
+
+// ===== 保留中リスト ポップアップ（2026/5/5追加） =====
+function openHoldListPopup() {
+  const ym = document.getElementById('monthSel').value;
+  const progress = loadProgress();
+  const monthProg = progress[ym] || {};
+
+  // 利用者名→事業所の逆引き（allData.usersから）
+  const officeByName = {};
+  (allData.users || []).forEach(u => {
+    officeByName[u.name] = u.cmOffice || '(事業所未登録)';
+  });
+
+  // 保留中ユーザー収集
+  const holdUsers = [];
+  Object.keys(monthProg).forEach(name => {
+    const h = monthProg[name] && monthProg[name]._hold;
+    if (!h) return;
+    const cat = HOLD_CATEGORIES[h.category] || HOLD_CATEGORIES.other;
+    holdUsers.push({
+      name: name,
+      office: officeByName[name] || '(事業所不明)',
+      cat: cat,
+      memo: h.memo || ''
+    });
+  });
+
+  // 既存ポップアップ除去
+  const old = document.getElementById('holdListOverlay');
+  if (old) old.remove();
+
+  let bodyHtml;
+  if (holdUsers.length === 0) {
+    bodyHtml = '<div class="hold-popup-empty">保留中の利用者はいません</div>';
+  } else {
+    holdUsers.sort((a, b) => a.office.localeCompare(b.office, 'ja'));
+    bodyHtml = holdUsers.map(u => {
+      return '<button class="hold-popup-item" data-jump-user="' + escapeAttr(u.name) + '">'
+        + '<div class="hp-name">' + escapeHtml(u.name) + '様</div>'
+        + '<div class="hp-office">🏢 ' + escapeHtml(u.office) + '</div>'
+        + '<span class="hp-cat">' + u.cat.icon + ' ' + escapeHtml(u.cat.label) + '</span>'
+        + (u.memo ? '<div class="hp-memo">📝 ' + escapeHtml(u.memo) + '</div>' : '')
+        + '</button>';
+    }).join('');
+  }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'holdListOverlay';
+  overlay.className = 'hold-popup-overlay';
+  overlay.innerHTML =
+    '<div class="hold-popup" role="dialog" aria-label="保留中の利用者">'
+    + '<div class="hold-popup-header">'
+    +   '<span class="hold-popup-title">⏸️ 保留中の利用者 ' + holdUsers.length + '名</span>'
+    +   '<button class="hold-popup-close" aria-label="閉じる">&times;</button>'
+    + '</div>'
+    + '<div class="hold-popup-body">' + bodyHtml + '</div>'
+    + '</div>';
+  document.body.appendChild(overlay);
+
+  function closePopup() {
+    const o = document.getElementById('holdListOverlay');
+    if (o) o.remove();
+    document.removeEventListener('keydown', onEsc);
+  }
+  function onEsc(e) { if (e.key === 'Escape') closePopup(); }
+
+  overlay.onclick = function(e) { if (e.target === overlay) closePopup(); };
+  overlay.querySelector('.hold-popup-close').onclick = closePopup;
+  overlay.querySelectorAll('[data-jump-user]').forEach(btn => {
+    btn.onclick = function() {
+      const name = btn.getAttribute('data-jump-user');
+      closePopup();
+      jumpToUser(name);
+    };
+  });
+  document.addEventListener('keydown', onEsc);
+}
+
+// 指定利用者の行までスクロール＋一時ハイライト
+function jumpToUser(name) {
+  // 既存ハイライトクリア
+  document.querySelectorAll('.user-row.jump-flash').forEach(el => el.classList.remove('jump-flash'));
+
+  // 利用者行を特定（行内の data-user 持ち要素から逆引き・属性値はDOM上で生の文字列として保持されているため厳密一致で検索）
+  let row = null;
+  document.querySelectorAll('.user-row [data-user]').forEach(el => {
+    if (!row && el.dataset.user === name) row = el.closest('.user-row');
+  });
+  if (!row) {
+    if (typeof alert === 'function') alert(name + ' 様の行が見つかりませんでした');
+    return;
+  }
+
+  // 親の事業所ブロックを展開
+  const block = row.closest('.office-block');
+  if (block && !block.classList.contains('expanded')) {
+    block.classList.add('expanded');
+    if (block.dataset.office) expandedOffices.add(block.dataset.office);
+  }
+  // 「送付完了」セクション内なら そこも開く
+  const compSection = row.closest('.completed-section');
+  if (compSection && !compSection.classList.contains('expanded')) {
+    compSection.classList.add('expanded');
+    completedSectionExpanded = true;
+  }
+
+  // スクロール＆ハイライト（展開アニメーション後に実行）
+  setTimeout(() => {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('jump-flash');
+    setTimeout(() => row.classList.remove('jump-flash'), 2400);
+  }, 80);
+}
+
+function updateProgress(done, total) {
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = pct + '% (' + done + '/' + total + ')';
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
+
+// ===== 保留モーダル（⏸️ボタン用） =====
+function openHoldModal(name) {
+  const ym = document.getElementById('monthSel').value;
+  const progress = loadProgress();
+  const userProg = (progress[ym] || {})[name] || {};
+  const holdInfo = userProg._hold || null;
+  const currentCat = holdInfo ? holdInfo.category : '';
+  const currentMemo = holdInfo ? (holdInfo.memo || '') : '';
+
+  let radioHtml = '';
+  Object.keys(HOLD_CATEGORIES).forEach(key => {
+    const cat = HOLD_CATEGORIES[key];
+    const checked = currentCat === key ? ' checked' : '';
+    radioHtml += '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;cursor:pointer;margin-bottom:6px;background:#f7fafc;">' +
+      '<input type="radio" name="hold_cat" value="' + key + '"' + checked + '>' +
+      '<span style="font-size:1rem;">' + cat.icon + '</span>' +
+      '<span>' + escapeHtml(cat.label) + '</span>' +
+    '</label>';
+  });
+
+  const escName = escapeAttr(name).replace(/\\/g,'\\\\').replace(/\'/g,"\\'");
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML =
+    '<div class="modal-box" style="max-width:480px;">' +
+      '<h3>⏸️ ' + escapeHtml(name) + '様 の保留設定（' + ym + '）</h3>' +
+      '<label style="display:block;font-weight:600;margin-bottom:6px;">理由カテゴリ</label>' +
+      '<div id="hold_radios">' + radioHtml + '</div>' +
+      '<label style="display:block;font-weight:600;margin-top:12px;margin-bottom:4px;">メモ（任意）</label>' +
+      '<textarea id="hold_memo" rows="3" style="width:100%;padding:8px;border:1px solid #cbd5e0;border-radius:4px;resize:vertical;font-size:0.9rem;" placeholder="例: 4/30までに○○さんに連絡">' + escapeHtml(currentMemo) + '</textarea>' +
+      '<div class="modal-actions" style="margin-top:14px;">' +
+        (holdInfo ? '<button onclick="clearHold(\'' + escName + '\')" style="background:#fed7d7;color:#c53030;">⏹ 保留解除</button>' : '') +
+        '<button onclick="closeHoldModal()">キャンセル</button>' +
+        '<button class="save" onclick="saveHold(\'' + escName + '\')">💾 保存</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeHoldModal(); });
+}
+
+function closeHoldModal() {
+  const o = document.querySelector('.modal-overlay');
+  if (o) o.remove();
+}
+
+function saveHold(name) {
+  const ym = document.getElementById('monthSel').value;
+  const cat = document.querySelector('input[name="hold_cat"]:checked');
+  if (!cat) { alert('カテゴリを選択してください'); return; }
+  const memo = document.getElementById('hold_memo').value.trim();
+  const progress = loadProgress();
+  if (!progress[ym]) progress[ym] = {};
+  if (!progress[ym][name]) progress[ym][name] = {};
+  progress[ym][name]._hold = {
+    category: cat.value,
+    memo: memo,
+    createdAt: new Date().toISOString()
+  };
+  saveProgress(progress);
+  closeHoldModal();
+  render();
+}
+
+function clearHold(name) {
+  const ym = document.getElementById('monthSel').value;
+  const progress = loadProgress();
+  if (progress[ym] && progress[ym][name] && progress[ym][name]._hold) {
+    delete progress[ym][name]._hold;
+    saveProgress(progress);
+  }
+  closeHoldModal();
+  render();
+}
+
+// ===== 書類構成編集モーダル（⚙️ボタン用） =====
+function openDocsEditModal(user) {
+  const ym = document.getElementById('monthSel').value;
+  const progress = loadProgress();
+  const userProg = (progress[ym] || {})[user.name] || {};
+  const override = userProg._override || {};
+  const autoText = user.autoNewPlan ? '有' : '無';
+  const autoMeasureText = user.autoMeasure ? '有' : '無';
+
+  // 新計画書セレクト
+  const newPlanVal = override.hasNewPlan === true ? 'true' : override.hasNewPlan === false ? 'false' : 'auto';
+  // 体測セレクト
+  const measureVal = override.hasMeasure === true ? 'true' : override.hasMeasure === false ? 'false' : 'auto';
+
+  let skipHtml = '';
+  Object.keys(SKIP_GROUPS).forEach(gKey => {
+    const g = SKIP_GROUPS[gKey];
+    const checked = override.skip && override.skip[gKey] ? 'checked' : '';
+    skipHtml += '<label style="display:block; margin-bottom:6px;"><input type="checkbox" data-skip="' + gKey + '" ' + checked + '> ' + g.label + ' を今月スキップする</label>';
+  });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML =
+    '<div class="modal-box" style="max-width:520px;">' +
+    '<h3>⚙️ ' + escapeHtml(user.name) + '様の書類構成（' + ym + '）</h3>' +
+    '<label>区分: <strong>' + (user.care === 'shien' ? '要支援' : '要介護') + '</strong>（自動）</label>' +
+    '<label>🔴 個別機能訓練計画書 作成月フラグ<small>自動判定: <strong>' + autoText + '</strong>（リハブの計画書開始月から判定）</small>' +
+      '<select id="docs_newplan">' +
+        '<option value="auto"' + (newPlanVal === 'auto' ? ' selected' : '') + '>自動判定（' + autoText + '）を使う</option>' +
+        '<option value="true"' + (newPlanVal === 'true' ? ' selected' : '') + '>🔴 強制ON（今月が作成月・個別計画書を表示）</option>' +
+        '<option value="false"' + (newPlanVal === 'false' ? ' selected' : '') + '>❌ 強制OFF（今月は作成月ではない）</option>' +
+      '</select></label>' +
+    '<label>📏 体力測定 サイクル月フラグ<small>自動判定: <strong>' + autoMeasureText + '</strong>（要介護=3ヶ月・要支援=4ヶ月サイクル）</small>' +
+      '<select id="docs_measure">' +
+        '<option value="auto"' + (measureVal === 'auto' ? ' selected' : '') + '>自動判定（' + autoMeasureText + '）を使う</option>' +
+        '<option value="true"' + (measureVal === 'true' ? ' selected' : '') + '>📏 強制ON（今月が体測月・体測項目を表示）</option>' +
+        '<option value="false"' + (measureVal === 'false' ? ' selected' : '') + '>❌ 強制OFF（今月は体測月ではない）</option>' +
+      '</select></label>' +
+    '<label style="margin-top:12px; margin-bottom:4px;">この月は <strong>そもそも該当しない</strong> 書類</label>' +
+    '<div style="font-size:0.75rem; color:#a16207; background:#fffbeb; padding:8px 10px; border-radius:4px; margin-bottom:6px; border-left:3px solid #f59e0b; line-height:1.6;">💡 <strong>ここは「送らなくていい書類」を指定する場所です</strong>。<br>例: 新計画書を作らない月、体測の月ではない等。<br><br>⚠️ <strong>送付が来月に遅れる場合はここではありません</strong>。モーダルを閉じて項目右端の <strong>📅</strong> ボタンを使ってください（翌月に繰越表示されます）。</div>' +
+    '<div id="docs_skip" style="background:#f7fafc; padding:10px; border-radius:6px; margin-bottom:12px;">' + skipHtml + '</div>' +
+    '<div class="modal-actions">' +
+      '<button onclick="resetDocsOverride(\'' + escapeAttr(user.name).replace(/\\/g,'\\\\').replace(/\'/g,"\\'") + '\')">🔄 全部自動に戻す</button>' +
+      '<button onclick="closeDocsEditModal()">キャンセル</button>' +
+      '<button class="save" onclick="saveDocsEdit(\'' + escapeAttr(user.name).replace(/\\/g,'\\\\').replace(/\'/g,"\\'") + '\')">💾 保存</button>' +
+    '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeDocsEditModal(); });
+}
+
+function closeDocsEditModal() {
+  const o = document.querySelector('.modal-overlay');
+  if (o) o.remove();
+}
+
+function saveDocsEdit(name) {
+  const ym = document.getElementById('monthSel').value;
+  const progress = loadProgress();
+  if (!progress[ym]) progress[ym] = {};
+  if (!progress[ym][name]) progress[ym][name] = {};
+  const override = {};
+  const newPlanVal = document.getElementById('docs_newplan').value;
+  if (newPlanVal === 'true') override.hasNewPlan = true;
+  else if (newPlanVal === 'false') override.hasNewPlan = false;
+  const measureVal = document.getElementById('docs_measure').value;
+  if (measureVal === 'true') override.hasMeasure = true;
+  else if (measureVal === 'false') override.hasMeasure = false;
+  // skip
+  const skip = {};
+  document.querySelectorAll('#docs_skip input[data-skip]').forEach(cb => {
+    if (cb.checked) skip[cb.dataset.skip] = true;
+  });
+  if (Object.keys(skip).length > 0) override.skip = skip;
+
+  // 何も設定してなければ削除
+  if (Object.keys(override).length === 0) {
+    delete progress[ym][name]._override;
+  } else {
+    progress[ym][name]._override = override;
+  }
+  saveProgress(progress);
+  closeDocsEditModal();
+  render();
+}
+
+function resetDocsOverride(name) {
+  if (!confirm(name + '様の書類構成を自動判定に戻しますか？')) return;
+  const ym = document.getElementById('monthSel').value;
+  const progress = loadProgress();
+  if (progress[ym] && progress[ym][name]) {
+    delete progress[ym][name]._override;
+    saveProgress(progress);
+  }
+  closeDocsEditModal();
+  render();
+}
+
+// ===== ケアマネ連絡先 編集モーダル =====
+function openEditModal(contact) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML =
+    '<div class="modal-box">' +
+    '<h3>📧 送付方法・連絡先の編集</h3>' +
+    '<div style="margin-bottom:12px; padding:8px 12px; background:#f7fafc; border-radius:6px; font-weight:600;">' + escapeHtml(contact.office) + '</div>' +
+    '<label>ケアマネ名<input type="text" id="em_name" value="' + escapeAttr(contact.cmName) + '" placeholder="担当ケアマネ名（任意）"></label>' +
+    '<label>送付方法<select id="em_method">' +
+      '<option value=""' + (contact.method === '' ? ' selected' : '') + '>（未設定）</option>' +
+      '<option value="メール"' + (contact.method === 'メール' ? ' selected' : '') + '>メール</option>' +
+      '<option value="FAX"' + (contact.method === 'FAX' ? ' selected' : '') + '>FAX</option>' +
+      '<option value="郵送"' + (contact.method === '郵送' ? ' selected' : '') + '>郵送</option>' +
+      '<option value="持参"' + (contact.method === '持参' ? ' selected' : '') + '>持参</option>' +
+    '</select></label>' +
+    '<label>メールアドレス<input type="email" id="em_email" value="' + escapeAttr(contact.email) + '" placeholder="例: info@example.jp"></label>' +
+    '<label>FAX番号<input type="text" id="em_fax" value="' + escapeAttr(contact.fax) + '" placeholder="例: 0493-00-0000"></label>' +
+    '<div class="modal-actions">' +
+      '<button onclick="closeEditModal()">キャンセル</button>' +
+      '<button class="save" id="em_save">💾 保存</button>' +
+    '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeEditModal(); });
+  document.getElementById('em_save').onclick = function() { saveEditModal(contact.office); };
+}
+
+function closeEditModal() {
+  const o = document.querySelector('.modal-overlay');
+  if (o) o.remove();
+}
+
+function saveEditModal(office) {
+  const cmName = document.getElementById('em_name').value.trim();
+  const method = document.getElementById('em_method').value;
+  const email = document.getElementById('em_email').value.trim();
+  const fax = document.getElementById('em_fax').value.trim();
+  const btn = document.getElementById('em_save');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+
+  const url = YAWARAGI_BOARD_API
+    + '?action=updateContact'
+    + '&office=' + encodeURIComponent(office)
+    + '&cmName=' + encodeURIComponent(cmName)
+    + '&email=' + encodeURIComponent(email)
+    + '&fax=' + encodeURIComponent(fax)
+    + '&method=' + encodeURIComponent(method);
+
+  jsonp(url).then(res => {
+    if (res.error) {
+      alert('保存失敗: ' + res.error);
+      btn.disabled = false; btn.textContent = '💾 保存';
+      return;
+    }
+    closeEditModal();
+    // 連絡先だけ再取得して再描画
+    jsonp(YAWARAGI_BOARD_API + '?action=contacts').then(data => {
+      allData.contacts = data.cmContacts || [];
+      render();
+    });
+  }).catch(err => {
+    alert('通信エラー: ' + err.message);
+    btn.disabled = false; btn.textContent = '💾 保存';
+  });
+}
+
+// 🖨️ 作業一覧を印刷（社長の実績確定作業用）
+document.getElementById('printWorklistBtn').onclick = function() {
+  const ym = document.getElementById('monthSel').value;
+  const { targets, contactMap } = buildTargets(ym);
+
+  // 🔴 繰越対象者を印刷にも含める（前月から📅フラグ付き）
+  const progress0 = loadProgress();
+  const prevYm = getPrevYm(ym);
+  const prevProgress = progress0[prevYm] || {};
+  const carryOverMap = {};
+  Object.keys(prevProgress).forEach(name => {
+    Object.keys(prevProgress[name]).forEach(flagKey => {
+      if (!flagKey.endsWith('_next')) return;
+      if (prevProgress[name][flagKey] !== true) return;
+      const originalKey = flagKey.replace(/_next$/, '');
+      if (!carryOverMap[name]) carryOverMap[name] = [];
+      carryOverMap[name].push({ key: originalKey, originYm: prevYm });
+    });
+  });
+  Object.keys(carryOverMap).forEach(name => {
+    let t = targets.find(x => x.name === name);
+    if (!t) {
+      const u = allData.users.find(uu => uu.name === name);
+      if (u) {
+        t = { name: name, care: u.care, office: u.cmOffice || '(事業所未登録)', hasNewPlan: false };
+        targets.push(t);
+      }
+    }
+    if (t) t.carryOver = carryOverMap[name];
+  });
+
+  if (targets.length === 0) { alert('対象者がいません'); return; }
+
+  const grouped = {};
+  targets.forEach(t => {
+    if (!grouped[t.office]) grouped[t.office] = [];
+    grouped[t.office].push(t);
+  });
+
+  const physicalOffices = [];
+  const digitalOffices = [];
+  Object.keys(grouped).sort((a,b) => grouped[b].length - grouped[a].length).forEach(office => {
+    const c = contactMap[office] || {};
+    const m = c.method || '';
+    const entry = { office, method: m || '未設定', contact: c, users: grouped[office] };
+    if (m === '持参' || m === '郵送') physicalOffices.push(entry);
+    else digitalOffices.push(entry);
+  });
+
+  const renderUsers = function(users, physical) {
+    return users.map(function(u, i) {
+      const care = u.care === 'shien' ? '要支援' : '要介護';
+      const newPlanTag = u.hasNewPlan ? '<span class="badge">🔴個別計画書作成月</span>' : '';
+      const carryTag = u.carryOver && u.carryOver.length ? '<span class="badge" style="background:#fef3c7;color:#92400e;">📅前月繰越あり</span>' : '';
+      const fin = canFinalizeJisseki(u.days || '', ym, u.ampm || '');
+      let finTag = '';
+      if (fin.last) {
+        finTag = fin.ok
+          ? '<span class="badge" style="background:#c6f6d5;color:#22543d;font-weight:700;">✅実績OK</span>'
+          : '<span class="badge" style="background:#e2e8f0;color:#4a5568;">📅最終' + fin.last.day + '日</span>';
+      }
+      const docs = [];
+
+      // 今月分の書類（通常対象の場合のみ）
+      const isThisMonthTarget = u.care === 'shien' || u.hasNewPlan;
+      if (isThisMonthTarget) {
+        docs.push('<span class="doc-chip">🔴実績 ' + (physical ? '印刷' : 'PDF') + '</span>');
+        if (u.care === 'shien') {
+          docs.push('<span class="doc-chip">通所モニ ' + (physical ? '印刷' : 'PDF') + '</span>');
+        }
+        if (u.hasNewPlan) {
+          docs.push('<span class="doc-chip">個別訓練計画書 印刷→サイン' + (physical ? '' : '→スキャンPDF') + '</span>');
+        }
+        if (u.care === 'shien') {
+          docs.push('<span class="doc-chip">第一号評価 印刷→サイン' + (physical ? '' : '→スキャンPDF') + '</span>');
+        }
+        docs.push('<span class="doc-chip">体測 ' + (physical ? '印刷' : 'PDF') + '</span>');
+      }
+
+      // 🔴 繰越分の書類
+      if (u.carryOver && u.carryOver.length > 0) {
+        u.carryOver.forEach(function(co) {
+          const label = KEY_LABELS[co.key] || co.key;
+          docs.push('<span class="doc-chip" style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;">📅 ' + label + '（' + monthShort(co.originYm) + '分・繰越）</span>');
+        });
+      }
+
+      if (docs.length === 0) return '';
+
+      return '<div class="user-print">' + (i + 1) + '. <strong>' + escapeHtml(u.name) + '様</strong>（' + care + '）' + finTag + newPlanTag + carryTag + '<div class="docs">' + docs.join('') + '</div></div>';
+    }).join('');
+  };
+
+  let html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>ケアマネ送付作業一覧 ' + ym + '</title>';
+  html += '<style>';
+  html += 'body{font-family:Meiryo,"Yu Gothic",sans-serif;font-size:14px;margin:20px;color:#1a202c;}';
+  html += 'h1{font-size:1.6rem;border-bottom:3px solid #2c7a7b;padding-bottom:8px;margin-bottom:8px;}';
+  html += 'h2{font-size:1.25rem;color:#fff;background:#2c7a7b;margin-top:24px;padding:8px 14px;border-radius:4px;}';
+  html += 'h3{font-size:1.1rem;background:#edf2f7;padding:8px 12px;border-left:5px solid #2c7a7b;margin-top:18px;}';
+  html += '.method{color:#c53030;font-weight:bold;}';
+  html += '.email-fax{font-size:0.85rem;color:#718096;font-weight:normal;margin-left:8px;}';
+  html += '.user-print{margin:8px 0 8px 20px;padding:6px 0;border-bottom:1px dotted #cbd5e0;}';
+  html += '.badge{background:#fed7d7;color:#c53030;padding:1px 8px;border-radius:10px;font-size:0.75rem;margin-left:6px;}';
+  html += '.doc-chip{display:inline-block;padding:3px 10px;background:#e2e8f0;border-radius:12px;font-size:0.78rem;margin:3px 4px 3px 0;}';
+  html += '.docs{margin-top:4px;}';
+  html += '.office-block{margin-bottom:14px;}';
+  html += '.office-block h3{page-break-after:avoid;}';
+  html += '.user-print{page-break-inside:avoid;}';
+  html += '.summary{background:#fff9e6;padding:10px 14px;border-left:4px solid #f6ad55;margin-bottom:20px;border-radius:4px;}';
+  html += '@page{size:A4;margin:10mm 8mm 12mm 8mm;@bottom-right{content:counter(page) " / " counter(pages);font-size:10px;color:#718096;}}';
+  html += '@media print{body{margin:0;font-size:13px;} h1{font-size:1.4rem;margin-bottom:6px;} h2{font-size:1.1rem;margin-top:14px;padding:6px 10px;} h3{font-size:1rem;margin-top:10px;padding:6px 10px;} .user-print{margin:4px 0 4px 16px;padding:4px 0;} .doc-chip{padding:2px 8px;font-size:0.78rem;margin:2px 3px 2px 0;} .summary{padding:8px 10px;margin-bottom:12px;}}';
+  html += '</style></head><body>';
+  html += '<h1>🔴 ' + ym + ' ケアマネ送付 作業一覧</h1>';
+  html += '<div class="summary">';
+  html += '対象者 <strong>' + targets.length + '名</strong> / ' + Object.keys(grouped).length + '事業所<br>';
+  html += '印刷グループ（紙持参/郵送）: <strong>' + physicalOffices.length + '事業所 ' + physicalOffices.reduce((s,p) => s+p.users.length, 0) + '名</strong> / ';
+  html += 'PDF化グループ（メール/FAX）: <strong>' + digitalOffices.length + '事業所 ' + digitalOffices.reduce((s,d) => s+d.users.length, 0) + '名</strong>';
+  html += '</div>';
+
+  if (physicalOffices.length > 0) {
+    html += '<h2>📄 印刷グループ（紙で渡す/送る）</h2>';
+    physicalOffices.forEach(function(p) {
+      html += '<div class="office-block">';
+      html += '<h3>【' + escapeHtml(p.office) + '】 <span class="method">' + escapeHtml(p.method) + '</span>（' + p.users.length + '名）</h3>';
+      html += renderUsers(p.users, true);
+      html += '</div>';
+    });
+  }
+
+  if (digitalOffices.length > 0) {
+    html += '<h2>💾 PDF化グループ（メール/FAX送信）</h2>';
+    digitalOffices.forEach(function(d) {
+      const contactInfo = [d.contact.email, d.contact.fax].filter(function(x){return x;}).join(' / ');
+      html += '<div class="office-block">';
+      html += '<h3>【' + escapeHtml(d.office) + '】 <span class="method">' + escapeHtml(d.method) + '</span>';
+      if (contactInfo) html += '<span class="email-fax">' + escapeHtml(contactInfo) + '</span>';
+      html += '（' + d.users.length + '名）</h3>';
+      html += renderUsers(d.users, false);
+      html += '</div>';
+    });
+  }
+
+  html += '<scr' + 'ipt>window.addEventListener("load", function() { setTimeout(function() { window.print(); }, 300); });</scr' + 'ipt>';
+  html += '</body></html>';
+
+  const w = window.open('', '_blank');
+  if (!w) { alert('ポップアップがブロックされました。ブラウザ設定で許可してください。'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+};
+
+// CSV出力
+document.getElementById('exportBtn').onclick = function() {
+  const ym = document.getElementById('monthSel').value;
+  const progress = loadProgress()[ym] || {};
+  const { targets, contactMap } = buildTargets(ym);
+  const headers = ['事業所','利用者','区分','新計画書','進捗項目','状態'];
+  const rows = [headers.join(',')];
+  targets.forEach(t => {
+    const method = (contactMap[t.office] || {}).method || '';
+    const items = getCheckItems(t.care, t.hasNewPlan, method, t.isMeasure, t.needsTsushoPlan, t.needsOralPlan, t.needsHyouka);
+    items.forEach(it => {
+      const userProg = progress[t.name] || {};
+      let state;
+      if (it.key === 'hyouka') {
+        // 個訓評価はGAS側データから状態取得（PDF/印刷別）
+        const pdfState = t.hyoukaPdfSent ? '📄PDF済' : '📄PDF未';
+        const printState = t.hyoukaPrintSent ? '🖨印刷済' : '🖨印刷未';
+        state = pdfState + ' / ' + printState;
+      } else {
+        const isDone = userProg[it.key] === true;
+        const hasNext = userProg[it.key + '_next'] === true;
+        state = isDone ? '✅済' : '☐未';
+        if (hasNext) state += ' 📅来月送付';
+      }
+      rows.push([t.office, t.name, t.care==='shien'?'要支援':'要介護', t.hasNewPlan?'有':'無', it.label, state].map(s => '"' + String(s).replace(/"/g,'""') + '"').join(','));
+    });
+  });
+  const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ケアマネ送付進捗_' + ym + '.csv';
+  a.click();
+};
+
+// リセット
+document.getElementById('resetBtn').onclick = function() {
+  const ym = document.getElementById('monthSel').value;
+  if (!confirm(ym + ' の進捗を全てリセットしますか？（取り消せません）')) return;
+  const progress = loadProgress();
+  delete progress[ym];
+  saveProgress(progress);
+  render();
+};
+
+// リロード
+document.getElementById('reloadBtn').onclick = async function() {
+  document.getElementById('main').innerHTML = '<div id="loading">再取得中...</div>';
+  try { await fetchAll(); render(); } catch (e) { alert('取得失敗: ' + e.message); }
+};
+
+// 🔴 「実績OK者だけ表示」フィルター連動（2026/4/27 追加）
+document.getElementById('filterFinalizableOnly').onchange = function() {
+  render();
+};
+
+// 🔴 「今すぐ送れる事業所だけ表示」フィルター連動（2026/4/27 追加）
+document.getElementById('filterReadyOfficesOnly').onchange = function() {
+  render();
+};
+
+// 初期化
+(async function() {
+  initMonthSelector();
+  try {
+    await fetchAll();
+    render();
+  } catch (e) {
+    document.getElementById('main').innerHTML = '<div class="empty" style="color:#c53030;">データ取得失敗: ' + e.message + '<br>リロードボタンを押してください</div>';
+  }
+})();
+
+// ============================================================
+// 月次利用状況モーダル（2026-05-27追加 / yawaragiボードから移植）
+// ============================================================
+
+// YYYY-MM-DD 形式に整形
+function muFormatDate(d) {
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+// JSONP で monthly_usage を取得
+function muFetchMonthly(name, ym, callback) {
+  var cbName = 'muCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+  window[cbName] = function(data) {
+    delete window[cbName];
+    var s = document.getElementById(cbName);
+    if (s && s.parentNode) s.parentNode.removeChild(s);
+    callback(data);
+  };
+  var script = document.createElement('script');
+  script.id = cbName;
+  script.src = YAWARAGI_BOARD_API +
+               '?action=monthly_usage' +
+               '&name=' + encodeURIComponent(name) +
+               '&yearMonth=' + encodeURIComponent(ym) +
+               '&callback=' + cbName +
+               '&t=' + Date.now();
+  document.body.appendChild(script);
+}
+
+// 連続欠席日数（基準日から逆順走査・来館で停止・0なら null）
+function muCalcConsecutiveAbsence(data) {
+  var ym = data.yearMonth;
+  var todayStr = muFormatDate(new Date());
+  var basisStr;
+  if (todayStr.indexOf(ym) === 0) {
+    basisStr = todayStr;
+  } else {
+    var parts = ym.split('-');
+    var y = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    var dt = new Date(y, m, 0);
+    basisStr = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+  }
+  var dayByDate = {};
+  (data.days || []).forEach(function(d) { dayByDate[d.date] = d; });
+  var dates = Object.keys(dayByDate)
+    .filter(function(date) { return date <= basisStr; })
+    .sort()
+    .reverse();
+  var count = 0;
+  for (var i = 0; i < dates.length; i++) {
+    var info = dayByDate[dates[i]];
+    if (info.attended) break;
+    if (info.absent) count++;
+    else break;
+  }
+  return count > 0 ? count : null;
+}
+
+// 直近来館日（基準日以前で最後に attended=true）
+function muCalcLastVisit(data) {
+  var ym = data.yearMonth;
+  var todayStr = muFormatDate(new Date());
+  var basisStr;
+  if (todayStr.indexOf(ym) === 0) {
+    basisStr = todayStr;
+  } else {
+    var parts = ym.split('-');
+    var y = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    var dt = new Date(y, m, 0);
+    basisStr = dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+  }
+  var visited = (data.days || [])
+    .filter(function(d) { return d.attended && d.date <= basisStr; })
+    .map(function(d) { return d.date; })
+    .sort();
+  return visited.length ? visited[visited.length - 1] : null;
+}
+
+// 利用率（来館 ÷ 予定 × 100）
+function muCalcUtilization(data) {
+  var s = data.summary || {};
+  if (!s.scheduledTotal) return null;
+  return Math.round((s.attended || 0) / s.scheduledTotal * 100);
+}
+
+// モーダルを開く（外部から呼び出すエントリーポイント）
+function attShowMonthlyUsage(name) {
+  var modal = document.getElementById('mu-modal');
+  if (!modal) return;
+  document.getElementById('mu-user-name').textContent = name;
+  modal.dataset.userName = name;
+  modal.style.display = 'flex';
+  var todayStr = muFormatDate(new Date());
+  var ym = todayStr.substring(0, 7);
+  muRenderMonthTabs(name, ym);
+  muLoadMonth(name, ym);
+}
+
+function muCloseModal() {
+  var modal = document.getElementById('mu-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// 月タブ描画（3ヶ月：前々月・前月・今月）
+function muRenderMonthTabs(name, selectedYm) {
+  var box = document.getElementById('mu-month-tabs');
+  var today = new Date();
+  var tabs = [];
+  for (var i = 2; i >= 0; i--) {
+    var d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    var ym = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+    var label = (d.getMonth() + 1) + '月';
+    tabs.push({ ym: ym, label: label });
+  }
+  box.innerHTML = tabs.map(function(t) {
+    var active = (t.ym === selectedYm) ? ' active' : '';
+    var nameEsc = name.replace(/'/g, "\\'");
+    return '<button type="button" class="mu-month-tab' + active + '" ' +
+           'onclick="muLoadMonth(\'' + nameEsc + '\',\'' + t.ym + '\');muRenderMonthTabs(\'' + nameEsc + '\',\'' + t.ym + '\')">' +
+           t.label + '</button>';
+  }).join('');
+}
+
+// 月切替時：データ取得＋サマリー＋カレンダー描画
+function muLoadMonth(name, ym) {
+  document.getElementById('mu-summary').innerHTML = '<div style="color:#718096;">読込中…</div>';
+  document.getElementById('mu-calendar').innerHTML = '';
+  muFetchMonthly(name, ym, function(data) {
+    if (!data || !data.success) {
+      document.getElementById('mu-summary').innerHTML =
+        '<div style="color:#c53030;">' + (data && data.error ? data.error : 'データ取得に失敗しました。もう一度開いてください。') + '</div>';
+      return;
+    }
+    muRenderSummary(data);
+    muRenderCalendar(data);
+  });
+}
+
+// サマリー＋ミニ情報バッジ描画
+function muRenderSummary(data) {
+  var s = data.summary || {};
+  var ym = data.yearMonth || '';
+  var monthLabel = ym ? (parseInt(ym.split('-')[1], 10) + '月') : '';
+  var main = monthLabel + '：利用 ' + (s.attended || 0) + '回 / 欠席 ' + (s.absent || 0) + '回 / 送迎なし ' + (s.noPickup || 0) + '回';
+
+  var badges = '';
+  var consec = muCalcConsecutiveAbsence(data);
+  if (consec) badges += '<span class="mu-badge danger">🔴 連続欠席' + consec + '日</span>';
+  var lastVisit = muCalcLastVisit(data);
+  if (lastVisit) {
+    var lvParts = lastVisit.split('-');
+    badges += '<span class="mu-badge info">📅 直近来館 ' + parseInt(lvParts[1], 10) + '/' + parseInt(lvParts[2], 10) + '</span>';
+  }
+  var util = muCalcUtilization(data);
+  if (util !== null) badges += '<span class="mu-badge success">📈 利用率 ' + util + '%</span>';
+
+  document.getElementById('mu-summary').innerHTML =
+    '<div class="mu-summary-main">' + main + '</div>' +
+    '<div class="mu-badges">' + badges + '</div>';
+}
+
+// カレンダー描画
+function muRenderCalendar(data) {
+  var ym = data.yearMonth;
+  var parts = ym.split('-');
+  var y = parseInt(parts[0], 10);
+  var m = parseInt(parts[1], 10);
+  var firstDow = new Date(y, m - 1, 1).getDay();
+  var lastDay = new Date(y, m, 0).getDate();
+
+  var dayByDate = {};
+  (data.days || []).forEach(function(d) { dayByDate[d.date] = d; });
+
+  var todayStr = muFormatDate(new Date());
+  var html = '<div class="mu-cal-grid">';
+  ['日','月','火','水','木','金','土'].forEach(function(label, i) {
+    var color = i === 0 ? 'color:#e53e3e;' : (i === 6 ? 'color:#3182ce;' : '');
+    html += '<div class="mu-cal-head" style="' + color + '">' + label + '</div>';
+  });
+  for (var i = 0; i < firstDow; i++) html += '<div class="mu-cal-cell empty"></div>';
+  for (var d = 1; d <= lastDay; d++) {
+    var dateStr = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2);
+    var info = dayByDate[dateStr];
+    var cls = 'mu-cal-cell';
+    if (info) {
+      if (info.attended) cls += ' attended';
+      if (info.absent) cls += ' absent';
+      if (!info.attended && !info.absent) cls += ' scheduled';
+      if (info.noPickup) cls += ' nopickup';
+    }
+    if (dateStr === todayStr) cls += ' today';
+    html += '<div class="' + cls + '"><span>' + d + '</span></div>';
+  }
+  html += '</div>';
+  document.getElementById('mu-calendar').innerHTML = html;
+}
+
+// モーダル初期化：背景クリック・ESCで閉じる
+document.addEventListener('DOMContentLoaded', function() {
+  var modal = document.getElementById('mu-modal');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) muCloseModal();
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      var m = document.getElementById('mu-modal');
+      if (m && m.style.display !== 'none') muCloseModal();
+    }
+  });
+});
+</script>
+
+<!-- ===== 月次利用状況モーダル（2026-05-27追加 / yawaragiボードから移植） ===== -->
+<div id="mu-modal" class="mu-modal-overlay" style="display:none;">
+  <div class="mu-modal-box">
+    <div class="mu-modal-header">
+      <div class="mu-title">
+        <span id="mu-user-name"></span>
+        <span class="mu-title-sub">様 月次利用状況</span>
+      </div>
+      <button type="button" class="mu-close-btn" onclick="muCloseModal()">✕</button>
+    </div>
+    <div class="mu-month-tabs" id="mu-month-tabs"></div>
+    <div class="mu-summary" id="mu-summary"></div>
+    <div class="mu-calendar" id="mu-calendar"></div>
+    <div class="mu-legend">🟢=来館　🔴=欠席　🔵=送迎なし　灰=予定なし</div>
+  </div>
+</div>
+</body>
+</html>

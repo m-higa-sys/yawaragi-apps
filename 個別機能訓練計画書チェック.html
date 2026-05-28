@@ -189,6 +189,20 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 }
 .check-cell.disabled:hover { background: #edf2f7; }
 
+/* 評価セル: PDF/印刷の独立フィールド */
+.check-cell.hyouka-one {
+    background: #b2f5ea;
+    color: #1a5759;
+    font-weight: 600;
+    font-size: 0.74rem;
+}
+.check-cell.hyouka-both {
+    background: #2c7a7b;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.74rem;
+}
+
 .modal-overlay {
     display: none;
     position: fixed;
@@ -343,6 +357,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     </label>
     <div class="stats">
         登録: <strong id="totalUsers">0</strong> 名 ／ 今月該当: <strong id="thisMonthCount">0</strong> ／ 完了: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
+        ／ 評価今月該当: <strong id="hyoukaMonthCount">0</strong> ／ 評価送付: <strong id="hyoukaDoneCount">0</strong> / <strong id="hyoukaTotalCount">0</strong>
     </div>
 </div>
 
@@ -422,6 +437,33 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     </div>
 </div>
 
+<!-- 評価入力ダイアログ（PDF/印刷の2フィールド独立） -->
+<div class="modal-overlay" id="hyoukaDialog">
+    <div class="modal">
+        <h3 id="hyoukaDialogTitle">評価編集</h3>
+        <div class="sub" id="hyoukaDialogSub"></div>
+        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">📄 PDF送付</div>
+            <input type="date" id="hyoukaPdfInput" style="width:100%;">
+            <div class="btn-row" style="margin-top:6px;">
+                <button class="clear" onclick="clearHyoukaField('hyouka_pdf_date')">クリア</button>
+                <button class="ok" onclick="saveHyoukaField('hyouka_pdf_date')">PDF保存</button>
+            </div>
+        </div>
+        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">🖨 印刷送付</div>
+            <input type="date" id="hyoukaPrintInput" style="width:100%;">
+            <div class="btn-row" style="margin-top:6px;">
+                <button class="clear" onclick="clearHyoukaField('hyouka_print_date')">クリア</button>
+                <button class="ok" onclick="saveHyoukaField('hyouka_print_date')">印刷保存</button>
+            </div>
+        </div>
+        <div class="btn-row" style="margin-top:10px;">
+            <button class="cancel" onclick="closeHyoukaDialog()">閉じる</button>
+        </div>
+    </div>
+</div>
+
 <!-- 計画書開始月編集ダイアログ -->
 <div class="modal-overlay" id="planStartDialog">
     <div class="modal">
@@ -457,7 +499,8 @@ const MONTHS = [
 const SUB_COLS = [
     { field: 'kyoumi_date', label: '興味' },
     { field: 'seikatsu_date', label: '生活' },
-    { field: 'keikaku_date', label: '計画' }
+    { field: 'keikaku_date', label: '計画' },
+    { field: 'hyouka', label: '評価' }   // 4列目: 評価セル（PDF/印刷の2フィールドを束ねた仮想列・評価月のみ入力可）
 ];
 
 // ============ 状態 ============
@@ -516,6 +559,18 @@ function isPlanMonth(planStart, year, month) {
     const pm = parseInt(m[2], 10);
     const diff = (year - py) * 12 + (month - pm);
     return diff >= 0 && diff % 3 === 0;
+}
+
+// 評価月判定: 計画書スタート月の翌々月（=次計画前月）が評価月
+// 例: planStart=2026-04 → 評価月: 2026-06 / 2026-09 / 2026-12 / 2027-03
+function isHyoukaMonth(planStart, year, month) {
+    if (!planStart) return false;
+    const m = planStart.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return false;
+    const py = parseInt(m[1], 10);
+    const pm = parseInt(m[2], 10);
+    const diff = (year - py) * 12 + (month - pm);
+    return diff >= 2 && diff % 3 === 2;
 }
 
 // ============ ふりがなグループ ============
@@ -696,17 +751,52 @@ function renderTable() {
         MONTHS.forEach(mo => {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
-            const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+            const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: '' };
             const isPlan = isPlanMonth(u.planStart, cellYear, mo.m);
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
             const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
-            const filled = SUB_COLS.filter(s => rec[s.field]).length;
+            const filled = ['kyoumi_date','seikatsu_date','keikaku_date'].filter(f => rec[f]).length;
             const allDone = filled === 3;
             const isBlocked = !!rec.blocked_reason;
 
             SUB_COLS.forEach((sub, si) => {
                 let cls = 'check-cell';
                 if (si === 0) cls += ' month-border';
+
+                // 評価セル（4列目・特殊扱い）
+                if (sub.field === 'hyouka') {
+                    const isHyouka = isHyoukaMonth(u.planStart, cellYear, mo.m);
+                    if (!isHyouka) {
+                        cls += ' disabled';
+                        html += '<td class="' + cls + '">-</td>';
+                        return;
+                    }
+                    const pdfDate = rec.hyouka_pdf_date || '';
+                    const printDate = rec.hyouka_print_date || '';
+                    const pdfDone = !!pdfDate;
+                    const printDone = !!printDate;
+                    if (pdfDone && printDone) cls += ' hyouka-both';
+                    else if (pdfDone || printDone) cls += ' hyouka-one';
+                    else if (isPast) cls += ' highlight-undone';
+                    if (isCurrent) cls += ' current';
+
+                    let display = '';
+                    if (pdfDone && printDone) display = '📄🖨' + formatMD(printDate || pdfDate);
+                    else if (pdfDone) display = '📄' + formatMD(pdfDate);
+                    else if (printDone) display = '🖨' + formatMD(printDate);
+
+                    html += '<td class="' + cls + '"'
+                          + ' data-userid="' + escapeAttr(u.userId) + '"'
+                          + ' data-name="' + escapeAttr(u.name) + '"'
+                          + ' data-year="' + cellYear + '"'
+                          + ' data-month="' + mo.m + '"'
+                          + ' data-field="hyouka"'
+                          + ' data-fieldlabel="評価"'
+                          + ' onclick="onHyoukaCellTap(this)">' + display + '</td>';
+                    return;
+                }
+
+                // 既存3列（興味/生活/計画）
                 if (!isPlan) {
                     cls += ' disabled';
                     html += '<td class="' + cls + '">-</td>';
@@ -750,16 +840,25 @@ function updateStats() {
     const ny = now.getFullYear();
     const nm = now.getMonth() + 1;
     let thisMonth = 0, done = 0;
+    let hyoukaThisMonth = 0, hyoukaDone = 0;
     state.users.forEach(u => {
-        if (!isPlanMonth(u.planStart, ny, nm)) return;
-        thisMonth++;
         const key = u.userId + '_' + ny + '_' + nm;
         const rec = state.records[key];
-        if (rec && rec.kyoumi_date && rec.seikatsu_date && rec.keikaku_date) done++;
+        if (isPlanMonth(u.planStart, ny, nm)) {
+            thisMonth++;
+            if (rec && rec.kyoumi_date && rec.seikatsu_date && rec.keikaku_date) done++;
+        }
+        if (isHyoukaMonth(u.planStart, ny, nm)) {
+            hyoukaThisMonth++;
+            if (rec && (rec.hyouka_pdf_date || rec.hyouka_print_date)) hyoukaDone++;
+        }
     });
     document.getElementById('thisMonthCount').textContent = thisMonth;
     document.getElementById('progressCount').textContent = done;
     document.getElementById('progressTotal').textContent = thisMonth;
+    document.getElementById('hyoukaMonthCount').textContent = hyoukaThisMonth;
+    document.getElementById('hyoukaDoneCount').textContent = hyoukaDone;
+    document.getElementById('hyoukaTotalCount').textContent = hyoukaThisMonth;
 }
 
 function setDayFilter(d, ev) {
@@ -904,6 +1003,92 @@ async function applyBlockedReason(userId, name, year, month, reason) {
 
 function closeDateDialog() {
     document.getElementById('dateDialog').classList.remove('show');
+}
+
+// ============ 評価セルクリック処理 ============
+let hyoukaDialogState = { userId: '', name: '', year: 0, month: 0 };
+
+function onHyoukaCellTap(td) {
+    if (td.classList.contains('disabled')) return;
+    const userId = td.dataset.userid;
+    const name = td.dataset.name;
+    const year = parseInt(td.dataset.year, 10);
+    const month = parseInt(td.dataset.month, 10);
+    openHyoukaDialog(userId, name, year, month);
+}
+
+function openHyoukaDialog(userId, name, year, month) {
+    hyoukaDialogState = { userId, name, year, month };
+    const key = userId + '_' + year + '_' + month;
+    const rec = state.records[key] || { hyouka_pdf_date: '', hyouka_print_date: '' };
+    document.getElementById('hyoukaDialogTitle').textContent = name + '  ' + month + '月の評価';
+    document.getElementById('hyoukaDialogSub').textContent =
+        'PDF: ' + (rec.hyouka_pdf_date || '(未送付)') + ' ／ 印刷: ' + (rec.hyouka_print_date || '(未送付)');
+    document.getElementById('hyoukaPdfInput').value = rec.hyouka_pdf_date || formatTodayISO();
+    document.getElementById('hyoukaPrintInput').value = rec.hyouka_print_date || formatTodayISO();
+    document.getElementById('hyoukaDialog').classList.add('show');
+}
+
+function closeHyoukaDialog() {
+    document.getElementById('hyoukaDialog').classList.remove('show');
+}
+
+async function saveHyoukaField(field) {
+    const inputId = (field === 'hyouka_pdf_date') ? 'hyoukaPdfInput' : 'hyoukaPrintInput';
+    const v = document.getElementById(inputId).value;
+    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
+    const ds = hyoukaDialogState;
+    const fieldLabel = (field === 'hyouka_pdf_date') ? '評価PDF' : '評価印刷';
+    await applyHyoukaValue(ds.userId, ds.name, ds.year, ds.month, field, fieldLabel, v);
+    // 保存後にダイアログ再描画
+    openHyoukaDialog(ds.userId, ds.name, ds.year, ds.month);
+}
+
+async function clearHyoukaField(field) {
+    const ds = hyoukaDialogState;
+    const fieldLabel = (field === 'hyouka_pdf_date') ? '評価PDF' : '評価印刷';
+    if (!confirm(ds.name + ' ' + ds.month + '月の' + fieldLabel + 'をクリアしますか？')) return;
+    await applyHyoukaValue(ds.userId, ds.name, ds.year, ds.month, field, fieldLabel, '');
+    openHyoukaDialog(ds.userId, ds.name, ds.year, ds.month);
+}
+
+async function applyHyoukaValue(userId, name, year, month, field, fieldLabel, value) {
+    const key = userId + '_' + year + '_' + month;
+    const rec = state.records[key] || {
+        kyoumi_date: '', seikatsu_date: '', keikaku_date: '',
+        blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: ''
+    };
+    rec[field] = value;
+    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date
+        && !rec.blocked_reason && !rec.hyouka_pdf_date && !rec.hyouka_print_date) {
+        delete state.records[key];
+    } else {
+        state.records[key] = rec;
+    }
+    saveCache();
+    renderTable();
+
+    try {
+        const url = API_BASE + '?action=updateKeikakusho'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&year=' + year + '&month=' + month
+            + '&field=' + field
+            + '&value=' + encodeURIComponent(value)
+            + '&operator=' + encodeURIComponent(getOperator())
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        showToast(value
+            ? '✅ ' + name + ' ' + month + '月 ' + fieldLabel + '=' + formatMD(value)
+            : '🗑 ' + name + ' ' + month + '月 ' + fieldLabel + ' クリア',
+            value ? '' : 'warn');
+        hideOffline();
+    } catch (e) {
+        console.error('updateKeikakusho (hyouka) error:', e);
+        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        showOffline();
+    }
 }
 
 async function saveDateFromDialog() {
