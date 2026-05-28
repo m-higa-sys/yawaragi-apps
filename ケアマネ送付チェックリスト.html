@@ -402,6 +402,8 @@ main { padding: 16px 24px 48px; }
     <input type="checkbox" id="filterReadyOfficesOnly" style="margin-right:6px;">
     <span style="color:#1a365d; font-weight:700;">📬 今すぐ送れる事業所だけ表示</span>
   </label>
+  <input type="text" id="searchInput" placeholder="🔍 氏名・フリガナ"
+    style="padding:6px 10px; border:2px solid #cbd5e0; border-radius:6px; font-size:14px; width:180px;">
   <div class="progress-wrap">
     <div class="progress-bar"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div><div class="progress-text" id="progressText">0% (0/0)</div></div>
   </div>
@@ -1028,6 +1030,14 @@ function render() {
   // 🔴 フィルター（2026/4/27 追加）
   const filterFinalizableOnly = document.getElementById('filterFinalizableOnly')?.checked || false;
   const filterReadyOfficesOnly = document.getElementById('filterReadyOfficesOnly')?.checked || false;
+  // 🔍 氏名・フリガナ検索（2026/5/28 追加）
+  const searchQuery = (document.getElementById('searchInput')?.value || '').normalize('NFKC').toLowerCase().trim();
+  const matchesSearch = (u) => {
+    if (!searchQuery) return true;
+    const name = (u.name || '').normalize('NFKC').toLowerCase();
+    const kana = (u.furigana || '').normalize('NFKC').toLowerCase();
+    return name.indexOf(searchQuery) >= 0 || kana.indexOf(searchQuery) >= 0;
+  };
 
   // 事業所別「全員実績OK」判定関数
   const isOfficeReady = (officeUsers) => {
@@ -1050,8 +1060,15 @@ function render() {
     }));
   }
 
+  // 検索で更に絞り込み: 該当者がいる事業所のみ残す
+  if (searchQuery) {
+    filteredOffices = filteredOffices.filter(office => grouped[office].some(matchesSearch));
+  }
+
   if (filteredOffices.length === 0) {
-    const msg = filterReadyOfficesOnly
+    const msg = searchQuery
+      ? '🔍 「' + escapeHtml(searchQuery) + '」に一致する利用者は見つかりません'
+      : filterReadyOfficesOnly
       ? '📬 全員実績OKの事業所はまだありません<br><span style="font-size:13px;">事業所内の全員が月内予定消化済みになるとここに表示されます</span>'
       : filterFinalizableOnly
       ? '✅実績OKの利用者はまだいません<br><span style="font-size:13px;">月内予定が全部消化された人がいないため、フィルター結果0名です</span>'
@@ -1073,6 +1090,10 @@ function render() {
       });
     } else {
       users = grouped[office];
+    }
+    // 検索ヒット者だけに絞る
+    if (searchQuery) {
+      users = users.filter(matchesSearch);
     }
     const contact = contactMap[office] || {};
     const method = contact.method || (contact.email ? 'メール候補' : contact.fax ? 'FAX候補' : '未設定');
@@ -2127,6 +2148,17 @@ document.getElementById('filterFinalizableOnly').onchange = function() {
 document.getElementById('filterReadyOfficesOnly').onchange = function() {
   render();
 };
+
+// 🔍 氏名・フリガナ検索（2026/5/28 追加）
+(function() {
+  const searchEl = document.getElementById('searchInput');
+  if (!searchEl) return;
+  let searchTimer = null;
+  searchEl.addEventListener('input', function() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(render, 120);
+  });
+})();
 
 // 初期化
 (async function() {
