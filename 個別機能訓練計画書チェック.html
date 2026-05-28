@@ -563,6 +563,9 @@ function isPlanMonth(planStart, year, month) {
 
 // 評価月判定: 計画書スタート月の翌々月（=次計画前月）が評価月
 // 例: planStart=2026-04 → 評価月: 2026-06 / 2026-09 / 2026-12 / 2027-03
+// 加えて: 計画書開始月の前月（diff===-1）も評価月扱い。
+//   計画書更新時にplanStartを上書きする運用で、前計画の評価を直前月に入力するため
+//   例: planStart=2026-06 → 2026-05 も評価月扱い（6月計画書作成前の前計画評価）
 function isHyoukaMonth(planStart, year, month) {
     if (!planStart) return false;
     const m = planStart.match(/^(\d{4})-(\d{2})$/);
@@ -570,7 +573,9 @@ function isHyoukaMonth(planStart, year, month) {
     const py = parseInt(m[1], 10);
     const pm = parseInt(m[2], 10);
     const diff = (year - py) * 12 + (month - pm);
-    return diff >= 2 && diff % 3 === 2;
+    if (diff >= 2 && diff % 3 === 2) return true;
+    if (diff === -1) return true;
+    return false;
 }
 
 // ============ ふりがなグループ ============
