@@ -780,10 +780,13 @@ function renderTable() {
                     }
                     const pdfDate = rec.hyouka_pdf_date || '';
                     const printDate = rec.hyouka_print_date || '';
+                    const blockedReason = rec.blocked_reason || '';
                     const pdfDone = !!pdfDate;
                     const printDone = !!printDate;
+                    const hyoukaBlocked = !pdfDone && !printDone && !!blockedReason;
                     if (pdfDone && printDone) cls += ' hyouka-both';
                     else if (pdfDone || printDone) cls += ' hyouka-one';
+                    else if (hyoukaBlocked) cls += ' blocked-mitei';
                     else if (isPast) cls += ' highlight-undone';
                     if (isCurrent) cls += ' current';
 
@@ -791,8 +794,10 @@ function renderTable() {
                     if (pdfDone && printDone) display = '📄🖨' + formatMD(printDate || pdfDate);
                     else if (pdfDone) display = '📄' + formatMD(pdfDate);
                     else if (printDone) display = '🖨' + formatMD(printDate);
+                    else if (hyoukaBlocked) display = '⏸';
 
-                    html += '<td class="' + cls + '"'
+                    const titleAttr = hyoukaBlocked ? ' title="' + escapeAttr(blockedReason) + '"' : '';
+                    html += '<td class="' + cls + '"' + titleAttr
                           + ' data-userid="' + escapeAttr(u.userId) + '"'
                           + ' data-name="' + escapeAttr(u.name) + '"'
                           + ' data-year="' + cellYear + '"'
