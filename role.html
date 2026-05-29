@@ -713,7 +713,10 @@ input, select, textarea { font-family: inherit; }
             </div>
             <div class="form-row">
                 <label>カテゴリ</label>
-                <select id="approveCategoryId"></select>
+                <div style="display: flex; gap: 8px;">
+                    <select id="approveCategoryId" style="flex: 1;"></select>
+                    <button type="button" class="btn-sm" id="btnApproveAddCategoryInline">+ 新規</button>
+                </div>
             </div>
             <div class="form-row">
                 <label>種別</label><br>
@@ -1240,6 +1243,20 @@ document.getElementById('btnAddCategoryInline').addEventListener('click', async 
     await loadCategories();
     // selectを再生成して新カテゴリを選択
     const sel = document.getElementById('addCategoryId');
+    sel.innerHTML = '<option value="">(未選択)</option>' +
+        CATEGORIES.map(c => `<option value="${escapeHtml(c.category_id)}">${escapeHtml(c.name)}</option>`).join('');
+    sel.value = data.category_id;
+    showToast('カテゴリ「' + name + '」追加');
+});
+document.getElementById('btnApproveAddCategoryInline').addEventListener('click', async () => {
+    if (!CURRENT_OPERATOR) { showToast('操作者を選択してください'); return; }
+    const name = (prompt('新規カテゴリ名を入力') || '').trim();
+    if (!name) return;
+    const data = await callGas({ action: 'add_category', name: name, operator_id: CURRENT_OPERATOR.id });
+    if (!data.ok) { alert('カテゴリ追加失敗: ' + (data.error || '')); return; }
+    await loadCategories();
+    // approveCategoryId select を再生成して新カテゴリを選択
+    const sel = document.getElementById('approveCategoryId');
     sel.innerHTML = '<option value="">(未選択)</option>' +
         CATEGORIES.map(c => `<option value="${escapeHtml(c.category_id)}">${escapeHtml(c.name)}</option>`).join('');
     sel.value = data.category_id;
