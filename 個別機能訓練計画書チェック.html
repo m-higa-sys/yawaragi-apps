@@ -1341,8 +1341,18 @@ function openPlanStartDialog(td) {
     const name = td.dataset.name;
     const currentValue = td.dataset.planstart || '';
     planStartDialogState = { userId, name, currentValue };
+    const u = state.users.find(x => x.userId === userId);
+    const cmOffice = (u && u.cmOffice) ? u.cmOffice : '';
+    const cmName = (u && u.cmName) ? u.cmName : '';
+    const officeLine = cmOffice
+        ? '🏢 ' + cmOffice + (cmName ? '（' + cmName + '）' : '')
+        : '🏢 ケアマネ事業所 未登録';
     document.getElementById('planStartTitle').textContent = name + ' の計画書開始月';
-    document.getElementById('planStartSub').textContent = '現在: ' + (currentValue || '未設定') + '（変更すると 3 ヶ月サイクルが再計算されます）';
+    document.getElementById('planStartSub').innerHTML =
+        '<div style="margin-bottom:10px; padding:8px 10px; background:#f0fff4; border-left:3px solid #2c7a7b; font-size:0.95rem; color:#2c7a7b; font-weight:bold;">'
+        + escapeHtml(officeLine)
+        + '</div>'
+        + '<div>現在: ' + escapeHtml(currentValue || '未設定') + '（変更すると 3 ヶ月サイクルが再計算されます）</div>';
     document.getElementById('planStartInput').value = currentValue || '';
     document.getElementById('planStartDialog').classList.add('show');
 }
