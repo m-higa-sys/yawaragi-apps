@@ -167,6 +167,31 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 }
 .check-cell.disabled:hover { background: #e0e0e0; }
 
+/* 保存未確認セル（API送信失敗で楽観値だけ残っているセル） */
+.check-cell.pending {
+    background: #fff3e0 !important;
+    box-shadow: inset 0 0 0 2px #ff6f00;
+    position: relative;
+}
+.check-cell.pending.current {
+    box-shadow: inset 0 0 0 2px #ff6f00, inset 0 0 0 4px #1976d2;
+}
+.check-cell.pending::after {
+    content: '⚠';
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 11px;
+    color: #ff6f00;
+}
+
+#pendingBanner {
+    background: #fff3e0; color: #e65100; padding: 10px 20px;
+    border-left: 4px solid #ff6f00; font-size: 14px;
+    font-weight: bold; cursor: pointer;
+}
+#pendingBanner:hover { background: #ffe0b2; }
+
 .row-even { background: #fafafa; }
 .row-even .name-cell { background: #fafafa; }
 
@@ -412,6 +437,7 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 </div>
 
 <div id="offlineBanner" style="display:none;">⚠ オフライン中（キャッシュ表示）。ネット復帰後、最新を取得してください。</div>
+<div id="pendingBanner" style="display:none;" onclick="retryPending()"></div>
 
 <div class="toolbar">
     <div class="toolbar-left">
@@ -516,6 +542,7 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const CACHE_PREFIX = 'monitoring_cache_';
+const PENDING_PREFIX = 'monitoring_pending_';
 // 運用開始年月（これより前のセルは「対象外」灰色表示）
 const START_YEAR = 2026;
 const START_MONTH = 5;
@@ -583,6 +610,88 @@ function showOfflineBanner() {
 }
 function hideOfflineBanner() {
     document.getElementById('offlineBanner').style.display = 'none';
+}
+
+// ============ 保存未確認（pending）管理 ============
+// API送信が失敗したセルを localStorage に記録し、再送信できるようにする。
+// 楽観更新は維持（入力した事実は残す）し、視覚的に「⚠保存未確認」をはっきり出す。
+let _pendingCache = null;
+let _pendingCacheYear = null;
+function pendingKey(userId, year, month, field) {
+    return userId + '_' + year + '_' + month + '_' + field;
+}
+function getPendingMap() {
+    const fy = monitoringState.fiscalYear;
+    if (_pendingCache !== null && _pendingCacheYear === fy) return _pendingCache;
+    try {
+        const raw = localStorage.getItem(PENDING_PREFIX + fy);
+        _pendingCache = raw ? JSON.parse(raw) : {};
+    } catch (e) { _pendingCache = {}; }
+    _pendingCacheYear = fy;
+    return _pendingCache;
+}
+function setPendingMap(map) {
+    const fy = monitoringState.fiscalYear;
+    _pendingCache = map;
+    _pendingCacheYear = fy;
+    try {
+        localStorage.setItem(PENDING_PREFIX + fy, JSON.stringify(map));
+    } catch (e) { console.warn('pending save failed', e); }
+}
+function markPending(userId, year, month, field, value) {
+    const map = getPendingMap();
+    map[pendingKey(userId, year, month, field)] = {
+        userId, year, month, field, value,
+        ts: new Date().toISOString()
+    };
+    setPendingMap(map);
+}
+function unmarkPending(userId, year, month, field) {
+    const map = getPendingMap();
+    const k = pendingKey(userId, year, month, field);
+    if (map[k]) { delete map[k]; setPendingMap(map); }
+}
+function isPending(userId, year, month, field) {
+    return !!getPendingMap()[pendingKey(userId, year, month, field)];
+}
+function updatePendingBanner() {
+    const banner = document.getElementById('pendingBanner');
+    if (!banner) return;
+    const map = getPendingMap();
+    const count = Object.keys(map).length;
+    if (count === 0) { banner.style.display = 'none'; return; }
+    banner.textContent = '⚠ 保存未確認のデータが ' + count + ' 件あります（タップで再送信）';
+    banner.style.display = 'block';
+}
+async function retryPending() {
+    const map = getPendingMap();
+    const keys = Object.keys(map);
+    if (keys.length === 0) return;
+    showToast('🔄 ' + keys.length + ' 件を再送信中...', '#2196F3');
+    let success = 0, failed = 0;
+    for (const k of keys) {
+        const p = map[k];
+        try {
+            const url = API_BASE + '?action=updateMonitoring'
+                + '&userId=' + encodeURIComponent(p.userId)
+                + '&year=' + p.year + '&month=' + p.month
+                + '&field=' + p.field
+                + '&value=' + encodeURIComponent(p.value)
+                + '&t=' + Date.now();
+            const res = await fetch(url);
+            const json = await res.json();
+            if (json.ok) { unmarkPending(p.userId, p.year, p.month, p.field); success++; }
+            else { failed++; }
+        } catch (e) { failed++; }
+    }
+    updatePendingBanner();
+    renderTable();
+    if (failed === 0) {
+        showToast('✅ 再送信完了: ' + success + ' 件すべて成功', '#4CAF50');
+        hideOfflineBanner();
+    } else {
+        showToast('再送信: 成功 ' + success + ' / 失敗 ' + failed + '（ネット接続を確認）', '#ff9800');
+    }
 }
 
 // ============ ふりがなグループ分け ============
@@ -662,8 +771,11 @@ function populateFiscalYearSelect() {
 
 function onYearChange() {
     monitoringState.fiscalYear = parseInt(document.getElementById('fiscalYearSelect').value, 10);
+    _pendingCache = null;
+    _pendingCacheYear = null;
     loadCache();
     loadFiscalYearData();
+    updatePendingBanner();
 }
 
 // ============ キャッシュ ============
@@ -734,11 +846,32 @@ async function loadFiscalYearData() {
                 };
             });
         });
+        // pending（保存未確認）セルとサーバ取得値を突合
+        // → サーバに反映済なら pending 解除
+        // → 未反映なら楽観値を newRecords に上書きして残す（消えない保護）
+        const pmap = getPendingMap();
+        let pendingChanged = false;
+        Object.keys(pmap).forEach(k => {
+            const p = pmap[k];
+            const recKey = p.userId + '_' + p.year + '_' + p.month;
+            const serverRec = newRecords[recKey];
+            const serverVal = (serverRec && serverRec[p.field]) || '';
+            if (serverVal === p.value) {
+                delete pmap[k];
+                pendingChanged = true;
+            } else {
+                if (!newRecords[recKey]) newRecords[recKey] = { recordDate: '', pdfDate: '' };
+                newRecords[recKey][p.field] = p.value;
+            }
+        });
+        if (pendingChanged) setPendingMap(pmap);
+
         monitoringState.records = newRecords;
         saveCache();
         hideOfflineBanner();
         renderTable();
         updateStats();
+        updatePendingBanner();
     } catch (e) {
         console.error('loadFiscalYearData error:', e);
         showOfflineBanner();
@@ -855,6 +988,7 @@ function renderTable() {
                 else if (value) cls += ' checked';
                 else if (isPast) cls += ' highlight-undone';
                 if (isCurrent) cls += ' current';
+                if (isPending(u.userId, cellYear, mo.m, sub.field)) cls += ' pending';
 
                 const display = value ? formatMD(value) : '';
                 html += '<td class="' + cls + '"'
@@ -981,14 +1115,18 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value, d
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
+        unmarkPending(userId, year, month, field);
         showToast(value ? '✅ ' + name + ' ' + month + '月 ' + fieldLabel + '=' + displayValue : '🗑 ' + name + ' ' + month + '月 ' + fieldLabel + ' クリア',
                   value ? '#4CAF50' : '#ff9800');
         hideOfflineBanner();
     } catch (e) {
         console.error('updateMonitoring error:', e);
-        showToast('⚠ 保存失敗。ネット接続を確認してください', '#f44336');
+        markPending(userId, year, month, field, value);
+        showToast('⚠ ' + name + ' ' + month + '月 ' + fieldLabel + ' 保存失敗（再送信待ち）', '#f44336');
         showOfflineBanner();
     }
+    updatePendingBanner();
+    renderTable();
 }
 
 // ============================================================
@@ -1288,6 +1426,7 @@ window.addEventListener('load', async () => {
     populateFiscalYearSelect();
     loadCache();
     setupTabs();
+    updatePendingBanner();
     await loadFiscalYearData();
 });
 
