@@ -526,6 +526,40 @@ input, select, textarea { font-family: inherit; }
     font-size: 12px;
     font-weight: 800;
 }
+.plan-expire-section {
+    margin-top: 12px;
+    padding: 10px;
+    background: #fff8e1;
+    border-radius: 8px;
+    border-left: 4px solid #ffa000;
+    font-size: 13px;
+}
+.plan-expire-header {
+    font-weight: bold;
+    color: #e65100;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+.plan-expire-list { display: flex; flex-direction: column; gap: 4px; }
+.plan-expire-item { padding: 4px 6px; background: #fff; border-radius: 4px; }
+.plan-expire-item .name { font-weight: bold; }
+.plan-expire-item small { color: #888; margin-left: 6px; }
+.plan-expire-item .badge-print,
+.plan-expire-item .badge-pdf {
+    display: inline-block; padding: 1px 6px; border-radius: 8px;
+    font-size: 11px; margin-left: 4px;
+}
+.plan-expire-item .badge-print { background: #fff3e0; color: #e65100; }
+.plan-expire-item .badge-pdf { background: #e3f2fd; color: #0d47a1; }
+.plan-expire-item .inferred-mark {
+    display: inline-block; padding: 1px 5px; border-radius: 8px;
+    background: #ffebee; color: #c62828; font-size: 11px; margin-left: 4px;
+}
+.plan-expire-item .stopped-mark {
+    display: inline-block; padding: 1px 5px; border-radius: 8px;
+    background: #efebe9; color: #4e342e; font-size: 11px; margin-left: 4px;
+}
+.plan-expire-section .no-target { color: #888; padding: 4px; }
 </style>
 </head>
 <body>
@@ -950,6 +984,63 @@ async function loadTasks() {
     } catch (e) { console.error('loadTasks failed:', e); }
 }
 
+// ===== カード拡張ヘルパー =====
+function nextMonthYYYYMM() {
+    const d = new Date();
+    let y = d.getFullYear();
+    let m = d.getMonth() + 2;
+    if (m > 12) { m -= 12; y += 1; }
+    return y + '-' + (m < 10 ? '0' + m : '' + m);
+}
+
+function categoryNameOf(categoryId) {
+    const cat = (CATEGORIES || []).find(c => c.category_id === categoryId);
+    return cat ? cat.name : '';
+}
+
+async function enhanceWithPlanExpireList(cardDiv, task) {
+    const targetMonth = nextMonthYYYYMM();
+    let json = null;
+    try {
+        json = await callGas({ action: 'getMonitoringPlanExpiring', month: targetMonth });
+    } catch (e) {
+        console.warn('getMonitoringPlanExpiring failed:', e);
+        return;
+    }
+    if (!json || !json.ok) return;
+
+    const users = json.users || [];
+    const section = document.createElement('div');
+    section.className = 'plan-expire-section';
+
+    if (users.length === 0) {
+        section.innerHTML = `<div class="plan-expire-header">📋 ${escapeHtml(targetMonth)} 期限切れ：0人</div>
+                             <div class="no-target">対象者なし</div>`;
+        cardDiv.appendChild(section);
+        return;
+    }
+
+    let inner = `<div class="plan-expire-header">📋 ${escapeHtml(targetMonth)} 期限切れ：${users.length}人</div>`;
+    inner += '<div class="plan-expire-list">';
+    users.forEach(u => {
+        const sendBadge = u.sendMethod === '印刷'
+            ? '<span class="badge-print">🖨印刷</span>'
+            : '<span class="badge-pdf">📧PDF</span>';
+        const inferredMark = u.inferred ? '<span class="inferred-mark" title="計画期間未登録（利用開始月から仮推定）">⚠仮</span>' : '';
+        const stoppedMark = u.isStoppedUser ? '<span class="stopped-mark" title="中止者">🛑中止</span>' : '';
+        inner += `
+            <div class="plan-expire-item">
+                <span class="name">${escapeHtml(u.name)} 様</span>
+                ${sendBadge} ${inferredMark} ${stoppedMark}
+                <small>(${escapeHtml(u.caremaneOffice || '事業所未登録')})</small>
+            </div>
+        `;
+    });
+    inner += '</div>';
+    section.innerHTML = inner;
+    cardDiv.appendChild(section);
+}
+
 // ===== カード描画 =====
 function makeTaskCard(t) {
     const div = document.createElement('div');
@@ -992,6 +1083,15 @@ function makeTaskCard(t) {
     }
 
     div.addEventListener('click', () => onTaskCardClick(t));
+
+    // 特別カード判定：「期限切れチェック」を含み、カテゴリ「通所介護計画書」のもの
+    const isPlanExpireCheck = (t.task_name || '').includes('期限切れチェック')
+                            && categoryNameOf(t.category_id) === '通所介護計画書'
+                            && t.approval_status === 'approved';
+    if (isPlanExpireCheck) {
+        enhanceWithPlanExpireList(div, t);
+    }
+
     return div;
 }
 
