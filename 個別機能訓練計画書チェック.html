@@ -189,6 +189,35 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 }
 .check-cell.disabled:hover { background: #edf2f7; }
 
+/* 保存未確認セル（API送信失敗で楽観値だけ残っているセル） */
+.check-cell.pending {
+    background: #fff3e0 !important;
+    box-shadow: inset 0 0 0 2px #ff6f00 !important;
+    position: relative;
+}
+.check-cell.pending.current {
+    box-shadow: inset 0 0 0 2px #ff6f00, inset 0 0 0 4px #2b6cb0 !important;
+}
+.check-cell.pending::after {
+    content: '⚠';
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 11px;
+    color: #ff6f00;
+}
+
+#pendingBanner {
+    background: #fff3e0;
+    color: #e65100;
+    padding: 10px 24px;
+    border-left: 4px solid #ff6f00;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+#pendingBanner:hover { background: #ffe0b2; }
+
 /* 評価セル: PDF/印刷の独立フィールド */
 .check-cell.hyouka-one {
     background: #b2f5ea;
@@ -344,6 +373,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 </header>
 
 <div id="offlineBanner">⚠ オフライン表示中(最新データの取得に失敗しています)</div>
+<div id="pendingBanner" style="display:none;" onclick="retryPending()"></div>
 
 <div class="toolbar">
     <select id="fiscalYearSelect" onchange="onYearChange()"></select>
@@ -486,6 +516,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const CACHE_PREFIX = 'yawaragi_keikakusho_v1_';
+const PENDING_PREFIX = 'yawaragi_keikakusho_pending_';
 const OPERATOR_KEY = 'yawaragi_keikakusho_operator';
 const OPERATOR_FIXED = ['代表'];  // スタッフ一覧APIに含まれない・先頭固定
 const MONTHS = [
@@ -549,6 +580,100 @@ function showToast(msg, kind) {
 }
 function showOffline() { document.getElementById('offlineBanner').style.display = 'block'; }
 function hideOffline() { document.getElementById('offlineBanner').style.display = 'none'; }
+
+// ============ 保存未確認（pending）管理 ============
+// API送信が失敗したセルを localStorage に記録し、再送信できるようにする。
+// 楽観更新は維持（入力した事実は残す）し、視覚的に「⚠保存未確認」をはっきり出す。
+// 通常セル: field=kyoumi_date/seikatsu_date/keikaku_date/blocked_reason/hyouka_pdf_date/hyouka_print_date
+// 計画書開始月: 特殊キー field='__planStart' / year=0 / month=0
+let _pendingCache = null;
+let _pendingCacheYear = null;
+function pendingKey(userId, year, month, field) {
+    return userId + '_' + year + '_' + month + '_' + field;
+}
+function getPendingMap() {
+    const fy = state.fiscalYear;
+    if (_pendingCache !== null && _pendingCacheYear === fy) return _pendingCache;
+    try {
+        const raw = localStorage.getItem(PENDING_PREFIX + fy);
+        _pendingCache = raw ? JSON.parse(raw) : {};
+    } catch (e) { _pendingCache = {}; }
+    _pendingCacheYear = fy;
+    return _pendingCache;
+}
+function setPendingMap(map) {
+    const fy = state.fiscalYear;
+    _pendingCache = map;
+    _pendingCacheYear = fy;
+    try {
+        localStorage.setItem(PENDING_PREFIX + fy, JSON.stringify(map));
+    } catch (e) { console.warn('pending save failed', e); }
+}
+function markPending(userId, year, month, field, value) {
+    const map = getPendingMap();
+    map[pendingKey(userId, year, month, field)] = {
+        userId, year, month, field, value,
+        ts: new Date().toISOString()
+    };
+    setPendingMap(map);
+}
+function unmarkPending(userId, year, month, field) {
+    const map = getPendingMap();
+    const k = pendingKey(userId, year, month, field);
+    if (map[k]) { delete map[k]; setPendingMap(map); }
+}
+function isPending(userId, year, month, field) {
+    return !!getPendingMap()[pendingKey(userId, year, month, field)];
+}
+function updatePendingBanner() {
+    const banner = document.getElementById('pendingBanner');
+    if (!banner) return;
+    const map = getPendingMap();
+    const count = Object.keys(map).length;
+    if (count === 0) { banner.style.display = 'none'; return; }
+    banner.textContent = '⚠ 保存未確認のデータが ' + count + ' 件あります（タップで再送信）';
+    banner.style.display = 'block';
+}
+async function retryPending() {
+    const map = getPendingMap();
+    const keys = Object.keys(map);
+    if (keys.length === 0) return;
+    showToast('🔄 ' + keys.length + ' 件を再送信中...');
+    let success = 0, failed = 0;
+    for (const k of keys) {
+        const p = map[k];
+        try {
+            let url;
+            if (p.field === '__planStart') {
+                url = API_BASE + '?action=updatePlanStart'
+                    + '&userId=' + encodeURIComponent(p.userId)
+                    + '&value=' + encodeURIComponent(p.value)
+                    + '&operator=' + encodeURIComponent(getOperator())
+                    + '&t=' + Date.now();
+            } else {
+                url = API_BASE + '?action=updateKeikakusho'
+                    + '&userId=' + encodeURIComponent(p.userId)
+                    + '&year=' + p.year + '&month=' + p.month
+                    + '&field=' + p.field
+                    + '&value=' + encodeURIComponent(p.value)
+                    + '&operator=' + encodeURIComponent(getOperator())
+                    + '&t=' + Date.now();
+            }
+            const res = await fetch(url);
+            const json = await res.json();
+            if (json.ok) { unmarkPending(p.userId, p.year, p.month, p.field); success++; }
+            else { failed++; }
+        } catch (e) { failed++; }
+    }
+    updatePendingBanner();
+    renderTable();
+    if (failed === 0) {
+        showToast('✅ 再送信完了: ' + success + ' 件すべて成功');
+        hideOffline();
+    } else {
+        showToast('再送信: 成功 ' + success + ' / 失敗 ' + failed + '（ネット接続を確認）', 'error');
+    }
+}
 
 // ============ 3ヶ月サイクル判定 ============
 function isPlanMonth(planStart, year, month) {
@@ -617,8 +742,11 @@ function populateFiscalYearSelect() {
 }
 function onYearChange() {
     state.fiscalYear = parseInt(document.getElementById('fiscalYearSelect').value, 10);
+    _pendingCache = null;
+    _pendingCacheYear = null;
     loadCache();
     loadFiscalYearData();
+    updatePendingBanner();
 }
 
 // ============ キャッシュ ============
@@ -677,10 +805,47 @@ async function loadFiscalYearData() {
                 };
             });
         });
+        // pending（保存未確認）セルとサーバ取得値を突合
+        // → サーバに反映済なら pending 解除
+        // → 未反映なら楽観値を newRecords / users.planStart に上書きして残す（消えない保護）
+        const pmap = getPendingMap();
+        let pendingChanged = false;
+        Object.keys(pmap).forEach(k => {
+            const p = pmap[k];
+            if (p.field === '__planStart') {
+                const u = state.users.find(x => x.userId === p.userId);
+                if (!u) return;
+                if ((u.planStart || '') === p.value) {
+                    delete pmap[k];
+                    pendingChanged = true;
+                } else {
+                    u.planStart = p.value;
+                }
+                return;
+            }
+            const recKey = p.userId + '_' + p.year + '_' + p.month;
+            const serverRec = newRecords[recKey];
+            const serverVal = (serverRec && serverRec[p.field]) || '';
+            if (serverVal === p.value) {
+                delete pmap[k];
+                pendingChanged = true;
+            } else {
+                if (!newRecords[recKey]) {
+                    newRecords[recKey] = {
+                        kyoumi_date: '', seikatsu_date: '', keikaku_date: '',
+                        blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: ''
+                    };
+                }
+                newRecords[recKey][p.field] = p.value;
+            }
+        });
+        if (pendingChanged) setPendingMap(pmap);
+
         state.records = newRecords;
         saveCache();
         hideOffline();
         renderTable();
+        updatePendingBanner();
     } catch (e) {
         console.error('loadFiscalYearData error:', e);
         showOffline();
@@ -789,6 +954,8 @@ function renderTable() {
                     else if (hyoukaBlocked) cls += ' blocked-mitei';
                     else if (isPast) cls += ' highlight-undone';
                     if (isCurrent) cls += ' current';
+                    if (isPending(u.userId, cellYear, mo.m, 'hyouka_pdf_date')
+                        || isPending(u.userId, cellYear, mo.m, 'hyouka_print_date')) cls += ' pending';
 
                     let display = '';
                     if (pdfDone && printDone) display = '📄🖨' + formatMD(printDate || pdfDate);
@@ -821,6 +988,8 @@ function renderTable() {
                 else if (val) cls += ' checked';
                 else if (isPast) cls += ' highlight-undone';
                 if (isCurrent) cls += ' current';
+                if (isPending(u.userId, cellYear, mo.m, sub.field)
+                    || isPending(u.userId, cellYear, mo.m, 'blocked_reason')) cls += ' pending';
                 const display = val ? formatMD(val) : '';
                 html += '<td class="' + cls + '"'
                       + ' data-userid="' + escapeAttr(u.userId) + '"'
@@ -993,6 +1162,7 @@ async function applyBlockedReason(userId, name, year, month, reason) {
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
+        unmarkPending(userId, year, month, 'blocked_reason');
         if (reason) {
             const tb = json.taskBoard;
             if (tb && tb.added) {
@@ -1008,9 +1178,12 @@ async function applyBlockedReason(userId, name, year, month, reason) {
         hideOffline();
     } catch (e) {
         console.error('updateKeikakusho (blocked_reason) error:', e);
-        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        markPending(userId, year, month, 'blocked_reason', reason);
+        showToast('⚠ ' + name + ' ' + month + '月 保留設定 保存失敗（再送信待ち）', 'error');
         showOffline();
     }
+    updatePendingBanner();
+    renderTable();
 }
 
 function closeDateDialog() {
@@ -1091,6 +1264,7 @@ async function applyHyoukaValue(userId, name, year, month, field, fieldLabel, va
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
+        unmarkPending(userId, year, month, field);
         showToast(value
             ? '✅ ' + name + ' ' + month + '月 ' + fieldLabel + '=' + formatMD(value)
             : '🗑 ' + name + ' ' + month + '月 ' + fieldLabel + ' クリア',
@@ -1098,9 +1272,12 @@ async function applyHyoukaValue(userId, name, year, month, field, fieldLabel, va
         hideOffline();
     } catch (e) {
         console.error('updateKeikakusho (hyouka) error:', e);
-        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        markPending(userId, year, month, field, value);
+        showToast('⚠ ' + name + ' ' + month + '月 ' + fieldLabel + ' 保存失敗（再送信待ち）', 'error');
         showOffline();
     }
+    updatePendingBanner();
+    renderTable();
 }
 
 async function saveDateFromDialog() {
@@ -1122,7 +1299,8 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value) {
     const key = userId + '_' + year + '_' + month;
     const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
     rec[field] = value;
-    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason) {
+    if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason
+        && !rec.hyouka_pdf_date && !rec.hyouka_print_date) {
         delete state.records[key];
     } else {
         state.records[key] = rec;
@@ -1141,6 +1319,7 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value) {
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
+        unmarkPending(userId, year, month, field);
         showToast(value
             ? '✅ ' + name + ' ' + month + '月 ' + fieldLabel + '=' + formatMD(value)
             : '🗑 ' + name + ' ' + month + '月 ' + fieldLabel + ' クリア',
@@ -1148,9 +1327,12 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value) {
         hideOffline();
     } catch (e) {
         console.error('updateKeikakusho error:', e);
-        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        markPending(userId, year, month, field, value);
+        showToast('⚠ ' + name + ' ' + month + '月 ' + fieldLabel + ' 保存失敗（再送信待ち）', 'error');
         showOffline();
     }
+    updatePendingBanner();
+    renderTable();
 }
 
 // ============ 計画書開始月編集ダイアログ ============
@@ -1200,14 +1382,18 @@ async function applyPlanStart(userId, name, value) {
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
+        unmarkPending(userId, 0, 0, '__planStart');
         showToast(value ? '✅ ' + name + ' 計画書開始月 → ' + value : '🗑 ' + name + ' 計画書開始月 クリア',
                   value ? '' : 'warn');
         hideOffline();
     } catch (e) {
         console.error('updatePlanStart error:', e);
-        showToast('⚠ 保存失敗。ネット接続を確認してください', 'error');
+        markPending(userId, 0, 0, '__planStart', value);
+        showToast('⚠ ' + name + ' 計画書開始月 保存失敗（再送信待ち）', 'error');
         showOffline();
     }
+    updatePendingBanner();
+    renderTable();
 }
 
 // ============ 起動 ============
@@ -1255,6 +1441,7 @@ window.addEventListener('load', async () => {
     setOperator(getOperator());  // 起動時に状態を同期
     populateFiscalYearSelect();
     loadCache();
+    updatePendingBanner();
     if (!getOperator()) openOperatorDialog();  // 未選択なら強制モーダル
     await loadFiscalYearData();
 });
