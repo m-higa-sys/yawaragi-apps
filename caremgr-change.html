@@ -638,6 +638,50 @@ input, select, textarea { font-family: inherit; }
     .card-name { font-size: 21px; }
     .hero h1 { font-size: 1.8rem; }
 }
+
+/* 適用開始月セクション（予約反映機能 2026-05-29） */
+.apply-month-section {
+    border-top: 1px solid #eee;
+    padding-top: 12px;
+    margin-top: 12px;
+    margin-bottom: 10px;
+}
+.apply-month-section .radio-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.apply-month-section .radio-row select {
+    padding: 6px 10px;
+    border: 2px solid var(--navy-0);
+    border-radius: 5px;
+    background: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.apply-month-section .radio-row select:disabled {
+    background: #f3f4f6;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+.apply-month-section .hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 6px 0 0;
+}
+
+/* イベントカード予約中バッジ（予約反映機能 2026-05-29） */
+.evt-yoyaku-badge {
+    display: inline-block;
+    background: #fbbf24;
+    color: #78350f;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-left: 8px;
+}
 </style>
 </head>
 <body>
@@ -739,6 +783,17 @@ input, select, textarea { font-family: inherit; }
             変更日 <span class="req">*</span>
             <input type="date" id="cm-change-date">
         </label>
+
+        <!-- 適用開始月（予約反映機能 2026-05-29） -->
+        <div class="form-row apply-month-section">
+            <label style="font-weight:700; display:block; margin-bottom:6px;">適用開始月 <span class="req">*</span></label>
+            <div class="radio-row">
+                <label style="display:inline-flex; align-items:center; gap:4px; font-weight:normal;"><input type="radio" name="cm-apply-mode" value="immediate" checked> 即時</label>
+                <label style="display:inline-flex; align-items:center; gap:4px; font-weight:normal;"><input type="radio" name="cm-apply-mode" value="future"> 月を指定</label>
+                <select id="cm-apply-month" disabled></select>
+            </div>
+            <p class="hint">※ 変更日=イベント記録用 / 適用開始月=台帳に新事業所が反映されるタイミング</p>
+        </div>
 
         <label>
             入力者 <span class="req">*</span>
@@ -933,6 +988,21 @@ function evtRenderList(events) {
     if (chip) chip.textContent = events.length + '件';
 }
 
+// 予約中バッジ生成（予約反映機能 2026-05-29）
+// metadata.適用開始月 が「YYYY-MM」かつ未来月の場合にバッジHTMLを返す
+function makeYoyakuBadge(metadata) {
+    if (!metadata || !metadata['適用開始月'] || metadata['適用開始月'] === '即時') return '';
+    const ym = String(metadata['適用開始月']);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return '';
+    const today = new Date();
+    const todayYm = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+    if (ym <= todayYm) return ''; // 既に過ぎた予約はバッジ不要
+    const ymLabel = ym.replace(/(\d{4})-(\d{2})/, function(_, y, m) {
+        return y + '年' + parseInt(m, 10) + '月';
+    });
+    return '<span class="evt-yoyaku-badge">🟡 ' + ymLabel + 'から適用</span>';
+}
+
 function evtBuildCard(evt) {
     const card = document.createElement('article');
     const isDone = evt.status === 'completed';
@@ -947,6 +1017,7 @@ function evtBuildCard(evt) {
     const pctLabel = isDone ? '100% ✓' : (pct + '%');
 
     const meta = evt.metadata || {};
+    const yoyakuBadge = makeYoyakuBadge(meta);
     const metaParts = [];
     if (evt.eventType === 'caremanager_change') {
         if (evt.eventDate) metaParts.push('変更日: ' + escapeHtml(evt.eventDate));
@@ -971,7 +1042,7 @@ function evtBuildCard(evt) {
             '<span class="type-chip">' + escapeHtml(typeLabel) + '</span>' +
             '<span class="status-pill"><span class="d"></span>' + statusLabel + '</span>' +
         '</div>' +
-        '<div class="card-name">' + escapeHtml(evt.userName) + ' 様</div>' +
+        '<div class="card-name">' + escapeHtml(evt.userName) + ' 様' + yoyakuBadge + '</div>' +
         metaLine +
         '<div class="progress-block">' +
             '<div class="progress-top">' +
@@ -1313,6 +1384,13 @@ function evtOpenCmChangeModal() {
     } catch(e) {}
     _cmSelectedUser = null;
 
+    // 適用開始月セクション初期化（予約反映機能 2026-05-29）
+    const _immRadio = document.querySelector('input[name="cm-apply-mode"][value="immediate"]');
+    if (_immRadio) _immRadio.checked = true;
+    const _ymSel = document.getElementById('cm-apply-month');
+    if (_ymSel) _ymSel.disabled = true;
+    populateCmApplyMonthSelect();
+
     // 利用者一覧 + ケアマネ連絡先を非同期取得（キャッシュなければ）
     Promise.all([_cmFetchUserList(), _cmFetchContacts()]).then(() => {
         _cmPopulateOfficeSelect();
@@ -1324,6 +1402,32 @@ function evtOpenCmChangeModal() {
 function evtCloseCmChangeModal() {
     document.getElementById('cm-change-modal').classList.remove('show');
 }
+
+// ----- 適用開始月セレクト生成（予約反映機能 2026-05-29） -----
+function populateCmApplyMonthSelect() {
+    const sel = document.getElementById('cm-apply-month');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const now = new Date();
+    for (let i = 0; i <= 11; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        const label = d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+        const opt = document.createElement('option');
+        opt.value = ym;
+        opt.textContent = label;
+        if (i === 1) opt.selected = true; // デフォルトは来月
+        sel.appendChild(opt);
+    }
+}
+
+// 適用開始月ラジオ連動（予約反映機能 2026-05-29）
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.name === 'cm-apply-mode') {
+        const sel = document.getElementById('cm-apply-month');
+        if (sel) sel.disabled = (e.target.value !== 'future');
+    }
+});
 
 // ----- JSONPで利用者一覧を取得 -----
 function _cmFetchUserList() {
@@ -1717,6 +1821,16 @@ async function evtSubmitCmChange() {
     if (!createdBy)  { alert('入力者を入れてください'); return; }
     try { localStorage.setItem('yawaragi_staff', createdBy); } catch(e) {}
 
+    // 適用開始月（予約反映機能 2026-05-29）
+    const _applyModeRadio = document.querySelector('input[name="cm-apply-mode"]:checked');
+    const _applyMode = _applyModeRadio ? _applyModeRadio.value : 'immediate';
+    const applyMonth = _applyMode === 'future'
+        ? document.getElementById('cm-apply-month').value
+        : 'immediate';
+    if (_applyMode === 'future' && !/^\d{4}-\d{2}$/.test(applyMonth)) {
+        alert('適用開始月を選んでください'); return;
+    }
+
     // 同じケアマネへの変更警告
     if (newOffice === _cmSelectedUser.currentCmOffice && newStaff === _cmSelectedUser.currentCmStaff) {
         if (!confirm('現ケアマネと新ケアマネが同じです。本当に登録しますか？')) return;
@@ -1734,16 +1848,17 @@ async function evtSubmitCmChange() {
             await gasPost({ action: 'addContact', office: newOffice, staff: newStaff }, 'ケアマネ連絡先追加');
         }
 
-        // 2. 利用者台帳のケアマネを「変更後」に更新
+        // 2. 利用者台帳のケアマネを「変更後」に更新（applyMonth で予約/即時切り替え）
         await gasPost({
             action: 'update_user_caremanager',
             userName: userName,
             cmOffice: newOffice,
             cmStaff: newStaff,
-            updatedBy: createdBy
+            updatedBy: createdBy,
+            applyMonth: applyMonth
         }, '利用者台帳ケアマネ更新');
 
-        // 3. ケアマネ変更イベント登録
+        // 3. ケアマネ変更イベント登録（metadata に適用開始月を記録）
         await gasPost({
             action: 'add_user_event',
             eventType: 'caremanager_change',
@@ -1753,7 +1868,8 @@ async function evtSubmitCmChange() {
                 旧ケアマネ事業所: _cmSelectedUser.currentCmOffice || '（未登録）',
                 旧ケアマネ担当者: _cmSelectedUser.currentCmStaff || '（未登録）',
                 新ケアマネ事業所: newOffice,
-                新ケアマネ担当者: newStaff
+                新ケアマネ担当者: newStaff,
+                適用開始月: applyMonth === 'immediate' ? '即時' : applyMonth
             },
             createdBy: createdBy
         }, 'ケアマネ変更イベント登録');
