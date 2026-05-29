@@ -1510,6 +1510,35 @@
             padding: 10px 18px; font-size: 0.78rem; color: #718096;
             border-top: 1px solid #f1f5f9; text-align: center;
         }
+        /* 介護度・事業所予約反映機能（2026-05-29 Task 11-13） */
+        .apply-month-section select:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        .yoyaku-section h3 { color: #b45309; }
+        .yoyaku-card {
+            display: flex; gap: 0;
+            border: 1px solid #fbbf24;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            overflow: hidden;
+            background: #fffbeb;
+        }
+        .yoyaku-card-stripe { width: 8px; background: #fbbf24; flex-shrink: 0; }
+        .yoyaku-card-body { flex: 1; padding: 10px 14px; }
+        .yoyaku-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; flex-wrap: wrap; }
+        .yoyaku-card-name { font-weight: 700; font-size: 0.95rem; }
+        .yoyaku-card-badge {
+            background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 4px;
+            font-size: 0.75rem; font-weight: 700;
+        }
+        .yoyaku-card-body .change-line { font-size: 0.85rem; color: #1f2937; margin: 4px 0; }
+        .yoyaku-card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+        .yoyaku-card-actions button {
+            font-size: 0.78rem; padding: 4px 10px; border-radius: 4px;
+            border: 1px solid #d1d5db; background: #fff; cursor: pointer;
+        }
+        .yoyaku-card-actions .btn-cancel { color: #b91c1c; border-color: #fca5a5; }
+        .yoyaku-card-actions .btn-apply-now { color: #047857; border-color: #6ee7b7; }
+        .yoyaku-section-hint { font-size: 0.78rem; color: #718096; margin: 4px 0 12px; }
+        .yoyaku-empty-state { font-size: 0.85rem; color: #a0aec0; padding: 12px; text-align: center; }
     </style>
 </head>
 <body>
@@ -2062,6 +2091,14 @@
 
 <!-- ===== 区変管理タブ（2026-04-25 データ管理から独立昇格）===== -->
 <div id="tab-kubun" class="tab-content">
+    <!-- 🟡 予約中（適用待ち）セクション（2026-05-29 介護度予約反映機能 Task 12） -->
+    <div class="data-section yoyaku-section">
+        <h3>🟡 予約中（適用待ち）</h3>
+        <p class="yoyaku-section-hint">適用月の1日になると、利用者台帳に自動反映されます。</p>
+        <div id="kubun-scheduled-list">
+            <p class="yoyaku-empty-state">読み込み中...</p>
+        </div>
+    </div>
     <div class="data-section">
         <h3>🔴 区変・更新フォロー一覧</h3>
         <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;"><strong>区分変更申請</strong>の結果待ち／<strong>更新で介護度が変わった人</strong>の保険証・月遅れ請求対応をまとめて管理します。実績確定・LIFE提出時は自動で除外確認されます。区変日が不明なときはケアマネに必ず確認すること。</p>
@@ -2359,6 +2396,18 @@
                 <label style="display:block; font-weight:600; margin-bottom:4px;">🔴 月遅れ請求対象月</label>
                 <p style="font-size:0.8rem; color:#718096; margin:0 0 8px;">新介護度で再請求が必要な月をチェック（不要なら全部外す）</p>
                 <div id="kubun-clear-okure-months" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            </div>
+            <!-- 適用開始月セクション（2026-05-29 介護度予約反映機能） -->
+            <div class="apply-month-section" style="margin-bottom:16px; padding:12px; border-top:1px solid #e2e8f0; padding-top:12px;">
+                <label style="display:block; font-weight:600; margin-bottom:6px;">適用開始月</label>
+                <div class="radio-row" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" name="kubun-apply-mode" value="immediate" checked> 即時（当月から）</label>
+                    <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" name="kubun-apply-mode" value="future"> 月を指定</label>
+                    <select id="kubun-apply-month" disabled style="padding:6px 10px; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.9rem;">
+                        <!-- JS で動的生成 -->
+                    </select>
+                </div>
+                <p class="hint" style="font-size:0.75rem; color:#718096; margin:6px 0 0;">※ 即時=当月から新介護度を反映 / 月指定=その月1日から反映（それまで台帳は旧介護度のまま）</p>
             </div>
             <div style="display:flex; gap:8px; justify-content:flex-end;">
                 <button class="data-btn" onclick="closeModal('kubun-clear-modal')">キャンセル</button>
@@ -10918,6 +10967,128 @@ function loadKubunHenkouList() {
     document.body.appendChild(script);
     loadKubunDelayList();
     loadKubunHistoryList();
+    loadKubunScheduledList();
+}
+
+// 🟡 予約中（適用待ち）一覧をGAS listScheduled APIから取得して描画
+// 2026-05-29 介護度・事業所予約反映機能 Task 12
+function loadKubunScheduledList() {
+    const container = document.getElementById('kubun-scheduled-list');
+    if (!container) return;
+    const cbName = 'kubunScheduledCb_' + Date.now();
+    window[cbName] = function(data) {
+        try {
+            if (!data || !data.items || data.items.length === 0) {
+                container.innerHTML = '<p class="yoyaku-empty-state">予約中の利用者はいません</p>';
+                return;
+            }
+            container.innerHTML = data.items.map(function(item) {
+                const ymRaw = String(item.applyMonth || '');
+                const ymLabel = ymRaw.replace(/(\d{4})-(\d{2})/, function(_, y, m) {
+                    return y + '年' + parseInt(m, 10) + '月';
+                });
+                const changeLine = item.kind === '介護度'
+                    ? '介護度: ' + escapeHtml(item.oldValue || '(未登録)') + ' → ' + escapeHtml(item.newValue || '')
+                    : '事業所: ' + escapeHtml(item.oldValue || '(未登録)') + ' → ' + escapeHtml(item.newValue || '');
+                const nameEsc = escapeHtml(item.name || '');
+                const nameJs = escapeJsString(item.name || '');
+                const kindJs = escapeJsString(item.kind || '');
+                const ymJs = escapeJsString(ymLabel);
+                return '<div class="yoyaku-card" data-name="' + nameEsc + '" data-kind="' + escapeHtml(item.kind || '') + '">' +
+                    '<div class="yoyaku-card-stripe"></div>' +
+                    '<div class="yoyaku-card-body">' +
+                        '<div class="yoyaku-card-header">' +
+                            '<span class="yoyaku-card-name">' + nameEsc + '様（' + escapeHtml(item.kind || '') + '）</span>' +
+                            '<span class="yoyaku-card-badge">🟡 ' + escapeHtml(ymLabel) + 'から適用</span>' +
+                        '</div>' +
+                        '<div class="change-line">' + changeLine + '</div>' +
+                        '<div class="yoyaku-card-actions">' +
+                            '<button class="btn-cancel" onclick="cancelScheduled(\'' + nameJs + '\', \'' + kindJs + '\', \'' + ymJs + '\')">予約をキャンセル</button>' +
+                            '<button class="btn-apply-now" onclick="applyScheduledNow(\'' + nameJs + '\', \'' + kindJs + '\', \'' + ymJs + '\')">今すぐ適用</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        } catch (err) {
+            container.innerHTML = '<p class="yoyaku-empty-state" style="color:#b91c1c">描画エラー: ' + escapeHtml(err.message) + '</p>';
+        } finally {
+            delete window[cbName];
+            const s = document.getElementById('kubun-scheduled-jsonp-' + cbName);
+            if (s) s.remove();
+        }
+    };
+    const script = document.createElement('script');
+    script.id = 'kubun-scheduled-jsonp-' + cbName;
+    script.src = ABS_BOARD_API_URL + '?action=listScheduled&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() {
+        container.innerHTML = '<p class="yoyaku-empty-state" style="color:#b91c1c">予約中一覧の取得に失敗しました</p>';
+        delete window[cbName];
+        const s = document.getElementById('kubun-scheduled-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    document.body.appendChild(script);
+}
+
+// 予約キャンセル（2026-05-29 介護度予約反映機能 Task 13）
+function cancelScheduled(name, kind, ymLabel) {
+    if (!confirm(name + '様の' + kind + '予約（' + ymLabel + '適用予定）をキャンセルしますか？')) return;
+    const action = (kind === '介護度') ? 'kubunCancelScheduled' : 'cmCancelScheduled';
+    const cbName = 'cancelSchedCb_' + Date.now();
+    window[cbName] = function(res) {
+        if (res && res.ok) {
+            if (typeof showToast === 'function') showToast('🗑 予約をキャンセルしました');
+            loadKubunScheduledList();
+        } else {
+            alert('エラー: ' + (res && res.error ? res.error : '不明'));
+        }
+        delete window[cbName];
+        const s = document.getElementById('cancel-sched-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 'cancel-sched-jsonp-' + cbName;
+    script.src = ABS_BOARD_API_URL + '?action=' + action + '&callback=' + cbName + '&name=' + encodeURIComponent(name) + '&t=' + Date.now();
+    script.onerror = function() {
+        alert('通信エラーが発生しました');
+        delete window[cbName];
+        const s = document.getElementById('cancel-sched-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    document.body.appendChild(script);
+}
+
+// 今すぐ適用（2026-05-29 介護度予約反映機能 Task 13）
+function applyScheduledNow(name, kind, ymLabel) {
+    if (!confirm(name + '様の' + kind + '予約（' + ymLabel + '適用予定）を、今すぐ利用者台帳に反映しますか？')) return;
+    const cbName = 'applyNowCb_' + Date.now();
+    window[cbName] = function(res) {
+        if (res && res.ok) {
+            if (typeof showToast === 'function') showToast('✅ ' + name + '様の予約を反映しました');
+            loadKubunScheduledList();
+            // 介護度の場合は履歴一覧も再ロード
+            if (kind === '介護度' && typeof loadKubunHistoryList === 'function') {
+                loadKubunHistoryList();
+            }
+        } else {
+            alert('エラー: ' + (res && res.error ? res.error : '不明'));
+        }
+        delete window[cbName];
+        const s = document.getElementById('apply-now-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 'apply-now-jsonp-' + cbName;
+    script.src = ABS_BOARD_API_URL + '?action=applyScheduledNow&callback=' + cbName
+        + '&name=' + encodeURIComponent(name)
+        + '&kind=' + encodeURIComponent(kind)
+        + '&t=' + Date.now();
+    script.onerror = function() {
+        alert('通信エラーが発生しました');
+        delete window[cbName];
+        const s = document.getElementById('apply-now-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    document.body.appendChild(script);
 }
 
 // 区変フォロー: スタッフ識別（既存 getStaff() 流用、毎回プルダウン選択、前回値はデフォルト）
@@ -12421,8 +12592,42 @@ function openKubunClearModal(name) {
         }
     }
 
+    // 適用開始月セレクトを動的生成（当月〜11ヶ月先まで、デフォルト=来月）
+    populateKubunApplyMonthSelect();
+    // ラジオを「即時」に初期化
+    const immediateRadio = document.querySelector('input[name="kubun-apply-mode"][value="immediate"]');
+    if (immediateRadio) immediateRadio.checked = true;
+    const applyMonthSel = document.getElementById('kubun-apply-month');
+    if (applyMonthSel) applyMonthSel.disabled = true;
+
     openModal('kubun-clear-modal');
 }
+
+// 介護度予約反映機能: 適用月セレクトを動的生成（2026-05-29 Task 11）
+function populateKubunApplyMonthSelect() {
+    const sel = document.getElementById('kubun-apply-month');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const now = new Date();
+    for (let i = 0; i <= 11; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        const label = d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+        const opt = document.createElement('option');
+        opt.value = ym;
+        opt.textContent = label;
+        if (i === 1) opt.selected = true; // デフォルトは来月
+        sel.appendChild(opt);
+    }
+}
+
+// 適用開始月ラジオ変更でセレクトの有効/無効を切替
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.name === 'kubun-apply-mode') {
+        const sel = document.getElementById('kubun-apply-month');
+        if (sel) sel.disabled = (e.target.value !== 'future');
+    }
+});
 
 function submitKubunClear() {
     const name = document.getElementById('kubun-clear-name').value;
@@ -12435,16 +12640,29 @@ function submitKubunClear() {
         .map(function(cb) { return cb.value; })
         .join(',');
 
+    // 適用開始月（即時 or YYYY-MM）
+    const applyModeEl = document.querySelector('input[name="kubun-apply-mode"]:checked');
+    const applyMode = applyModeEl ? applyModeEl.value : 'immediate';
+    const applyMonth = applyMode === 'future'
+        ? (document.getElementById('kubun-apply-month').value || 'immediate')
+        : 'immediate';
+
     const cbName = 'kubunClearCb_' + Date.now();
     window[cbName] = function(data) {
         if (data && data.error) {
             alert('エラー: ' + data.error);
         } else if (data && data.ok) {
-            let msg = '✅ 区変結果を登録しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
-            if (data.okureMonths) msg += '\n月遅れ対象: ' + data.okureMonths;
+            let msg;
+            if (data.mode === 'reserve') {
+                msg = '🟡 ' + data.applyMonth + ' から適用予約しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
+            } else {
+                msg = '✅ 区変結果を登録しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
+                if (data.okureMonths) msg += '\n月遅れ対象: ' + data.okureMonths;
+            }
             if (typeof showToast === 'function') showToast(msg);
             closeModal('kubun-clear-modal');
             loadKubunHenkouList();
+            if (typeof loadKubunScheduledList === 'function') loadKubunScheduledList();
         }
         delete window[cbName];
         const s = document.getElementById('kubun-clear-jsonp-' + cbName);
@@ -12457,6 +12675,7 @@ function submitKubunClear() {
     url += '&newCare=' + encodeURIComponent(newCare);
     url += '&resultDate=' + encodeURIComponent(resultDate);
     if (okureMonths) url += '&okureMonths=' + encodeURIComponent(okureMonths);
+    url += '&applyMonth=' + encodeURIComponent(applyMonth);
     script.src = url;
     script.onerror = function() {
         alert('通信エラーが発生しました');
