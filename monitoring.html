@@ -185,6 +185,14 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     color: #ff6f00;
 }
 
+/* ===== ケアマネ送付セル（📧PDF / 🖨印刷 / 両方 / 最終評価月）===== */
+.check-cell.send-cell { min-width: 70px; }
+.check-cell.has-pdf, .check-cell.has-print { background: #e8f5e9; color: #2E7D32; }
+.check-cell.all-done { background: #2E7D32; color: #fff; }
+.check-cell.final-eval { box-shadow: inset 0 0 0 2px #f9a825; }
+.check-cell.final-eval.current { box-shadow: inset 0 0 0 3px #1976d2, inset 0 0 0 5px #f9a825; }
+.check-cell.final-eval.highlight-undone { box-shadow: inset 0 0 0 2px #f9a825, inset 0 0 0 4px #f44336; }
+
 #pendingBanner {
     background: #fff3e0; color: #e65100; padding: 10px 20px;
     border-left: 4px solid #ff6f00; font-size: 14px;
@@ -426,14 +434,15 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 </div>
 
 <div class="tab-bar">
-    <button class="tab-btn active" data-tab="monitoring">📋 モニタリング <small>(要支援のみ)</small></button>
+    <button class="tab-btn active" data-tab="monitoring">📋 モニタリング <small>(ケアマネ送付管理・要支援のみ)</small></button>
     <button class="tab-btn" data-tab="plans">📝 計画書 <small>(全員)</small></button>
 </div>
 
 <div class="tab-panel active" id="panel-monitoring">
 <div class="notice">
-    📋 <strong>モニタリングルール</strong>：要支援1・要支援2・事業対象者を毎月モニタリング。①記録作成日と②ケアマネ送付用PDF保存日の2項目を月次でチェック。<br>
-    未入力セルをタップ＝今日の日付が入る／入力済セルをタップ＝日付編集ダイアログ（変更/取消）。
+    📋 <strong>ケアマネ送付管理</strong>：要支援1・要支援2・事業対象者を毎月モニタリングし、ケアマネに送付（📧PDFメール or 🖨印刷物 持参）。<br>
+    月セルをタップ→ダイアログで 📧PDF送付日 / 🖨印刷送付日 を記録（両方可）。利用者名タップで担当ケアマネ・計画期間（最終評価月）を編集。<br>
+    ✍マーク＝最終評価月（利用者サイン要）。
 </div>
 
 <div id="offlineBanner" style="display:none;">⚠ オフライン中（キャッシュ表示）。ネット復帰後、最新を取得してください。</div>
@@ -448,10 +457,11 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
         </div>
     </div>
     <div class="legend">
-        <div class="legend-item"><div class="legend-color" style="background:#c8e6c9;"></div> 両方済</div>
-        <div class="legend-item"><div class="legend-color" style="background:#e8f5e9;"></div> 入力済</div>
-        <div class="legend-item"><div class="legend-color" style="background:#ffebee;border:2px solid #f44336;"></div> 過去未入力</div>
+        <div class="legend-item"><div class="legend-color" style="background:#2E7D32;"></div> 📧🖨両方済</div>
+        <div class="legend-item"><div class="legend-color" style="background:#e8f5e9;"></div> PDF/印刷どちらか済</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffebee;border:2px solid #f44336;"></div> 過去未送付⚠</div>
         <div class="legend-item"><div class="legend-color" style="border:3px solid #1976d2;"></div> 当月</div>
+        <div class="legend-item"><div class="legend-color" style="border:3px solid #f9a825;"></div> 最終評価月✍</div>
     </div>
 </div>
 
@@ -473,6 +483,20 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
         <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
         <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
         <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    </div>
+    <span class="filter-label" style="margin-left:8px;">行:</span>
+    <div class="filter-group" id="rowFilters">
+        <button class="filter-btn active" onclick="setRowFilter('')">全て</button>
+        <button class="filter-btn" onclick="setRowFilter('ア')">あ</button>
+        <button class="filter-btn" onclick="setRowFilter('カ')">か</button>
+        <button class="filter-btn" onclick="setRowFilter('サ')">さ</button>
+        <button class="filter-btn" onclick="setRowFilter('タ')">た</button>
+        <button class="filter-btn" onclick="setRowFilter('ナ')">な</button>
+        <button class="filter-btn" onclick="setRowFilter('ハ')">は</button>
+        <button class="filter-btn" onclick="setRowFilter('マ')">ま</button>
+        <button class="filter-btn" onclick="setRowFilter('ヤ')">や</button>
+        <button class="filter-btn" onclick="setRowFilter('ラ')">ら</button>
+        <button class="filter-btn" onclick="setRowFilter('ワ')">わ</button>
     </div>
     <span class="filter-count" id="filterCount"></span>
 </div>
@@ -522,17 +546,61 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     </div>
 </div>
 
-<!-- 日付編集ダイアログ -->
-<div class="modal-overlay" id="dateDialog">
+<!-- 送付編集ダイアログ（📧PDF / 🖨印刷 の2フィールド独立）-->
+<div class="modal-overlay" id="sendDialog">
     <div class="date-dialog">
-        <h3 id="dateDialogTitle">日付編集</h3>
-        <div class="sub" id="dateDialogSub"></div>
-        <input type="date" id="dateInput">
-        <div class="btn-row">
-            <button class="btn btn-red" onclick="clearCheckDate()">取消</button>
-            <button class="btn" style="background:#4CAF50;color:white;" onclick="saveDateFromDialog()">OK</button>
+        <h3 id="sendDialogTitle">送付編集</h3>
+        <div class="sub" id="sendDialogSub"></div>
+        <div id="sendDialogFinalEvalBadge" style="display:none; background:#fef3c7; color:#78350f; padding:6px 10px; border-radius:6px; font-weight:bold; margin-bottom:10px;">✍ サイン要（最終評価月）</div>
+
+        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">📧 PDF送付</div>
+            <input type="date" id="sendPdfInput" style="width:100%;">
+            <div class="btn-row" style="margin-top:6px;">
+                <button class="btn btn-red" onclick="clearSendField('pdfSendDate')">クリア</button>
+                <button class="btn" style="background:#4CAF50;color:white;" onclick="saveSendField('pdfSendDate')">PDF保存</button>
+            </div>
         </div>
-        <button class="btn" style="background:#eee;color:#666;width:100%;margin-top:10px;" onclick="closeDateDialog()">キャンセル</button>
+
+        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">🖨 印刷送付</div>
+            <input type="date" id="sendPrintInput" style="width:100%;">
+            <div class="btn-row" style="margin-top:6px;">
+                <button class="btn btn-red" onclick="clearSendField('printSendDate')">クリア</button>
+                <button class="btn" style="background:#4CAF50;color:white;" onclick="saveSendField('printSendDate')">印刷保存</button>
+            </div>
+        </div>
+
+        <button class="btn" style="background:#eee;color:#666;width:100%;margin-top:10px;" onclick="closeSendDialog()">閉じる</button>
+    </div>
+</div>
+
+<!-- 利用者情報モーダル（名前タップ：ケアマネ情報＋計画期間編集）-->
+<div class="modal-overlay" id="userInfoDialog">
+    <div class="date-dialog">
+        <h3 id="userInfoTitle">利用者情報</h3>
+        <div style="font-size:14px; line-height:1.8;">
+            <div><strong>ふりがな:</strong> <span id="userInfoFurigana"></span></div>
+            <div><strong>介護度:</strong> <span id="userInfoCategory"></span></div>
+            <div><strong>曜日:</strong> <span id="userInfoDays"></span> <span id="userInfoAmpm"></span></div>
+            <hr style="margin:10px 0;">
+            <div><strong>ケアマネ事業所:</strong> <span id="userInfoOffice"></span></div>
+            <div><strong>担当ケアマネ:</strong> <span id="userInfoCmName"></span></div>
+            <hr style="margin:10px 0;">
+            <div style="font-weight:bold; margin-bottom:6px;">📅 計画期間設定</div>
+            <label style="display:block; margin:6px 0;">
+                計画開始月: <input type="month" id="userInfoPlanStart" style="font-size:14px;">
+            </label>
+            <label style="display:block; margin:6px 0;">
+                最終評価月: <input type="month" id="userInfoFinalEval" style="font-size:14px;">
+                <small style="color:#666;">(空なら開始月+11ヶ月で自動)</small>
+            </label>
+        </div>
+        <div class="btn-row" style="margin-top:10px;">
+            <button class="btn btn-red" onclick="clearUserConfig()">クリア</button>
+            <button class="btn" style="background:#4CAF50;color:white;" onclick="saveUserConfig()">OK</button>
+        </div>
+        <button class="btn" style="background:#eee;color:#666;width:100%;margin-top:10px;" onclick="closeUserInfoDialog()">キャンセル</button>
     </div>
 </div>
 
@@ -554,22 +622,25 @@ const MONTHS = [
     { m: 2, label: '2月', nextYear: true },
     { m: 3, label: '3月', nextYear: true }
 ];
+// ケアマネ送付管理: 旧2列(記録/PDF)を1セル(送付)に統合。
+// セル内で pdfSendDate / printSendDate を束ねて表示・ダイアログで個別記録。
 const SUB_COLS = [
-    { field: 'recordDate', label: '記録' },
-    { field: 'pdfDate', label: 'PDF' }
+    { field: 'send', label: '送付' }
 ];
 
 // ============ 状態 ============
 let monitoringState = {
     fiscalYear: getCurrentFiscalYear(),
     users: [],            // [{ userId, name, category, furigana, days, ampm }]
-    records: {},          // key: "userId_year_month" → { recordDate, pdfDate }
+    records: {},          // key: "userId_year_month" → { recordDate, pdfDate, pdfSendDate, printSendDate, operator }
     isLoading: false,
 };
 let filterDay = '';
 let filterAmpm = '';
 let filterSearch = '';
-let dialogState = { userId: '', name: '', year: 0, month: 0, field: '', currentValue: '' };
+let filterRow = '';
+let sendDialogState = { userId: '', name: '', year: 0, month: 0 };
+let userInfoState = { userId: '' };
 
 // ============ ユーティリティ ============
 function getCurrentFiscalYear() {
@@ -711,6 +782,18 @@ function getGroup(kana) {
     return '他';
 }
 
+// 最終評価月の判定: override があればそれを優先、無ければ計画開始月+11ヶ月（=計画期間1年の最終月）
+function getFinalEvalMonth(planStart, override) {
+    if (override) return override;
+    if (!planStart) return null;
+    const m = String(planStart).match(/^(\d{4})-(\d{2})$/);
+    if (!m) return null;
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10);
+    const d = new Date(y, mo - 1 + 11, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
 function sortUsers() {
     monitoringState.users.sort((a, b) =>
         (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja')
@@ -752,6 +835,18 @@ function matchesSchedule(user, day, ampm) {
         if (p.indexOf(day) >= 0) return p.indexOf(ampm) >= 0;
     }
     return false;
+}
+
+// ============ 行（あいうえお）フィルター ============
+function setRowFilter(row) {
+    filterRow = row;
+    document.querySelectorAll('#rowFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    if (typeof event !== 'undefined' && event && event.target) event.target.classList.add('active');
+    renderTable();
+}
+function matchesRow(user) {
+    if (!filterRow) return true;
+    return getGroup(user.furigana) === filterRow;
 }
 
 // ============ 年度セレクタ ============
@@ -842,7 +937,10 @@ async function loadFiscalYearData() {
                 const key = rec.userId + '_' + rec.year + '_' + rec.month;
                 newRecords[key] = {
                     recordDate: rec.recordDate || '',
-                    pdfDate: rec.pdfDate || ''
+                    pdfDate: rec.pdfDate || '',
+                    pdfSendDate: rec.pdfSendDate || '',
+                    printSendDate: rec.printSendDate || '',
+                    operator: rec.operator || ''
                 };
             });
         });
@@ -860,7 +958,7 @@ async function loadFiscalYearData() {
                 delete pmap[k];
                 pendingChanged = true;
             } else {
-                if (!newRecords[recKey]) newRecords[recKey] = { recordDate: '', pdfDate: '' };
+                if (!newRecords[recKey]) newRecords[recKey] = { recordDate: '', pdfDate: '', pdfSendDate: '', printSendDate: '', operator: '' };
                 newRecords[recKey][p.field] = p.value;
             }
         });
@@ -922,7 +1020,7 @@ function renderTable() {
     // 並び替え＋フィルター
     sortUsers();
     const filteredUsers = monitoringState.users.filter(u =>
-        matchesSchedule(u, filterDay, filterAmpm) && matchesSearch(u)
+        matchesSchedule(u, filterDay, filterAmpm) && matchesSearch(u) && matchesRow(u)
     );
 
     // 検索ボックスは常に出す。曜日・午前午後ボタンは days データがあれば出す。
@@ -932,9 +1030,11 @@ function renderTable() {
     document.getElementById('dayFilters').style.display = hasScheduleData ? 'flex' : 'none';
     document.getElementById('ampmFilters').style.display = hasScheduleData ? 'flex' : 'none';
     // 「曜日:」「時間:」ラベルも一緒に隠す
-    document.querySelectorAll('.filter-bar .filter-label').forEach((el, i) => {
-        if (i === 0) return; // 「🔍 検索:」は残す
-        el.style.display = hasScheduleData ? 'inline' : 'none';
+    document.querySelectorAll('.filter-bar .filter-label').forEach(el => {
+        const t = el.textContent || '';
+        if (t.indexOf('曜日') >= 0 || t.indexOf('時間') >= 0) { // 「🔍 検索:」「行:」は常に残す
+            el.style.display = hasScheduleData ? 'inline' : 'none';
+        }
     });
     const fcEl = document.getElementById('filterCount');
     fcEl.textContent = (filterDay || filterAmpm)
@@ -963,43 +1063,54 @@ function renderTable() {
 
         html += '<tr class="' + rowClass + '">';
         html += '<td class="group-cell"></td>';
-        html += '<td class="name-cell">' + escapeHtml(u.name) + '<span class="care-badge ' + badgeCls + '">' + badgeText + '</span></td>';
+        html += '<td class="name-cell" style="cursor:pointer;" onclick="openUserInfoDialog(\'' + escapeAttr(u.userId) + '\')">' + escapeHtml(u.name) + '<span class="care-badge ' + badgeCls + '">' + badgeText + '</span></td>';
 
         MONTHS.forEach(mo => {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
-            const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
+            const rec = monitoringState.records[key] || {};
+            const pdfSend = rec.pdfSendDate || '';
+            const printSend = rec.printSendDate || '';
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
             const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
-            const bothDone = !!(rec.recordDate && rec.pdfDate);
             // 運用開始月より前は対象外
             const isBeforeStart = (cellYear < START_YEAR) || (cellYear === START_YEAR && mo.m < START_MONTH);
+            const ymKey = cellYear + '-' + String(mo.m).padStart(2, '0');
+            const isFinalEval = (ymKey === getFinalEvalMonth(u.planStart, u.finalEvalMonth));
 
-            SUB_COLS.forEach((sub, si) => {
-                const value = rec[sub.field] || '';
-                let cls = 'check-cell';
-                if (si === 0) cls += ' month-border';
-                if (isBeforeStart) {
-                    cls += ' disabled';
-                    html += '<td class="' + cls + '">-</td>';
-                    return;
-                }
-                if (bothDone) cls += ' both-done';
-                else if (value) cls += ' checked';
-                else if (isPast) cls += ' highlight-undone';
-                if (isCurrent) cls += ' current';
-                if (isPending(u.userId, cellYear, mo.m, sub.field)) cls += ' pending';
+            let cls = 'check-cell send-cell month-border';
+            if (isBeforeStart) {
+                html += '<td class="' + cls + ' disabled">―</td>';
+                return;
+            }
+            let text = '';
+            if (pdfSend && printSend) {
+                cls += ' all-done';
+                const later = pdfSend >= printSend ? pdfSend : printSend;
+                text = '📧🖨 ' + formatMD(later);
+            } else if (pdfSend) {
+                cls += ' has-pdf';
+                text = '📧 ' + formatMD(pdfSend);
+            } else if (printSend) {
+                cls += ' has-print';
+                text = '🖨 ' + formatMD(printSend);
+            } else if (isPast) {
+                cls += ' highlight-undone';
+                text = '⚠';
+            }
+            if (isFinalEval) {
+                cls += ' final-eval';
+                text = (!pdfSend && !printSend && !isPast) ? '✍' : ('✍' + text);
+            }
+            if (isCurrent) cls += ' current';
+            if (isPending(u.userId, cellYear, mo.m, 'pdfSendDate') || isPending(u.userId, cellYear, mo.m, 'printSendDate')) cls += ' pending';
 
-                const display = value ? formatMD(value) : '';
-                html += '<td class="' + cls + '"'
-                    + ' data-userid="' + escapeAttr(u.userId) + '"'
-                    + ' data-name="' + escapeAttr(u.name) + '"'
-                    + ' data-year="' + cellYear + '"'
-                    + ' data-month="' + mo.m + '"'
-                    + ' data-field="' + sub.field + '"'
-                    + ' data-fieldlabel="' + sub.label + '"'
-                    + ' onclick="onCellTap(this)">' + display + '</td>';
-            });
+            html += '<td class="' + cls + '"'
+                + ' data-userid="' + escapeAttr(u.userId) + '"'
+                + ' data-name="' + escapeAttr(u.name) + '"'
+                + ' data-year="' + cellYear + '"'
+                + ' data-month="' + mo.m + '"'
+                + ' onclick="onSendCellTap(this)">' + escapeHtml(text) + '</td>';
         });
         html += '</tr>';
         rowIndex++;
@@ -1028,7 +1139,7 @@ function updateStats() {
     monitoringState.users.forEach(u => {
         const key = u.userId + '_' + y + '_' + m;
         const r = monitoringState.records[key];
-        if (r && r.recordDate && r.pdfDate) done++;
+        if (r && (r.pdfSendDate || r.printSendDate)) done++;
     });
     document.getElementById('progressCount').textContent = done;
     document.getElementById('progressTotal').textContent = monitoringState.users.length;
@@ -1040,63 +1151,106 @@ function updatePrintTitle() {
         '通所介護計画モニタリング ' + fy + '年度（' + fy + '/4〜' + (fy + 1) + '/3）';
 }
 
-// ============ セルクリック処理（口腔チェック方式） ============
-function onCellTap(td) {
-    const userId = td.dataset.userid;
-    const name = td.dataset.name;
-    const year = parseInt(td.dataset.year, 10);
-    const month = parseInt(td.dataset.month, 10);
-    const field = td.dataset.field;
-    const fieldLabel = td.dataset.fieldlabel;
+// ============ 送付セルのタップ → 送付編集ダイアログ（📧PDF / 🖨印刷 を個別記録）============
+function onSendCellTap(td) {
+    openSendDialog(td.dataset.userid, td.dataset.name, parseInt(td.dataset.year, 10), parseInt(td.dataset.month, 10));
+}
+
+function openSendDialog(userId, name, year, month) {
+    const user = monitoringState.users.find(u => u.userId === userId);
+    sendDialogState = { userId, name, year, month };
     const key = userId + '_' + year + '_' + month;
-    const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
-    const current = rec[field] || '';
+    const rec = monitoringState.records[key] || {};
+    document.getElementById('sendDialogTitle').textContent = name + ' 様 ー ' + year + '年' + month + '月分';
+    document.getElementById('sendDialogSub').textContent = '📧PDF送付 / 🖨印刷送付 を個別に記録できます。';
+    document.getElementById('sendPdfInput').value = rec.pdfSendDate || '';
+    document.getElementById('sendPrintInput').value = rec.printSendDate || '';
+    const ymKey = year + '-' + String(month).padStart(2, '0');
+    const isFinalEval = !!(user && ymKey === getFinalEvalMonth(user.planStart, user.finalEvalMonth));
+    document.getElementById('sendDialogFinalEvalBadge').style.display = isFinalEval ? 'block' : 'none';
+    document.getElementById('sendDialog').classList.add('active');
+}
 
-    if (!current) {
-        // 未入力 → ワンタップで今日入る
-        applyValue(userId, name, year, month, field, fieldLabel, formatTodayISO(), formatTodayShort());
-    } else {
-        // 入力済 → 日付編集ダイアログ
-        openDateDialog(userId, name, year, month, field, fieldLabel, current);
+function closeSendDialog() {
+    document.getElementById('sendDialog').classList.remove('active');
+}
+
+async function saveSendField(field) {
+    const inputId = (field === 'pdfSendDate') ? 'sendPdfInput' : 'sendPrintInput';
+    const value = document.getElementById(inputId).value;
+    if (!value) { showToast('⚠ 日付が選択されていません', '#f44336'); return; }
+    const label = (field === 'pdfSendDate') ? 'PDF送付' : '印刷送付';
+    const ds = sendDialogState;
+    await applyValue(ds.userId, ds.name, ds.year, ds.month, field, label, value, formatMD(value));
+}
+
+async function clearSendField(field) {
+    const inputId = (field === 'pdfSendDate') ? 'sendPdfInput' : 'sendPrintInput';
+    const label = (field === 'pdfSendDate') ? 'PDF送付' : '印刷送付';
+    const ds = sendDialogState;
+    await applyValue(ds.userId, ds.name, ds.year, ds.month, field, label, '', '');
+    document.getElementById(inputId).value = '';
+}
+
+// ============ 利用者情報モーダル（名前タップ：ケアマネ情報表示＋計画期間編集）============
+function openUserInfoDialog(userId) {
+    const user = monitoringState.users.find(u => u.userId === userId);
+    if (!user) return;
+    userInfoState = { userId };
+    document.getElementById('userInfoTitle').textContent = user.name + ' 様';
+    document.getElementById('userInfoFurigana').textContent = user.furigana || '(未登録)';
+    document.getElementById('userInfoCategory').textContent = user.category || '';
+    document.getElementById('userInfoDays').textContent = user.days || '(未登録)';
+    document.getElementById('userInfoAmpm').textContent = user.ampm || '';
+    document.getElementById('userInfoOffice').textContent = user.caremaneOffice || '(未登録)';
+    document.getElementById('userInfoCmName').textContent = user.caremaneName || '(未登録)';
+    document.getElementById('userInfoPlanStart').value = user.planStart || '';
+    document.getElementById('userInfoFinalEval').value = user.finalEvalMonth || '';
+    document.getElementById('userInfoDialog').classList.add('active');
+}
+
+function closeUserInfoDialog() {
+    document.getElementById('userInfoDialog').classList.remove('active');
+}
+
+function clearUserConfig() {
+    document.getElementById('userInfoPlanStart').value = '';
+    document.getElementById('userInfoFinalEval').value = '';
+}
+
+async function saveUserConfig() {
+    const userId = userInfoState.userId;
+    const planStart = document.getElementById('userInfoPlanStart').value || '';
+    const finalEvalMonth = document.getElementById('userInfoFinalEval').value || '';
+    const operator = localStorage.getItem('monitoring_operator') || '';
+    const url = API_BASE + '?action=updateMonitoringConfig'
+        + '&userId=' + encodeURIComponent(userId)
+        + '&planStart=' + encodeURIComponent(planStart)
+        + '&finalEvalMonth=' + encodeURIComponent(finalEvalMonth)
+        + '&operator=' + encodeURIComponent(operator)
+        + '&t=' + Date.now();
+    try {
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        const u = monitoringState.users.find(x => x.userId === userId);
+        if (u) { u.planStart = planStart; u.finalEvalMonth = finalEvalMonth; }
+        saveCache();
+        renderTable();
+        showToast('✅ ' + (u ? u.name : '') + ' の計画期間を保存しました', '#4CAF50');
+        closeUserInfoDialog();
+    } catch (e) {
+        console.error('updateMonitoringConfig error:', e);
+        showToast('⚠ 計画期間の保存に失敗（ネット接続を確認）', '#f44336');
     }
-}
-
-function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue) {
-    dialogState = { userId, name, year, month, field, fieldLabel, currentValue };
-    document.getElementById('dateDialogTitle').textContent = name + '  ' + month + '月の' + fieldLabel + '日';
-    document.getElementById('dateDialogSub').textContent = '現在: ' + currentValue;
-    document.getElementById('dateInput').value = currentValue;
-    document.getElementById('dateDialog').classList.add('active');
-}
-
-function closeDateDialog() {
-    document.getElementById('dateDialog').classList.remove('active');
-}
-
-async function saveDateFromDialog() {
-    const v = document.getElementById('dateInput').value;
-    if (!v) {
-        showToast('⚠ 日付が選択されていません', '#f44336');
-        return;
-    }
-    const ds = dialogState;
-    closeDateDialog();
-    await applyValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.fieldLabel, v, formatMD(v));
-}
-
-async function clearCheckDate() {
-    const ds = dialogState;
-    if (!confirm(ds.name + ' ' + ds.month + '月の' + ds.fieldLabel + ' をクリアしますか？')) return;
-    closeDateDialog();
-    await applyValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.fieldLabel, '', '');
 }
 
 async function applyValue(userId, name, year, month, field, fieldLabel, value, displayValue) {
     // 楽観更新
     const key = userId + '_' + year + '_' + month;
-    const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '' };
+    const rec = monitoringState.records[key] || { recordDate: '', pdfDate: '', pdfSendDate: '', printSendDate: '' };
     rec[field] = value;
-    if (!rec.recordDate && !rec.pdfDate) {
+    if (!rec.recordDate && !rec.pdfDate && !rec.pdfSendDate && !rec.printSendDate) {
         delete monitoringState.records[key];
     } else {
         monitoringState.records[key] = rec;
@@ -1430,8 +1584,15 @@ window.addEventListener('load', async () => {
     await loadFiscalYearData();
 });
 
+function anyDialogOpen() {
+    return ['sendDialog', 'userInfoDialog'].some(id => {
+        const el = document.getElementById(id);
+        return el && el.classList.contains('active');
+    });
+}
+
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && !document.getElementById('dateDialog').classList.contains('active')) {
+    if (document.visibilityState === 'visible' && !anyDialogOpen()) {
         loadFiscalYearData();
         // 計画書タブが既に開かれていたら最新化
         const plansActive = document.getElementById('panel-plans').classList.contains('active');
