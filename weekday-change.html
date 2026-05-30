@@ -565,6 +565,39 @@ input, select, textarea { font-family: inherit; }
     transform: translate(-1px, -1px);
     box-shadow: 3px 3px 0 var(--navy-0);
 }
+
+/* 曜日×午前午後 行ボタン（2026-05-31・コンパクト版） */
+#udc-current-days, #udc-new-days { flex-direction: column !important; flex-wrap: nowrap !important; padding: 8px !important; gap: 4px !important; }
+.udc-day-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+}
+.udc-day-name {
+    flex: 0 0 1.4em;
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--navy-0);
+    text-align: center;
+}
+.udc-ap-btn {
+    flex: 1 1 0;
+    padding: 5px 0;
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 13.5px;
+    color: var(--navy-0);
+    background: #fff;
+    border: 2px solid var(--navy-0);
+    border-radius: 5px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+}
+.udc-ap-btn:hover { transform: translate(-1px, -1px); box-shadow: 2px 2px 0 var(--navy-0); }
+.udc-ap-btn.active { background: var(--navy-0); color: #fff; }
 #udc-current-days input[type="checkbox"],
 #udc-new-days input[type="checkbox"] {
     transform: scale(1.3);
@@ -817,10 +850,15 @@ input, select, textarea { font-family: inherit; }
             </label>
         </div>
 
-        <!-- Step 9: 主導権メモ（任意） -->
+        <!-- Step 9: 変更の発信元（必須・区分選択） -->
         <div class="wizard-step" data-step="9" style="display:none;">
-            <label>9. 主導権メモ <span style="color:#6b7686; font-size:0.85rem; font-weight:500;">（任意）</span>
-                <textarea id="udc-leadership-memo" rows="3" placeholder="例：ケアマネから提案 / 家族希望 / 本人希望 など" style="width:100%; padding:10px 12px; margin-top:6px; font-size:15px; font-family:var(--jp); font-weight:500; color:var(--navy-0); background:#fff; border:2.5px solid var(--navy-0); border-radius:5px; box-sizing:border-box; resize:vertical;"></textarea>
+            <label>9. 変更の発信元 <span class="req">*</span>
+                <select id="udc-leadership-memo">
+                    <option value="">選択してください</option>
+                    <option value="ケアマネ発">ケアマネ発</option>
+                    <option value="本人・家族発">本人・家族発</option>
+                    <option value="yawaragi発（営業・枠調整）">yawaragi発（営業・枠調整）</option>
+                </select>
             </label>
         </div>
 
@@ -1060,6 +1098,7 @@ function evtBuildCard(evt) {
         metaParts.push('📞 ' + escapeHtml(cm));
     }
     if (meta.contactDate) metaParts.push('📅 連絡日 ' + escapeHtml(meta.contactDate));
+    if (meta.leadershipMemo) metaParts.push('🎯 ' + escapeHtml(meta.leadershipMemo));
     const metaLine = metaParts.length ? '<div class="card-meta">' + metaParts.join(' / ') + '</div>' : '';
 
     card.innerHTML =
@@ -1525,10 +1564,8 @@ function udcOpenWizard() {
             opt.textContent = '比嘉';
             rec.appendChild(opt);
         }
-        try {
-            const s = localStorage.getItem('yawaragi_staff') || '';
-            if (s) document.getElementById('udc-recorder-select').value = s;
-        } catch(e) {}
+        // 記入者デフォルトは空にする（前回入力者が残ると別人がそのまま登録する誤記録の元・2026-05-31）
+        document.getElementById('udc-recorder-select').value = '';
     });
     document.getElementById('udc-wizard-modal').classList.add('show');
     udcShowStep(1);
@@ -1608,12 +1645,12 @@ function udcValidateStep(n) {
         }
         case 6: {
             const days = udcGetCheckedDays('udc-current-days');
-            if (days.length === 0) { alert('現在の利用曜日を1つ以上選んでください'); return false; }
+            if (days.length === 0) { alert('現在の利用日（曜日＋午前/午後）を1つ以上選んでください'); return false; }
             return true;
         }
         case 7: {
             const days = udcGetCheckedDays('udc-new-days');
-            if (days.length === 0) { alert('変更後の利用曜日を1つ以上選んでください'); return false; }
+            if (days.length === 0) { alert('変更後の利用日（曜日＋午前/午後）を1つ以上選んでください'); return false; }
             return true;
         }
         case 8: {
@@ -1621,7 +1658,11 @@ function udcValidateStep(n) {
             if (!v) { alert('適用開始日を入力してください'); return false; }
             return true;
         }
-        case 9:
+        case 9: {
+            const v = document.getElementById('udc-leadership-memo').value;
+            if (!v) { alert('変更の発信元を選んでください'); return false; }
+            return true;
+        }
         case 10:
             return true; // 任意
         default:
@@ -1630,7 +1671,9 @@ function udcValidateStep(n) {
 }
 
 function udcGetCheckedDays(containerId) {
-    return Array.from(document.querySelectorAll('#' + containerId + ' input:checked')).map(function(el) { return el.value; });
+    return Array.from(document.querySelectorAll('#' + containerId + ' .udc-ap-btn.active')).map(function(btn) {
+        return btn.dataset.day + btn.dataset.ampm;
+    });
 }
 
 // ----- フォーム初期化 -----
@@ -1689,10 +1732,44 @@ function udcSelectUser(userName) {
     document.getElementById('udc-user-search').value = userName;
     document.getElementById('udc-user-suggestions').style.display = 'none';
     document.getElementById('udc-user-selected').textContent = '✓ ' + userName + ' 様 を選択中';
-    // 曜日を利用者台帳から Step 6 / Step 7 に自動セット
-    const days = user.days || '';
-    udcSetWeekdayCheckboxes('udc-current-days', days);
-    udcSetWeekdayCheckboxes('udc-new-days', days);
+    // 利用曜日＋午前/午後を利用者台帳から Step 6 / Step 7 に自動セット（2026-05-31）
+    udcSetWeekdayCheckboxes('udc-current-days', user.days || '', user.ampm || '');
+    udcSetWeekdayCheckboxes('udc-new-days', user.days || '', user.ampm || '');
+    // ケアマネ事業所・担当者を利用者台帳から Step 4 / Step 5 に自動セット（2026-05-31）
+    udcPrefillCaremanager(user);
+}
+
+// 利用者台帳の currentCmOffice / currentCmStaff を Step 4・5 にプリフィル（手入力負担の削減）
+// ケアマネ事業所プルダウンは _cmFetchContacts() で非同期構築されるため、完了を待ってからセット
+// （待たないと .then による innerHTML 再構築でセット値が上書きされ消える）
+function udcPrefillCaremanager(user) {
+    const office = (user.currentCmOffice || '').trim();
+    if (!office) return;   // 台帳にケアマネ事業所が無ければ手動選択にフォールバック
+    const staff = (user.currentCmStaff || '').trim();
+    _cmFetchContacts().then(function() {
+        const officeSel = document.getElementById('udc-cm-office');
+        if (!officeSel) return;
+        // 事業所がプルダウンに無ければ動的に追加（非表示事業所でも確実にセット）
+        if (!Array.from(officeSel.options).some(function(o) { return o.value === office; })) {
+            const opt = document.createElement('option');
+            opt.value = office; opt.textContent = office;
+            officeSel.appendChild(opt);
+        }
+        officeSel.value = office;
+        udcOnOfficeChange();   // 担当者プルダウンを連動生成
+        // 担当者をセット
+        if (staff) {
+            const staffSel = document.getElementById('udc-cm-contact');
+            if (staffSel) {
+                if (!Array.from(staffSel.options).some(function(o) { return o.value === staff; })) {
+                    const opt = document.createElement('option');
+                    opt.value = staff; opt.textContent = staff;
+                    staffSel.appendChild(opt);
+                }
+                staffSel.value = staff;
+            }
+        }
+    });
 }
 
 function udcToday() {
@@ -1715,21 +1792,73 @@ function udcInitWeekdayCheckboxes() {
         if (!container) return;
         container.innerHTML = '';
         UDC_WEEKDAYS.forEach(function(d) {
-            const label = document.createElement('label');
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.value = d;
-            label.appendChild(cb);
-            label.appendChild(document.createTextNode(' ' + d));
-            container.appendChild(label);
+            const row = document.createElement('div');
+            row.className = 'udc-day-row';
+            const name = document.createElement('span');
+            name.className = 'udc-day-name';
+            name.textContent = d;
+            row.appendChild(name);
+            ['午前', '午後'].forEach(function(ap) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'udc-ap-btn';
+                btn.textContent = ap;
+                btn.dataset.day = d;
+                btn.dataset.ampm = ap;
+                btn.onclick = function() { btn.classList.toggle('active'); };
+                row.appendChild(btn);
+            });
+            container.appendChild(row);
         });
     });
 }
 
-function udcSetWeekdayCheckboxes(containerId, daysString) {
-    const checked = (daysString || '').split(/[,、・\s]/).filter(Boolean);
-    document.querySelectorAll('#' + containerId + ' input').forEach(function(el) {
-        el.checked = checked.indexOf(el.value) >= 0;
+// 台帳の「利用曜日(月火水)」＋「午前/午後」から、各曜日の利用スロットを復元
+// 複合パターン（「月午前、木午後」）も単純パターン（「午前」「午前午後」）も対応
+function udcParseUsagePattern(daysString, ampmString) {
+    const WD = ['月', '火', '水', '木', '金', '土'];
+    const result = [];
+    const ampm = (ampmString || '').trim();
+    // 複合パターン：午前/午後欄に曜日名が含まれる（例「月午前、木午後」）
+    if (WD.some(function(d) { return ampm.indexOf(d) >= 0; })) {
+        ampm.split(/[,、・\s]+/).filter(Boolean).forEach(function(part) {
+            const d = WD.filter(function(x) { return part.indexOf(x) >= 0; })[0];
+            if (!d) return;
+            if (part.indexOf('午前') >= 0) result.push(d + '午前');
+            if (part.indexOf('午後') >= 0) result.push(d + '午後');
+        });
+        return result;
+    }
+    // 単純パターン：利用曜日の各曜日に午前/午後を一律適用
+    // 台帳の曜日は「火木」のように区切りなしで連続するため、含まれる曜日文字を抽出
+    const days = WD.filter(function(d) { return (daysString || '').indexOf(d) >= 0; });
+    let aps = [];
+    const hasAm = ampm.indexOf('午前') >= 0;
+    const hasPm = ampm.indexOf('午後') >= 0;
+    if (ampm === '両方' || (hasAm && hasPm)) aps = ['午前', '午後'];
+    else if (hasPm) aps = ['午後'];
+    else if (hasAm) aps = ['午前'];
+    days.forEach(function(d) { aps.forEach(function(a) { result.push(d + a); }); });
+    return result;
+}
+
+// daysString＋ampmString（台帳形式）または「月午前,火午後」形式を受け取りボタンを点灯
+function udcSetWeekdayCheckboxes(containerId, daysString, ampmString) {
+    document.querySelectorAll('#' + containerId + ' .udc-ap-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    let slots;
+    // daysString が既に「月午前」形式（午前/午後を含む）ならそのまま、そうでなければ台帳パース
+    if (/午前|午後/.test(daysString || '') && !ampmString) {
+        slots = (daysString || '').split(/[,、・\s]/).filter(Boolean);
+    } else {
+        slots = udcParseUsagePattern(daysString, ampmString);
+    }
+    slots.forEach(function(slot) {
+        const m = slot.match(/^(.)(午前|午後)$/);
+        if (!m) return;
+        const btn = document.querySelector('#' + containerId + ' .udc-ap-btn[data-day="' + m[1] + '"][data-ampm="' + m[2] + '"]');
+        if (btn) btn.classList.add('active');
     });
 }
 
