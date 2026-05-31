@@ -1539,26 +1539,61 @@
         .yoyaku-card-actions .btn-apply-now { color: #047857; border-color: #6ee7b7; }
         .yoyaku-section-hint { font-size: 0.78rem; color: #718096; margin: 4px 0 12px; }
         .yoyaku-empty-state { font-size: 0.85rem; color: #a0aec0; padding: 12px; text-align: center; }
-        /* ===== 受付カンバン Phase C（2026-05-31）===== */
-        .kanban-funnel-bar { background:#edf2f7; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:14px; color:#2d3748; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
-        .kanban-grid { display:grid; grid-template-columns:repeat(5,minmax(200px,1fr)); gap:8px; overflow-x:auto; min-height:360px; }
-        .kanban-col { background:#f7fafc; border-radius:8px; padding:8px; display:flex; flex-direction:column; }
-        .kanban-col-header { position:sticky; top:0; background:#f7fafc; font-weight:bold; padding:6px 4px 10px; border-bottom:2px solid #cbd5e0; margin-bottom:6px; font-size:14px; }
-        .kanban-col-header .count { color:#718096; font-weight:normal; }
-        .kanban-card { background:#fff; border:1px solid #cbd5e0; border-radius:6px; padding:8px 10px; margin-bottom:6px; cursor:pointer; font-size:13px; }
-        .kanban-card:hover { background:#ebf8ff; border-color:#4299e1; }
-        .kanban-card-name { font-weight:bold; color:#2d3748; margin-bottom:4px; }
-        .kanban-card-sub { color:#4a5568; font-size:12px; line-height:1.4; }
-        .kanban-card-warn { color:#c05621; font-size:11px; margin-top:4px; }
-        .kanban-card-advance { display:block; width:100%; margin-top:6px; background:#38a169; color:#fff; border:none; padding:5px 8px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; }
-        .kanban-card-advance:disabled { background:#a0aec0; cursor:not-allowed; }
-        .kanban-dropout-section { margin-top:14px; padding:10px 14px; background:#fff5f5; border:1px solid #fc8181; border-radius:8px; font-size:13px; }
-        .kanban-dropout-details { margin-top:8px; display:none; }
+        /* ===== 受付パイプライン Phase C（2026-05-31・洗練リデザイン）=====
+           段階ごとに意味を持つ配色：冷たい入口(藍)→温まる体験(琥珀)→到達(緑)。
+           番号ノード＋縦の動線で「パイプライン」を表現。スマホ縦表示前提。 */
+        #tab-intake { --ink:#1c1e26; --muted:#8a8f9c; --line:#e7e4dd; --paper:#fbfaf7; }
+        .pl-wrap { font-feature-settings:"tnum" 1; }
+        /* ファネル（上部スタッツ・レール）*/
+        .pl-funnel { position:relative; background:linear-gradient(135deg,#1c1e26,#2b2f3d); color:#fff; border-radius:16px; padding:16px 18px; margin-bottom:18px; box-shadow:0 10px 30px -12px rgba(28,30,38,.5); overflow:hidden; }
+        .pl-funnel::after { content:""; position:absolute; inset:0; background:radial-gradient(120% 120% at 100% 0%,rgba(208,138,62,.22),transparent 55%); pointer-events:none; }
+        .pl-funnel-top { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:12px; position:relative; }
+        .pl-funnel-ttl { font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:#b9bdc9; font-weight:700; }
+        .pl-funnel-mo { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; border-radius:8px; padding:4px 8px; font-size:12px; }
+        .pl-funnel-flow { display:flex; align-items:stretch; gap:0; flex-wrap:wrap; position:relative; }
+        .pl-stage { display:flex; flex-direction:column; gap:2px; padding:0 14px 0 0; }
+        .pl-stage-n { font-size:23px; font-weight:800; line-height:1; letter-spacing:-.02em; }
+        .pl-stage-l { font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:#9aa0ad; }
+        .pl-arrow { align-self:center; color:#565b69; font-size:13px; padding:0 10px 0 0; }
+        .pl-conv { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; position:relative; }
+        .pl-conv span { font-size:11px; color:#cdd1da; background:rgba(255,255,255,.06); border-radius:999px; padding:3px 9px; }
+        /* パイプライン本体 */
+        .kanban-grid { display:block; position:relative; }
+        .kp { position:relative; padding-left:34px; }
+        .kp::before { content:""; position:absolute; left:14px; top:0; bottom:0; width:2px; background:var(--line); }
+        .kp:first-child::before { top:16px; }
+        .kp:last-child::before { bottom:auto; height:16px; }
+        .kp-node { position:absolute; left:5px; top:9px; width:20px; height:20px; border-radius:999px; background:#fff; border:2px solid var(--accent,#5b7cba); color:var(--accent,#5b7cba); font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; z-index:1; }
+        .kp-head { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; user-select:none; border-radius:10px; transition:background .12s; }
+        .kp-head:hover { background:var(--paper); }
+        .kp-name { font-size:15px; font-weight:700; color:var(--ink); letter-spacing:.01em; }
+        .kp-count { font-size:12px; font-weight:700; color:var(--accent,#5b7cba); background:color-mix(in srgb,var(--accent,#5b7cba) 12%,#fff); border:1px solid color-mix(in srgb,var(--accent,#5b7cba) 28%,#fff); border-radius:999px; min-width:22px; height:22px; padding:0 7px; display:inline-flex; align-items:center; justify-content:center; }
+        .kp-chev { margin-left:auto; color:var(--muted); font-size:11px; transition:transform .18s; transform:rotate(-90deg); }
+        .kp-head.open .kp-chev { transform:rotate(0deg); }
+        .kp-body { display:none; padding:2px 0 10px; }
+        .kp-body.open { display:block; animation:plFade .2s ease; }
+        @keyframes plFade { from{opacity:0;transform:translateY(-3px);} to{opacity:1;transform:none;} }
+        .kp-empty { color:#b4b8c2; font-size:12px; padding:4px 4px 8px; font-style:italic; }
+        /* カード */
+        .kanban-card { position:relative; background:#fff; border:1px solid var(--line); border-left:3px solid var(--accent,#5b7cba); border-radius:11px; padding:12px 14px; margin-bottom:8px; cursor:pointer; box-shadow:0 1px 2px rgba(28,30,38,.04); transition:box-shadow .15s,transform .15s,border-color .15s; }
+        .kanban-card:hover { box-shadow:0 8px 22px -10px rgba(28,30,38,.28); transform:translateY(-1px); }
+        .kanban-card-name { font-weight:700; color:var(--ink); font-size:15px; letter-spacing:.01em; }
+        .kanban-card-sub { color:var(--muted); font-size:12px; margin-top:3px; letter-spacing:.02em; }
+        .kanban-card-warn { color:#b65510; background:#fff6ec; border:1px solid #f4d8b6; border-radius:7px; font-size:11.5px; margin-top:8px; padding:4px 8px; line-height:1.45; }
+        .kanban-card-advance { display:inline-flex; align-items:center; gap:6px; margin-top:10px; background:var(--accent,#5b7cba); color:#fff; border:none; padding:7px 14px; border-radius:999px; font-size:12.5px; font-weight:700; cursor:pointer; letter-spacing:.02em; transition:filter .12s,box-shadow .12s; box-shadow:0 2px 8px -3px var(--accent,#5b7cba); }
+        .kanban-card-advance:hover { filter:brightness(1.06); }
+        .kanban-card-advance:disabled { background:#eceae4; color:#a9adb6; box-shadow:none; cursor:not-allowed; }
+        /* ドロップアウト */
+        .kanban-dropout-section { margin-top:20px; padding:14px 16px; background:#fbfaf7; border:1px solid var(--line); border-radius:14px; font-size:13px; color:#6b6f7a; }
+        .kanban-dropout-head { display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:#4a4f5a; }
+        .kanban-dropout-head .pl-x { width:18px; height:18px; border-radius:5px; background:#efece6; color:#8a8f9c; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
+        .kanban-dropout-details { margin-top:10px; display:none; padding-top:10px; border-top:1px solid var(--line); }
         .kanban-dropout-details.open { display:block; }
-        .kanban-viewtoggle { margin-bottom:10px; }
-        .kanban-viewtoggle button { background:#fff; border:1px solid #cbd5e0; border-radius:6px; padding:6px 12px; font-size:13px; cursor:pointer; margin-right:6px; }
-        .kanban-viewtoggle button.active { background:#2c7a7b; color:#fff; border-color:#2c7a7b; }
-        @media (max-width:900px){ .kanban-grid { grid-template-columns:repeat(5,minmax(160px,1fr)); } }
+        .kanban-dropout-details > div { padding:3px 0; color:#6b6f7a; }
+        /* ビュー切替（セグメント）*/
+        .kanban-viewtoggle { display:inline-flex; gap:0; margin-bottom:14px; background:#efece6; border-radius:10px; padding:3px; }
+        .kanban-viewtoggle button { background:transparent; border:none; color:#7a7f8b; border-radius:8px; padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:all .14s; }
+        .kanban-viewtoggle button.active { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(28,30,38,.12); }
     </style>
 </head>
 <body>
@@ -1889,8 +1924,8 @@
     <button class="intake-new-btn" onclick="openIntakeModalNew()">🆕 新規登録（問合せ受付）</button>
     <!-- ビュー切替（カンバン⇄リスト）2026-05-31 Phase C -->
     <div class="kanban-viewtoggle">
-        <button id="intake-view-kanban" class="active" onclick="setIntakeView('kanban')">🗂️ カンバン</button>
-        <button id="intake-view-list" onclick="setIntakeView('list')">📋 リスト</button>
+        <button id="intake-view-kanban" class="active" onclick="setIntakeView('kanban')">パイプライン</button>
+        <button id="intake-view-list" onclick="setIntakeView('list')">リスト</button>
     </div>
     <!-- カンバン -->
     <div id="kanban-funnel-bar" class="kanban-funnel-bar"></div>
@@ -13201,10 +13236,13 @@ function loadIntakeList(_retryCount) {
 }
 
 // ===== 受付カンバン Phase C（2026-05-31）=====
+// 段階別アクセント：冷たい入口(藍)→温まる体験(琥珀)→到達(緑)へ進む配色
 const KANBAN_PHASES = [
-    { key:'受付', label:'📞 受付' }, { key:'見学', label:'🚶 見学' },
-    { key:'体験', label:'🎯 体験' }, { key:'契約準備', label:'📝 契約準備' },
-    { key:'利用開始準備', label:'🎁 利用開始準備' }
+    { key:'受付',         label:'受付',         accent:'#5b7cba' },
+    { key:'見学',         label:'見学',         accent:'#7a6bc4' },
+    { key:'体験',         label:'体験',         accent:'#cf8a3c' },
+    { key:'契約準備',     label:'契約準備',     accent:'#3f9e7c' },
+    { key:'利用開始準備', label:'利用開始準備', accent:'#2f8f6b' }
 ];
 const KANBAN_NEXT = {
     '受付': function(r){ return r.種別 === 'visit' ? '見学' : '体験'; },
@@ -13244,11 +13282,19 @@ function renderKanban(list) {
         else if (ph === 'アーカイブ') return;
         else if (byPhase[ph]) byPhase[ph].push(r);
     });
-    grid.innerHTML = KANBAN_PHASES.map(p => {
+    grid.innerHTML = KANBAN_PHASES.map((p, i) => {
         const items = byPhase[p.key];
-        return `<div class="kanban-col"><div class="kanban-col-header">${p.label} <span class="count">(${items.length})</span></div>`
-            + (items.map(r => renderKanbanCard(r, p.key)).join('')
-               || '<div style="color:#a0aec0;font-size:12px;padding:8px;">なし</div>') + '</div>';
+        const open = items.length > 0; // 人がいる段階は開いておく
+        const body = items.map(r => renderKanbanCard(r, p.key)).join('')
+            || '<div class="kp-empty">この段階の方はいません</div>';
+        return `<div class="kp" style="--accent:${p.accent}">`
+            + `<span class="kp-node">${i + 1}</span>`
+            + `<div class="kp-head${open ? ' open' : ''}" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">`
+            +   `<span class="kp-name">${p.label}</span>`
+            +   `<span class="kp-count">${items.length}</span>`
+            +   `<span class="kp-chev">▼</span></div>`
+            + `<div class="kp-body${open ? ' open' : ''}">${body}</div>`
+            + `</div>`;
     }).join('');
     renderDropoutSection(dropouts);
 }
@@ -13274,8 +13320,8 @@ function renderKanbanCard(r, phase) {
         const req = KANBAN_GATE[phase + '→' + np] || [];
         const missing = req.filter(f => !kanbanFieldFilled(r, f));
         const dis = missing.length > 0;
-        const title = dis ? '未入力: ' + missing.join('・') : '次（' + np + '）へ';
-        btn = `<button class="kanban-card-advance"${dis ? ' disabled' : ''} title="${intakeEscapeAttr(title)}" onclick="event.stopPropagation();kanbanAdvance('${intakeEscapeAttr(r.id)}','${np}')">→ ${np}へ</button>`;
+        const title = dis ? '未入力: ' + missing.join('・') : np + 'へ進める';
+        btn = `<button class="kanban-card-advance"${dis ? ' disabled' : ''} title="${intakeEscapeAttr(title)}" onclick="event.stopPropagation();kanbanAdvance('${intakeEscapeAttr(r.id)}','${np}')">${np}へ &rsaquo;</button>`;
     }
     return `<div class="kanban-card" onclick="openIntakeModal('${intakeEscapeAttr(r.id)}')">`
         + `<div class="kanban-card-name">${name}</div>`
@@ -13286,12 +13332,14 @@ function renderDropoutSection(dropouts) {
     const host = document.getElementById('kanban-dropout');
     if (!host) return;
     const rc = {}; dropouts.forEach(r => { const k = r.ドロップ理由 || 'other'; rc[k] = (rc[k] || 0) + 1; });
-    const summary = Object.keys(rc).map(k => (INTAKE_NO_USE_REASON[k] || k) + ':' + rc[k]).join(' / ') || 'なし';
-    host.innerHTML = `<div style="cursor:pointer;" onclick="document.getElementById('kanban-dropout-details').classList.toggle('open')">`
-        + `📦 ドロップアウト：${dropouts.length}件 <span style="color:#718096;font-size:12px;">${intakeEscapeHtml(summary)}</span> ▼</div>`
+    const summary = Object.keys(rc).map(k => (INTAKE_NO_USE_REASON[k] || k) + ' ' + rc[k]).join(' · ') || '';
+    host.innerHTML = `<div class="kanban-dropout-head" onclick="document.getElementById('kanban-dropout-details').classList.toggle('open')">`
+        + `<span class="pl-x">✕</span> 見送り・終了 <strong style="color:#4a4f5a;">${dropouts.length}</strong>`
+        + (summary ? ` <span style="color:#9aa0ad;font-weight:400;font-size:12px;">${intakeEscapeHtml(summary)}</span>` : '')
+        + `</div>`
         + `<div id="kanban-dropout-details" class="kanban-dropout-details">`
-        + (dropouts.map(r => `<div>・${intakeEscapeHtml(r.氏名 || r.ふりがな || '')} - ${intakeEscapeHtml(INTAKE_NO_USE_REASON[r.ドロップ理由] || r.ドロップ理由 || '')} (${intakeEscapeHtml(r.ドロップ記録日時 || '')})</div>`).join('')
-            || '<div style="color:#a0aec0;">なし</div>') + '</div>';
+        + (dropouts.map(r => `<div>${intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）')} — ${intakeEscapeHtml(INTAKE_NO_USE_REASON[r.ドロップ理由] || r.ドロップ理由 || '理由未記入')}<span style="color:#b4b8c2;"> ${intakeEscapeHtml((r.ドロップ記録日時 || '').slice(0,10))}</span></div>`).join('')
+            || '<div style="color:#b4b8c2;">なし</div>') + '</div>';
 }
 
 function loadKanbanFunnel(ym) {
@@ -13305,9 +13353,17 @@ function loadKanbanFunnel(ym) {
             const r1 = f.受付 > 0 ? Math.round(f.見学 / f.受付 * 100) : 0;
             const r2 = f.見学 > 0 ? Math.round(f.体験 / f.見学 * 100) : 0;
             const r3 = f.体験 > 0 ? Math.round(f.契約 / f.体験 * 100) : 0;
-            host.innerHTML = `<span>📊 ${ym}: 受付${f.受付} → 見学${f.見学} → 体験${f.体験} → 契約${f.契約} → 利用開始${f.利用開始}</span>`
-                + `<span style="color:#4a5568;">（受付→見学${r1}% / 見学→体験${r2}% / 体験→契約${r3}%）</span>`
-                + `<select onchange="loadKanbanFunnel(this.value)">${kanbanFunnelMonths(ym)}</select>`;
+            const stages = [['受付',f.受付],['見学',f.見学],['体験',f.体験],['契約',f.契約],['利用開始',f.利用開始]];
+            const flow = stages.map((s,i) =>
+                `<div class="pl-stage"><span class="pl-stage-n">${s[1]}</span><span class="pl-stage-l">${s[0]}</span></div>`
+                + (i < stages.length - 1 ? '<span class="pl-arrow">&rsaquo;</span>' : '')
+            ).join('');
+            host.innerHTML = `<div class="pl-funnel">`
+                + `<div class="pl-funnel-top"><span class="pl-funnel-ttl">受付パイプライン</span>`
+                +   `<select class="pl-funnel-mo" onchange="loadKanbanFunnel(this.value)">${kanbanFunnelMonths(ym)}</select></div>`
+                + `<div class="pl-funnel-flow">${flow}</div>`
+                + `<div class="pl-conv"><span>受付→見学 ${r1}%</span><span>見学→体験 ${r2}%</span><span>体験→契約 ${r3}%</span></div>`
+                + `</div>`;
         } finally { try { delete window[cb]; } catch(e){} }
     };
     const s = document.createElement('script');
@@ -13321,7 +13377,8 @@ function kanbanFunnelMonths(sel) {
     for (let i = 0; i < 6; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-        out.push(`<option value="${ym}"${ym === sel ? ' selected' : ''}>${ym}</option>`);
+        const label = d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+        out.push(`<option value="${ym}"${ym === sel ? ' selected' : ''}>${label}</option>`);
     }
     return out.join('');
 }
