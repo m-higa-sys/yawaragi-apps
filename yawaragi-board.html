@@ -8053,7 +8053,13 @@ function buildUsageLowList(users) {
       name: u.name,
       rate: (u.overall && u.overall.rate != null) ? u.overall.rate : null,
       worstDay: u.worstDay || null,
-      badge: u.badge
+      badge: u.badge,
+      // v2 判定軸（契約過多A・不在B・曜日別C）用フィールド
+      contractPerWeek: (u.periods && u.periods[1]) ? u.periods[1].contractPerWeek : (u.contractCount || null),
+      actualPerWeek: (u.periods && u.periods[1]) ? u.periods[1].actualPerWeek : null,
+      lastVisitDate: u.lastVisitDate || null,
+      daysSinceLastVisit: (u.daysSinceLastVisit != null) ? u.daysSinceLastVisit : null,
+      reasons: u.reasons || []
     };
     if (u.badge === 'red') reds.push(entry);
     else if (u.badge === 'yellow') yellows.push(entry);
@@ -8246,6 +8252,20 @@ function renderUsageLowSummary() {
     '📉', '利用率低下（要注意）', usageLowList, 'att-redsummary',
     {
       entryIcon: function(r) { return r.badge === 'red' ? '🔴' : '🟡'; },
+      // v2: 契約過多A・不在B・曜日別C を週回数＋最終利用日で表記
+      subText: function(r) {
+        var parts = [];
+        if (r.actualPerWeek != null && r.contractPerWeek) {
+          parts.push('契約週' + r.contractPerWeek + '→実績週' + r.actualPerWeek + '回');
+        }
+        if (r.lastVisitDate) {
+          parts.push('最終' + r.lastVisitDate.slice(5).replace('-', '/') + '(' + r.daysSinceLastVisit + '日)');
+        }
+        if (r.worstDay) {
+          parts.push('最悪' + r.worstDay.day + r.worstDay.rate + '%');
+        }
+        return parts.length ? parts.join(' / ') : '-';
+      },
       periodText: pt
     });
 }
