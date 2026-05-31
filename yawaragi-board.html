@@ -1539,6 +1539,26 @@
         .yoyaku-card-actions .btn-apply-now { color: #047857; border-color: #6ee7b7; }
         .yoyaku-section-hint { font-size: 0.78rem; color: #718096; margin: 4px 0 12px; }
         .yoyaku-empty-state { font-size: 0.85rem; color: #a0aec0; padding: 12px; text-align: center; }
+        /* ===== 受付カンバン Phase C（2026-05-31）===== */
+        .kanban-funnel-bar { background:#edf2f7; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:14px; color:#2d3748; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+        .kanban-grid { display:grid; grid-template-columns:repeat(5,minmax(200px,1fr)); gap:8px; overflow-x:auto; min-height:360px; }
+        .kanban-col { background:#f7fafc; border-radius:8px; padding:8px; display:flex; flex-direction:column; }
+        .kanban-col-header { position:sticky; top:0; background:#f7fafc; font-weight:bold; padding:6px 4px 10px; border-bottom:2px solid #cbd5e0; margin-bottom:6px; font-size:14px; }
+        .kanban-col-header .count { color:#718096; font-weight:normal; }
+        .kanban-card { background:#fff; border:1px solid #cbd5e0; border-radius:6px; padding:8px 10px; margin-bottom:6px; cursor:pointer; font-size:13px; }
+        .kanban-card:hover { background:#ebf8ff; border-color:#4299e1; }
+        .kanban-card-name { font-weight:bold; color:#2d3748; margin-bottom:4px; }
+        .kanban-card-sub { color:#4a5568; font-size:12px; line-height:1.4; }
+        .kanban-card-warn { color:#c05621; font-size:11px; margin-top:4px; }
+        .kanban-card-advance { display:block; width:100%; margin-top:6px; background:#38a169; color:#fff; border:none; padding:5px 8px; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer; }
+        .kanban-card-advance:disabled { background:#a0aec0; cursor:not-allowed; }
+        .kanban-dropout-section { margin-top:14px; padding:10px 14px; background:#fff5f5; border:1px solid #fc8181; border-radius:8px; font-size:13px; }
+        .kanban-dropout-details { margin-top:8px; display:none; }
+        .kanban-dropout-details.open { display:block; }
+        .kanban-viewtoggle { margin-bottom:10px; }
+        .kanban-viewtoggle button { background:#fff; border:1px solid #cbd5e0; border-radius:6px; padding:6px 12px; font-size:13px; cursor:pointer; margin-right:6px; }
+        .kanban-viewtoggle button.active { background:#2c7a7b; color:#fff; border-color:#2c7a7b; }
+        @media (max-width:900px){ .kanban-grid { grid-template-columns:repeat(5,minmax(160px,1fr)); } }
     </style>
 </head>
 <body>
@@ -1867,8 +1887,18 @@
 <!-- ===== 見学・体験・新規タブ（2026/4/19追加）===== -->
 <div id="tab-intake" class="tab-content">
     <button class="intake-new-btn" onclick="openIntakeModalNew()">🆕 新規登録（問合せ受付）</button>
-    <div class="intake-toolbar" id="intake-toolbar"></div>
-    <div class="intake-list" id="intake-list">
+    <!-- ビュー切替（カンバン⇄リスト）2026-05-31 Phase C -->
+    <div class="kanban-viewtoggle">
+        <button id="intake-view-kanban" class="active" onclick="setIntakeView('kanban')">🗂️ カンバン</button>
+        <button id="intake-view-list" onclick="setIntakeView('list')">📋 リスト</button>
+    </div>
+    <!-- カンバン -->
+    <div id="kanban-funnel-bar" class="kanban-funnel-bar"></div>
+    <div id="kanban-grid" class="kanban-grid"></div>
+    <div id="kanban-dropout" class="kanban-dropout-section"></div>
+    <!-- 旧リスト（ビュー切替で表示）-->
+    <div class="intake-toolbar" id="intake-toolbar" style="display:none;"></div>
+    <div class="intake-list" id="intake-list" style="display:none;">
         <div style="padding:40px;text-align:center;color:#888;">読み込み中...</div>
     </div>
 </div>
@@ -13137,9 +13167,12 @@ function loadIntakeList(_retryCount) {
                 return;
             }
             let list = resp.intakes || [];
-            if (warnOnly) list = list.filter(r => intakeWarnings(r).length > 0);
             _intakeCache = list;
-            renderIntakeList(list);
+            // カンバンは全件（warnOnlyフィルタはリスト表示時のみ適用）
+            renderKanban(list);
+            loadKanbanFunnel();
+            const listView = warnOnly ? list.filter(r => intakeWarnings(r).length > 0) : list;
+            renderIntakeList(listView);
         } catch (e) {
             host.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;font-size:12px;">描画エラー: ' + (e && e.message || e) + '<br><br>' + (e && e.stack || '') + '</div>';
         } finally {
@@ -13165,6 +13198,152 @@ function loadIntakeList(_retryCount) {
             }
         }
     }, 8000);
+}
+
+// ===== 受付カンバン Phase C（2026-05-31）=====
+const KANBAN_PHASES = [
+    { key:'受付', label:'📞 受付' }, { key:'見学', label:'🚶 見学' },
+    { key:'体験', label:'🎯 体験' }, { key:'契約準備', label:'📝 契約準備' },
+    { key:'利用開始準備', label:'🎁 利用開始準備' }
+];
+const KANBAN_NEXT = {
+    '受付': function(r){ return r.種別 === 'visit' ? '見学' : '体験'; },
+    '見学': function(){ return '体験'; }, '体験': function(){ return '契約準備'; },
+    '契約準備': function(){ return '利用開始準備'; }, '利用開始準備': function(){ return 'アーカイブ'; }
+};
+// GAS の INTAKE_PHASE_GATES と一致させること（フロント側の事前判定・boolはtrue/'有'等を充足とみなす）
+const KANBAN_GATE = {
+    '受付→見学': ['氏名','TEL','エリア','種別'],
+    '受付→体験': ['氏名','TEL','エリア','ペースメーカー'],
+    '見学→体験': ['見学完了','体験打診結果','ペースメーカー'],
+    '体験→契約準備': ['体験完了','利用意向'],
+    '契約準備→利用開始準備': ['契約日','本格利用開始日','利用者台帳反映済'],
+    '利用開始準備→アーカイブ': ['名札_通常済','名札_荷物済','名札_ハンガー済','名札_ドリンク済','名札_靴済','写真撮影済']
+};
+
+function setIntakeView(view) {
+    const isKanban = view !== 'list';
+    document.getElementById('kanban-funnel-bar').style.display = isKanban ? '' : 'none';
+    document.getElementById('kanban-grid').style.display = isKanban ? '' : 'none';
+    document.getElementById('kanban-dropout').style.display = isKanban ? '' : 'none';
+    document.getElementById('intake-toolbar').style.display = isKanban ? 'none' : '';
+    document.getElementById('intake-list').style.display = isKanban ? 'none' : '';
+    document.getElementById('intake-view-kanban').classList.toggle('active', isKanban);
+    document.getElementById('intake-view-list').classList.toggle('active', !isKanban);
+    if (!isKanban) { renderIntakeToolbar(); renderIntakeList(_intakeCache); }
+}
+
+function renderKanban(list) {
+    const grid = document.getElementById('kanban-grid');
+    if (!grid) return;
+    const byPhase = {}; KANBAN_PHASES.forEach(p => byPhase[p.key] = []);
+    const dropouts = [];
+    (list || []).forEach(r => {
+        const ph = r.フェーズ || '受付';
+        if (ph === 'ドロップ') dropouts.push(r);
+        else if (ph === 'アーカイブ') return;
+        else if (byPhase[ph]) byPhase[ph].push(r);
+    });
+    grid.innerHTML = KANBAN_PHASES.map(p => {
+        const items = byPhase[p.key];
+        return `<div class="kanban-col"><div class="kanban-col-header">${p.label} <span class="count">(${items.length})</span></div>`
+            + (items.map(r => renderKanbanCard(r, p.key)).join('')
+               || '<div style="color:#a0aec0;font-size:12px;padding:8px;">なし</div>') + '</div>';
+    }).join('');
+    renderDropoutSection(dropouts);
+}
+
+// ゲート充足判定（boolはtrue、ペースメーカーは有/無を充足とみなす）
+function kanbanFieldFilled(r, f) {
+    if (f === 'ペースメーカー') return ['有','無'].indexOf(r.ペースメーカー) !== -1;
+    const v = r[f];
+    return !(v === '' || v === null || v === undefined || v === false);
+}
+
+function renderKanbanCard(r, phase) {
+    const name = intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）');
+    const dateInfo = (phase === '利用開始準備' && r.本格利用開始日) ? '開始: ' + r.本格利用開始日
+        : (r.予定日 ? '予定: ' + r.予定日 : (r.種別 === 'inquiry' ? '問い合わせのみ' : '日付未定'));
+    const warns = [];
+    if (r.followup) { if (r.followup.追客) warns.push(r.followup.追客); if (r.followup.ケアマネ) warns.push(r.followup.ケアマネ); }
+    const warnHtml = warns.length ? `<div class="kanban-card-warn">${intakeEscapeHtml(warns.join(' / '))}</div>` : '';
+    let btn = '';
+    const nextFn = KANBAN_NEXT[phase];
+    if (nextFn) {
+        const np = nextFn(r);
+        const req = KANBAN_GATE[phase + '→' + np] || [];
+        const missing = req.filter(f => !kanbanFieldFilled(r, f));
+        const dis = missing.length > 0;
+        const title = dis ? '未入力: ' + missing.join('・') : '次（' + np + '）へ';
+        btn = `<button class="kanban-card-advance"${dis ? ' disabled' : ''} title="${intakeEscapeAttr(title)}" onclick="event.stopPropagation();kanbanAdvance('${intakeEscapeAttr(r.id)}','${np}')">→ ${np}へ</button>`;
+    }
+    return `<div class="kanban-card" onclick="openIntakeModal('${intakeEscapeAttr(r.id)}')">`
+        + `<div class="kanban-card-name">${name}</div>`
+        + `<div class="kanban-card-sub">${intakeEscapeHtml(dateInfo)}</div>${warnHtml}${btn}</div>`;
+}
+
+function renderDropoutSection(dropouts) {
+    const host = document.getElementById('kanban-dropout');
+    if (!host) return;
+    const rc = {}; dropouts.forEach(r => { const k = r.ドロップ理由 || 'other'; rc[k] = (rc[k] || 0) + 1; });
+    const summary = Object.keys(rc).map(k => (INTAKE_NO_USE_REASON[k] || k) + ':' + rc[k]).join(' / ') || 'なし';
+    host.innerHTML = `<div style="cursor:pointer;" onclick="document.getElementById('kanban-dropout-details').classList.toggle('open')">`
+        + `📦 ドロップアウト：${dropouts.length}件 <span style="color:#718096;font-size:12px;">${intakeEscapeHtml(summary)}</span> ▼</div>`
+        + `<div id="kanban-dropout-details" class="kanban-dropout-details">`
+        + (dropouts.map(r => `<div>・${intakeEscapeHtml(r.氏名 || r.ふりがな || '')} - ${intakeEscapeHtml(INTAKE_NO_USE_REASON[r.ドロップ理由] || r.ドロップ理由 || '')} (${intakeEscapeHtml(r.ドロップ記録日時 || '')})</div>`).join('')
+            || '<div style="color:#a0aec0;">なし</div>') + '</div>';
+}
+
+function loadKanbanFunnel(ym) {
+    ym = ym || new Date().toISOString().slice(0,7);
+    const cb = 'kanbanFunnelCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    window[cb] = function(resp) {
+        try {
+            const host = document.getElementById('kanban-funnel-bar');
+            if (!host || !resp || !resp.success) return;
+            const f = resp.funnel;
+            const r1 = f.受付 > 0 ? Math.round(f.見学 / f.受付 * 100) : 0;
+            const r2 = f.見学 > 0 ? Math.round(f.体験 / f.見学 * 100) : 0;
+            const r3 = f.体験 > 0 ? Math.round(f.契約 / f.体験 * 100) : 0;
+            host.innerHTML = `<span>📊 ${ym}: 受付${f.受付} → 見学${f.見学} → 体験${f.体験} → 契約${f.契約} → 利用開始${f.利用開始}</span>`
+                + `<span style="color:#4a5568;">（受付→見学${r1}% / 見学→体験${r2}% / 体験→契約${r3}%）</span>`
+                + `<select onchange="loadKanbanFunnel(this.value)">${kanbanFunnelMonths(ym)}</select>`;
+        } finally { try { delete window[cb]; } catch(e){} }
+    };
+    const s = document.createElement('script');
+    s.src = INTAKE_API_URL + '?action=intake_get_funnel&yearMonth=' + encodeURIComponent(ym) + '&callback=' + cb;
+    s.onerror = function(){ try { delete window[cb]; } catch(e){} };
+    document.body.appendChild(s);
+    setTimeout(() => { try { s.remove(); } catch(e){} }, 8000);
+}
+function kanbanFunnelMonths(sel) {
+    const now = new Date(), out = [];
+    for (let i = 0; i < 6; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        out.push(`<option value="${ym}"${ym === sel ? ' selected' : ''}>${ym}</option>`);
+    }
+    return out.join('');
+}
+
+// カンバン操作：フェーズ遷移・ドロップ（gasPost経由・no-cors）
+async function kanbanAdvance(id, toPhase) {
+    const r = _intakeCache.find(x => x.id === id);
+    if (!r) { alert('レコードが見つかりません。再読込します。'); loadIntakeList(); return; }
+    if (!confirm(`「${r.氏名 || r.ふりがな}」を「${toPhase}」へ進めます。よろしいですか？`)) return;
+    const ok = await gasPost({ action: 'intake_advance_phase', id: id, toPhase: toPhase }, 'カンバン遷移');
+    if (ok) setTimeout(loadIntakeList, 800);
+}
+async function kanbanDrop(id) {
+    const r = _intakeCache.find(x => x.id === id);
+    const key = prompt('ドロップ理由を選択（番号）:\n1 他社デイに決定\n2 金額で折り合わず\n3 送迎範囲外\n4 体験で本人NG\n5 その他');
+    if (!key) return;
+    const map = { '1':'other_dayservice','2':'price','3':'out_of_range','4':'personal_no','5':'other' };
+    const reason = map[String(key).trim()];
+    if (!reason) { alert('不正な番号です'); return; }
+    const detail = prompt('詳細メモ（任意）:') || '';
+    const ok = await gasPost({ action: 'intake_drop', id: id, reason: reason, detail: detail }, 'カンバン ドロップ');
+    if (ok) { closeIntakeModal(); setTimeout(loadIntakeList, 800); }
 }
 
 function renderIntakeList(list) {
@@ -13896,6 +14075,43 @@ function buildIntakeModalHtml(r) {
             ${intakeCheckItem('m-全記入済', '全て記入しました', r.全記入済 === true, false)}
         </div></div>
 
+        <!-- カンバン進行・完了チェック（Phase C 2026-05-31）-->
+        <div class="intake-modal-section"><h4>🗂️ カンバン進行・完了チェック</h4>
+        <div style="font-size:12px;color:#718096;margin:-4px 0 8px;">現在のフェーズとカードの「→次へ」で進めるためのチェック項目。利用者台帳反映は上の「契約準備フロー」の🔄ボタンで行います。</div>
+        <div class="intake-modal-grid">
+            ${intakeField('現在フェーズ', `<input value="${intakeEscapeAttr(r.フェーズ || '受付')}" readonly style="background:#edf2f7;font-weight:bold;color:#2c7a7b;">`)}
+            ${intakeField('契約日', `<input type="date" id="m-契約日" value="${intakeEscapeAttr(r.契約日 || '')}">`)}
+            ${intakeField('体験打診結果（体験へ進める？）', ivRenderBtnGroup('体験打診結果', ['Yes','保留','No'], null, r.体験打診結果 || ''), 'col2')}
+        </div>
+        <div class="intake-check-grid" style="margin-top:8px;">
+            ${intakeCheckItem('m-見学完了', '見学 完了', r.見学完了 === true, false)}
+            ${intakeCheckItem('m-体験完了', '体験 完了', r.体験完了 === true, false)}
+        </div>
+        <div style="margin-top:10px;font-weight:bold;color:#2d3748;">🎁 利用開始準備チェックリスト（全部チェックでアーカイブ可）</div>
+        <div style="margin:6px 0;font-size:12px;color:#4a5568;">初回利用日: ${(() => {
+            try { const a = r.初回利用日リスト ? JSON.parse(r.初回利用日リスト) : [];
+                return a.length ? a.map(d => `${d.date}(${d.dow})${d.ampm}`).join(' / ') : '（台帳反映後に自動算出）'; }
+            catch(e){ return '（未算出）'; } })()}</div>
+        <div class="intake-check-grid">
+            ${intakeCheckItem('m-重要事項説明済', '重要事項説明済', r.重要事項説明済 === true, false)}
+            ${intakeCheckItem('m-契約書取り交わし済', '契約書取り交わし済', r.契約書取り交わし済 === true, false)}
+            ${intakeCheckItem('m-名札_通常済', '名札(通常)', r.名札_通常済 === true, false)}
+            ${intakeCheckItem('m-名札_荷物済', '名札(荷物)', r.名札_荷物済 === true, false)}
+            ${intakeCheckItem('m-名札_ハンガー済', '名札(ハンガー)', r.名札_ハンガー済 === true, false)}
+            ${intakeCheckItem('m-名札_ドリンク済', '名札(ドリンク)', r.名札_ドリンク済 === true, false)}
+            ${intakeCheckItem('m-名札_靴済', '名札(靴)', r.名札_靴済 === true, false)}
+            ${intakeCheckItem('m-リハブクラウド登録済', 'リハブ登録', r.リハブクラウド登録済 === true, false)}
+            ${intakeCheckItem('m-ケアズ登録済', 'ケアズ登録', r.ケアズ登録済 === true, false)}
+            ${intakeCheckItem('m-SNS顔出し可否確認済', 'SNS可否確認', r.SNS顔出し可否確認済 === true, false)}
+            ${intakeCheckItem('m-写真撮影済', '写真撮影', r.写真撮影済 === true, false)}
+            ${intakeCheckItem('m-同意書類取得済', '同意書取得', r.同意書類取得済 === true, false)}
+            ${intakeCheckItem('m-朝礼周知済', '朝礼周知', r.朝礼周知済 === true, false)}
+        </div>
+        ${(!isNew && r.フェーズ !== 'アーカイブ' && r.フェーズ !== 'ドロップ')
+            ? `<div style="margin-top:12px;"><button type="button" class="danger" onclick="kanbanDrop('${r.id}')">📦 ドロップ（見送り・他社決定など）</button></div>`
+            : ''}
+        </div>
+
         <!-- ステータス -->
         <div class="intake-modal-section"><h4>ステータス</h4>
             ${ivRenderBtnGroup('ステータス', Object.keys(INTAKE_STATUS_LABEL), Object.values(INTAKE_STATUS_LABEL), r.ステータス || 'pending')}
@@ -13933,7 +14149,7 @@ function collectIntakeModalPayload() {
      '主訴','yawaragi何番目','利用なし理由詳細',
      '体験お迎え時間','体験前連絡予定日','体験前連絡メモ',
      '前日連絡日時','前日連絡担当','前日連絡メモ','訪問注意事項',
-     '本格利用開始日','初回お迎え時間',
+     '本格利用開始日','初回お迎え時間','契約日',
      'ケアマネ報告日時','ケアマネ報告内容','ケアマネ利用可否連絡日','契約順位'].forEach(f => {
         const el = document.getElementById('m-' + f);
         if (el) p[f] = el.value;
@@ -13956,10 +14172,18 @@ function collectIntakeModalPayload() {
     });
     // チェックボックス
     ['利用日前日連絡フラグ','ケアマネ連絡済','送迎時間連絡済','週間予定表仮予約済','全記入済',
-     'Googleマップ登録済み','初回お迎え時間報告済','ケアマネ報告済','体験前連絡済'].forEach(f => {
+     'Googleマップ登録済み','初回お迎え時間報告済','ケアマネ報告済','体験前連絡済',
+     // カンバン進行・完了チェック（Phase C）
+     '見学完了','体験完了',
+     '重要事項説明済','契約書取り交わし済',
+     '名札_通常済','名札_荷物済','名札_ハンガー済','名札_ドリンク済','名札_靴済',
+     'リハブクラウド登録済','ケアズ登録済','SNS顔出し可否確認済',
+     '写真撮影済','同意書類取得済','朝礼周知済'].forEach(f => {
         const el = document.getElementById('m-' + f);
         if (el) p[f] = el.checked === true;
     });
+    // 体験打診結果（btnGroup）
+    p.体験打診結果 = ivGetGroupValue('体験打診結果');
     // 前日連絡相手・表札・ケアマネ可否回答・体験前連絡相手（btnGroup）
     p.前日連絡相手 = ivGetGroupValue('前日連絡相手');
     p.体験前連絡相手 = ivGetGroupValue('体験前連絡相手');
