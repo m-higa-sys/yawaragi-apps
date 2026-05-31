@@ -78,6 +78,8 @@ body {
 .filter-bar {
     padding: 8px 20px; background: #fff; border-bottom: 1px solid #ddd;
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    /* タブの真下に貼り付く（top はJSが --tabH で設定） */
+    position: sticky; top: var(--tabH, 0px); z-index: 25;
 }
 .filter-label { font-size: 13px; font-weight: bold; color: #555; white-space: nowrap; }
 .filter-group { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -104,10 +106,12 @@ body {
 .filter-count { font-size: 13px; color: #888; align-self: center; }
 
 .table-container {
-    /* padding 0：sticky見出し・氏名列を枠の縁にピタッと付ける（隙間からのチラ見え防止）。
-       外側の余白が欲しい場合は margin で。 */
-    overflow: auto; padding: 0; margin: 8px;
-    /* 縦横ともこの枠の中でスクロール → 見出し行・氏名列の sticky を効かせる */
+    /* padding 0：sticky見出し・氏名列を枠の縁にピタッと付ける（隙間からのチラ見え防止）。 */
+    overflow: auto; padding: 0; margin: 0;
+    /* コンテナ自体もタブ＋検索バーの真下に貼り付き、中身を内部スクロール。
+       これで「タブ＋検索＋月見出し」を残しつつ、表だけを縦横スクロールできる。
+       top と max-height はJSが --tabH＋検索バー高さから設定（fallbackは下記）。 */
+    position: sticky; top: var(--tabH, 0px); z-index: 1;
     max-height: calc(100dvh - 150px);
 }
 table {
@@ -253,8 +257,9 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 @media print {
     @page { size: A4 landscape; margin: 8mm; }
     body { background: white; font-size: 10px; }
-    .header, .toolbar, .filter-bar, .notice, #offlineBanner, .modal-overlay, button { display: none !important; }
-    .table-container { padding: 0; margin: 0; overflow: visible !important; max-height: none !important; }
+    .header, .toolbar, .filter-bar, .notice, #offlineBanner, .modal-overlay, button, .tab-bar { display: none !important; }
+    .table-container { position: static !important; padding: 0; margin: 0; overflow: visible !important; max-height: none !important; }
+    th { position: static !important; }
     table { box-shadow: none; font-size: 10px; }
     th, td { padding: 2px 1px; font-size: 10px; }
     .name-cell, .group-cell { position: static; }
@@ -280,6 +285,8 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     background: #fff;
     border-bottom: 2px solid #4CAF50;
     padding: 0 20px;
+    /* スクロールしても最上部に貼り付く（タイトル・説明・集計は下を流れて消える） */
+    position: sticky; top: 0; z-index: 30;
 }
 .tab-btn {
     padding: 14px 24px;
@@ -315,6 +322,8 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     gap: 8px;
     align-items: center;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    /* 計画書タブでもタブの真下に貼り付く */
+    position: sticky; top: var(--tabH, 0px); z-index: 25;
 }
 .plans-search-input {
     flex: 1 1 200px;
@@ -1149,16 +1158,24 @@ function toggleNotice() {
 // 表コンテナの高さを「上端から画面下までピッタリ」に合わせる。
 // これで縦スクロールがコンテナ内で起き、見出し行(top:0)と氏名列(left)の sticky が確実に効く。
 function fitTableHeight() {
+    // タブバー高さを CSS変数に（検索バー・計画書検索バーの sticky top に使う）
+    const tabBar = document.querySelector('.tab-bar');
+    const tabH = tabBar ? tabBar.offsetHeight : 0;
+    document.documentElement.style.setProperty('--tabH', tabH + 'px');
+
     const c = document.querySelector('#panel-monitoring .table-container');
     if (!c) return;
-    // モニタリングタブが非表示のときは getBoundingClientRect().top が当てにならないのでスキップ
     if (!document.getElementById('panel-monitoring').classList.contains('active')) return;
-    const top = c.getBoundingClientRect().top;
-    const h = window.innerHeight - top - 10; // 下マージン分の余白
-    if (h > 200) c.style.maxHeight = h + 'px';
 
-    // 2段ヘッダー対策：1段目(月)と2段目(1回目/2回目/モニタリング)が両方 top:0 で固定されると
-    // 重なってしまうので、2段目を1段目の高さぶん下げる。
+    // 検索バーの高さ（表示中のみ）。コンテナはタブ＋検索バーの真下に貼り付ける。
+    const fb = document.getElementById('filterBar');
+    const fbH = (fb && fb.offsetParent !== null) ? fb.offsetHeight : 0;
+    const stickyTop = tabH + fbH;
+    c.style.top = stickyTop + 'px';
+    c.style.maxHeight = 'calc(100dvh - ' + stickyTop + 'px)';
+
+    // 2段ヘッダー対策：1段目(月)と2段目(送付)が両方 top:0 で固定されると重なるので、
+    // 2段目を1段目の高さぶん下げる。
     const firstTh = c.querySelector('thead tr:first-child th.month-header');
     if (firstTh) {
         const h1h = firstTh.offsetHeight;
@@ -1618,7 +1635,7 @@ function setupTabs() {
             if (tab === 'plans' && !TSUSHO_PLANS_LOADED) {
                 loadTsushoPlans();
             }
-            if (tab === 'monitoring') fitTableHeight();
+            fitTableHeight();
         });
     });
     // 五十音行・状態フィルタのクリック
