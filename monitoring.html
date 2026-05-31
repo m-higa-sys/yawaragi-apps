@@ -97,10 +97,16 @@ body {
 }
 .filter-count { font-size: 13px; color: #888; align-self: center; }
 
-.table-container { overflow-x: auto; padding: 15px; }
+.table-container {
+    /* padding 0：sticky見出し・氏名列を枠の縁にピタッと付ける（隙間からのチラ見え防止）。
+       外側の余白が欲しい場合は margin で。 */
+    overflow: auto; padding: 0; margin: 15px;
+    /* 縦横ともこの枠の中でスクロール → 見出し行・氏名列の sticky を効かせる */
+    max-height: calc(100dvh - 150px);
+}
 table {
     border-collapse: collapse; width: 100%; background: white;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px;
 }
 th, td {
     border: 1px solid #e0e0e0; text-align: center;
@@ -242,7 +248,7 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     @page { size: A4 landscape; margin: 8mm; }
     body { background: white; font-size: 10px; }
     .header, .toolbar, .filter-bar, .notice, #offlineBanner, .modal-overlay, button { display: none !important; }
-    .table-container { padding: 0; overflow: visible; }
+    .table-container { padding: 0; margin: 0; overflow: visible !important; max-height: none !important; }
     table { box-shadow: none; font-size: 10px; }
     th, td { padding: 2px 1px; font-size: 10px; }
     .name-cell, .group-cell { position: static; }
@@ -1003,7 +1009,7 @@ function renderTable() {
     const nowMonth = now.getMonth() + 1;
 
     // ヘッダー（2段）
-    let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="position:sticky;left:30px;background:#4CAF50;">氏名</th>';
+    let h1 = '<tr><th rowspan="2" style="min-width:30px;position:sticky;left:0;background:#4CAF50;z-index:12;"></th><th rowspan="2" class="name-cell" style="position:sticky;left:30px;background:#4CAF50;z-index:11;">氏名</th>';
     MONTHS.forEach(mo => {
         h1 += '<th class="month-header" colspan="' + SUB_COLS.length + '">' + mo.label + '</th>';
     });
@@ -1120,6 +1126,29 @@ function renderTable() {
     tbody.innerHTML = html;
     updateStats();
     updatePrintTitle();
+    fitTableHeight();
+}
+
+// 表コンテナの高さを「上端から画面下までピッタリ」に合わせる。
+// これで縦スクロールがコンテナ内で起き、見出し行(top:0)と氏名列(left)の sticky が確実に効く。
+function fitTableHeight() {
+    const c = document.querySelector('#panel-monitoring .table-container');
+    if (!c) return;
+    // モニタリングタブが非表示のときは getBoundingClientRect().top が当てにならないのでスキップ
+    if (!document.getElementById('panel-monitoring').classList.contains('active')) return;
+    const top = c.getBoundingClientRect().top;
+    const h = window.innerHeight - top - 20; // 下マージン分含めて少し余白
+    if (h > 200) c.style.maxHeight = h + 'px';
+
+    // 2段ヘッダー対策：1段目(月)と2段目(1回目/2回目/モニタリング)が両方 top:0 で固定されると
+    // 重なってしまうので、2段目を1段目の高さぶん下げる。
+    const firstTh = c.querySelector('thead tr:first-child th.month-header');
+    if (firstTh) {
+        const h1h = firstTh.offsetHeight;
+        c.querySelectorAll('thead tr:nth-child(2) th').forEach(function (t) {
+            t.style.top = h1h + 'px';
+        });
+    }
 }
 
 function updateStats() {
@@ -1572,6 +1601,7 @@ function setupTabs() {
             if (tab === 'plans' && !TSUSHO_PLANS_LOADED) {
                 loadTsushoPlans();
             }
+            if (tab === 'monitoring') fitTableHeight();
         });
     });
     // 五十音行・状態フィルタのクリック
@@ -1590,7 +1620,12 @@ window.addEventListener('load', async () => {
     setupTabs();
     updatePendingBanner();
     await loadFiscalYearData();
+    fitTableHeight();
 });
+
+// 画面サイズ・回転・フィルタ表示切替で高さ再計算
+window.addEventListener('resize', fitTableHeight);
+window.addEventListener('orientationchange', () => setTimeout(fitTableHeight, 200));
 
 function anyDialogOpen() {
     return ['sendDialog', 'userInfoDialog'].some(id => {
