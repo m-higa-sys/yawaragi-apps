@@ -8139,6 +8139,15 @@ function showUsageDetail(name) {
   var weekText = (ov.rate == null) ? '' : '（実質 週' + Math.round(ov.rate * (ua.contractCount || 0) / 100 * 10) / 10 + '回）';
   html += '<div class="usage-modal-row"><span class="usage-modal-label">全体利用率</span>' +
           '<span>' + rateText + ' ' + weekText + '</span></div>';
+  // 最終利用日とカウントダウン（軸B 不在判定）
+  if (ua.lastVisitDate) {
+    var lvMD = ua.lastVisitDate.slice(5).replace('-', '/');
+    var lvDays = ua.daysSinceLastVisit;
+    var lvCountdown = (lvDays != null && lvDays < 30) ? '　／🔴まであと' + (30 - lvDays) + '日' : '';
+    var lvText = (lvDays != null ? lvDays + '日経過' : '-');
+    html += '<div class="usage-modal-row"><span class="usage-modal-label">最終利用</span>' +
+            '<span>' + lvMD + '（' + lvText + '）' + lvCountdown + '</span></div>';
+  }
   // 利用率の推移（直近1/2/3ヶ月）
   if (ua.periods && ua.periods.length) {
     html += '<div class="usage-modal-label" style="margin-top:8px;">📊 利用率の推移</div>';
@@ -13188,13 +13197,16 @@ function buildIntakeGuidedForm(r) {
 }
 
 function gstepSync() {
-    let reqTotal = 0, reqDone = 0;
+    let reqTotal = 0, reqDone = 0, disp = 0;
     GSTEP_DEFS.forEach(d => {
         const el = document.getElementById('gstep-' + d.n);
         if (!el) return;
         const show = gstepCond(d);
         el.style.display = show ? '' : 'none';
         if (!show) return;
+        disp++; // 見えている段だけで番号を振り直す（隠れた段で欠番にしない）
+        const badge = el.querySelector('.gstep-badge');
+        if (badge) badge.textContent = disp;
         const done = gstepDone(d), req = gstepReq(d);
         el.classList.toggle('done', done);
         const qt = el.querySelector('.gstep-qt');
