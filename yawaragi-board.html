@@ -13123,16 +13123,15 @@ const GSTEP_DEFS = [
     { n:4, q:'お名前', required:true,
       sum:()=>{ const f=gstepVal('m-ふりがな'), k=gstepVal('m-氏名'); return k?(k+(f?'（'+f+'）':'')):(f||''); } },
     { n:5, q:'電話番号', required:true, sum:()=>gstepVal('m-TEL') },
-    { n:6, q:'エリア（送迎範囲）', required:true, sum:()=>ivGetGroupValue('エリア') },
-    { n:7, q:'介護度', required:true, sum:()=>ivGetGroupValue('介護度') },
-    { n:8, q:'ペースメーカー', cond:gsIsVisitOrTrial, required:()=>gsKind()==='trial',
+    { n:6, q:'介護度', required:true, sum:()=>ivGetGroupValue('介護度') },
+    { n:7, q:'ペースメーカー', cond:gsIsVisitOrTrial, required:()=>gsKind()==='trial',
       note:'運動機器の干渉波の安全確認。体験は必須です。',
       dynQ:()=>gsKind()==='trial'?'ペースメーカー（体験は必須）':'ペースメーカー（念のため）',
       sum:()=>ivGetGroupValue('ペースメーカー') },
-    { n:9, q:'予定日', cond:gsIsVisitOrTrial,
+    { n:8, q:'予定日', cond:gsIsVisitOrTrial,
       dynQ:()=>gsKind()==='visit'?'見学はいつ？（決まっていれば）':'体験はいつ？（決まっていれば）',
       sum:()=>{ const d=gstepVal('m-予定日'); if(!d) return ''; const ap=ivGetGroupValue('予定日AMPM'); return d+(ap?(' '+ap):''); } },
-    { n:10, q:'主訴・メモ', dynQ:()=>'主訴・メモ（任意）', sum:()=>gstepVal('m-主訴') }
+    { n:9, q:'主訴・メモ', dynQ:()=>'主訴・メモ（任意）', sum:()=>gstepVal('m-主訴') }
 ];
 function gstepDef(n){ return GSTEP_DEFS.filter(d=>d.n===n)[0]; }
 function gstepReq(d){ return typeof d.required==='function'?!!d.required():!!d.required; }
@@ -13159,15 +13158,13 @@ function buildIntakeGuidedForm(r) {
         5: `<div class="intake-modal-grid"><div class="col2"><label>電話番号</label><input id="m-TEL" value="${intakeEscapeAttr(r.TEL)}" placeholder="090-1234-5678" oninput="gstepSync()" onblur="this.value=formatJPPhone(this.value);gstepSync()"></div>`
            + `<div><label>続柄（誰の番号？）</label>${telSel}</div></div>`
            + `<button type="button" class="gstep-next" onclick="gstepAdvance(5)">次へ</button>`,
-        6: ivRenderBtnGroup('エリア',['東松山市','嵐山町','川島町','その他'], null, r.エリア||'', { onchange:'gstepOnGroup' })
-           + `<div id="m-エリア-warn" style="display:none;color:#c05621;font-size:12px;margin-top:7px;">⚠️ 送迎範囲外の可能性・要相談（保存は可能）</div>`,
-        7: ivRenderBtnGroup('介護度', careLevels, null, r.介護度||'', { onchange:'gstepOnGroup' }),
-        8: `<div class="gstep-hint" id="gstep8-hint"></div>`
+        6: ivRenderBtnGroup('介護度', careLevels, null, r.介護度||'', { onchange:'gstepOnGroup' }),
+        7: `<div class="gstep-hint" id="gstep7-hint"></div>`
            + ivRenderBtnGroup('ペースメーカー',['無','有','不明'], null, r.ペースメーカー||'', { onchange:'gstepOnGroup' }),
-        9: `<div class="intake-modal-grid"><div class="col2"><label>日付</label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" oninput="gstepSync()"><span id="m-予定日-dow" style="font-weight:700;color:var(--accent);"></span></div></div>`
+        8: `<div class="intake-modal-grid"><div class="col2"><label>日付</label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" oninput="gstepSync()"><span id="m-予定日-dow" style="font-weight:700;color:var(--accent);"></span></div></div>`
            + `<div><label>時間帯</label>${ivRenderBtnGroup('予定日AMPM',['AM','PM'], null, r.予定日AMPM||'', { onchange:'gstepSync' })}</div></div>`
-           + `<button type="button" class="gstep-next" onclick="gstepAdvance(9)">次へ</button>`,
-        10: `<div class="intake-modal-grid"><div class="col3"><label>困っていること・電話メモ</label><textarea id="m-主訴" oninput="gstepSync()" placeholder="例：膝が痛い／運動不足／ケアマネ紹介">${intakeEscapeHtml(r.主訴)}</textarea></div></div>`
+           + `<button type="button" class="gstep-next" onclick="gstepAdvance(8)">次へ</button>`,
+        9: `<div class="intake-modal-grid"><div class="col3"><label>困っていること・電話メモ</label><textarea id="m-主訴" oninput="gstepSync()" placeholder="例：膝が痛い／運動不足／ケアマネ紹介">${intakeEscapeHtml(r.主訴)}</textarea></div></div>`
     };
     const stepsHtml = GSTEP_DEFS.map(d => {
         const body = bodies[d.n] || '';
@@ -13208,10 +13205,8 @@ function gstepSync() {
         if (sumEl) sumEl.textContent = done ? ('✓ ' + d.sum()) : '';
         if (req) { reqTotal++; if (done) reqDone++; }
     });
-    const aw = document.getElementById('m-エリア-warn');
-    if (aw) aw.style.display = ivGetGroupValue('エリア') === 'その他' ? 'block' : 'none';
-    const h8 = document.getElementById('gstep8-hint');
-    if (h8) h8.textContent = gstepDef(8).note;
+    const h7 = document.getElementById('gstep7-hint');
+    if (h7) h7.textContent = gstepDef(7).note;
     if (typeof intakeUpdateYoteibiDow === 'function') intakeUpdateYoteibiDow();
     const prog = document.getElementById('gstep-progress');
     if (prog) {
@@ -14444,6 +14439,7 @@ function collectIntakeModalPayload() {
 // 新規保存（通常 or 中断）
 async function saveIntakeModalNew(suspend) {
     const p = collectIntakeModalPayload();
+    if (!p.エリア) p.エリア = '東松山市'; // 受け入れは東松山市のみ（2026-05-31〜）。ガイドではエリアを聞かず固定
     const jump = (n, msg) => { alert(msg); if (typeof gstepOpen === 'function') gstepOpen(n); };
     if (suspend) {
         // 中断保存：途中でもOK。本人特定のため名前か電話のどちらかだけは欲しい
@@ -14455,9 +14451,8 @@ async function saveIntakeModalNew(suspend) {
         if (!p.種別) { jump(3, '今回はどれか（問い合わせ／見学／体験）を選んでください'); return; }
         if (!p.氏名 && !p.ふりがな) { jump(4, 'お名前（漢字不明ならふりがなだけでOK）を入れてください'); return; }
         if (!p.TEL) { jump(5, '電話番号を入れてください'); return; }
-        if (!p.エリア) { jump(6, 'エリアを選んでください'); return; }
-        if (!p.介護度) { jump(7, '介護度を選んでください'); return; }
-        if (p.種別 === 'trial' && !p.ペースメーカー) { jump(8, '体験はペースメーカーの有無確認が必須です（運動機器の干渉波 安全確認）'); return; }
+        if (!p.介護度) { jump(6, '介護度を選んでください'); return; }
+        if (p.種別 === 'trial' && !p.ペースメーカー) { jump(7, '体験はペースメーカーの有無確認が必須です（運動機器の干渉波 安全確認）'); return; }
     }
     if (p.TEL) p.TEL = formatJPPhone(p.TEL);
 
