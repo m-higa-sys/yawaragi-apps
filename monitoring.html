@@ -44,12 +44,18 @@ body {
 .btn-red:hover { background: #d32f2f; }
 
 .notice {
-    background: #fff8e1; color: #e65100; padding: 10px 20px;
-    border-left: 4px solid #ffa000; font-size: 14px; line-height: 1.6;
+    background: #fff8e1; color: #e65100; padding: 8px 20px;
+    border-left: 4px solid #ffa000; font-size: 13px; line-height: 1.55;
+    cursor: pointer;
+}
+.notice.collapsed .notice-detail { display: none; }
+.notice .notice-toggle {
+    float: right; font-weight: bold; font-size: 12px;
+    color: #b45309; margin-left: 8px;
 }
 
 .toolbar {
-    padding: 12px 20px; background: white; border-bottom: 1px solid #ddd;
+    padding: 8px 20px; background: white; border-bottom: 1px solid #ddd;
     display: flex; justify-content: space-between; align-items: center;
     flex-wrap: wrap; gap: 10px;
 }
@@ -100,7 +106,7 @@ body {
 .table-container {
     /* padding 0：sticky見出し・氏名列を枠の縁にピタッと付ける（隙間からのチラ見え防止）。
        外側の余白が欲しい場合は margin で。 */
-    overflow: auto; padding: 0; margin: 15px;
+    overflow: auto; padding: 0; margin: 8px;
     /* 縦横ともこの枠の中でスクロール → 見出し行・氏名列の sticky を効かせる */
     max-height: calc(100dvh - 150px);
 }
@@ -445,10 +451,11 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 </div>
 
 <div class="tab-panel active" id="panel-monitoring">
-<div class="notice">
-    📋 <strong>ケアマネ送付管理</strong>：要支援1・要支援2・事業対象者を毎月モニタリングし、ケアマネに送付（📧PDFメール or 🖨印刷物 持参）。<br>
+<div class="notice collapsed" id="noticeBox" onclick="toggleNotice()">
+    <span class="notice-toggle" id="noticeToggle">詳細▼</span>
+    📋 <strong>ケアマネ送付管理</strong><span class="notice-detail">：要支援1・要支援2・事業対象者を毎月モニタリングし、ケアマネに送付（📧PDFメール or 🖨印刷物 持参）。<br>
     月セルをタップ→ダイアログで 📧PDF送付日 / 🖨印刷送付日 を記録（両方可）。利用者名タップで担当ケアマネ・計画期間（最終評価月）を編集。<br>
-    ✍マーク＝最終評価月（利用者サイン要）。
+    ✍マーク＝最終評価月（利用者サイン要）。</span>
 </div>
 
 <div id="offlineBanner" style="display:none;">⚠ オフライン中（キャッシュ表示）。ネット復帰後、最新を取得してください。</div>
@@ -1129,6 +1136,16 @@ function renderTable() {
     fitTableHeight();
 }
 
+// 説明ボックスの開閉（初期は折りたたみ）。開閉で表の上端が動くので高さ再計算。
+function toggleNotice() {
+    const n = document.getElementById('noticeBox');
+    if (!n) return;
+    n.classList.toggle('collapsed');
+    const t = document.getElementById('noticeToggle');
+    if (t) t.textContent = n.classList.contains('collapsed') ? '詳細▼' : '閉じる▲';
+    fitTableHeight();
+}
+
 // 表コンテナの高さを「上端から画面下までピッタリ」に合わせる。
 // これで縦スクロールがコンテナ内で起き、見出し行(top:0)と氏名列(left)の sticky が確実に効く。
 function fitTableHeight() {
@@ -1137,7 +1154,7 @@ function fitTableHeight() {
     // モニタリングタブが非表示のときは getBoundingClientRect().top が当てにならないのでスキップ
     if (!document.getElementById('panel-monitoring').classList.contains('active')) return;
     const top = c.getBoundingClientRect().top;
-    const h = window.innerHeight - top - 20; // 下マージン分含めて少し余白
+    const h = window.innerHeight - top - 10; // 下マージン分の余白
     if (h > 200) c.style.maxHeight = h + 'px';
 
     // 2段ヘッダー対策：1段目(月)と2段目(1回目/2回目/モニタリング)が両方 top:0 で固定されると
