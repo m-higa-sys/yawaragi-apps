@@ -2361,6 +2361,67 @@
     </div>
 </div>
 
+<!-- 後続作業カード 記録編集モーダル -->
+<div class="modal-overlay" id="kubun-history-edit-modal">
+    <div class="modal">
+        <div class="modal-header">
+            ✏️ 後続作業カードを編集
+            <button class="modal-close" onclick="closeModal('kubun-history-edit-modal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="kubun-hist-edit-row">
+            <input type="hidden" id="kubun-hist-edit-name">
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
+                <div id="kubun-hist-edit-name-display" style="padding:8px 12px; background:#f7fafc; border-radius:8px; font-weight:600;"></div>
+                <div style="font-size:0.75rem; color:#718096; margin-top:4px;">※ 氏名はここでは変更できません（利用者台帳との連携が壊れるため）。別人を登録してしまった場合は削除して登録し直してください。</div>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <div style="flex:1;">
+                    <label style="display:block; font-weight:600; margin-bottom:4px;">前介護度</label>
+                    <select id="kubun-hist-edit-prevcare" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; background:#fff;">
+                        <option value="">（なし）</option>
+                        <option value="要支援1">要支援1</option>
+                        <option value="要支援2">要支援2</option>
+                        <option value="事業対象者">事業対象者</option>
+                        <option value="要介護1">要介護1</option>
+                        <option value="要介護2">要介護2</option>
+                        <option value="要介護3">要介護3</option>
+                        <option value="要介護4">要介護4</option>
+                        <option value="要介護5">要介護5</option>
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label style="display:block; font-weight:600; margin-bottom:4px;">後介護度</label>
+                    <select id="kubun-hist-edit-newcare" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; background:#fff;">
+                        <option value="">（なし）</option>
+                        <option value="要支援1">要支援1</option>
+                        <option value="要支援2">要支援2</option>
+                        <option value="事業対象者">事業対象者</option>
+                        <option value="要介護1">要介護1</option>
+                        <option value="要介護2">要介護2</option>
+                        <option value="要介護3">要介護3</option>
+                        <option value="要介護4">要介護4</option>
+                        <option value="要介護5">要介護5</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-weight:600; margin-bottom:4px;">区変日／更新月</label>
+                <input type="date" id="kubun-hist-edit-applydate" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block; font-weight:600; margin-bottom:4px;">結果日</label>
+                <input type="date" id="kubun-hist-edit-resultdate" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+            </div>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button class="data-btn" onclick="closeModal('kubun-history-edit-modal')">キャンセル</button>
+                <button class="data-btn" style="background:#3182ce; color:#fff;" onclick="kubunHistorySaveEdit()">💾 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 区変OFF モーダル -->
 <div class="modal-overlay" id="kubun-clear-modal">
     <div class="modal">
@@ -8049,21 +8110,24 @@ function renderUsageSummaryPanel(box, headerIcon, title, list, cssPrefix, opts) 
     return;
   }
   opts = opts || {};
+  var displayList = opts.limit ? list.slice(0, opts.limit) : list;
   var html = '<div class="' + cssPrefix + '-title">' + headerIcon + ' ' + title +
-             '（' + list.length + '名）</div>';
+             '（' + displayList.length + '名）</div>';
   if (opts.periodText) {
     html += '<div class="att-usagesummary-period">📅 集計期間: ' + opts.periodText + '</div>';
   }
-  list.forEach(function(r, idx) {
+  displayList.forEach(function(r, idx) {
     var escaped = String(r.name).replace(/'/g, "\\'");
     var sub = opts.subText ? opts.subText(r) :
               ('利用率' + (r.rate == null ? '-' : r.rate + '%') +
                (r.worstDay ? ' / 最悪 ' + r.worstDay.day + '曜' + r.worstDay.rate + '%' : ''));
     var entryIcon = opts.entryIcon ? (opts.entryIcon(r) || '') : '';
     var iconHtml = entryIcon ? '<span class="att-usagesummary-entryicon">' + entryIcon + '</span> ' : '';
+    var indexHtml = opts.hideIndex ? '' :
+            '<span class="att-usagesummary-index">' + (idx + 1) + '.</span>';
     html += '<div class="' + cssPrefix + '-item" onclick="showUsageDetail(\'' + escaped + '\')">' +
             '<div class="att-usagesummary-name">' +
-              '<span class="att-usagesummary-index">' + (idx + 1) + '.</span>' +
+              indexHtml +
               iconHtml + r.name +
             '</div>' +
             '<div class="att-usagesummary-sub">' + sub + '</div>' +
@@ -8092,14 +8156,16 @@ function renderUsageHighSummary() {
   var pt = p.fromDate + '〜' + p.toDate;
   renderUsageSummaryPanel(
     document.getElementById('att-highsummary'),
-    '💪', '安定通所中（要介護・枠追加余地あり）', usageHighList, 'att-highsummary',
+    '💪', '追加利用おすすめ（週1〜2回）', usageHighList, 'att-highsummary',
     {
       subText: function(r) {
-        var rt = (r.rate == null ? '-' : r.rate + '%');
-        var best = r.bestDay ? ' / 最高 ' + r.bestDay.day + '曜' + r.bestDay.rate + '%' : '';
-        return '利用率' + rt + best;
+        var wk = r.contractCount ? '週' + r.contractCount + '回・' : '';
+        var rt = (r.rate == null ? '-' : '利用率' + r.rate + '%');
+        return wk + rt;
       },
-      periodText: pt
+      periodText: pt,
+      hideIndex: true,
+      limit: 10
     });
 }
 
@@ -11360,6 +11426,12 @@ function _doLoadKubunHistoryList() {
                     html += '</div>';
                 }
 
+                // 編集・削除（完了/未完了 共通・登録ミスやテスト行の修正用）
+                html += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">';
+                html += '<button type="button" onclick="openKubunHistoryEditModal(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.applyDate || '') + '\', \'' + escapeJsString(u.resultDate || '') + '\', \'' + escapeJsString(u.prevCare || '') + '\', \'' + escapeJsString(u.newCare || '') + '\')" style="padding:5px 12px; font-size:0.8rem; background:#edf2f7; color:#4a5568; border:1px solid #cbd5e0; border-radius:6px; cursor:pointer;">✏️ 編集</button>';
+                html += '<button type="button" onclick="kubunHistoryDeleteRecord(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:5px 12px; font-size:0.8rem; background:#fff5f5; color:#c53030; border:1px solid #feb2b2; border-radius:6px; cursor:pointer;">🗑️ 削除</button>';
+                html += '</div>';
+
                 html += '</div>';
             });
             list.innerHTML = html;
@@ -11535,6 +11607,85 @@ function kubunHistoryMarkAllDone(rowIndex, name) {
 function kubunHistoryClearCompleted(rowIndex, name) {
     if (!confirm(name + '様の完了を取り消しますか？')) return;
     kubunHistoryUpdateField(rowIndex, 'clearCompleted', '');
+}
+
+// ===== 後続作業カード 編集（介護度・区変日/更新月・結果日。氏名は変更不可） =====
+function openKubunHistoryEditModal(rowIndex, name, applyDate, resultDate, prevCare, newCare) {
+    document.getElementById('kubun-hist-edit-row').value = rowIndex;
+    document.getElementById('kubun-hist-edit-name').value = name || '';
+    document.getElementById('kubun-hist-edit-name-display').textContent = (name || '') + ' 様';
+    document.getElementById('kubun-hist-edit-prevcare').value = prevCare || '';
+    document.getElementById('kubun-hist-edit-newcare').value = newCare || '';
+    document.getElementById('kubun-hist-edit-applydate').value = applyDate || '';
+    document.getElementById('kubun-hist-edit-resultdate').value = resultDate || '';
+    openModal('kubun-history-edit-modal');
+}
+
+function kubunHistorySaveEdit() {
+    const rowIndex = document.getElementById('kubun-hist-edit-row').value;
+    const name = document.getElementById('kubun-hist-edit-name').value;
+    const prevCare = document.getElementById('kubun-hist-edit-prevcare').value;
+    const newCare = document.getElementById('kubun-hist-edit-newcare').value;
+    const applyDate = document.getElementById('kubun-hist-edit-applydate').value;
+    const resultDate = document.getElementById('kubun-hist-edit-resultdate').value;
+    if (!rowIndex) return;
+
+    const cbName = 'kubunHistEditCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    window[cbName] = function(res) {
+        if (res && res.ok) {
+            if (typeof showToast === 'function') showToast('✅ ' + name + '様のカードを更新しました');
+            closeModal('kubun-history-edit-modal');
+            loadKubunHistoryList();
+        } else {
+            alert('更新失敗: ' + (res && res.error ? res.error : '不明'));
+        }
+        delete window[cbName];
+        const s = document.getElementById('kubun-hist-edit-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 'kubun-hist-edit-jsonp-' + cbName;
+    let url = ABS_BOARD_API_URL + '?action=kubunHistoryEditRecord&callback=' + cbName + '&t=' + Date.now();
+    url += '&rowIndex=' + encodeURIComponent(rowIndex);
+    url += '&name=' + encodeURIComponent(name);
+    url += '&prevCare=' + encodeURIComponent(prevCare);
+    url += '&newCare=' + encodeURIComponent(newCare);
+    url += '&applyDate=' + encodeURIComponent(applyDate);
+    url += '&resultDate=' + encodeURIComponent(resultDate);
+    script.src = url;
+    script.onerror = function() {
+        alert('通信エラーが発生しました');
+        delete window[cbName];
+    };
+    document.body.appendChild(script);
+}
+
+// ===== 後続作業カード 削除（行ごと物理削除・テスト行/登録ミス掃除用） =====
+function kubunHistoryDeleteRecord(rowIndex, name) {
+    if (!confirm(name + '様の後続作業カードを削除します。\n\n⚠️ この区変・更新の記録（月遅れ請求対象月などを含む）が完全に消えます。\nテスト行や登録ミスの場合のみ実行してください。\n\n本当に削除しますか？')) return;
+
+    const cbName = 'kubunHistDelCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    window[cbName] = function(res) {
+        if (res && res.ok) {
+            if (typeof showToast === 'function') showToast('🗑️ ' + name + '様のカードを削除しました');
+            loadKubunHistoryList();
+        } else {
+            alert('削除失敗: ' + (res && res.error ? res.error : '不明'));
+        }
+        delete window[cbName];
+        const s = document.getElementById('kubun-hist-del-jsonp-' + cbName);
+        if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 'kubun-hist-del-jsonp-' + cbName;
+    let url = ABS_BOARD_API_URL + '?action=kubunHistoryDeleteRecord&callback=' + cbName + '&t=' + Date.now();
+    url += '&rowIndex=' + encodeURIComponent(rowIndex);
+    script.src = url;
+    script.onerror = function() {
+        alert('通信エラーが発生しました');
+        delete window[cbName];
+    };
+    document.body.appendChild(script);
 }
 
 // ===== 利用曜日 編集モーダル =====
@@ -12705,7 +12856,7 @@ const INTAKE_NO_USE_REASON = {
     personal_no: '体験で本人NG',
     other: 'その他'
 };
-const INTAKE_CARE_LEVELS = ['事前', '支1', '支2', '介1', '介2', '介3', '介4', '介5', '未取得', '不明'];
+const INTAKE_CARE_LEVELS = ['申請前・申請中', '要支援1', '要支援2', '要介護1', '要介護2', '要介護3', '要介護4', '要介護5', '不明'];
 // 土曜営業開始時は '土' を追加（project_土曜営業検討.md 参照）
 const INTAKE_DAY_BUTTONS = ['月', '火', '水', '木', '金'];
 let _intakeCache = [];
@@ -12931,6 +13082,11 @@ function intakeWarnings(r) {
         warns.push('🔴ケアマネ連絡 超過');
     }
     if (r.社長確認依頼日時 && !r.社長確認済) warns.push('📩社長確認待ち');
+    // 体験後フォロー状態（GAS@v213 が followup:{追客,ケアマネ} を返す・表示のみ）
+    if (r.followup) {
+        if (r.followup.追客) warns.push(r.followup.追客);
+        if (r.followup.ケアマネ) warns.push(r.followup.ケアマネ);
+    }
     return warns;
 }
 
@@ -13522,8 +13678,18 @@ function buildIntakeModalHtml(r) {
     }
     const deleteBtn = isNew ? '' : `<button class="danger" onclick="deleteIntakeAction('${r.id}')">🗑 削除</button>`;
 
+    // 体験後フォロー担当＋状態（GAS@v213 followup・該当時のみ赤枠表示）
+    const followupBox = (r.followup && (r.followup.追客 || r.followup.ケアマネ))
+        ? `<div style="background:#fff5f5;border:1px solid #fc8181;border-radius:6px;padding:8px;margin-bottom:10px;font-size:13px;">
+            ${r.followup.追客 ? `<div>${intakeEscapeHtml(r.followup.追客)}</div>` : ''}
+            ${r.followup.ケアマネ ? `<div>${intakeEscapeHtml(r.followup.ケアマネ)}</div>` : ''}
+            <div style="color:#718096;">体験後フォロー 主担当: 勝又さん ／ 副: 下浦さん</div>
+        </div>`
+        : '';
+
     return `
         ${header}
+        ${followupBox}
         ${promoteBanner}
         <!-- 見学日を保持するhidden input（昇格時に書き込まれる）-->
         <input type="hidden" id="m-見学日" value="${intakeEscapeAttr(r.見学日 || '')}">
@@ -13564,7 +13730,12 @@ function buildIntakeModalHtml(r) {
             ${intakeField('性別', ivRenderBtnGroup('性別', ['male','female'], ['男','女'], r.性別 || ''), 'col2')}
             ${intakeField('年齢', `<input type="number" id="m-年齢" value="${intakeEscapeAttr(r.年齢)}">`)}
             ${intakeField('生年月日', `<input id="m-生年月日" value="${intakeEscapeAttr(r.生年月日)}" placeholder="例: 19500101 / 1950/1/1 / 昭和25年1月1日" onblur="intakeNormalizeBirthday()">`, 'col3')}
-            ${intakeField('介護度', ivRenderBtnGroup('介護度', INTAKE_CARE_LEVELS, null, r.介護度 || ''), 'col3')}
+            ${intakeField('介護度', (() => {
+                // 過去データ（事前/支1/介1等 旧表記）後方互換：現在値が選択肢に無ければ先頭に足す
+                const careLevels = INTAKE_CARE_LEVELS.slice();
+                if (r.介護度 && careLevels.indexOf(r.介護度) === -1) careLevels.unshift(r.介護度);
+                return ivRenderBtnGroup('介護度', careLevels, null, r.介護度 || '');
+            })(), 'col3')}
             ${intakeField('住所（東松山市）', `<input id="m-住所詳細" value="${intakeEscapeAttr(r.住所詳細)}" placeholder="◯◯町1-2-3">`, 'col3')}
             ${intakeField('送迎', ivRenderBtnGroup('送迎有無', ['true','false'], ['有','無'], r.送迎有無 === true ? 'true' : r.送迎有無 === false ? 'false' : ''))}
             ${intakeField('直接連絡可否', ivRenderBtnGroup('直接連絡可否', ['true','false'], ['可','否'], r.直接連絡可否 === true ? 'true' : r.直接連絡可否 === false ? 'false' : ''), 'col2')}
@@ -13667,6 +13838,7 @@ function buildIntakeModalHtml(r) {
             ${intakeField('① 報告メモ（任意・後日見返し用）', `<input id="m-ケアマネ報告内容" value="${intakeEscapeAttr(r.ケアマネ報告内容 || '')}" placeholder="例: 運動に意欲的、本人も継続希望">`, 'col2')}
             ${intakeField('② ケアマネからの可否連絡日', `<input type="date" id="m-ケアマネ利用可否連絡日" value="${intakeEscapeAttr(r.ケアマネ利用可否連絡日 || '')}">`)}
             ${intakeField('② 回答', ivRenderBtnGroup('ケアマネ利用可否回答', ['利用する','利用しない','保留'], null, r.ケアマネ利用可否回答 || '', { onchange: 'intakeOnAnswerChange' }), 'col2')}
+            ${intakeField('利用意向（体験後）', ivRenderBtnGroup('利用意向', ['あり','保留','なし'], null, r.利用意向 || ''), 'col2')}
             ${intakeField('利用しない理由（差し支えなければケアマネに確認・改善材料に）', ivRenderBtnGroup('利用なし理由', Object.keys(INTAKE_NO_USE_REASON), Object.values(INTAKE_NO_USE_REASON), r.利用なし理由 || ''), 'col3 intake-no-use-only')}
             ${intakeField('理由 詳細（自由記入）', `<input id="m-利用なし理由詳細" value="${intakeEscapeAttr(r.利用なし理由詳細)}" placeholder="例: 距離が遠かった・送迎時間が合わない">`, 'col3 intake-no-use-only')}
             ${intakeField('契約順位（保留時：枠が空いた時の優先順）', `<input type="number" id="m-契約順位" value="${intakeEscapeAttr(r.契約順位 || '')}" min="1" placeholder="1=最優先">`, 'col3 intake-on-hold-only')}
@@ -13785,6 +13957,7 @@ function collectIntakeModalPayload() {
     p.体験前連絡相手 = ivGetGroupValue('体験前連絡相手');
     p.表札有無 = ivGetGroupValue('表札有無');
     p.ケアマネ利用可否回答 = ivGetGroupValue('ケアマネ利用可否回答');
+    p.利用意向 = ivGetGroupValue('利用意向');
     // 決定理由（複数選択チェックボックス → カンマ区切り保存）
     const reasonItems = ['立地・送迎範囲が良い','半日型である','リハビリ・運動メニューが魅力','価格・金額','雰囲気・スタッフ対応','ケアマネの推薦','知人・家族の紹介','HP・SNSを見て','体験で本人が気に入った','その他'];
     p.決定理由 = reasonItems.filter(item => {
