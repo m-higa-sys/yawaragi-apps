@@ -1594,6 +1594,32 @@
         .kanban-viewtoggle { display:inline-flex; gap:0; margin-bottom:14px; background:#efece6; border-radius:10px; padding:3px; }
         .kanban-viewtoggle button { background:transparent; border:none; color:#7a7f8b; border-radius:8px; padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:all .14s; }
         .kanban-viewtoggle button.active { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(28,30,38,.12); }
+        /* ===== 新規受付 ガイド付きアコーディオン（2026-05-31）===== */
+        .gform { --accent:#4a78a8; --line:#e7e4dd; --ink:#1c1e26; --muted:#8a8f9c; --ok:#3f9e7c; max-width:660px; }
+        .gform-head { font-size:19px; font-weight:800; color:var(--ink); letter-spacing:.01em; margin:2px 0 2px; }
+        .gform-intro { color:var(--muted); font-size:13px; margin-bottom:16px; line-height:1.5; }
+        .gstep { border:1px solid var(--line); border-radius:13px; margin-bottom:10px; background:#fff; transition:border-color .15s,box-shadow .15s; }
+        .gstep.done { border-color:#dbe6df; }
+        .gstep.open { border-color:var(--accent); box-shadow:0 10px 26px -16px rgba(28,30,38,.4); }
+        .gstep-head { display:flex; align-items:center; gap:11px; padding:14px 15px; cursor:pointer; user-select:none; }
+        .gstep-badge { width:25px; height:25px; border-radius:999px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:800; background:#f0eee8; color:#9aa0ad; transition:all .15s; }
+        .gstep.open .gstep-badge { background:var(--accent); color:#fff; }
+        .gstep.done .gstep-badge { background:var(--ok); color:#fff; }
+        .gstep-q { font-size:14.5px; font-weight:700; color:var(--ink); }
+        .gstep-req { color:#c0563a; font-size:10.5px; margin-left:5px; font-weight:700; letter-spacing:.04em; }
+        .gstep-opt { color:#a8adb8; font-size:10.5px; margin-left:5px; font-weight:600; }
+        .gstep-sum { margin-left:auto; font-size:13px; color:var(--ok); font-weight:700; text-align:right; max-width:46%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .gstep.open .gstep-sum { display:none; }
+        .gstep-body { display:none; padding:0 15px 16px 51px; }
+        .gstep.open .gstep-body { display:block; animation:plFade .2s ease; }
+        .gstep-hint { font-size:12px; color:var(--muted); margin:0 0 9px; line-height:1.5; }
+        .gstep-next { margin-top:13px; background:var(--accent); color:#fff; border:none; border-radius:999px; padding:8px 22px; font-size:13.5px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px -3px var(--accent); }
+        .gstep-next:hover { filter:brightness(1.06); }
+        .gstep-body .intake-modal-grid { gap:10px; }
+        .gstep-body label { display:block; font-size:12px; font-weight:600; color:#5a5f6a; margin-bottom:4px; }
+        .gform-actions { position:sticky; bottom:0; background:linear-gradient(to top,#fff 72%,rgba(255,255,255,0)); padding:16px 0 6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
+        .gform-progress { font-size:12.5px; color:var(--muted); margin-right:auto; font-weight:600; }
+        .gform-progress.allok { color:var(--ok); }
     </style>
 </head>
 <body>
@@ -13080,6 +13106,153 @@ function intakeTimeOptions(selected, ampm) {
 }
 
 // ===== 新規モーダルを開く =====
+// ===== 新規受付 ガイド付きアコーディオン（2026-05-31）=====
+// 種別(問合せ/見学/体験)で聞く項目・必須・聞き方が変わる適応型フォーム。
+function gstepVal(id) { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
+function gsKind() { return ivGetGroupValue('種別'); } // '' | inquiry | visit | trial
+function gsIsVisitOrTrial() { return ['visit','trial'].indexOf(gsKind()) >= 0; }
+
+const GSTEP_DEFS = [
+    { n:1, q:'誰からの連絡？', required:true,
+      sum:()=>({caremane:'ケアマネ',self:'本人・家族',walkin:'飛び込み'})[ivGetGroupValue('連絡元区分')]||'' },
+    { n:2, q:'ケアマネの事業所・担当', cond:()=>ivGetGroupValue('連絡元区分')==='caremane',
+      required:()=>ivGetGroupValue('連絡元区分')==='caremane',
+      sum:()=>{ const o=gstepVal('m-ケアマネ事業所'), nm=gstepVal('m-ケアマネ氏名'); return (o||nm)?(o+' '+nm).trim():''; } },
+    { n:3, q:'今回はどれ？', required:true,
+      sum:()=>({inquiry:'問い合わせ',visit:'見学',trial:'体験'})[ivGetGroupValue('種別')]||'' },
+    { n:4, q:'お名前', required:true,
+      sum:()=>{ const f=gstepVal('m-ふりがな'), k=gstepVal('m-氏名'); return k?(k+(f?'（'+f+'）':'')):(f||''); } },
+    { n:5, q:'電話番号', required:true, sum:()=>gstepVal('m-TEL') },
+    { n:6, q:'エリア（送迎範囲）', required:true, sum:()=>ivGetGroupValue('エリア') },
+    { n:7, q:'介護度', required:true, sum:()=>ivGetGroupValue('介護度') },
+    { n:8, q:'ペースメーカー', cond:gsIsVisitOrTrial, required:()=>gsKind()==='trial',
+      note:'運動機器の干渉波の安全確認。体験は必須です。',
+      dynQ:()=>gsKind()==='trial'?'ペースメーカー（体験は必須）':'ペースメーカー（念のため）',
+      sum:()=>ivGetGroupValue('ペースメーカー') },
+    { n:9, q:'予定日', cond:gsIsVisitOrTrial,
+      dynQ:()=>gsKind()==='visit'?'見学はいつ？（決まっていれば）':'体験はいつ？（決まっていれば）',
+      sum:()=>{ const d=gstepVal('m-予定日'); if(!d) return ''; const ap=ivGetGroupValue('予定日AMPM'); return d+(ap?(' '+ap):''); } },
+    { n:10, q:'主訴・メモ', dynQ:()=>'主訴・メモ（任意）', sum:()=>gstepVal('m-主訴') }
+];
+function gstepDef(n){ return GSTEP_DEFS.filter(d=>d.n===n)[0]; }
+function gstepReq(d){ return typeof d.required==='function'?!!d.required():!!d.required; }
+function gstepCond(d){ return d.cond?!!d.cond():true; }
+function gstepDone(d){ return !!(d.sum && d.sum()); }
+
+function buildIntakeGuidedForm(r) {
+    const today = new Date().toISOString().slice(0,10);
+    const careLevels = INTAKE_CARE_LEVELS.slice();
+    if (r.介護度 && careLevels.indexOf(r.介護度) === -1) careLevels.unshift(r.介護度);
+    const telOpts = ['', '本人','夫','妻','息子','娘','長男','長女','次男','次女','嫁','婿','兄','姉','弟','妹','その他'];
+    const telSel = `<select id="m-TEL続柄">${telOpts.map(o=>`<option value="${intakeEscapeAttr(o)}"${o===(r.TEL続柄||'')?' selected':''}>${o||'誰?'}</option>`).join('')}</select>`;
+    const bodies = {
+        1: ivRenderBtnGroup('連絡元区分',['caremane','self','walkin'],['ケアマネ','本人・家族','飛び込み'], r.連絡元区分||'', { onchange:'gstepOnGroup' }),
+        2: `<div class="gstep-hint">事業所→担当の順で選べます。新しいケアマネは直接入力でOK。</div>`
+           + `<div class="intake-modal-grid">${ivRenderCmCascade(r.ケアマネ事業所||'', r.ケアマネ氏名||'')}</div>`
+           + `<button type="button" class="gstep-next" onclick="gstepAdvance(2)">次へ</button>`,
+        3: `<div class="gstep-hint">一般的な流れは「問い合わせ → 見学 → 体験」。問い合わせから直接体験や、飛び込み見学もOK。今回どれかを選んでください。</div>`
+           + ivRenderBtnGroup('種別',['inquiry','visit','trial'],['問い合わせ','見学','体験'], '', { onchange:'gstepOnGroup' }),
+        4: `<div class="gstep-hint">漢字が分からなければ、ふりがなだけでOK。</div>`
+           + `<div class="intake-modal-grid"><div><label>ふりがな</label><input id="m-ふりがな" value="${intakeEscapeAttr(r.ふりがな)}" oninput="gstepSync()"></div>`
+           + `<div><label>氏名（漢字）</label><input id="m-氏名" value="${intakeEscapeAttr(r.氏名)}" oninput="gstepSync()"></div></div>`
+           + `<button type="button" class="gstep-next" onclick="gstepAdvance(4)">次へ</button>`,
+        5: `<div class="intake-modal-grid"><div class="col2"><label>電話番号</label><input id="m-TEL" value="${intakeEscapeAttr(r.TEL)}" placeholder="090-1234-5678" oninput="gstepSync()" onblur="this.value=formatJPPhone(this.value);gstepSync()"></div>`
+           + `<div><label>続柄（誰の番号？）</label>${telSel}</div></div>`
+           + `<button type="button" class="gstep-next" onclick="gstepAdvance(5)">次へ</button>`,
+        6: ivRenderBtnGroup('エリア',['東松山市','嵐山町','川島町','その他'], null, r.エリア||'', { onchange:'gstepOnGroup' })
+           + `<div id="m-エリア-warn" style="display:none;color:#c05621;font-size:12px;margin-top:7px;">⚠️ 送迎範囲外の可能性・要相談（保存は可能）</div>`,
+        7: ivRenderBtnGroup('介護度', careLevels, null, r.介護度||'', { onchange:'gstepOnGroup' }),
+        8: `<div class="gstep-hint" id="gstep8-hint"></div>`
+           + ivRenderBtnGroup('ペースメーカー',['無','有','不明'], null, r.ペースメーカー||'', { onchange:'gstepOnGroup' }),
+        9: `<div class="intake-modal-grid"><div class="col2"><label>日付</label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" oninput="gstepSync()"><span id="m-予定日-dow" style="font-weight:700;color:var(--accent);"></span></div></div>`
+           + `<div><label>時間帯</label>${ivRenderBtnGroup('予定日AMPM',['AM','PM'], null, r.予定日AMPM||'', { onchange:'gstepSync' })}</div></div>`
+           + `<button type="button" class="gstep-next" onclick="gstepAdvance(9)">次へ</button>`,
+        10: `<div class="intake-modal-grid"><div class="col3"><label>困っていること・電話メモ</label><textarea id="m-主訴" oninput="gstepSync()" placeholder="例：膝が痛い／運動不足／ケアマネ紹介">${intakeEscapeHtml(r.主訴)}</textarea></div></div>`
+    };
+    const stepsHtml = GSTEP_DEFS.map(d => {
+        const body = bodies[d.n] || '';
+        return `<div class="gstep" id="gstep-${d.n}" data-n="${d.n}">`
+            + `<div class="gstep-head" onclick="gstepHeadClick(${d.n})">`
+            +   `<span class="gstep-badge">${d.n}</span>`
+            +   `<span class="gstep-q"><span class="gstep-qt"></span><span class="gstep-mark"></span></span>`
+            +   `<span class="gstep-sum"></span></div>`
+            + `<div class="gstep-body">${body}</div></div>`;
+    }).join('');
+    return `<div class="gform">`
+        + `<div class="gform-head">新規受付</div>`
+        + `<div class="gform-intro">電話で聞いた順に、上から答えてください。1つ答えると次が開きます。忙しくなったら「中断して保存」でOK。</div>`
+        + `<input type="hidden" id="m-問い合わせ日" value="${today}">`
+        + stepsHtml
+        + `<div class="gform-actions"><span class="gform-progress" id="gstep-progress"></span>`
+        +   `<button class="plain" onclick="closeIntakeModal()">閉じる</button>`
+        +   `<button onclick="saveIntakeModalNew(true)" style="background:#ed8936;color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer;">⏸️ 中断して保存</button>`
+        +   `<button class="primary" onclick="saveIntakeModalNew(false)">保存</button></div>`
+        + `</div>`;
+}
+
+function gstepSync() {
+    let reqTotal = 0, reqDone = 0;
+    GSTEP_DEFS.forEach(d => {
+        const el = document.getElementById('gstep-' + d.n);
+        if (!el) return;
+        const show = gstepCond(d);
+        el.style.display = show ? '' : 'none';
+        if (!show) return;
+        const done = gstepDone(d), req = gstepReq(d);
+        el.classList.toggle('done', done);
+        const qt = el.querySelector('.gstep-qt');
+        if (qt) qt.textContent = d.dynQ ? d.dynQ() : d.q;
+        const mark = el.querySelector('.gstep-mark');
+        if (mark) mark.innerHTML = req ? '<span class="gstep-req">必須</span>' : '<span class="gstep-opt">任意</span>';
+        const sumEl = el.querySelector('.gstep-sum');
+        if (sumEl) sumEl.textContent = done ? ('✓ ' + d.sum()) : '';
+        if (req) { reqTotal++; if (done) reqDone++; }
+    });
+    const aw = document.getElementById('m-エリア-warn');
+    if (aw) aw.style.display = ivGetGroupValue('エリア') === 'その他' ? 'block' : 'none';
+    const h8 = document.getElementById('gstep8-hint');
+    if (h8) h8.textContent = gstepDef(8).note;
+    if (typeof intakeUpdateYoteibiDow === 'function') intakeUpdateYoteibiDow();
+    const prog = document.getElementById('gstep-progress');
+    if (prog) {
+        const left = reqTotal - reqDone;
+        prog.textContent = left > 0 ? `必須 残り${left}項目` : '✓ 必須そろいました';
+        prog.classList.toggle('allok', left === 0);
+    }
+}
+function gstepOpen(n) {
+    GSTEP_DEFS.forEach(d => {
+        const el = document.getElementById('gstep-' + d.n);
+        if (el) el.classList.toggle('open', d.n === n);
+    });
+    const open = document.getElementById('gstep-' + n);
+    if (open) {
+        const inp = open.querySelector('.gstep-body input:not([type=hidden]), .gstep-body textarea, .gstep-body select');
+        if (inp) setTimeout(() => { try { inp.focus({ preventScroll:true }); } catch(e){} }, 60);
+        try { open.scrollIntoView({ behavior:'smooth', block:'nearest' }); } catch(e){}
+    }
+}
+function gstepHeadClick(n) {
+    const el = document.getElementById('gstep-' + n);
+    if (el && el.classList.contains('open')) gstepOpen(0); // 開いてるのを再タップで閉じる
+    else gstepOpen(n);
+}
+function gstepAdvance(n) {
+    gstepSync();
+    const next = GSTEP_DEFS.filter(d => d.n > n && gstepCond(d) && !gstepDone(d))[0];
+    if (next) gstepOpen(next.n); else gstepOpen(0);
+}
+function gstepOnGroup() {
+    const openEl = document.querySelector('.gstep.open');
+    const n = openEl ? parseInt(openEl.dataset.n, 10) : 0;
+    gstepAdvance(n);
+}
+function gstepInit() {
+    gstepSync();
+    const first = GSTEP_DEFS.filter(d => gstepCond(d) && !gstepDone(d))[0];
+    gstepOpen(first ? first.n : 1);
+}
+
 function openIntakeModalNew() {
     _intakeModalMode = 'new';
     const today = new Date().toISOString().slice(0,10);
@@ -13118,10 +13291,10 @@ function openIntakeModalNew() {
         // 送迎準備
         'Googleマップ登録済み': false
     };
-    document.getElementById('intake-modal-body').innerHTML = buildIntakeModalHtml(_intakeModalDraft);
+    document.getElementById('intake-modal-body').innerHTML = buildIntakeGuidedForm(_intakeModalDraft);
     document.getElementById('intake-modal').classList.add('show');
     if (_cmCache.length === 0) loadCmContactsCache(); // キャッシュ未取得なら今取得
-    setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); intakeUpdateYoteibiDow(); }, 0);
+    setTimeout(() => { gstepInit(); ivOnCmOfficeChange(); }, 0);
 }
 
 // ===== Task 9: 一覧表示 =====
@@ -13939,7 +14112,7 @@ function buildIntakeModalHtml(r) {
         <!-- 基本情報 -->
         <div class="intake-modal-section"><h4>基本情報</h4>
         <div class="intake-modal-grid">
-            ${intakeField('📞 連絡元', ivRenderBtnGroup('連絡元区分', ['caremane','self','walkin'], ['ケアマネ','本人・家族','飛び込み'], r.連絡元区分 || ''), 'col3')}
+            ${intakeField('誰からの連絡？', ivRenderBtnGroup('連絡元区分', ['caremane','self','walkin'], ['ケアマネ','本人・家族','飛び込み'], r.連絡元区分 || ''), 'col3')}
             ${intakeField('種別', ivRenderBtnGroup('種別', ['inquiry','trial','visit'], ['問い合わせ','体験','見学'], r.種別 || 'trial', { onchange: 'intakeOnKindChange' }), 'col3')}
             ${intakeField('問い合わせ日', `<input type="date" id="m-問い合わせ日" value="${intakeEscapeAttr(r.問い合わせ日 || today)}">`)}
             ${intakeField('予定日', `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" onchange="intakeUpdateYoteibiDow()" style="flex:0 0 auto;"><span id="m-予定日-dow" style="font-size:15px;font-weight:bold;color:#2c7a7b;"></span>${ivRenderBtnGroup('予定日AMPM', ['AM','PM'], null, r.予定日AMPM || '')}</div>`)}
@@ -14271,12 +14444,22 @@ function collectIntakeModalPayload() {
 // 新規保存（通常 or 中断）
 async function saveIntakeModalNew(suspend) {
     const p = collectIntakeModalPayload();
-    // 必須チェック
-    if (!p.氏名 && !p.ふりがな) { alert('氏名またはふりがなのどちらかは必須です（漢字不明時はふりがなだけでOK）'); return; }
-    if (!p.TEL) { alert('TELは必須です'); return; }
-    p.TEL = formatJPPhone(p.TEL);
-    if (p.種別 === 'trial' && !p.ペースメーカー) { alert('体験はペースメーカーの有無確認が必須です（運動機器の干渉波 安全確認）'); return; }
-    if (!p.種別) { alert('種別（問い合わせ/体験/見学）を選んでください'); return; }
+    const jump = (n, msg) => { alert(msg); if (typeof gstepOpen === 'function') gstepOpen(n); };
+    if (suspend) {
+        // 中断保存：途中でもOK。本人特定のため名前か電話のどちらかだけは欲しい
+        if (!p.氏名 && !p.ふりがな && !p.TEL) { alert('お名前か電話番号のどちらかだけ入れてから中断保存してください'); if (typeof gstepOpen==='function') gstepOpen(4); return; }
+    } else {
+        // 本保存：種別に応じた必須チェック（該当ステップを開く）
+        if (!p.連絡元区分) { jump(1, '「誰からの連絡？」を選んでください'); return; }
+        if (p.連絡元区分 === 'caremane' && (!p.ケアマネ事業所 || !p.ケアマネ氏名)) { jump(2, 'ケアマネの事業所・担当を入力してください'); return; }
+        if (!p.種別) { jump(3, '今回はどれか（問い合わせ／見学／体験）を選んでください'); return; }
+        if (!p.氏名 && !p.ふりがな) { jump(4, 'お名前（漢字不明ならふりがなだけでOK）を入れてください'); return; }
+        if (!p.TEL) { jump(5, '電話番号を入れてください'); return; }
+        if (!p.エリア) { jump(6, 'エリアを選んでください'); return; }
+        if (!p.介護度) { jump(7, '介護度を選んでください'); return; }
+        if (p.種別 === 'trial' && !p.ペースメーカー) { jump(8, '体験はペースメーカーの有無確認が必須です（運動機器の干渉波 安全確認）'); return; }
+    }
+    if (p.TEL) p.TEL = formatJPPhone(p.TEL);
 
     p.action = 'intake_create';
     p.登録者 = localStorage.getItem('yawaragi_staff') || '';
