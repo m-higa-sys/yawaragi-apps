@@ -12843,7 +12843,7 @@ init();
 // =====================================================================
 
 const INTAKE_API_URL = ABS_BOARD_API_URL;
-const INTAKE_KIND_LABEL = { trial: '体験', visit: '見学' };
+const INTAKE_KIND_LABEL = { inquiry: '問い合わせ', trial: '体験', visit: '見学' };
 const INTAKE_STATUS_LABEL = {
     pending: '受付中', scheduled: '予定確定', done: '完了',
     on_hold: '利用保留', contracted: '契約済', active: '本格利用中',
@@ -13697,7 +13697,8 @@ function buildIntakeModalHtml(r) {
         <!-- 基本情報 -->
         <div class="intake-modal-section"><h4>基本情報</h4>
         <div class="intake-modal-grid">
-            ${intakeField('種別', ivRenderBtnGroup('種別', ['trial','visit'], ['体験','見学'], r.種別 || 'trial', { onchange: 'intakeOnKindChange' }), 'col3')}
+            ${intakeField('📞 連絡元', ivRenderBtnGroup('連絡元区分', ['caremane','self','walkin'], ['ケアマネ','本人・家族','飛び込み'], r.連絡元区分 || ''), 'col3')}
+            ${intakeField('種別', ivRenderBtnGroup('種別', ['inquiry','trial','visit'], ['問い合わせ','体験','見学'], r.種別 || 'trial', { onchange: 'intakeOnKindChange' }), 'col3')}
             ${intakeField('問い合わせ日', `<input type="date" id="m-問い合わせ日" value="${intakeEscapeAttr(r.問い合わせ日 || today)}">`)}
             ${intakeField('予定日', `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" onchange="intakeUpdateYoteibiDow()" style="flex:0 0 auto;"><span id="m-予定日-dow" style="font-size:15px;font-weight:bold;color:#2c7a7b;"></span>${ivRenderBtnGroup('予定日AMPM', ['AM','PM'], null, r.予定日AMPM || '')}</div>`)}
             ${intakeField('初回対応スタッフ', (() => {
@@ -13736,7 +13737,8 @@ function buildIntakeModalHtml(r) {
                 if (r.介護度 && careLevels.indexOf(r.介護度) === -1) careLevels.unshift(r.介護度);
                 return ivRenderBtnGroup('介護度', careLevels, null, r.介護度 || '');
             })(), 'col3')}
-            ${intakeField('住所（東松山市）', `<input id="m-住所詳細" value="${intakeEscapeAttr(r.住所詳細)}" placeholder="◯◯町1-2-3">`, 'col3')}
+            ${intakeField('🏠 エリア（送迎範囲）', ivRenderBtnGroup('エリア', ['東松山市','嵐山町','川島町','その他'], null, r.エリア || '', { onchange: 'intakeOnAreaChange' }) + `<div id="m-エリア-warn" style="display:${r.エリア === 'その他' ? 'block' : 'none'};color:#c05621;font-size:12px;margin-top:4px;">⚠️ 送迎範囲外の可能性・要相談（保存は可能）</div>`, 'col3')}
+            ${intakeField('住所詳細', `<input id="m-住所詳細" value="${intakeEscapeAttr(r.住所詳細)}" placeholder="◯◯町1-2-3">`, 'col3')}
             ${intakeField('送迎', ivRenderBtnGroup('送迎有無', ['true','false'], ['有','無'], r.送迎有無 === true ? 'true' : r.送迎有無 === false ? 'false' : ''))}
             ${intakeField('直接連絡可否', ivRenderBtnGroup('直接連絡可否', ['true','false'], ['可','否'], r.直接連絡可否 === true ? 'true' : r.直接連絡可否 === false ? 'false' : ''), 'col2')}
         </div>
@@ -13958,6 +13960,8 @@ function collectIntakeModalPayload() {
     p.表札有無 = ivGetGroupValue('表札有無');
     p.ケアマネ利用可否回答 = ivGetGroupValue('ケアマネ利用可否回答');
     p.利用意向 = ivGetGroupValue('利用意向');
+    p.連絡元区分 = ivGetGroupValue('連絡元区分');
+    p.エリア = ivGetGroupValue('エリア');
     // 決定理由（複数選択チェックボックス → カンマ区切り保存）
     const reasonItems = ['立地・送迎範囲が良い','半日型である','リハビリ・運動メニューが魅力','価格・金額','雰囲気・スタッフ対応','ケアマネの推薦','知人・家族の紹介','HP・SNSを見て','体験で本人が気に入った','その他'];
     p.決定理由 = reasonItems.filter(item => {
@@ -13984,8 +13988,8 @@ async function saveIntakeModalNew(suspend) {
     if (!p.氏名 && !p.ふりがな) { alert('氏名またはふりがなのどちらかは必須です（漢字不明時はふりがなだけでOK）'); return; }
     if (!p.TEL) { alert('TELは必須です'); return; }
     p.TEL = formatJPPhone(p.TEL);
-    if (!p.ペースメーカー) { alert('ペースメーカーの有無は必ず選んでください（干渉波の安全確認）'); return; }
-    if (!p.種別) { alert('種別（体験/見学）を選んでください'); return; }
+    if (p.種別 === 'trial' && !p.ペースメーカー) { alert('体験はペースメーカーの有無確認が必須です（運動機器の干渉波 安全確認）'); return; }
+    if (!p.種別) { alert('種別（問い合わせ/体験/見学）を選んでください'); return; }
 
     p.action = 'intake_create';
     p.登録者 = localStorage.getItem('yawaragi_staff') || '';
