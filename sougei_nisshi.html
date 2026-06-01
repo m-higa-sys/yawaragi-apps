@@ -883,7 +883,7 @@ function renderSection(containerId, secData, type, sectionKey, absent){
         if(!isAbsent) totalUsers++;
         const cls = isAbsent ? 'user-name user-absent' : 'user-name';
         const toggleBtn = (typeof renderToggleButton === 'function') ? renderToggleButton(user, _unit, _slot) : '';
-        const tappable = (!isAbsent && currentDate >= todayISO()) ? ' data-toggleable="1" onclick="openToggleByName(this)"' : '';
+        const tappable = ' data-toggleable="1" onclick="openToggleByName(this)"'; // 2026-06-01: 欠席者も含め常にタップ可能（過去日はopenToggleByName内でトースト応答）
         h += `<td class="${cls}" data-user="${escHtml(user)}" data-unit="${_unit}" data-slot="${_slot}"${tappable}>${escHtml(user)}${toggleBtn}</td>`;
       } else {
         h += '<td></td>';
@@ -1147,14 +1147,7 @@ function openToggleByName(el){
   const unit = el.dataset.unit;
   const slot = el.dataset.slot || '';
   if(!user || !unit) return;
-  // 欠席者はスキップ
-  try{
-    const day = nisshiData[currentDate];
-    if(day && day.absent && day.absent[user]){
-      showToast(user + 'さんは欠席のため切替不要', '#9e9e9e');
-      return;
-    }
-  } catch(e){}
+  // 2026-06-01: 欠席者でもタップで送迎⇄家族を変更できるようにする（従来は「欠席のため切替不要」で止めていた）
   const status = getCurrentUserStatus(user, unit, slot);
   if(status === 'family' || status === 'walk'){
     openToggleDialog(user, unit, 'restore', slot);
