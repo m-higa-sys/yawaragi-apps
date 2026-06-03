@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>出勤＆送迎表 - やわらぎ</title>
@@ -209,9 +206,9 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 .st-resumed{background:#a7f3d0 !important;color:#065f46 !important;font-weight:900;}
 .st-resumed::after{content:' 再開';font-size:9px;font-weight:900;color:#065f46;}
 .st-walk{background:#e3f2fd !important;color:#1565c0 !important;}
-.st-walk::after{content:' 徒';font-size:9px;font-weight:700;}
+.st-walk::after{content:' 送迎なし';font-size:9px;font-weight:700;}
 .st-family{background:#e8f5e9 !important;color:#2e7d32 !important;}
-.st-family::after{content:' 家';font-size:9px;font-weight:700;}
+.st-family::after{content:' 送迎なし';font-size:9px;font-weight:700;}
 .st-pickonly{background:#e8eaf6 !important;color:#283593 !important;}
 .st-pickonly::after{content:' 迎のみ';font-size:9px;font-weight:700;}
 .st-droponly{background:#fce4ec !important;color:#880e4f !important;}
@@ -419,8 +416,8 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   .st-longabsent::after{content:' 長期休';font-size:7pt;font-weight:900;}
   .st-resumed{background:#a7f3d0!important;color:#065f46!important;font-weight:900;border:2px solid #047857!important;}
   .st-resumed::after{content:' 再開';font-size:7pt;color:#065f46;}
-  .st-walk::after{content:' 徒';font-size:7pt;}
-  .st-family::after{content:' 家';font-size:7pt;}
+  .st-walk::after{content:' 送迎なし';font-size:7pt;}
+  .st-family::after{content:' 送迎なし';font-size:7pt;}
   .st-pickonly::after{content:' 迎のみ';font-size:7pt;}
   .st-droponly::after{content:' 送のみ';font-size:7pt;}
   .st-trial{background:#ff9800!important;color:#fff!important;font-weight:900;border:2px solid #e65100!important;animation:none;}
@@ -448,11 +445,6 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 .readonly .attendance-area{display:flex!important;}
 .readonly .sticky-top{position:static;border-bottom:none;padding:0;}
 @media print{.readonly-bar{display:none!important;}}
-/* スタッフ閲覧版（github.io）の印刷時のみ右端切れ防止のため全体93%にスケール */
-/* マイドライブ版（社長編集版）にはhtml.readonlyクラスが付かないので影響しない */
-@media print{
-  html.readonly body{transform:scale(0.93)!important;transform-origin:top left!important;width:107.5%!important;}
-}
 
 /* ── レイアウト調整パネル ── */
 .layout-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:600;justify-content:center;align-items:flex-start;padding-top:40px;}
@@ -581,10 +573,10 @@ const CAR_CAPACITY = {'ス':7, 'シS':6, 'シW':6, 'モ':3, 'キ':4};
 // クラウド同期（GAS経由でスプレッドシートに保存）
 // ═══════════════════════════════════════════════
 const OPS_GAS_URL_KEY = 'yawaragi_ops_gas_url';
-// 2026-05-11: スタッフ閲覧画面が空のGAS（中継GAS=AKfycby-V66...）を見ていてデータが反映されない問題を修正
-// READONLY_GAS_URL = 実データ保存先（送迎日誌GAS・複数セル連結readOps対応・clasp管理下）
+// 2026-05-11: スタッフ閲覧画面が空のGAS（中継GAS）を見ていた問題を修正
+// READONLY_GAS_URL = 送迎日誌GAS(readOps用/AKfycbyh)。※送迎時間一覧用ではない。saveSchedTimesをここへ送ると一覧に反映されない
 const READONLY_GAS_URL = 'https://script.google.com/macros/s/AKfycbyh_h7qB93S17_9mI52uTcCfUfBjeX9K4Xaq6LIX3d8Bae4w0lqKY-Gsqnw173atAvm7Q/exec';
-// RELAY_GAS_URL = 送迎時間一覧用の中継GAS（POSTデータ破棄。誤登録防止チェック用に保持）
+// RELAY_GAS_URL = 送迎時間一覧.htmlが読む実データGAS(V66Udd)。saveSchedTimesは必ずここへPOSTする
 const RELAY_GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
 // yawaragiボード GAS（出席予定タブの欠席を取得するため）2026-05-06追加
 const BOARD_GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -686,8 +678,25 @@ async function uploadAllLocalData(){
     await new Promise(r=>setTimeout(r, 200));
   }
   if(btn){ btn.disabled=false; btn.textContent='📤 全期間同期'; }
+  if(success > 0) localStorage.setItem('yawaragi_last_full_sync', new Date().toISOString());
   alert('完了\n成功: '+success+'日分\n失敗: '+fail+'日分\n\nクラウドのスプレッドシートで確認してください。');
 }
+
+function checkLastFullSyncAndRemind(){
+  try {
+    const iso = localStorage.getItem('yawaragi_last_full_sync');
+    if(!iso) return;
+    const last = new Date(iso);
+    const days = Math.floor((Date.now() - last.getTime()) / (1000*60*60*24));
+    if(days < 7) return;
+    setTimeout(() => {
+      if(confirm('最後の全期間同期から'+days+'日経過しています。\n（スタッフ利用者分析の精度維持のため定期同期推奨）\n\n今すぐ実行しますか？（5〜10分かかります）')) {
+        uploadAllLocalData();
+      }
+    }, 3000);
+  } catch(e){ console.warn('checkLastFullSyncAndRemind error:', e); }
+}
+window.addEventListener('load', checkLastFullSyncAndRemind);
 
 async function cloudSyncOps(){
   const url = getOpsGasUrl();
@@ -1157,12 +1166,35 @@ function syncTrialUsers(){
   });
 }
 
+// AM送り⇔PM迎えの2個一を見やすくする：ドライバー単位のパステル色マップ
+// 対象は AM送り（drop）と PM迎え（pick）のみ。AM迎え・PM送りは色付けしない。
+// 同じドライバーはAM送りとPM迎えで同色になる。
+function _buildDriverColorMap(){
+  const set=new Set();
+  if(D.am&&D.am.drop) D.am.drop.forEach(r=>{ if(r&&r.driver) set.add(r.driver); });
+  if(D.pm&&D.pm.pick) D.pm.pick.forEach(r=>{ if(r&&r.driver) set.add(r.driver); });
+  const palette=['#fef0f1','#eaf0ff','#ecf9ec','#fcf5d1','#f5edff'];
+  const map={};
+  Array.from(set).forEach((d,i)=>{ map[d]=palette[i%palette.length]; });
+  return map;
+}
+function _drvColor(name){
+  if(!name) return '';
+  const m=window._driverColorMap||{};
+  return m[name]||'';
+}
+function _drvRowStyle(name){
+  const c=_drvColor(name);
+  return c?' style="background:'+c+'"':'';
+}
+
 function render(){
   // 再描画でスクロール位置がずれるのを防ぐため、現在位置を保存
   const _saveScrollY = window.scrollY;
   const _saveScrollX = window.scrollX;
   try{
   syncTrialUsers();
+  window._driverColorMap=_buildDriverColorMap();
   const app=document.getElementById('app');
   const dow=getDow(D.date);
   let h='';
@@ -1514,8 +1546,10 @@ function renderUnit(title,key){
     // 欠席者は人数に数えない
     const activeInRoute=route.stops.filter(s=>s.user&&!isAbsentStatus(unit.userStatus[s.user])).length;
     const overCap=activeInRoute>userCap&&userCap>0;
+    // PM迎えだけに2個一の色を付ける（AM迎えは色なし）
+    const _pickRowStyle=(key==='pm')?_drvRowStyle(route.driver):'';
     // ドライバー行
-    h+='<tr>';
+    h+='<tr'+_pickRowStyle+'>';
     const pickHasActiveUsers=route.stops.some(s=>s.user&&!isAbsentStatus(unit.userStatus[s.user]));
     const pickNoDrv=pickHasActiveUsers&&!route.driver;
     const pickDrvMsg=pickNoDrv?'<div class="warn-msg no-print">運転手なし</div>':'';
@@ -1533,7 +1567,7 @@ function renderUnit(title,key){
       } else if(si>=userCap&&!stop.user){
         h+='<td class="user-cell disabled-cell"></td>';
       } else {
-        const ust=stop.user?userCellClass(unit.userStatus[stop.user]):'';
+        const ust=stop.user?userCellClass(effectiveUserStatus(unit,stop.user,'pick')):'';
         h+='<td class="user-cell drop-target'+ust+'"'
           +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.pick['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
@@ -1575,7 +1609,7 @@ function renderUnit(title,key){
       h+='<tr><td colspan="'+(MAX_STOPS+4)+'" class="cap-warn no-print" style="font-size:11px;border:none;padding:0 4px;border-left:4px solid #d32f2f;background:#fff0f0;color:#b71c1c">⚠ 出発'+route.depTime+'に間に合いません：'+earlyUsers.join('、')+'</td></tr>';
     }
     // 時刻行
-    h+='<tr>';
+    h+='<tr'+_pickRowStyle+'>';
     for(let si=0;si<MAX_STOPS;si++){
       const stop=route.stops[si]||{user:'',time:''};
       if(route.rider&&si===userCap&&!stop.user){
@@ -1612,7 +1646,9 @@ function renderUnit(title,key){
     // 欠席者は人数に数えない
     const activeInRoute=route.stops.filter(s=>s.user&&!isAbsentStatus(unit.userStatus[s.user])).length;
     const overCap=activeInRoute>userCap&&userCap>0;
-    h+='<tr>';
+    // AM送りだけに2個一の色を付ける（PM送りは色なし）
+    const _dropRowStyle=(key==='am')?_drvRowStyle(route.driver):'';
+    h+='<tr'+_dropRowStyle+'>';
     h+='<td style="font-weight:700;text-align:center;white-space:nowrap">'
       +'<span class="no-print" style="display:inline-flex;flex-direction:column;margin-right:1px;vertical-align:middle;line-height:1">'
       +(ri>0?'<span class="move-btn" onclick="pushUndo();swapDrop(\''+key+'\','+ri+','+(ri-1)+')">▲</span>':'<span class="move-btn" style="visibility:hidden">▲</span>')
@@ -1635,7 +1671,7 @@ function renderUnit(title,key){
       } else if(si>=userCap&&!stop.user){
         h+='<td class="user-cell disabled-cell"></td>';
       } else {
-        const ust=stop.user?userCellClass(unit.userStatus[stop.user]):'';
+        const ust=stop.user?userCellClass(effectiveUserStatus(unit,stop.user,'drop')):'';
         h+='<td class="user-cell drop-target'+ust+'"'
           +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
@@ -1728,7 +1764,9 @@ function renderDropOnly(key){
     const userCap=cap-riderCount;
     const activeInRoute=route.stops.filter(s=>s.user&&!isAbsentStatus(unit.userStatus[s.user])).length;
     const overCap=activeInRoute>userCap&&userCap>0;
-    h+='<tr>';
+    // AM送りだけに2個一の色を付ける
+    const _dropRowStyle2=(key==='am')?_drvRowStyle(route.driver):'';
+    h+='<tr'+_dropRowStyle2+'>';
     h+='<td style="font-weight:700;text-align:center;white-space:nowrap">'
       +'<span class="no-print" style="display:inline-flex;flex-direction:column;margin-right:1px;vertical-align:middle;line-height:1">'
       +(ri>0?'<span class="move-btn" onclick="pushUndo();swapDrop(\''+key+'\','+ri+','+(ri-1)+')">▲</span>':'<span class="move-btn" style="visibility:hidden">▲</span>')
@@ -1751,7 +1789,7 @@ function renderDropOnly(key){
       } else if(si>=userCap&&!stop.user){
         h+='<td class="user-cell disabled-cell"></td>';
       } else {
-        const ust=stop.user?userCellClass(unit.userStatus[stop.user]):'';
+        const ust=stop.user?userCellClass(effectiveUserStatus(unit,stop.user,'drop')):'';
         h+='<td class="user-cell drop-target'+ust+'"'
           +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
@@ -2016,7 +2054,7 @@ function renderEvents(){
       h+='<option value="'+t+'"'+(ev.type===t?' selected':'')+'>'+t+'</option>';
     });
     h+='</select></td>';
-    h+='<td><input class="ev-note-input" style="width:60px" type="text" value="'+((ev.name||'').replace(/"/g,'&quot;'))+'" placeholder="利用者名" onchange="D.events['+i+'].name=stripSama(this.value);autoSave();render()"></td>';
+    h+='<td><input class="ev-note-input" style="width:60px" type="text" value="'+((ev.name?ev.name+'様':'').replace(/"/g,'&quot;'))+'" placeholder="利用者名" onchange="D.events['+i+'].name=stripSama(this.value);autoSave();render()"></td>';
     h+='<td><select class="ev-type-select" onchange="D.events['+i+'].unit=this.value;autoSave();render();setTimeout(scrollToTrial,200)">';
     h+='<option value=""'+(ev.unit===''?' selected':'')+'> -- </option>';
     h+='<option value="am"'+(ev.unit==='am'?' selected':'')+'>AM</option>';
@@ -2839,6 +2877,11 @@ function onDrop(e,path,el){
       try{ eval(sourcePath+'="'+(existingUser||'').replace(/"/g,'\\"')+'"'); }catch(ex){}
     } else if(existingUser && existingUser!==name){
       // リストからのドロップ → 挿入して右にスライド（時間はそのまま）
+      // 満席ガード: 末尾セルに利用者がいるとスライドで押し出されて消えるため中止
+      if(stops[stops.length-1].user){
+        alert('この便は満席です。先に誰かを別の便へ移してから入れてください。');
+        return;
+      }
       for(let i=stops.length-1;i>si;i--){
         stops[i].user=stops[i-1].user;
       }
@@ -2873,6 +2916,17 @@ function userCellClass(st){
   if(st==='droponly') return ' st-droponly';
   if(st==='trial') return ' st-trial';
   return '';
+}
+
+// slot個別のユーザーステータスを優先、無ければ半日値を返す（2026-05-26追加）
+// slot='pick'(迎え)/'drop'(送り)
+function effectiveUserStatus(unit, user, slot){
+  if(!unit || !user) return '';
+  const bySlot = unit.userStatusBySlot;
+  if(bySlot && bySlot[user] && bySlot[user][slot] !== undefined){
+    return bySlot[user][slot];
+  }
+  return (unit.userStatus && unit.userStatus[user]) || '';
 }
 
 function activeFloor(){
@@ -3235,8 +3289,9 @@ function addAttendance(val){
     if(!confirm(staff.name+'さんはこの日のシフトに入っていませんが、追加しますか？')) return;
   }
   D.attendance.push({name:staff.name, time:staff.defaultStart});
-  // 退社時間も追加
-  D.leave.push({name:staff.name, time:''});
+  // 退社時間も追加（勝又・星野はデフォルト「ラスト」）
+  const defaultLeaveTime=(staff.name==='勝又'||staff.name==='星野')?'ラスト':'';
+  D.leave.push({name:staff.name, time:defaultLeaveTime});
   // 🔴 休憩時間も自動追加（送迎ドライバー以外のフロアスタッフ）
   if(staff.type !== '送迎'){
     if(!D.breaks) D.breaks=[];
@@ -4671,7 +4726,10 @@ function loadFromShift(dateStr){
       floorInfo.push({name:staff.name, code:code, end:end});
 
       // 退社時間
-      if(end==='15:00'){
+      // 勝又・星野は社長指示でデフォルト「ラスト」（シフトコードに関わらず）
+      if(staff.name==='勝又'||staff.name==='星野'){
+        data.leave.push({name:staff.name, time:'ラスト'});
+      } else if(end==='15:00'){
         data.leave.push({name:staff.name, time:'15:00'});
       } else if(end==='16:00'){
         data.leave.push({name:staff.name, time:'16:00'});
@@ -4684,7 +4742,7 @@ function loadFromShift(dateStr){
   }
 
   // 休憩: フロアスタッフ1人1枠、時間帯をずらして配置
-  const breakSlots=['10:50','11:30','12:00','12:15','12:20','13:00','13:30','13:45'];
+  const breakSlots=['10:50','10:50','12:00','12:00','12:20','13:00','13:30','13:45'];
   data.breaks=floorInfo.map((s,i)=>({
     time:breakSlots[i]||'12:00',
     name:s.name,
@@ -4958,7 +5016,7 @@ function syncSchedTimesToStaff(silent){
     }
   });
 
-  var url=READONLY_GAS_URL;
+  var url=RELAY_GAS_URL; /* 2026-05-31修正: 送迎時間一覧.htmlが読むGAS(V66Udd)へ送る。READONLY(送迎日誌GAS)に送ると一覧へ反映されない */
   fetch(url,{method:"POST",mode:"no-cors",body:payload,keepalive:true})
     .then(function(){
       if(silent){
@@ -5268,12 +5326,20 @@ function changeDate(dateStr){
   if(IS_READONLY && document.getElementById('ro-date')) document.getElementById('ro-date').value=dateStr;
   render();
 
-  // yawaragiボードから欠席連動
-  applyBoardAbsences(dateStr);
+  // yawaragiボードから欠席連動（★修正: forceRefresh=true で常に最新データをフェッチ）
+  applyBoardAbsences(dateStr, true);
   applyBoardTrials(dateStr);   // 2026-05-22追加: yawaragiボードの体験予約を反映
 
   // 自動追加：当日＋未来日付の場合のみ（過去日付・閲覧専用は除外）
-  if(!IS_READONLY) addNewUsers({auto:true});
+  // ★2026-05-31 FIX: 開いた日付(asOfDate)で台帳を取り直してから追加・再描画する。
+  //   これをしないと初回ロード(defaultDate)時のキャッシュのままで、
+  //   未来日の利用曜日予約(usage_days_change)が反映されず木曜等に新メンバーが出ない。
+  if(!IS_READONLY){
+    fetchTaicho(dateStr).then(function(){
+      addNewUsers({auto:true});
+      render();
+    }).catch(function(){ addNewUsers({auto:true}); });
+  }
 
   // 利用者リストが空で前週同曜日にデータがあれば提案
   if(shouldOffer){
@@ -6369,14 +6435,14 @@ function roChangeDay(offset){
   if(!cur) return;
   const d=new Date(cur+'T00:00:00');
   d.setDate(d.getDate()+offset);
-  const ds=d.toISOString().slice(0,10);
+  const ds=fmtDate(d);
   document.getElementById('ro-date').value=ds;
   document.getElementById('inp-date').value=ds;
   changeDate(ds);
 }
 
 function roGoToday(){
-  const ds=new Date().toISOString().slice(0,10);
+  const ds=fmtDate(new Date());
   document.getElementById('ro-date').value=ds;
   document.getElementById('inp-date').value=ds;
   changeDate(ds);
@@ -6535,6 +6601,9 @@ function mergeBoardAbsencesToD(absentItems, longTermItems, resumedItems){
   // ボードに現在登録されている名前の正規化セット（取消検知用）
   const boardNormSet=new Set();
   allNames.forEach(n=>boardNormSet.add(normNameStrict(n)));
+  // 長期休みリストだけの正規化セット（longabsent取消＝復帰検知用・2026-06-03追加）
+  const longTermNormSet=new Set();
+  (longTermItems||[]).forEach(it=>{ const n=it.name||it; if(n) longTermNormSet.add(normNameStrict(n)); });
   const matchedSet=new Set();
   const apply=(unitKey)=>{
     const unit=D[unitKey]; if(!unit || !Array.isArray(unit.users)) return;
@@ -6559,6 +6628,21 @@ function mergeBoardAbsencesToD(absentItems, longTermItems, resumedItems){
       if(cur==='longabsent') return;
       const target=statusFromReason(reason);
       if(cur!==target){ unit.userStatus[orig]=target; result.changed=true; }
+    });
+    // 長期休みから復帰した人の longabsent をクリア（2026-06-03追加）
+    // yawaragiボード「出席予定/長期休」で中止解除（復帰）すると、ボードの長期休みリスト
+    // (longTermItems) からその人が外れる。出勤送迎表の longabsent は ops に保存され
+    // 未来日へ繰り越されるため、ボード側で復帰しても消えず残るバグがあった。
+    // ボードの長期休みリストに居ない longabsent はここでクリアする（再開バッジ付与より前）。
+    // ※過去の休み期間中の日付は fetchBoardAbsences が longTerm を日付フィルタ
+    //   (開始日<=表示日<復帰日) で含めるため、その日は longTermNormSet に入り保持される。
+    // ※フェッチ失敗時は呼び出し元(onError)が merge を呼ばないので誤クリアしない。
+    unit.users.forEach(u=>{
+      if(!u) return;
+      if(unit.userStatus[u]!=='longabsent') return;
+      if(longTermNormSet.has(normNameStrict(u))) return;
+      delete unit.userStatus[u];
+      result.changed=true;
     });
     // 再開バッジ：欠席/長期休みでない通常出勤者にのみ付与
     (resumedItems||[]).forEach(it=>{
@@ -6593,17 +6677,50 @@ function setBoardSyncStatus(text, color){
   el.style.color=color||'#64748b';
   el.style.display=text?'':'none';
 }
-function applyBoardAbsences(dateStr){
-  if(!dateStr) return;
-  // 1. キャッシュから即適用
-  const cached=getCachedBoardAbsences(dateStr);
-  if(cached){
-    const r=mergeBoardAbsencesToD(cached.absent, cached.longTerm, cached.resumed);
-    if(r.changed){ if(!IS_READONLY) autoSave(); render(); }
-    setBoardSyncStatus('📋 ボード欠席 '+r.matched+'/'+r.total+'人 反映済（キャッシュ）', '#64748b');
+
+// ═══════════════════════════════════════════════
+// ボード欠席キャッシュをリセット（特定日付またはすべて）
+// forceRefresh=true 時にページロード・日付変更時に呼ぶ
+// ═══════════════════════════════════════════════
+function clearBoardAbsencesCache(dateStr){
+  if(!dateStr){
+    // 全キャッシュクリア
+    localStorage.removeItem('yawaragi_board_absences_cache');
+    console.log('✅ ボード欠席キャッシュ全削除');
   } else {
-    setBoardSyncStatus('📡 yawaragiボードから欠席取得中...', '#1976d2');
+    // 特定日付のみクリア
+    try{
+      const cache=JSON.parse(localStorage.getItem('yawaragi_board_absences_cache')||'{}');
+      if(cache[dateStr]){
+        delete cache[dateStr];
+        localStorage.setItem('yawaragi_board_absences_cache',JSON.stringify(cache));
+        console.log('✅ ボード欠席キャッシュ削除: '+dateStr);
+      }
+    }catch(e){}
   }
+}
+
+function applyBoardAbsences(dateStr, forceRefresh){
+  if(!dateStr) return;
+  
+  // ★新規： forceRefresh=true の場合はキャッシュをスキップ（ページロード・日付変更時推奨）
+  const skipCache=forceRefresh===true;
+  
+  // 1. キャッシュから即適用（skipCache が false の場合のみ）
+  if(!skipCache){
+    const cached=getCachedBoardAbsences(dateStr);
+    if(cached){
+      const r=mergeBoardAbsencesToD(cached.absent, cached.longTerm, cached.resumed);
+      if(r.changed){ if(!IS_READONLY) autoSave(); render(); }
+      setBoardSyncStatus('📋 ボード欠席 '+r.matched+'/'+r.total+'人 反映済（キャッシュ）', '#64748b');
+    } else {
+      setBoardSyncStatus('📡 yawaragiボードから欠席取得中...', '#1976d2');
+    }
+  } else {
+    // ★新規： キャッシュをスキップ、GASから常に取得
+    setBoardSyncStatus('📡 yawaragiボードから最新欠席取得中...', '#1976d2');
+  }
+  
   // 2. 裏でGAS取得
   fetchBoardAbsences(dateStr, function(names, longTermNames, resumedNames){
     setCachedBoardAbsences(dateStr, {absent:names, longTerm:longTermNames, resumed:resumedNames});
@@ -6624,12 +6741,99 @@ function applyBoardAbsences(dateStr){
       setTimeout(()=>setBoardSyncStatus('📋 yawaragiボード連動済み', '#94a3b8'), 5000);
     }
   }, function(err){
+    const cached=getCachedBoardAbsences(dateStr);
     if(cached){
       setBoardSyncStatus('⚠ ボード取得失敗（キャッシュ表示中）', '#e65100');
     } else {
       setBoardSyncStatus('⚠ ボード取得失敗（手動で休み設定してください）', '#e65100');
     }
   });
+}
+
+// ========== 送迎日誌からの送迎タイプ同期 (2026-05-25追加) ==========
+// 送迎日誌の「送迎なし」(family/walk) トグル結果を出勤＆送迎表に取り込む。
+// 書込側は setSougeiType API（出勤＆送迎表GAS）で既にスプレッドシートを更新済。
+// ここでは getOps でスプレッドシートを読み、当日表示中の family/walk 値だけ部分マージする。
+// 社長の他列編集（人員配置・時刻等）を壊さないため、userStatus/userStatusBySlot のうち
+// 'family'/'walk' とその解除（→空）にのみ作用する。
+function applyBoardSougeiType(dateStr){
+  if(!dateStr) return;
+  if(IS_READONLY) return; // 閲覧専用モード（GitHub Pages版等）では作用させない
+  if(!D || dateStr !== D.date) return; // 表示中の日付のみ対象
+  const url = getOpsGasUrl();
+  if(!url) return;
+  const sep = url.includes('?') ? '&' : '?';
+  fetch(url + sep + 'action=getOps&t=' + Date.now())
+    .then(res => res.ok ? res.json() : null)
+    .then(data => {
+      if(!data || !data.dailyOps || !data.dailyOps[dateStr]) return;
+      if(!D || dateStr !== D.date) return; // fetch中に日付切替された
+      const remote = data.dailyOps[dateStr];
+      // 送信待ち中（社長が直前に編集してクラウド未同期）はマージしない
+      // ※ _lastModified 比較に頼らない: 社長が他列を編集するとローカルmodが進み、
+      //   送迎日誌からの family/walk 書込（クラウドmodは古い）を毎回弾いてしまうため
+      if(_cloudSyncPending) return;
+      let changed = false;
+      ['am','pm'].forEach(unit => {
+        const rUnit = remote[unit]; const lUnit = D[unit];
+        if(!rUnit || !lUnit) return;
+        const rStat = rUnit.userStatus || {};
+        if(!lUnit.userStatus) lUnit.userStatus = {};
+        const lStat = lUnit.userStatus;
+        // 半日値: family/walk の追加・変更
+        Object.keys(rStat).forEach(user => {
+          const rv = rStat[user];
+          if(rv === 'family' || rv === 'walk'){
+            if(lStat[user] !== rv){ lStat[user] = rv; changed = true; }
+          }
+        });
+        // 半日値: ローカルの family/walk がリモートで消えていれば解除
+        Object.keys(lStat).forEach(user => {
+          if(lStat[user] === 'family' || lStat[user] === 'walk'){
+            const rv = rStat[user];
+            if(!rv){ delete lStat[user]; changed = true; }
+          }
+        });
+        const rSlot = rUnit.userStatusBySlot || {};
+        if(!lUnit.userStatusBySlot) lUnit.userStatusBySlot = {};
+        const lSlot = lUnit.userStatusBySlot;
+        // スロット値: family/walk の追加・変更
+        Object.keys(rSlot).forEach(user => {
+          const slots = rSlot[user] || {};
+          Object.keys(slots).forEach(slot => {
+            const rv = slots[slot];
+            if(rv === 'family' || rv === 'walk'){
+              if(!lSlot[user]) lSlot[user] = {};
+              if(lSlot[user][slot] !== rv){ lSlot[user][slot] = rv; changed = true; }
+            }
+          });
+        });
+        // スロット値: ローカルの family/walk がリモートで消えていれば解除
+        Object.keys(lSlot).forEach(user => {
+          const slots = lSlot[user] || {};
+          Object.keys(slots).forEach(slot => {
+            if(slots[slot] === 'family' || slots[slot] === 'walk'){
+              const rv = (rSlot[user] || {})[slot];
+              if(!rv){ delete slots[slot]; changed = true; }
+            }
+          });
+          if(Object.keys(slots).length === 0) delete lSlot[user];
+        });
+      });
+      if(changed){
+        // autoSave だと debouncedCloudSync が走って送信ループになるので、ローカル保存のみ
+        // _lastModified は触らない（社長の他列編集との競合を起こさないため）
+        try{
+          const all = JSON.parse(localStorage.getItem('yawaragi_daily_ops') || '{}');
+          all[D.date] = D;
+          localStorage.setItem('yawaragi_daily_ops', JSON.stringify(all));
+        }catch(e){ console.warn('[sougeiType] local save failed', e); }
+        render();
+        setBoardSyncStatus('🚗 送迎日誌から送迎タイプ反映', '#2e7d32');
+        setTimeout(()=>setBoardSyncStatus('📋 yawaragiボード連動済み', '#94a3b8'), 5000);
+      }
+    })
+    .catch(err => console.warn('[sougeiType] fetch failed', err));
 }
 
 // ========== yawaragiボード「出席予定」からの休み同期 (2026-05-06追加) ==========
@@ -6649,6 +6853,7 @@ function startAbsenceSync(){
     const ds = _absenceCurrentDate();
     if(ds && typeof applyBoardAbsences === 'function') applyBoardAbsences(ds);
     if(ds && typeof applyBoardTrials === 'function') applyBoardTrials(ds);
+    if(ds && typeof applyBoardSougeiType === 'function') applyBoardSougeiType(ds);
   }, ABSENCE_POLL_MS);
 
   // (B) タブをアクティブにした瞬間に即取得
@@ -6657,6 +6862,7 @@ function startAbsenceSync(){
       const ds = _absenceCurrentDate();
       if(ds && typeof applyBoardAbsences === 'function') applyBoardAbsences(ds);
       if(ds && typeof applyBoardTrials === 'function') applyBoardTrials(ds);
+      if(ds && typeof applyBoardSougeiType === 'function') applyBoardSougeiType(ds);
     }
   });
 
@@ -6768,8 +6974,9 @@ async function initApp(){
   try { await fetchTaicho(defaultDate); } catch(e){}
   loadDay(defaultDate);
   render();
-  applyBoardAbsences(defaultDate);
+  applyBoardAbsences(defaultDate, true); // ★修正: forceRefresh=true でページロード時は常に最新データを GAS から取得
   applyBoardTrials(defaultDate);   // 2026-05-22追加: yawaragiボードの体験予約を反映
+  applyBoardSougeiType(defaultDate); // 2026-05-26追加: 送迎日誌の送迎なしを即反映
   startAbsenceSync();  // 2026-05-06追加: 10秒ポーリング + visibilitychange + BroadcastChannelで applyBoardAbsences 再呼び出し
   if(!IS_READONLY) addNewUsers({auto:true});
   if(!IS_READONLY) opsAutoBackup();
