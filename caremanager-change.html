@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>ケアマネ変更登録 | yawaragi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    --navy-0: #0e1623;
+    --navy-1: #131e30;
+    --navy-2: #1b293f;
+    --navy-3: #243651;
+    --navy-line: #2e4566;
+    --ink-on-dark: #f4f7fb;
+    --ink-on-dark-mute: #b6c2d4;
+
+    --paper: #f6f4ed;
+    --paper-deep: #ece8db;
+    --ink-deep: #0b1320;
+
+    --accent: #f5c518;
+    --accent-warm: #ff7a3a;
+    --accent-cool: #58e1c4;
+
+    --shadow-card: 6px 6px 0 var(--navy-0);
+
+    --display: 'Bricolage Grotesque', 'Noto Sans JP', sans-serif;
+    --jp: 'Noto Sans JP', sans-serif;
+}
+
+html, body {
+    background: var(--paper);
+    color: var(--ink-deep);
+    font-family: var(--jp);
+    font-size: 16px;
+    line-height: 1.6;
+    font-weight: 500;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+}
+
+body {
+    background-image:
+        radial-gradient(circle at 1px 1px, rgba(14, 22, 35, 0.08) 1px, transparent 0);
+    background-size: 20px 20px;
+    background-color: var(--paper);
+}
+body::before {
+    content: "";
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 240px;
+    background: linear-gradient(180deg, var(--accent-cool) 0%, rgba(88, 225, 196, 0.4) 78%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+}
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+.page { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 0 24px 60px; }
+
+/* ============ HEADER ============ */
+.hero {
+    color: var(--ink-deep);
+    padding: 32px 30px;
+    position: relative;
+    margin-top: 24px;
+    border: 3px solid var(--navy-0);
+    background: #fffdf6;
+    box-shadow: var(--shadow-card);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.hero::after {
+    content: "";
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 160px; height: 160px;
+    background: var(--accent-cool);
+    transform: rotate(45deg);
+    z-index: 0;
+}
+.hero > * { position: relative; z-index: 1; }
+.hero h1 {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: clamp(1.8rem, 4vw, 2.5rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--ink-deep);
+}
+.hero h1 .icon { margin-right: 8px; }
+.hero-desc {
+    font-size: 15px;
+    color: #3a4252;
+    margin-top: 14px;
+    max-width: 60ch;
+    line-height: 1.7;
+}
+.hero-desc b { color: var(--ink-deep); font-weight: 800; background: var(--accent); padding: 1px 4px; }
+
+/* ============ TOOLBAR ============ */
+.toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+    flex-wrap: wrap;
+    margin: 26px 0 28px;
+}
+.btn {
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 16px;
+    border: 3px solid var(--navy-0);
+    border-radius: 6px;
+    padding: 14px 22px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 5px 5px 0 var(--navy-0);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    background: #fff;
+    color: var(--navy-0);
+}
+.btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 7px 0 var(--navy-0);
+}
+.btn:active {
+    transform: translate(5px, 5px);
+    box-shadow: 0 0 0 var(--navy-0);
+}
+.btn-primary { background: var(--accent-cool); color: var(--navy-0); }
+.btn-reload {
+    background: var(--navy-2);
+    color: var(--ink-on-dark);
+    font-weight: 700;
+    font-size: 15px;
+    margin-left: auto;
+}
+.btn-reload:hover { background: var(--navy-1); }
+.btn .plus {
+    font-size: 22px;
+    line-height: 1;
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--navy-0);
+    color: var(--accent-cool);
+    border-radius: 4px;
+    font-weight: 900;
+}
+.btn:disabled,
+.btn[data-locked="1"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: 5px 5px 0 var(--navy-0);
+}
+
+/* モーダル内の小型ボタン */
+.btn-sm {
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 14px;
+    border: 2.5px solid var(--navy-0);
+    border-radius: 5px;
+    padding: 8px 16px;
+    cursor: pointer;
+    background: #fff;
+    color: var(--navy-0);
+    box-shadow: 3px 3px 0 var(--navy-0);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-sm:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--navy-0); }
+.btn-sm:active { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--navy-0); }
+.btn-sm.primary { background: var(--accent-cool); }
+.btn-sm.danger { background: #fff5f5; color: #c53030; border-color: #c53030; box-shadow: 3px 3px 0 #c53030; }
+.btn-sm.danger:hover { box-shadow: 4px 4px 0 #c53030; }
+.btn-sm.danger:active { box-shadow: 0 0 0 #c53030; }
+.btn-sm:disabled, .btn-sm[data-locked="1"] { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+/* ============ SECTION HEADER ============ */
+.section-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 3px solid var(--navy-0);
+}
+.section-bar .label {
+    font-family: var(--jp);
+    font-weight: 900;
+    font-size: 22px;
+    color: var(--navy-0);
+}
+.section-bar .count-chip {
+    margin-left: auto;
+    font-family: var(--jp);
+    font-weight: 700;
+    font-size: 14px;
+    background: var(--navy-0);
+    color: var(--accent-cool);
+    padding: 6px 14px;
+    border-radius: 4px;
+}
+
+/* ============ CARDS ============ */
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 18px;
+}
+
+.card {
+    position: relative;
+    background: #fff;
+    border: 3px solid var(--navy-0);
+    border-radius: 6px;
+    padding: 18px 18px 16px 24px;
+    box-shadow: 6px 6px 0 var(--navy-0);
+    transition: transform 0.18s cubic-bezier(.34,1.56,.64,1), box-shadow 0.18s;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: slamIn 0.5s cubic-bezier(.34,1.56,.64,1) forwards;
+    overflow: hidden;
+}
+.card:nth-child(1) { animation-delay: 0.04s; }
+.card:nth-child(2) { animation-delay: 0.10s; }
+.card:nth-child(3) { animation-delay: 0.16s; }
+.card:nth-child(4) { animation-delay: 0.22s; }
+@keyframes slamIn {
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 10px;
+    background: var(--accent-cool);
+}
+.card.is-pending::before { background: var(--accent-warm); }
+.card.is-done::before { background: #b0b9c6; }
+
+.card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 10px;
+}
+.type-chip {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 13px;
+    padding: 3px 10px;
+    background: var(--navy-0);
+    color: var(--accent-cool);
+    border-radius: 4px;
+}
+.card.is-done .type-chip { background: #b0b9c6; color: var(--navy-0); }
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--jp);
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--navy-2);
+}
+.status-pill .d { width: 9px; height: 9px; border-radius: 50%; background: var(--accent-warm); }
+.card.is-done .status-pill .d { background: var(--accent-cool); }
+
+.card-name {
+    font-family: var(--jp);
+    font-weight: 900;
+    font-size: 22px;
+    line-height: 1.2;
+    color: var(--navy-0);
+    margin: 6px 0 8px 0;
+}
+.card.is-done .card-name { color: #6b7686; }
+
+.card-detail {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy-2);
+    line-height: 1.6;
+    margin-bottom: 8px;
+}
+.card-detail span {
+    display: inline-block;
+    background: var(--paper-deep);
+    border: 1.5px solid var(--navy-line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin: 2px 2px 2px 0;
+    font-size: 12px;
+}
+.card-effective {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 26px;
+    color: var(--navy-0);
+    background: var(--accent-cool);
+    border: 2px solid var(--navy-0);
+    border-radius: 4px;
+    padding: 4px 12px;
+    display: inline-block;
+    margin-bottom: 10px;
+    box-shadow: 3px 3px 0 var(--navy-0);
+}
+.card.is-done .card-effective { background: #b0b9c6; color: var(--navy-2); }
+
+.empty {
+    margin-top: 36px;
+    padding: 22px 18px;
+    border: 3px dashed var(--navy-line);
+    border-radius: 6px;
+    text-align: center;
+    background: rgba(255,255,255,0.5);
+    font-family: var(--jp);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--navy-2);
+}
+
+/* ============ モーダル ============ */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(14, 22, 35, 0.55); z-index: 1000;
+    align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal-content {
+    background: #fffdf6;
+    border: 3px solid var(--navy-0);
+    border-radius: 6px;
+    box-shadow: var(--shadow-card);
+    padding: 22px 22px 20px;
+    width: 96%;
+    max-height: 92vh;
+    overflow-y: auto;
+    position: relative;
+}
+.modal-content.modal-md { max-width: 520px; }
+.modal-content.modal-lg { max-width: 760px; }
+.modal-content h3 {
+    font-family: var(--jp);
+    font-weight: 900;
+    font-size: 1.25rem;
+    color: var(--navy-0);
+    margin: 0 0 16px 0;
+    padding-bottom: 10px;
+    border-bottom: 2.5px solid var(--navy-0);
+}
+
+.modal-content label {
+    display: block;
+    margin-bottom: 14px;
+    font-family: var(--jp);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--navy-1);
+}
+.modal-content label .req { color: #c53030; margin-left: 2px; }
+.modal-content input[type="text"],
+.modal-content input[type="date"],
+.modal-content input[type="email"],
+.modal-content select,
+.modal-content textarea {
+    width: 100%;
+    padding: 10px 12px;
+    margin-top: 6px;
+    font-size: 15px;
+    font-family: var(--jp);
+    font-weight: 500;
+    color: var(--navy-0);
+    background: #fff;
+    border: 2.5px solid var(--navy-0);
+    border-radius: 5px;
+    box-sizing: border-box;
+    transition: box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.modal-content input:focus,
+.modal-content select:focus,
+.modal-content textarea:focus {
+    outline: none;
+    border-color: var(--navy-0);
+    box-shadow: 0 0 0 3px var(--accent-cool);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 18px;
+    flex-wrap: wrap;
+}
+
+.detail-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 16px 0;
+    padding-bottom: 10px;
+    border-bottom: 2.5px solid var(--navy-0);
+}
+.detail-header-row h3 {
+    margin: 0; padding: 0; border: none;
+    font-size: 1.15rem;
+}
+
+.modal-content .detail-close {
+    background: none;
+    border: 2.5px solid var(--navy-0);
+    border-radius: 5px;
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 2px 12px;
+    color: var(--navy-0);
+    background: #fff;
+    box-shadow: 3px 3px 0 var(--navy-0);
+}
+.modal-content .detail-close:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--navy-0); }
+
+/* ウィザードの進捗バー */
+.step-indicator {
+    background: var(--accent-cool);
+    color: var(--navy-0);
+    border: 2.5px solid var(--navy-0);
+    border-radius: 5px;
+    padding: 8px 14px;
+    margin-bottom: 16px;
+    font-weight: 900;
+    font-family: var(--jp);
+    box-shadow: 3px 3px 0 var(--navy-0);
+    font-size: 14px;
+}
+
+/* モード選択ボタン */
+.mode-btn-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.mode-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 14px 12px;
+    border: 2.5px solid var(--navy-0);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--navy-0);
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 15px;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 var(--navy-0);
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+    text-align: center;
+}
+.mode-btn:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--navy-0); }
+.mode-btn:active { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--navy-0); }
+.mode-btn.selected {
+    background: var(--accent-cool);
+    box-shadow: 4px 4px 0 var(--navy-0);
+}
+.mode-btn .mode-icon { display: block; font-size: 22px; margin-bottom: 4px; }
+.mode-btn .mode-label { font-size: 13px; font-weight: 700; color: var(--navy-2); margin-top: 2px; }
+
+/* 利用者チェックリスト（一斉変更時） */
+.user-checklist {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 2.5px solid var(--navy-0);
+    border-radius: 5px;
+    background: #fff;
+    margin-top: 8px;
+}
+.user-checklist label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1.5px solid var(--paper-deep);
+    margin: 0;
+    font-size: 14px;
+    cursor: pointer;
+}
+.user-checklist label:last-child { border-bottom: none; }
+.user-checklist input[type="checkbox"] {
+    width: auto; margin: 0; flex-shrink: 0;
+    transform: scale(1.2);
+    accent-color: var(--navy-0);
+}
+.user-checklist .user-kana { font-size: 11px; color: #6b7686; font-weight: 500; }
+
+/* 送付先インライン入力グループ */
+.method-group {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+.method-radio-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+}
+.method-radio-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 6px 12px;
+    background: #fff;
+    border: 2px solid var(--navy-0);
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 800;
+    color: var(--navy-0);
+}
+.method-radio-group input[type="radio"] {
+    width: auto; margin: 0;
+    accent-color: var(--navy-0);
+}
+.method-radio-group label:has(input:checked) {
+    background: var(--accent-cool);
+}
+
+/* 確認サマリー */
+.confirm-section {
+    background: var(--paper-deep);
+    border: 2.5px solid var(--navy-0);
+    border-radius: 5px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 14px;
+}
+.confirm-section h4 {
+    font-weight: 900;
+    font-size: 13px;
+    color: var(--navy-2);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.confirm-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+    line-height: 1.5;
+    flex-wrap: wrap;
+}
+.confirm-row .lbl {
+    font-weight: 700;
+    color: #5b6477;
+    min-width: 90px;
+    font-size: 13px;
+}
+.confirm-row .val {
+    font-weight: 800;
+    color: var(--navy-0);
+    font-size: 13px;
+}
+.confirm-row .val.accent { background: var(--accent-cool); padding: 0 6px; border-radius: 3px; }
+.confirm-users {
+    max-height: 120px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1.5px solid var(--navy-line);
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy-0);
+    line-height: 1.8;
+}
+
+/* dryRun 結果 */
+.dryrun-result {
+    margin-top: 10px;
+    padding: 10px 14px;
+    border-radius: 5px;
+    border: 2.5px solid var(--navy-0);
+    font-size: 13px;
+    font-weight: 700;
+}
+.dryrun-result.ok { background: #e6fff8; color: var(--navy-0); }
+.dryrun-result.warn { background: #fff8e1; color: #7a5c00; }
+.dryrun-result.error { background: #fff5f5; color: #c53030; }
+
+/* ============ TOAST ============ */
+.toast {
+    position: fixed; bottom: 30px; left: 50%;
+    transform: translateX(-50%) translateY(120px);
+    background: var(--navy-0);
+    color: var(--accent-cool);
+    padding: 14px 26px;
+    border: 2.5px solid var(--navy-0);
+    border-radius: 5px;
+    font-family: var(--jp);
+    font-weight: 800;
+    font-size: 0.95rem;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    box-shadow: 5px 5px 0 var(--navy-2);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+@media (max-width: 600px) {
+    .page { padding: 0 14px 50px; }
+    .hero { padding: 24px 18px; }
+    .btn-reload { margin-left: 0; width: 100%; justify-content: center; }
+    .card-name { font-size: 19px; }
+    .hero h1 { font-size: 1.7rem; }
+    .mode-btn-group { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+<header class="hero">
+    <h1><span class="icon">&#128100;</span>ケアマネ変更窓口</h1>
+    <p class="hero-desc">
+        担当ケアマネが変わったとき、<b>わかった時点で予約登録</b>します。
+        適用日に利用者台帳・送付用居宅一覧へ自動反映されます。
+    </p>
+</header>
+
+<section class="toolbar">
+    <button class="btn btn-primary" onclick="cmWizOpen()">
+        <span class="plus">&#43;</span>ケアマネ変更を登録
+    </button>
+    <button class="btn btn-reload" onclick="cmListLoad()">&#128260; 再読込</button>
+</section>
+
+<div class="section-bar">
+    <span class="label">登録済み予約一覧</span>
+    <span class="count-chip" id="cm-count-chip">&#8212;</span>
+</div>
+
+<div id="cm-list" class="cards">
+    <p style="color:#5b6477; padding:20px; text-align:center; grid-column: 1 / -1;">読み込み中&#8230;</p>
+</div>
+
+</div>
+
+<!-- ケアマネ変更ウィザードモーダル（6ステップ） -->
+<div id="cm-wizard-modal" class="modal-overlay">
+    <div class="modal-content modal-md">
+        <div class="detail-header-row">
+            <h3>&#43; ケアマネ変更登録</h3>
+            <button class="detail-close" onclick="cmWizClose()">&#215;</button>
+        </div>
+
+        <!-- 進捗インジケーター -->
+        <div class="step-indicator">
+            <span id="cm-step-indicator">Step 1 / 6</span>
+        </div>
+
+        <!-- Step 1: 対象を選ぶ（個人 or 事業所一括） -->
+        <div class="cm-wizard-step" data-step="1" style="display:block;">
+            <label>1. 対象の選び方 <span class="req">*</span></label>
+            <div class="mode-btn-group">
+                <button class="mode-btn" id="mode-btn-user" onclick="cmSelectMode('user')">
+                    <span class="mode-icon">&#128100;</span>
+                    利用者を選ぶ
+                    <span class="mode-label">1人ずつ変更</span>
+                </button>
+                <button class="mode-btn" id="mode-btn-bulk" onclick="cmSelectMode('office_bulk')">
+                    <span class="mode-icon">&#127968;</span>
+                    事業所ごとまとめて
+                    <span class="mode-label">同事業所の全員を変更</span>
+                </button>
+            </div>
+            <div id="step1-user-area" style="display:none; margin-top:14px;">
+                <label>利用者を検索 <span class="req">*</span>
+                    <input type="text" id="cm-user-search" autocomplete="off" placeholder="氏名またはカナで検索">
+                </label>
+                <div id="cm-user-suggestions" style="background:white; border:2.5px solid var(--navy-0); border-top:none; max-height:200px; overflow-y:auto; display:none; border-radius:0 0 5px 5px; margin-top:-14px;"></div>
+                <div id="cm-user-selected" style="margin-top:6px; font-size:0.9rem; color:var(--navy-0); font-weight:800;"></div>
+            </div>
+            <div id="step1-bulk-area" style="display:none; margin-top:14px;">
+                <label>変更前の居宅事業所 <span class="req">*</span>
+                    <select id="cm-old-office-select">
+                        <option value="">選択してください</option>
+                    </select>
+                </label>
+                <div id="cm-bulk-user-list" style="margin-top:6px;"></div>
+            </div>
+        </div>
+
+        <!-- Step 2: 新しいケアマネ事業所・担当者 -->
+        <div class="cm-wizard-step" data-step="2" style="display:none;">
+            <label>2. 新しい居宅介護支援事業所 <span class="req">*</span>
+                <select id="cm-new-office-select">
+                    <option value="">選択してください</option>
+                    <option value="__OTHER__">&#43; その他 / 新規事業所</option>
+                </select>
+            </label>
+            <input type="text" id="cm-new-office-other" placeholder="事業所名を入力" style="display:none; margin-top:8px;">
+            <label style="margin-top:10px;">2b. 新しい担当ケアマネ <span class="req">*</span>
+                <select id="cm-new-staff-select">
+                    <option value="">先に事業所を選んでください</option>
+                </select>
+            </label>
+            <input type="text" id="cm-new-staff-other" placeholder="担当者名を入力" style="display:none; margin-top:8px;">
+        </div>
+
+        <!-- Step 3: 実績送付先（事業所単位） -->
+        <div class="cm-wizard-step" data-step="3" style="display:none;">
+            <p style="font-size:13px; color:var(--navy-2); font-weight:700; margin-bottom:10px;">
+                &#128241; 実績送付先（毎月の提供票・別表の送り先）を確認・設定してください
+            </p>
+            <label>3. 実績送付方法 <span class="req">*</span></label>
+            <div class="method-radio-group" id="jisseki-method-group">
+                <label><input type="radio" name="jisseki-method" value="email"> メール</label>
+                <label><input type="radio" name="jisseki-method" value="fax"> FAX</label>
+                <label><input type="radio" name="jisseki-method" value="visit"> 持参</label>
+            </div>
+            <div id="jisseki-email-area" style="display:none; margin-top:10px;">
+                <label>送付先メールアドレス
+                    <input type="email" id="jisseki-email" placeholder="example@office.com">
+                </label>
+            </div>
+            <div id="jisseki-fax-area" style="display:none; margin-top:10px;">
+                <label>FAX番号
+                    <input type="text" id="jisseki-fax" placeholder="0493-XX-XXXX">
+                </label>
+            </div>
+        </div>
+
+        <!-- Step 4: 休み連絡（利用者ごと） -->
+        <div class="cm-wizard-step" data-step="4" style="display:none;">
+            <p style="font-size:13px; color:var(--navy-2); font-weight:700; margin-bottom:10px;">
+                &#128222; 欠席時の連絡先を設定してください（利用者ごとの設定）
+            </p>
+            <label>4. 休み連絡方法 <span class="req">*</span></label>
+            <div class="method-radio-group" id="absence-method-group">
+                <label><input type="radio" name="absence-method" value="email"> メール</label>
+                <label><input type="radio" name="absence-method" value="phone"> 電話</label>
+                <label><input type="radio" name="absence-method" value="none"> 連絡しない</label>
+            </div>
+            <div id="absence-email-area" style="display:none; margin-top:10px;">
+                <label>連絡先メールアドレス
+                    <input type="email" id="absence-email" placeholder="example@office.com">
+                </label>
+            </div>
+            <div id="absence-phone-area" style="display:none; margin-top:10px;">
+                <label>連絡先電話番号
+                    <input type="text" id="absence-phone" placeholder="0493-XX-XXXX">
+                </label>
+            </div>
+        </div>
+
+        <!-- Step 5: 適用日 -->
+        <div class="cm-wizard-step" data-step="5" style="display:none;">
+            <label>5. 適用日 <span class="req">*</span>
+                <input type="date" id="cm-effective-date">
+            </label>
+            <p style="font-size:13px; color:var(--navy-2); font-weight:700; margin-top:6px;">
+                &#128337; 「即日」の場合は今日の日付を選んでください。<br>
+                指定日の日次バッチで利用者台帳・送付用居宅一覧へ自動反映されます。
+            </p>
+            <label style="margin-top:12px;">記入者 <span class="req">*</span>
+                <select id="cm-recorder-select">
+                    <option value="">あなたの名前を選んでください</option>
+                </select>
+            </label>
+        </div>
+
+        <!-- Step 6: 確認・登録 -->
+        <div class="cm-wizard-step" data-step="6" style="display:none;">
+            <p style="font-size:13px; font-weight:700; color:var(--navy-2); margin-bottom:10px;">
+                以下の内容で登録します。内容を確認してください。
+            </p>
+            <div id="cm-confirm-body">
+                <!-- 動的に生成 -->
+            </div>
+            <div id="cm-dryrun-result" style="display:none;"></div>
+        </div>
+
+        <!-- ナビゲーションボタン -->
+        <div class="modal-actions">
+            <button id="cm-btn-cancel" class="btn-sm" onclick="cmWizClose()">キャンセル</button>
+            <button id="cm-btn-prev" class="btn-sm" style="display:none;" onclick="cmWizPrev()">&#8592; 戻る</button>
+            <button id="cm-btn-next" class="btn-sm primary" onclick="cmWizNext()">次へ &#8594;</button>
+            <button id="cm-btn-submit" class="btn-sm primary" style="display:none;" onclick="cmWizSubmit()">登録する</button>
+        </div>
+    </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== GAS API URL =====
+const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+
+// ===== 共通ユーティリティ（利用曜日変更.html から流用） =====
+function showToast(msg, duration) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, duration || 2000);
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// ===== リトライ付きGAS POST送信（利用曜日変更.html から流用・no-cors） =====
+async function gasPost(data, label) {
+    const maxRetries = 3;
+    for (var i = 1; i <= maxRetries; i++) {
+        try {
+            await fetch(ABS_BOARD_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return true; // ネットワーク送信成功（no-corsのためGASレスポンスは見えない）
+        } catch (err) {
+            console.error('GAS送信エラー (' + i + '/' + maxRetries + '): ' + (label || ''), err);
+            if (i < maxRetries) {
+                await new Promise(function(r) { setTimeout(r, 2000); });
+            }
+        }
+    }
+    showToast('送信失敗！ネットワークを確認してください', 5000);
+    return false;
+}
+
+// ===== 2重押し防止ヘルパー（利用曜日変更.html から流用） =====
+function lockSubmitBtn(btnId, busyLabel) {
+    var btn = document.getElementById(btnId);
+    if (!btn) return null;
+    if (btn.dataset.locked === '1') return false;
+    btn.dataset.locked = '1';
+    btn.dataset.origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.style.opacity = '0.55';
+    btn.style.cursor = 'not-allowed';
+    btn.textContent = busyLabel || '送信中…';
+    return btn;
+}
+function unlockSubmitBtn(btn) {
+    if (!btn || btn === false) return;
+    btn.dataset.locked = '0';
+    btn.disabled = false;
+    btn.style.opacity = '';
+    btn.style.cursor = 'pointer';
+    if (btn.dataset.origLabel) btn.textContent = btn.dataset.origLabel;
+}
+
+// ============================================================
+// ===== キャッシュ・JSONP取得（利用曜日変更.html から流用） =====
+// ============================================================
+var _cmUserList = null;
+var _cmContactsList = null;
+var _staffList = null;
+
+// JSONPでスタッフ一覧を取得（シフト希望SSのスタッフシートから）
+function _fetchStaffList() {
+    if (_staffList) return Promise.resolve(_staffList);
+    return new Promise(function(resolve) {
+        var cb = '_sfCb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        var resolved = false;
+        window[cb] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            _staffList = (resp && resp.staff_list) ? resp.staff_list.map(function(s) { return s.name || s; }) : [];
+            try { delete window[cb]; } catch(e) {}
+            resolve(_staffList);
+        };
+        var s = document.createElement('script');
+        s.src = ABS_BOARD_API_URL + '?action=staff_list&callback=' + cb;
+        s.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            _staffList = [];
+            resolve([]);
+        };
+        document.body.appendChild(s);
+        setTimeout(function() {
+            try { s.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cb]; } catch(e) {}
+                _staffList = [];
+                resolve([]);
+            }
+        }, 8000);
+    });
+}
+
+// JSONPで利用者一覧を取得
+function _cmFetchUserList() {
+    if (_cmUserList) return Promise.resolve(_cmUserList);
+    return new Promise(function(resolve) {
+        var cb = '_cmCb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        var resolved = false;
+        window[cb] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            _cmUserList = (resp && resp.user_list) || [];
+            try { delete window[cb]; } catch(e) {}
+            resolve(_cmUserList);
+        };
+        var s = document.createElement('script');
+        s.src = ABS_BOARD_API_URL + '?action=user_list&callback=' + cb;
+        s.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            _cmUserList = [];
+            resolve([]);
+        };
+        document.body.appendChild(s);
+        setTimeout(function() {
+            try { s.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cb]; } catch(e) {}
+                _cmUserList = [];
+                resolve([]);
+            }
+        }, 8000);
+    });
+}
+
+// JSONPでケアマネ連絡先を取得
+function _cmFetchContacts() {
+    if (_cmContactsList) return Promise.resolve(_cmContactsList);
+    return new Promise(function(resolve) {
+        var cb = '_cmCcb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        var resolved = false;
+        window[cb] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            _cmContactsList = (resp && resp.cmContacts) || [];
+            try { delete window[cb]; } catch(e) {}
+            resolve(_cmContactsList);
+        };
+        var s = document.createElement('script');
+        s.src = ABS_BOARD_API_URL + '?action=contacts&callback=' + cb;
+        s.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            _cmContactsList = [];
+            resolve([]);
+        };
+        document.body.appendChild(s);
+        setTimeout(function() {
+            try { s.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cb]; } catch(e) {}
+                _cmContactsList = [];
+                resolve([]);
+            }
+        }, 8000);
+    });
+}
+
+// dryRun確認（JSONP）: 適用日に対象利用者が反映予定か確認
+function _cmDryRunCheck(date) {
+    return new Promise(function(resolve) {
+        var cb = '_cmDryCb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        var resolved = false;
+        window[cb] = function(resp) {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            resolve((resp && resp.apply_result) || []);
+        };
+        var s = document.createElement('script');
+        s.src = ABS_BOARD_API_URL + '?action=apply_due_caremanager&dryRun=1&date=' + encodeURIComponent(date) + '&callback=' + cb;
+        s.onerror = function() {
+            if (resolved) return;
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            resolve(null); // エラー時はnullで「確認不可」
+        };
+        document.body.appendChild(s);
+        setTimeout(function() {
+            try { s.remove(); } catch(e) {}
+            if (!resolved) {
+                resolved = true;
+                try { delete window[cb]; } catch(e) {}
+                resolve(null);
+            }
+        }, 8000);
+    });
+}
+
+// 非表示事業所を除外（利用曜日変更.html から流用）
+function _cmGetHiddenOffices() {
+    var officeAllRows = {};
+    (_cmContactsList || []).forEach(function(c) {
+        if (!c.office) return;
+        if (!officeAllRows[c.office]) officeAllRows[c.office] = [];
+        officeAllRows[c.office].push(c.hidden);
+    });
+    var set = new Set();
+    Object.keys(officeAllRows).forEach(function(office) {
+        if (officeAllRows[office].every(function(h) { return h; })) set.add(office);
+    });
+    return set;
+}
+
+// 全事業所リスト（contacts + 台帳から、非表示除外）
+function _cmGetAllOffices() {
+    var hiddenOffices = _cmGetHiddenOffices();
+    var fromContacts = (_cmContactsList || []).map(function(c) { return c.office; });
+    var fromUsers = (_cmUserList || []).map(function(u) { return u.currentCmOffice; });
+    return Array.from(new Set(fromContacts.concat(fromUsers)))
+        .filter(function(o) { return o && o.length > 0 && !hiddenOffices.has(o); })
+        .sort(function(a, b) { return a.localeCompare(b, 'ja'); });
+}
+
+// 指定事業所の担当者リスト
+function _cmGetStaffsByOffice(office) {
+    var hiddenStaffKeys = new Set();
+    (_cmContactsList || []).forEach(function(c) {
+        if (c.hidden && c.name && c.name.length > 0) hiddenStaffKeys.add(c.office + '\n' + c.name);
+    });
+    var fromContacts = (_cmContactsList || [])
+        .filter(function(c) { return c.office === office && c.name && c.name.length > 0 && !c.hidden; })
+        .map(function(c) { return c.name; });
+    var fromUsers = (_cmUserList || [])
+        .filter(function(u) { return u.currentCmOffice === office && u.currentCmStaff && !hiddenStaffKeys.has(office + '\n' + u.currentCmStaff); })
+        .map(function(u) { return u.currentCmStaff; });
+    return Array.from(new Set(fromContacts.concat(fromUsers)))
+        .sort(function(a, b) { return a.localeCompare(b, 'ja'); });
+}
+
+// 事業所のcontacts情報取得（実績送付先の初期値用）
+function _cmGetContactByOffice(office) {
+    return (_cmContactsList || []).find(function(c) { return c.office === office && !c.hidden; }) || null;
+}
+
+// ============================================================
+// ===== 一覧表示 =====
+// ============================================================
+function cmListLoad() {
+    var host = document.getElementById('cm-list');
+    host.innerHTML = '<p style="color:#5b6477; padding:20px; text-align:center; grid-column: 1 / -1;">読み込み中&#8230;</p>';
+    document.getElementById('cm-count-chip').textContent = '&#8212;';
+
+    var cb = '_cmListCb' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    var resolved = false;
+    window[cb] = function(resp) {
+        if (resolved) return;
+        resolved = true;
+        try { delete window[cb]; } catch(e) {}
+        var events = (resp && resp.user_events) || [];
+        // caremanager_relay イベントのみ表示
+        var relayEvents = events.filter(function(e) { return e.eventType === 'caremanager_relay'; });
+        cmRenderList(relayEvents);
+    };
+    var s = document.createElement('script');
+    s.src = ABS_BOARD_API_URL + '?action=user_events&callback=' + cb;
+    s.onerror = function() {
+        if (resolved) return;
+        resolved = true;
+        try { delete window[cb]; } catch(e) {}
+        host.innerHTML = '<p style="color:#c53030; padding:20px; text-align:center; grid-column: 1 / -1;">読み込みに失敗しました。再読込してください。</p>';
+    };
+    document.body.appendChild(s);
+    setTimeout(function() {
+        try { s.remove(); } catch(e) {}
+        if (!resolved) {
+            resolved = true;
+            try { delete window[cb]; } catch(e) {}
+            host.innerHTML = '<p style="color:#c53030; padding:20px; text-align:center; grid-column: 1 / -1;">タイムアウトしました。再読込してください。</p>';
+        }
+    }, 10000);
+}
+
+function cmRenderList(events) {
+    var host = document.getElementById('cm-list');
+    document.getElementById('cm-count-chip').textContent = events.length + '件';
+    if (events.length === 0) {
+        host.innerHTML = '<div class="empty" style="grid-column: 1 / -1;">登録されたケアマネ変更予約はありません</div>';
+        return;
+    }
+    // 新しい順にソート
+    var sorted = events.slice().sort(function(a, b) {
+        return (b.eventDate || '').localeCompare(a.eventDate || '');
+    });
+    host.innerHTML = sorted.map(function(ev, i) {
+        var meta = {};
+        try { meta = JSON.parse(ev.metadata || '{}'); } catch(e) {}
+        var isDone = meta.appliedToLedger === true || meta.appliedToLedger === 'true';
+        var effectiveDate = meta.effectiveDate || ev.eventDate || '';
+        var newOffice = meta.newCmOffice || '';
+        var newStaff = meta.newCmStaff || '';
+        var modeLabel = meta.mode === 'office_bulk' ? '一括' : '個別';
+        var cardClass = isDone ? 'card is-done' : 'card is-pending';
+        return '<div class="' + cardClass + '" style="animation-delay:' + (i * 0.06) + 's">' +
+            '<div class="card-head">' +
+                '<span class="type-chip">ケアマネ変更</span>' +
+                '<span class="status-pill"><span class="d"></span>' + (isDone ? '反映済' : '適用待ち') + '</span>' +
+            '</div>' +
+            '<div class="card-effective">' + escapeHtml(effectiveDate) + '</div>' +
+            '<div class="card-name">' + escapeHtml(ev.userName || '') + '</div>' +
+            '<div class="card-detail">' +
+                '<span>' + escapeHtml(newOffice) + '</span>' +
+                (newStaff ? '<span>' + escapeHtml(newStaff) + '</span>' : '') +
+                '<span>' + escapeHtml(modeLabel) + '</span>' +
+            '</div>' +
+            '<div style="font-size:12px; color:#6b7686; font-weight:500;">登録者: ' + escapeHtml(meta.recorder || ev.createdBy || '') + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+// ============================================================
+// ===== ウィザード =====
+// ============================================================
+var cmCurrentStep = 1;
+var CM_TOTAL_STEPS = 6;
+var cmWizMode = null;       // 'user' | 'office_bulk'
+var cmSelectedUsers = [];   // 選択済み利用者オブジェクトの配列
+
+function cmToday() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+// ----- 開閉 -----
+function cmWizOpen() {
+    cmCurrentStep = 1;
+    cmWizMode = null;
+    cmSelectedUsers = [];
+    cmWizInitForm();
+    document.getElementById('cm-wizard-modal').classList.add('show');
+    cmWizShowStep(1);
+    // データ事前ロード
+    Promise.all([_cmFetchUserList(), _cmFetchContacts()]).then(function() {
+        cmInitOfficeDropdown();
+        cmInitNewOfficeDropdown();
+        cmInitStaffDropdown();
+    });
+}
+
+function cmWizClose() {
+    document.getElementById('cm-wizard-modal').classList.remove('show');
+}
+
+// ----- ステップ表示 -----
+function cmWizShowStep(n) {
+    document.querySelectorAll('.cm-wizard-step').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    var target = document.querySelector('.cm-wizard-step[data-step="' + n + '"]');
+    if (target) target.style.display = 'block';
+    document.getElementById('cm-step-indicator').textContent = 'Step ' + n + ' / ' + CM_TOTAL_STEPS;
+    document.getElementById('cm-btn-prev').style.display = (n > 1) ? 'inline-block' : 'none';
+    if (n < CM_TOTAL_STEPS) {
+        document.getElementById('cm-btn-next').style.display = 'inline-block';
+        document.getElementById('cm-btn-submit').style.display = 'none';
+    } else {
+        document.getElementById('cm-btn-next').style.display = 'none';
+        document.getElementById('cm-btn-submit').style.display = 'inline-block';
+    }
+}
+
+function cmWizNext() {
+    if (!cmWizValidate(cmCurrentStep)) return;
+    cmCurrentStep++;
+    // Step 6（確認画面）に来たら確認サマリーを描画
+    if (cmCurrentStep === CM_TOTAL_STEPS) {
+        cmBuildConfirm();
+    }
+    cmWizShowStep(cmCurrentStep);
+}
+
+function cmWizPrev() {
+    if (cmCurrentStep > 1) {
+        cmCurrentStep--;
+        cmWizShowStep(cmCurrentStep);
+    }
+}
+
+// ----- モード選択 -----
+function cmSelectMode(mode) {
+    cmWizMode = mode;
+    document.getElementById('mode-btn-user').classList.toggle('selected', mode === 'user');
+    document.getElementById('mode-btn-bulk').classList.toggle('selected', mode === 'office_bulk');
+    document.getElementById('step1-user-area').style.display = (mode === 'user') ? 'block' : 'none';
+    document.getElementById('step1-bulk-area').style.display = (mode === 'office_bulk') ? 'block' : 'none';
+    if (mode === 'user') {
+        document.getElementById('cm-user-search').focus();
+    }
+}
+
+// ----- 利用者検索ボックス -----
+function cmInitUserSearch() {
+    var searchInput = document.getElementById('cm-user-search');
+    var suggestions = document.getElementById('cm-user-suggestions');
+    searchInput.oninput = function() {
+        var q = searchInput.value.trim();
+        if (!q || !_cmUserList) { suggestions.style.display = 'none'; return; }
+        var matches = _cmUserList.filter(function(u) {
+            return u.userName.indexOf(q) !== -1 ||
+                   (u.userNameKana && u.userNameKana.indexOf(q) !== -1);
+        }).slice(0, 10);
+        if (matches.length === 0) { suggestions.style.display = 'none'; return; }
+        suggestions.innerHTML = matches.map(function(u) {
+            return '<div style="padding:8px 10px; cursor:pointer; font-size:0.92rem; border-bottom:1.5px solid var(--paper-deep); font-weight:700; color:var(--navy-0);" ' +
+                'onclick="cmSelectSingleUser(\'' + u.userName.replace(/'/g, "\\'") + '\')">' +
+                escapeHtml(u.userName) +
+                (u.userNameKana ? ' <span style="color:#6b7686; font-size:0.78rem; font-weight:500;">(' + escapeHtml(u.userNameKana) + ')</span>' : '') +
+                (u.currentCmOffice ? ' <span style="color:#888; font-size:0.75rem;">/ ' + escapeHtml(u.currentCmOffice) + '</span>' : '') +
+                '</div>';
+        }).join('');
+        suggestions.style.display = 'block';
+    };
+}
+
+function cmSelectSingleUser(userName) {
+    var user = (_cmUserList || []).find(function(u) { return u.userName === userName; });
+    if (!user) return;
+    cmSelectedUsers = [user];
+    document.getElementById('cm-user-search').value = userName;
+    document.getElementById('cm-user-suggestions').style.display = 'none';
+    document.getElementById('cm-user-selected').textContent = '選択中: ' + userName + ' 様（現在: ' + (user.currentCmOffice || '未登録') + ' / ' + (user.currentCmStaff || '未登録') + '）';
+}
+
+// ----- 旧事業所プルダウン（一括用） -----
+function cmInitOfficeDropdown() {
+    var sel = document.getElementById('cm-old-office-select');
+    var offices = _cmGetAllOffices();
+    sel.innerHTML = '<option value="">選択してください</option>' +
+        offices.map(function(o) { return '<option value="' + escapeHtml(o) + '">' + escapeHtml(o) + '</option>'; }).join('');
+    sel.onchange = function() {
+        cmRenderBulkUserList(sel.value);
+    };
+}
+
+function cmRenderBulkUserList(office) {
+    var container = document.getElementById('cm-bulk-user-list');
+    if (!office) { container.innerHTML = ''; return; }
+    var users = (_cmUserList || []).filter(function(u) { return u.currentCmOffice === office; });
+    if (users.length === 0) {
+        container.innerHTML = '<p style="font-size:13px; color:#c53030; font-weight:700; margin-top:8px;">この事業所の利用者は見つかりませんでした。</p>';
+        return;
+    }
+    container.innerHTML = '<p style="font-size:13px; font-weight:700; color:var(--navy-2); margin:8px 0 4px;">対象利用者（' + users.length + '名）：チェックを外すと対象外になります</p>' +
+        '<div class="user-checklist">' +
+        users.map(function(u) {
+            return '<label><input type="checkbox" class="bulk-user-cb" value="' + escapeHtml(u.userName) + '" checked>' +
+                escapeHtml(u.userName) +
+                (u.userNameKana ? ' <span class="user-kana">（' + escapeHtml(u.userNameKana) + '）</span>' : '') +
+                '</label>';
+        }).join('') +
+        '</div>';
+}
+
+// ----- 新しい事業所プルダウン -----
+function cmInitNewOfficeDropdown() {
+    var sel = document.getElementById('cm-new-office-select');
+    var offices = _cmGetAllOffices();
+    sel.innerHTML = '<option value="">選択してください</option>' +
+        offices.map(function(o) { return '<option value="' + escapeHtml(o) + '">' + escapeHtml(o) + '</option>'; }).join('') +
+        '<option value="__OTHER__">+ その他 / 新規事業所</option>';
+    sel.onchange = function() {
+        var v = sel.value;
+        document.getElementById('cm-new-office-other').style.display = (v === '__OTHER__') ? 'block' : 'none';
+        if (v && v !== '__OTHER__') {
+            cmInitStaffDropdown(v);
+            // contacts から送付先初期値を流し込む
+            var contact = _cmGetContactByOffice(v);
+            if (contact) {
+                cmPrefillJisseki(contact);
+            }
+        } else {
+            cmInitStaffDropdown(null);
+        }
+    };
+}
+
+function cmInitStaffDropdown(office) {
+    var sel = document.getElementById('cm-new-staff-select');
+    if (!office) {
+        sel.innerHTML = '<option value="">先に事業所を選んでください</option>';
+        document.getElementById('cm-new-staff-other').style.display = 'none';
+        return;
+    }
+    var staffs = _cmGetStaffsByOffice(office);
+    sel.innerHTML = '<option value="">選択してください</option>' +
+        staffs.map(function(s) { return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>'; }).join('') +
+        '<option value="__OTHER__">+ その他 / 新規担当者</option>';
+    sel.onchange = function() {
+        document.getElementById('cm-new-staff-other').style.display = (sel.value === '__OTHER__') ? 'block' : 'none';
+    };
+}
+
+// contacts から実績送付先を初期セット
+function cmPrefillJisseki(contact) {
+    var method = contact.method || '';
+    if (method === 'email' || method === 'メール') {
+        document.querySelector('input[name="jisseki-method"][value="email"]').checked = true;
+        document.getElementById('jisseki-email').value = contact.email || '';
+        document.getElementById('jisseki-email-area').style.display = 'block';
+        document.getElementById('jisseki-fax-area').style.display = 'none';
+    } else if (method === 'fax' || method === 'FAX') {
+        document.querySelector('input[name="jisseki-method"][value="fax"]').checked = true;
+        document.getElementById('jisseki-fax').value = contact.fax || '';
+        document.getElementById('jisseki-email-area').style.display = 'none';
+        document.getElementById('jisseki-fax-area').style.display = 'block';
+    } else if (method === 'visit' || method === '持参') {
+        document.querySelector('input[name="jisseki-method"][value="visit"]').checked = true;
+        document.getElementById('jisseki-email-area').style.display = 'none';
+        document.getElementById('jisseki-fax-area').style.display = 'none';
+    }
+}
+
+// ----- 実績送付方法ラジオのchange -----
+function cmInitJissekiMethodListeners() {
+    document.querySelectorAll('input[name="jisseki-method"]').forEach(function(radio) {
+        radio.onchange = function() {
+            document.getElementById('jisseki-email-area').style.display = (radio.value === 'email') ? 'block' : 'none';
+            document.getElementById('jisseki-fax-area').style.display = (radio.value === 'fax') ? 'block' : 'none';
+        };
+    });
+    document.querySelectorAll('input[name="absence-method"]').forEach(function(radio) {
+        radio.onchange = function() {
+            document.getElementById('absence-email-area').style.display = (radio.value === 'email') ? 'block' : 'none';
+            document.getElementById('absence-phone-area').style.display = (radio.value === 'phone') ? 'block' : 'none';
+        };
+    });
+}
+
+// ----- 記入者プルダウン（staff_list JSONPで動的取得 + 社長「比嘉」を確保） -----
+function cmInitRecorderDropdown() {
+    _fetchStaffList().then(function(list) {
+        var sel = document.getElementById('cm-recorder-select');
+        if (!sel) return;
+        // スタッフ名リスト（GASから取得、取れなければフォールバック）
+        var names = (list && list.length > 0) ? list : ['比嘉', '勝又', '下浦', '小野', '林', '星野', '朝井'];
+        // 「比嘉」を必ず含める
+        if (names.indexOf('比嘉') === -1) names = ['比嘉'].concat(names);
+        sel.innerHTML = '<option value="">あなたの名前を選んでください</option>' +
+            names.map(function(s) { return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>'; }).join('');
+        try {
+            var saved = localStorage.getItem('yawaragi_staff') || '';
+            if (saved) sel.value = saved;
+        } catch(e) {}
+    });
+}
+
+// ----- フォーム初期化 -----
+function cmWizInitForm() {
+    cmWizMode = null;
+    cmSelectedUsers = [];
+    document.getElementById('mode-btn-user').classList.remove('selected');
+    document.getElementById('mode-btn-bulk').classList.remove('selected');
+    document.getElementById('step1-user-area').style.display = 'none';
+    document.getElementById('step1-bulk-area').style.display = 'none';
+    document.getElementById('cm-user-search').value = '';
+    document.getElementById('cm-user-suggestions').style.display = 'none';
+    document.getElementById('cm-user-selected').textContent = '';
+    document.getElementById('cm-old-office-select').innerHTML = '<option value="">選択してください</option>';
+    document.getElementById('cm-bulk-user-list').innerHTML = '';
+    document.getElementById('cm-new-office-select').innerHTML = '<option value="">選択してください</option>';
+    document.getElementById('cm-new-office-other').style.display = 'none';
+    document.getElementById('cm-new-office-other').value = '';
+    document.getElementById('cm-new-staff-select').innerHTML = '<option value="">先に事業所を選んでください</option>';
+    document.getElementById('cm-new-staff-other').style.display = 'none';
+    document.getElementById('cm-new-staff-other').value = '';
+    document.querySelectorAll('input[name="jisseki-method"]').forEach(function(r) { r.checked = false; });
+    document.getElementById('jisseki-email').value = '';
+    document.getElementById('jisseki-fax').value = '';
+    document.getElementById('jisseki-email-area').style.display = 'none';
+    document.getElementById('jisseki-fax-area').style.display = 'none';
+    document.querySelectorAll('input[name="absence-method"]').forEach(function(r) { r.checked = false; });
+    document.getElementById('absence-email').value = '';
+    document.getElementById('absence-phone').value = '';
+    document.getElementById('absence-email-area').style.display = 'none';
+    document.getElementById('absence-phone-area').style.display = 'none';
+    document.getElementById('cm-effective-date').value = cmToday();
+    document.getElementById('cm-dryrun-result').style.display = 'none';
+    document.getElementById('cm-confirm-body').innerHTML = '';
+    cmInitUserSearch();
+    cmInitJissekiMethodListeners();
+    cmInitRecorderDropdown();
+}
+
+// ----- バリデーション -----
+function cmWizValidate(n) {
+    switch (n) {
+        case 1: {
+            if (!cmWizMode) { alert('対象の選び方を選んでください'); return false; }
+            if (cmWizMode === 'user') {
+                if (cmSelectedUsers.length === 0) { alert('利用者を検索・選択してください'); return false; }
+            } else {
+                var office = document.getElementById('cm-old-office-select').value;
+                if (!office) { alert('変更前の居宅事業所を選んでください'); return false; }
+                var checked = document.querySelectorAll('.bulk-user-cb:checked');
+                if (checked.length === 0) { alert('対象利用者が1名もいません'); return false; }
+                // 一括モード: チェックされた利用者をcmSelectedUsersに反映
+                var checkedNames = Array.from(checked).map(function(c) { return c.value; });
+                cmSelectedUsers = (_cmUserList || []).filter(function(u) { return checkedNames.indexOf(u.userName) !== -1; });
+            }
+            return true;
+        }
+        case 2: {
+            var offSel = document.getElementById('cm-new-office-select').value;
+            if (!offSel) { alert('新しい居宅介護支援事業所を選んでください'); return false; }
+            if (offSel === '__OTHER__') {
+                var offOther = document.getElementById('cm-new-office-other').value.trim();
+                if (!offOther) { alert('事業所名を入力してください'); return false; }
+            }
+            var staffSel = document.getElementById('cm-new-staff-select').value;
+            if (!staffSel) { alert('新しい担当ケアマネを選んでください'); return false; }
+            if (staffSel === '__OTHER__') {
+                var staffOther = document.getElementById('cm-new-staff-other').value.trim();
+                if (!staffOther) { alert('担当者名を入力してください'); return false; }
+            }
+            return true;
+        }
+        case 3: {
+            var method = document.querySelector('input[name="jisseki-method"]:checked');
+            if (!method) { alert('実績送付方法を選んでください'); return false; }
+            if (method.value === 'email') {
+                var email = document.getElementById('jisseki-email').value.trim();
+                if (!email) { alert('送付先メールアドレスを入力してください'); return false; }
+            }
+            if (method.value === 'fax') {
+                var fax = document.getElementById('jisseki-fax').value.trim();
+                if (!fax) { alert('FAX番号を入力してください'); return false; }
+            }
+            return true;
+        }
+        case 4: {
+            var abMethod = document.querySelector('input[name="absence-method"]:checked');
+            if (!abMethod) { alert('休み連絡方法を選んでください'); return false; }
+            if (abMethod.value === 'email') {
+                var abEmail = document.getElementById('absence-email').value.trim();
+                if (!abEmail) { alert('連絡先メールアドレスを入力してください'); return false; }
+            }
+            if (abMethod.value === 'phone') {
+                var abPhone = document.getElementById('absence-phone').value.trim();
+                if (!abPhone) { alert('連絡先電話番号を入力してください'); return false; }
+            }
+            return true;
+        }
+        case 5: {
+            var effDate = document.getElementById('cm-effective-date').value;
+            if (!effDate) { alert('適用日を選んでください'); return false; }
+            var recorder = document.getElementById('cm-recorder-select').value;
+            if (!recorder) { alert('記入者を選んでください'); return false; }
+            return true;
+        }
+        case 6:
+            return true;
+        default:
+            return true;
+    }
+}
+
+// ----- 確認画面構築 -----
+function cmBuildConfirm() {
+    var newOfficeSel = document.getElementById('cm-new-office-select').value;
+    var newOffice = (newOfficeSel === '__OTHER__') ? document.getElementById('cm-new-office-other').value.trim() : newOfficeSel;
+    var newStaffSel = document.getElementById('cm-new-staff-select').value;
+    var newStaff = (newStaffSel === '__OTHER__') ? document.getElementById('cm-new-staff-other').value.trim() : newStaffSel;
+    var jissekiMethod = document.querySelector('input[name="jisseki-method"]:checked');
+    var jissekiMethodVal = jissekiMethod ? jissekiMethod.value : '';
+    var jissekiEmail = document.getElementById('jisseki-email').value.trim();
+    var jissekiFax = document.getElementById('jisseki-fax').value.trim();
+    var absenceMethod = document.querySelector('input[name="absence-method"]:checked');
+    var absenceMethodVal = absenceMethod ? absenceMethod.value : '';
+    var absenceEmail = document.getElementById('absence-email').value.trim();
+    var absencePhone = document.getElementById('absence-phone').value.trim();
+    var effectiveDate = document.getElementById('cm-effective-date').value;
+    var recorder = document.getElementById('cm-recorder-select').value;
+
+    var jissekiDisplay = {email: 'メール (' + jissekiEmail + ')', fax: 'FAX (' + jissekiFax + ')', visit: '持参'};
+    var absenceDisplay = {email: 'メール (' + absenceEmail + ')', phone: '電話 (' + absencePhone + ')', none: '連絡しない'};
+
+    var usersHtml = cmSelectedUsers.map(function(u) {
+        return escapeHtml(u.userName) + (u.userNameKana ? '（' + escapeHtml(u.userNameKana) + '）' : '') + ' / 現在: ' + escapeHtml(u.currentCmOffice || '未登録');
+    }).join('<br>');
+
+    document.getElementById('cm-confirm-body').innerHTML =
+        '<div class="confirm-section">' +
+            '<h4>対象利用者（' + cmSelectedUsers.length + '名）</h4>' +
+            '<div class="confirm-users">' + usersHtml + '</div>' +
+        '</div>' +
+        '<div class="confirm-section">' +
+            '<h4>変更内容</h4>' +
+            '<div class="confirm-row"><span class="lbl">新しい事業所</span><span class="val accent">' + escapeHtml(newOffice) + '</span></div>' +
+            '<div class="confirm-row"><span class="lbl">担当ケアマネ</span><span class="val">' + escapeHtml(newStaff) + '</span></div>' +
+        '</div>' +
+        '<div class="confirm-section">' +
+            '<h4>2点の設定</h4>' +
+            '<div class="confirm-row"><span class="lbl">実績送付</span><span class="val">' + escapeHtml(jissekiDisplay[jissekiMethodVal] || jissekiMethodVal) + '</span></div>' +
+            '<div class="confirm-row"><span class="lbl">休み連絡</span><span class="val">' + escapeHtml(absenceDisplay[absenceMethodVal] || absenceMethodVal) + '</span></div>' +
+        '</div>' +
+        '<div class="confirm-section">' +
+            '<h4>適用日 / 記入者</h4>' +
+            '<div class="confirm-row"><span class="lbl">適用日</span><span class="val accent">' + escapeHtml(effectiveDate) + '</span></div>' +
+            '<div class="confirm-row"><span class="lbl">記入者</span><span class="val">' + escapeHtml(recorder) + '</span></div>' +
+        '</div>';
+
+    document.getElementById('cm-dryrun-result').style.display = 'none';
+}
+
+// ----- 登録処理 -----
+async function cmWizSubmit() {
+    // 最終バリデーション
+    for (var i = 1; i < CM_TOTAL_STEPS; i++) {
+        if (!cmWizValidate(i)) {
+            cmCurrentStep = i;
+            cmWizShowStep(i);
+            return;
+        }
+    }
+
+    var newOfficeSel = document.getElementById('cm-new-office-select').value;
+    var newOffice = (newOfficeSel === '__OTHER__') ? document.getElementById('cm-new-office-other').value.trim() : newOfficeSel;
+    var newStaffSel = document.getElementById('cm-new-staff-select').value;
+    var newStaff = (newStaffSel === '__OTHER__') ? document.getElementById('cm-new-staff-other').value.trim() : newStaffSel;
+    var jissekiMethod = document.querySelector('input[name="jisseki-method"]:checked');
+    var jissekiMethodVal = jissekiMethod ? jissekiMethod.value : '';
+    var jissekiEmail = document.getElementById('jisseki-email').value.trim();
+    var jissekiFax = document.getElementById('jisseki-fax').value.trim();
+    var absenceMethod = document.querySelector('input[name="absence-method"]:checked');
+    var absenceMethodVal = absenceMethod ? absenceMethod.value : '';
+    var absenceEmail = document.getElementById('absence-email').value.trim();
+    var absencePhone = document.getElementById('absence-phone').value.trim();
+    var effectiveDate = document.getElementById('cm-effective-date').value;
+    var recorder = document.getElementById('cm-recorder-select').value;
+    var bulkMode = cmWizMode === 'office_bulk';
+
+    try { localStorage.setItem('yawaragi_staff', recorder); } catch(e) {}
+
+    var _btn = lockSubmitBtn('cm-btn-submit', '登録中…');
+    if (_btn === false) return;
+
+    var allOk = true;
+    try {
+        // 利用者1人につき1回 gasPost（no-cors のためGASレスポンスは拾えない）
+        for (var j = 0; j < cmSelectedUsers.length; j++) {
+            var user = cmSelectedUsers[j];
+            var payload = {
+                action: 'add_user_event',
+                eventType: 'caremanager_relay',
+                userName: user.userName,
+                eventDate: effectiveDate,
+                createdBy: recorder,
+                metadata: {
+                    mode: bulkMode ? 'office_bulk' : 'user',
+                    newCmOffice: newOffice,
+                    newCmStaff: newStaff,
+                    jisseki: {
+                        // GAS側は送付方法列にそのまま書き、実績送付は日本語(メール/FAX/持参)で判定するため日本語化
+                        method: ({email:'メール',fax:'FAX',visit:'持参'})[jissekiMethodVal] || jissekiMethodVal,
+                        email: jissekiEmail,
+                        fax: jissekiFax
+                    },
+                    absence: {
+                        // GAS側は連絡手段列にそのまま書き、欠席メールは日本語(メール/電話/連絡しない)で判定するため日本語化
+                        method: ({email:'メール',phone:'電話',none:'連絡しない'})[absenceMethodVal] || absenceMethodVal,
+                        email: absenceEmail,
+                        phone: absencePhone
+                    },
+                    effectiveDate: effectiveDate,
+                    recorder: recorder,
+                    appliedToLedger: false
+                }
+            };
+            var ok = await gasPost(payload, 'ケアマネ変更登録: ' + user.userName);
+            if (!ok) { allOk = false; break; }
+        }
+    } finally {
+        unlockSubmitBtn(_btn);
+    }
+
+    if (!allOk) {
+        showToast('送信失敗。ネットワークを確認してください', 5000);
+        return;
+    }
+
+    // dryRun 確認: 適用日に反映予定かJSONPで確認
+    showToast('送信完了。反映予定を確認中…', 3000);
+    var dryRunContainer = document.getElementById('cm-dryrun-result');
+    dryRunContainer.style.display = 'block';
+    dryRunContainer.className = 'dryrun-result warn';
+    dryRunContainer.textContent = '適用予定を確認中…';
+
+    var applyResult = await _cmDryRunCheck(effectiveDate);
+    var names = cmSelectedUsers.map(function(u) { return u.userName; });
+
+    if (applyResult === null) {
+        dryRunContainer.className = 'dryrun-result warn';
+        dryRunContainer.innerHTML = '&#9888; 反映予定の確認ができませんでした（ネットワーク）。<br>登録自体は送信済みです。シートで直接ご確認ください。';
+    } else {
+        var matchedUsers = (applyResult || []).filter(function(r) {
+            return names.indexOf(r.userName || r) !== -1;
+        });
+        if (matchedUsers.length > 0) {
+            dryRunContainer.className = 'dryrun-result ok';
+            dryRunContainer.innerHTML = '&#10003; ' + effectiveDate + ' に ' + matchedUsers.length + '名の反映が予定されています。<br>' +
+                matchedUsers.map(function(r) { return escapeHtml(r.userName || r); }).join('、');
+        } else {
+            dryRunContainer.className = 'dryrun-result warn';
+            dryRunContainer.innerHTML = '&#9888; 適用予定の確認ができませんでした（対象が見つかりません）。<br>登録自体は送信済みです。シートで直接ご確認ください。';
+        }
+    }
+
+    showToast('登録完了: ' + cmSelectedUsers.length + '名', 3000);
+    // 一覧を更新（少し待ってからリロード）
+    setTimeout(cmListLoad, 1500);
+}
+
+// ===== 起動時に一覧を自動ロード =====
+window.addEventListener('DOMContentLoaded', function() {
+    cmListLoad();
+    _cmFetchUserList();
+    _cmFetchContacts();
+});
+</script>
+</body>
+</html>
