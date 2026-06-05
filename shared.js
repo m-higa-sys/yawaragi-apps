@@ -24,6 +24,29 @@ const YAWARAGIBOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK
 // 曜日名（日曜始まり = JavaScript Date.getDay() の 0=日 に対応。並びを変えると全曜日表示がずれる）
 const DAY_NAMES = ['日','月','火','水','木','金','土'];
 
+/* ===== §F UserStore（利用者マスタの単一の真実・2026-06-06 phase3a-1） =====
+   absUserCache / absUserLoaded をクロージャで隠蔽し、外部から直接書けなくする。
+   ※ loadFromAPI は html本体側で後から定義される absLoadUsersFromAPI に委譲するが、
+      即時参照（loadFromAPI: absLoadUsersFromAPI）にすると shared.js 読込時点では
+      未定義で ReferenceError → 全タブ停止する。実行時に解決される遅延メソッドにする。
+   ※ 3a-1 では導入のみ（get/isLoaded の呼び出し差し替えは 3a-2 以降）。既存挙動に影響なし。 */
+const UserStore = (function () {
+    let _cache = [];
+    let _loaded = false;
+    return {
+        get() { return _cache; },
+        isLoaded() { return _loaded; },
+        _set(users) { _cache = Array.isArray(users) ? users : []; _loaded = true; },
+        _setLoaded(flag) { _loaded = flag; },
+        loadFromAPI() {
+            if (typeof absLoadUsersFromAPI === 'function') {
+                return absLoadUsersFromAPI.apply(null, arguments);
+            }
+            return Promise.resolve(_cache);
+        }
+    };
+})();
+
 /* ===== §B utils（純粋関数・DOM非依存） ===== */
 
 // カタカナ→ひらがな変換
