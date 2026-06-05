@@ -14,6 +14,16 @@
       （設計書 2026-06-06-yawaragiボードshared.js切り出し設計.md §2-6 参照）。
    ============================================================ */
 
+/* ===== §A 定数 ===== */
+
+// yawaragiボードGAS本体の唯一の真実。URL変更時はここ1箇所だけ直す。
+// 旧名 ABS_BOARD_API_URL / WB_BOARD_API_URL / INTAKE_API_URL / HAICHI_SYNC_URL は
+// html本体側で「= YAWARAGIBOARD_API_URL」の後方互換エイリアスとして定義している。
+const YAWARAGIBOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+
+// 曜日名（日曜始まり = JavaScript Date.getDay() の 0=日 に対応。並びを変えると全曜日表示がずれる）
+const DAY_NAMES = ['日','月','火','水','木','金','土'];
+
 /* ===== §B utils（純粋関数・DOM非依存） ===== */
 
 // カタカナ→ひらがな変換
