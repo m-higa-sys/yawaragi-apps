@@ -7,6 +7,8 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>yawaragiボード</title>
+    <!-- 共通基盤（純粋関数・UI共通）。本体scriptより前に読む。2026-06-06 phase1 -->
+    <script src="shared.js"></script>
     <script>
     // 利用者キャッシュ形式の世代管理（pattern対応・2026-05-17追加）
     // 2026-05-18: cmName 列追加対応のためバージョン更新
@@ -3770,18 +3772,11 @@ function clearAllData() {
 
 // ========== モーダル・トースト ==========
 
-function openModal(id) { document.getElementById(id).classList.add('show'); }
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+// openModal/closeModal/showToast は shared.js へ移動（2026-06-06 phase1）
+// .modal-overlay 外側クリックで閉じる処理は DOM依存の即時実行のため html 側に残置
 document.querySelectorAll('.modal-overlay').forEach(o => {
     o.addEventListener('click', (e) => { if (e.target === o) o.classList.remove('show'); });
 });
-
-function showToast(msg, duration) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), duration || 2000);
-}
 
 // ===== 同一ブラウザ内の他アプリ（出勤＆送迎表等）に欠席更新を通知 (2026-05-06追加) =====
 let _absenceBcChannel = null;
@@ -5723,18 +5718,10 @@ function absSaveRecords(records) {
 }
 
 // ----- カタカナ→ひらがな変換 -----
-function kataToHira(str) {
-    return str.replace(/[\u30A1-\u30F6]/g, ch =>
-        String.fromCharCode(ch.charCodeAt(0) - 0x60)
-    );
-}
+// kataToHira \u306F shared.js \u3078\u79FB\u52D5\uFF082026-06-06 phase1\uFF09
 
 // ----- ひらがな→カタカナ変換 -----
-function hiraToKata(str) {
-    return str.replace(/[\u3041-\u3096]/g, ch =>
-        String.fromCharCode(ch.charCodeAt(0) + 0x60)
-    );
-}
+// hiraToKata \u306f shared.js \u3078\u79fb\u52d5\uff082026-06-06 phase1\uff09
 
 // 先頭一致かどうか判定
 function absIsStartMatch(user, query, queryHira, queryKata) {
