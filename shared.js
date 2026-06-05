@@ -54,3 +54,121 @@ function showToast(msg, duration) {
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), duration || 2000);
 }
+
+/* ===== §D net（GAS通信基盤・2026-06-06 phase2移動） =====
+   gasPost: 全4タブ30箇所から呼ばれる汎用POST（リトライ3回・no-cors）。
+   ※ no-cors のため GAS の {success:false} は取得不可。検証はJSONP往復(verifyAbsenceInGAS)で行う。
+   ※ URL参照は ABS_BOARD_API_URL から YAWARAGIBOARD_API_URL に統一（同値・shared.js内で自己完結）。 */
+
+// リトライ付きGAS POST送信（3回まで再試行。失敗時はスタッフに警告表示）
+async function gasPost(data, label) {
+    const maxRetries = 3;
+    for (let i = 1; i <= maxRetries; i++) {
+        try {
+            await fetch(YAWARAGIBOARD_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            // 欠席系の更新を他アプリに通知（出勤＆送迎表のリアルタイム反映用）
+            if (data && _isAbsenceAction(data.action)) {
+                notifyAbsenceUpdate(data.date || data.dateFrom || data.startDate || '');
+            }
+            return true; // ネットワーク送信成功
+        } catch (err) {
+            console.error('GAS送信エラー (' + i + '/' + maxRetries + '): ' + (label || ''), err);
+            if (i < maxRetries) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+    }
+    showToast('⚠️ 送信失敗！ネットワークを確認してください', 5000);
+    return false;
+}
+
+// 欠席登録の検証付きPOST（POST後にJSONPで実際に記録されたか確認。未記録なら再試行）
+async function gasPostAbsenceWithVerify(data, label) {
+    const maxRetries = 3;
+    for (let i = 1; i <= maxRetries; i++) {
+        try {
+            await fetch(YAWARAGIBOARD_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        } catch (err) {
+            console.error('GAS送信エラー (' + i + '/' + maxRetries + ')', err);
+            if (i < maxRetries) { await new Promise(r => setTimeout(r, 2000)); continue; }
+            showToast('❌ 送信に失敗しました。ネットワークを確認してください', 5000);
+            return false;
+        }
+        // 3秒待ってからGASに記録されたか検証
+        await new Promise(r => setTimeout(r, 3000));
+        const verified = await verifyAbsenceInGAS(data.name, data.dates ? data.dates[0] : data.startDate);
+        if (verified) {
+            showToast('✅ ' + (label || '送信') + ' 完了（通知も送信済み）', 3000);
+            if (data && _isAbsenceAction(data.action)) {
+                notifyAbsenceUpdate(data.date || (data.dates ? data.dates[0] : '') || data.startDate || '');
+            }
+            return true;
+        }
+        console.warn('検証失敗 (' + i + '/' + maxRetries + ')');
+    }
+    showToast('❌ 送信できませんでした。もう一度登録してください', 5000);
+    return false;
+}
+
+// JSONP検証: GASスプレッドシートに欠席記録が存在するか確認
+function verifyAbsenceInGAS(name, date) {
+    return new Promise(resolve => {
+        const cbName = '_verifyAbs_' + Date.now();
+        const script = document.createElement('script');
+        script.src = YAWARAGIBOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
+        const timeout = setTimeout(() => {
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve(false);
+        }, 8000);
+        window[cbName] = function(data) {
+            clearTimeout(timeout);
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            if (!data || !data.success || !data.absences) { resolve(false); return; }
+            const found = data.absences.some(a => a.name === name && a.date === date);
+            resolve(found);
+        };
+        script.onerror = () => {
+            clearTimeout(timeout);
+            delete window[cbName];
+            resolve(false);
+        };
+        document.body.appendChild(script);
+    });
+}
+
+/* ===== §E broadcast（クロスアプリ通知・2026-06-06 phase2移動） =====
+   同一ブラウザ内の他アプリ（出勤＆送迎表等）へ欠席更新を通知。
+   チャンネル名 'yawaragi-absence' は受信側と一致させる契約（変更不可）。
+   ※ gasPost(§D) から呼ばれる。BroadcastChannel はブラウザ内通知でGAS外部通信ではない。 */
+
+let _absenceBcChannel = null;
+function notifyAbsenceUpdate(dateStr) {
+    try {
+        if (!_absenceBcChannel) {
+            _absenceBcChannel = new BroadcastChannel('yawaragi-absence');
+        }
+        _absenceBcChannel.postMessage({
+            type: 'updated',
+            date: dateStr || '',
+            timestamp: Date.now()
+        });
+    } catch (e) {
+        // 古いブラウザは無視
+    }
+}
+// 欠席系のactionかどうか判定
+function _isAbsenceAction(action) {
+    return action === 'absence' || action === 'long_term_absence' || action === 'cancel_absence';
+}
