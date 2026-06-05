@@ -1116,6 +1116,9 @@ function renderTable() {
 
     // フィルター適用
     const filteredUsers = appData.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+    // 対象者を上・非対象を下にグループ化（既存ふりがな順は安定ソートで維持）
+    const _isOralTgt = (u) => !!(oralEvalIdx[u.name] && oralEvalIdx[u.name].isTarget);
+    filteredUsers.sort((a, b) => (_isOralTgt(b) ? 1 : 0) - (_isOralTgt(a) ? 1 : 0));
     const hasScheduleData = appData.users.some(u => u.days);
 
     // フィルターバーの表示制御
@@ -1127,8 +1130,19 @@ function renderTable() {
         fcEl.textContent = '';
     }
 
+    let currentSection = null; // 'target' | 'nontarget'
     for (const user of filteredUsers) {
         if (user.care === 'kaigo') kaigoCount++; else shienCount++;
+
+        // 対象/非対象セクション見出し
+        const section = _isOralTgt(user) ? 'target' : 'nontarget';
+        if (section !== currentSection) {
+            currentSection = section;
+            currentGroup = '';
+            const secLabel = section === 'target' ? '【対象者】' : '【非対象】';
+            const secBg = section === 'target' ? '#2c7a7b' : '#9e9e9e';
+            html += `<tr><td colspan="${3 + MONTHS.length * 3}" style="background:${secBg}; color:#fff; font-weight:bold; padding:6px 10px;">${secLabel}</td></tr>`;
+        }
 
         const group = getGroup(user.furigana);
         if (group !== currentGroup) {
@@ -1144,7 +1158,8 @@ function renderTable() {
             ? '<span class="care-badge care-kaigo">介護</span>'
             : '<span class="care-badge care-shien">支援</span>';
 
-        html += `<tr class="${rowClass}">`;
+        const _rowStyle = section === 'nontarget' ? ' style="opacity:0.5;"' : '';
+        html += `<tr class="${rowClass}"${_rowStyle}>`;
         html += `<td class="group-cell"></td>`;
         html += `<td class="name-cell"><span class="oral-user-name" data-user-name="${escapeAttr(user.name)}">${escapeHtml(user.name)}</span>${careBadge}</td>`;
         html += renderOralSubmitCell(user.name, oralEvalIdx, evalCY, evalCM);
@@ -1705,6 +1720,42 @@ function renderOralSubmitCell(name, idx, cy, cm) {
 
 // ----- ケアマネ提出管理モーダル -----
 let _oralSubmitUser = null;
+
+// 入力中の計画書作成日を「今月が評価月の対象者」全員に一括設定（非対象は除外）
+async function applyPlanDateToAll() {
+  const planDate = document.getElementById('oral-submit-plandate').value;
+  const msg = document.getElementById('oral-submit-msg');
+  if (!planDate) { msg.style.color = '#c62828'; msg.textContent = '先に計画書作成日を入れてください'; return; }
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const idx = buildOralEvalIndex();
+  const names = Object.keys(idx);
+  const targets = names.filter(function (n) { return idx[n].isTarget && isOralEvalMonth(idx[n].startedAt, year, month); });
+  const excluded = names.filter(function (n) { return !idx[n].isTarget && isOralEvalMonth(idx[n].startedAt, year, month); }).length;
+  if (targets.length === 0) { msg.style.color = '#c62828'; msg.textContent = '今月が評価月の対象者がいません'; return; }
+  const d = String(planDate).replace(/-/g, '/').replace(/\/0/g, '/');
+  let q = month + '月評価月の対象者 ' + targets.length + ' 人に ' + d + ' を設定しますか？';
+  if (excluded > 0) q += '（※非対象 ' + excluded + ' 人は除外）';
+  if (!confirm(q)) return;
+  msg.style.color = '#666'; msg.textContent = '一括設定中...';
+  try {
+    for (let i = 0; i < targets.length; i++) {
+      await saveOralField(targets[i], year, month, 'plan_date', planDate);
+    }
+    oralPlansCache = null; oralPlansYear = null;
+    const y = new Date().getFullYear();
+    const res = await fetch(YAWARAGI_BOARD_API + '?action=getOralPlansYear&year=' + y);
+    const j = await res.json();
+    if (j.ok) { oralPlansCache = j; oralPlansYear = y; }
+    closeOralSubmitModal();
+    renderTable();
+    alert(targets.length + '人の計画書作成日を設定しました');
+  } catch (err) {
+    msg.style.color = '#c62828'; msg.textContent = '一括設定失敗: ' + err.message;
+  }
+}
+
 function openOralSubmitModal(name) {
   _oralSubmitUser = name;
   const idx = buildOralEvalIndex();
@@ -1712,6 +1763,7 @@ function openOralSubmitModal(name) {
   const rec = ei.rec || {};
   document.getElementById('oral-submit-name').textContent = name;
   document.getElementById('oral-submit-method').textContent = ei.sendMethod === '印刷' ? '印刷' : 'PDF';
+  document.getElementById('oral-submit-plandate').value = rec.plan_date || '';
   document.getElementById('oral-submit-check').checked = !!rec.sent_to_cm;
   const today = new Date();
   const todayStr = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2) + '-' + ('0' + today.getDate()).slice(-2);
@@ -1733,14 +1785,17 @@ async function saveOralSubmitModal() {
   const checked = document.getElementById('oral-submit-check').checked;
   const date = document.getElementById('oral-submit-date').value;
   const by = document.getElementById('oral-submit-by').value;
+  const planDate = document.getElementById('oral-submit-plandate').value;
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   const msg = document.getElementById('oral-submit-msg');
+  if (!planDate) { msg.style.color = '#c62828'; msg.textContent = '計画書作成日を入れてください'; return; }
   if (checked && !by) { msg.style.color = '#c62828'; msg.textContent = '担当看護師を選んでください'; return; }
   if (checked && !date) { msg.style.color = '#c62828'; msg.textContent = '提出日を入れてください'; return; }
   msg.style.color = '#666'; msg.textContent = '保存中...';
   try {
+    await saveOralField(name, year, month, 'plan_date', planDate);
     await saveOralField(name, year, month, 'sent_to_cm', checked ? '1' : '');
     await saveOralField(name, year, month, 'sent_date', checked ? date : '');
     await saveOralField(name, year, month, 'sent_by', checked ? by : '');
@@ -2079,12 +2134,16 @@ function attachOralTargetHandlers() {
     <div style="padding:16px; font-size:14px;">
       <p style="margin:0 0 14px; color:#555; font-size:13px; line-height:1.6;">口腔機能改善管理計画と口腔の健康状態の評価・再評価をケアマネに提出したかを管理します。3ヵ月ごとの評価月に「誰が・いつ・提出したか」を記録してください。</p>
       <div style="margin-bottom:12px;">提出方法：<strong id="oral-submit-method">PDF</strong> <span style="color:#888; font-size:12px;">※自動取得</span></div>
+      <div style="margin-bottom:12px;">📅 計画書作成日：<input type="date" id="oral-submit-plandate"> <span style="color:#c62828; font-size:12px;">※必須</span></div>
       <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; cursor:pointer;">
         <input type="checkbox" id="oral-submit-check"> 提出済み
       </label>
       <div style="margin-bottom:12px;">提出日：<input type="date" id="oral-submit-date"></div>
       <div style="margin-bottom:16px;">担当看護師：
         <select id="oral-submit-by"><option value="">（選択）</option></select>
+      </div>
+      <div style="margin-bottom:10px;">
+        <button class="btn btn-white" style="width:100%; border:1px solid #2c7a7b; color:#2c7a7b;" onclick="applyPlanDateToAll()">📅 計画書作成日を今月の対象者 全員に設定</button>
       </div>
       <div style="display:flex; gap:8px; justify-content:flex-end;">
         <button class="btn" style="background:#2c7a7b; color:#fff;" onclick="saveOralSubmitModal()">保存</button>
