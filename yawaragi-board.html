@@ -2143,7 +2143,7 @@
         <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;">利用者台帳スプレッドシートから自動取得しています</p>
         <div id="abs-user-manage-list"></div>
         <div style="margin-top:10px;">
-            <button class="data-btn" onclick="absLoadUsersFromAPI().then(() => { absRenderUserManage(); showToast('利用者データを更新しました（' + absUserCache.length + '人）'); })">データを再取得</button>
+            <button class="data-btn" onclick="absLoadUsersFromAPI().then(() => { absRenderUserManage(); showToast('利用者データを更新しました（' + UserStore.get().length + '人）'); })">データを再取得</button>
         </div>
     </div>
     <div class="data-section">
@@ -6794,8 +6794,7 @@ function absRenderUpcomingList() {
 
 // 利用者の契約パターンから単位（午前/午後）を導出する
 function absDeriveUnit(name) {
-    var u = (typeof absUserCache !== 'undefined' && absUserCache)
-        ? absUserCache.find(function(x){ return x.name === name; }) : null;
+    var u = UserStore.get().find(function(x){ return x.name === name; }) || null;
     if (!u || !u.pattern || !u.pattern.length) return '';
     var hasAm = u.pattern.some(function(p){ return p.unit === 'am'; });
     var hasPm = u.pattern.some(function(p){ return p.unit === 'pm'; });
@@ -6808,8 +6807,7 @@ function absDeriveUnit(name) {
 // 利用者名の横に出す要介護/要支援バッジのHTML（介護度に「要支援」を含むかで判定）
 // 詳細ポップアップタイトル等で使用。欠席カードの名前部は absCareNameClass を使う。
 function absCareBadge(name) {
-    var u = (typeof absUserCache !== 'undefined' && absUserCache)
-        ? absUserCache.find(function(x){ return x.name === name; }) : null;
+    var u = UserStore.get().find(function(x){ return x.name === name; }) || null;
     var care = (u && u.care) ? String(u.care) : '';
     if (!care) return '';
     var isShien = care.indexOf('要支援') !== -1;
@@ -6820,8 +6818,7 @@ function absCareBadge(name) {
 // 欠席カードの名前 span に追加する介護度クラス（薄い背景色用・2026-05-23追加）
 // 要介護 → 薄い赤背景、要支援 → 薄い青背景、不明 → 背景なし
 function absCareNameClass(name) {
-    var u = (typeof absUserCache !== 'undefined' && absUserCache)
-        ? absUserCache.find(function(x){ return x.name === name; }) : null;
+    var u = UserStore.get().find(function(x){ return x.name === name; }) || null;
     var care = (u && u.care) ? String(u.care) : '';
     if (!care) return '';
     return care.indexOf('要支援') !== -1 ? 'care-shien' : 'care-kaigo';
@@ -7999,8 +7996,7 @@ function showUsageDetail(name) {
   var body = document.getElementById('usage-detail-body');
   var html = '';
   // 介護度（利用者台帳キャッシュから・2026-05-23追加）
-  var careU = (typeof absUserCache !== 'undefined' && absUserCache)
-      ? absUserCache.find(function(x){ return x.name === name; }) : null;
+  var careU = UserStore.get().find(function(x){ return x.name === name; }) || null;
   if (careU && careU.care) {
       html += '<div class="usage-modal-row"><span class="usage-modal-label">介護度</span><span>' + careU.care + '</span></div>';
   }
@@ -8258,7 +8254,7 @@ function attRender(data) {
     data.am.concat(data.pm).forEach(u => {
         if (!seen[u.name]) {
             seen[u.name] = true;
-            const existing = absUserCache.find(c => c.name === u.name);
+            const existing = UserStore.get().find(c => c.name === u.name);
             if (existing) {
                 if (!existing.reading && u.kana) existing.reading = u.kana;
                 if (!existing.care && u.care) existing.care = u.care;
@@ -8741,7 +8737,7 @@ async function attCancelAbsence(name, dateStr) {
     if (!canceller) return;
 
     // ★ 2026-05-10: ケアマネにメール送信確認ポップアップ
-    const cached = (typeof absUserCache !== 'undefined') ? absUserCache.find(c => c.name === name) : null;
+    const cached = UserStore.get().find(c => c.name === name) || null;
     const cmOffice = cached ? (cached.cmOffice || '') : '';
     const cmNameInit = (cached && cached.cmName) ? cached.cmName : '';
     let cmEmailInit = '';
@@ -8859,7 +8855,7 @@ function attMoveAbsence(name, dateStr) {
         recs = recs.filter(r => !(r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr));
 
         // 2) 新日登録（元のデータ引き継ぎ）
-        const userCache = absUserCache.find(u => u.name === name) || {};
+        const userCache = UserStore.get().find(u => u.name === name) || {};
         const postData = {
             action: 'absence',
             name: name,
@@ -9119,7 +9115,7 @@ function attEditAbsence(name, dateStr) {
         // 単位は表示のみ（2026-05-23）。既存の単位をそのまま使う
         const newUnit = existing.unit || '午前';
 
-        const userCache = absUserCache.find(u => u.name === name) || {};
+        const userCache = UserStore.get().find(u => u.name === name) || {};
         const typeChanged = (newType !== existing.type);
 
         if (!typeChanged) {
@@ -9256,7 +9252,7 @@ function attStartAbsence(name) {
 
     // 利用者台帳キャッシュから通所パターンを取得
     // （出席予定タブから来たときも「通所日チェック」が正しく動くように）
-    const cached = absUserCache.find(c => c.name === name);
+    const cached = UserStore.get().find(c => c.name === name);
     let pattern = (cached && cached.pattern && cached.pattern.length > 0)
         ? cached.pattern.slice()
         : [];
@@ -9388,7 +9384,7 @@ function attLoadAllUsers() {
             Object.keys(data.patterns).forEach(name => {
                 const p = data.patterns[name];
                 const patternArr = _ywBuildPatternArray(p);
-                const existing = absUserCache.find(c => c.name === name);
+                const existing = UserStore.get().find(c => c.name === name);
                 if (existing) {
                     if (!existing.reading && p.kana) existing.reading = p.kana;
                     if (!existing.care && p.care) existing.care = p.care;
@@ -9407,7 +9403,7 @@ function attLoadAllUsers() {
         // attendanceからcare/kana/cmOffice情報を補完
         if (data.attendance) {
             data.attendance.am.concat(data.attendance.pm).forEach(u => {
-                const cached = absUserCache.find(c => c.name === u.name);
+                const cached = UserStore.get().find(c => c.name === u.name);
                 if (cached) {
                     if (!cached.care && u.care) cached.care = u.care;
                     if (!cached.reading && u.kana) cached.reading = u.kana;
@@ -9483,7 +9479,7 @@ function absQuickSearchName(q) {
     // absUserCache利用
     const norm = s => (s || '').toLowerCase().replace(/\s/g,'');
     const qn = norm(q);
-    const hits = (absUserCache || []).filter(u =>
+    const hits = UserStore.get().filter(u =>
         norm(u.name).indexOf(qn) >= 0 ||
         norm(u.reading || '').indexOf(qn) >= 0
     ).slice(0, 8);
@@ -9536,7 +9532,7 @@ function absQuickCheckReady() {
 // 利用者の通所パターンから対象日の単位（午前/午後）を判定（2026-05-23: GASの「終日」廃止対応）
 // 戻り値: '午前' | '午後' | null（パターン不明）
 function absDetectUnit(userName, dateStr) {
-    const u = (absUserCache || []).find(x => x.name === userName);
+    const u = UserStore.get().find(x => x.name === userName);
     const pat = (u && u.pattern) || [];
     const dow = new Date(dateStr).getDay();
     const matched = pat.filter(p => p.day === dow);
@@ -9559,7 +9555,7 @@ function absQuickSubmit() {
     }
 
     // GAS送信
-    const userCache = absUserCache.find(u => u.name === name) || {};
+    const userCache = UserStore.get().find(u => u.name === name) || {};
     gasPost({
         action: 'absence',
         name: name,
@@ -9734,7 +9730,7 @@ function absInit() {
     // 利用者台帳APIからデータ取得
     absLoadUsersFromAPI().then(() => {
         absRenderUserManage();
-        console.log('利用者データ取得完了:', absUserCache.length + '人');
+        console.log('利用者データ取得完了:', UserStore.get().length + '人');
     }).catch(err => {
         console.error('利用者データ取得エラー:', err);
         absRenderUserManage();
@@ -11524,7 +11520,7 @@ function kubunHistorySetUsageChange(rowIndex, value, name, prevCare, newCare) {
     if (value === 'changed' && name) {
         // 「あった」を選んだら、即座に曜日編集モーダルを自動展開（必須フロー）
         // モーダルキャンセル時は usageChange を変更しない
-        const users = (typeof absUserCache !== 'undefined' && absUserCache) ? absUserCache : [];
+        const users = UserStore.get();
         const target = users.find(function(u) { return String(u.name || '').trim() === name; });
         const curDays = target ? (target.days || '') : '';
         const curAmpm = target ? (target.ampm || '') : '';
@@ -12094,7 +12090,7 @@ function openKubunSetModal() {
     let kubunTerminations = _kubunTerminationsCache.slice(); // 前回キャッシュから初期化
 
     const renderList = function() {
-        const users = (typeof absUserCache !== 'undefined' && absUserCache) ? absUserCache : [];
+        const users = UserStore.get();
         const activeSet = {};
         (kubunActive || []).forEach(function(u) { activeSet[u.name] = true; });
 
@@ -12347,7 +12343,7 @@ function refreshKubunSetCurrentDays() {
         buildPerDayGrid('kubun-set-perday-grid', 'kubun-set-perday', {});
         return;
     }
-    const users = (typeof absUserCache !== 'undefined' && absUserCache) ? absUserCache : [];
+    const users = UserStore.get();
     const target = users.find(function(u) { return String(u.name || '').trim() === name; });
     if (!target) {
         if (currentDisplay) currentDisplay.textContent = '（利用者台帳に見つかりません）';
@@ -12468,7 +12464,7 @@ function submitKubunSet() {
     }
 
     // 利用者台帳 or 中止履歴に存在するかチェック（誤入力防止・中止者も正規）
-    const users = (typeof absUserCache !== 'undefined' && absUserCache) ? absUserCache : [];
+    const users = UserStore.get();
     const terminationsList = _kubunTerminationsCache || [];
     const existsInUsers = users.some(function(u) { return String(u.name || '').trim() === name; });
     const existsInTerm = terminationsList.some(function(t) { return String(t.name || '').trim() === name; });
