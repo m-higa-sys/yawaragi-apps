@@ -5461,8 +5461,7 @@ setInterval(function () {
 }, 60 * 1000);
 
 // 利用者データキャッシュ
-let absUserCache = [];
-let absUserLoaded = false;
+// 3a-5-3: 利用者マスタは UserStore に完全一本化（旧 absUserCache / absUserLoaded を撤去）
 
 // 欠席理由リスト
 const ABS_REASONS = [
@@ -5541,8 +5540,7 @@ function absLoadUsersFromAPI() {
                 };
             });
 
-            UserStore._set(_mapped); // 3a-5-2: ロード結果をUserStoreへ
-            absUserLoaded = true;
+            UserStore._set(_mapped); // 3a-5-2: ロード結果をUserStoreへ（_loadedはここで立つ）
             // キャッシュにも保存（次回のオフライン起動用）
             try {
                 localStorage.setItem(ABS_USERS_KEY, JSON.stringify(UserStore.get()));
@@ -5561,8 +5559,7 @@ function absLoadUsersFromAPI() {
                 const cached = localStorage.getItem(ABS_USERS_KEY);
                 if (cached) {
                     const _parsed = JSON.parse(cached);
-                    UserStore._set(_parsed); // 3a-5-2: キャッシュ復元をUserStoreへ
-                    absUserLoaded = true;
+                    UserStore._set(_parsed); // 3a-5-2: キャッシュ復元をUserStoreへ（_loadedはここで立つ）
                 }
             } catch {}
             resolve(UserStore.get());
@@ -5641,7 +5638,7 @@ function absSearchName(query) {
     const users = absGetUsers();
     if (users.length === 0) {
         results.innerHTML = '<div class="abs-search-item" style="cursor:default; color:#718096;">' +
-            (absUserLoaded ? '利用者データがありません' : '利用者データを読み込み中...') + '</div>';
+            (UserStore.isLoaded() ? '利用者データがありません' : '利用者データを読み込み中...') + '</div>';
         return;
     }
 
@@ -7765,7 +7762,7 @@ function absRenderUserManage() {
     const users = absGetUsers();
     if (users.length === 0) {
         el.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">' +
-            (absUserLoaded ? '利用者データがありません' : '読み込み中...') + '</p>';
+            (UserStore.isLoaded() ? '利用者データがありません' : '読み込み中...') + '</p>';
         return;
     }
     el.innerHTML = `<p style="font-size:0.85rem; color:#2c7a7b; font-weight:600; margin-bottom:8px;">登録人数: ${users.length}人</p>` +
@@ -8267,7 +8264,7 @@ function attRender(data) {
             }
         }
     });
-    // 3a-4: absUserLoaded=true の二重書き込みを削除（ロード状態は欠席ロード経路=UserStoreで一元管理）
+    // 3a-4: 出席タブの二重書き込みを削除（ロード状態は欠席ロード経路=UserStoreで一元管理）
 
     // ローカルの欠席データも反映（GASに未送信のもの）
     const localRecords = absGetRecords();
@@ -9412,7 +9409,7 @@ function attLoadAllUsers() {
             });
         }
 
-        // 3a-4: absUserLoaded=true の二重書き込みを削除（UserStoreで一元管理）
+        // 3a-4: 出席タブの二重書き込みを削除（UserStoreで一元管理）
     };
 
     const script = document.createElement('script');
@@ -9476,7 +9473,7 @@ function absQuickSearchName(q) {
     const el = document.getElementById('abs-quick-results');
     q = q.trim();
     if (!q) { el.innerHTML = ''; return; }
-    // absUserCache利用
+    // UserStore.get() 利用
     const norm = s => (s || '').toLowerCase().replace(/\s/g,'');
     const qn = norm(q);
     const hits = UserStore.get().filter(u =>
@@ -12334,7 +12331,7 @@ function setKubunSetUsageChange(value) {
     }
 }
 
-// 利用者の現在の利用曜日を absUserCache から取得してプリフィル
+// 利用者の現在の利用曜日を UserStore.get() から取得してプリフィル
 function refreshKubunSetCurrentDays() {
     const name = (document.getElementById('kubun-set-name').value || '').trim();
     const currentDisplay = document.getElementById('kubun-set-current-days');
