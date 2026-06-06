@@ -147,6 +147,7 @@
         let rmdMemberLoaded = false;
         let rmdFilter = 'all'; // 'all' | 'pending'
         let rmdDialogState = { type: '', name: '', unit: '' };
+        let rmdAttLoaded = false; // 出席データ取得完了フラグ（③出席境界: 0人の日の無限ループ防止）
 
         /* ===== 関数群（board 10455-10997・1:1移植） ===== */
         function rmdGetFiscalYear() {
@@ -364,13 +365,15 @@
         function rmdLoad() {
             const content = document.getElementById('rmd-content');
 
-            // 出席予定データがなければ shared.js の attLoadDataOnly で取得してから再入
-            // （③出席境界: 旧attLoad依存のポーリングを廃し、コールバック直結に変更）
-            if (AttStore.lastData().am.length === 0 && AttStore.lastData().pm.length === 0) {
+            // 出席データ未取得なら shared.js の attLoadDataOnly で取得してから再入。
+            // ※ 「未取得」と「取得済みだが0人(日曜/祝日)」を length では区別できず無限ループになるため、
+            //    取得完了フラグ rmdAttLoaded で判定する（length===0 で判定しない）。
+            if (!rmdAttLoaded) {
                 content.innerHTML = '<div class="rmd-empty">出席予定を読み込み中...</div>';
                 attLoadDataOnly(null, function(ok) {   // null = 今日
                     if (ok) {
-                        rmdLoad();                      // AttStore充足 → 通常フローへ
+                        rmdAttLoaded = true;            // 取得完了（0人でもtrue）→ 再入で描画へ
+                        rmdLoad();
                     } else {
                         content.innerHTML = '<div class="rmd-empty">出席予定データを取得できませんでした。時間をおいて再読み込みしてください</div>';
                     }
