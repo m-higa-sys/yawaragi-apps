@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>リマインド - yawaragi</title>
+
+    <!-- ===== shared.js（最重要・本体scriptより前に先読み必須） =====
+         §A 定数(YAWARAGIBOARD_API_URL/DAY_NAMES) / §G AttStore を使用。
+         即時参照ではなく実行時解決の遅延メソッド前提で読む。 -->
+    <script src="shared.js"></script>
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif;
+            background: #f7fafc;
+            color: #2d3748;
+            line-height: 1.4;
+            -webkit-text-size-adjust: 100%;
+        }
+        .app-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #fff;
+            min-height: 100vh;
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+        }
+
+        /* ===== リマインド（board.html 1174-1216 から移植） ===== */
+        .rmd-header { padding: 12px 16px; background: #fffbeb; border-bottom: 2px solid #f6e05e; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .rmd-header h2 { font-size: 1.1rem; color: #744210; margin: 0; }
+        .rmd-header .rmd-date { font-size: 0.85rem; color: #975a16; }
+        .rmd-summary { display: flex; gap: 12px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
+        .rmd-summary-item { font-size: 0.85rem; padding: 4px 12px; border-radius: 20px; font-weight: 600; }
+        .rmd-summary-item.pending { background: #fed7d7; color: #c53030; }
+        .rmd-summary-item.done { background: #c6f6d5; color: #276749; }
+        .rmd-unit-section { margin: 8px 0; }
+        @media (max-width: 720px) { .rmd-two-col { grid-template-columns: 1fr !important; } }
+        .rmd-unit-header { padding: 8px 16px; font-weight: 700; font-size: 0.9rem; border-left: 4px solid; }
+        .rmd-unit-header.am { background: #ebf8ff; border-color: #3182ce; color: #2a4365; }
+        .rmd-unit-header.pm { background: #faf5ff; border-color: #805ad5; color: #44337a; }
+        .rmd-user-row { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid #edf2f7; flex-wrap: wrap; gap: 6px; background: #fff; }
+        .rmd-user-row:hover { background: #f7fafc; }
+        .rmd-user-name { font-weight: 700; font-size: 0.95rem; min-width: 80px; margin-right: 8px; }
+        .rmd-user-care { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-right: 8px; }
+        .rmd-user-care.kaigo { background: #fed7d7; color: #c53030; }
+        .rmd-user-care.shien { background: #bee3f8; color: #2a4365; }
+        .rmd-tasks { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .rmd-task { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+        .rmd-task.pending { background: #fff7ed; color: #9a3412; border: 1.5px solid #fb923c; }
+        .rmd-task.pending:hover { background: #ffedd5; transform: scale(1.03); }
+        .rmd-task.partial { background: #fefcbf; color: #744210; border: 1.5px solid #ecc94b; }
+        .rmd-task.partial:hover { background: #fefce8; transform: scale(1.03); }
+        .rmd-task.done { background: #edf2f7; color: #a0aec0; border: 1.5px solid #cbd5e0; opacity: 0.7; }
+        .rmd-task.birthday { background: #fce4ec; color: #c62828; border: 1.5px solid #ef9a9a; }
+        .rmd-task.birthday.done { background: #edf2f7; color: #a0aec0; border: 1.5px solid #cbd5e0; opacity: 0.7; }
+        .rmd-empty { text-align: center; padding: 40px 16px; color: #a0aec0; font-size: 0.95rem; }
+        .rmd-no-task { text-align: center; padding: 24px 16px; color: #38a169; font-size: 1rem; font-weight: 700; }
+
+        .rmd-dialog-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 9999; justify-content: center; align-items: center; }
+        .rmd-dialog-overlay.show { display: flex; }
+        .rmd-dialog { background: #fff; border-radius: 16px; padding: 24px; width: 90%; max-width: 340px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .rmd-dialog h3 { font-size: 1rem; margin-bottom: 16px; color: #2d3748; }
+        .rmd-dialog input[type="number"] { width: 100%; padding: 12px; font-size: 1.2rem; border: 2px solid #e2e8f0; border-radius: 8px; text-align: center; margin-bottom: 12px; }
+        .rmd-dialog input[type="number"]:focus { border-color: #3182ce; outline: none; }
+        .rmd-dialog-btns { display: flex; gap: 8px; }
+        .rmd-dialog-btns button { flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
+        .rmd-dialog-btns .rmd-btn-ok { background: #38a169; color: #fff; }
+        .rmd-dialog-btns .rmd-btn-cancel { background: #e2e8f0; color: #4a5568; }
+        .rmd-filter-bar { display: flex; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e2e8f0; align-items: center; }
+        .rmd-filter-btn { padding: 4px 12px; border-radius: 16px; font-size: 0.8rem; font-weight: 600; border: 1.5px solid #cbd5e0; background: #fff; color: #4a5568; cursor: pointer; }
+        .rmd-filter-btn.active { background: #2c7a7b; color: #fff; border-color: #2c7a7b; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- ===== リマインド本体（board.html 1745-1759 から移植） ===== -->
+        <div id="tab-remind" class="tab-content active">
+            <div class="rmd-header">
+                <h2>📋 今日のリマインド</h2>
+                <span class="rmd-date" id="rmd-date-label"></span>
+            </div>
+            <div class="rmd-summary" id="rmd-summary"></div>
+            <div class="rmd-filter-bar" id="rmd-filter-bar">
+                <span style="font-size:0.8rem;color:#718096;font-weight:600;">表示:</span>
+                <button class="rmd-filter-btn active" onclick="rmdSetFilter('all',this)">すべて</button>
+                <button class="rmd-filter-btn" onclick="rmdSetFilter('pending',this)">未実施のみ</button>
+            </div>
+            <div id="rmd-content">
+                <div class="rmd-empty">（骨格）関数移行（ステップ②）で読み込み処理を実装します</div>
+            </div>
+        </div>
+
+        <!-- ===== 数値入力ダイアログ（board.html 1761-1772 から移植） ===== -->
+        <div class="rmd-dialog-overlay" id="rmd-dialog">
+            <div class="rmd-dialog">
+                <h3 id="rmd-dialog-title">体重を入力</h3>
+                <input type="number" id="rmd-dialog-input" step="0.1" placeholder="0.0">
+                <div id="rmd-dialog-hint" style="font-size:0.8rem;color:#718096;margin-bottom:12px;text-align:center;"></div>
+                <div class="rmd-dialog-btns">
+                    <button class="rmd-btn-cancel" onclick="rmdCloseDialog()">キャンセル</button>
+                    <button class="rmd-btn-ok" onclick="rmdSubmitDialog()">登録</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 初期化スクリプト（骨格・shared.js疎通確認） ===== -->
+    <script>
+        console.log('Remind app loaded');
+        console.log('UserStore:', typeof UserStore);
+        console.log('AttStore:', typeof AttStore);
+        console.log('YAWARAGIBOARD_API_URL:', typeof YAWARAGIBOARD_API_URL);
+        console.log('DAY_NAMES:', typeof DAY_NAMES);
+    </script>
+</body>
+</html>
