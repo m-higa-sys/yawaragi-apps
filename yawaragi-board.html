@@ -7371,8 +7371,7 @@ function absDeleteGasRecord(userName, dateFrom) {
 // ===== 長期休み一覧 =====
 // 長期休み利用者の再開予定マップ（出席予定タブからも参照）
 let absLongTermMap = {};
-// 当日が再開日の利用者リスト（再開バッジ用・出席予定タブで参照）
-let attResumedTodayNames = [];
+// 当日が再開日の利用者リストは AttStore.resumedToday() に移行（3b-2）
 
 function absRenderLongTermList(longTermData) {
     // 重複排除（名前単位で最新レコードのみ残す＝開始日が一番新しいもの）
@@ -7641,9 +7640,9 @@ function absLoadLongTermList() {
             if (data.absences.resumedToday) resumedTodayData = data.absences.resumedToday;
         }
         // 再開バッジ用の名前リスト更新
-        attResumedTodayNames = (resumedTodayData || [])
+        AttStore.setResumedToday((resumedTodayData || [])
             .filter(item => item && item.name)
-            .map(item => item.name);
+            .map(item => item.name));
         absRenderLongTermList(longTermData);
         // 再描画後にスクロール位置を復元
         requestAnimationFrame(() => window.scrollTo({ top: _scrollY, behavior: 'instant' }));
@@ -8382,7 +8381,7 @@ function attRenderUser(u) {
     }
 
     // 当日が再開日なら再開バッジを表示
-    const resumedBadge = (!isAbsent && attResumedTodayNames.indexOf(u.name) >= 0)
+    const resumedBadge = (!isAbsent && AttStore.resumedToday().indexOf(u.name) >= 0)
         ? '<span style="display:inline-block;background:#a7f3d0;color:#065f46;font-size:0.7rem;font-weight:900;padding:2px 8px;border-radius:10px;margin-left:6px;">🌱 利用再開</span>'
         : '';
 
