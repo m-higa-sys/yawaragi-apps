@@ -65,6 +65,19 @@ const AttStore = (function () {
     };
 })();
 
+/* ===== §H router（タブ初期化レジストリ・2026-06-06 phase3c-1） =====
+   各タブが自分の初期化関数を登録し、activateTab は runTabInit(name) を呼ぶだけにする。
+   ※ 3c-1 では導入のみ（activateTabの置換・登録は 3c-2/3c-3）。既存挙動に影響なし。 */
+const _tabInitRegistry = {};
+function registerTabInit(name, fn) {
+    (_tabInitRegistry[name] = _tabInitRegistry[name] || []).push(fn);
+}
+function runTabInit(name) {
+    (_tabInitRegistry[name] || []).forEach(fn => {
+        try { fn(); } catch (e) { console.error('tabInit error:', name, e); }
+    });
+}
+
 /* ===== §B utils（純粋関数・DOM非依存） ===== */
 
 // カタカナ→ひらがな変換
