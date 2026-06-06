@@ -6855,8 +6855,8 @@ function absFindAbsenceRecord(name, dateStr) {
         }
     }
     // 2.5 出席予定の日表示データ（理由だけでも拾う）
-    if (!rec.found && typeof attLastData !== 'undefined' && attLastData) {
-        var allAtt = (attLastData.am || []).concat(attLastData.pm || []);
+    if (!rec.found) {
+        var allAtt = (AttStore.lastData().am || []).concat(AttStore.lastData().pm || []);
         var au = allAtt.find(function(x){ return x.name === name; });
         if (au) { rec.found = true; rec.reason = au.reason || ''; }
     }
@@ -7399,8 +7399,8 @@ function absRenderLongTermList(longTermData) {
         });
     }
     // 出席予定タブが既に描画済みなら再描画して反映
-    if (typeof attLastData !== 'undefined' && attLastData && (attLastData.am.length || attLastData.pm.length)) {
-        try { attRender(attLastData); } catch(e) {}
+    if (AttStore.lastData().am.length || AttStore.lastData().pm.length) {
+        try { attRender(AttStore.lastData()); } catch(e) {}
     }
 
     // キャッシュ更新（連絡入力ダイアログから参照）
@@ -8242,7 +8242,7 @@ function attRender(data) {
     const statusBar = document.getElementById('att-status-bar');
 
     // データを保持（欠席登録への遷移用）
-    attLastData = { am: data.am.slice(), pm: data.pm.slice() };
+    AttStore.setLastData({ am: data.am.slice(), pm: data.pm.slice() });
 
     // 出席予定データから利用者キャッシュを補完
     const seen = {};
@@ -8788,7 +8788,7 @@ async function attCancelAbsence(name, dateStr) {
 }
 
 function attMoveAbsence(name, dateStr) {
-    // 既存データを探す（ローカル → GASキャッシュ → attLastData の順）
+    // 既存データを探す（ローカル → GASキャッシュ → AttStore.lastData() の順）
     let existing = null;
     const localRecs = absGetRecords();
     const lr = localRecs.find(r => r.userName === name && r.dateFrom <= dateStr && r.dateTo >= dateStr);
@@ -8803,7 +8803,7 @@ function attMoveAbsence(name, dateStr) {
         if (gr) existing = { reason: gr.reason || '', contact: gr.reporter || '', method: '', reporter: gr.reporter || '', contactDate: gr.contactDate || '' };
     }
     if (!existing) {
-        const all = (attLastData.am || []).concat(attLastData.pm || []);
+        const all = (AttStore.lastData().am || []).concat(AttStore.lastData().pm || []);
         const u = all.find(x => x.name === name);
         existing = { reason: u ? (u.reason || '') : '', contact: '', method: '', reporter: '', contactDate: '' };
     }
@@ -9224,7 +9224,7 @@ function attEditAbsence(name, dateStr) {
 }
 
 // 出席予定タブから取得したデータを保持
-let attLastData = { am: [], pm: [] };
+// 出席データは AttStore.lastData() に移行（3b-4・3b完結）
 
 // 表示順を保持（初回は出席→欠席ソート、以降は同じ順序を維持して画面ジャンプ防止）
 let attLastOrder = { am: [], pm: [] };
@@ -9241,7 +9241,7 @@ function attStartAbsence(name) {
     absClearName();
 
     // 出席予定データからユーザー情報を取得
-    const attUser = attLastData.am.concat(attLastData.pm).find(u => u.name === name);
+    const attUser = AttStore.lastData().am.concat(AttStore.lastData().pm).find(u => u.name === name);
     const care = attUser ? (attUser.care || '') : '';
     const cmOffice = attUser ? (attUser.cmOffice || '') : '';
 
@@ -9257,8 +9257,8 @@ function attStartAbsence(name) {
     if (pattern.length === 0 && attUser) {
         const today = new Date();
         const dow = today.getDay();
-        const inAm = attLastData.am.some(u => u.name === name);
-        const inPm = attLastData.pm.some(u => u.name === name);
+        const inAm = AttStore.lastData().am.some(u => u.name === name);
+        const inPm = AttStore.lastData().pm.some(u => u.name === name);
         if (inAm) pattern.push({ day: dow, unit: 'am' });
         if (inPm) pattern.push({ day: dow, unit: 'pm' });
     }
@@ -10674,7 +10674,7 @@ function rmdLoad() {
     const content = document.getElementById('rmd-content');
 
     // 出席予定データがなければ自動で取得してからリトライ
-    if (!attLastData || (attLastData.am.length === 0 && attLastData.pm.length === 0)) {
+    if (AttStore.lastData().am.length === 0 && AttStore.lastData().pm.length === 0) {
         content.innerHTML = '<div class="rmd-empty">出席予定を読み込み中...</div>';
         if (typeof attLoad === 'function') {
             attLoad();
@@ -10682,7 +10682,7 @@ function rmdLoad() {
             let tries = 0;
             const waitInt = setInterval(function() {
                 tries++;
-                if (attLastData && (attLastData.am.length > 0 || attLastData.pm.length > 0)) {
+                if (AttStore.lastData().am.length > 0 || AttStore.lastData().pm.length > 0) {
                     clearInterval(waitInt);
                     rmdLoad();
                 } else if (tries >= 10) {
@@ -10711,7 +10711,7 @@ function rmdRender() {
     const dow = ['日','月','火','水','木','金','土'][now.getDay()];
     dateLabel.textContent = (now.getMonth()+1) + '月' + now.getDate() + '日（' + dow + '）';
 
-    if (!attLastData || (attLastData.am.length === 0 && attLastData.pm.length === 0)) {
+    if (AttStore.lastData().am.length === 0 && AttStore.lastData().pm.length === 0) {
         content.innerHTML = '<div class="rmd-empty">今日の出席予定がありません</div>';
         summaryEl.innerHTML = '';
         return;
@@ -10723,8 +10723,8 @@ function rmdRender() {
         if (a.status !== '出席' && b.status === '出席') return 1;
         return 0;
     });
-    const amPresent = sortAbsent(attLastData.am);
-    const pmPresent = sortAbsent(attLastData.pm);
+    const amPresent = sortAbsent(AttStore.lastData().am);
+    const pmPresent = sortAbsent(AttStore.lastData().pm);
 
     let totalPending = 0;
     let totalDone = 0;
