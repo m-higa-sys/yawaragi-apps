@@ -48,6 +48,23 @@ const UserStore = (function () {
     };
 })();
 
+/* ===== §G AttStore（出席・長期休み系の共有state・2026-06-06 phase3b-1） =====
+   absLongTermMap / attLastData / attResumedTodayNames をクロージャで隠蔽し集約。
+   ※ 3b-1 では導入のみ（置換は 3b-2 以降）。既存挙動に影響なし。 */
+const AttStore = (function () {
+    let _longTerm = {};
+    let _lastData = { am: [], pm: [] };
+    let _resumedToday = [];
+    return {
+        longTerm()         { return _longTerm; },
+        setLongTerm(m)     { _longTerm = m || {}; },
+        lastData()         { return _lastData; },
+        setLastData(d)     { _lastData = d || { am: [], pm: [] }; },
+        resumedToday()     { return _resumedToday; },
+        setResumedToday(a) { _resumedToday = a || []; },
+    };
+})();
+
 /* ===== §B utils（純粋関数・DOM非依存） ===== */
 
 // カタカナ→ひらがな変換
