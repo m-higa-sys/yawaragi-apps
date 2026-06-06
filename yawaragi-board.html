@@ -5526,7 +5526,7 @@ function absLoadUsersFromAPI() {
                     };
                 });
             }
-            absUserCache = rawUsers.map(u => {
+            const _mapped = rawUsers.map(u => {
                 // days列（例: "月水金"）とampm列（例: "午前"）からpattern配列を作る
                 const pattern = absParsePattern(u.days, u.ampm);
                 return {
@@ -5541,14 +5541,14 @@ function absLoadUsersFromAPI() {
                 };
             });
 
-            UserStore._set(absUserCache); // 3a-2: UserStoreへ同期（直接参照/pushとの整合のため absUserCache も維持）
+            UserStore._set(_mapped); // 3a-5-2: ロード結果をUserStoreへ
             absUserLoaded = true;
             // キャッシュにも保存（次回のオフライン起動用）
             try {
-                localStorage.setItem(ABS_USERS_KEY, JSON.stringify(absUserCache));
+                localStorage.setItem(ABS_USERS_KEY, JSON.stringify(UserStore.get()));
             } catch {}
 
-            resolve(absUserCache);
+            resolve(UserStore.get());
         };
 
         const script = document.createElement('script');
@@ -5560,12 +5560,12 @@ function absLoadUsersFromAPI() {
             try {
                 const cached = localStorage.getItem(ABS_USERS_KEY);
                 if (cached) {
-                    absUserCache = JSON.parse(cached);
-                    UserStore._set(absUserCache); // 3a-2: UserStoreへ同期
+                    const _parsed = JSON.parse(cached);
+                    UserStore._set(_parsed); // 3a-5-2: キャッシュ復元をUserStoreへ
                     absUserLoaded = true;
                 }
             } catch {}
-            resolve(absUserCache);
+            resolve(UserStore.get());
         };
         document.body.appendChild(script);
     });
@@ -8260,7 +8260,7 @@ function attRender(data) {
                 if (!existing.care && u.care) existing.care = u.care;
                 if (!existing.cmOffice && u.cmOffice) existing.cmOffice = u.cmOffice;
             } else {
-                absUserCache.push({
+                UserStore.add({
                     name: u.name, reading: u.kana || '', pattern: [],
                     care: u.care || '', cmOffice: u.cmOffice || ''
                 });
@@ -9392,7 +9392,7 @@ function attLoadAllUsers() {
                         existing.pattern = patternArr;
                     }
                 } else {
-                    absUserCache.push({
+                    UserStore.add({
                         name: name, reading: p.kana || '', pattern: patternArr,
                         care: p.care || '', cmOffice: ''
                     });

@@ -35,6 +35,7 @@ const UserStore = (function () {
     let _loaded = false;
     return {
         get() { return _cache; },
+        add(user) { _cache.push(user); }, // 3a-5-2: 動的追加（出席/欠席の補完用）
         isLoaded() { return _loaded; },
         _set(users) { _cache = Array.isArray(users) ? users : []; _loaded = true; },
         _setLoaded(flag) { _loaded = flag; },
