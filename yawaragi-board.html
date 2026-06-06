@@ -5491,7 +5491,7 @@ let absState = {
 
 // ----- 利用者データ（利用者台帳スプレッドシートからGAS経由で自動取得） -----
 function absGetUsers() {
-    return absUserCache;
+    return UserStore.get(); // 3a-2: 利用者マスタの読み取りを UserStore に一本化
 }
 
 function absLoadUsersFromAPI() {
@@ -5541,6 +5541,7 @@ function absLoadUsersFromAPI() {
                 };
             });
 
+            UserStore._set(absUserCache); // 3a-2: UserStoreへ同期（直接参照/pushとの整合のため absUserCache も維持）
             absUserLoaded = true;
             // キャッシュにも保存（次回のオフライン起動用）
             try {
@@ -5560,6 +5561,7 @@ function absLoadUsersFromAPI() {
                 const cached = localStorage.getItem(ABS_USERS_KEY);
                 if (cached) {
                     absUserCache = JSON.parse(cached);
+                    UserStore._set(absUserCache); // 3a-2: UserStoreへ同期
                     absUserLoaded = true;
                 }
             } catch {}
