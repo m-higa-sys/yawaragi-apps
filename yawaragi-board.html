@@ -6860,7 +6860,7 @@ function absFindAbsenceRecord(name, dateStr) {
         var au = allAtt.find(function(x){ return x.name === name; });
         if (au) { rec.found = true; rec.reason = au.reason || ''; }
     }
-    // 3. 長期休み（_cachedLongTerm を優先・無ければ absLongTermMap）
+    // 3. 長期休み（_cachedLongTerm を優先・無ければ AttStore.longTerm()）
     var ltHit = null;
     if (window._cachedLongTerm) {
         ltHit = window._cachedLongTerm.find(function(lt){ return lt.name === name && lt.date === dateStr; })
@@ -6874,8 +6874,8 @@ function absFindAbsenceRecord(name, dateStr) {
         rec.reason = String(ltHit.reason || rec.reason).replace(/^長期休み[（(]|[）)]$/g, '') || rec.reason;
         if (ltHit.reporter) rec.contact = ltHit.reporter;
         rec.cmNotified = ltHit.cmNotified || '';
-    } else if (typeof absLongTermMap !== 'undefined' && absLongTermMap && absLongTermMap[name]) {
-        var lm = absLongTermMap[name];
+    } else if (AttStore.longTerm()[name]) {
+        var lm = AttStore.longTerm()[name];
         rec.found = true;
         rec.isLongTerm = true;
         rec.startDate = lm.startDate || dateStr;
@@ -7369,8 +7369,7 @@ function absDeleteGasRecord(userName, dateFrom) {
 }
 
 // ===== 長期休み一覧 =====
-// 長期休み利用者の再開予定マップ（出席予定タブからも参照）
-let absLongTermMap = {};
+// 長期休み利用者の再開予定マップは AttStore.longTerm() に移行（3b-3）
 // 当日が再開日の利用者リストは AttStore.resumedToday() に移行（3b-2）
 
 function absRenderLongTermList(longTermData) {
@@ -7387,11 +7386,11 @@ function absRenderLongTermList(longTermData) {
         longTermData = Object.values(byName);
     }
     // マップを更新（出席予定タブで参照する用）
-    absLongTermMap = {};
+    AttStore.setLongTerm({});
     if (longTermData) {
         longTermData.forEach(lt => {
             if (lt.name) {
-                absLongTermMap[lt.name] = {
+                AttStore.longTerm()[lt.name] = {
                     resumeDate: lt.resumeDate || '',
                     startDate: lt.date || '',
                     reason: lt.reason || ''
@@ -8368,9 +8367,9 @@ function attRenderUser(u) {
 
     // 長期休み中の利用者なら再開予定日を表示
     let resumeText = '';
-    if (isAbsent && absLongTermMap[u.name] && absLongTermMap[u.name].resumeDate) {
+    if (isAbsent && AttStore.longTerm()[u.name] && AttStore.longTerm()[u.name].resumeDate) {
         try {
-            const rd = new Date(absLongTermMap[u.name].resumeDate);
+            const rd = new Date(AttStore.longTerm()[u.name].resumeDate);
             if (!isNaN(rd.getTime())) {
                 const m = rd.getMonth() + 1;
                 const d = rd.getDate();
@@ -8421,8 +8420,8 @@ function attRenderUser(u) {
     var lookupDate = '';
     if (isAbsent) {
         lookupDate = attFormatDate(attCurrentDate);
-        if (absLongTermMap && absLongTermMap[u.name] && absLongTermMap[u.name].startDate) {
-            lookupDate = absLongTermMap[u.name].startDate;
+        if (AttStore.longTerm()[u.name] && AttStore.longTerm()[u.name].startDate) {
+            lookupDate = AttStore.longTerm()[u.name].startDate;
         }
         try {
             var rec = absFindAbsenceRecord(u.name, lookupDate);
@@ -8451,7 +8450,7 @@ function attRenderUser(u) {
     // 詳細（例: 入院）は欠席詳細ポップアップで確認する
     var reasonDisplay = '';
     if (isAbsent) {
-        if (absLongTermMap && absLongTermMap[u.name]) {
+        if (AttStore.longTerm()[u.name]) {
             reasonDisplay = '長期休み';
         } else if (u.reason) {
             reasonDisplay = String(u.reason);
@@ -8697,8 +8696,8 @@ function attUserClick(name, isAbsent) {
     }
     // 欠席（通常欠席・長期休みとも）→ 統一詳細ポップアップ（2026-05-23）
     var dateStr = attFormatDate(attCurrentDate);
-    if (absLongTermMap && absLongTermMap[name] && absLongTermMap[name].startDate) {
-        dateStr = absLongTermMap[name].startDate;
+    if (AttStore.longTerm()[name] && AttStore.longTerm()[name].startDate) {
+        dateStr = AttStore.longTerm()[name].startDate;
     }
     absShowCardDetail(name, dateStr);
 }
