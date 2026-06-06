@@ -24,6 +24,10 @@ const YAWARAGIBOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK
 // 曜日名（日曜始まり = JavaScript Date.getDay() の 0=日 に対応。並びを変えると全曜日表示がずれる）
 const DAY_NAMES = ['日','月','火','水','木','金','土'];
 
+// 出席予定データのlocalStorageキー（出席アプリ/リマインド等で共有・日付ごと最大7日キャッシュ）
+// ※ board.html本体側に同名constが残っている間は、出席アプリ切り出し時に二重宣言へ注意（週刊チェックリスト項目3）。
+const ATT_CACHE_KEY = 'yawaragi_att_cache';
+
 /* ===== §F UserStore（利用者マスタの単一の真実・2026-06-06 phase3a-1） =====
    absUserCache / absUserLoaded をクロージャで隠蔽し、外部から直接書けなくする。
    ※ loadFromAPI は html本体側で後から定義される absLoadUsersFromAPI に委譲するが、
@@ -200,6 +204,69 @@ function verifyAbsenceInGAS(name, date) {
         };
         document.body.appendChild(script);
     });
+}
+
+/* ===== §D-2 出席データのヘッドレス取得（2026-06-07 board分割パイロット P1-3） =====
+   attLoad（出席予定タブ本体）から「AttStore投入」だけを切り出した最小版。
+   画面描画・UserStore補完・ローカル欠席マージ等の副作用は一切持たない。
+   ・dateStr 省略時は今日（'YYYY-MM-DD'）。
+   ・キャッシュ(ATT_CACHE_KEY)があれば即 AttStore に反映 → その後GASで上書き更新。
+   ・onDone(ok) は AttStore 反映後に呼ぶ（ok=データが取れたか）。
+   ・将来のP1出席アプリの attLoad はこの関数を再利用できる
+     （= attLoadDataOnly(d, () => attRender(AttStore.lastData())) ）。 */
+
+// 今日の日付を 'YYYY-MM-DD' で返す（attFormatDate(new Date()) と同形式）
+function attTodayStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+
+// 出席データを取得して AttStore.setLastData() だけを満たす（描画なし）
+function attLoadDataOnly(dateStr, onDone) {
+    dateStr = dateStr || attTodayStr();
+    let cacheHit = false;
+
+    // ① キャッシュ即反映（描画はしない・AttStoreだけ満たす）
+    try {
+        const cache = JSON.parse(localStorage.getItem(ATT_CACHE_KEY) || '{}');
+        if (cache[dateStr]) {
+            AttStore.setLastData({ am: cache[dateStr].am.slice(), pm: cache[dateStr].pm.slice() });
+            cacheHit = true;
+            if (typeof onDone === 'function') onDone(true);   // 即描画できるよう先に通知
+        }
+    } catch {}
+
+    // ② GASで最新取得（裏更新）
+    const cbName = 'attDataOnlyCb_' + Date.now();
+    window[cbName] = function (data) {
+        delete window[cbName];
+        const s = document.getElementById('att-dataonly-script');
+        if (s) s.remove();
+        if (data && data.success && data.attendance) {
+            AttStore.setLastData({ am: data.attendance.am.slice(), pm: data.attendance.pm.slice() });
+            try {   // キャッシュ更新（最大7日・attLoadと同形式で互換）
+                const cache = JSON.parse(localStorage.getItem(ATT_CACHE_KEY) || '{}');
+                cache[dateStr] = data.attendance;
+                const keys = Object.keys(cache).sort();
+                while (keys.length > 7) delete cache[keys.shift()];
+                localStorage.setItem(ATT_CACHE_KEY, JSON.stringify(cache));
+            } catch {}
+            if (typeof onDone === 'function') onDone(true);
+        } else if (!cacheHit && typeof onDone === 'function') {
+            onDone(false);   // 取得失敗かつキャッシュも無し
+        }
+    };
+    const script = document.createElement('script');
+    script.id = 'att-dataonly-script';
+    script.src = YAWARAGIBOARD_API_URL + '?action=attendance&date=' + dateStr +
+                 '&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function () {
+        delete window[cbName];
+        if (!cacheHit && typeof onDone === 'function') onDone(false);
+    };
+    document.body.appendChild(script);
 }
 
 /* ===== §E broadcast（クロスアプリ通知・2026-06-06 phase2移動） =====
