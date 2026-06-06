@@ -2988,41 +2988,35 @@ function activateTab(tabName) {
     if (content) content.classList.add('active');
     // 保存
     try { localStorage.setItem(TAB_STATE_KEY, tabName); } catch {}
-    // タブ切替時に表示を更新
-    if (tabName === 'attendance') {
-        if (typeof attLoad === 'function') attLoad();
-        if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
-    }
-    if (tabName === 'remind' && typeof rmdLoad === 'function') rmdLoad();
-    if (tabName === 'absence') {
-        if (typeof absRenderTodayList === 'function') absRenderTodayList();
-        if (typeof absRenderUpcomingList === 'function') absRenderUpcomingList();
-    }
-    if (tabName === 'data' && typeof absRenderUserManage === 'function') absRenderUserManage();
-    if (tabName === 'terminate') {
-        if (typeof trmInit === 'function') trmInit();
-        if (typeof trmLoadList === 'function') trmLoadList();
-    }
-    if (tabName === 'meeting' && typeof mmInit === 'function') mmInit();
-    if (tabName === 'intake') {
-        if (typeof loadCmContactsCache === 'function') loadCmContactsCache();
-        // リロード時のタブ復元はDOM準備完了前に走るのでJSONPが失敗する。完全ロードまで待つ
-        if (typeof loadIntakeList === 'function') {
-            const fire = () => setTimeout(loadIntakeList, 200);
-            if (document.readyState === 'complete') {
-                fire();
-            } else {
-                let fired = false;
-                const safeFire = () => { if (!fired) { fired = true; fire(); } };
-                window.addEventListener('load', safeFire, { once: true });
-                setTimeout(safeFire, 2000); // load取り逃し対策の安全網
-            }
-        }
-    }
+    // タブ切替時に各タブの初期化を実行（登録方式・3c-3）
+    runTabInit(tabName);
     return true;
 }
 
 function setupTabs() {
+    // 3c-2: 各タブの初期化を登録（function宣言は巻き上げ済みなので参照可）
+    registerTabInit('attendance', attLoad);
+    registerTabInit('attendance', absLoadLongTermList);
+    registerTabInit('remind', rmdLoad);
+    registerTabInit('absence', absRenderTodayList);
+    registerTabInit('absence', absRenderUpcomingList);
+    registerTabInit('data', absRenderUserManage);
+    registerTabInit('terminate', trmInit);
+    registerTabInit('terminate', trmLoadList);
+    registerTabInit('meeting', mmInit);
+    registerTabInit('intake', function () {
+        loadCmContactsCache();
+        const fire = () => setTimeout(loadIntakeList, 200);
+        if (document.readyState === 'complete') {
+            fire();
+        } else {
+            let fired = false;
+            const safeFire = () => { if (!fired) { fired = true; fire(); } };
+            window.addEventListener('load', safeFire, { once: true });
+            setTimeout(safeFire, 2000);
+        }
+    });
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             activateTab(btn.dataset.tab);
