@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>長期休み＋中止管理 - yawaragi</title>
+  <script src="shared.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    header {
+      background-color: #2c3e50;
+      color: white;
+      padding: 20px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+    .tab-container {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #ddd;
+    }
+    .tab-button {
+      padding: 12px 20px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #666;
+      border-bottom: 3px solid transparent;
+      transition: all 0.3s;
+    }
+    .tab-button:hover {
+      color: #2c3e50;
+    }
+    .tab-button.active {
+      color: #2c3e50;
+      border-bottom-color: #2c3e50;
+    }
+    .tab-content {
+      display: none;
+      background: white;
+      padding: 20px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .section {
+      margin-bottom: 30px;
+    }
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    button:disabled {
+      background-color: #bdc3c7;
+      cursor: not-allowed;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+    }
+    input[type="text"],
+    input[type="date"],
+    select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    input[type="text"]:focus,
+    input[type="date"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #3498db;
+      box-shadow: 0 0 4px rgba(52, 152, 219, 0.3);
+    }
+    .list-container {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .list-item {
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .list-item:last-child {
+      border-bottom: none;
+    }
+    .list-item:hover {
+      background-color: #f9f9f9;
+    }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 10px;
+      background-color: #fafafa;
+    }
+    .card-header {
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #2c3e50;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+    .modal.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background-color: white;
+      padding: 20px;
+      border-radius: 4px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-header {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #eee;
+    }
+    .alert {
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    .alert.info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    .alert.warning {
+      background-color: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    .alert.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .alert.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 15px 20px;
+      background-color: #333;
+      color: white;
+      border-radius: 4px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 2000;
+      max-width: 400px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+    .checklist {
+      list-style: none;
+    }
+    .checklist li {
+      padding: 8px 0;
+      display: flex;
+      align-items: center;
+    }
+    .checklist input[type="checkbox"] {
+      margin-right: 10px;
+      cursor: pointer;
+    }
+    @media (max-width: 768px) {
+      .tab-button {
+        padding: 10px 15px;
+        font-size: 13px;
+      }
+      button {
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+      .list-item {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>長期休み＋中止管理</h1>
+      <p>利用者の長期休み登録・復帰管理と、利用終了予定者の管理</p>
+    </header>
+<!-- タブ切り替え -->
+<div class="tab-container">
+  <button class="tab-button active" data-tab="long-term">
+    📋 長期休み
+  </button>
+  <button class="tab-button" data-tab="terminate">
+    🚪 中止管理
+  </button>
+</div>
+
+<!-- ======================== -->
+<!-- P3-1: 長期休み タブ -->
+<!-- ======================== -->
+<div id="long-term" class="tab-content active">
+  <div class="section">
+    <h2>長期休み復帰登録ウィザード</h2>
+    <p style="margin-bottom: 15px; color: #666;">利用者が長期休みから復帰する際、スタッフが連絡内容を記録します</p>
+
+    <div class="form-group">
+      <label for="long-term-user-search">利用者名で検索</label>
+      <input
+        type="text"
+        id="long-term-user-search"
+        placeholder="利用者名（ひらがな・カタカナ対応）"
+        autocomplete="off"
+      >
+      <div id="long-term-search-results" style="margin-top: 10px;"></div>
+    </div>
+
+    <div id="long-term-wizard" style="display: none; border: 1px solid #ddd; padding: 15px; border-radius: 4px; background-color: #f9f9f9;">
+      <div class="form-group">
+        <label>選択利用者</label>
+        <div id="long-term-selected-user" style="padding: 10px; background-color: white; border: 1px solid #ddd; border-radius: 4px;"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="abs-resume-staff">連絡者（スタッフ）</label>
+        <select id="abs-resume-staff">
+          <option value="">-- 選択してください --</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="abs-resume-contact">連絡区分</label>
+        <select id="abs-resume-contact">
+          <option value="">-- 選択してください --</option>
+          <option value="phone">電話</option>
+          <option value="visit">訪問</option>
+          <option value="message">メッセージ</option>
+          <option value="other">その他</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="abs-resume-method">連絡方法の詳細</label>
+        <input
+          type="text"
+          id="abs-resume-method"
+          placeholder="連絡内容・メモ"
+        >
+      </div>
+
+      <div class="button-group">
+        <button id="long-term-submit-btn" style="background-color: #27ae60;">復帰登録を送信</button>
+        <button id="long-term-cancel-btn" style="background-color: #e74c3c;">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>長期休み中の利用者一覧</h2>
+    <div id="long-term-list-container" class="list-container">
+      <div class="empty-state">
+        <div class="empty-state-icon">📭</div>
+        <p>長期休み中の利用者はいません</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== -->
+<!-- P3-2: 中止管理 タブ -->
+<!-- ======================== -->
+<div id="terminate" class="tab-content">
+  <div class="section">
+    <h2>利用終了予定者の登録</h2>
+    <p style="margin-bottom: 15px; color: #666;">新規で利用終了予定を登録します</p>
+
+    <div class="form-group">
+      <label for="trm-user-search">利用者名で検索</label>
+      <input
+        type="text"
+        id="trm-user-search"
+        placeholder="利用者名（ひらがな・カタカナ対応）"
+        autocomplete="off"
+      >
+      <div id="trm-search-results" style="margin-top: 10px;"></div>
+    </div>
+
+    <div id="trm-form" style="display: none; border: 1px solid #ddd; padding: 15px; border-radius: 4px; background-color: #f9f9f9;">
+      <div class="form-group">
+        <label>選択利用者</label>
+        <div id="trm-selected-user" style="padding: 10px; background-color: white; border: 1px solid #ddd; border-radius: 4px;"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="trm-reason">終了理由</label>
+        <select id="trm-reason">
+          <option value="">-- 選択してください --</option>
+          <option value="recovery">治癒</option>
+          <option value="hospitalization">入院</option>
+          <option value="retirement">引退</option>
+          <option value="move">転居</option>
+          <option value="other">その他</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="trm-reporter">報告者（スタッフ）</label>
+        <select id="trm-reporter">
+          <option value="">-- 選択してください --</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="trm-terminate-date">利用終了予定日</label>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <input
+            type="date"
+            id="trm-terminate-date"
+          >
+          <button id="trm-today-btn" style="flex-shrink: 0;">今日</button>
+          <button id="trm-add-day-btn" style="flex-shrink: 0;">＋1日</button>
+          <button id="trm-sub-day-btn" style="flex-shrink: 0;">−1日</button>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button id="trm-submit-btn" style="background-color: #27ae60;">終了登録を送信</button>
+        <button id="trm-cancel-btn" style="background-color: #e74c3c;">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>利用終了予定者一覧</h2>
+    <div id="trm-list-container" class="list-container">
+      <div class="empty-state">
+        <div class="empty-state-icon">📭</div>
+        <p>利用終了予定者はいません</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>終了済み利用者</h2>
+    <p style="margin-bottom: 15px; color: #666;">利用終了した利用者を表示します</p>
+    <div id="trm-completed-container" class="list-container">
+      <div class="empty-state">
+        <div class="empty-state-icon">✅</div>
+        <p>終了済み利用者はいません</p>
+      </div>
+    </div>
+  </div>
+</div>
+  </div>
+  <!-- モーダル: 中止管理 編集 -->
+  <div id="trm-edit-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">利用終了を編集</div>
+      <div id="trm-edit-body" style="margin-bottom: 15px;"></div>
+      <div class="modal-footer">
+        <button id="trm-edit-cancel-btn" style="background-color: #95a5a6;">キャンセル</button>
+        <button id="trm-edit-submit-btn" style="background-color: #27ae60;">更新</button>
+      </div>
+    </div>
+  </div>
+  <!-- モーダル: 長期休みチェックリスト -->
+  <div id="trm-checklist-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">終了後タスクチェックリスト</div>
+      <div id="trm-checklist-body" style="margin-bottom: 15px;"></div>
+      <div class="modal-footer">
+        <button id="trm-checklist-close-btn" style="background-color: #95a5a6;">閉じる</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    /**
+     * ========================================
+     * P3: leave-terminate.html
+     * 骨格段階（関数移植は次ステップ）
+     * ========================================
+     */
+
+    // ========================================
+    // グローバル state
+    // ========================================
+    const longTermState = {
+      selectedUser: null,
+      resumeWizardVisible: false,
+      resumeState: {
+        staff: null,
+        contact: null,
+        method: null
+      }
+    };
+
+    const trmState = {
+      selectedUser: null,
+      formVisible: false,
+      searchResults: [],
+      terminationData: [],
+      completedData: [],
+      editTarget: null
+    };
+
+    // ========================================
+    // タブ切り替え
+    // ========================================
+    function initTabs() {
+      const tabButtons = document.querySelectorAll('.tab-button');
+      const tabContents = document.querySelectorAll('.tab-content');
+
+      tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tabName = btn.dataset.tab;
+
+          // アクティブクラスを更新
+          tabButtons.forEach(b => b.classList.remove('active'));
+          tabContents.forEach(c => c.classList.remove('active'));
+
+          btn.classList.add('active');
+          document.getElementById(tabName).classList.add('active');
+
+          // タブ切り替え時の初期化（未実装）
+          if (tabName === 'long-term') {
+            // absLoadLongTermList() → 次ステップ
+          } else if (tabName === 'terminate') {
+            // trmLoadList() → 次ステップ
+          }
+        });
+      });
+    }
+
+    // ========================================
+    // 長期休みタブ：イベントリスナー
+    // ========================================
+    function initLongTermTab() {
+      const searchInput = document.getElementById('long-term-user-search');
+      const wizard = document.getElementById('long-term-wizard');
+      const submitBtn = document.getElementById('long-term-submit-btn');
+      const cancelBtn = document.getElementById('long-term-cancel-btn');
+
+      searchInput.addEventListener('input', () => {
+        // absSearchLongTermUser() → 次ステップ
+      });
+
+      submitBtn.addEventListener('click', () => {
+        // absSubmitResume() → 次ステップ
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        longTermState.selectedUser = null;
+        wizard.style.display = 'none';
+        searchInput.value = '';
+        // UI リセット
+      });
+    }
+
+    // ========================================
+    // 中止管理タブ：イベントリスナー
+    // ========================================
+    function initTerminateTab() {
+      const searchInput = document.getElementById('trm-user-search');
+      const form = document.getElementById('trm-form');
+      const submitBtn = document.getElementById('trm-submit-btn');
+      const cancelBtn = document.getElementById('trm-cancel-btn');
+      const todayBtn = document.getElementById('trm-today-btn');
+      const addDayBtn = document.getElementById('trm-add-day-btn');
+      const subDayBtn = document.getElementById('trm-sub-day-btn');
+      const dateInput = document.getElementById('trm-terminate-date');
+
+      searchInput.addEventListener('input', () => {
+        // trmSearchName() → 次ステップ
+      });
+
+      submitBtn.addEventListener('click', () => {
+        // trmSubmit() → 次ステップ
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        trmState.selectedUser = null;
+        form.style.display = 'none';
+        searchInput.value = '';
+        // UI リセット
+      });
+
+      todayBtn.addEventListener('click', () => {
+        dateInput.value = new Date().toISOString().split('T')[0];
+      });
+
+      addDayBtn.addEventListener('click', () => {
+        // trmAddOneDay() → 次ステップ
+      });
+
+      subDayBtn.addEventListener('click', () => {
+        // trmSubtractOneDay() → 次ステップ
+      });
+    }
+
+    // ========================================
+    // モーダル操作
+    // ========================================
+    function openModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (modal) modal.classList.add('active');
+    }
+
+    function closeModal(modalId) {
+      const modal = document.getElementById(modalId);
+      if (modal) modal.classList.remove('active');
+    }
+
+    // モーダルの背景をクリックで閉じる
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.remove('active');
+        }
+      });
+    });
+
+    // ========================================
+    // 編集モーダル
+    // ========================================
+    const editCancelBtn = document.getElementById('trm-edit-cancel-btn');
+    const editSubmitBtn = document.getElementById('trm-edit-submit-btn');
+
+    if (editCancelBtn) {
+      editCancelBtn.addEventListener('click', () => {
+        closeModal('trm-edit-modal');
+        // trmCloseEditModal() → 次ステップ
+      });
+    }
+
+    if (editSubmitBtn) {
+      editSubmitBtn.addEventListener('click', () => {
+        // trmSubmitEdit() → 次ステップ
+      });
+    }
+
+    // チェックリストモーダル
+    const checklistCloseBtn = document.getElementById('trm-checklist-close-btn');
+    if (checklistCloseBtn) {
+      checklistCloseBtn.addEventListener('click', () => {
+        closeModal('trm-checklist-modal');
+      });
+    }
+
+    // ========================================
+    // ページロード時の初期化
+    // ========================================
+    window.addEventListener('load', () => {
+      console.log('[leave-terminate.html] 初期化開始');
+
+      initTabs();
+      initLongTermTab();
+      initTerminateTab();
+
+      // 関数移植後のロード処理（次ステップ）
+      // absLoadLongTermList();
+      // trmLoadList();
+
+      console.log('[leave-terminate.html] 初期化完了');
+    });
+  </script>
+</body>
+</html>
