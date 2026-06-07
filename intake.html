@@ -1,0 +1,1869 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>見学体験管理 - yawaragi</title>
+  <script src="shared.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif; background: #f5f5f5; color: #2d3748; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .tab-content { display: block; }   /* 単一タブ常時表示(board の display:none を上書き) */
+    .modal-overlay {
+                display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 1000;
+                align-items: center; justify-content: center; padding: 20px;
+            }
+    .modal-overlay.show { display: flex; }
+    /* ===== 見学・体験・新規タブ（2026/4/19追加）===== */
+            .intake-quick-form { background:#e6fffa; border:2px solid #2c7a7b; border-radius:12px; padding:16px; margin-bottom:16px; }
+    .intake-quick-form h3 { margin:0 0 8px; color:#2c7a7b; font-size:18px; }
+    .intake-quick-form label { display:block; font-weight:bold; margin:8px 0 4px; font-size:14px; }
+    .intake-quick-form input, .intake-quick-form textarea, .intake-quick-form select {
+                width:100%; padding:10px; font-size:16px; border:1px solid #b2f5ea; border-radius:6px; box-sizing:border-box;
+            }
+    .intake-quick-form textarea { min-height:60px; resize:vertical; }
+    .intake-quick-form .row { display:flex; gap:10px; }
+    .intake-quick-form .row > div { flex:1; }
+    .intake-quick-save { width:100%; padding:14px; font-size:17px; font-weight:bold; background:#2c7a7b; color:#fff; border:none; border-radius:8px; margin-top:12px; cursor:pointer; }
+    .intake-quick-save:disabled { background:#aaa; }
+    .intake-force-stop-notice { margin-top:10px; padding:12px; background:#fffaf0; border-left:4px solid #ed8936; font-size:14px; color:#744210; display:none; }
+    .intake-force-stop-notice.show { display:block; }
+    .intake-toolbar { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center; }
+    .intake-toolbar select, .intake-toolbar input, .intake-toolbar button { padding:8px; font-size:14px; border:1px solid #ccc; border-radius:6px; }
+    .intake-row { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+    .intake-row:hover { background:#f7fafc; }
+    .intake-row-main { flex:1; }
+    .intake-row-name { font-size:16px; font-weight:bold; }
+    .intake-row-sub { font-size:13px; color:#4a5568; margin-top:2px; }
+    .intake-row-warn { font-size:13px; color:#c53030; margin-top:4px; font-weight:bold; }
+    .intake-badge { display:inline-block; padding:3px 8px; border-radius:12px; font-size:12px; font-weight:bold; margin-left:6px; }
+    .intake-badge.pending { background:#fefcbf; color:#744210; }
+    .intake-badge.scheduled { background:#bee3f8; color:#2a4365; }
+    .intake-badge.done { background:#c6f6d5; color:#22543d; }
+    .intake-badge.on_hold { background:#fbd38d; color:#7b341e; }
+    .intake-badge.contracted { background:#d6bcfa; color:#44337a; }
+    .intake-badge.active { background:#2c7a7b; color:#fff; }
+    .intake-badge.rejected { background:#fed7d7; color:#742a2a; }
+    .intake-badge.cancelled { background:#cbd5e0; color:#4a5568; }
+    .intake-badge-kind-trial { background:#feebc8; color:#7b341e; }
+    .intake-badge-kind-visit { background:#e9d8fd; color:#44337a; }
+    /* .modal-overlay は既存の定義（line 202）を使用 */
+            #intake-modal.modal-overlay { padding: 20px; }
+    #intake-modal .modal-content { background:#fff; border-radius:12px; padding:20px; max-width:880px; width:96%; max-height:92vh; overflow-y:auto; }
+    /* 大ボタン：新規登録 */
+            .intake-new-btn { width:100%; padding:18px; font-size:18px; font-weight:bold; background:#2c7a7b; color:#fff; border:none; border-radius:12px; margin-bottom:16px; cursor:pointer; }
+    .intake-new-btn:hover { background:#285e61; }
+    /* タップ選択ボタングループ */
+            .iv-btn-group { display:flex; gap:6px; flex-wrap:wrap; }
+    .iv-btn { padding:10px 16px; min-width:56px; font-size:15px; font-weight:bold; background:#fff; color:#4a5568; border:2px solid #cbd5e0; border-radius:8px; cursor:pointer; user-select:none; }
+    .iv-btn:hover { background:#f7fafc; }
+    .iv-btn.active { background:#2c7a7b; color:#fff; border-color:#2c7a7b; }
+    .iv-btn.danger.active { background:#c53030; border-color:#c53030; }
+    .iv-btn.warn.active { background:#ed8936; border-color:#ed8936; }
+    .iv-btn.small { padding:8px 12px; min-width:44px; font-size:14px; }
+    /* 曜日ボタン */
+            .iv-day-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:6px; }
+    .iv-day-row .rank-label { min-width:56px; font-size:13px; font-weight:bold; color:#4a5568; }
+    .iv-day-btn { padding:8px 14px; min-width:44px; font-size:15px; font-weight:bold; background:#fff; color:#4a5568; border:2px solid #cbd5e0; border-radius:8px; cursor:pointer; }
+    .iv-day-btn.active { background:#4299e1; color:#fff; border-color:#4299e1; }
+    .iv-day-btn.disabled { opacity:0.35; cursor:not-allowed; background:#edf2f7; }
+    .iv-ampm-btn { padding:8px 14px; font-size:14px; font-weight:bold; background:#fff; color:#4a5568; border:2px solid #cbd5e0; border-radius:8px; cursor:pointer; }
+    .iv-ampm-btn.active { background:#ed8936; color:#fff; border-color:#ed8936; }
+    .intake-modal-section { margin-bottom:18px; }
+    .intake-modal-section h4 { margin:0 0 8px; padding:6px 10px; background:#edf2f7; border-left:4px solid #2c7a7b; font-size:15px; }
+    .intake-modal-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px 12px; }
+    .intake-modal-grid label { display:block; font-size:12px; font-weight:bold; margin-bottom:2px; color:#4a5568; }
+    .intake-modal-grid input, .intake-modal-grid select, .intake-modal-grid textarea {
+                width:100%; padding:6px; font-size:13px; border:1px solid #cbd5e0; border-radius:4px; box-sizing:border-box;
+            }
+    .intake-modal-grid .col2 { grid-column: span 2; }
+    .intake-modal-grid .col3 { grid-column: span 3; }
+    .intake-check-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .intake-check-item { padding:8px; border:1px solid #e2e8f0; border-radius:6px; display:flex; align-items:center; gap:8px; font-size:14px; cursor:pointer; }
+    .intake-check-item input[type="checkbox"] { width:18px; height:18px; }
+    .intake-check-item.checked { background:#f0fff4; border-color:#48bb78; }
+    .intake-check-item.overdue { background:#fff5f5; border-color:#fc8181; }
+    .intake-modal-actions {
+                display:flex; gap:8px; margin-top:16px; justify-content:space-between; flex-wrap:wrap;
+                position:sticky; bottom:-20px;
+                background:#fff;
+                padding:12px 0 8px;
+                margin-left:-20px; margin-right:-20px;
+                padding-left:20px; padding-right:20px;
+                border-top:2px solid #2c7a7b;
+                box-shadow:0 -4px 8px rgba(0,0,0,0.06);
+                z-index:5;
+            }
+    .intake-modal-actions button { padding:10px 16px; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:14px; }
+    /* 必須項目の未入力ハイライト（入力されたら自動で白に戻る） */
+            input.intake-required-empty,
+            select.intake-required-empty {
+                background:#fff5f5 !important;
+                border:2px solid #fc8181 !important;
+            }
+    .iv-btn-group.intake-required-empty {
+                background:#fff5f5;
+                border:2px solid #fc8181;
+                border-radius:6px;
+                padding:4px;
+            }
+    .intake-modal-actions .primary { background:#2c7a7b; color:#fff; }
+    .intake-modal-actions .danger { background:#c53030; color:#fff; }
+    .intake-modal-actions .approve { background:#ed8936; color:#fff; }
+    .intake-modal-actions .owner-ok { background:#38a169; color:#fff; }
+    .intake-modal-actions .plain { background:#e2e8f0; color:#2d3748; }
+    /* パイプライン本体 */
+            .kanban-grid { display:block; position:relative; }
+    /* カード */
+            .kanban-card { position:relative; background:#fff; border:1px solid var(--line); border-left:3px solid var(--accent,#5b7cba); border-radius:11px; padding:12px 14px; margin-bottom:8px; cursor:pointer; box-shadow:0 1px 2px rgba(28,30,38,.04); transition:box-shadow .15s,transform .15s,border-color .15s; }
+    .kanban-card:hover { box-shadow:0 8px 22px -10px rgba(28,30,38,.28); transform:translateY(-1px); }
+    .kanban-card-name { font-weight:700; color:var(--ink); font-size:15px; letter-spacing:.01em; }
+    .kanban-card-sub { color:var(--muted); font-size:12px; margin-top:3px; letter-spacing:.02em; }
+    .kanban-card-warn { color:#b65510; background:#fff6ec; border:1px solid #f4d8b6; border-radius:7px; font-size:11.5px; margin-top:8px; padding:4px 8px; line-height:1.45; }
+    .kanban-card-advance { display:inline-flex; align-items:center; gap:6px; margin-top:10px; background:var(--accent,#5b7cba); color:#fff; border:none; padding:7px 14px; border-radius:999px; font-size:12.5px; font-weight:700; cursor:pointer; letter-spacing:.02em; transition:filter .12s,box-shadow .12s; box-shadow:0 2px 8px -3px var(--accent,#5b7cba); }
+    .kanban-card-advance:hover { filter:brightness(1.06); }
+    .kanban-card-advance:disabled { background:#eceae4; color:#a9adb6; box-shadow:none; cursor:not-allowed; }
+    /* ドロップアウト */
+            .kanban-dropout-section { margin-top:20px; padding:14px 16px; background:#fbfaf7; border:1px solid var(--line); border-radius:14px; font-size:13px; color:#6b6f7a; }
+    .kanban-dropout-head { display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:#4a4f5a; }
+    .kanban-dropout-head .pl-x { width:18px; height:18px; border-radius:5px; background:#efece6; color:#8a8f9c; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
+    .kanban-dropout-details { margin-top:10px; display:none; padding-top:10px; border-top:1px solid var(--line); }
+    .kanban-dropout-details.open { display:block; }
+    .kanban-dropout-details > div { padding:3px 0; color:#6b6f7a; }
+    /* ビュー切替（セグメント）*/
+            .kanban-viewtoggle { display:inline-flex; gap:0; margin-bottom:14px; background:#efece6; border-radius:10px; padding:3px; }
+    .kanban-viewtoggle button { background:transparent; border:none; color:#7a7f8b; border-radius:8px; padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer; transition:all .14s; }
+    .kanban-viewtoggle button.active { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(28,30,38,.12); }
+    .gstep { border:1px solid var(--line); border-radius:13px; margin-bottom:10px; background:#fff; transition:border-color .15s,box-shadow .15s; }
+    .gstep.done { border-color:#dbe6df; }
+    .gstep.open { border-color:var(--accent); box-shadow:0 10px 26px -16px rgba(28,30,38,.4); }
+    .gstep-head { display:flex; align-items:center; gap:11px; padding:14px 15px; cursor:pointer; user-select:none; }
+    .gstep-badge { width:25px; height:25px; border-radius:999px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:800; background:#f0eee8; color:#9aa0ad; transition:all .15s; }
+    .gstep.open .gstep-badge { background:var(--accent); color:#fff; }
+    .gstep.done .gstep-badge { background:var(--ok); color:#fff; }
+    .gstep-q { font-size:14.5px; font-weight:700; color:var(--ink); }
+    .gstep-req { color:#c0563a; font-size:10.5px; margin-left:5px; font-weight:700; letter-spacing:.04em; }
+    .gstep-opt { color:#a8adb8; font-size:10.5px; margin-left:5px; font-weight:600; }
+    .gstep-sum { margin-left:auto; font-size:13px; color:var(--ok); font-weight:700; text-align:right; max-width:46%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .gstep.open .gstep-sum { display:none; }
+    .gstep-body { display:none; padding:0 15px 16px 51px; }
+    .gstep.open .gstep-body { display:block; animation:plFade .2s ease; }
+    .gstep-hint { font-size:12px; color:var(--muted); margin:0 0 9px; line-height:1.5; }
+    .gstep-next { margin-top:13px; background:var(--accent); color:#fff; border:none; border-radius:999px; padding:8px 22px; font-size:13.5px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px -3px var(--accent); }
+    .gstep-next:hover { filter:brightness(1.06); }
+    .gstep-body .intake-modal-grid { gap:10px; }
+    .gstep-body label { display:block; font-size:12px; font-weight:600; color:#5a5f6a; margin-bottom:4px; }
+    
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="app">
+      <div id="tab-intake" class="tab-content">
+          <button class="intake-new-btn" onclick="openIntakeModalNew()">🆕 新規登録（問合せ受付）</button>
+          <!-- ビュー切替（カンバン⇄リスト）2026-05-31 Phase C -->
+          <div class="kanban-viewtoggle">
+              <button id="intake-view-kanban" class="active" onclick="setIntakeView('kanban')">パイプライン</button>
+              <button id="intake-view-list" onclick="setIntakeView('list')">リスト</button>
+          </div>
+          <!-- カンバン -->
+          <div id="kanban-funnel-bar" class="kanban-funnel-bar"></div>
+          <div id="kanban-grid" class="kanban-grid"></div>
+          <div id="kanban-dropout" class="kanban-dropout-section"></div>
+          <!-- 旧リスト（ビュー切替で表示）-->
+          <div class="intake-toolbar" id="intake-toolbar" style="display:none;"></div>
+          <div class="intake-list" id="intake-list" style="display:none;">
+              <div style="padding:40px;text-align:center;color:#888;">読み込み中...</div>
+          </div>
+      </div>
+      <div id="intake-modal" class="modal-overlay">
+          <div class="modal-content" id="intake-modal-body"></div>
+      </div>
+      
+      <!-- ===== 利用者イベントタブは 契約担会ケアマネ.html に分離（2026/4/29） ===== -->
+    </div>
+  </div>
+
+  <script>
+    console.log('[intake.html] 初期化開始 / shared:', typeof gasPost, typeof YAWARAGIBOARD_API_URL);
+
+    /* ===== 同梱依存(P4と統一・board 1:1) ===== */
+    const DEFAULT_STAFF = [
+        '比嘉', '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'
+    ];
+    function getStaff() { return DEFAULT_STAFF; }
+
+    /* ===== 見学・体験(intake) board 1:1移植(board 12832-14491) =====
+       INTAKE_API_URL/自前escape/69関数を含む。ABS_BOARD_API_URLは元々0。 */
+    // ===== 見学・体験・新規 Intake タブ（2026/4/19追加・v2 タップUI）=====
+    // =====================================================================
+    
+    const INTAKE_API_URL = YAWARAGIBOARD_API_URL; // 後方互換エイリアス（2026-06-06一元化）
+    const INTAKE_KIND_LABEL = { inquiry: '問い合わせ', trial: '体験', visit: '見学' };
+    const INTAKE_STATUS_LABEL = {
+        pending: '受付中', scheduled: '予定確定', done: '完了',
+        on_hold: '利用保留', contracted: '契約済', active: '本格利用中',
+        rejected: '利用なし', cancelled: 'キャンセル'
+    };
+    const INTAKE_NO_USE_REASON = {
+        other_dayservice: '他社デイに決定',
+        price: '金額で折り合わず',
+        out_of_range: '送迎範囲外',
+        personal_no: '体験で本人NG',
+        other: 'その他'
+    };
+    const INTAKE_CARE_LEVELS = ['申請前・申請中', '要支援1', '要支援2', '要介護1', '要介護2', '要介護3', '要介護4', '要介護5', '不明'];
+    // 土曜営業開始時は '土' を追加（project_土曜営業検討.md 参照）
+    const INTAKE_DAY_BUTTONS = ['月', '火', '水', '木', '金'];
+    let _intakeCache = [];
+    let _cmCache = []; // ケアマネ連絡先キャッシュ
+    let _intakeModalMode = 'edit'; // 'new' or 'edit'
+    let _intakeModalDraft = null; // 新規時の一時データ
+    
+    function intakeEscapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    }
+    function intakeEscapeAttr(s) { return intakeEscapeHtml(s); }
+    
+    // 生年月日を和暦表示に変換 + 年齢自動計算（onblurで呼ばれる）
+    function intakeNormalizeBirthday() {
+        const bdEl = document.getElementById('m-生年月日');
+        const ageEl = document.getElementById('m-年齢');
+        if (!bdEl) return;
+        const raw = (bdEl.value || '').trim();
+        if (!raw) return;
+        // 全角数字を半角に
+        const half = raw.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+        // パース：YYYYMMDD / YYYY-MM-DD / YYYY/MM/DD / 昭和XX年X月X日 / 平成XX年X月X日 / 令和XX年X月X日
+        let y = 0, mo = 0, d = 0;
+        let m = half.match(/^(\d{4})(\d{2})(\d{2})$/);
+        if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+        if (!y) {
+            m = half.match(/^(\d{4})[\-\/.](\d{1,2})[\-\/.](\d{1,2})$/);
+            if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+        }
+        if (!y) {
+            m = half.match(/^(明治|大正|昭和|平成|令和)(\d{1,2})年(\d{1,2})月(\d{1,2})日$/);
+            if (m) {
+                const era = m[1], en = +m[2];
+                const baseY = era === '明治' ? 1867 : era === '大正' ? 1911 : era === '昭和' ? 1925 : era === '平成' ? 1988 : 2018;
+                y = baseY + en; mo = +m[3]; d = +m[4];
+            }
+        }
+        if (!y || !mo || !d) return; // パース失敗ならそのまま
+        // 西暦→和暦
+        const dt = y * 10000 + mo * 100 + d;
+        let era = '', en = 0;
+        if (dt >= 20190501) { era = '令和'; en = y - 2018; }
+        else if (dt >= 19890108) { era = '平成'; en = y - 1988; }
+        else if (dt >= 19261225) { era = '昭和'; en = y - 1925; }
+        else if (dt >= 19120730) { era = '大正'; en = y - 1911; }
+        else { era = '明治'; en = y - 1867; }
+        bdEl.value = era + en + '年' + mo + '月' + d + '日';
+        // 年齢計算
+        const today = new Date();
+        let age = today.getFullYear() - y;
+        if (today.getMonth() + 1 < mo || (today.getMonth() + 1 === mo && today.getDate() < d)) age--;
+        if (ageEl && age >= 0 && age < 130) ageEl.value = age;
+    }
+    
+    // 日本の電話番号を自動でハイフン整形する
+    function formatJPPhone(input) {
+        if (!input) return '';
+        // 全角数字を半角に変換 + 数字以外を削除
+        var s = String(input).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[^\d]/g, '');
+        if (!s) return '';
+        // フリーダイヤル: 0120-XXX-XXX / 0800-XXX-XXXX
+        if (s.length === 10 && s.startsWith('0120')) return s.slice(0,4) + '-' + s.slice(4,7) + '-' + s.slice(7);
+        if (s.length === 11 && s.startsWith('0800')) return s.slice(0,4) + '-' + s.slice(4,7) + '-' + s.slice(7);
+        // 携帯/IP: 090/080/070/050 → XXX-XXXX-XXXX
+        if (s.length === 11 && /^(090|080|070|050)/.test(s)) return s.slice(0,3) + '-' + s.slice(3,7) + '-' + s.slice(7);
+        // 大都市固定: 03/06 → XX-XXXX-XXXX
+        if (s.length === 10 && /^(03|06)/.test(s)) return s.slice(0,2) + '-' + s.slice(2,6) + '-' + s.slice(6);
+        // 一般固定（市外局番4桁・東松山0493等） → XXXX-XX-XXXX
+        if (s.length === 10) return s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6);
+        // 整形できない場合は元の数字列を返す
+        return s;
+    }
+    
+    // ===== ケアマネ連絡先キャッシュ =====
+    // 2026-05-11: ケアマネマスタ（送付用居宅一覧）＋利用者台帳の登録済みケアマネをマージ
+    function loadCmContactsCache(onLoaded) {
+        const cbName = 'cmContactsCb_' + Date.now();
+        const url = INTAKE_API_URL + '?action=contacts&callback=' + cbName;
+        window[cbName] = function(resp) {
+            if (resp && resp.success) _cmCache = resp.cmContacts || [];
+            // ケアマネマスタ取得完了 → 続けて利用者台帳のケアマネをマージ
+            loadCmFromUserListCache(function() {
+                refreshCmPickerIfOpen();
+                if (typeof onLoaded === 'function') onLoaded();
+            });
+            try { delete window[cbName]; } catch(e){}
+        };
+        const script = document.createElement('script');
+        script.src = url;
+        document.body.appendChild(script);
+        setTimeout(() => { try { script.remove(); } catch(e){} }, 8000);
+    }
+    
+    // 利用者台帳に登録されている全利用者の cmOffice+cmName を _cmCache にマージ
+    function loadCmFromUserListCache(onLoaded) {
+        const cbName = 'cmFromUsersCb_' + Date.now();
+        const url = ABS_USER_API_URL + '?action=cmFromUsers&callback=' + cbName;
+        window[cbName] = function(resp) {
+            if (resp && resp.success && Array.isArray(resp.cmFromUsers)) {
+                const seen = {};
+                _cmCache.forEach(c => { seen[(c.office || '') + '|' + (c.name || '')] = true; });
+                resp.cmFromUsers.forEach(c => {
+                    const k = (c.office || '') + '|' + (c.name || '');
+                    if (!seen[k] && (c.office || c.name)) {
+                        _cmCache.push({ office: c.office || '', name: c.name || '', email: '' });
+                        seen[k] = true;
+                    }
+                });
+            }
+            if (typeof onLoaded === 'function') onLoaded();
+            try { delete window[cbName]; } catch(e){}
+        };
+        const script = document.createElement('script');
+        script.src = url;
+        document.body.appendChild(script);
+        setTimeout(() => { try { script.remove(); } catch(e){} }, 8000);
+    }
+    
+    function refreshCmPickerIfOpen() {
+        const officePicker = document.getElementById('m-ケアマネ事業所-picker');
+        const textEl = document.getElementById('m-ケアマネ事業所');
+        if (!officePicker || !textEl) return;
+        const currentOffice = textEl.value;
+        const offices = Array.from(new Set(_cmCache.map(c => c.office).filter(Boolean))).sort();
+        officePicker.innerHTML = '<option value="">▼ 既存の事業所から選ぶ</option>'
+            + offices.map(o => `<option value="${intakeEscapeAttr(o)}"${o === currentOffice ? ' selected' : ''}>${intakeEscapeHtml(o)}</option>`).join('');
+        ivOnCmOfficeChange();
+    }
+    
+    // ===== 送迎時間スロット（行きの送迎時間帯）=====
+    // 午前単位：07:50〜08:55（5分刻み、14スロット）
+    // 午後単位：12:30〜13:25（5分刻み、12スロット）
+    const INTAKE_TIME_AM = (() => {
+        const a = ['07:50','07:55'];
+        for (let m = 0; m < 60; m += 5) a.push('08:' + String(m).padStart(2,'0'));
+        return a;
+    })();
+    const INTAKE_TIME_PM = (() => {
+        const a = [];
+        for (let m = 30; m < 60; m += 5) a.push('12:' + String(m).padStart(2,'0'));
+        for (let m = 0; m < 30; m += 5) a.push('13:' + String(m).padStart(2,'0'));
+        return a;
+    })();
+    function intakeTimeOptions(selected, ampm) {
+        // ampm: 'AM' or 'PM' or null (両方)
+        let slots;
+        if (ampm === 'AM') slots = INTAKE_TIME_AM;
+        else if (ampm === 'PM') slots = INTAKE_TIME_PM;
+        else slots = INTAKE_TIME_AM.concat(INTAKE_TIME_PM);
+        let html = '<option value="">-</option>';
+        slots.forEach(t => {
+            html += `<option value="${t}"${selected === t ? ' selected' : ''}>${t}</option>`;
+        });
+        return html;
+    }
+    
+    // ===== 新規モーダルを開く =====
+    // ===== 新規受付 ガイド付きアコーディオン（2026-05-31）=====
+    // 種別(問合せ/見学/体験)で聞く項目・必須・聞き方が変わる適応型フォーム。
+    function gstepVal(id) { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
+    function gsKind() { return ivGetGroupValue('種別'); } // '' | inquiry | visit | trial
+    function gsIsVisitOrTrial() { return ['visit','trial'].indexOf(gsKind()) >= 0; }
+    
+    const GSTEP_DEFS = [
+        { n:1, q:'誰からの連絡？', required:true,
+          sum:()=>({caremane:'ケアマネ',self:'本人・家族',walkin:'飛び込み'})[ivGetGroupValue('連絡元区分')]||'' },
+        { n:2, q:'ケアマネの事業所・担当', cond:()=>ivGetGroupValue('連絡元区分')==='caremane',
+          required:()=>ivGetGroupValue('連絡元区分')==='caremane',
+          sum:()=>{ const o=gstepVal('m-ケアマネ事業所'), nm=gstepVal('m-ケアマネ氏名'); return (o||nm)?(o+' '+nm).trim():''; } },
+        { n:3, q:'今回はどれ？', required:true,
+          sum:()=>({inquiry:'問い合わせ',visit:'見学',trial:'体験'})[ivGetGroupValue('種別')]||'' },
+        { n:4, q:'お名前', required:true,
+          sum:()=>{ const f=gstepVal('m-ふりがな'), k=gstepVal('m-氏名'); return k?(k+(f?'（'+f+'）':'')):(f||''); } },
+        { n:5, q:'電話番号', required:true, sum:()=>gstepVal('m-TEL') },
+        { n:6, q:'介護度', required:true, sum:()=>ivGetGroupValue('介護度') },
+        { n:7, q:'ペースメーカー', cond:gsIsVisitOrTrial, required:()=>gsKind()==='trial',
+          note:'運動機器の干渉波の安全確認。体験は必須です。',
+          dynQ:()=>gsKind()==='trial'?'ペースメーカー（体験は必須）':'ペースメーカー（念のため）',
+          sum:()=>ivGetGroupValue('ペースメーカー') },
+        { n:8, q:'予定日', cond:gsIsVisitOrTrial,
+          dynQ:()=>gsKind()==='visit'?'見学はいつ？（決まっていれば）':'体験はいつ？（決まっていれば）',
+          sum:()=>{ const d=gstepVal('m-予定日'); if(!d) return ''; const ap=ivGetGroupValue('予定日AMPM'); return d+(ap?(' '+ap):''); } },
+        { n:9, q:'主訴・メモ', dynQ:()=>'主訴・メモ（任意）', sum:()=>gstepVal('m-主訴') }
+    ];
+    function gstepDef(n){ return GSTEP_DEFS.filter(d=>d.n===n)[0]; }
+    function gstepReq(d){ return typeof d.required==='function'?!!d.required():!!d.required; }
+    function gstepCond(d){ return d.cond?!!d.cond():true; }
+    function gstepDone(d){ return !!(d.sum && d.sum()); }
+    
+    function buildIntakeGuidedForm(r) {
+        const today = new Date().toISOString().slice(0,10);
+        const careLevels = INTAKE_CARE_LEVELS.slice();
+        if (r.介護度 && careLevels.indexOf(r.介護度) === -1) careLevels.unshift(r.介護度);
+        const telOpts = ['', '本人','夫','妻','息子','娘','長男','長女','次男','次女','嫁','婿','兄','姉','弟','妹','その他'];
+        const telSel = `<select id="m-TEL続柄">${telOpts.map(o=>`<option value="${intakeEscapeAttr(o)}"${o===(r.TEL続柄||'')?' selected':''}>${o||'誰?'}</option>`).join('')}</select>`;
+        const bodies = {
+            1: ivRenderBtnGroup('連絡元区分',['caremane','self','walkin'],['ケアマネ','本人・家族','飛び込み'], r.連絡元区分||'', { onchange:'gstepOnGroup' }),
+            2: `<div class="gstep-hint">事業所→担当の順で選べます。新しいケアマネは直接入力でOK。</div>`
+               + `<div class="intake-modal-grid">${ivRenderCmCascade(r.ケアマネ事業所||'', r.ケアマネ氏名||'')}</div>`
+               + `<button type="button" class="gstep-next" onclick="gstepAdvance(2)">次へ</button>`,
+            3: `<div class="gstep-hint">一般的な流れは「問い合わせ → 見学 → 体験」。問い合わせから直接体験や、飛び込み見学もOK。今回どれかを選んでください。</div>`
+               + ivRenderBtnGroup('種別',['inquiry','visit','trial'],['問い合わせ','見学','体験'], '', { onchange:'gstepOnGroup' }),
+            4: `<div class="gstep-hint">漢字が分からなければ、ふりがなだけでOK。</div>`
+               + `<div class="intake-modal-grid"><div><label>ふりがな</label><input id="m-ふりがな" value="${intakeEscapeAttr(r.ふりがな)}" oninput="gstepSync()"></div>`
+               + `<div><label>氏名（漢字）</label><input id="m-氏名" value="${intakeEscapeAttr(r.氏名)}" oninput="gstepSync()"></div></div>`
+               + `<button type="button" class="gstep-next" onclick="gstepAdvance(4)">次へ</button>`,
+            5: `<div class="intake-modal-grid"><div class="col2"><label>電話番号</label><input id="m-TEL" value="${intakeEscapeAttr(r.TEL)}" placeholder="090-1234-5678" oninput="gstepSync()" onblur="this.value=formatJPPhone(this.value);gstepSync()"></div>`
+               + `<div><label>続柄（誰の番号？）</label>${telSel}</div></div>`
+               + `<button type="button" class="gstep-next" onclick="gstepAdvance(5)">次へ</button>`,
+            6: ivRenderBtnGroup('介護度', careLevels, null, r.介護度||'', { onchange:'gstepOnGroup' }),
+            7: `<div class="gstep-hint" id="gstep7-hint"></div>`
+               + ivRenderBtnGroup('ペースメーカー',['無','有','不明'], null, r.ペースメーカー||'', { onchange:'gstepOnGroup' }),
+            8: `<div class="intake-modal-grid"><div class="col2"><label>日付</label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" oninput="gstepSync()"><span id="m-予定日-dow" style="font-weight:700;color:var(--accent);"></span></div></div>`
+               + `<div><label>時間帯</label>${ivRenderBtnGroup('予定日AMPM',['AM','PM'], null, r.予定日AMPM||'', { onchange:'gstepSync' })}</div></div>`
+               + `<button type="button" class="gstep-next" onclick="gstepAdvance(8)">次へ</button>`,
+            9: `<div class="intake-modal-grid"><div class="col3"><label>困っていること・電話メモ</label><textarea id="m-主訴" oninput="gstepSync()" placeholder="例：膝が痛い／運動不足／ケアマネ紹介">${intakeEscapeHtml(r.主訴)}</textarea></div></div>`
+        };
+        const stepsHtml = GSTEP_DEFS.map(d => {
+            const body = bodies[d.n] || '';
+            return `<div class="gstep" id="gstep-${d.n}" data-n="${d.n}">`
+                + `<div class="gstep-head" onclick="gstepHeadClick(${d.n})">`
+                +   `<span class="gstep-badge">${d.n}</span>`
+                +   `<span class="gstep-q"><span class="gstep-qt"></span><span class="gstep-mark"></span></span>`
+                +   `<span class="gstep-sum"></span></div>`
+                + `<div class="gstep-body">${body}</div></div>`;
+        }).join('');
+        return `<div class="gform">`
+            + `<div class="gform-head">新規受付</div>`
+            + `<div class="gform-intro">電話で聞いた順に、上から答えてください。1つ答えると次が開きます。忙しくなったら「中断して保存」でOK。</div>`
+            + `<input type="hidden" id="m-問い合わせ日" value="${today}">`
+            + stepsHtml
+            + `<div class="gform-actions"><span class="gform-progress" id="gstep-progress"></span>`
+            +   `<button class="plain" onclick="closeIntakeModal()">閉じる</button>`
+            +   `<button onclick="saveIntakeModalNew(true)" style="background:#ed8936;color:#fff;border:none;padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer;">⏸️ 中断して保存</button>`
+            +   `<button class="primary" onclick="saveIntakeModalNew(false)">保存</button></div>`
+            + `</div>`;
+    }
+    
+    function gstepSync() {
+        let reqTotal = 0, reqDone = 0, disp = 0;
+        GSTEP_DEFS.forEach(d => {
+            const el = document.getElementById('gstep-' + d.n);
+            if (!el) return;
+            const show = gstepCond(d);
+            el.style.display = show ? '' : 'none';
+            if (!show) return;
+            disp++; // 見えている段だけで番号を振り直す（隠れた段で欠番にしない）
+            const badge = el.querySelector('.gstep-badge');
+            if (badge) badge.textContent = disp;
+            const done = gstepDone(d), req = gstepReq(d);
+            el.classList.toggle('done', done);
+            const qt = el.querySelector('.gstep-qt');
+            if (qt) qt.textContent = d.dynQ ? d.dynQ() : d.q;
+            const mark = el.querySelector('.gstep-mark');
+            if (mark) mark.innerHTML = req ? '<span class="gstep-req">必須</span>' : '<span class="gstep-opt">任意</span>';
+            const sumEl = el.querySelector('.gstep-sum');
+            if (sumEl) sumEl.textContent = done ? ('✓ ' + d.sum()) : '';
+            if (req) { reqTotal++; if (done) reqDone++; }
+        });
+        const h7 = document.getElementById('gstep7-hint');
+        if (h7) h7.textContent = gstepDef(7).note;
+        if (typeof intakeUpdateYoteibiDow === 'function') intakeUpdateYoteibiDow();
+        const prog = document.getElementById('gstep-progress');
+        if (prog) {
+            const left = reqTotal - reqDone;
+            prog.textContent = left > 0 ? `必須 残り${left}項目` : '✓ 必須そろいました';
+            prog.classList.toggle('allok', left === 0);
+        }
+    }
+    function gstepOpen(n) {
+        GSTEP_DEFS.forEach(d => {
+            const el = document.getElementById('gstep-' + d.n);
+            if (el) el.classList.toggle('open', d.n === n);
+        });
+        const open = document.getElementById('gstep-' + n);
+        if (open) {
+            const inp = open.querySelector('.gstep-body input:not([type=hidden]), .gstep-body textarea, .gstep-body select');
+            if (inp) setTimeout(() => { try { inp.focus({ preventScroll:true }); } catch(e){} }, 60);
+            try { open.scrollIntoView({ behavior:'smooth', block:'nearest' }); } catch(e){}
+        }
+    }
+    function gstepHeadClick(n) {
+        const el = document.getElementById('gstep-' + n);
+        if (el && el.classList.contains('open')) gstepOpen(0); // 開いてるのを再タップで閉じる
+        else gstepOpen(n);
+    }
+    function gstepAdvance(n) {
+        gstepSync();
+        const next = GSTEP_DEFS.filter(d => d.n > n && gstepCond(d) && !gstepDone(d))[0];
+        if (next) gstepOpen(next.n); else gstepOpen(0);
+    }
+    function gstepOnGroup() {
+        const openEl = document.querySelector('.gstep.open');
+        const n = openEl ? parseInt(openEl.dataset.n, 10) : 0;
+        gstepAdvance(n);
+    }
+    function gstepInit() {
+        gstepSync();
+        const first = GSTEP_DEFS.filter(d => gstepCond(d) && !gstepDone(d))[0];
+        gstepOpen(first ? first.n : 1);
+    }
+    
+    function openIntakeModalNew() {
+        _intakeModalMode = 'new';
+        const today = new Date().toISOString().slice(0,10);
+        const staff = localStorage.getItem('yawaragi_staff') || '';
+        _intakeModalDraft = {
+            id: '', 種別: 'trial', 問い合わせ日: today, 予定日: '',
+            初回対応スタッフ: staff, ケアマネ氏名: '', ケアマネ事業所: '',
+            ふりがな: '', 氏名: '', 性別: '', 生年月日: '', 年齢: '', 介護度: '',
+            住所区分: '東松山市', 住所詳細: '', TEL: '', TEL続柄: '',
+            送迎有無: undefined, 直接連絡可否: undefined,
+            利用希望曜日: '', 'yawarigi希望曜日': '', 最終決定曜日: '',
+            お試し送迎順: '', 利用時送迎順: '',
+            主訴: '', 他デイ見学: undefined, yawaragi何番目: '',
+            ペースメーカー: '',
+            利用有無: '未定', 利用なし理由: '', 利用なし理由詳細: '',
+            利用日前日連絡フラグ: false,
+            ケアマネ連絡済: false, 送迎時間連絡済: false,
+            週間予定表仮予約済: false, 全記入済: false,
+            社長確認済: false, 社長確認依頼日時: '',
+            ステータス: 'pending', 登録者: staff,
+            // 前日連絡（強化）
+            前日連絡日時: '', 前日連絡担当: '', 前日連絡相手: '', 前日連絡メモ: '',
+            // 初回送迎準備
+            表札有無: '', 訪問注意事項: '',
+            // 契約準備フロー
+            本格利用開始日: '',
+            初回お迎え時間: '', 初回お迎え時間報告済: false,
+            // 利用者台帳同期
+            利用者台帳反映済: false, 利用者台帳反映日時: '',
+            // ケアマネ連絡フロー
+            ケアマネ報告済: false, ケアマネ報告日時: '', ケアマネ報告内容: '',
+            ケアマネ利用可否連絡日: '', ケアマネ利用可否回答: '',
+            契約順位: '',
+            // 決定理由（経営分析用）
+            決定理由: '', 決定理由詳細: '',
+            // 送迎準備
+            'Googleマップ登録済み': false
+        };
+        document.getElementById('intake-modal-body').innerHTML = buildIntakeGuidedForm(_intakeModalDraft);
+        document.getElementById('intake-modal').classList.add('show');
+        if (_cmCache.length === 0) loadCmContactsCache(); // キャッシュ未取得なら今取得
+        setTimeout(() => { gstepInit(); ivOnCmOfficeChange(); }, 0);
+    }
+    
+    // ===== Task 9: 一覧表示 =====
+    
+    function intakeWarnings(r) {
+        const warns = [];
+        if (r.ペースメーカー === '不明') warns.push('🚨ペースメーカー未確認');
+        const today = new Date().toISOString().slice(0,10);
+        const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+        // 体験/見学が明日 → 前日連絡リマインド
+        if (r.予定日 === tomorrow && !r.前日連絡日時) {
+            warns.push('📞 明日が予定日：前日連絡してください');
+        }
+        // 体験/見学が明日まで → Googleマップ未登録警告（送迎者が困る）
+        if (r.予定日 && r.予定日 <= tomorrow && r.予定日 >= today && !r['Googleマップ登録済み']) {
+            warns.push('🗺️ Googleマップ未登録：送迎前に登録してください');
+        }
+        if (r.予定日 && r.予定日 >= today && !r.送迎時間連絡済) {
+            const dDay = (new Date(r.予定日) - new Date(today)) / 86400000;
+            if (dDay <= 1) warns.push('🟠送迎時間連絡 前日');
+        }
+        if (r.予定日 && r.予定日 < today && !r.ケアマネ連絡済) {
+            warns.push('🔴ケアマネ連絡 超過');
+        }
+        if (r.社長確認依頼日時 && !r.社長確認済) warns.push('📩社長確認待ち');
+        // 体験後フォロー状態（GAS@v213 が followup:{追客,ケアマネ} を返す・表示のみ）
+        if (r.followup) {
+            if (r.followup.追客) warns.push(r.followup.追客);
+            if (r.followup.ケアマネ) warns.push(r.followup.ケアマネ);
+        }
+        return warns;
+    }
+    
+    function renderIntakeToolbar() {
+        const host = document.getElementById('intake-toolbar');
+        if (!host) return;
+        const opts = Object.keys(INTAKE_STATUS_LABEL).map(k =>
+            `<option value="${k}">${INTAKE_STATUS_LABEL[k]}</option>`
+        ).join('');
+        host.innerHTML = ''
+            + '<select id="if-status"><option value="">全ステータス</option>' + opts + '</select>'
+            + '<label style="display:flex;align-items:center;gap:4px;font-size:14px;">'
+            +   '<input type="checkbox" id="if-warn"> 要対応のみ'
+            + '</label>'
+            + '<label style="display:flex;align-items:center;gap:4px;font-size:14px;">'
+            +   '<input type="checkbox" id="if-approval"> 社長確認待ちのみ'
+            + '</label>'
+            + '<button onclick="loadIntakeList()">🔄 更新</button>';
+        document.getElementById('if-status').addEventListener('change', loadIntakeList);
+        document.getElementById('if-warn').addEventListener('change', loadIntakeList);
+        document.getElementById('if-approval').addEventListener('change', loadIntakeList);
+    }
+    
+    function loadIntakeList(_retryCount) {
+        _retryCount = _retryCount || 0;
+        renderIntakeToolbar();
+        const statusEl = document.getElementById('if-status');
+        const warnEl = document.getElementById('if-warn');
+        const apprEl = document.getElementById('if-approval');
+        const status = statusEl ? statusEl.value : '';
+        const warnOnly = warnEl ? warnEl.checked : false;
+        const approvalOnly = apprEl ? apprEl.checked : false;
+    
+        const host = document.getElementById('intake-list');
+        host.innerHTML = _retryCount > 0
+            ? '<div style="padding:20px;text-align:center;color:#888;">再読み込み中... (' + _retryCount + ')</div>'
+            : '<div style="padding:20px;text-align:center;color:#888;">読み込み中...</div>';
+    
+        const cbName = 'intakeListCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+        let url = INTAKE_API_URL + '?action=intake_list&callback=' + cbName;
+        if (status) url += '&status=' + encodeURIComponent(status);
+        if (approvalOnly) url += '&pendingApproval=1';
+    
+        window[cbName] = function(resp) {
+            try {
+                if (!resp || !resp.success) {
+                    host.innerHTML = '<div style="color:red;padding:20px;">取得失敗: ' + (resp && resp.error || '不明なエラー') + '</div>';
+                    return;
+                }
+                let list = resp.intakes || [];
+                _intakeCache = list;
+                // カンバンは全件（warnOnlyフィルタはリスト表示時のみ適用）
+                renderKanban(list);
+                loadKanbanFunnel();
+                const listView = warnOnly ? list.filter(r => intakeWarnings(r).length > 0) : list;
+                renderIntakeList(listView);
+            } catch (e) {
+                host.innerHTML = '<div style="color:red;padding:20px;font-family:monospace;font-size:12px;">描画エラー: ' + (e && e.message || e) + '<br><br>' + (e && e.stack || '') + '</div>';
+            } finally {
+                try { delete window[cbName]; } catch(e){}
+            }
+        };
+        const script = document.createElement('script');
+        script.src = url;
+        script.onerror = function() {
+            host.innerHTML = '<div style="color:red;padding:20px;">通信エラー：GASに接続できません。Ctrl+Shift+R でリロードしてください。</div>';
+            try { delete window[cbName]; } catch(e){}
+        };
+        document.body.appendChild(script);
+        setTimeout(() => {
+            try { script.remove(); } catch(e){}
+            // タイムアウト時にコールバックが残っていれば、自動リトライ（最大2回）
+            if (typeof window[cbName] === 'function') {
+                try { delete window[cbName]; } catch(e){}
+                if (_retryCount < 2) {
+                    setTimeout(() => loadIntakeList(_retryCount + 1), 500);
+                } else {
+                    host.innerHTML = '<div style="color:red;padding:20px;">取得タイムアウト：GAS応答なし（リトライ2回失敗）。Ctrl+Shift+R でリロードしてください。</div>';
+                }
+            }
+        }, 8000);
+    }
+    
+    // ===== 受付カンバン Phase C（2026-05-31）=====
+    // 段階別アクセント：冷たい入口(藍)→温まる体験(琥珀)→到達(緑)へ進む配色
+    const KANBAN_PHASES = [
+        { key:'受付',         label:'受付',         accent:'#5b7cba' },
+        { key:'見学',         label:'見学',         accent:'#7a6bc4' },
+        { key:'体験',         label:'体験',         accent:'#cf8a3c' },
+        { key:'契約準備',     label:'契約準備',     accent:'#3f9e7c' },
+        { key:'利用開始準備', label:'利用開始準備', accent:'#2f8f6b' }
+    ];
+    const KANBAN_NEXT = {
+        '受付': function(r){ return r.種別 === 'visit' ? '見学' : '体験'; },
+        '見学': function(){ return '体験'; }, '体験': function(){ return '契約準備'; },
+        '契約準備': function(){ return '利用開始準備'; }, '利用開始準備': function(){ return 'アーカイブ'; }
+    };
+    // GAS の INTAKE_PHASE_GATES と一致させること（フロント側の事前判定・boolはtrue/'有'等を充足とみなす）
+    const KANBAN_GATE = {
+        '受付→見学': ['氏名','TEL','エリア','種別'],
+        '受付→体験': ['氏名','TEL','エリア','ペースメーカー'],
+        '見学→体験': ['見学完了','体験打診結果','ペースメーカー'],
+        '体験→契約準備': ['体験完了','利用意向'],
+        '契約準備→利用開始準備': ['契約日','本格利用開始日','利用者台帳反映済'],
+        '利用開始準備→アーカイブ': ['名札_通常済','名札_荷物済','名札_ハンガー済','名札_ドリンク済','名札_靴済','写真撮影済']
+    };
+    
+    function setIntakeView(view) {
+        const isKanban = view !== 'list';
+        document.getElementById('kanban-funnel-bar').style.display = isKanban ? '' : 'none';
+        document.getElementById('kanban-grid').style.display = isKanban ? '' : 'none';
+        document.getElementById('kanban-dropout').style.display = isKanban ? '' : 'none';
+        document.getElementById('intake-toolbar').style.display = isKanban ? 'none' : '';
+        document.getElementById('intake-list').style.display = isKanban ? 'none' : '';
+        document.getElementById('intake-view-kanban').classList.toggle('active', isKanban);
+        document.getElementById('intake-view-list').classList.toggle('active', !isKanban);
+        if (!isKanban) { renderIntakeToolbar(); renderIntakeList(_intakeCache); }
+    }
+    
+    function renderKanban(list) {
+        const grid = document.getElementById('kanban-grid');
+        if (!grid) return;
+        const byPhase = {}; KANBAN_PHASES.forEach(p => byPhase[p.key] = []);
+        const dropouts = [];
+        (list || []).forEach(r => {
+            const ph = r.フェーズ || '受付';
+            if (ph === 'ドロップ') dropouts.push(r);
+            else if (ph === 'アーカイブ') return;
+            else if (byPhase[ph]) byPhase[ph].push(r);
+        });
+        grid.innerHTML = KANBAN_PHASES.map((p, i) => {
+            const items = byPhase[p.key];
+            const open = items.length > 0; // 人がいる段階は開いておく
+            const body = items.map(r => renderKanbanCard(r, p.key)).join('')
+                || '<div class="kp-empty">この段階の方はいません</div>';
+            return `<div class="kp" style="--accent:${p.accent}">`
+                + `<span class="kp-node">${i + 1}</span>`
+                + `<div class="kp-head${open ? ' open' : ''}" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">`
+                +   `<span class="kp-name">${p.label}</span>`
+                +   `<span class="kp-count">${items.length}</span>`
+                +   `<span class="kp-chev">▼</span></div>`
+                + `<div class="kp-body${open ? ' open' : ''}">${body}</div>`
+                + `</div>`;
+        }).join('');
+        renderDropoutSection(dropouts);
+    }
+    
+    // ゲート充足判定（boolはtrue、ペースメーカーは有/無を充足とみなす）
+    function kanbanFieldFilled(r, f) {
+        if (f === 'ペースメーカー') return ['有','無'].indexOf(r.ペースメーカー) !== -1;
+        const v = r[f];
+        return !(v === '' || v === null || v === undefined || v === false);
+    }
+    
+    function renderKanbanCard(r, phase) {
+        const name = intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）');
+        const dateInfo = (phase === '利用開始準備' && r.本格利用開始日) ? '開始: ' + r.本格利用開始日
+            : (r.予定日 ? '予定: ' + r.予定日 : (r.種別 === 'inquiry' ? '問い合わせのみ' : '日付未定'));
+        const warns = [];
+        if (r.followup) { if (r.followup.追客) warns.push(r.followup.追客); if (r.followup.ケアマネ) warns.push(r.followup.ケアマネ); }
+        const warnHtml = warns.length ? `<div class="kanban-card-warn">${intakeEscapeHtml(warns.join(' / '))}</div>` : '';
+        let btn = '';
+        const nextFn = KANBAN_NEXT[phase];
+        if (nextFn) {
+            const np = nextFn(r);
+            const req = KANBAN_GATE[phase + '→' + np] || [];
+            const missing = req.filter(f => !kanbanFieldFilled(r, f));
+            const dis = missing.length > 0;
+            const title = dis ? '未入力: ' + missing.join('・') : np + 'へ進める';
+            btn = `<button class="kanban-card-advance"${dis ? ' disabled' : ''} title="${intakeEscapeAttr(title)}" onclick="event.stopPropagation();kanbanAdvance('${intakeEscapeAttr(r.id)}','${np}')">${np}へ &rsaquo;</button>`;
+        }
+        return `<div class="kanban-card" onclick="openIntakeModal('${intakeEscapeAttr(r.id)}')">`
+            + `<div class="kanban-card-name">${name}</div>`
+            + `<div class="kanban-card-sub">${intakeEscapeHtml(dateInfo)}</div>${warnHtml}${btn}</div>`;
+    }
+    
+    function renderDropoutSection(dropouts) {
+        const host = document.getElementById('kanban-dropout');
+        if (!host) return;
+        const rc = {}; dropouts.forEach(r => { const k = r.ドロップ理由 || 'other'; rc[k] = (rc[k] || 0) + 1; });
+        const summary = Object.keys(rc).map(k => (INTAKE_NO_USE_REASON[k] || k) + ' ' + rc[k]).join(' · ') || '';
+        host.innerHTML = `<div class="kanban-dropout-head" onclick="document.getElementById('kanban-dropout-details').classList.toggle('open')">`
+            + `<span class="pl-x">✕</span> 見送り・終了 <strong style="color:#4a4f5a;">${dropouts.length}</strong>`
+            + (summary ? ` <span style="color:#9aa0ad;font-weight:400;font-size:12px;">${intakeEscapeHtml(summary)}</span>` : '')
+            + `</div>`
+            + `<div id="kanban-dropout-details" class="kanban-dropout-details">`
+            + (dropouts.map(r => `<div>${intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）')} — ${intakeEscapeHtml(INTAKE_NO_USE_REASON[r.ドロップ理由] || r.ドロップ理由 || '理由未記入')}<span style="color:#b4b8c2;"> ${intakeEscapeHtml((r.ドロップ記録日時 || '').slice(0,10))}</span></div>`).join('')
+                || '<div style="color:#b4b8c2;">なし</div>') + '</div>';
+    }
+    
+    function loadKanbanFunnel(ym) {
+        ym = ym || new Date().toISOString().slice(0,7);
+        const cb = 'kanbanFunnelCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+        window[cb] = function(resp) {
+            try {
+                const host = document.getElementById('kanban-funnel-bar');
+                if (!host || !resp || !resp.success) return;
+                const f = resp.funnel;
+                const r1 = f.受付 > 0 ? Math.round(f.見学 / f.受付 * 100) : 0;
+                const r2 = f.見学 > 0 ? Math.round(f.体験 / f.見学 * 100) : 0;
+                const r3 = f.体験 > 0 ? Math.round(f.契約 / f.体験 * 100) : 0;
+                const stages = [['受付',f.受付],['見学',f.見学],['体験',f.体験],['契約',f.契約],['利用開始',f.利用開始]];
+                const flow = stages.map((s,i) =>
+                    `<div class="pl-stage"><span class="pl-stage-n">${s[1]}</span><span class="pl-stage-l">${s[0]}</span></div>`
+                    + (i < stages.length - 1 ? '<span class="pl-arrow">&rsaquo;</span>' : '')
+                ).join('');
+                host.innerHTML = `<div class="pl-funnel">`
+                    + `<div class="pl-funnel-top"><span class="pl-funnel-ttl">受付パイプライン</span>`
+                    +   `<select class="pl-funnel-mo" onchange="loadKanbanFunnel(this.value)">${kanbanFunnelMonths(ym)}</select></div>`
+                    + `<div class="pl-funnel-flow">${flow}</div>`
+                    + `<div class="pl-conv"><span>受付→見学 ${r1}%</span><span>見学→体験 ${r2}%</span><span>体験→契約 ${r3}%</span></div>`
+                    + `</div>`;
+            } finally { try { delete window[cb]; } catch(e){} }
+        };
+        const s = document.createElement('script');
+        s.src = INTAKE_API_URL + '?action=intake_get_funnel&yearMonth=' + encodeURIComponent(ym) + '&callback=' + cb;
+        s.onerror = function(){ try { delete window[cb]; } catch(e){} };
+        document.body.appendChild(s);
+        setTimeout(() => { try { s.remove(); } catch(e){} }, 8000);
+    }
+    function kanbanFunnelMonths(sel) {
+        const now = new Date(), out = [];
+        for (let i = 0; i < 6; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            const label = d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+            out.push(`<option value="${ym}"${ym === sel ? ' selected' : ''}>${label}</option>`);
+        }
+        return out.join('');
+    }
+    
+    // カンバン操作：フェーズ遷移・ドロップ（gasPost経由・no-cors）
+    async function kanbanAdvance(id, toPhase) {
+        const r = _intakeCache.find(x => x.id === id);
+        if (!r) { alert('レコードが見つかりません。再読込します。'); loadIntakeList(); return; }
+        if (!confirm(`「${r.氏名 || r.ふりがな}」を「${toPhase}」へ進めます。よろしいですか？`)) return;
+        const ok = await gasPost({ action: 'intake_advance_phase', id: id, toPhase: toPhase }, 'カンバン遷移');
+        if (ok) setTimeout(loadIntakeList, 800);
+    }
+    async function kanbanDrop(id) {
+        const r = _intakeCache.find(x => x.id === id);
+        const key = prompt('ドロップ理由を選択（番号）:\n1 他社デイに決定\n2 金額で折り合わず\n3 送迎範囲外\n4 体験で本人NG\n5 その他');
+        if (!key) return;
+        const map = { '1':'other_dayservice','2':'price','3':'out_of_range','4':'personal_no','5':'other' };
+        const reason = map[String(key).trim()];
+        if (!reason) { alert('不正な番号です'); return; }
+        const detail = prompt('詳細メモ（任意）:') || '';
+        const ok = await gasPost({ action: 'intake_drop', id: id, reason: reason, detail: detail }, 'カンバン ドロップ');
+        if (ok) { closeIntakeModal(); setTimeout(loadIntakeList, 800); }
+    }
+    
+    function renderIntakeList(list) {
+        const host = document.getElementById('intake-list');
+        if (!list.length) {
+            host.innerHTML = '<div style="padding:40px;text-align:center;color:#888;">該当なし</div>';
+            return;
+        }
+        host.innerHTML = list.map(r => {
+            const s = r.ステータス || 'pending';
+            const kindClass = r.種別 === 'trial' ? 'intake-badge-kind-trial' : 'intake-badge-kind-visit';
+            const kindLabel = INTAKE_KIND_LABEL[r.種別] || '-';
+            const statusLabel = INTAKE_STATUS_LABEL[s] || s;
+            const warns = intakeWarnings(r);
+            const warnHtml = warns.length ? `<div class="intake-row-warn">${warns.join(' / ')}</div>` : '';
+            const displayName = r.氏名 || r.ふりがな || '（名前未入力）';
+            const furigana = (r.氏名 && r.ふりがな) ? `<span style="font-size:12px;color:#718096;">（${intakeEscapeHtml(r.ふりがな)}）</span>` : '';
+            const telKin = r.TEL続柄 ? `<span style="color:#718096;">（${intakeEscapeHtml(r.TEL続柄)}）</span>` : '';
+            return `<div class="intake-row" onclick="openIntakeModal('${r.id}')">
+                <div class="intake-row-main">
+                    <div class="intake-row-name">
+                        <span class="intake-badge ${kindClass}">${kindLabel}</span>
+                        ${intakeEscapeHtml(displayName)}${furigana}
+                    </div>
+                    <div class="intake-row-sub">
+                        問合せ:${r.問い合わせ日 || '-'} / 予定:${r.予定日 || '未定'}
+                        / TEL:${intakeEscapeHtml(r.TEL || '')}${telKin} / ケアマネ:${intakeEscapeHtml(r.ケアマネ氏名 || '未入力')}
+                    </div>
+                    ${warnHtml}
+                </div>
+                <span class="intake-badge ${s}">${statusLabel}</span>
+            </div>`;
+        }).join('');
+    }
+    
+    // ===== Task 10: 詳細モーダル =====
+    
+    function openIntakeModal(id) {
+        const r = _intakeCache.find(x => x.id === id);
+        if (!r) { alert('データが見つかりません。再読込します。'); loadIntakeList(); return; }
+        _intakeModalMode = 'edit';
+        _intakeModalDraft = null;
+        document.getElementById('intake-modal-body').innerHTML = buildIntakeModalHtml(r);
+        document.getElementById('intake-modal').classList.add('show');
+        if (_cmCache.length === 0) loadCmContactsCache(); // キャッシュ未取得なら今取得
+        setTimeout(() => { refreshCmPickerIfOpen(); ivOnCmOfficeChange(); intakeRefreshRequiredHighlight(); intakeOnOtherDayChange(); intakeOnAnswerChange(); intakeUpdateYoteibiDow(); }, 0);
+    }
+    
+    function closeIntakeModal() {
+        document.getElementById('intake-modal').classList.remove('show');
+        _intakeModalMode = 'edit';
+        _intakeModalDraft = null;
+    }
+    
+    // ===== タップ選択ボタングループ（単一選択）=====
+    function ivToggleBtn(group, value) {
+        const host = document.querySelector(`[data-iv-group="${group}"]`);
+        if (!host) return;
+        host.querySelectorAll('.iv-btn').forEach(b => b.classList.remove('active'));
+        const target = host.querySelector(`.iv-btn[data-value="${CSS.escape(String(value))}"]`);
+        if (target) target.classList.add('active');
+        host.dataset.value = value;
+        if (typeof intakeRefreshRequiredHighlight === 'function') intakeRefreshRequiredHighlight();
+    }
+    
+    // 必須項目の未入力ハイライトを更新（入力されたら自動で白に戻る）
+    function intakeRefreshRequiredHighlight() {
+        const setHL = (el, isEmpty) => { if (el) el.classList.toggle('intake-required-empty', !!isEmpty); };
+        // 種別
+        const kind = document.querySelector('[data-iv-group="種別"]');
+        setHL(kind, kind && !kind.dataset.value);
+        // 氏名 or ふりがな（OR判定：両方空ならhighlight）
+        const nm = document.getElementById('m-氏名');
+        const fr = document.getElementById('m-ふりがな');
+        const bothEmpty = !(nm && nm.value && nm.value.trim()) && !(fr && fr.value && fr.value.trim());
+        setHL(nm, bothEmpty);
+        setHL(fr, bothEmpty);
+        // TEL
+        const tel = document.getElementById('m-TEL');
+        setHL(tel, tel && !tel.value.trim());
+        // ペースメーカー
+        const pm = document.querySelector('[data-iv-group="ペースメーカー"]');
+        setHL(pm, pm && !pm.dataset.value);
+    }
+    function ivGetGroupValue(group) {
+        const host = document.querySelector(`[data-iv-group="${group}"]`);
+        return host ? (host.dataset.value || '') : '';
+    }
+    function ivRenderBtnGroup(group, values, labels, selected, opts) {
+        opts = opts || {};
+        const cls = opts.class || '';
+        const extraOnclick = opts.onchange ? `; ${opts.onchange}()` : '';
+        const btns = values.map((v, i) => {
+            const lbl = labels ? labels[i] : v;
+            const active = String(v) === String(selected) ? ' active' : '';
+            return `<button type="button" class="iv-btn ${cls}${active}" data-value="${intakeEscapeAttr(v)}" onclick="ivToggleBtn('${group}', this.dataset.value)${extraOnclick}">${intakeEscapeHtml(lbl)}</button>`;
+        }).join('');
+        return `<div class="iv-btn-group" data-iv-group="${group}" data-value="${intakeEscapeAttr(selected || '')}">${btns}</div>`;
+    }
+    
+    // ===== 曜日ボタン（第N希望 × 複数曜日 × AM/PM）=====
+    // 保存形式: "第1:月/金AM, 第2:水PM"（同ランク内で複数曜日可、'/'区切り）
+    function ivParseDayWishes(str) {
+        const out = {};
+        if (!str) return out;
+        String(str).split(',').forEach(part => {
+            const m = part.trim().match(/^第(\d+):([月火水木金土日\/]+)(AM|PM)?$/);
+            if (m) out[m[1]] = { days: m[2].split('/').filter(Boolean), ampm: m[3] || '' };
+        });
+        return out;
+    }
+    function ivFormatDayWishes(prefix, count) {
+        const parts = [];
+        for (let i = 1; i <= count; i++) {
+            const host = document.querySelector(`[data-iv-day-group="${prefix}-${i}"]`);
+            if (!host) continue;
+            const daysStr = host.dataset.days || '';
+            const ampm = host.dataset.ampm || '';
+            if (daysStr) parts.push(`第${i}:${daysStr}${ampm}`);
+        }
+        return parts.join(', ');
+    }
+    function ivSelectDay(groupId, day) {
+        const host = document.querySelector(`[data-iv-day-group="${groupId}"]`);
+        if (!host) return;
+        // 複数選択トグル：同ランク内で複数曜日可
+        const cur = (host.dataset.days || '').split('/').filter(Boolean);
+        const idx = cur.indexOf(day);
+        if (idx >= 0) {
+            cur.splice(idx, 1);
+        } else {
+            cur.push(day);
+        }
+        // 順序：月火水木金土日 で並び替え
+        const orderMap = { '月':1,'火':2,'水':3,'木':4,'金':5,'土':6,'日':7 };
+        cur.sort((a, b) => (orderMap[a] || 9) - (orderMap[b] || 9));
+        host.dataset.days = cur.join('/');
+        // ボタンの active 状態更新
+        host.querySelectorAll('.iv-day-btn').forEach(b => {
+            b.classList.toggle('active', cur.indexOf(b.dataset.day) >= 0);
+        });
+    }
+    function ivSelectAmpm(groupId, ampm) {
+        const host = document.querySelector(`[data-iv-day-group="${groupId}"]`);
+        if (!host) return;
+        host.querySelectorAll('.iv-ampm-btn').forEach(b => b.classList.remove('active'));
+        if (host.dataset.ampm === ampm) {
+            host.dataset.ampm = '';
+        } else {
+            const tgt = host.querySelector(`.iv-ampm-btn[data-ampm="${ampm}"]`);
+            if (tgt) tgt.classList.add('active');
+            host.dataset.ampm = ampm;
+        }
+    }
+    function ivRenderDayRow(groupId, rankLabel, selectedDays, selectedAmpm) {
+        const daysArr = Array.isArray(selectedDays) ? selectedDays : (selectedDays ? String(selectedDays).split('/').filter(Boolean) : []);
+        const dayBtns = INTAKE_DAY_BUTTONS.map(d =>
+            `<button type="button" class="iv-day-btn${daysArr.indexOf(d) >= 0 ? ' active' : ''}" data-day="${d}" onclick="ivSelectDay('${groupId}','${d}')">${d}</button>`
+        ).join('');
+        const amBtn = `<button type="button" class="iv-ampm-btn${selectedAmpm === 'AM' ? ' active' : ''}" data-ampm="AM" onclick="ivSelectAmpm('${groupId}','AM')">AM</button>`;
+        const pmBtn = `<button type="button" class="iv-ampm-btn${selectedAmpm === 'PM' ? ' active' : ''}" data-ampm="PM" onclick="ivSelectAmpm('${groupId}','PM')">PM</button>`;
+        return `<div class="iv-day-row" data-iv-day-group="${groupId}" data-days="${daysArr.join('/')}" data-ampm="${selectedAmpm || ''}">
+            <span class="rank-label">${rankLabel}</span>
+            ${dayBtns}
+            <span style="width:10px;"></span>
+            ${amBtn}${pmBtn}
+        </div>`;
+    }
+    function ivRenderDayWishes(prefix, rankCount, rawValue, options) {
+        options = options || {};
+        const raw = String(rawValue || '');
+        // 「いつでもOK」判定
+        const anytime = /いつでもOK/.test(raw);
+        // 「後日ご連絡」判定（フォーマット例：「後日ご連絡」 or 「後日ご連絡:2026-05-20」）
+        const followUpMatch = raw.match(/^後日ご連絡(?::(\d{4}-\d{2}-\d{2}))?/);
+        const followUp = !!followUpMatch;
+        const followUpDate = followUpMatch ? (followUpMatch[1] || '') : '';
+    
+        const parsed = ivParseDayWishes(rawValue);
+        let rows = '';
+        for (let i = 1; i <= rankCount; i++) {
+            const p = parsed[i] || {};
+            rows += ivRenderDayRow(`${prefix}-${i}`, `第${i}希望`, p.days || [], p.ampm || '');
+        }
+        const anyBtn = options.hideAnytime ? '' : `<button type="button" class="iv-btn${anytime ? ' active' : ''}" data-value="anytime" onclick="intakeToggleAnytime('${prefix}')" style="margin-bottom:8px;">🗓️ いつでもOK</button>`;
+    
+        // 「後日ご連絡」ボタン＋日付欄（options.enableFollowUp が true の時のみ）
+        let followUpUI = '';
+        if (options.enableFollowUp) {
+            const followUpBtn = `<button type="button" class="iv-btn${followUp ? ' active' : ''}" data-value="followup" onclick="intakeToggleFollowUp('${prefix}')" style="margin-bottom:8px;margin-left:6px;">📅 後日ご連絡</button>`;
+            const dateBlock = `<div id="${prefix}-followup-date" style="${followUp ? '' : 'display:none;'}margin-bottom:8px;padding:8px 12px;background:#fff5e6;border:1px solid #f6ad55;border-radius:6px;">
+                <label style="font-size:13px;color:#7b341e;font-weight:bold;">📞 連絡予定日：</label>
+                <input type="date" id="${prefix}-followup-date-input" value="${intakeEscapeAttr(followUpDate)}" style="margin-left:6px;">
+            </div>`;
+            followUpUI = followUpBtn + dateBlock;
+        }
+    
+        const helpText = `<div style="font-size:11px;color:#718096;margin-bottom:6px;">同じ希望枠で複数曜日OKなら複数タップ（例：月と金どっちでも）</div>`;
+        // 「いつでもOK」のみ曜日選択をグレーアウト。「後日ご連絡」は曜日入力を許可（仮希望を記入できるように）
+        const inactive = anytime;
+        return `<div data-iv-anytime="${prefix}" data-anytime="${anytime ? 'true' : 'false'}" data-followup="${followUp ? 'true' : 'false'}">
+            ${anyBtn}${followUpUI}${helpText}
+            <div class="iv-anytime-rows" style="${inactive ? 'opacity:0.35;pointer-events:none;' : ''}">${rows}</div>
+        </div>`;
+    }
+    
+    function intakeToggleAnytime(prefix) {
+        const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
+        if (!host) return;
+        const btn = host.querySelector('.iv-btn[data-value="anytime"]');
+        const rows = host.querySelector('.iv-anytime-rows');
+        const cur = host.dataset.anytime === 'true';
+        const next = !cur;
+        host.dataset.anytime = next ? 'true' : 'false';
+        if (btn) btn.classList.toggle('active', next);
+        // 「いつでもOK」のみ曜日グレーアウト。「後日ご連絡」とは共存OK
+        rows.style.opacity = next ? 0.35 : 1;
+        rows.style.pointerEvents = next ? 'none' : 'auto';
+        if (next) {
+            // 「いつでもOK」選択時は全曜日クリア
+            host.querySelectorAll('[data-iv-day-group]').forEach(g => {
+                g.dataset.days = ''; g.dataset.ampm = '';
+                g.querySelectorAll('.iv-day-btn, .iv-ampm-btn').forEach(b => b.classList.remove('active'));
+            });
+        }
+    }
+    
+    function intakeToggleFollowUp(prefix) {
+        // 「後日ご連絡」はマーカーのみ。曜日選択はそのまま入力可能（仮希望として記録できる）
+        const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
+        if (!host) return;
+        const btn = host.querySelector('.iv-btn[data-value="followup"]');
+        const dateBlock = document.getElementById(`${prefix}-followup-date`);
+        const cur = host.dataset.followup === 'true';
+        const next = !cur;
+        host.dataset.followup = next ? 'true' : 'false';
+        if (btn) btn.classList.toggle('active', next);
+        if (dateBlock) dateBlock.style.display = next ? '' : 'none';
+    }
+    
+    // いつでもOK・後日ご連絡を考慮した集計
+    function ivCollectDayWishes(prefix, rankCount) {
+        const host = document.querySelector(`[data-iv-anytime="${prefix}"]`);
+        if (host && host.dataset.anytime === 'true') return 'いつでもOK';
+        if (host && host.dataset.followup === 'true') {
+            const dateEl = document.getElementById(`${prefix}-followup-date-input`);
+            const d = dateEl ? dateEl.value : '';
+            return d ? `後日ご連絡:${d}` : '後日ご連絡';
+        }
+        return ivFormatDayWishes(prefix, rankCount);
+    }
+    
+    // ===== ケアマネ入力（選択プルダウン＋手入力欄の2段構え）=====
+    // 上段：既存候補を選ぶプルダウン（選ぶと下段のテキストに反映）
+    // 下段：テキスト入力欄（最終的な保存値）。候補になくても手打ちで登録可能
+    function ivRenderCmCascade(selectedOffice, selectedName) {
+        const offices = Array.from(new Set(_cmCache.map(c => c.office).filter(Boolean))).sort();
+        const officeOpts = '<option value="">▼ 事業所を選んでください</option>'
+            + offices.map(o => `<option value="${intakeEscapeAttr(o)}"${o === selectedOffice ? ' selected' : ''}>${intakeEscapeHtml(o)}</option>`).join('');
+        // 既存マスタにない事業所が選ばれている場合は最初からテキスト入力モードで表示
+        const isNewOffice = !!selectedOffice && offices.indexOf(selectedOffice) === -1;
+        return `
+            <div class="col2">
+                <label>ケアマネ事業所</label>
+                <select id="m-ケアマネ事業所-picker" onchange="ivPickCmOffice()" style="${isNewOffice ? 'display:none;' : ''}">${officeOpts}</select>
+                <input id="m-ケアマネ事業所" value="${intakeEscapeAttr(selectedOffice)}" placeholder="新規事業所名を入力" oninput="ivOnCmOfficeChange()" style="${isNewOffice ? '' : 'display:none;'}">
+                <button type="button" id="m-ケアマネ事業所-toggle" onclick="ivToggleCmOfficeInput()" style="margin-top:4px;padding:4px 10px;font-size:12px;background:#edf2f7;border:1px solid #cbd5e0;border-radius:4px;cursor:pointer;">${isNewOffice ? '↩ 既存の事業所から選ぶ' : '✏️ 新規事業所を直接入力'}</button>
+            </div>
+            <div>
+                <label>ケアマネ氏名</label>
+                <select id="m-ケアマネ氏名-picker" onchange="ivPickCmName()" style="margin-bottom:4px;"><option value="">▼ 事業所を選ぶと候補が出ます</option></select>
+                <input id="m-ケアマネ氏名" value="${intakeEscapeAttr(selectedName)}" placeholder="選択 or 新人ケアマネはここに直接入力">
+            </div>
+        `;
+    }
+    function ivPickCmOffice() {
+        const pickEl = document.getElementById('m-ケアマネ事業所-picker');
+        const textEl = document.getElementById('m-ケアマネ事業所');
+        if (pickEl.value) textEl.value = pickEl.value;
+        ivOnCmOfficeChange();
+    }
+    function ivToggleCmOfficeInput() {
+        const pickEl = document.getElementById('m-ケアマネ事業所-picker');
+        const textEl = document.getElementById('m-ケアマネ事業所');
+        const btn = document.getElementById('m-ケアマネ事業所-toggle');
+        if (!pickEl || !textEl || !btn) return;
+        const isTextMode = textEl.style.display !== 'none';
+        if (isTextMode) {
+            // テキスト入力 → プルダウン選択に戻す
+            textEl.style.display = 'none';
+            pickEl.style.display = '';
+            btn.textContent = '✏️ 新規事業所を直接入力';
+            textEl.value = pickEl.value || '';
+        } else {
+            // プルダウン → テキスト入力に切替
+            pickEl.style.display = 'none';
+            textEl.style.display = '';
+            btn.textContent = '↩ 既存の事業所から選ぶ';
+            setTimeout(() => textEl.focus(), 50);
+        }
+        ivOnCmOfficeChange();
+    }
+    function ivPickCmName() {
+        const pickEl = document.getElementById('m-ケアマネ氏名-picker');
+        const textEl = document.getElementById('m-ケアマネ氏名');
+        if (pickEl.value) textEl.value = pickEl.value;
+    }
+    function ivOnCmOfficeChange() {
+        const textEl = document.getElementById('m-ケアマネ事業所');
+        const namePicker = document.getElementById('m-ケアマネ氏名-picker');
+        if (!textEl || !namePicker) return;
+        const office = textEl.value || '';
+        const filtered = _cmCache.filter(c => !office || c.office === office);
+        const names = Array.from(new Set(filtered.map(c => c.name).filter(Boolean))).sort();
+        let prompt;
+        if (!office) prompt = '▼ 事業所を選ぶと候補が出ます';
+        else if (names.length === 0) prompt = '⚠️ 氏名未登録 → 下の欄に直接入力';
+        else prompt = `▼ ${office} のケアマネから選ぶ（${names.length}件）`;
+        namePicker.innerHTML = `<option value="">${intakeEscapeHtml(prompt)}</option>`
+            + names.map(n => `<option value="${intakeEscapeAttr(n)}">${intakeEscapeHtml(n)}</option>`).join('');
+    }
+    
+    function intakeField(label, inner, cls) {
+        return `<div${cls ? ` class="${cls}"` : ''}><label>${label}</label>${inner}</div>`;
+    }
+    function intakeCheckItem(id, label, checked, overdue) {
+        const cls = 'intake-check-item' + (checked ? ' checked' : '') + (overdue ? ' overdue' : '');
+        return `<label class="${cls}">`
+            + (id ? `<input type="checkbox" id="${id}"${checked ? ' checked' : ''}> ` : '')
+            + label
+            + '</label>';
+    }
+    
+    // ===== 送迎シミュレーション（時間プルダウン＋AM/PM切替）=====
+    function renderTransportSim(idPrefix, json, ampm) {
+        let arr = [];
+        try { arr = json ? (typeof json === 'string' ? JSON.parse(json) : json) : []; } catch(e) { arr = []; }
+        while (arr.length < 6) arr.push({ 順: arr.length + 1, 時間: '' });
+        // AM/PMトグル（時間プルダウンの範囲を絞る）
+        const toggleId = idPrefix + '-ampm';
+        const amBtn = `<button type="button" class="iv-btn small${ampm === 'AM' ? ' active' : ''}" data-value="AM" onclick="intakeToggleTransportAmpm('${idPrefix}','AM')">AM</button>`;
+        const pmBtn = `<button type="button" class="iv-btn small${ampm === 'PM' ? ' active' : ''}" data-value="PM" onclick="intakeToggleTransportAmpm('${idPrefix}','PM')">PM</button>`;
+        const toggle = `<div class="iv-btn-group" data-iv-group="${toggleId}" data-value="${ampm || ''}" style="margin-bottom:6px;">${amBtn}${pmBtn}</div>`;
+        let labels = '', selects = '';
+        arr.slice(0, 6).forEach((slot, i) => {
+            labels += `<div>${i + 1}番目</div>`;
+            selects += `<select id="${idPrefix}-${i}">${intakeTimeOptions(slot.時間 || '', ampm)}</select>`;
+        });
+        return toggle
+             + `<div class="transport-sim-labels">${labels}</div>`
+             + `<div class="transport-sim">${selects}</div>`;
+    }
+    
+    // AM/PM切替で時間プルダウンの選択肢を絞る
+    function intakeToggleTransportAmpm(idPrefix, ampm) {
+        const host = document.querySelector(`[data-iv-group="${idPrefix}-ampm"]`);
+        if (!host) return;
+        host.querySelectorAll('.iv-btn').forEach(b => b.classList.remove('active'));
+        if (host.dataset.value === ampm) {
+            host.dataset.value = '';
+        } else {
+            const t = host.querySelector(`.iv-btn[data-value="${ampm}"]`);
+            if (t) t.classList.add('active');
+            host.dataset.value = ampm;
+        }
+        const active = host.dataset.value || null;
+        // 各プルダウンを再構築（現在の選択値は保持）
+        for (let i = 0; i < 6; i++) {
+            const sel = document.getElementById(`${idPrefix}-${i}`);
+            if (!sel) continue;
+            const prev = sel.value;
+            sel.innerHTML = intakeTimeOptions(prev, active);
+        }
+    }
+    
+    // 送迎順JSONからAM/PM推定
+    function detectAmpmFromTransport(json) {
+        let arr = [];
+        try { arr = json ? (typeof json === 'string' ? JSON.parse(json) : json) : []; } catch(e) { arr = []; }
+        for (const s of arr) {
+            if (s && s.時間) {
+                const h = parseInt(String(s.時間).split(':')[0], 10);
+                if (!isNaN(h)) {
+                    if (h < 12) return 'AM';
+                    if (h >= 12) return 'PM';
+                }
+            }
+        }
+        return null;
+    }
+    
+    // 種別切替で送迎シミュレーション表示/非表示
+    function intakeOnKindChange() {
+        const kind = ivGetGroupValue('種別');
+        const sim = document.getElementById('intake-transport-section');
+        if (sim) {
+            if (kind === 'visit') {
+                sim.style.display = 'none';
+            } else {
+                sim.style.display = '';
+            }
+        }
+    }
+    
+    function intakeOnAreaChange() {
+        const v = ivGetGroupValue('エリア');
+        const w = document.getElementById('m-エリア-warn');
+        if (w) w.style.display = (v === 'その他') ? 'block' : 'none';
+    }
+    
+    // 予定日inputの値から曜日（日〜土）を自動表示
+    function intakeUpdateYoteibiDow() {
+        const el = document.getElementById('m-予定日');
+        const span = document.getElementById('m-予定日-dow');
+        if (!el || !span) return;
+        if (!el.value) { span.textContent = ''; return; }
+        const d = new Date(el.value);
+        if (isNaN(d.getTime())) { span.textContent = ''; return; }
+        span.textContent = '（' + ['日','月','火','水','木','金','土'][d.getDay()] + '）';
+    }
+    
+    // 見学レコードを「体験」に昇格させる（保存ボタン押下までは反映されない）
+    function intakePromoteToTrial() {
+        const planEl = document.getElementById('m-予定日');
+        const planDate = planEl ? planEl.value : '';
+        if (!confirm(
+            '見学記録を「体験記録」に切り替えます。\n\n' +
+            '・種別が「体験」に変わります\n' +
+            '・見学日（' + (planDate || '未入力') + '）が履歴として保存されます\n' +
+            '・体験予定日は空欄になります（新しい日付を入力してください）\n' +
+            '・「💾保存」ボタンを押すまでサーバーには反映されません\n\n' +
+            'よろしいですか？'
+        )) return;
+    
+        // 種別ボタングループの値を 'trial' に変更
+        const kindGroup = document.querySelector('[data-iv-group="種別"]');
+        if (kindGroup) {
+            kindGroup.dataset.value = 'trial';
+            kindGroup.querySelectorAll('.iv-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.value === 'trial');
+            });
+        }
+    
+        // 見学日 hidden inputに元の予定日を保存
+        const kengakuEl = document.getElementById('m-見学日');
+        if (kengakuEl) kengakuEl.value = planDate;
+    
+        // 体験の予定日は空欄に（新しい日付を入力する）
+        if (planEl) planEl.value = '';
+    
+        // 種別変更で送迎セクション表示
+        intakeOnKindChange();
+    
+        alert(
+            '✅ 体験記録に切り替わりました。\n\n' +
+            '次にやること：\n' +
+            '① 体験予定日を入力\n' +
+            '② 送迎シミュレーションを入力\n' +
+            '③ 「💾保存」ボタンで反映\n\n' +
+            '※ 見学日（' + (planDate || '未入力') + '）は履歴に残ります'
+        );
+    }
+    
+    function buildIntakeModalHtml(r) {
+        const isNew = _intakeModalMode === 'new';
+        const today = new Date().toISOString().slice(0,10);
+        const careOverdue = r.予定日 && r.予定日 < today && !r.ケアマネ連絡済;
+    
+        const approvalStatus = r.社長確認済
+            ? `✅ 社長確認済（${r.社長確認日時 || ''}）`
+            : r.社長確認依頼日時
+              ? `📩 社長確認待ち（依頼: ${r.社長確認依頼日時}）`
+              : '（社長確認未依頼）';
+    
+        const header = isNew
+            ? `<h3 style="margin-top:0;color:#2c7a7b;">🆕 新規問合せ受付</h3>
+               <div style="font-size:13px;color:#4a5568;margin-bottom:12px;">電話で聞きながら入力してください。忙しくなったら「⏸️中断して保存」で未完了のまま保存できます。</div>`
+            : `<h3 style="margin-top:0;color:#2c7a7b;">📋 ${INTAKE_KIND_LABEL[r.種別] || ''}記録：${intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）')}</h3>`;
+    
+        // 見学→体験 昇格バナー（新規モードでは非表示）
+        let promoteBanner = '';
+        if (!isNew) {
+            if (r.種別 === 'visit') {
+                promoteBanner = `
+                <div style="margin:10px 0;padding:12px 14px;background:#f0fff4;border:2px solid #48bb78;border-radius:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <span style="font-size:14px;font-weight:bold;color:#22543d;">📈 体験に進めた場合：</span>
+                        <button type="button" onclick="intakePromoteToTrial()" style="background:#48bb78;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;">→ 体験記録に切り替える</button>
+                        <span style="font-size:12px;color:#22543d;">押すと種別=体験に変わり、見学日（${intakeEscapeHtml(r.予定日 || '未入力')}）が履歴として保存されます</span>
+                    </div>
+                </div>`;
+            } else if (r.種別 === 'trial' && r.見学日) {
+                promoteBanner = `
+                <div style="margin:10px 0;padding:10px 14px;background:#fefcbf;border:2px solid #ecc94b;border-radius:8px;font-size:14px;font-weight:bold;color:#744210;">
+                    📈 見学（${intakeEscapeHtml(r.見学日)}）から体験へ進みました
+                </div>`;
+            }
+        }
+    
+        // アクションボタン
+        let actionBtns = '';
+        if (isNew) {
+            actionBtns = `
+                <button class="plain" onclick="closeIntakeModal()">閉じる（保存しない）</button>
+                <button class="warn iv-btn warn active" onclick="saveIntakeModalNew(true)" style="background:#ed8936;color:#fff;border:none;padding:10px 16px;border-radius:6px;font-weight:bold;cursor:pointer;">⏸️ 中断して保存</button>
+                <button class="primary" onclick="saveIntakeModalNew(false)">💾 保存</button>
+            `;
+        } else {
+            const approvalBtn = (r.社長確認依頼日時 && !r.社長確認済)
+                ? `<button class="owner-ok" onclick="markOwnerApproved('${r.id}')">✅ 社長確認済にする</button>`
+                : `<button class="approve" onclick="requestApproval('${r.id}')">📩 社長に提出</button>`;
+            actionBtns = `
+                ${approvalBtn}
+                <button class="plain" onclick="closeIntakeModal()">閉じる</button>
+                <button class="primary" onclick="saveIntakeModal('${r.id}')">💾 保存</button>
+            `;
+        }
+        const deleteBtn = isNew ? '' : `<button class="danger" onclick="deleteIntakeAction('${r.id}')">🗑 削除</button>`;
+    
+        // 体験後フォロー担当＋状態（GAS@v213 followup・該当時のみ赤枠表示）
+        const followupBox = (r.followup && (r.followup.追客 || r.followup.ケアマネ))
+            ? `<div style="background:#fff5f5;border:1px solid #fc8181;border-radius:6px;padding:8px;margin-bottom:10px;font-size:13px;">
+                ${r.followup.追客 ? `<div>${intakeEscapeHtml(r.followup.追客)}</div>` : ''}
+                ${r.followup.ケアマネ ? `<div>${intakeEscapeHtml(r.followup.ケアマネ)}</div>` : ''}
+                <div style="color:#718096;">体験後フォロー 主担当: 勝又さん ／ 副: 下浦さん</div>
+            </div>`
+            : '';
+    
+        return `
+            ${header}
+            ${followupBox}
+            ${promoteBanner}
+            <!-- 見学日を保持するhidden input（昇格時に書き込まれる）-->
+            <input type="hidden" id="m-見学日" value="${intakeEscapeAttr(r.見学日 || '')}">
+    
+            <!-- 基本情報 -->
+            <div class="intake-modal-section"><h4>基本情報</h4>
+            <div class="intake-modal-grid">
+                ${intakeField('誰からの連絡？', ivRenderBtnGroup('連絡元区分', ['caremane','self','walkin'], ['ケアマネ','本人・家族','飛び込み'], r.連絡元区分 || ''), 'col3')}
+                ${intakeField('種別', ivRenderBtnGroup('種別', ['inquiry','trial','visit'], ['問い合わせ','体験','見学'], r.種別 || 'trial', { onchange: 'intakeOnKindChange' }), 'col3')}
+                ${intakeField('問い合わせ日', `<input type="date" id="m-問い合わせ日" value="${intakeEscapeAttr(r.問い合わせ日 || today)}">`)}
+                ${intakeField('予定日', `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="date" id="m-予定日" value="${intakeEscapeAttr(r.予定日)}" onchange="intakeUpdateYoteibiDow()" style="flex:0 0 auto;"><span id="m-予定日-dow" style="font-size:15px;font-weight:bold;color:#2c7a7b;"></span>${ivRenderBtnGroup('予定日AMPM', ['AM','PM'], null, r.予定日AMPM || '')}</div>`)}
+                ${intakeField('初回対応スタッフ', (() => {
+                    const cur = r.初回対応スタッフ || (typeof getStaff === 'function' ? (localStorage.getItem('yawaragi_staff') || '') : '');
+                    const staffList = (typeof getStaff === 'function' ? getStaff() : []).slice();
+                    if (cur && staffList.indexOf(cur) === -1) staffList.unshift(cur);
+                    const opts = ['<option value="">-</option>'].concat(staffList.map(s =>
+                        `<option value="${intakeEscapeAttr(s)}"${s === cur ? ' selected' : ''}>${intakeEscapeHtml(s)}</option>`
+                    )).join('');
+                    return `<select id="m-初回対応スタッフ">${opts}</select>`;
+                })())}
+            </div>
+            <div class="intake-modal-grid" style="margin-top:8px;">
+                ${ivRenderCmCascade(r.ケアマネ事業所 || '', r.ケアマネ氏名 || '')}
+            </div>
+            </div>
+    
+            <!-- 個人情報 -->
+            <div class="intake-modal-section"><h4>個人情報</h4>
+            <div style="font-size:12px;color:#718096;margin:-4px 0 6px;">※ 氏名 / ふりがな はどちらかが必須（漢字不明時はふりがなだけでOK）</div>
+            <div class="intake-modal-grid">
+                ${intakeField('ふりがな', `<input id="m-ふりがな" value="${intakeEscapeAttr(r.ふりがな)}" oninput="intakeRefreshRequiredHighlight()">`)}
+                ${intakeField('氏名', `<input id="m-氏名" value="${intakeEscapeAttr(r.氏名)}" oninput="intakeRefreshRequiredHighlight()">`)}
+                ${intakeField('TEL<span style="color:#c53030;">*</span> <span style="color:#718096;font-weight:normal;">／ 続柄</span>', (() => {
+                    const opts = ['', '本人', '夫', '妻', '息子', '娘', '長男', '長女', '次男', '次女', '嫁', '婿', '兄', '姉', '弟', '妹', 'その他'];
+                    const cur = r.TEL続柄 || '';
+                    const sel = `<select id="m-TEL続柄" style="flex:0 0 78px;">${opts.map(o => `<option value="${intakeEscapeAttr(o)}"${o === cur ? ' selected' : ''}>${o || '誰?'}</option>`).join('')}</select>`;
+                    return `<div style="display:flex;gap:4px;"><input id="m-TEL" value="${intakeEscapeAttr(r.TEL)}" style="flex:1;min-width:0;" oninput="intakeRefreshRequiredHighlight()" onblur="this.value=formatJPPhone(this.value);intakeRefreshRequiredHighlight()" placeholder="090-1234-5678">${sel}</div>`;
+                })())}
+                ${intakeField('性別', ivRenderBtnGroup('性別', ['male','female'], ['男','女'], r.性別 || ''), 'col2')}
+                ${intakeField('年齢', `<input type="number" id="m-年齢" value="${intakeEscapeAttr(r.年齢)}">`)}
+                ${intakeField('生年月日', `<input id="m-生年月日" value="${intakeEscapeAttr(r.生年月日)}" placeholder="例: 19500101 / 1950/1/1 / 昭和25年1月1日" onblur="intakeNormalizeBirthday()">`, 'col3')}
+                ${intakeField('介護度', (() => {
+                    // 過去データ（事前/支1/介1等 旧表記）後方互換：現在値が選択肢に無ければ先頭に足す
+                    const careLevels = INTAKE_CARE_LEVELS.slice();
+                    if (r.介護度 && careLevels.indexOf(r.介護度) === -1) careLevels.unshift(r.介護度);
+                    return ivRenderBtnGroup('介護度', careLevels, null, r.介護度 || '');
+                })(), 'col3')}
+                ${intakeField('🏠 エリア（送迎範囲）', ivRenderBtnGroup('エリア', ['東松山市','嵐山町','川島町','その他'], null, r.エリア || '', { onchange: 'intakeOnAreaChange' }) + `<div id="m-エリア-warn" style="display:${r.エリア === 'その他' ? 'block' : 'none'};color:#c05621;font-size:12px;margin-top:4px;">⚠️ 送迎範囲外の可能性・要相談（保存は可能）</div>`, 'col3')}
+                ${intakeField('住所詳細', `<input id="m-住所詳細" value="${intakeEscapeAttr(r.住所詳細)}" placeholder="◯◯町1-2-3">`, 'col3')}
+                ${intakeField('送迎', ivRenderBtnGroup('送迎有無', ['true','false'], ['有','無'], r.送迎有無 === true ? 'true' : r.送迎有無 === false ? 'false' : ''))}
+                ${intakeField('直接連絡可否', ivRenderBtnGroup('直接連絡可否', ['true','false'], ['可','否'], r.直接連絡可否 === true ? 'true' : r.直接連絡可否 === false ? 'false' : ''), 'col2')}
+            </div>
+            <div style="margin-top:12px;">
+                <div style="font-weight:bold;color:#c53030;margin-bottom:6px;">⚠️ ペースメーカー（干渉波禁忌確認）<span>*</span></div>
+                ${ivRenderBtnGroup('ペースメーカー', ['無','有','不明'], null, r.ペースメーカー || '')}
+            </div>
+            </div>
+    
+            <!-- 希望曜日 -->
+            <div class="intake-modal-section"><h4>希望曜日（本人希望）</h4>
+                ${ivRenderDayWishes('wish-user', 2, r.利用希望曜日 || '')}
+            </div>
+            <div class="intake-modal-section"><h4>希望曜日（yawaragi側希望）</h4>
+                ${ivRenderDayWishes('wish-yawaragi', 3, r['yawarigi希望曜日'] || '', { enableFollowUp: true })}
+            </div>
+    
+            <!-- 送迎シミュレーション（体験のみ表示・見学は家族送迎）-->
+            <div class="intake-modal-section" id="intake-transport-section" style="${r.種別 === 'visit' ? 'display:none;' : ''}">
+                <h4>送迎シミュレーション（体験時・利用時）</h4>
+                <div style="font-size:12px;color:#4a5568;margin-bottom:4px;">体験送迎順（時間）— AM/PMボタンで時間範囲を絞る</div>
+                ${renderTransportSim('m-transport-trial', r.お試し送迎順, detectAmpmFromTransport(r.お試し送迎順))}
+                <div style="font-size:12px;color:#4a5568;margin:8px 0 4px;">利用時シミュレーション（本格利用想定）</div>
+                ${renderTransportSim('m-transport-active', r.利用時送迎順, detectAmpmFromTransport(r.利用時送迎順))}
+                <div style="font-size:11px;color:#a0aec0;margin-top:4px;">※見学の場合は家族送迎のため非表示</div>
+            </div>
+    
+            <!-- ヒアリング・競合 -->
+            <div class="intake-modal-section"><h4>📋 ヒアリング・競合情報</h4>
+            <div class="intake-modal-grid">
+                ${intakeField('主訴（今、困っていること）', `<textarea id="m-主訴">${intakeEscapeHtml(r.主訴)}</textarea>`, 'col3')}
+                ${intakeField('他デイ見学', ivRenderBtnGroup('他デイ見学', ['true','false'], ['有','無'], r.他デイ見学 === true ? 'true' : r.他デイ見学 === false ? 'false' : '', { onchange: 'intakeOnOtherDayChange' }))}
+                ${intakeField('yawaragiは何番目？', `<input type="number" id="m-yawaragi何番目" value="${intakeEscapeAttr(r.yawaragi何番目)}">`, 'col2 intake-other-day-only')}
+            </div>
+            </div>
+    
+            <!-- 初回送迎準備 -->
+            <div class="intake-modal-section"><h4>🚐 初回送迎準備（住所確認・体験日前日までに完了）</h4>
+            <div class="intake-modal-grid">
+                ${intakeField('Googleマップ確認', `<button type="button" onclick="intakeOpenMap()" style="padding:8px 14px;background:#4285f4;color:#fff;border:none;border-radius:4px;font-weight:bold;cursor:pointer;font-size:14px;">📍 住所をマップで開く</button> <span style="color:#718096;font-size:12px;">（住所欄を埋めてからクリック）</span>`, 'col2')}
+                ${intakeField('自宅表札', ivRenderBtnGroup('表札有無', ['有','無','読みにくい'], null, r.表札有無 || ''))}
+                ${intakeField('訪問時の注意事項（門・犬・呼び鈴位置等）', `<textarea id="m-訪問注意事項" placeholder="例：門が固い、表札なし、犬注意">${intakeEscapeHtml(r.訪問注意事項)}</textarea>`, 'col3')}
+            </div>
+            <label style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:14px;background:#fffaf0;border:2px solid #ed8936;border-radius:6px;cursor:pointer;font-size:15px;font-weight:bold;color:#7b341e;">
+                <input type="checkbox" id="m-Googleマップ登録済み" style="width:20px;height:20px;cursor:pointer;"${r['Googleマップ登録済み'] === true ? ' checked' : ''}>
+                🗺️ Googleマップに住所を登録済み
+                <span style="font-size:12px;color:#9c4221;font-weight:normal;margin-left:auto;">（送迎者がすぐ場所わかるように・体験日前日までに必須）</span>
+            </label>
+            </div>
+    
+            <!-- 体験日確定・連絡準備（体験日が決まったら入力）-->
+            <div class="intake-modal-section"><h4>📅 体験日確定・連絡準備</h4>
+            <div style="font-size:12px;color:#4a5568;margin:-4px 0 8px;">体験日が決まったら、ケアマネ・本人に「○月○日○時にお迎えに行きます」と電話する準備をここで管理</div>
+            <div class="intake-modal-grid">
+                ${intakeField('体験 お迎え時間', `<input id="m-体験お迎え時間" value="${intakeEscapeAttr(r.体験お迎え時間 || '')}" placeholder="例: 9:10">`)}
+                ${intakeField('連絡予定日（いつ電話するか）', `<input type="date" id="m-体験前連絡予定日" value="${intakeEscapeAttr(r.体験前連絡予定日 || '')}">`)}
+                ${intakeField('連絡相手', ivRenderBtnGroup('体験前連絡相手', ['本人','家族','ケアマネ'], null, r.体験前連絡相手 || ''))}
+            </div>
+            <div class="intake-modal-grid" style="margin-top:8px;">
+                ${intakeField('連絡メモ（電話で伝えること・本人の反応）', `<textarea id="m-体験前連絡メモ" placeholder="例: 9:10にお迎え・玄関先まで・体調確認">${intakeEscapeHtml(r.体験前連絡メモ || '')}</textarea>`, 'col3')}
+            </div>
+            <div class="intake-check-grid" style="margin-top:8px;">
+                ${intakeCheckItem('m-体験前連絡済', '✅ 体験日詳細をケアマネ・本人に連絡済', r.体験前連絡済 === true, false)}
+            </div>
+            <!-- 出勤＆送迎表反映ボタン（2026-05-11追加・体験者として利用者台帳に追加）-->
+            <div style="margin-top:14px;padding:14px;background:${r.送迎表追加済 ? '#f0fff4' : '#fffaf0'};border:2px solid ${r.送迎表追加済 ? '#48bb78' : '#ed8936'};border-radius:8px;">
+                ${r.送迎表追加済
+                    ? `<div style="color:#22543d;font-weight:bold;font-size:14px;">✅ 出勤＆送迎表に追加済（${intakeEscapeHtml(r.送迎表追加日時 || '')}）</div>
+                       <div style="font-size:12px;color:#22543d;margin-top:4px;">出勤＆送迎表・出席予定タブで「体験中」ステータスの利用者として表示されます。不成立時は利用者台帳でステータスを「中止」に変更してください。</div>`
+                    : `<button type="button" onclick="intakeAddAsTrialAction('${isNew ? '' : r.id}')" style="background:#ed8936;color:#fff;border:none;padding:12px 22px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:15px;">📤 この方を出勤＆送迎表に追加（体験者として）</button>
+                       <div style="font-size:12px;color:#7b341e;margin-top:6px;">押すと利用者台帳に「体験中」ステータスで登録され、出勤＆送迎表・出席予定タブに自動表示されます。体験日が確定したら押してください。</div>`
+                }
+            </div>
+            </div>
+    
+            <!-- 前日連絡（強化版）-->
+            <div class="intake-modal-section"><h4>📞 前日連絡（体験/見学の前日）</h4>
+            <div class="intake-modal-grid">
+                ${intakeField('連絡日時', `<input type="datetime-local" id="m-前日連絡日時" value="${intakeEscapeAttr(r.前日連絡日時 || '')}">`)}
+                ${intakeField('担当者', (() => {
+                    const cur = r.前日連絡担当 || '';
+                    const list = (typeof getStaff === 'function' ? getStaff() : []).slice();
+                    if (cur && list.indexOf(cur) === -1) list.unshift(cur);
+                    return `<select id="m-前日連絡担当"><option value="">-</option>${list.map(s => `<option value="${intakeEscapeAttr(s)}"${s === cur ? ' selected' : ''}>${intakeEscapeHtml(s)}</option>`).join('')}</select>`;
+                })())}
+                ${intakeField('連絡相手', ivRenderBtnGroup('前日連絡相手', ['本人','家族','ケアマネ','留守電'], null, r.前日連絡相手 || ''))}
+                ${intakeField('メモ（先方の反応・確認事項）', `<textarea id="m-前日連絡メモ" placeholder="例：体調OK、9時頃迎え了承">${intakeEscapeHtml(r.前日連絡メモ)}</textarea>`, 'col3')}
+            </div>
+            </div>
+    
+            <!-- ケアマネ連絡フロー（体験後→ケアマネ報告→ケアマネからの利用可否連絡）-->
+            <div class="intake-modal-section"><h4>📨 ケアマネ連絡フロー（体験後の双方向連絡）</h4>
+            <div style="font-size:12px;color:#718096;margin:-4px 0 6px;">体験後は必ずケアマネに利用状況を報告。利用可否はケアマネ経由で連絡が来ます。</div>
+            <div class="intake-check-grid">
+                ${intakeCheckItem('m-ケアマネ報告済', '① ケアマネに体験のご様子を報告済', r.ケアマネ報告済 === true, false)}
+            </div>
+            <div class="intake-modal-grid" style="margin-top:8px;">
+                ${intakeField('① 報告日時', `<input type="datetime-local" id="m-ケアマネ報告日時" value="${intakeEscapeAttr(r.ケアマネ報告日時 || '')}">`)}
+                ${intakeField('① 報告メモ（任意・後日見返し用）', `<input id="m-ケアマネ報告内容" value="${intakeEscapeAttr(r.ケアマネ報告内容 || '')}" placeholder="例: 運動に意欲的、本人も継続希望">`, 'col2')}
+                ${intakeField('② ケアマネからの可否連絡日', `<input type="date" id="m-ケアマネ利用可否連絡日" value="${intakeEscapeAttr(r.ケアマネ利用可否連絡日 || '')}">`)}
+                ${intakeField('② 回答', ivRenderBtnGroup('ケアマネ利用可否回答', ['利用する','利用しない','保留'], null, r.ケアマネ利用可否回答 || '', { onchange: 'intakeOnAnswerChange' }), 'col2')}
+                ${intakeField('利用意向（体験後）', ivRenderBtnGroup('利用意向', ['あり','保留','なし'], null, r.利用意向 || ''), 'col2')}
+                ${intakeField('利用しない理由（差し支えなければケアマネに確認・改善材料に）', ivRenderBtnGroup('利用なし理由', Object.keys(INTAKE_NO_USE_REASON), Object.values(INTAKE_NO_USE_REASON), r.利用なし理由 || ''), 'col3 intake-no-use-only')}
+                ${intakeField('理由 詳細（自由記入）', `<input id="m-利用なし理由詳細" value="${intakeEscapeAttr(r.利用なし理由詳細)}" placeholder="例: 距離が遠かった・送迎時間が合わない">`, 'col3 intake-no-use-only')}
+                ${intakeField('契約順位（保留時：枠が空いた時の優先順）', `<input type="number" id="m-契約順位" value="${intakeEscapeAttr(r.契約順位 || '')}" min="1" placeholder="1=最優先">`, 'col3 intake-on-hold-only')}
+            </div>
+            <!-- yawaragiを選んだ理由（経営分析用・複数選択可）-->
+            <div class="intake-use-only" style="margin-top:12px;padding:12px;background:#f0fff4;border:2px solid #48bb78;border-radius:6px;">
+                <div style="font-weight:bold;color:#22543d;margin-bottom:8px;">📊 yawaragiを選んだ理由（複数選択可・経営分析の宝の山）</div>
+                <div class="intake-check-grid">
+                    ${(() => {
+                        const reasons = ['立地・送迎範囲が良い','半日型である','リハビリ・運動メニューが魅力','価格・金額','雰囲気・スタッフ対応','ケアマネの推薦','知人・家族の紹介','HP・SNSを見て','体験で本人が気に入った','その他'];
+                        const selected = (typeof r.決定理由 === 'string' ? r.決定理由 : '').split(',').map(s => s.trim()).filter(Boolean);
+                        return reasons.map(item => intakeCheckItem('m-決定理由-' + item, item, selected.indexOf(item) >= 0, false)).join('');
+                    })()}
+                </div>
+                <div style="margin-top:8px;">
+                    <label style="font-size:12px;font-weight:bold;color:#22543d;">詳細メモ（選んだ決め手・本人/家族の声など）</label>
+                    <input id="m-決定理由詳細" value="${intakeEscapeAttr(r.決定理由詳細 || '')}" placeholder="例: 体験中、運動が楽しいと本人が話していた" style="width:100%;margin-top:4px;">
+                </div>
+            </div>
+            </div>
+    
+            <!-- 契約準備フロー（利用が決まったら埋めていく）-->
+            <div class="intake-modal-section"><h4>📝 契約準備フロー（利用決定後に記入）</h4>
+            <div class="intake-modal-grid">
+                ${intakeField('利用開始日', `<input type="date" id="m-本格利用開始日" value="${intakeEscapeAttr(r.本格利用開始日 || '')}">`, 'col2')}
+                ${intakeField('初回お迎え時間（契約時にケアマネ・本人へ報告）', `<input id="m-初回お迎え時間" value="${intakeEscapeAttr(r.初回お迎え時間 || '')}" placeholder="例: 9:10">`)}
+            </div>
+            <div class="intake-check-grid" style="margin-top:8px;">
+                ${intakeCheckItem('m-初回お迎え時間報告済', '初回お迎え時間をケアマネ・本人に報告済（契約時）', r.初回お迎え時間報告済 === true, false)}
+            </div>
+            <div style="margin-top:12px;padding:10px;background:#f0fff4;border:2px solid #48bb78;border-radius:6px;">
+                ${r.利用者台帳反映済
+                    ? `<div style="color:#22543d;font-weight:bold;">✅ 利用者台帳に反映済（${r.利用者台帳反映日時 || ''}）</div>`
+                    : `<button onclick="syncIntakeToUserListAction('${r.id || ''}')" style="background:#48bb78;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-weight:bold;cursor:pointer;font-size:14px;">🔄 利用者台帳に反映する（契約完了時に押す）</button>
+                       <div style="font-size:12px;color:#22543d;margin-top:6px;">押すと、氏名・ふりがな・介護度・ケアマネ・電話・住所・利用曜日・本格利用開始日 を利用者台帳に転記します。</div>`
+                }
+            </div>
+            </div>
+    
+            <!-- チェックリスト -->
+            <div class="intake-modal-section"><h4>チェックリスト（紙の赤字項目）</h4>
+            <div class="intake-check-grid">
+                ${intakeCheckItem('m-利用日前日連絡フラグ', '利用日前日連絡', r.利用日前日連絡フラグ === true, false)}
+                ${intakeCheckItem('m-ケアマネ連絡済', 'ケアマネ連絡済（体験/見学当日〜翌AM）', r.ケアマネ連絡済 === true, careOverdue)}
+                ${intakeCheckItem('m-送迎時間連絡済', '送迎時間連絡済（前日まで）', r.送迎時間連絡済 === true, false)}
+                ${intakeCheckItem('m-週間予定表仮予約済', '週間予定表に仮予約記入', r.週間予定表仮予約済 === true, false)}
+                ${intakeCheckItem('m-全記入済', '全て記入しました', r.全記入済 === true, false)}
+            </div></div>
+    
+            <!-- カンバン進行・完了チェック（Phase C 2026-05-31）-->
+            <div class="intake-modal-section"><h4>🗂️ カンバン進行・完了チェック</h4>
+            <div style="font-size:12px;color:#718096;margin:-4px 0 8px;">現在のフェーズとカードの「→次へ」で進めるためのチェック項目。利用者台帳反映は上の「契約準備フロー」の🔄ボタンで行います。</div>
+            <div class="intake-modal-grid">
+                ${intakeField('現在フェーズ', `<input value="${intakeEscapeAttr(r.フェーズ || '受付')}" readonly style="background:#edf2f7;font-weight:bold;color:#2c7a7b;">`)}
+                ${intakeField('契約日', `<input type="date" id="m-契約日" value="${intakeEscapeAttr(r.契約日 || '')}">`)}
+                ${intakeField('体験打診結果（体験へ進める？）', ivRenderBtnGroup('体験打診結果', ['Yes','保留','No'], null, r.体験打診結果 || ''), 'col2')}
+            </div>
+            <div class="intake-check-grid" style="margin-top:8px;">
+                ${intakeCheckItem('m-見学完了', '見学 完了', r.見学完了 === true, false)}
+                ${intakeCheckItem('m-体験完了', '体験 完了', r.体験完了 === true, false)}
+            </div>
+            <div style="margin-top:10px;font-weight:bold;color:#2d3748;">🎁 利用開始準備チェックリスト（全部チェックでアーカイブ可）</div>
+            <div style="margin:6px 0;font-size:12px;color:#4a5568;">初回利用日: ${(() => {
+                try { const a = r.初回利用日リスト ? JSON.parse(r.初回利用日リスト) : [];
+                    return a.length ? a.map(d => `${d.date}(${d.dow})${d.ampm}`).join(' / ') : '（台帳反映後に自動算出）'; }
+                catch(e){ return '（未算出）'; } })()}</div>
+            <div class="intake-check-grid">
+                ${intakeCheckItem('m-重要事項説明済', '重要事項説明済', r.重要事項説明済 === true, false)}
+                ${intakeCheckItem('m-契約書取り交わし済', '契約書取り交わし済', r.契約書取り交わし済 === true, false)}
+                ${intakeCheckItem('m-名札_通常済', '名札(通常)', r.名札_通常済 === true, false)}
+                ${intakeCheckItem('m-名札_荷物済', '名札(荷物)', r.名札_荷物済 === true, false)}
+                ${intakeCheckItem('m-名札_ハンガー済', '名札(ハンガー)', r.名札_ハンガー済 === true, false)}
+                ${intakeCheckItem('m-名札_ドリンク済', '名札(ドリンク)', r.名札_ドリンク済 === true, false)}
+                ${intakeCheckItem('m-名札_靴済', '名札(靴)', r.名札_靴済 === true, false)}
+                ${intakeCheckItem('m-リハブクラウド登録済', 'リハブ登録', r.リハブクラウド登録済 === true, false)}
+                ${intakeCheckItem('m-ケアズ登録済', 'ケアズ登録', r.ケアズ登録済 === true, false)}
+                ${intakeCheckItem('m-SNS顔出し可否確認済', 'SNS可否確認', r.SNS顔出し可否確認済 === true, false)}
+                ${intakeCheckItem('m-写真撮影済', '写真撮影', r.写真撮影済 === true, false)}
+                ${intakeCheckItem('m-同意書類取得済', '同意書取得', r.同意書類取得済 === true, false)}
+                ${intakeCheckItem('m-朝礼周知済', '朝礼周知', r.朝礼周知済 === true, false)}
+            </div>
+            ${(!isNew && r.フェーズ !== 'アーカイブ' && r.フェーズ !== 'ドロップ')
+                ? `<div style="margin-top:12px;"><button type="button" class="danger" onclick="kanbanDrop('${r.id}')">📦 ドロップ（見送り・他社決定など）</button></div>`
+                : ''}
+            </div>
+    
+            <!-- ステータス -->
+            <div class="intake-modal-section"><h4>ステータス</h4>
+                ${ivRenderBtnGroup('ステータス', Object.keys(INTAKE_STATUS_LABEL), Object.values(INTAKE_STATUS_LABEL), r.ステータス || 'pending')}
+                <div style="font-size:12px;color:#718096;margin-top:8px;">${approvalStatus}</div>
+            </div>
+    
+            <!-- アクション -->
+            <div class="intake-modal-actions">
+                ${deleteBtn}
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    ${actionBtns}
+                </div>
+            </div>
+        `;
+    }
+    
+    // ===== 保存・承認・削除 =====
+    
+    function collectTransportSim(idPrefix) {
+        const out = [];
+        for (let i = 0; i < 6; i++) {
+            const el = document.getElementById(idPrefix + '-' + i);
+            const v = el ? el.value.trim() : '';
+            out.push({ 順: i + 1, 時間: v });
+        }
+        return JSON.stringify(out);
+    }
+    
+    // モーダルから全値を収集（新規・編集共通）
+    function collectIntakeModalPayload() {
+        const p = {};
+        // テキスト・日付系
+        ['問い合わせ日','予定日','見学日','初回対応スタッフ','ケアマネ事業所','ケアマネ氏名',
+         'ふりがな','氏名','性別','生年月日','年齢','介護度','住所詳細','TEL','TEL続柄',
+         '主訴','yawaragi何番目','利用なし理由詳細',
+         '体験お迎え時間','体験前連絡予定日','体験前連絡メモ',
+         '前日連絡日時','前日連絡担当','前日連絡メモ','訪問注意事項',
+         '本格利用開始日','初回お迎え時間','契約日',
+         'ケアマネ報告日時','ケアマネ報告内容','ケアマネ利用可否連絡日','契約順位'].forEach(f => {
+            const el = document.getElementById('m-' + f);
+            if (el) p[f] = el.value;
+        });
+        // ボタングループ
+        p.種別 = ivGetGroupValue('種別') || 'trial';
+        p.予定日AMPM = ivGetGroupValue('予定日AMPM') || '';
+        const sex = ivGetGroupValue('性別');
+        if (sex) p.性別 = sex;
+        p.介護度 = ivGetGroupValue('介護度');
+        p.ペースメーカー = ivGetGroupValue('ペースメーカー');
+        p.利用有無 = ivGetGroupValue('利用有無') || '未定';
+        p.利用なし理由 = ivGetGroupValue('利用なし理由');
+        p.ステータス = ivGetGroupValue('ステータス') || 'pending';
+        // 有無系（true/false文字列を bool に）
+        ['送迎有無','直接連絡可否','他デイ見学'].forEach(f => {
+            const v = ivGetGroupValue(f);
+            if (v === 'true') p[f] = true;
+            else if (v === 'false') p[f] = false;
+        });
+        // チェックボックス
+        ['利用日前日連絡フラグ','ケアマネ連絡済','送迎時間連絡済','週間予定表仮予約済','全記入済',
+         'Googleマップ登録済み','初回お迎え時間報告済','ケアマネ報告済','体験前連絡済',
+         // カンバン進行・完了チェック（Phase C）
+         '見学完了','体験完了',
+         '重要事項説明済','契約書取り交わし済',
+         '名札_通常済','名札_荷物済','名札_ハンガー済','名札_ドリンク済','名札_靴済',
+         'リハブクラウド登録済','ケアズ登録済','SNS顔出し可否確認済',
+         '写真撮影済','同意書類取得済','朝礼周知済'].forEach(f => {
+            const el = document.getElementById('m-' + f);
+            if (el) p[f] = el.checked === true;
+        });
+        // 体験打診結果（btnGroup）
+        p.体験打診結果 = ivGetGroupValue('体験打診結果');
+        // 前日連絡相手・表札・ケアマネ可否回答・体験前連絡相手（btnGroup）
+        p.前日連絡相手 = ivGetGroupValue('前日連絡相手');
+        p.体験前連絡相手 = ivGetGroupValue('体験前連絡相手');
+        p.表札有無 = ivGetGroupValue('表札有無');
+        p.ケアマネ利用可否回答 = ivGetGroupValue('ケアマネ利用可否回答');
+        p.利用意向 = ivGetGroupValue('利用意向');
+        p.連絡元区分 = ivGetGroupValue('連絡元区分');
+        p.エリア = ivGetGroupValue('エリア');
+        // 決定理由（複数選択チェックボックス → カンマ区切り保存）
+        const reasonItems = ['立地・送迎範囲が良い','半日型である','リハビリ・運動メニューが魅力','価格・金額','雰囲気・スタッフ対応','ケアマネの推薦','知人・家族の紹介','HP・SNSを見て','体験で本人が気に入った','その他'];
+        p.決定理由 = reasonItems.filter(item => {
+            const el = document.getElementById('m-決定理由-' + item);
+            return el && el.checked;
+        }).join(',');
+        const reasonDetailEl = document.getElementById('m-決定理由詳細');
+        if (reasonDetailEl) p.決定理由詳細 = reasonDetailEl.value;
+        // 曜日希望（「いつでもOK」対応）
+        p.利用希望曜日 = ivCollectDayWishes('wish-user', 2);
+        p['yawarigi希望曜日'] = ivCollectDayWishes('wish-yawaragi', 3);
+        // 送迎シミュレーション
+        p.お試し送迎順 = collectTransportSim('m-transport-trial');
+        p.利用時送迎順 = collectTransportSim('m-transport-active');
+        // 住所区分は東松山市固定
+        p.住所区分 = '東松山市';
+        return p;
+    }
+    
+    // 新規保存（通常 or 中断）
+    async function saveIntakeModalNew(suspend) {
+        const p = collectIntakeModalPayload();
+        if (!p.エリア) p.エリア = '東松山市'; // 受け入れは東松山市のみ（2026-05-31〜）。ガイドではエリアを聞かず固定
+        const jump = (n, msg) => { alert(msg); if (typeof gstepOpen === 'function') gstepOpen(n); };
+        if (suspend) {
+            // 中断保存：途中でもOK。本人特定のため名前か電話のどちらかだけは欲しい
+            if (!p.氏名 && !p.ふりがな && !p.TEL) { alert('お名前か電話番号のどちらかだけ入れてから中断保存してください'); if (typeof gstepOpen==='function') gstepOpen(4); return; }
+        } else {
+            // 本保存：種別に応じた必須チェック（該当ステップを開く）
+            if (!p.連絡元区分) { jump(1, '「誰からの連絡？」を選んでください'); return; }
+            if (p.連絡元区分 === 'caremane' && (!p.ケアマネ事業所 || !p.ケアマネ氏名)) { jump(2, 'ケアマネの事業所・担当を入力してください'); return; }
+            if (!p.種別) { jump(3, '今回はどれか（問い合わせ／見学／体験）を選んでください'); return; }
+            if (!p.氏名 && !p.ふりがな) { jump(4, 'お名前（漢字不明ならふりがなだけでOK）を入れてください'); return; }
+            if (!p.TEL) { jump(5, '電話番号を入れてください'); return; }
+            if (!p.介護度) { jump(6, '介護度を選んでください'); return; }
+            if (p.種別 === 'trial' && !p.ペースメーカー) { jump(7, '体験はペースメーカーの有無確認が必須です（運動機器の干渉波 安全確認）'); return; }
+        }
+        if (p.TEL) p.TEL = formatJPPhone(p.TEL);
+    
+        p.action = 'intake_create';
+        p.登録者 = localStorage.getItem('yawaragi_staff') || '';
+        if (!p.初回対応スタッフ) p.初回対応スタッフ = p.登録者;
+        p.未完了フラグ = suspend === true;
+        if (suspend) {
+            p.ステータス = 'pending';
+            p.全記入済 = false;
+        } else {
+            p.全記入済 = true;
+        }
+    
+        const ok = await gasPost(p, suspend ? '新規受付 中断保存' : '新規受付 保存');
+        if (ok) {
+            if (suspend) {
+                alert('✅ 保存しました！残りは後で入力できます。フロアの状況を確認してください。');
+            }
+            closeIntakeModal();
+            setTimeout(loadIntakeList, 800);
+        }
+    }
+    
+    // 編集モードの保存
+    function intakeOnOtherDayChange() {
+        const v = ivGetGroupValue('他デイ見学');
+        document.querySelectorAll('.intake-other-day-only').forEach(el => {
+            el.style.display = v === 'true' ? '' : 'none';
+        });
+    }
+    
+    function intakeOnAnswerChange() {
+        const v = ivGetGroupValue('ケアマネ利用可否回答');
+        document.querySelectorAll('.intake-no-use-only').forEach(el => {
+            el.style.display = v === '利用しない' ? '' : 'none';
+        });
+        document.querySelectorAll('.intake-on-hold-only').forEach(el => {
+            el.style.display = v === '保留' ? '' : 'none';
+        });
+        document.querySelectorAll('.intake-use-only').forEach(el => {
+            el.style.display = v === '利用する' ? '' : 'none';
+        });
+    }
+    
+    function intakeOpenMap() {
+        const addrEl = document.getElementById('m-住所詳細');
+        const addr = addrEl ? (addrEl.value || '').trim() : '';
+        if (!addr) { alert('住所を入力してからクリックしてください'); return; }
+        const fullAddr = '埼玉県東松山市' + addr;
+        const url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(fullAddr);
+        window.open(url, '_blank');
+    }
+    
+    async function syncIntakeToUserListAction(id) {
+        if (!id) { alert('保存してから利用者台帳に反映してください'); return; }
+        if (!confirm('利用者台帳に転記します。よろしいですか？\n\n転記項目：氏名・ふりがな・介護度・ケアマネ・電話・住所・性別・生年月日・利用曜日・本格利用開始日')) return;
+        const ok = await gasPost({ action: 'intake_sync_to_userlist', id: id }, '利用者台帳に反映');
+        if (ok) {
+            alert('✅ 利用者台帳に反映しました');
+            setTimeout(loadIntakeList, 800);
+        }
+    }
+    
+    // 体験者を「体験中」ステータスで利用者台帳に仮登録（2026-05-11追加）
+    async function intakeAddAsTrialAction(id) {
+        if (!id) { alert('まず「💾保存」してから押してください'); return; }
+        // モーダル未保存の値があれば先に保存する案内
+        const planDate = document.getElementById('m-予定日')?.value || '';
+        const pickupTime = document.getElementById('m-体験お迎え時間')?.value || '';
+        if (!planDate) {
+            alert('⚠️ 予定日（体験日）を入力してから押してください');
+            return;
+        }
+        if (!confirm(
+            'この方を利用者台帳に「体験中」ステータスで仮登録します。\n\n' +
+            '・出勤＆送迎表・出席予定タブに自動表示されます\n' +
+            '・体験日: ' + planDate + '\n' +
+            '・お迎え時間: ' + (pickupTime || '未入力') + '\n\n' +
+            '不成立時は利用者台帳画面で「中止」ステータスに変更してください。\n\n' +
+            'よろしいですか？'
+        )) return;
+        const ok = await gasPost({ action: 'intake_add_as_trial', id: id }, '出勤＆送迎表に追加');
+        if (ok) {
+            alert(
+                '✅ 出勤＆送迎表に体験者として追加しました。\n\n' +
+                '出勤＆送迎表・出席予定タブで「体験中」ステータスの利用者として表示されます。\n\n' +
+                '通知メールが yawaragi.notify@gmail.com にも届きます。'
+            );
+            setTimeout(loadIntakeList, 800);
+        }
+    }
+    
+    async function saveIntakeModal(id) {
+        const p = collectIntakeModalPayload();
+        if (p.TEL) p.TEL = formatJPPhone(p.TEL);
+        p.action = 'intake_update';
+        p.id = id;
+        const ok = await gasPost(p, '見学・体験・新規 保存');
+        if (ok) {
+            closeIntakeModal();
+            setTimeout(loadIntakeList, 800);
+        }
+    }
+    
+    async function requestApproval(id) {
+        if (!confirm('社長に確認依頼のメールを送ります。よろしいですか？')) return;
+        const ok = await gasPost({ action: 'intake_request_approval', id: id }, '社長確認依頼');
+        if (ok) {
+            alert('📩 社長に提出しました。メール＋yawaragiボードで通知されます。');
+            closeIntakeModal();
+            setTimeout(loadIntakeList, 800);
+        }
+    }
+    
+    async function markOwnerApproved(id) {
+        if (!confirm('社長確認済にします。よろしいですか？（社長本人の操作推奨）')) return;
+        const ok = await gasPost({ action: 'intake_update', id: id, 社長確認済: true }, '社長確認済');
+        if (ok) {
+            alert('✅ 社長確認済にしました');
+            closeIntakeModal();
+            setTimeout(loadIntakeList, 800);
+        }
+    }
+    
+    async function deleteIntakeAction(id) {
+        if (!confirm('本当に削除しますか？（取り消せません）')) return;
+        const ok = await gasPost({ action: 'intake_delete', id: id }, '見学・体験・新規 削除');
+        if (ok) {
+            closeIntakeModal();
+            setTimeout(loadIntakeList, 800);
+        }
+    }
+    
+
+    /* ===== 初期化(単一タブ=intake) ===== */
+    window.addEventListener('load', function () {
+      try { if (typeof loadCmContactsCache === 'function') loadCmContactsCache(); } catch (e) { console.error(e); }
+      try { if (typeof loadIntakeList === 'function') loadIntakeList(); } catch (e) { console.error(e); }
+      console.log('[intake.html] 初期化完了');
+    });
+  </script>
+</body>
+</html>
