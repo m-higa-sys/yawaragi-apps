@@ -1,0 +1,2305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>区分変更管理 - yawaragi</title>
+  <script src="shared.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif; background: #f5f5f5; color: #2d3748; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .tab-content { display: block; }   /* 単一タブ常時表示(board の display:none を上書き) */
+    .modal-overlay {
+                display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 1000;
+                align-items: center; justify-content: center; padding: 20px;
+            }
+    .modal-overlay.show { display: flex; }
+    .modal {
+                background: white; border-radius: 16px; max-width: 500px;
+                width: 100%; max-height: 80vh; overflow-y: auto;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            }
+    .modal-header {
+                padding: 16px 20px; font-weight: 700; font-size: 1.1rem;
+                border-bottom: 1px solid #e2e8f0;
+                display: flex; justify-content: space-between; align-items: center;
+            }
+    .modal-close {
+                width: 32px; height: 32px; border: none; background: #f7fafc;
+                border-radius: 50%; font-size: 1.2rem; cursor: pointer;
+                display: flex; align-items: center; justify-content: center;
+            }
+    .modal-body { padding: 20px; }
+    .data-section {
+                background: white; border-radius: 12px; padding: 20px;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px;
+            }
+    .data-section h3 { margin-bottom: 12px; color: #2d3748; }
+    .data-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    .data-btn {
+                padding: 10px 20px; border: 2px solid #e2e8f0; border-radius: 8px;
+                background: white; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+            }
+    .data-btn:hover { border-color: #2c7a7b; color: #2c7a7b; }
+    .data-btn.danger { border-color: #fc8181; color: #e53e3e; }
+    .data-btn.danger:hover { background: #fff5f5; }
+    .yoyaku-section h3 { color: #b45309; }
+    .yoyaku-card {
+                display: flex; gap: 0;
+                border: 1px solid #fbbf24;
+                border-radius: 6px;
+                margin-bottom: 8px;
+                overflow: hidden;
+                background: #fffbeb;
+            }
+    .yoyaku-card-stripe { width: 8px; background: #fbbf24; flex-shrink: 0; }
+    .yoyaku-card-body { flex: 1; padding: 10px 14px; }
+    .yoyaku-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; flex-wrap: wrap; }
+    .yoyaku-card-name { font-weight: 700; font-size: 0.95rem; }
+    .yoyaku-card-badge {
+                background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 4px;
+                font-size: 0.75rem; font-weight: 700;
+            }
+    .yoyaku-card-body .change-line { font-size: 0.85rem; color: #1f2937; margin: 4px 0; }
+    .yoyaku-card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .yoyaku-card-actions button {
+                font-size: 0.78rem; padding: 4px 10px; border-radius: 4px;
+                border: 1px solid #d1d5db; background: #fff; cursor: pointer;
+            }
+    .yoyaku-card-actions .btn-cancel { color: #b91c1c; border-color: #fca5a5; }
+    .yoyaku-card-actions .btn-apply-now { color: #047857; border-color: #6ee7b7; }
+    .yoyaku-section-hint { font-size: 0.78rem; color: #718096; margin: 4px 0 12px; }
+    .yoyaku-empty-state { font-size: 0.85rem; color: #a0aec0; padding: 12px; text-align: center; }
+    
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="app">
+      <div id="tab-kubun" class="tab-content">
+          <!-- 🟡 予約中（適用待ち）セクション（2026-05-29 介護度予約反映機能 Task 12） -->
+          <div class="data-section yoyaku-section">
+              <h3>🟡 予約中（適用待ち）</h3>
+              <p class="yoyaku-section-hint">適用月の1日になると、利用者台帳に自動反映されます。</p>
+              <div id="kubun-scheduled-list">
+                  <p class="yoyaku-empty-state">読み込み中...</p>
+              </div>
+          </div>
+          <div class="data-section">
+              <h3>🔴 区変・更新フォロー一覧</h3>
+              <p style="font-size:0.85rem; color:#718096; margin-bottom:12px;"><strong>区分変更申請</strong>の結果待ち／<strong>更新で介護度が変わった人</strong>の保険証・月遅れ請求対応をまとめて管理します。実績確定・LIFE提出時は自動で除外確認されます。区変日が不明なときはケアマネに必ず確認すること。</p>
+              <div id="kubun-active-list" style="margin-bottom:16px;">
+                  <div style="color:#a0aec0; font-size:0.85rem;">読み込み中...</div>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button class="data-btn" onclick="openKubunSetModal()">📝 区変・更新の介護度変更を登録</button>
+                  <button class="data-btn" onclick="window.open('caremanager-change.html','_blank')">📋 ケアマネ変更を登録（窓口）</button>
+              </div>
+              <div class="kubun-bottom-grid" style="margin-top:20px; padding-top:16px; border-top:1px solid #e2e8f0; display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+                  <div>
+                      <h4 style="font-size:0.95rem; margin:0 0 8px; color:#c53030;">🔴 月遅れ請求対象</h4>
+                      <p style="font-size:0.8rem; color:#718096; margin:0 0 8px;">区変結果登録時に月遅れ対象月を登録した利用者。新介護度で再請求が必要。</p>
+                      <div id="kubun-delay-list">
+                          <div style="color:#a0aec0; font-size:0.85rem;">読み込み中...</div>
+                      </div>
+                  </div>
+                  <div>
+                      <h4 style="font-size:0.95rem; margin:0 0 8px; color:#2c5282;">📋 介護度変更後 後続作業（直近3ヶ月）</h4>
+                      <p style="font-size:0.8rem; color:#718096; margin:0 0 8px;">介護度が変わった人の「リハブクラウド更新」「利用日変動」のチェックリスト。完了後30日経過で自動非表示。</p>
+                      <div id="kubun-history-list">
+                          <div style="color:#a0aec0; font-size:0.85rem;">読み込み中...</div>
+                      </div>
+                  </div>
+              </div>
+              <style>
+              @media (max-width: 960px) {
+                  .kubun-bottom-grid {
+                      grid-template-columns: 1fr !important;
+                  }
+              }
+              </style>
+          </div>
+      </div>
+      
+      <!-- ===== kubunモーダル4種(区変ON/編集/履歴編集/クリア) ===== -->
+      <div class="modal-overlay" id="kubun-set-modal">
+          <div class="modal">
+              <div class="modal-header">
+                  📝 区変・更新の介護度変更を登録
+                  <button class="modal-close" onclick="closeModal('kubun-set-modal')">&times;</button>
+              </div>
+              <div class="modal-body">
+                  <div style="background:#fef3c7; border-left:4px solid #f59e0b; padding:8px 12px; margin-bottom:12px; font-size:0.85rem; color:#78350f;">
+                      <strong>区分変更申請</strong>または<strong>更新で介護度が変わった場合</strong>に登録します。役所からの結果通知待ちの状態を管理するためのものです。
+                  </div>
+      
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:6px;">種別 <span style="font-size:0.75rem; background:#fed7d7; color:#742a2a; padding:1px 6px; border-radius:4px;">必須</span></label>
+                      <div style="display:flex; gap:8px;">
+                          <label style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:8px 12px; background:#fff; border:2px solid #e2e8f0; border-radius:8px; cursor:pointer; font-weight:600;">
+                              <input type="radio" name="kubun-set-kind" value="区分変更" onchange="onKubunSetKindChange()"> 区分変更申請
+                          </label>
+                          <label style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:8px 12px; background:#fff; border:2px solid #e2e8f0; border-radius:8px; cursor:pointer; font-weight:600;">
+                              <input type="radio" name="kubun-set-kind" value="更新" onchange="onKubunSetKindChange()"> 更新（有効期間満了）
+                          </label>
+                      </div>
+                  </div>
+      
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
+                      <input type="text" id="kubun-set-name" list="kubun-set-users-list" autocomplete="off" oninput="refreshKubunSetCurrentDays()" onchange="refreshKubunSetCurrentDays()" placeholder="名前の一部を入力（漢字・ひらがな両方OK）" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                      <datalist id="kubun-set-users-list"></datalist>
+                      <div id="kubun-set-name-hint" style="font-size:0.75rem; color:#718096; margin-top:4px;"></div>
+                  </div>
+      
+                  <!-- 区分変更を選んだ時のみ表示 -->
+                  <div id="kubun-set-apply-section" style="display:none; margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">区変日（申請日）</label>
+                      <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">区変をかけた日（ケアマネが役所に申請した日）</div>
+                      <input type="date" id="kubun-set-apply" onchange="onKubunSetApplyChange()" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                      <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.85rem; color:#c53030; cursor:pointer;">
+                          <input type="checkbox" id="kubun-set-unknown" onchange="toggleKubunSetUnknown()"> 区変日が不明（後でケアマネに確認）
+                      </label>
+                  </div>
+      
+                  <!-- 認定有効期間（種別が選ばれたら表示） -->
+                  <div id="kubun-set-authperiod-section" style="display:none; margin-bottom:12px; padding:10px; background:#ebf8ff; border:1px solid #90cdf4; border-radius:8px;">
+                      <label style="display:block; font-weight:600; margin-bottom:6px; color:#2c5282;">認定有効期間（新しい認定）</label>
+                      <div style="font-size:0.75rem; color:#2c5282; margin-bottom:6px;" id="kubun-set-authperiod-note">介護保険認定通知書の有効期間（更新は必須・区変はわかれば任意）</div>
+                      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                          <input type="date" id="kubun-set-auth-start" onchange="onKubunSetAuthStartChange()" style="flex:1; min-width:140px; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                          <span style="color:#718096;">〜</span>
+                          <input type="date" id="kubun-set-auth-end" style="flex:1; min-width:140px; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                      </div>
+                      <div style="font-size:0.75rem; color:#718096; margin-top:6px;">💡 開始日は曜日変更の「適用開始日」にも自動で使われます</div>
+                  </div>
+                  <div style="margin-bottom:12px; padding:10px 12px; background:#f0fff4; border:1.5px solid #38a169; border-radius:8px;">
+                      <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; color:#22543d;">
+                          <input type="checkbox" id="kubun-set-has-result" onchange="toggleKubunSetHasResult()"> 📋 もう結果が出ている（同時に結果も登録する）
+                      </label>
+                      <div style="font-size:0.75rem; color:#22543d; margin-top:4px; margin-left:24px;">更新で気付いた時にはもう結果通知が届いているケース等</div>
+                  </div>
+      
+                  <!-- 結果待ち目安日は廃止（社長判断・2026-05-27） -->
+                  <input type="hidden" id="kubun-set-expect" value="">
+                  <div id="kubun-set-waiting-section" style="display:none;"></div>
+      
+                  <!-- もう結果出てるモード -->
+                  <div id="kubun-set-result-section" style="display:none; margin-bottom:16px; padding:12px; background:#f0fff4; border:1.5px solid #38a169; border-radius:8px;">
+                      <div style="margin-bottom:12px;">
+                          <label style="display:block; font-weight:600; margin-bottom:4px;">新介護度</label>
+                          <select id="kubun-set-newcare" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; background:#fff;">
+                              <option value="">選択してください</option>
+                              <option value="要支援1">要支援1</option>
+                              <option value="要支援2">要支援2</option>
+                              <option value="事業対象者">事業対象者</option>
+                              <option value="要介護1">要介護1</option>
+                              <option value="要介護2">要介護2</option>
+                              <option value="要介護3">要介護3</option>
+                              <option value="要介護4">要介護4</option>
+                              <option value="要介護5">要介護5</option>
+                          </select>
+                      </div>
+                      <input type="hidden" id="kubun-set-result-date">
+                      <div style="padding:10px; background:#fffaf0; border:1px solid #fbd38d; border-radius:8px; margin-bottom:12px;">
+                          <label style="display:block; font-weight:600; margin-bottom:4px;">🔴 月遅れ請求対象月</label>
+                          <p style="font-size:0.8rem; color:#718096; margin:0 0 8px;">新介護度で再請求が必要な月をチェック（不要なら全部外す）</p>
+                          <div id="kubun-set-okure-months" style="display:flex; flex-wrap:wrap; gap:8px;">
+                              <div style="color:#a0aec0; font-size:0.85rem;">区変日／更新月を入力すると候補が出ます</div>
+                          </div>
+                      </div>
+      
+                      <!-- 利用日の変動（必須3択） -->
+                      <div style="padding:10px; background:#fff; border:1.5px solid #c53030; border-radius:8px;">
+                          <label style="display:block; font-weight:600; margin-bottom:6px; color:#c53030;">利用日の変動 <span style="font-size:0.75rem; background:#fed7d7; color:#742a2a; padding:1px 6px; border-radius:4px; margin-left:4px;">必須</span></label>
+                          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                              <button type="button" id="kubun-set-usage-changed" onclick="setKubunSetUsageChange('changed')" style="padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;">○あった</button>
+                              <button type="button" id="kubun-set-usage-none" onclick="setKubunSetUsageChange('none')" style="padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;">○なかった</button>
+                              <button type="button" id="kubun-set-usage-unknown" onclick="setKubunSetUsageChange('unknown')" style="padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;">○まだ確認中</button>
+                          </div>
+                          <input type="hidden" id="kubun-set-usage-value" value="">
+      
+                          <!-- 「あった」を選んだ時のみ曜日変更UIを表示 -->
+                          <div id="kubun-set-days-section" style="display:none; margin-top:10px; padding:10px; background:#fff5f5; border:1px solid #feb2b2; border-radius:6px;">
+                              <div style="margin-bottom:8px; padding:6px 10px; background:#fff5e6; border:1px solid #fbd38d; border-radius:6px; font-size:0.85rem;">
+                                  <span style="color:#7c2d12; font-weight:600;">現在の利用曜日: </span>
+                                  <span id="kubun-set-current-days">-</span>
+                              </div>
+                              <label style="display:block; font-size:0.85rem; font-weight:600; margin-bottom:4px;">変更後の利用曜日と時間帯</label>
+                              <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">利用する曜日に午前または午後をクリック</div>
+                              <div id="kubun-set-perday-grid" style="display:grid; grid-template-columns:auto auto auto; gap:6px 12px; align-items:center;">
+                                  <!-- JS で動的生成 -->
+                              </div>
+                              <input type="hidden" id="kubun-set-effective-date" value="">
+                              <div style="font-size:0.75rem; color:#2c5282; margin-top:6px;">💡 上の「認定有効期間 開始日」が適用開始日になります。未来日付なら予約として記録（当日に自動反映）</div>
+                          </div>
+                      </div>
+                  </div>
+      
+                  <div style="display:flex; gap:8px; justify-content:flex-end;">
+                      <button class="data-btn" onclick="closeModal('kubun-set-modal')">キャンセル</button>
+                      <button class="data-btn" style="background:#dc3545; color:#fff;" onclick="submitKubunSet()">📝 登録する</button>
+                  </div>
+              </div>
+          </div>
+      </div>
+      
+      <!-- 区変編集 モーダル -->
+      <div class="modal-overlay" id="kubun-edit-modal">
+          <div class="modal">
+              <div class="modal-header">
+                  ✏️ 区変日を編集
+                  <button class="modal-close" onclick="closeModal('kubun-edit-modal')">&times;</button>
+              </div>
+              <div class="modal-body">
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
+                      <div id="kubun-edit-name" style="padding:8px 12px; background:#f7fafc; border-radius:8px; font-weight:700;"></div>
+                  </div>
+                  <div style="margin-bottom:16px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">区変日／更新月</label>
+                      <div style="font-size:0.75rem; color:#718096; margin-bottom:6px;">区変は区変をかけた日／更新は更新月の1日</div>
+                      <input type="date" id="kubun-edit-apply" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                      <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.85rem; color:#c53030; cursor:pointer;">
+                          <input type="checkbox" id="kubun-edit-unknown" onchange="toggleKubunEditUnknown()"> 区変日／更新月が不明（後でケアマネに確認）
+                      </label>
+                  </div>
+                  <input type="hidden" id="kubun-edit-expect" value="">
+                  <div style="display:flex; gap:8px; justify-content:flex-end;">
+                      <button class="data-btn" onclick="closeModal('kubun-edit-modal')">キャンセル</button>
+                      <button class="data-btn" style="background:#3182ce; color:#fff;" onclick="submitKubunEdit()">💾 保存</button>
+                  </div>
+              </div>
+          </div>
+      </div>
+      
+      <!-- 利用曜日 編集モーダル（介護度変更後フォロー用） -->
+      <div class="modal-overlay" id="usage-days-edit-modal">
+          <div class="modal">
+              <div class="modal-header">
+                  📅 利用曜日を編集
+                  <button class="modal-close" onclick="closeModal('usage-days-edit-modal')">&times;</button>
+              </div>
+              <div class="modal-body">
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
+                      <div id="usage-days-name-display" style="padding:8px 12px; background:#f7fafc; border-radius:8px; font-weight:600;"></div>
+                      <input type="hidden" id="usage-days-name">
+                  </div>
+                  <div style="margin-bottom:12px; padding:10px; background:#fff5e6; border:1px solid #fbd38d; border-radius:8px; font-size:0.85rem;">
+                      <div style="font-weight:600; color:#7c2d12; margin-bottom:4px;">変更前（現在）</div>
+                      <div id="usage-days-current">-</div>
+                  </div>
+                  <div style="margin-bottom:16px;">
+                      <label style="display:block; font-weight:600; margin-bottom:6px;">変更後の利用曜日と時間帯</label>
+                      <div style="font-size:0.75rem; color:#718096; margin-bottom:8px;">利用する曜日に午前または午後をクリック</div>
+                      <div id="usage-perday-grid" style="display:grid; grid-template-columns:auto auto auto; gap:6px 12px; align-items:center;">
+                          <!-- JS で動的生成 -->
+                      </div>
+                  </div>
+                  <div style="margin-bottom:16px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">適用開始日 <span style="font-size:0.75rem; color:#718096; font-weight:normal;">（いつから新曜日で利用するか）</span></label>
+                      <input type="date" id="usage-days-effective" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                      <div style="font-size:0.75rem; color:#2c5282; margin-top:4px;">💡 未来日付なら予約として記録。当日が来たら自動で利用者台帳が更新されます（出勤送迎表も自動切替）</div>
+                  </div>
+                  <div style="margin-bottom:12px; padding:10px; background:#ebf8ff; border:1px solid #90cdf4; border-radius:8px; font-size:0.8rem; color:#2c5282;">
+                      💡 保存すると利用者台帳が更新され、出勤＆送迎表・yawaragiボード「出席予定」等の社内アプリは次回ロードで自動反映されます（リハブクラウド・LIFEは別途手動更新が必要）。
+                  </div>
+                  <div style="display:flex; gap:8px; justify-content:flex-end;">
+                      <button class="data-btn" onclick="closeModal('usage-days-edit-modal')">キャンセル</button>
+                      <button class="data-btn" style="background:#3182ce; color:#fff;" onclick="submitUsageDaysEdit()">💾 保存</button>
+                  </div>
+              </div>
+          </div>
+      </div>
+      
+      <!-- 後続作業カード 記録編集モーダル -->
+      <div class="modal-overlay" id="kubun-history-edit-modal">
+          <div class="modal">
+              <div class="modal-header">
+                  ✏️ 後続作業カードを編集
+                  <button class="modal-close" onclick="closeModal('kubun-history-edit-modal')">&times;</button>
+              </div>
+              <div class="modal-body">
+                  <input type="hidden" id="kubun-hist-edit-row">
+                  <input type="hidden" id="kubun-hist-edit-name">
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
+                      <div id="kubun-hist-edit-name-display" style="padding:8px 12px; background:#f7fafc; border-radius:8px; font-weight:600;"></div>
+                      <div style="font-size:0.75rem; color:#718096; margin-top:4px;">※ 氏名はここでは変更できません（利用者台帳との連携が壊れるため）。別人を登録してしまった場合は削除して登録し直してください。</div>
+                  </div>
+                  <div style="display:flex; gap:8px; margin-bottom:12px;">
+                      <div style="flex:1;">
+                          <label style="display:block; font-weight:600; margin-bottom:4px;">前介護度</label>
+                          <select id="kubun-hist-edit-prevcare" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; background:#fff;">
+                              <option value="">（なし）</option>
+                              <option value="要支援1">要支援1</option>
+                              <option value="要支援2">要支援2</option>
+                              <option value="事業対象者">事業対象者</option>
+                              <option value="要介護1">要介護1</option>
+                              <option value="要介護2">要介護2</option>
+                              <option value="要介護3">要介護3</option>
+                              <option value="要介護4">要介護4</option>
+                              <option value="要介護5">要介護5</option>
+                          </select>
+                      </div>
+                      <div style="flex:1;">
+                          <label style="display:block; font-weight:600; margin-bottom:4px;">後介護度</label>
+                          <select id="kubun-hist-edit-newcare" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem; background:#fff;">
+                              <option value="">（なし）</option>
+                              <option value="要支援1">要支援1</option>
+                              <option value="要支援2">要支援2</option>
+                              <option value="事業対象者">事業対象者</option>
+                              <option value="要介護1">要介護1</option>
+                              <option value="要介護2">要介護2</option>
+                              <option value="要介護3">要介護3</option>
+                              <option value="要介護4">要介護4</option>
+                              <option value="要介護5">要介護5</option>
+                          </select>
+                      </div>
+                  </div>
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">区変日／更新月</label>
+                      <input type="date" id="kubun-hist-edit-applydate" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                  </div>
+                  <div style="margin-bottom:16px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">結果日</label>
+                      <input type="date" id="kubun-hist-edit-resultdate" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                  </div>
+                  <div style="display:flex; gap:8px; justify-content:flex-end;">
+                      <button class="data-btn" onclick="closeModal('kubun-history-edit-modal')">キャンセル</button>
+                      <button class="data-btn" style="background:#3182ce; color:#fff;" onclick="kubunHistorySaveEdit()">💾 保存</button>
+                  </div>
+              </div>
+          </div>
+      </div>
+      
+      <!-- 区変OFF モーダル -->
+      <div class="modal-overlay" id="kubun-clear-modal">
+          <div class="modal">
+              <div class="modal-header">
+                  介護度変更の結果を登録
+                  <button class="modal-close" onclick="closeModal('kubun-clear-modal')">&times;</button>
+              </div>
+              <div class="modal-body">
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
+                      <div id="kubun-clear-name-display" style="padding:8px 12px; background:#f7fafc; border-radius:8px; font-weight:600;"></div>
+                      <input type="hidden" id="kubun-clear-name">
+                  </div>
+                  <div style="margin-bottom:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">新介護度</label>
+                      <select id="kubun-clear-newcare" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                          <option value="">選択してください</option>
+                          <option value="要支援1">要支援1</option>
+                          <option value="要支援2">要支援2</option>
+                          <option value="事業対象者">事業対象者</option>
+                          <option value="要介護1">要介護1</option>
+                          <option value="要介護2">要介護2</option>
+                          <option value="要介護3">要介護3</option>
+                          <option value="要介護4">要介護4</option>
+                          <option value="要介護5">要介護5</option>
+                      </select>
+                  </div>
+                  <div style="margin-bottom:16px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">結果確定日</label>
+                      <input type="date" id="kubun-clear-result" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                  </div>
+                  <div style="margin-bottom:16px; padding:12px; background:#fffaf0; border:1px solid #fbd38d; border-radius:8px;">
+                      <label style="display:block; font-weight:600; margin-bottom:4px;">🔴 月遅れ請求対象月</label>
+                      <p style="font-size:0.8rem; color:#718096; margin:0 0 8px;">新介護度で再請求が必要な月をチェック（不要なら全部外す）</p>
+                      <div id="kubun-clear-okure-months" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                  </div>
+                  <!-- 適用開始月セクション（2026-05-29 介護度予約反映機能） -->
+                  <div class="apply-month-section" style="margin-bottom:16px; padding:12px; border-top:1px solid #e2e8f0; padding-top:12px;">
+                      <label style="display:block; font-weight:600; margin-bottom:6px;">適用開始月</label>
+                      <div class="radio-row" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                          <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" name="kubun-apply-mode" value="immediate" checked> 即時（当月から）</label>
+                          <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" name="kubun-apply-mode" value="future"> 月を指定</label>
+                          <select id="kubun-apply-month" disabled style="padding:6px 10px; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.9rem;">
+                              <!-- JS で動的生成 -->
+                          </select>
+                      </div>
+                      <p class="hint" style="font-size:0.75rem; color:#718096; margin:6px 0 0;">※ 即時=当月から新介護度を反映 / 月指定=その月1日から反映（それまで台帳は旧介護度のまま）</p>
+                  </div>
+                  <div style="display:flex; gap:8px; justify-content:flex-end;">
+                      <button class="data-btn" onclick="closeModal('kubun-clear-modal')">キャンセル</button>
+                      <button class="data-btn" style="background:#28a745; color:#fff;" onclick="submitKubunClear()">登録する</button>
+                  </div>
+              </div>
+          </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    console.log('[kubun.html] 初期化開始 / shared:', typeof UserStore, typeof gasPost, typeof YAWARAGIBOARD_API_URL);
+
+    /* ===== 同梱依存(P3③と統一・board 1:1) ===== */
+    const DEFAULT_STAFF = [
+        '比嘉', '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'
+    ];
+    function getStaff() { return DEFAULT_STAFF; }
+
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    
+    function escapeAttr(str) {
+        if (str == null) return '';
+        return String(str).replace(/'/g, '\\\'').replace(/"/g, '&quot;');
+    }
+
+    /* ===== 区変管理(kubun) board 1:1移植(board 11000-12856) =====
+       修正: ABS_BOARD_API_URL→YAWARAGIBOARD_API_URL(×20) */
+    // ========== 区変管理 ==========
+    let kubunActive = []; // {name, applyDate, expectDate, prevCareLevel, daysOver}
+    let _kubunTerminationsCache = []; // 区変ONドロップダウン用キャッシュ（中止者）
+    
+    function loadKubunHenkouList() {
+        const cbName = 'kubunListCb_' + Date.now();
+        window[cbName] = function(data) {
+            if (data && data.active) {
+                kubunActive = data.active;
+                renderKubunBanner(data);
+                renderKubunActiveList();
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + '?action=kubunList&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            console.error('区変リスト取得失敗');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+        loadKubunDelayList();
+        loadKubunHistoryList();
+        loadKubunScheduledList();
+    }
+    
+    // 🟡 予約中（適用待ち）一覧をGAS listScheduled APIから取得して描画
+    // 2026-05-29 介護度・事業所予約反映機能 Task 12
+    function loadKubunScheduledList() {
+        const container = document.getElementById('kubun-scheduled-list');
+        if (!container) return;
+        const cbName = 'kubunScheduledCb_' + Date.now();
+        window[cbName] = function(data) {
+            try {
+                if (!data || !data.items || data.items.length === 0) {
+                    container.innerHTML = '<p class="yoyaku-empty-state">予約中の利用者はいません</p>';
+                    return;
+                }
+                container.innerHTML = data.items.map(function(item) {
+                    const ymRaw = String(item.applyMonth || '');
+                    const ymLabel = ymRaw.replace(/(\d{4})-(\d{2})/, function(_, y, m) {
+                        return y + '年' + parseInt(m, 10) + '月';
+                    });
+                    const changeLine = item.kind === '介護度'
+                        ? '介護度: ' + escapeHtml(item.oldValue || '(未登録)') + ' → ' + escapeHtml(item.newValue || '')
+                        : '事業所: ' + escapeHtml(item.oldValue || '(未登録)') + ' → ' + escapeHtml(item.newValue || '');
+                    const nameEsc = escapeHtml(item.name || '');
+                    const nameJs = escapeJsString(item.name || '');
+                    const kindJs = escapeJsString(item.kind || '');
+                    const ymJs = escapeJsString(ymLabel);
+                    return '<div class="yoyaku-card" data-name="' + nameEsc + '" data-kind="' + escapeHtml(item.kind || '') + '">' +
+                        '<div class="yoyaku-card-stripe"></div>' +
+                        '<div class="yoyaku-card-body">' +
+                            '<div class="yoyaku-card-header">' +
+                                '<span class="yoyaku-card-name">' + nameEsc + '様（' + escapeHtml(item.kind || '') + '）</span>' +
+                                '<span class="yoyaku-card-badge">🟡 ' + escapeHtml(ymLabel) + 'から適用</span>' +
+                            '</div>' +
+                            '<div class="change-line">' + changeLine + '</div>' +
+                            '<div class="yoyaku-card-actions">' +
+                                '<button class="btn-cancel" onclick="cancelScheduled(\'' + nameJs + '\', \'' + kindJs + '\', \'' + ymJs + '\')">予約をキャンセル</button>' +
+                                '<button class="btn-apply-now" onclick="applyScheduledNow(\'' + nameJs + '\', \'' + kindJs + '\', \'' + ymJs + '\')">今すぐ適用</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>';
+                }).join('');
+            } catch (err) {
+                container.innerHTML = '<p class="yoyaku-empty-state" style="color:#b91c1c">描画エラー: ' + escapeHtml(err.message) + '</p>';
+            } finally {
+                delete window[cbName];
+                const s = document.getElementById('kubun-scheduled-jsonp-' + cbName);
+                if (s) s.remove();
+            }
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-scheduled-jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + '?action=listScheduled&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            container.innerHTML = '<p class="yoyaku-empty-state" style="color:#b91c1c">予約中一覧の取得に失敗しました</p>';
+            delete window[cbName];
+            const s = document.getElementById('kubun-scheduled-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        document.body.appendChild(script);
+    }
+    
+    // 予約キャンセル（2026-05-29 介護度予約反映機能 Task 13）
+    function cancelScheduled(name, kind, ymLabel) {
+        if (!confirm(name + '様の' + kind + '予約（' + ymLabel + '適用予定）をキャンセルしますか？')) return;
+        const action = (kind === '介護度') ? 'kubunCancelScheduled' : 'cmCancelScheduled';
+        const cbName = 'cancelSchedCb_' + Date.now();
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                if (typeof showToast === 'function') showToast('🗑 予約をキャンセルしました');
+                loadKubunScheduledList();
+            } else {
+                alert('エラー: ' + (res && res.error ? res.error : '不明'));
+            }
+            delete window[cbName];
+            const s = document.getElementById('cancel-sched-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'cancel-sched-jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + '?action=' + action + '&callback=' + cbName + '&name=' + encodeURIComponent(name) + '&t=' + Date.now();
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+            const s = document.getElementById('cancel-sched-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        document.body.appendChild(script);
+    }
+    
+    // 今すぐ適用（2026-05-29 介護度予約反映機能 Task 13）
+    function applyScheduledNow(name, kind, ymLabel) {
+        if (!confirm(name + '様の' + kind + '予約（' + ymLabel + '適用予定）を、今すぐ利用者台帳に反映しますか？')) return;
+        const cbName = 'applyNowCb_' + Date.now();
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                if (typeof showToast === 'function') showToast('✅ ' + name + '様の予約を反映しました');
+                loadKubunScheduledList();
+                // 介護度の場合は履歴一覧も再ロード
+                if (kind === '介護度' && typeof loadKubunHistoryList === 'function') {
+                    loadKubunHistoryList();
+                }
+            } else {
+                alert('エラー: ' + (res && res.error ? res.error : '不明'));
+            }
+            delete window[cbName];
+            const s = document.getElementById('apply-now-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'apply-now-jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + '?action=applyScheduledNow&callback=' + cbName
+            + '&name=' + encodeURIComponent(name)
+            + '&kind=' + encodeURIComponent(kind)
+            + '&t=' + Date.now();
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+            const s = document.getElementById('apply-now-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        document.body.appendChild(script);
+    }
+    
+    // 区変フォロー: スタッフ識別（既存 getStaff() 流用、毎回プルダウン選択、前回値はデフォルト）
+    const KUBUN_STAFF_KEY = 'yawaragi_kubun_staff_name';
+    
+    function getKubunStaffName(callback) {
+        var saved = '';
+        try { saved = localStorage.getItem(KUBUN_STAFF_KEY) || ''; } catch (e) {}
+    
+        var staffList = (typeof getStaff === 'function')
+            ? getStaff()
+            : ['比嘉', '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'];
+    
+        var modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center;';
+    
+        var options = staffList.map(function(s) {
+            return '<option value="' + escapeAttr(s) + '"' + (s === saved ? ' selected' : '') + '>' + escapeHtml(s) + '</option>';
+        }).join('');
+    
+        modal.innerHTML =
+            '<div style="background:#fff; padding:24px; border-radius:8px; min-width:280px; box-shadow:0 4px 20px rgba(0,0,0,0.3);">' +
+                '<h3 style="margin:0 0 12px; font-size:1.1rem;">登録者を選択</h3>' +
+                '<p style="margin:0 0 12px; font-size:0.85rem; color:#718096;">保険情報を入手したスタッフを選んでください。</p>' +
+                '<select id="kubun-staff-select" style="width:100%; padding:10px; font-size:1rem; border:2px solid #e2e8f0; border-radius:6px;">' + options + '</select>' +
+                '<div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">' +
+                    '<button id="kubun-staff-cancel" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">キャンセル</button>' +
+                    '<button id="kubun-staff-ok" style="padding:8px 16px; background:#48bb78; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">OK</button>' +
+                '</div>' +
+            '</div>';
+    
+        document.body.appendChild(modal);
+        var sel = document.getElementById('kubun-staff-select');
+        if (sel) sel.focus();
+    
+        document.getElementById('kubun-staff-cancel').onclick = function() {
+            modal.remove();
+            callback(null);
+        };
+        document.getElementById('kubun-staff-ok').onclick = function() {
+            var name = document.getElementById('kubun-staff-select').value;
+            try { localStorage.setItem(KUBUN_STAFF_KEY, name); } catch (e) {}
+            modal.remove();
+            callback(name);
+        };
+    }
+    
+    function loadKubunDelayList() {
+        const cbName = 'kubunDelayCb_' + Date.now();
+        window[cbName] = function(data) {
+            const list = document.getElementById('kubun-delay-list');
+            if (!list) { delete window[cbName]; return; }
+            if (data && data.items && data.items.length > 0) {
+                let html = '<div style="border:1px solid #fbd38d; border-radius:8px; overflow:hidden;">';
+                data.items.forEach(function(u, i) {
+                    const bg = i % 2 === 0 ? '#fffaf0' : '#fff5e6';
+                    const received = !!u.insuranceReceivedAt;
+                    const cardStyle = received
+                        ? 'padding:10px 14px; background:#f0fff4; border-left:4px solid #38a169;'
+                        : 'padding:10px 14px; background:' + bg + ';';
+                    html += '<div style="' + cardStyle + '" data-row="' + u.rowIndex + '">';
+                    html += '<div style="font-weight:700;">' + escapeHtml(u.name) + '様</div>';
+                    html += '<div style="font-size:0.85rem; color:#718096; margin-top:4px;">';
+                    html += '<span title="ケアマネさんが言う「申請日」と同じ日付です">区変日（=申請日）</span> ' + (u.applyDate || '?') + ' / ' + (u.prevCare || '?') + ' → ' + (u.newCare || '?');
+                    html += '</div>';
+                    html += '<div style="margin-top:6px; color:#c53030; font-weight:600; font-size:0.9rem;">';
+                    html += '月遅れ対象: ' + u.months.join('、');
+                    html += '</div>';
+                    if (received) {
+                        html += '<div style="margin-top:8px; padding:8px; background:#fff; border:1px solid #c6f6d5; border-radius:4px; font-size:0.85rem;">';
+                        html += '<div style="color:#22543d; font-weight:600;">✅ 保険情報 入手済</div>';
+                        html += '<div style="color:#4a5568; margin-top:4px;">' + escapeHtml(u.insuranceReceivedAt) + ' / ' + escapeHtml(u.insuranceReceivedBy || '(未入力)') + ' が登録</div>';
+                        if (u.insuranceMemo) {
+                            html += '<div style="color:#4a5568; margin-top:4px;">メモ: ' + escapeHtml(u.insuranceMemo) + '</div>';
+                        }
+                        html += '<div style="margin-top:6px;">';
+                        html += '<button type="button" onclick="kubunDelayEditMemo(' + u.rowIndex + ')" style="margin-right:6px; padding:4px 10px; font-size:0.8rem; background:#e2e8f0; border:none; border-radius:4px; cursor:pointer;">メモ編集</button>';
+                        html += '<button type="button" onclick="kubunDelayUnset(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:4px 10px; font-size:0.8rem; background:#fed7d7; color:#742a2a; border:none; border-radius:4px; cursor:pointer;">取り消し</button>';
+                        html += '</div>';
+                        html += '</div>';
+                    } else {
+                        html += '<div style="margin-top:8px;">';
+                        html += '<button type="button" onclick="kubunDelaySet(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#48bb78; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600;">🟢 保険情報 入手済にする</button>';
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+                list.innerHTML = html;
+            } else {
+                list.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">月遅れ請求対象者はいません</div>';
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-delay-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-delay-jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + '?action=kubunDelayList&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            console.error('月遅れ一覧取得失敗');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    // ===== 介護度変更後 後続作業: 想定利用回数マッピング =====
+    function kubunHistoryGetExpectedFreq(careLevel) {
+        const c = String(careLevel || '').trim();
+        if (c === '要支援1' || c === '要支援１') return '週1回';
+        if (c === '要支援2' || c === '要支援２') return '週2回';
+        if (c === '事業対象者') return '個別判定';
+        if (c.indexOf('要介護') === 0) return '制限なし';
+        return '';
+    }
+    
+    // 利用回数の変動を一言で
+    function kubunHistoryDescribeChange(prev, next) {
+        const p = kubunHistoryGetExpectedFreq(prev);
+        const n = kubunHistoryGetExpectedFreq(next);
+        if (!p && !n) return '';
+        if (!p || !n) return '利用回数: ' + (p || n);
+        if (p === n) return '利用回数: 変更なし（' + p + '）';
+        // 週Nから増減を判定
+        const pm = p.match(/週(\d+)回/);
+        const nm = n.match(/週(\d+)回/);
+        if (pm && nm) {
+            const pn = parseInt(pm[1], 10), nn = parseInt(nm[1], 10);
+            if (nn > pn) return '利用回数: ' + p + ' → ' + n + '（増）';
+            if (nn < pn) return '利用回数: ' + p + ' → ' + n + '（減）';
+        }
+        return '利用回数: ' + p + ' → ' + n;
+    }
+    
+    // ===== 介護度変更後 後続作業: 一覧取得＆描画 =====
+    function loadKubunHistoryList() {
+        // 先に予約反映APIを呼ぶ（今日が適用開始日に達した予約を台帳反映）
+        _applyScheduledThenLoad();
+    }
+    
+    function _applyScheduledThenLoad() {
+        const cbName = 'applySchedCb_' + Date.now();
+        window[cbName] = function(res) {
+            if (res && res.applied > 0 && res.items && res.items.length > 0) {
+                // 反映した利用者の通知
+                if (typeof showToast === 'function') {
+                    const names = res.items.map(function(it) { return it.name; }).join('、');
+                    showToast('🔄 ' + names + ' の利用曜日を本日反映しました');
+                }
+            }
+            delete window[cbName];
+            const s = document.getElementById('apply-sched-jsonp-' + cbName);
+            if (s) s.remove();
+            _doLoadKubunHistoryList();
+        };
+        const script = document.createElement('script');
+        script.id = 'apply-sched-jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + '?action=applyScheduledUsageDays&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            delete window[cbName];
+            _doLoadKubunHistoryList();
+        };
+        document.body.appendChild(script);
+    }
+    
+    function _doLoadKubunHistoryList() {
+        const cbName = 'kubunHistoryCb_' + Date.now();
+        window[cbName] = function(data) {
+            const list = document.getElementById('kubun-history-list');
+            if (!list) { delete window[cbName]; return; }
+            if (data && data.items && data.items.length > 0) {
+                let html = '';
+                data.items.forEach(function(u) {
+                    const isDone = !!u.completedAt;
+                    const cardBg = isDone ? '#f7fafc' : '#fff';
+                    const cardOpacity = isDone ? '0.6' : '1';
+                    const cardBorder = isDone ? '#cbd5e0' : '#90cdf4';
+                    const changeDesc = kubunHistoryDescribeChange(u.prevCare, u.newCare);
+    
+                    html += '<div style="border:1.5px solid ' + cardBorder + '; border-radius:8px; padding:12px 14px; margin-bottom:8px; background:' + cardBg + '; opacity:' + cardOpacity + ';">';
+    
+                    // ヘッダ行: 氏名・介護度変更・日付
+                    html += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">';
+                    html += '<div>';
+                    html += '<span style="font-weight:700; font-size:1.05rem;">' + escapeHtml(u.name) + '様</span>';
+                    html += '<span style="margin-left:10px; padding:2px 8px; background:#ebf8ff; color:#2c5282; border-radius:4px; font-size:0.85rem; font-weight:600;">';
+                    html += escapeHtml(u.prevCare || '?') + ' → ' + escapeHtml(u.newCare || '?');
+                    html += '</span>';
+                    html += '</div>';
+                    html += '<div style="font-size:0.8rem; color:#718096;">区変日／更新月 ' + (u.applyDate || '?') + '</div>';
+                    html += '</div>';
+    
+                    if (isDone) {
+                        // 完了表示
+                        html += '<div style="padding:6px 10px; background:#c6f6d5; color:#22543d; border-radius:6px; font-size:0.85rem; font-weight:600; margin-bottom:6px;">✅ 全部済み（' + escapeHtml(u.completedAt) + '）</div>';
+                        html += '<button type="button" onclick="kubunHistoryClearCompleted(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:4px 10px; font-size:0.75rem; background:#edf2f7; border:1px solid #cbd5e0; border-radius:4px; cursor:pointer;">完了を取り消す</button>';
+                    } else {
+                        // 利用回数
+                        if (changeDesc) {
+                            html += '<div style="font-size:0.85rem; color:#4a5568; margin-bottom:8px; padding:6px 10px; background:#edf2f7; border-radius:6px;">';
+                            html += '📊 ' + escapeHtml(changeDesc);
+                            html += '</div>';
+                        }
+    
+                        // チェック1: リハブクラウド更新（チェックボックス風・未対応がひと目で）
+                        if (u.rehabUpdated) {
+                            html += '<div onclick="kubunHistoryClearRehab(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:#c6f6d5; border:1.5px solid #38a169; border-radius:6px; font-size:0.9rem; margin-bottom:4px; cursor:pointer;" title="クリックで取り消し">';
+                            html += '<span style="font-size:1.15rem; line-height:1;">☑</span>';
+                            html += '<span style="color:#22543d; font-weight:600;">リハブで介護度・保険情報を更新 完了</span>';
+                            html += '<span style="color:#4a5568; font-size:0.78rem; margin-left:auto;">';
+                            if (u.rehabUpdatedAt) html += escapeHtml(u.rehabUpdatedAt);
+                            if (u.rehabUpdatedBy) html += ' / ' + escapeHtml(u.rehabUpdatedBy);
+                            html += '</span>';
+                            html += '</div>';
+                        } else {
+                            html += '<div onclick="kubunHistoryDoRehab(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="display:flex; align-items:center; gap:8px; padding:10px 12px; background:#fff5f5; border:2px solid #fc8181; border-radius:6px; margin-bottom:4px; cursor:pointer;" title="クリックで完了登録">';
+                            html += '<span style="font-size:1.25rem; line-height:1; color:#c53030;">☐</span>';
+                            html += '<span style="font-size:0.95rem; color:#742a2a; font-weight:700;">リハブで介護度・保険情報を更新</span>';
+                            html += '<span style="margin-left:auto; padding:3px 10px; background:#c53030; color:#fff; border-radius:4px; font-size:0.75rem; font-weight:700;">未完了</span>';
+                            html += '</div>';
+                        }
+    
+                        // 利用日の変動: 3択ボタン
+                        html += '<div style="margin-top:6px;">';
+                        html += '<div style="font-size:0.85rem; font-weight:600; color:#4a5568; margin-bottom:4px;">利用日の変動:</div>';
+                        html += '<div style="display:flex; gap:6px; flex-wrap:wrap;">';
+                        const usageOpts = [
+                            { val: 'changed', label: '○あった', activeBg: '#fed7d7', activeColor: '#742a2a' },
+                            { val: 'none', label: '○なかった', activeBg: '#c6f6d5', activeColor: '#22543d' },
+                            { val: 'unknown', label: '○まだ確認中', activeBg: '#feebc8', activeColor: '#7c2d12' }
+                        ];
+                        usageOpts.forEach(function(opt) {
+                            const active = u.usageChange === opt.val;
+                            const style = active
+                                ? 'padding:4px 12px; background:' + opt.activeBg + '; color:' + opt.activeColor + '; border:1.5px solid ' + opt.activeColor + '; border-radius:6px; font-size:0.8rem; cursor:pointer; font-weight:600;'
+                                : 'padding:4px 12px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.8rem; cursor:pointer;';
+                            html += '<button type="button" onclick="kubunHistorySetUsageChange(' + u.rowIndex + ', \'' + opt.val + '\', \'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.prevCare) + '\', \'' + escapeJsString(u.newCare) + '\')" style="' + style + '">' + opt.label + '</button>';
+                        });
+                        html += '</div>';
+                        html += '</div>';
+    
+                        // 現在の利用曜日表示（「あった」選択時のみ強調）
+                        if (u.currentDays || u.currentAmpm) {
+                            const daysBg = u.usageChange === 'changed' ? '#fff5e6' : '#f7fafc';
+                            const daysBorder = u.usageChange === 'changed' ? '#fbd38d' : '#e2e8f0';
+                            html += '<div style="margin-top:8px; padding:6px 10px; background:' + daysBg + '; border:1px solid ' + daysBorder + '; border-radius:6px; font-size:0.85rem;">';
+                            html += '<span style="color:#7c2d12; font-weight:600;">現在の利用曜日: </span>';
+                            html += '<span>' + escapeHtml(u.currentDays || '?') + '</span>';
+                            if (u.currentAmpm) html += ' <span style="color:#718096;">(' + escapeHtml(u.currentAmpm) + ')</span>';
+                            html += '</div>';
+                        }
+    
+                        // 予約された曜日変更表示
+                        if (u.effectiveDate && u.scheduledDays && !u.appliedAt) {
+                            html += '<div style="margin-top:6px; padding:8px 12px; background:#fef5e7; border:1.5px solid #f59e0b; border-radius:6px; font-size:0.85rem;">';
+                            html += '<div style="color:#7c2d12; font-weight:600;">📅 ' + escapeHtml(u.effectiveDate) + ' から自動反映予約</div>';
+                            html += '<div style="color:#7c2d12; margin-top:2px;">→ ' + escapeHtml(u.scheduledDays) + (u.scheduledAmpm ? ' (' + escapeHtml(u.scheduledAmpm) + ')' : '') + '</div>';
+                            html += '</div>';
+                        } else if (u.appliedAt) {
+                            html += '<div style="margin-top:6px; padding:6px 10px; background:#e6fffa; border:1px solid #38b2ac; border-radius:6px; font-size:0.8rem; color:#234e52;">';
+                            html += '✅ ' + escapeHtml(u.effectiveDate) + ' に曜日変更を自動反映済（' + escapeHtml(u.appliedAt) + '）';
+                            html += '</div>';
+                        }
+    
+                        // ボタン群: 曜日編集＋全部完了
+                        html += '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">';
+                        html += '<button type="button" onclick="openUsageDaysEditModal(\'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.currentDays || '') + '\', \'' + escapeJsString(u.currentAmpm || '') + '\')" style="padding:6px 14px; font-size:0.85rem; background:#3182ce; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">📅 利用曜日を編集</button>';
+                        html += '<button type="button" onclick="kubunHistoryMarkAllDone(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:6px 14px; font-size:0.85rem; background:#48bb78; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">✅ 全部済んだ</button>';
+                        html += '</div>';
+                    }
+    
+                    // 編集・削除（完了/未完了 共通・登録ミスやテスト行の修正用）
+                    html += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">';
+                    html += '<button type="button" onclick="openKubunHistoryEditModal(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.applyDate || '') + '\', \'' + escapeJsString(u.resultDate || '') + '\', \'' + escapeJsString(u.prevCare || '') + '\', \'' + escapeJsString(u.newCare || '') + '\')" style="padding:5px 12px; font-size:0.8rem; background:#edf2f7; color:#4a5568; border:1px solid #cbd5e0; border-radius:6px; cursor:pointer;">✏️ 編集</button>';
+                    html += '<button type="button" onclick="kubunHistoryDeleteRecord(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:5px 12px; font-size:0.8rem; background:#fff5f5; color:#c53030; border:1px solid #feb2b2; border-radius:6px; cursor:pointer;">🗑️ 削除</button>';
+                    html += '</div>';
+    
+                    html += '</div>';
+                });
+                list.innerHTML = html;
+            } else {
+                list.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">直近3ヶ月の介護度変更履歴はありません</div>';
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-history-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-history-jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + '?action=kubunHistoryList&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() {
+            console.error('区変履歴取得失敗');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    // ===== 介護度変更後 後続作業: チェック状態更新（共通JSONP） =====
+    function kubunHistoryUpdateField(rowIndex, field, value, onOk) {
+        const cbName = 'kubunHistUpdCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                if (typeof onOk === 'function') onOk(res);
+                loadKubunHistoryList();
+            } else {
+                alert('更新失敗: ' + (res && res.error ? res.error : '不明'));
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-hist-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-hist-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=kubunHistoryUpdate&callback=' + cbName + '&t=' + Date.now();
+        url += '&rowIndex=' + encodeURIComponent(rowIndex);
+        url += '&field=' + encodeURIComponent(field);
+        url += '&value=' + encodeURIComponent(value);
+        script.src = url;
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    // リハブ更新完了登録（スタッフ選択 → タイムスタンプ＋実行者記録）
+    function kubunHistoryDoRehab(rowIndex, name) {
+        getKubunStaffName(function(staffName) {
+            if (!staffName) return;
+            const cbName = 'kubunHistRehabCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+            window[cbName] = function(res) {
+                if (res && res.ok) {
+                    if (typeof showToast === 'function') showToast('✅ ' + name + '様のリハブクラウド更新を登録しました（' + staffName + ' / ' + res.updatedAt + '）');
+                    loadKubunHistoryList();
+                } else {
+                    alert('登録失敗: ' + (res && res.error ? res.error : '不明'));
+                }
+                delete window[cbName];
+                const s = document.getElementById('kubun-hist-rehab-jsonp-' + cbName);
+                if (s) s.remove();
+            };
+            const script = document.createElement('script');
+            script.id = 'kubun-hist-rehab-jsonp-' + cbName;
+            let url = YAWARAGIBOARD_API_URL + '?action=kubunHistoryUpdate&callback=' + cbName + '&t=' + Date.now();
+            url += '&rowIndex=' + encodeURIComponent(rowIndex);
+            url += '&field=rehabUpdated';
+            url += '&operatorBy=' + encodeURIComponent(staffName);
+            script.src = url;
+            script.onerror = function() {
+                alert('通信エラーが発生しました');
+                delete window[cbName];
+            };
+            document.body.appendChild(script);
+        });
+    }
+    
+    function kubunHistoryClearRehab(rowIndex, name) {
+        if (!confirm(name + '様のリハブクラウド更新登録を取り消しますか？')) return;
+        kubunHistoryUpdateField(rowIndex, 'clearRehabUpdated', '');
+    }
+    
+    function kubunHistorySetUsageChange(rowIndex, value, name, prevCare, newCare) {
+        if (value === 'changed' && name) {
+            // 「あった」を選んだら、即座に曜日編集モーダルを自動展開（必須フロー）
+            // モーダルキャンセル時は usageChange を変更しない
+            const users = UserStore.get();
+            const target = users.find(function(u) { return String(u.name || '').trim() === name; });
+            const curDays = target ? (target.days || '') : '';
+            const curAmpm = target ? (target.ampm || '') : '';
+            openUsageDaysEditModalForHistory(name, curDays, curAmpm, rowIndex, prevCare, newCare);
+        } else {
+            kubunHistoryUpdateField(rowIndex, 'usageChange', value);
+        }
+    }
+    
+    // 介護度変更後フォロー用の曜日編集モーダルopen（保存時に usageChange='changed' も連動保存）
+    function openUsageDaysEditModalForHistory(name, curDays, curAmpm, rowIndex, prevCare, newCare) {
+        document.getElementById('usage-days-name-display').textContent = name + ' 様';
+        document.getElementById('usage-days-name').value = name;
+        document.getElementById('usage-days-current').textContent = (curDays || '?') + (curAmpm ? ' (' + curAmpm + ')' : '');
+    
+        // モーダルにフォロー用パラメータを保持
+        const modal = document.getElementById('usage-days-edit-modal');
+        modal.dataset.historyRowIndex = rowIndex;
+        modal.dataset.fromHistory = '1';
+        modal.dataset.prevCare = prevCare || '';
+        modal.dataset.newCare = newCare || '';
+    
+        const perDay = parsePerDayAmpm(curDays, curAmpm);
+        buildPerDayGrid('usage-perday-grid', 'usage-perday', perDay);
+    
+        // 適用開始日リセット
+        const effEl = document.getElementById('usage-days-effective');
+        if (effEl) effEl.value = '';
+    
+        openModal('usage-days-edit-modal');
+    }
+    
+    // 利用曜日変更時テンプレートをタスクボードに自動投入
+    function kubunHistoryRegisterEvent(name, prevCare, newCare) {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const eventDate = yyyy + '-' + mm + '-' + dd;
+        const metadata = JSON.stringify({
+            kubunPrev: prevCare || '',
+            kubunNew: newCare || '',
+            trigger: '介護度変更後フォロー'
+        });
+    
+        const cbName = 'kubunEvtCb_' + Date.now();
+        window[cbName] = function(res) {
+            if (res && res.success) {
+                if (typeof showToast === 'function') {
+                    showToast('✅ ' + name + '様の利用曜日変更テンプレ8項目を投入しました（id: ' + (res.id || '?') + '）');
+                } else {
+                    alert('✅ 利用曜日変更テンプレ8項目を投入しました');
+                }
+            } else {
+                alert('テンプレ投入失敗: ' + (res && res.error ? res.error : '不明') + '\nスタッフに口頭で伝達してください。');
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-evt-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-evt-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=addUserEventGet&callback=' + cbName + '&t=' + Date.now();
+        url += '&eventType=usage_days_change';
+        url += '&userName=' + encodeURIComponent(name);
+        url += '&eventDate=' + encodeURIComponent(eventDate);
+        url += '&metadata=' + encodeURIComponent(metadata);
+        url += '&createdBy=' + encodeURIComponent('代表');
+        script.src = url;
+        script.onerror = function() {
+            alert('テンプレ投入の通信エラー。スタッフに口頭で伝達してください。');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    function kubunHistoryMarkAllDone(rowIndex, name) {
+        if (!confirm(name + '様の後続作業を「全部完了」にしますか？\n30日経過で一覧から消えます。')) return;
+        kubunHistoryUpdateField(rowIndex, 'markAllDone', '', function() {
+            if (typeof showToast === 'function') showToast('✅ ' + name + '様の後続作業を完了にしました');
+        });
+    }
+    
+    function kubunHistoryClearCompleted(rowIndex, name) {
+        if (!confirm(name + '様の完了を取り消しますか？')) return;
+        kubunHistoryUpdateField(rowIndex, 'clearCompleted', '');
+    }
+    
+    // ===== 後続作業カード 編集（介護度・区変日/更新月・結果日。氏名は変更不可） =====
+    function openKubunHistoryEditModal(rowIndex, name, applyDate, resultDate, prevCare, newCare) {
+        document.getElementById('kubun-hist-edit-row').value = rowIndex;
+        document.getElementById('kubun-hist-edit-name').value = name || '';
+        document.getElementById('kubun-hist-edit-name-display').textContent = (name || '') + ' 様';
+        document.getElementById('kubun-hist-edit-prevcare').value = prevCare || '';
+        document.getElementById('kubun-hist-edit-newcare').value = newCare || '';
+        document.getElementById('kubun-hist-edit-applydate').value = applyDate || '';
+        document.getElementById('kubun-hist-edit-resultdate').value = resultDate || '';
+        openModal('kubun-history-edit-modal');
+    }
+    
+    function kubunHistorySaveEdit() {
+        const rowIndex = document.getElementById('kubun-hist-edit-row').value;
+        const name = document.getElementById('kubun-hist-edit-name').value;
+        const prevCare = document.getElementById('kubun-hist-edit-prevcare').value;
+        const newCare = document.getElementById('kubun-hist-edit-newcare').value;
+        const applyDate = document.getElementById('kubun-hist-edit-applydate').value;
+        const resultDate = document.getElementById('kubun-hist-edit-resultdate').value;
+        if (!rowIndex) return;
+    
+        const cbName = 'kubunHistEditCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                if (typeof showToast === 'function') showToast('✅ ' + name + '様のカードを更新しました');
+                closeModal('kubun-history-edit-modal');
+                loadKubunHistoryList();
+            } else {
+                alert('更新失敗: ' + (res && res.error ? res.error : '不明'));
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-hist-edit-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-hist-edit-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=kubunHistoryEditRecord&callback=' + cbName + '&t=' + Date.now();
+        url += '&rowIndex=' + encodeURIComponent(rowIndex);
+        url += '&name=' + encodeURIComponent(name);
+        url += '&prevCare=' + encodeURIComponent(prevCare);
+        url += '&newCare=' + encodeURIComponent(newCare);
+        url += '&applyDate=' + encodeURIComponent(applyDate);
+        url += '&resultDate=' + encodeURIComponent(resultDate);
+        script.src = url;
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    // ===== 後続作業カード 削除（行ごと物理削除・テスト行/登録ミス掃除用） =====
+    function kubunHistoryDeleteRecord(rowIndex, name) {
+        if (!confirm(name + '様の後続作業カードを削除します。\n\n⚠️ この区変・更新の記録（月遅れ請求対象月などを含む）が完全に消えます。\nテスト行や登録ミスの場合のみ実行してください。\n\n本当に削除しますか？')) return;
+    
+        const cbName = 'kubunHistDelCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                if (typeof showToast === 'function') showToast('🗑️ ' + name + '様のカードを削除しました');
+                loadKubunHistoryList();
+            } else {
+                alert('削除失敗: ' + (res && res.error ? res.error : '不明'));
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-hist-del-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-hist-del-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=kubunHistoryDeleteRecord&callback=' + cbName + '&t=' + Date.now();
+        url += '&rowIndex=' + encodeURIComponent(rowIndex);
+        script.src = url;
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    // ===== 利用曜日 編集モーダル =====
+    const USAGE_DAY_LIST = ['月', '火', '水', '木', '金'];
+    
+    // days="月水" + ampm="午前" or "月午前,水午後" → {月:'午前', 水:'午後'} に変換
+    function parsePerDayAmpm(days, ampm) {
+        const result = {};
+        if (!days) return result;
+        days = String(days).trim();
+        ampm = String(ampm || '').trim();
+    
+        // 複合パターン: 「月午前,水午後」のようにカンマ区切り＋曜日が含まれる
+        if (ampm.indexOf(',') !== -1 || /^[月火水木金]/.test(ampm)) {
+            const parts = ampm.split(/[,、]/);
+            parts.forEach(function(p) {
+                p = p.trim();
+                if (!p) return;
+                const m = p.match(/^([月火水木金])(午前|午後)/);
+                if (m) result[m[1]] = m[2];
+            });
+            // 曜日が指定されてないものはデフォルト（最初に見つかったampm）にする
+            // ただし複合パターンでは通常全曜日指定されているので空のままでOK
+        } else {
+            // シンプルパターン: 全曜日同じ午前/午後
+            const a = (ampm === '午前' || ampm === '午後') ? ampm : '';
+            for (let i = 0; i < days.length; i++) {
+                const d = days[i];
+                if (USAGE_DAY_LIST.indexOf(d) !== -1) {
+                    result[d] = a;
+                }
+            }
+        }
+        return result;
+    }
+    
+    // {月:'午前', 水:'午後'} → {days:"月水", ampm:"月午前,水午後" or "午前"}
+    function buildDaysAmpmFromPerDay(perDay) {
+        const selectedDays = USAGE_DAY_LIST.filter(function(d) { return !!perDay[d]; });
+        const days = selectedDays.join('');
+    
+        if (selectedDays.length === 0) return { days: '', ampm: '' };
+    
+        // 全曜日同じパターンならシンプル形式
+        const uniqAmpm = Array.from(new Set(selectedDays.map(function(d) { return perDay[d]; })));
+        if (uniqAmpm.length === 1) {
+            return { days: days, ampm: uniqAmpm[0] };
+        }
+        // 複合パターン
+        const ampm = selectedDays.map(function(d) { return d + perDay[d]; }).join(',');
+        return { days: days, ampm: ampm };
+    }
+    
+    // 曜日×時間帯グリッドを生成（containerにDOMを構築）
+    // 各曜日に「午前」「午後」のトグルボタン。未選択＝利用しない。両方は不可（排他）。
+    function buildPerDayGrid(containerId, namePrefix, perDay) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.style.gridTemplateColumns = 'auto auto auto';
+        let html = '';
+        USAGE_DAY_LIST.forEach(function(d) {
+            const val = perDay[d] || '';
+            html += '<div style="font-weight:700; font-size:0.95rem; padding:6px 0;">' + d + '</div>';
+            ['午前', '午後'].forEach(function(opt) {
+                const isSelected = (val === opt);
+                const style = isSelected
+                    ? 'padding:6px 14px; background:#3182ce; color:#fff; border:1.5px solid #2c5282; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:600;'
+                    : 'padding:6px 14px; background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; border-radius:6px; font-size:0.85rem; cursor:pointer;';
+                html += '<button type="button" data-grid="' + namePrefix + '" data-day="' + d + '" data-opt="' + opt + '" data-selected="' + (isSelected ? '1' : '0') + '" onclick="togglePerDayBtn(this)" style="' + style + '">' + opt + '</button>';
+            });
+        });
+        container.innerHTML = html;
+    }
+    
+    // トグルボタンクリック処理
+    function togglePerDayBtn(btn) {
+        const grid = btn.dataset.grid;
+        const day = btn.dataset.day;
+        const opt = btn.dataset.opt;
+        const isSelected = btn.dataset.selected === '1';
+    
+        if (isSelected) {
+            // すでに選択中 → 解除
+            _setPerDayBtnStyle(btn, false);
+        } else {
+            // この曜日の別ボタン（もう一方）を解除
+            document.querySelectorAll('button[data-grid="' + grid + '"][data-day="' + day + '"]').forEach(function(b) {
+                _setPerDayBtnStyle(b, false);
+            });
+            // 自分を選択
+            _setPerDayBtnStyle(btn, true);
+        }
+    }
+    
+    function _setPerDayBtnStyle(btn, selected) {
+        btn.dataset.selected = selected ? '1' : '0';
+        if (selected) {
+            btn.style.background = '#3182ce';
+            btn.style.color = '#fff';
+            btn.style.border = '1.5px solid #2c5282';
+            btn.style.fontWeight = '600';
+        } else {
+            btn.style.background = '#fff';
+            btn.style.color = '#4a5568';
+            btn.style.border = '1.5px solid #e2e8f0';
+            btn.style.fontWeight = 'normal';
+        }
+    }
+    
+    // グリッドから現在の選択状態を取得
+    function readPerDayGrid(namePrefix) {
+        const perDay = {};
+        document.querySelectorAll('button[data-grid="' + namePrefix + '"][data-selected="1"]').forEach(function(btn) {
+            perDay[btn.dataset.day] = btn.dataset.opt;
+        });
+        return perDay;
+    }
+    
+    function openUsageDaysEditModal(name, currentDays, currentAmpm) {
+        document.getElementById('usage-days-name-display').textContent = name + ' 様';
+        document.getElementById('usage-days-name').value = name;
+        const cur = (currentDays || '?') + (currentAmpm ? ' (' + currentAmpm + ')' : '');
+        document.getElementById('usage-days-current').textContent = cur;
+    
+        // モーダルのフォロー用パラメータをクリア
+        const modal = document.getElementById('usage-days-edit-modal');
+        delete modal.dataset.historyRowIndex;
+        delete modal.dataset.fromHistory;
+    
+        const perDay = parsePerDayAmpm(currentDays, currentAmpm);
+        buildPerDayGrid('usage-perday-grid', 'usage-perday', perDay);
+    
+        // 適用開始日は空でリセット（即時反映の場合は空でOK）
+        const effEl = document.getElementById('usage-days-effective');
+        if (effEl) effEl.value = '';
+    
+        openModal('usage-days-edit-modal');
+    }
+    
+    function submitUsageDaysEdit() {
+        const name = document.getElementById('usage-days-name').value;
+        if (!name) { alert('利用者名が取得できません'); return; }
+    
+        const perDay = readPerDayGrid('usage-perday');
+        const built = buildDaysAmpmFromPerDay(perDay);
+        const days = built.days;
+        const ampm = built.ampm;
+        const effectiveDate = (document.getElementById('usage-days-effective').value || '').trim();
+    
+        if (!days) {
+            if (!confirm('利用する曜日が選択されていません。本当に空のまま保存しますか？')) return;
+        }
+        if (!effectiveDate) {
+            alert('適用開始日を入力してください（いつから新曜日で利用するか）');
+            return;
+        }
+    
+        const modal = document.getElementById('usage-days-edit-modal');
+        const fromHistory = modal.dataset.fromHistory === '1';
+        const historyRowIndex = fromHistory ? parseInt(modal.dataset.historyRowIndex, 10) : 0;
+    
+        const cbName = 'usageDaysCb_' + Date.now();
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                let msg;
+                if (res.reserved) {
+                    msg = '📅 ' + name + '様の利用曜日変更を予約しました\n'
+                        + '適用開始日: ' + res.effectiveDate + '\n'
+                        + '新曜日: ' + (res.newDays || '空') + (res.newAmpm ? ' (' + res.newAmpm + ')' : '') + '\n'
+                        + '当日が来たら自動で利用者台帳に反映されます';
+                } else {
+                    msg = '✅ ' + name + '様の利用曜日を更新しました\n'
+                        + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
+                        + ' → '
+                        + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+                }
+                if (typeof showToast === 'function') showToast(msg);
+                else alert(msg);
+                closeModal('usage-days-edit-modal');
+                // フォロー経由なら usageChange='changed' も連動保存
+                if (fromHistory && historyRowIndex) {
+                    kubunHistoryUpdateField(historyRowIndex, 'usageChange', 'changed');
+                } else {
+                    loadKubunHistoryList();
+                }
+            } else {
+                alert('更新失敗: ' + (res && res.error ? res.error : '不明'));
+            }
+            delete window[cbName];
+            const s = document.getElementById('usage-days-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'usage-days-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=updateUserUsageDays&callback=' + cbName + '&t=' + Date.now();
+        url += '&name=' + encodeURIComponent(name);
+        url += '&days=' + encodeURIComponent(days);
+        url += '&ampm=' + encodeURIComponent(ampm);
+        url += '&effectiveDate=' + encodeURIComponent(effectiveDate);
+        if (historyRowIndex) url += '&historyRowIndex=' + encodeURIComponent(historyRowIndex);
+        script.src = url;
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    // ===== 月遅れ請求対象: 保険情報入手の登録/取消/メモ編集（共通JSONPヘルパー） =====
+    function kubunDelayJsonp(params, onOk, onError) {
+        var cbName = 'cbKubunDelay_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                if (typeof onOk === 'function') onOk(res);
+            } else {
+                if (typeof onError === 'function') {
+                    onError(res && res.error ? res.error : '不明');
+                } else {
+                    alert('処理失敗: ' + (res && res.error ? res.error : '不明'));
+                }
+            }
+            delete window[cbName];
+            var s = document.getElementById('jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        var qs = '?action=updateKubunDelayInsurance';
+        Object.keys(params).forEach(function(k) {
+            if (params[k] === undefined || params[k] === null) return;
+            qs += '&' + k + '=' + encodeURIComponent(params[k]);
+        });
+        qs += '&callback=' + cbName + '&t=' + Date.now();
+        var script = document.createElement('script');
+        script.id = 'jsonp-' + cbName;
+        script.src = YAWARAGIBOARD_API_URL + qs;
+        script.onerror = function() {
+            alert('通信エラー');
+            delete window[cbName];
+            var s2 = document.getElementById('jsonp-' + cbName);
+            if (s2) s2.remove();
+        };
+        document.body.appendChild(script);
+    }
+    
+    function kubunDelaySet(rowIndex, name) {
+        getKubunStaffName(function(staff) {
+            if (!staff) return;
+            var memo = prompt(name + '様の保険情報入手を登録します。\nメモ（任意・空でOK）:\nケアマネから電話で受けた内容など', '');
+            if (memo === null) return; // キャンセル
+            memo = memo.trim();
+            kubunDelayJsonp(
+                { rowIndex: rowIndex, operation: 'set', receivedBy: staff, memo: memo },
+                function() {
+                    alert(name + '様の保険情報入手を登録しました。yawaragi.notify宛にメール送信。');
+                    loadKubunDelayList();
+                },
+                function(err) { alert('登録失敗: ' + err); }
+            );
+        });
+    }
+    
+    function kubunDelayUnset(rowIndex, name) {
+        if (!confirm(name + '様の保険情報入手を取り消しますか？\n（取り消し通知が yawaragi.notify に届きます）')) return;
+        getKubunStaffName(function(staff) {
+            if (!staff) return;
+            kubunDelayJsonp(
+                { rowIndex: rowIndex, operation: 'unset', receivedBy: staff },
+                function() {
+                    alert('取り消しました。');
+                    loadKubunDelayList();
+                },
+                function(err) { alert('取り消し失敗: ' + err); }
+            );
+        });
+    }
+    
+    function kubunDelayEditMemo(rowIndex) {
+        var current = '';
+        var card = document.querySelector('[data-row="' + rowIndex + '"]');
+        if (card) {
+            var memoDiv = Array.from(card.querySelectorAll('div')).find(function(d) {
+                return d.textContent.indexOf('メモ:') === 0;
+            });
+            if (memoDiv) current = memoDiv.textContent.replace(/^メモ:\s*/, '');
+        }
+        var memo = prompt('メモを編集します:', current);
+        if (memo === null) return;
+        memo = memo.trim();
+    
+        // メモ編集はスタッフ選択不要（記録上は最初に押した人が入手者として残る）
+        var savedStaff = '';
+        try { savedStaff = localStorage.getItem(KUBUN_STAFF_KEY) || ''; } catch (e) {}
+        kubunDelayJsonp(
+            { rowIndex: rowIndex, operation: 'editMemo', receivedBy: savedStaff, memo: memo },
+            function() { loadKubunDelayList(); },
+            function(err) { alert('メモ編集失敗: ' + err); }
+        );
+    }
+    
+    function renderKubunBanner(data) {
+        const banner = document.getElementById('kubun-banner');
+        const content = document.getElementById('kubun-banner-content');
+        if (!banner || !content) return;
+        if (!data || data.count === 0) {
+            banner.style.display = 'none';
+            content.innerHTML = '';
+            return;
+        }
+        const lines = data.active.map(function(u) {
+            const applyDisp = u.applyDate ? u.applyDate.slice(5).replace('-', '/') : '未確認';
+            const overTag = u.daysOver >= 30
+                ? ' <span style="color:#dc3545; font-weight:bold;">超過' + u.daysOver + '日</span>'
+                : '';
+            return '🔴 区分変更中：' + u.name + '様（区変日 ' + applyDisp + '、結果待ち）' + overTag;
+        });
+        content.innerHTML = lines.join('<br>');
+        banner.style.display = 'block';
+    }
+    
+    function renderKubunActiveList() {
+        const list = document.getElementById('kubun-active-list');
+        if (!list) return;
+        if (!kubunActive || kubunActive.length === 0) {
+            list.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">現在、区変中の利用者はいません</div>';
+            return;
+        }
+        let html = '<div style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">';
+        kubunActive.forEach(function(u, i) {
+            const applyDisp = u.applyDate
+                ? '区変日 ' + u.applyDate
+                : '<span style="color:#c53030; font-weight:600;">区変日 未確認（要ケアマネ確認）</span>';
+            const overTag = u.daysOver >= 30 ? '<span style="color:#dc3545; font-weight:bold; margin-left:8px;">超過' + u.daysOver + '日</span>' : '';
+            const bgColor = i % 2 === 0 ? '#fff' : '#f7fafc';
+            const safeName = u.name.replace(/'/g, "\\'");
+            html += '<div style="padding:10px 14px; background:' + bgColor + '; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">';
+            html += '<div><span style="font-weight:700;">' + u.name + '様</span>';
+            html += '<span style="color:#718096; font-size:0.85rem; margin-left:8px;">' + applyDisp + ' / 結果待ち</span>';
+            html += overTag + '</div>';
+            html += '<div style="display:flex; gap:6px;">';
+            html += '<button class="data-btn" style="padding:4px 10px; font-size:0.8rem; background:#edf2f7;" onclick="openKubunEditModal(\'' + safeName + '\')" title="区変日／更新月・結果待ち目安日を編集">✏️ 編集</button>';
+            html += '<button class="data-btn" style="padding:4px 12px; font-size:0.85rem;" onclick="openKubunClearModal(\'' + safeName + '\')">結果を登録</button>';
+            html += '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+        list.innerHTML = html;
+    }
+    
+    function kubunReload() {
+        loadKubunHenkouList();
+        if (typeof showToast === 'function') showToast('区変情報を更新しました');
+    }
+    
+    function setExpectPreset(opt) {
+        const expectInput = document.getElementById('kubun-set-expect');
+        const applyVal = document.getElementById('kubun-set-apply').value;
+        const fmt = function(d) {
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        };
+        if (opt === 'clear') {
+            expectInput.value = '';
+            return;
+        }
+        if (opt === 'thisMonthEnd') {
+            const d = new Date();
+            const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+            expectInput.value = fmt(end);
+            return;
+        }
+        if (opt === 'nextMonthEnd') {
+            const d = new Date();
+            const end = new Date(d.getFullYear(), d.getMonth() + 2, 0);
+            expectInput.value = fmt(end);
+            return;
+        }
+        // 数値 = 区変日 + N日
+        if (!applyVal) { alert('先に区変日を入力するか、結果待ち目安日を直接指定してください'); return; }
+        const d = new Date(applyVal);
+        d.setDate(d.getDate() + Number(opt));
+        expectInput.value = fmt(d);
+    }
+    
+    function toggleKubunSetUnknown() {
+        const cb = document.getElementById('kubun-set-unknown');
+        const apply = document.getElementById('kubun-set-apply');
+        if (!cb || !apply) return;
+        if (cb.checked) {
+            apply.value = '';
+            apply.disabled = true;
+            apply.style.background = '#f7fafc';
+        } else {
+            apply.disabled = false;
+            apply.style.background = '';
+        }
+    }
+    
+    function openKubunSetModal() {
+        const input = document.getElementById('kubun-set-name');
+        const datalist = document.getElementById('kubun-set-users-list');
+        const hint = document.getElementById('kubun-set-name-hint');
+        if (!input || !datalist) return;
+    
+        let kubunTerminations = _kubunTerminationsCache.slice(); // 前回キャッシュから初期化
+    
+        const renderList = function() {
+            const users = UserStore.get();
+            const activeSet = {};
+            (kubunActive || []).forEach(function(u) { activeSet[u.name] = true; });
+    
+            // 現役利用者 + 中止者をマージ（重複除外）
+            const nameSet = {};
+            const merged = [];
+            users.forEach(function(u) {
+                const nm = u.name || '';
+                if (!nm || nameSet[nm]) return;
+                nameSet[nm] = true;
+                merged.push({ name: nm, reading: u.reading || '', terminated: false, lastUseDate: null });
+            });
+            kubunTerminations.forEach(function(t) {
+                const nm = t.name || '';
+                if (!nm || nameSet[nm]) return;
+                nameSet[nm] = true;
+                merged.push({ name: nm, reading: '', terminated: true, lastUseDate: t.lastUseDate });
+            });
+    
+            // ふりがなで五十音順ソート
+            const sorted = merged.slice().sort(function(a, b) {
+                const ra = String(a.reading || a.name || '');
+                const rb = String(b.reading || b.name || '');
+                return ra.localeCompare(rb, 'ja');
+            });
+    
+            datalist.innerHTML = '';
+            let displayCount = 0, terminatedCount = 0;
+            sorted.forEach(function(u) {
+                if (activeSet[u.name]) return; // 区変中の人は除外
+                const opt = document.createElement('option');
+                opt.value = u.name;
+                let label = u.reading || '';
+                if (u.terminated) {
+                    label = '[中止' + (u.lastUseDate ? ' 最終' + u.lastUseDate : '') + '] ' + label;
+                    terminatedCount++;
+                }
+                if (label) opt.label = label;
+                datalist.appendChild(opt);
+                displayCount++;
+            });
+            if (hint) {
+                let txt = '候補 ' + displayCount + '名';
+                if (terminatedCount > 0) txt += '（うち中止済み/予定 ' + terminatedCount + '名）';
+                txt += '（入力で絞り込み）';
+                hint.textContent = txt;
+            }
+        };
+    
+        // 区変日デフォルト = 今日
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const applyEl = document.getElementById('kubun-set-apply');
+        applyEl.value = yyyy + '-' + mm + '-' + dd;
+        applyEl.disabled = false;
+        applyEl.style.background = '';
+        const unknownEl = document.getElementById('kubun-set-unknown');
+        if (unknownEl) unknownEl.checked = false;
+        document.getElementById('kubun-set-expect').value = '';
+        input.value = '';
+    
+        // 「もう結果出てる」モードを初期OFFにリセット
+        const hasResultEl = document.getElementById('kubun-set-has-result');
+        if (hasResultEl) hasResultEl.checked = false;
+        const newCareEl = document.getElementById('kubun-set-newcare');
+        if (newCareEl) newCareEl.value = '';
+        const resultDateEl = document.getElementById('kubun-set-result-date');
+        if (resultDateEl) resultDateEl.value = yyyy + '-' + mm + '-' + dd;
+        // 「利用日の変動」3択もリセット
+        const usageValEl = document.getElementById('kubun-set-usage-value');
+        if (usageValEl) usageValEl.value = '';
+        ['kubun-set-usage-changed','kubun-set-usage-none','kubun-set-usage-unknown'].forEach(function(id) {
+            const btn = document.getElementById(id);
+            if (btn) { btn.style.background = '#fff'; btn.style.color = '#4a5568'; btn.style.border = '1.5px solid #e2e8f0'; }
+        });
+        const daysSection = document.getElementById('kubun-set-days-section');
+        if (daysSection) daysSection.style.display = 'none';
+        // 曜日グリッドを空でリセット
+        buildPerDayGrid('kubun-set-perday-grid', 'kubun-set-perday', {});
+        // 種別ラジオ・認定有効期間もリセット
+        document.querySelectorAll('input[name="kubun-set-kind"]').forEach(function(r) { r.checked = false; });
+        const authStart = document.getElementById('kubun-set-auth-start');
+        const authEnd = document.getElementById('kubun-set-auth-end');
+        if (authStart) authStart.value = '';
+        if (authEnd) authEnd.value = '';
+        onKubunSetKindChange();
+        toggleKubunSetHasResult();
+        onKubunSetApplyChange();
+    
+        openModal('kubun-set-modal');
+    
+        renderList();
+        if (typeof absLoadUsersFromAPI === 'function') {
+            if (hint) hint.textContent = '利用者台帳を最新取得中...';
+            absLoadUsersFromAPI().then(renderList).catch(function() {
+                if (hint) hint.textContent = '最新取得失敗（キャッシュを表示中）';
+            });
+        }
+    
+        // 中止者リストも取得（過去3ヶ月・中止予定含む）
+        const termCbName = 'kubunTermCb_' + Date.now();
+        window[termCbName] = function(data) {
+            if (data && data.terminations) {
+                kubunTerminations = data.terminations;
+                _kubunTerminationsCache = data.terminations; // グローバルに保持（submitKubunSetで参照）
+                renderList();
+            }
+            delete window[termCbName];
+            const s = document.getElementById('kubun-term-script-' + termCbName);
+            if (s) s.remove();
+        };
+        const termScript = document.createElement('script');
+        termScript.id = 'kubun-term-script-' + termCbName;
+        termScript.src = YAWARAGIBOARD_API_URL + '?action=terminations&period=3m&callback=' + termCbName + '&t=' + Date.now();
+        termScript.onerror = function() { delete window[termCbName]; };
+        document.body.appendChild(termScript);
+    }
+    
+    // 種別切替（区分変更 or 更新）
+    function onKubunSetKindChange() {
+        const kindSel = document.querySelector('input[name="kubun-set-kind"]:checked');
+        const kind = kindSel ? kindSel.value : '';
+        const applySection = document.getElementById('kubun-set-apply-section');
+        const authPeriodSection = document.getElementById('kubun-set-authperiod-section');
+        const authPeriodNote = document.getElementById('kubun-set-authperiod-note');
+    
+        if (kind === '区分変更') {
+            if (applySection) applySection.style.display = '';
+            if (authPeriodSection) authPeriodSection.style.display = '';
+            if (authPeriodNote) authPeriodNote.textContent = '介護保険認定通知書の有効期間（わかれば任意・未確定なら空欄でOK）';
+        } else if (kind === '更新') {
+            if (applySection) applySection.style.display = 'none';
+            if (authPeriodSection) authPeriodSection.style.display = '';
+            if (authPeriodNote) authPeriodNote.textContent = '介護保険認定通知書の有効期間（更新は必須・開始日が更新月の1日）';
+            // 区変日関連をクリア
+            document.getElementById('kubun-set-apply').value = '';
+            const unknownEl = document.getElementById('kubun-set-unknown');
+            if (unknownEl) unknownEl.checked = false;
+        } else {
+            if (applySection) applySection.style.display = 'none';
+            if (authPeriodSection) authPeriodSection.style.display = 'none';
+        }
+    }
+    
+    // 認定有効期間 開始日 を変えたら、隠しフィールド effective-date にも同期＆ onKubunSetApplyChange を発火
+    function onKubunSetAuthStartChange() {
+        const start = document.getElementById('kubun-set-auth-start').value;
+        // 適用開始日（曜日変更予約用）に同期
+        const effEl = document.getElementById('kubun-set-effective-date');
+        if (effEl) effEl.value = start;
+        // 月遅れ対象月の起点としても使う：applyDateが空なら一時的にstartを使う
+        if (start) {
+            // applyDateフィールドが入力されていれば優先、空なら認定有効期間 開始日を起点に
+            const applyEl = document.getElementById('kubun-set-apply');
+            if (applyEl && !applyEl.value) {
+                // 月遅れ月生成のために一時的にonKubunSetApplyChangeのロジックを流用
+                _updateKubunSetOkureFromStart(start);
+            } else {
+                onKubunSetApplyChange();
+            }
+        }
+    }
+    
+    function _updateKubunSetOkureFromStart(startStr) {
+        const container = document.getElementById('kubun-set-okure-months');
+        if (!container) return;
+        container.innerHTML = '';
+        if (!startStr) {
+            container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">認定有効期間 開始日を入力すると候補が出ます</div>';
+            return;
+        }
+        const apply = new Date(startStr);
+        const today = new Date();
+        const cursor = new Date(apply.getFullYear(), apply.getMonth(), 1);
+        const end = new Date(today.getFullYear(), today.getMonth(), 1);
+        let safety = 0;
+        while (cursor <= end && safety < 24) {
+            const y = cursor.getFullYear();
+            const m = String(cursor.getMonth() + 1).padStart(2, '0');
+            const val = y + '-' + m;
+            const label = y + '年' + (cursor.getMonth() + 1) + '月分';
+            const wrapper = document.createElement('label');
+            wrapper.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:6px 10px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; font-size:0.9rem;';
+            wrapper.innerHTML = '<input type="checkbox" class="kubun-set-okure-month-cb" value="' + val + '" checked> ' + label;
+            container.appendChild(wrapper);
+            cursor.setMonth(cursor.getMonth() + 1);
+            safety++;
+        }
+        if (!container.firstChild) {
+            container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">対象月なし</div>';
+        }
+    }
+    
+    // 「もう結果出てる」チェック切替時のセクション表示制御
+    function toggleKubunSetHasResult() {
+        const hasResult = document.getElementById('kubun-set-has-result');
+        const waitingSection = document.getElementById('kubun-set-waiting-section');
+        const resultSection = document.getElementById('kubun-set-result-section');
+        if (!hasResult || !waitingSection || !resultSection) return;
+        if (hasResult.checked) {
+            waitingSection.style.display = 'none';
+            resultSection.style.display = '';
+            onKubunSetApplyChange();
+            // 利用者選択済みなら現在の利用曜日をプリフィル
+            refreshKubunSetCurrentDays();
+        } else {
+            waitingSection.style.display = '';
+            resultSection.style.display = 'none';
+        }
+    }
+    
+    // 利用日の変動3択ボタン
+    function setKubunSetUsageChange(value) {
+        document.getElementById('kubun-set-usage-value').value = value;
+        // ボタン見た目更新
+        const btnMap = {
+            'changed': { id: 'kubun-set-usage-changed', bg: '#fed7d7', color: '#742a2a' },
+            'none':    { id: 'kubun-set-usage-none',    bg: '#c6f6d5', color: '#22543d' },
+            'unknown': { id: 'kubun-set-usage-unknown', bg: '#feebc8', color: '#7c2d12' }
+        };
+        Object.keys(btnMap).forEach(function(k) {
+            const btn = document.getElementById(btnMap[k].id);
+            if (!btn) return;
+            if (k === value) {
+                btn.style.background = btnMap[k].bg;
+                btn.style.color = btnMap[k].color;
+                btn.style.border = '1.5px solid ' + btnMap[k].color;
+            } else {
+                btn.style.background = '#fff';
+                btn.style.color = '#4a5568';
+                btn.style.border = '1.5px solid #e2e8f0';
+            }
+        });
+        // 「あった」を選んだ時のみ曜日変更UIを表示
+        const section = document.getElementById('kubun-set-days-section');
+        if (section) {
+            section.style.display = (value === 'changed') ? '' : 'none';
+            if (value === 'changed') refreshKubunSetCurrentDays();
+        }
+    }
+    
+    // 利用者の現在の利用曜日を UserStore.get() から取得してプリフィル
+    function refreshKubunSetCurrentDays() {
+        const name = (document.getElementById('kubun-set-name').value || '').trim();
+        const currentDisplay = document.getElementById('kubun-set-current-days');
+        if (!name) {
+            if (currentDisplay) currentDisplay.textContent = '（利用者選択後に表示）';
+            buildPerDayGrid('kubun-set-perday-grid', 'kubun-set-perday', {});
+            return;
+        }
+        const users = UserStore.get();
+        const target = users.find(function(u) { return String(u.name || '').trim() === name; });
+        if (!target) {
+            if (currentDisplay) currentDisplay.textContent = '（利用者台帳に見つかりません）';
+            buildPerDayGrid('kubun-set-perday-grid', 'kubun-set-perday', {});
+            return;
+        }
+        const days = target.days || '';
+        const ampm = target.ampm || '';
+        if (currentDisplay) {
+            currentDisplay.textContent = (days || '?') + (ampm ? ' (' + ampm + ')' : '');
+        }
+        const perDay = parsePerDayAmpm(days, ampm);
+        buildPerDayGrid('kubun-set-perday-grid', 'kubun-set-perday', perDay);
+    }
+    
+    // 区変日／更新月が変わったら月遅れ請求対象月チェックボックスを再生成
+    function onKubunSetApplyChange() {
+        const container = document.getElementById('kubun-set-okure-months');
+        if (!container) return;
+        const applyVal = document.getElementById('kubun-set-apply').value;
+        container.innerHTML = '';
+        if (!applyVal) {
+            container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">区変日／更新月を入力すると候補が出ます</div>';
+            return;
+        }
+        const apply = new Date(applyVal);
+        const today = new Date();
+        const cursor = new Date(apply.getFullYear(), apply.getMonth(), 1);
+        const end = new Date(today.getFullYear(), today.getMonth(), 1);
+        let safety = 0;
+        while (cursor <= end && safety < 24) {
+            const y = cursor.getFullYear();
+            const m = String(cursor.getMonth() + 1).padStart(2, '0');
+            const val = y + '-' + m;
+            const label = y + '年' + (cursor.getMonth() + 1) + '月分';
+            const wrapper = document.createElement('label');
+            wrapper.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:6px 10px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; font-size:0.9rem;';
+            wrapper.innerHTML = '<input type="checkbox" class="kubun-set-okure-month-cb" value="' + val + '" checked> ' + label;
+            container.appendChild(wrapper);
+            cursor.setMonth(cursor.getMonth() + 1);
+            safety++;
+        }
+        if (!container.firstChild) {
+            container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">対象月なし</div>';
+        }
+    }
+    
+    function submitKubunSet() {
+        const name = (document.getElementById('kubun-set-name').value || '').trim();
+        const kindSel = document.querySelector('input[name="kubun-set-kind"]:checked');
+        const kind = kindSel ? kindSel.value : '';
+        let applyDate = document.getElementById('kubun-set-apply').value;
+        const expectDate = document.getElementById('kubun-set-expect').value;
+        const unknownEl = document.getElementById('kubun-set-unknown');
+        const isUnknown = unknownEl && unknownEl.checked;
+        const authPeriodStart = document.getElementById('kubun-set-auth-start').value;
+        const authPeriodEnd = document.getElementById('kubun-set-auth-end').value;
+        const hasResultEl = document.getElementById('kubun-set-has-result');
+        const hasResult = hasResultEl && hasResultEl.checked;
+    
+        if (!kind) { alert('種別を選択してください（区分変更申請 or 更新）'); return; }
+        if (!name) { alert('利用者名を入力してください'); return; }
+    
+        if (kind === '区分変更') {
+            if (!applyDate && !isUnknown) {
+                alert('区変日を入力してください（不明な場合は「不明」にチェック）');
+                return;
+            }
+        } else if (kind === '更新') {
+            if (!authPeriodStart) {
+                alert('更新の場合は認定有効期間 開始日が必須です');
+                return;
+            }
+            // 更新の場合、applyDate には認定有効期間 開始日を入れる（区変日列はGAS互換のため埋める）
+            applyDate = authPeriodStart;
+        }
+    
+        // 「もう結果出てる」モードの場合、結果フィールドも必須チェック
+        let newCare = '', resultDate = '', okureMonths = '';
+        let usageChange = '', changeDays = false, newDays = '', newAmpm = '', effectiveDate = '';
+        if (hasResult) {
+            newCare = document.getElementById('kubun-set-newcare').value;
+            resultDate = document.getElementById('kubun-set-result-date').value;
+            if (!newCare) { alert('新介護度を選択してください'); return; }
+            if (!resultDate) { alert('結果が出た日を入力してください'); return; }
+            if (!applyDate) {
+                alert('「もう結果出てる」モードでは区変日／更新月の入力が必要です');
+                return;
+            }
+            okureMonths = Array.from(document.querySelectorAll('.kubun-set-okure-month-cb:checked'))
+                .map(function(cb) { return cb.value; })
+                .join(',');
+    
+            // 「利用日の変動」3択は必須
+            usageChange = document.getElementById('kubun-set-usage-value').value;
+            if (!usageChange) {
+                alert('「利用日の変動」を選択してください（あった／なかった／まだ確認中）');
+                return;
+            }
+    
+            // 「あった」を選んだ場合は曜日変更も必須
+            if (usageChange === 'changed') {
+                changeDays = true;
+                const perDay = readPerDayGrid('kubun-set-perday');
+                const built = buildDaysAmpmFromPerDay(perDay);
+                newDays = built.days;
+                newAmpm = built.ampm;
+                effectiveDate = (document.getElementById('kubun-set-effective-date').value || '').trim();
+                if (!newDays) {
+                    alert('利用日の変動「あった」の場合は変更後の曜日と時間帯を選択してください');
+                    return;
+                }
+                if (!effectiveDate) {
+                    alert('適用開始日を入力してください（いつから新曜日で利用するか）');
+                    return;
+                }
+            }
+        }
+    
+        // 利用者台帳 or 中止履歴に存在するかチェック（誤入力防止・中止者も正規）
+        const users = UserStore.get();
+        const terminationsList = _kubunTerminationsCache || [];
+        const existsInUsers = users.some(function(u) { return String(u.name || '').trim() === name; });
+        const existsInTerm = terminationsList.some(function(t) { return String(t.name || '').trim() === name; });
+        if (!existsInUsers && !existsInTerm) {
+            if (!confirm('「' + name + '」は利用者台帳にも中止履歴にも見つかりません。このまま登録しますか？\n（候補から選び直すにはキャンセル）')) return;
+        }
+    
+        // Step 1: kubunSet（区変開始）を呼ぶ
+        const cbName = 'kubunSetCb_' + Date.now();
+        window[cbName] = function(data) {
+            if (data && data.error) {
+                alert('エラー: ' + data.error);
+                delete window[cbName];
+                const s = document.getElementById('kubun-set-jsonp-' + cbName);
+                if (s) s.remove();
+                return;
+            }
+            if (data && data.ok) {
+                // Step 2: 結果出てるモードなら続けて kubunClear を呼ぶ
+                if (hasResult) {
+                    _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate, kind, authPeriodStart, authPeriodEnd);
+                } else {
+                    if (typeof showToast === 'function') showToast('📝 区変開始を登録しました');
+                    closeModal('kubun-set-modal');
+                    loadKubunHenkouList();
+                }
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-set-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-set-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=kubunSet&callback=' + cbName + '&t=' + Date.now();
+        url += '&name=' + encodeURIComponent(name);
+        url += '&applyDate=' + encodeURIComponent(applyDate);
+        if (expectDate) url += '&expectDate=' + encodeURIComponent(expectDate);
+        script.src = url;
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    // kubunSet 成功後に kubunClear を呼ぶ（結果登録＋usageChange＋kind＋authPeriod）
+    function _submitKubunSetResultStep(name, newCare, resultDate, okureMonths, usageChange, changeDays, newDays, newAmpm, effectiveDate, kind, authPeriodStart, authPeriodEnd) {
+        const cbName = 'kubunSetClearCb_' + Date.now();
+        window[cbName] = function(data) {
+            if (data && data.error) {
+                alert('区変開始は登録されましたが、結果登録でエラー: ' + data.error + '\nカードの「結果を登録」ボタンから手動で結果を入れてください。');
+                closeModal('kubun-set-modal');
+                loadKubunHenkouList();
+            } else if (data && data.ok) {
+                let msg = '✅ 介護度変更を登録しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
+                if (data.okureMonths) msg += '\n月遅れ対象: ' + data.okureMonths;
+                if (typeof showToast === 'function') showToast(msg);
+    
+                // Step 3: 曜日変更ありなら updateUserUsageDays を続けて呼ぶ
+                if (changeDays) {
+                    _submitKubunSetDaysStep(name, newDays, newAmpm, effectiveDate, data.historyRowIndex);
+                } else {
+                    closeModal('kubun-set-modal');
+                    loadKubunHenkouList();
+                }
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-set-clear-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-set-clear-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=kubunClear&callback=' + cbName + '&t=' + Date.now();
+        url += '&name=' + encodeURIComponent(name);
+        url += '&newCare=' + encodeURIComponent(newCare);
+        url += '&resultDate=' + encodeURIComponent(resultDate);
+        if (okureMonths) url += '&okureMonths=' + encodeURIComponent(okureMonths);
+        if (usageChange) url += '&usageChange=' + encodeURIComponent(usageChange);
+        if (kind) url += '&kind=' + encodeURIComponent(kind);
+        if (authPeriodStart) url += '&authPeriodStart=' + encodeURIComponent(authPeriodStart);
+        if (authPeriodEnd) url += '&authPeriodEnd=' + encodeURIComponent(authPeriodEnd);
+        script.src = url;
+        script.onerror = function() {
+            alert('結果登録の通信エラーが発生しました。カードの「結果を登録」ボタンから手動で結果を入れてください。');
+            delete window[cbName];
+            closeModal('kubun-set-modal');
+            loadKubunHenkouList();
+        };
+        document.body.appendChild(script);
+    }
+    
+    // kubunClear 成功後に updateUserUsageDays を呼ぶ（利用曜日変更）
+    function _submitKubunSetDaysStep(name, newDays, newAmpm, effectiveDate, historyRowIndex) {
+        const cbName = 'kubunSetDaysCb_' + Date.now();
+        window[cbName] = function(res) {
+            if (res && res.ok) {
+                let msg;
+                if (res.reserved) {
+                    msg = '📅 ' + res.effectiveDate + ' から自動反映予約\n'
+                        + '新曜日: ' + (res.newDays || '空') + (res.newAmpm ? ' (' + res.newAmpm + ')' : '');
+                } else {
+                    msg = '📅 利用曜日も更新しました: '
+                        + (res.prevDays || '空') + (res.prevAmpm ? '(' + res.prevAmpm + ')' : '')
+                        + ' → ' + (res.newDays || '空') + (res.newAmpm ? '(' + res.newAmpm + ')' : '');
+                }
+                if (typeof showToast === 'function') showToast(msg);
+            } else {
+                alert('利用曜日の更新でエラー: ' + (res && res.error ? res.error : '不明') + '\nカードの「利用曜日を編集」ボタンから手動で更新してください。');
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-set-days-jsonp-' + cbName);
+            if (s) s.remove();
+            closeModal('kubun-set-modal');
+            loadKubunHenkouList();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-set-days-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=updateUserUsageDays&callback=' + cbName + '&t=' + Date.now();
+        url += '&name=' + encodeURIComponent(name);
+        url += '&days=' + encodeURIComponent(newDays);
+        url += '&ampm=' + encodeURIComponent(newAmpm);
+        if (effectiveDate) url += '&effectiveDate=' + encodeURIComponent(effectiveDate);
+        if (historyRowIndex) url += '&historyRowIndex=' + encodeURIComponent(historyRowIndex);
+        script.src = url;
+        script.onerror = function() {
+            alert('利用曜日更新の通信エラー。カードから手動で更新してください。');
+            delete window[cbName];
+            closeModal('kubun-set-modal');
+            loadKubunHenkouList();
+        };
+        document.body.appendChild(script);
+    }
+    
+    // ===== 区変編集モーダル =====
+    function toggleKubunEditUnknown() {
+        const cb = document.getElementById('kubun-edit-unknown');
+        const apply = document.getElementById('kubun-edit-apply');
+        if (!cb || !apply) return;
+        if (cb.checked) {
+            apply.value = '';
+            apply.disabled = true;
+            apply.style.background = '#f7fafc';
+        } else {
+            apply.disabled = false;
+            apply.style.background = '';
+        }
+    }
+    
+    function setEditExpectPreset(opt) {
+        const expectInput = document.getElementById('kubun-edit-expect');
+        const applyVal = document.getElementById('kubun-edit-apply').value;
+        const fmt = function(d) {
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        };
+        if (opt === 'clear') { expectInput.value = ''; return; }
+        if (opt === 'thisMonthEnd') {
+            const d = new Date();
+            const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+            expectInput.value = fmt(end);
+            return;
+        }
+        if (opt === 'nextMonthEnd') {
+            const d = new Date();
+            const end = new Date(d.getFullYear(), d.getMonth() + 2, 0);
+            expectInput.value = fmt(end);
+            return;
+        }
+        if (!applyVal) { alert('先に区変日を入力するか、結果待ち目安日を直接指定してください'); return; }
+        const d = new Date(applyVal);
+        d.setDate(d.getDate() + Number(opt));
+        expectInput.value = fmt(d);
+    }
+    
+    function openKubunEditModal(name) {
+        const target = (kubunActive || []).find(function(u) { return u.name === name; });
+        if (!target) { alert('対象利用者が見つかりません: ' + name); return; }
+    
+        document.getElementById('kubun-edit-name').textContent = name + ' 様';
+        document.getElementById('kubun-edit-name').dataset.name = name;
+    
+        const applyEl = document.getElementById('kubun-edit-apply');
+        const unknownEl = document.getElementById('kubun-edit-unknown');
+        const expectEl = document.getElementById('kubun-edit-expect');
+    
+        applyEl.value = target.applyDate || '';
+        expectEl.value = target.expectDate || '';
+        unknownEl.checked = !target.applyDate;
+        if (unknownEl.checked) {
+            applyEl.disabled = true;
+            applyEl.style.background = '#f7fafc';
+        } else {
+            applyEl.disabled = false;
+            applyEl.style.background = '';
+        }
+        openModal('kubun-edit-modal');
+    }
+    
+    function submitKubunEdit() {
+        const nameEl = document.getElementById('kubun-edit-name');
+        const name = nameEl ? nameEl.dataset.name : '';
+        const applyDate = document.getElementById('kubun-edit-apply').value;
+        const expectDate = document.getElementById('kubun-edit-expect').value;
+        const unknownEl = document.getElementById('kubun-edit-unknown');
+        const isUnknown = unknownEl && unknownEl.checked;
+        if (!name) { alert('利用者名が取得できません'); return; }
+        if (!applyDate && !isUnknown) {
+            alert('区変日を入力してください（不明な場合は「区変日が不明」にチェック）');
+            return;
+        }
+    
+        const cbName = 'kubunUpdateCb_' + Date.now();
+        window[cbName] = function(data) {
+            if (data && data.error) {
+                alert('エラー: ' + data.error);
+            } else if (data && data.ok) {
+                if (typeof showToast === 'function') showToast('💾 区変日を更新しました');
+                closeModal('kubun-edit-modal');
+                loadKubunHenkouList();
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-update-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-update-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=kubunUpdate&callback=' + cbName + '&t=' + Date.now();
+        url += '&name=' + encodeURIComponent(name);
+        url += '&applyDate=' + encodeURIComponent(applyDate || '');
+        url += '&expectDate=' + encodeURIComponent(expectDate || '');
+        script.src = url;
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+    function openKubunClearModal(name) {
+        document.getElementById('kubun-clear-name-display').textContent = name + ' 様';
+        document.getElementById('kubun-clear-name').value = name;
+        document.getElementById('kubun-clear-newcare').value = '';
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        document.getElementById('kubun-clear-result').value = yyyy + '-' + mm + '-' + dd;
+    
+        // 月遅れ対象月チェックボックスを申請月〜今月で動的生成
+        const target = (kubunActive || []).find(function(u) { return u.name === name; });
+        const applyDate = target ? target.applyDate : null;
+        const container = document.getElementById('kubun-clear-okure-months');
+        if (container) {
+            container.innerHTML = '';
+            if (applyDate) {
+                const apply = new Date(applyDate);
+                const cursor = new Date(apply.getFullYear(), apply.getMonth(), 1);
+                const end = new Date(today.getFullYear(), today.getMonth(), 1);
+                let safety = 0;
+                while (cursor <= end && safety < 24) {
+                    const y = cursor.getFullYear();
+                    const m = String(cursor.getMonth() + 1).padStart(2, '0');
+                    const val = y + '-' + m;
+                    const label = y + '年' + (cursor.getMonth() + 1) + '月分';
+                    const wrapper = document.createElement('label');
+                    wrapper.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:6px 10px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; font-size:0.9rem;';
+                    wrapper.innerHTML = '<input type="checkbox" class="kubun-okure-month-cb" value="' + val + '" checked> ' + label;
+                    container.appendChild(wrapper);
+                    cursor.setMonth(cursor.getMonth() + 1);
+                    safety++;
+                }
+                if (!container.firstChild) {
+                    container.innerHTML = '<div style="color:#a0aec0; font-size:0.85rem;">対象月なし</div>';
+                }
+            } else {
+                container.innerHTML = '<div style="color:#c53030; font-size:0.85rem;">⚠ 区変日が未確認のため月遅れ対象を計算できません。先に区変日を編集してください。</div>';
+            }
+        }
+    
+        // 適用開始月セレクトを動的生成（当月〜11ヶ月先まで、デフォルト=来月）
+        populateKubunApplyMonthSelect();
+        // ラジオを「即時」に初期化
+        const immediateRadio = document.querySelector('input[name="kubun-apply-mode"][value="immediate"]');
+        if (immediateRadio) immediateRadio.checked = true;
+        const applyMonthSel = document.getElementById('kubun-apply-month');
+        if (applyMonthSel) applyMonthSel.disabled = true;
+    
+        openModal('kubun-clear-modal');
+    }
+    
+    // 介護度予約反映機能: 適用月セレクトを動的生成（2026-05-29 Task 11）
+    function populateKubunApplyMonthSelect() {
+        const sel = document.getElementById('kubun-apply-month');
+        if (!sel) return;
+        sel.innerHTML = '';
+        const now = new Date();
+        for (let i = 0; i <= 11; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+            const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            const label = d.getFullYear() + '年' + (d.getMonth() + 1) + '月';
+            const opt = document.createElement('option');
+            opt.value = ym;
+            opt.textContent = label;
+            if (i === 1) opt.selected = true; // デフォルトは来月
+            sel.appendChild(opt);
+        }
+    }
+    
+    // 適用開始月ラジオ変更でセレクトの有効/無効を切替
+    document.addEventListener('change', function(e) {
+        if (e.target && e.target.name === 'kubun-apply-mode') {
+            const sel = document.getElementById('kubun-apply-month');
+            if (sel) sel.disabled = (e.target.value !== 'future');
+        }
+    });
+    
+    function submitKubunClear() {
+        const name = document.getElementById('kubun-clear-name').value;
+        const newCare = document.getElementById('kubun-clear-newcare').value;
+        const resultDate = document.getElementById('kubun-clear-result').value;
+        if (!newCare) { alert('新介護度を選択してください'); return; }
+        if (!resultDate) { alert('結果確定日を入力してください'); return; }
+    
+        const okureMonths = Array.from(document.querySelectorAll('.kubun-okure-month-cb:checked'))
+            .map(function(cb) { return cb.value; })
+            .join(',');
+    
+        // 適用開始月（即時 or YYYY-MM）
+        const applyModeEl = document.querySelector('input[name="kubun-apply-mode"]:checked');
+        const applyMode = applyModeEl ? applyModeEl.value : 'immediate';
+        const applyMonth = applyMode === 'future'
+            ? (document.getElementById('kubun-apply-month').value || 'immediate')
+            : 'immediate';
+    
+        const cbName = 'kubunClearCb_' + Date.now();
+        window[cbName] = function(data) {
+            if (data && data.error) {
+                alert('エラー: ' + data.error);
+            } else if (data && data.ok) {
+                let msg;
+                if (data.mode === 'reserve') {
+                    msg = '🟡 ' + data.applyMonth + ' から適用予約しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
+                } else {
+                    msg = '✅ 区変結果を登録しました（' + data.prevCareLevel + ' → ' + data.newCareLevel + '）';
+                    if (data.okureMonths) msg += '\n月遅れ対象: ' + data.okureMonths;
+                }
+                if (typeof showToast === 'function') showToast(msg);
+                closeModal('kubun-clear-modal');
+                loadKubunHenkouList();
+                if (typeof loadKubunScheduledList === 'function') loadKubunScheduledList();
+            }
+            delete window[cbName];
+            const s = document.getElementById('kubun-clear-jsonp-' + cbName);
+            if (s) s.remove();
+        };
+        const script = document.createElement('script');
+        script.id = 'kubun-clear-jsonp-' + cbName;
+        let url = YAWARAGIBOARD_API_URL + '?action=kubunClear&callback=' + cbName + '&t=' + Date.now();
+        url += '&name=' + encodeURIComponent(name);
+        url += '&newCare=' + encodeURIComponent(newCare);
+        url += '&resultDate=' + encodeURIComponent(resultDate);
+        if (okureMonths) url += '&okureMonths=' + encodeURIComponent(okureMonths);
+        url += '&applyMonth=' + encodeURIComponent(applyMonth);
+        script.src = url;
+        script.onerror = function() {
+            alert('通信エラーが発生しました');
+            delete window[cbName];
+        };
+        document.body.appendChild(script);
+    }
+    
+
+    /* ===== 初期化(単一タブ=区変。4リストを読み込み) ===== */
+    window.addEventListener('load', function () {
+      if (typeof UserStore !== 'undefined' && !UserStore.isLoaded() && typeof UserStore.loadFromAPI === 'function') {
+        try { UserStore.loadFromAPI(); } catch (e) {}
+      }
+      try { if (typeof loadKubunScheduledList === 'function') loadKubunScheduledList(); } catch (e) { console.error(e); }
+      try { if (typeof loadKubunHenkouList === 'function') loadKubunHenkouList(); } catch (e) { console.error(e); }
+      try { if (typeof loadKubunDelayList === 'function') loadKubunDelayList(); } catch (e) { console.error(e); }
+      try { if (typeof loadKubunHistoryList === 'function') loadKubunHistoryList(); } catch (e) { console.error(e); }
+      console.log('[kubun.html] 初期化完了');
+    });
+  </script>
+</body>
+</html>
