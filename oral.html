@@ -561,6 +561,7 @@
 <div class="tab-bar">
   <button class="tab-btn active" data-tab="monitoring">🦷 モニタリング</button>
   <button class="tab-btn" data-tab="sending">📤 ケアマネ送付 <small>(算定対象者のみ・3ヶ月ごと)</small></button>
+  <button class="tab-btn" data-tab="submission">📋 提出管理 <small>(今月の評価月対象・試験)</small></button>
 </div>
 
 <div class="tab-panel active" id="panel-monitoring">
@@ -617,6 +618,12 @@
 <div class="tab-panel" id="panel-sending">
   <div id="sending-container">
     <p style="padding:30px; color:#888; text-align:center;">📡 ケアマネ送付タブ 初期化中...</p>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-submission">
+  <div id="submission-container">
+    <p style="padding:30px; color:#888; text-align:center;">📡 提出管理タブ 初期化中...</p>
   </div>
 </div>
 
@@ -1670,6 +1677,9 @@ document.addEventListener('DOMContentLoaded', function () {
       if (tab === 'sending' && typeof loadOralPlans === 'function') {
         loadOralPlans();
       }
+      if (tab === 'submission' && typeof initSubmissionTab === 'function') {
+        initSubmissionTab();
+      }
     });
   });
 });
@@ -2104,6 +2114,101 @@ function attachOralTargetHandlers() {
       }
     });
   });
+}
+
+// ========== タブ③ 提出管理（2026-06-08 試験的追加・読み取り専用ダッシュボード） ==========
+// 既存コードは一切変更せず、buildOralEvalIndex / isOralEvalMonth / oralPlansCache /
+// oralPlansYear / YAWARAGI_BOARD_API / escapeHtml / escapeAttr を「参照のみ」で使う独立セクション。
+// 純関数 oralPlanPeriodLabel / oralSubmitDueLabel は scripts/test-oral-submission-tab.js とゴールデン同一。
+
+// 計画期間ラベル: plan_date(YYYY-MM-DD)起点で 開始日 〜 3ヶ月目の月末（年跨ぎ対応）
+function oralPlanPeriodLabel(planDateStr) {
+  var m = String(planDateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '—';
+  var y = +m[1], mo = +m[2], d = +m[3];
+  var endTotal = (y * 12 + (mo - 1)) + 2;
+  var endY = Math.floor(endTotal / 12);
+  var endMo = (endTotal % 12) + 1;
+  var endDay = new Date(endY, endMo, 0).getDate();
+  return y + '/' + mo + '/' + d + ' 〜 ' + endY + '/' + endMo + '/' + endDay;
+}
+
+// 提出予定日ラベル: 評価月（当月）末
+function oralSubmitDueLabel(year, month) {
+  return year + '年' + month + '月末';
+}
+
+// 当月が評価月の算定対象者を一覧表示（読み取り専用ダッシュボード）
+async function initSubmissionTab() {
+  var container = document.getElementById('submission-container');
+  if (!container) return;
+  var now = new Date();
+  var cy = now.getFullYear();
+  var cm = now.getMonth() + 1;
+
+  // oralPlansCache（送付タブと同じソース）が未取得なら取得して充填
+  if (!oralPlansCache || oralPlansYear !== cy) {
+    container.innerHTML = '<p style="padding:30px; color:#888; text-align:center;">📡 読み込み中...</p>';
+    try {
+      var res = await fetch(YAWARAGI_BOARD_API + '?action=getOralPlansYear&year=' + cy);
+      var j = await res.json();
+      if (j && j.ok) { oralPlansCache = j; oralPlansYear = cy; }
+      else { throw new Error((j && j.error) || 'API error'); }
+    } catch (e) {
+      container.innerHTML = '<div style="margin:15px; padding:14px; background:#ffebee; color:#c62828; border-radius:8px;">⚠️ 読み込み失敗: ' + escapeHtml(String(e && e.message ? e.message : e)) + '</div>';
+      return;
+    }
+  }
+
+  var idx = buildOralEvalIndex(); // 既存関数（参照のみ）
+  var names = Object.keys(idx).filter(function (n) {
+    return idx[n].isTarget && isOralEvalMonth(idx[n].startedAt, cy, cm);
+  });
+
+  var head = '<div style="padding:15px;">'
+    + '<h2 style="margin:0 0 4px 0; font-size:18px;">' + cy + '年' + cm + '月 口腔加算 提出管理確認</h2>'
+    + '<p style="margin:0 0 12px; color:#666; font-size:13px;">今月が評価月（算定開始からの3ヶ月サイクル）の算定対象者です。🔴未出力の人はPDFを出力してケアマネに提出してください。</p>';
+
+  if (names.length === 0) {
+    container.innerHTML = head + '<div style="padding:20px; color:#888; background:#f9f9f9; border-radius:8px;">今月が評価月の対象者はいません。</div></div>';
+    return;
+  }
+
+  var rows = names.map(function (name) {
+    var ei = idx[name];
+    var rec = ei.rec || {};
+    var period = oralPlanPeriodLabel(rec.plan_date);
+    var due = oralSubmitDueLabel(cy, cm);
+    var sent = rec.sent_to_cm && rec.sent_date;
+    var statusCell = sent
+      ? '<span style="color:#2e7d32; font-weight:bold;">✅ 出力済 (' + escapeHtml(String(rec.sent_date)) + ')</span>'
+      : '<span style="color:#c62828; font-weight:bold;">🔴 未出力</span> '
+        + '<button class="btn btn-white" style="padding:4px 10px; font-size:12px; border:1px solid #2c7a7b; color:#2c7a7b;" onclick="exportSubmissionPDF(\'' + escapeAttr(name) + '\')">📄 PDF出力</button>';
+    return '<tr style="border-bottom:1px solid #eee;">'
+      + '<td style="padding:10px; border:1px solid #eee; font-weight:bold;">' + escapeHtml(name) + '</td>'
+      + '<td style="padding:10px; border:1px solid #eee; white-space:nowrap;">' + escapeHtml(period) + '</td>'
+      + '<td style="padding:10px; border:1px solid #eee;">📝 モニタリング実施</td>'
+      + '<td style="padding:10px; border:1px solid #eee; white-space:nowrap;">' + escapeHtml(due) + '</td>'
+      + '<td style="padding:10px; border:1px solid #eee;">' + statusCell + '</td>'
+      + '</tr>';
+  }).join('');
+
+  container.innerHTML = head
+    + '<table style="width:100%; border-collapse:collapse; font-size:14px;">'
+    + '<thead><tr style="background:#e0f2f1;">'
+    + '<th style="padding:10px; border:1px solid #ddd; text-align:left;">利用者名</th>'
+    + '<th style="padding:10px; border:1px solid #ddd; text-align:left;">計画期間</th>'
+    + '<th style="padding:10px; border:1px solid #ddd; text-align:left;">今月のタスク</th>'
+    + '<th style="padding:10px; border:1px solid #ddd; text-align:left;">提出予定日</th>'
+    + '<th style="padding:10px; border:1px solid #ddd; text-align:left;">出力状態</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<p style="margin:12px 15px; color:#999; font-size:12px;">※ このタブは読み取り専用の確認用です。送付済みの記録は「📤 ケアマネ送付」タブで行ってください。</p></div>';
+}
+
+// PDF出力（試験版・仮実装）: 既存の印刷機能を流用。実PDF生成・sent_date記録は次段でクロ設計待ち。
+function exportSubmissionPDF(name) {
+  alert(name + ' さんの口腔モニタリングを印刷／PDF出力します。\n（試験版：印刷ダイアログで「PDFに保存」を選んでください）');
+  window.print();
 }
 </script>
 
