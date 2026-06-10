@@ -181,7 +181,13 @@
         <label>職員</label>
         <select id="ledStaff" onchange="renderLedger()"><option value="">— 選択 —</option></select>
         <button class="btn btn-amber" onclick="window.print()">🖨️ 印刷 / PDF</button>
+        <button class="btn btn-teal no-print" onclick="renderAllLedgers()">👥 全員一括出力</button>
+        <label class="no-print" style="font-size:13px;font-weight:normal;"><input type="checkbox" id="ledIncludeRetired" style="vertical-align:middle;"> 退職者も含める</label>
     </div>
+    <style>
+        .ledger-page { page-break-after: always; break-after: page; }
+        .ledger-page:last-child { page-break-after: auto; break-after: auto; }
+    </style>
     <div id="ledArea"><div class="empty-msg">職員を選択してください</div></div>
 </div>
 
@@ -686,6 +692,52 @@ function renderLedger() {
             '<table><thead><tr><th>基準日(付与日)</th><th>種別</th><th>付与日数</th><th>失効日</th><th>取得日</th><th>取得計</th><th>残</th></tr></thead>' +
             '<tbody>' + (rows || '<tr><td colspan="7">付与記録なし</td></tr>') + '</tbody></table>' +
             '<p style="margin-top:10px;font-size:12px;color:#888;">※ 労基法上の年次有給休暇管理簿（基準日・日数・時季）。出力日: ' + STATE.today + '</p></div>';
+    });
+}
+
+/* ====== 管理簿 全員一括出力（純追加・既存renderLedger非改変） ====== */
+// 1名分の管理簿HTMLを組み立てて返す（renderLedger と同一レイアウト）
+function buildOneLedgerHTML(d) {
+    const grants = (d.grants || []).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+    const usesByGrant = {};
+    (d.uses || []).forEach(u => { (usesByGrant[u.grant_id] = usesByGrant[u.grant_id] || []).push(u); });
+    let rows = grants.map(g => {
+        const us = (usesByGrant[g.grant_id] || []).sort((a, b) => a.date < b.date ? -1 : 1);
+        const useList = us.length ? us.map(u => u.date + '（' + u.days + '日）').join('<br>') : '—';
+        const usedSum = us.reduce((s, u) => s + Number(u.days), 0);
+        return '<tr><td>' + g.date + '</td><td>' + esc(g.basis) + '</td><td>' + g.days + '日</td><td>' + g.expire + '</td>' +
+            '<td class="use-list">' + useList + '</td><td>' + usedSum + '日</td><td>' + g.remaining + '日</td></tr>';
+    }).join('');
+    return '<div class="ledger"><h2>年次有給休暇管理簿</h2>' +
+        '<div class="meta"><div>氏名: <b>' + esc(d.staff.name) + '</b></div><div>入社日: <b>' + d.staff.join + '</b></div>' +
+        '<div>基準日: <b>' + d.staff.baseDate + '</b></div><div>週所定: <b>' + d.staff.weeklyDays + '日</b></div>' +
+        '<div>現在残日数: <b>' + d.residual + '日</b></div></div>' +
+        '<table><thead><tr><th>基準日(付与日)</th><th>種別</th><th>付与日数</th><th>失効日</th><th>取得日</th><th>取得計</th><th>残</th></tr></thead>' +
+        '<tbody>' + (rows || '<tr><td colspan="7">付与記録なし</td></tr>') + '</tbody></table>' +
+        '<p style="margin-top:10px;font-size:12px;color:#888;">※ 労基法上の年次有給休暇管理簿（基準日・日数・時季）。出力日: ' + STATE.today + '</p></div>';
+}
+// 在籍者全員（トグルで退職者含む）の管理簿を連結し改ページして印刷
+function renderAllLedgers() {
+    const includeRetired = document.getElementById('ledIncludeRetired').checked;
+    const targets = STATE.staff.filter(s => includeRetired || s.status !== '退職');
+    if (!targets.length) { showToast('対象者がいません', '#ff9800'); return; }
+    const area = document.getElementById('ledArea');
+    area.innerHTML = '<div class="empty-msg">全員分を読み込み中...（' + targets.length + '名）</div>';
+    Promise.all(targets.map(s => loadDetail(s.staff_id))).then(() => {
+        const today = STATE.today || '';
+        const fname = '有給管理簿_全員_' + today.replace(/-/g, '');
+        let html = '<div class="ledger" style="background:#e0f2f1;border:1px dashed #26A69A;">' +
+            '<h2 style="font-size:17px;">📚 有給管理簿（全員一括）</h2>' +
+            '<div class="meta"><div>出力日: <b>' + today + '</b></div>' +
+            '<div>対象期間: <b>全付与・取得記録（全期間）</b></div>' +
+            '<div>対象: <b>' + targets.length + '名' + (includeRetired ? '（退職者含む）' : '（在籍者）') + '</b></div></div>' +
+            '<p style="font-size:12px;color:#00695C;">💡 印刷ダイアログでファイル名「<b>' + fname + '</b>」を推奨。職員ごとに改ページされます。</p></div>';
+        targets.forEach(s => {
+            const d = STATE.detail[s.staff_id];
+            if (d && d.success) html += '<div class="ledger-page">' + buildOneLedgerHTML(d) + '</div>';
+        });
+        area.innerHTML = html;
+        setTimeout(() => window.print(), 400);
     });
 }
 
