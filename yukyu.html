@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>有給管理 - yawaragi（管理専用）</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f5f5f5; color: #333; font-size: 16px; }
+        .header {
+            background: linear-gradient(135deg, #00897B, #26A69A); color: white;
+            padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+        }
+        .header h1 { font-size: 22px; }
+        .header-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            padding: 10px 16px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: bold;
+            min-height: 44px; touch-action: manipulation;
+        }
+        .btn-white { background: white; color: #00695C; }
+        .btn-teal { background: #26A69A; color: white; }
+        .btn-red { background: #e53935; color: white; }
+        .btn-gray { background: #eee; color: #666; }
+        .btn-amber { background: #ff9800; color: white; }
+        .tabs { display: flex; background: white; border-bottom: 2px solid #ddd; overflow-x: auto; }
+        .tab {
+            padding: 14px 20px; cursor: pointer; font-weight: bold; color: #777; white-space: nowrap;
+            border-bottom: 3px solid transparent; min-height: 50px;
+        }
+        .tab.active { color: #00695C; border-bottom-color: #00897B; background: #e0f2f1; }
+        .panel { display: none; padding: 18px; max-width: 1100px; margin: 0 auto; }
+        .panel.active { display: block; }
+        .notice { background: #fff8e1; color: #e65100; padding: 10px 16px; border-left: 4px solid #ffa000; font-size: 14px; line-height: 1.6; border-radius: 6px; margin-bottom: 14px; }
+
+        /* ダッシュボード */
+        .card {
+            background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 16px; margin-bottom: 12px; border-left: 5px solid #26A69A;
+        }
+        .card.warn { border-left-color: #e53935; background: #fff5f5; }
+        .card.violation { border-left-color: #b71c1c; background: #ffebee; }
+        .card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .card-name { font-size: 19px; font-weight: bold; color: #00695C; }
+        .badge { font-size: 12px; padding: 2px 10px; border-radius: 12px; background: #e0e0e0; color: #555; margin-left: 6px; }
+        .badge.retired { background: #cfd8dc; color: #455a64; }
+        .residual { font-size: 28px; font-weight: bold; color: #00897B; }
+        .residual .unit { font-size: 14px; color: #888; font-weight: normal; }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 10px; margin-top: 12px; }
+        .mini { background: #f7fafa; border-radius: 8px; padding: 10px; font-size: 13px; }
+        .mini .lbl { color: #888; font-size: 12px; }
+        .mini .val { font-size: 16px; font-weight: bold; color: #444; margin-top: 3px; }
+        .mini .val.alert { color: #e53935; }
+        .prog { background: #eceff1; border-radius: 10px; height: 16px; overflow: hidden; margin-top: 5px; position: relative; }
+        .prog > i { display: block; height: 100%; background: #26A69A; }
+        .prog.warn > i { background: #ff9800; }
+        .prog.violation > i { background: #e53935; }
+        .prog-txt { font-size: 12px; color: #555; margin-top: 4px; }
+
+        /* セレクタ */
+        select, input[type=text], input[type=date], input[type=number] {
+            font-size: 16px; padding: 9px 11px; border: 1px solid #bbb; border-radius: 6px; background: white;
+        }
+        .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+        .row label { font-weight: bold; color: #555; font-size: 14px; }
+
+        /* カレンダー */
+        .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .cal-title { font-size: 18px; font-weight: bold; color: #00695C; }
+        .cal { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; }
+        .cal .dow { text-align: center; font-size: 13px; color: #888; padding: 4px 0; font-weight: bold; }
+        .cal .day {
+            aspect-ratio: 1/1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border: 1px solid #e0e0e0; border-radius: 8px; cursor: pointer; font-size: 15px; background: white; min-height: 44px;
+        }
+        .cal .day.empty { border: none; cursor: default; }
+        .cal .day:hover { background: #e0f2f1; }
+        .cal .day.used { background: #b2dfdb; border-color: #26A69A; font-weight: bold; }
+        .cal .day.weekend { color: #e57373; }
+        .cal .day .tag { font-size: 10px; color: #00695C; }
+
+        /* タイムライン */
+        .tl { position: relative; padding-left: 8px; }
+        .tl-item { border-left: 3px solid #26A69A; padding: 8px 0 8px 14px; margin-left: 6px; position: relative; }
+        .tl-item.use { border-left-color: #ff9800; }
+        .tl-item.expire { border-left-color: #9e9e9e; }
+        .tl-item.expired { opacity: 0.55; }
+        .tl-date { font-size: 13px; color: #888; }
+        .tl-main { font-size: 15px; font-weight: bold; color: #444; }
+        .tl-sub { font-size: 12px; color: #888; }
+
+        /* 管理簿 */
+        .ledger { background: white; padding: 20px; border-radius: 8px; }
+        .ledger table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+        .ledger th, .ledger td { border: 1px solid #999; padding: 8px 10px; font-size: 14px; text-align: center; }
+        .ledger th { background: #e0f2f1; }
+        .ledger h2 { font-size: 20px; }
+        .ledger .meta { display: flex; gap: 24px; flex-wrap: wrap; margin: 10px 0; font-size: 14px; }
+        .ledger .meta b { color: #00695C; }
+        .use-list { text-align: left; }
+
+        /* モーダル */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 12px; padding: 26px; max-width: 420px; width: 92%; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .modal h2 { margin-bottom: 14px; font-size: 19px; color: #00695C; }
+        .modal p { margin-bottom: 12px; color: #555; line-height: 1.6; }
+        .modal .btn { width: 100%; margin-top: 8px; }
+        .btn-group { display: flex; gap: 10px; margin: 12px 0; }
+        .btn-group .btn { flex: 1; }
+        .warn-box { background: #fff3e0; border: 1px solid #ffb74d; color: #e65100; padding: 10px; border-radius: 8px; font-size: 14px; margin: 10px 0; }
+
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: bold; z-index: 200; opacity: 0; transition: opacity .3s; }
+        .empty-msg { text-align: center; padding: 50px 20px; color: #999; }
+
+        @media print {
+            .header, .tabs, .notice, .row, .no-print { display: none !important; }
+            .panel { display: none !important; }
+            #panel-ledger { display: block !important; padding: 0; }
+            .ledger { box-shadow: none; }
+            @page { size: A4 portrait; margin: 12mm; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📅 有給管理 <span style="font-size:13px;opacity:.85;">（管理専用）</span></h1>
+    <div class="header-controls">
+        <button class="btn btn-white" onclick="reload()">🔄 再読込</button>
+        <button class="btn btn-teal" onclick="openConfig()">⚙ 接続設定</button>
+    </div>
+</div>
+
+<div class="tabs">
+    <div class="tab active" data-tab="dashboard" onclick="switchTab('dashboard')">📊 ダッシュボード</div>
+    <div class="tab" data-tab="register" onclick="switchTab('register')">✏️ 取得登録</div>
+    <div class="tab" data-tab="history" onclick="switchTab('history')">📜 付与・履歴</div>
+    <div class="tab" data-tab="ledger" onclick="switchTab('ledger')">🖨️ 管理簿出力</div>
+</div>
+
+<!-- ダッシュボード -->
+<div class="panel active" id="panel-dashboard">
+    <div class="notice">📊 全職員の残日数・次回付与・直近失効・<b>年5日取得義務</b>の進捗。警告者は赤で最上部に表示されます。</div>
+    <div id="dashList"><div class="empty-msg">「⚙ 接続設定」でWeb App URLとトークンを設定してください</div></div>
+</div>
+
+<!-- 取得登録 -->
+<div class="panel" id="panel-register">
+    <div class="notice">✏️ 職員を選び、カレンダーの日付をタップ → 1.0日／0.5日を選んで登録。付与前の日付は<b>前借（前倒し付与＋即消化）</b>として警告の上で登録できます。</div>
+    <div class="row">
+        <label>職員</label>
+        <select id="regStaff" onchange="onRegStaffChange()"><option value="">— 選択 —</option></select>
+        <span id="regResidual" style="font-weight:bold;color:#00897B;"></span>
+    </div>
+    <div id="calArea" style="display:none;">
+        <div class="cal-head">
+            <button class="btn btn-gray" onclick="calMove(-1)">◀ 前月</button>
+            <span class="cal-title" id="calTitle"></span>
+            <button class="btn btn-gray" onclick="calMove(1)">翌月 ▶</button>
+        </div>
+        <div class="cal" id="calGrid"></div>
+    </div>
+</div>
+
+<!-- 付与・履歴 -->
+<div class="panel" id="panel-history">
+    <div class="row">
+        <label>職員</label>
+        <select id="histStaff" onchange="renderHistory()"><option value="">— 選択 —</option></select>
+        <button class="btn btn-teal" onclick="openManualGrant()">➕ 手動付与</button>
+    </div>
+    <div id="histArea"><div class="empty-msg">職員を選択してください</div></div>
+</div>
+
+<!-- 管理簿出力 -->
+<div class="panel" id="panel-ledger">
+    <div class="row no-print">
+        <label>職員</label>
+        <select id="ledStaff" onchange="renderLedger()"><option value="">— 選択 —</option></select>
+        <button class="btn btn-amber" onclick="window.print()">🖨️ 印刷 / PDF</button>
+    </div>
+    <div id="ledArea"><div class="empty-msg">職員を選択してください</div></div>
+</div>
+
+<!-- 取得登録モーダル -->
+<div class="modal-overlay" id="useModal">
+    <div class="modal">
+        <h2 id="useModalTitle">取得登録</h2>
+        <p id="useModalInfo"></p>
+        <div id="useWarn"></div>
+        <div class="btn-group">
+            <button class="btn btn-teal" onclick="setUseDays(1)" id="btnFull">1.0日（全休）</button>
+            <button class="btn btn-amber" onclick="setUseDays(0.5)" id="btnHalf">0.5日（半休）</button>
+        </div>
+        <input type="text" id="useMemo" placeholder="備考（任意）" style="width:100%;margin-bottom:8px;">
+        <button class="btn btn-red" onclick="closeModal('useModal')">キャンセル</button>
+    </div>
+</div>
+
+<!-- 手動付与モーダル -->
+<div class="modal-overlay" id="grantModal">
+    <div class="modal">
+        <h2>手動付与</h2>
+        <p id="grantStaffName"></p>
+        <div class="row"><label>付与日</label><input type="date" id="grantDate"></div>
+        <div class="row"><label>日数</label><input type="number" id="grantDays" step="0.5" min="0.5" style="width:90px;"> 日</div>
+        <div class="row"><label>種別</label>
+            <select id="grantBasis"><option value="手動">手動付与</option><option value="前倒し">前倒し付与（基準日になる）</option></select>
+        </div>
+        <button class="btn btn-teal" onclick="submitManualGrant()">登録</button>
+        <button class="btn btn-gray" onclick="closeModal('grantModal')">キャンセル</button>
+    </div>
+</div>
+
+<!-- 接続設定モーダル -->
+<div class="modal-overlay" id="configModal">
+    <div class="modal">
+        <h2>⚙ 接続設定</h2>
+        <p>デプロイ後の Web App URL と、GASセットアップで発行されたトークンを入力してください（この端末に保存されます）。</p>
+        <div class="row"><label>Web App URL</label></div>
+        <input type="text" id="cfgUrl" placeholder="https://script.google.com/macros/s/..../exec" style="width:100%;margin-bottom:10px;">
+        <div class="row"><label>トークン</label></div>
+        <input type="text" id="cfgToken" placeholder="16桁トークン" style="width:100%;margin-bottom:12px;">
+        <button class="btn btn-teal" onclick="saveConfig()">保存して接続</button>
+        <button class="btn btn-gray" onclick="closeModal('configModal')">閉じる</button>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ====== 設定（URL/トークンは接続設定でlocalStorageに保持） ====== */
+const CFG_KEY = 'yukyu_config';
+let CFG = loadConfig();
+let STATE = { staff: [], today: '', detail: {} };
+let calYear, calMonth; // 取得登録カレンダー
+let regStaffId = '';
+let pendingUse = null; // {staffId, date, isAdvance}
+
+function loadConfig() { try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{}'); } catch (e) { return {}; } }
+function saveConfig() {
+    CFG = { url: document.getElementById('cfgUrl').value.trim(), token: document.getElementById('cfgToken').value.trim() };
+    localStorage.setItem(CFG_KEY, JSON.stringify(CFG));
+    closeModal('configModal');
+    reload();
+}
+function openConfig() {
+    document.getElementById('cfgUrl').value = CFG.url || '';
+    document.getElementById('cfgToken').value = CFG.token || '';
+    document.getElementById('configModal').classList.add('active');
+}
+
+/* ====== UI 共通 ====== */
+function showToast(msg, color) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.style.background = color || '#00897B'; t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+}
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+/* ====== 日付ユーティリティ（GAS純関数のJS版・残日数のクライアント計算用） ====== */
+function ymdToDate(s) { const p = String(s).split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); }
+function dateToYmd(d) { return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); }
+function residualAt(grants, uses, asOf) {
+    const used = {};
+    uses.forEach(u => { if (u.grant_id) used[u.grant_id] = (used[u.grant_id] || 0) + Number(u.days); });
+    let total = 0;
+    grants.forEach(g => {
+        if (g.date > asOf || g.expire < asOf) return;
+        const r = Number(g.days) - (used[g.grant_id] || 0);
+        if (r > 0) total += r;
+    });
+    return total;
+}
+
+/* ====== API ====== */
+function apiGet(action, params) {
+    return new Promise((resolve, reject) => {
+        if (!CFG.url) { reject('no-config'); return; }
+        const cb = 'yk_cb_' + Date.now() + '_' + Math.floor(Math.random() * 1e4);
+        let q = '?action=' + encodeURIComponent(action) + '&token=' + encodeURIComponent(CFG.token || '') + '&callback=' + cb + '&t=' + Date.now();
+        Object.keys(params || {}).forEach(k => { q += '&' + k + '=' + encodeURIComponent(params[k]); });
+        const s = document.createElement('script');
+        const to = setTimeout(() => { delete window[cb]; if (s.parentNode) s.remove(); reject('timeout'); }, 15000);
+        window[cb] = (data) => { clearTimeout(to); delete window[cb]; if (s.parentNode) s.remove(); resolve(data); };
+        s.onerror = () => { clearTimeout(to); delete window[cb]; reject('neterr'); };
+        s.src = CFG.url + q;
+        document.body.appendChild(s);
+    });
+}
+function apiPost(data) {
+    data.token = CFG.token || '';
+    return fetch(CFG.url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        .then(() => true).catch(() => false);
+}
+
+/* ====== ロード ====== */
+function reload() {
+    if (!CFG.url || !CFG.token) { openConfig(); return; }
+    showToast('🔄 読み込み中...');
+    apiGet('list').then(res => {
+        if (!res || !res.success) {
+            if (res && res.error === 'auth') { showToast('⚠ トークンが一致しません', '#e53935'); openConfig(); return; }
+            showToast('⚠ 取得失敗: ' + (res && res.error || ''), '#e53935'); return;
+        }
+        STATE.staff = res.staff; STATE.today = res.today; STATE.detail = {};
+        renderDashboard(); fillStaffSelects();
+        showToast('✅ ' + res.staff.length + '名 読み込み完了');
+    }).catch(e => { showToast('⚠ 接続エラー（設定/デプロイを確認）', '#e53935'); console.error(e); });
+}
+function fillStaffSelects() {
+    const opts = '<option value="">— 選択 —</option>' +
+        STATE.staff.map(s => '<option value="' + esc(s.staff_id) + '">' + esc(s.name) + (s.status === '退職' ? '（退職）' : '') + '</option>').join('');
+    ['regStaff', 'histStaff', 'ledStaff'].forEach(id => {
+        const el = document.getElementById(id); const v = el.value; el.innerHTML = opts; el.value = v;
+    });
+}
+
+/* ====== ダッシュボード ====== */
+function renderDashboard() {
+    const box = document.getElementById('dashList');
+    if (!STATE.staff.length) { box.innerHTML = '<div class="empty-msg">職員データがありません</div>'; return; }
+    box.innerHTML = STATE.staff.map(s => {
+        const g5 = s.gono5 || {};
+        const isWarn = g5.status === 'warning', isViol = g5.status === 'violation';
+        const cls = isViol ? 'card violation' : isWarn ? 'card warn' : 'card';
+        const next = s.nextGrant;
+        const exp = (s.expiringSoon || [])[0];
+        // 年5日 進捗バー
+        let prog = '';
+        if (g5.obligated) {
+            const pct = Math.min(100, Math.round((g5.used / 5) * 100));
+            const pcls = isViol ? 'prog violation' : isWarn ? 'prog warn' : 'prog';
+            const stxt = isViol ? '⛔ 義務違反（年5日未達で期間終了）' : isWarn ? '⚠ ペース未達（要取得促進）' : '✅ 順調';
+            prog = '<div class="' + pcls + '"><i style="width:' + pct + '%"></i></div>' +
+                '<div class="prog-txt">' + g5.used + ' / 5日 取得（経過' + g5.monthsElapsed + 'ヶ月・目安' + (g5.requiredByNow || 0) + '日）　' + stxt + '</div>';
+        } else {
+            prog = '<div class="prog-txt">付与10日未満のため年5日義務の対象外</div>';
+        }
+        return '<div class="' + cls + '">' +
+            '<div class="card-head"><div><span class="card-name">' + esc(s.name) + '</span>' +
+            (s.status === '退職' ? '<span class="badge retired">退職</span>' : '') +
+            '<span class="badge">' + esc(s.etype || '') + '・週' + (s.weeklyDays || '-') + '日</span></div>' +
+            '<div class="residual">' + s.residual + '<span class="unit"> 日 残</span></div></div>' +
+            '<div class="card-grid">' +
+            '<div class="mini"><div class="lbl">次回付与</div><div class="val">' + (next ? next.date + '<br>' + (next.days != null ? next.days + '日' : '?') : '—') + '</div></div>' +
+            '<div class="mini"><div class="lbl">直近の失効予定</div><div class="val ' + (exp ? 'alert' : '') + '">' + (exp ? exp.expire + '<br>残' + exp.remaining + '日' : 'なし') + '</div></div>' +
+            '<div class="mini"><div class="lbl">入社日</div><div class="val">' + esc(s.join || '-') + '</div></div>' +
+            '</div>' + prog + '</div>';
+    }).join('');
+}
+
+/* ====== 取得登録（カレンダー） ====== */
+function onRegStaffChange() {
+    regStaffId = document.getElementById('regStaff').value;
+    if (!regStaffId) { document.getElementById('calArea').style.display = 'none'; document.getElementById('regResidual').textContent = ''; return; }
+    loadDetail(regStaffId).then(() => {
+        const d = STATE.detail[regStaffId];
+        document.getElementById('regResidual').textContent = '現在の残: ' + d.residual + '日';
+        const t = ymdToDate(STATE.today); calYear = t.getUTCFullYear(); calMonth = t.getUTCMonth();
+        document.getElementById('calArea').style.display = 'block';
+        renderCalendar();
+    });
+}
+function loadDetail(staffId) {
+    return apiGet('staffDetail', { staff_id: staffId }).then(res => {
+        if (res && res.success) STATE.detail[staffId] = res;
+        return res;
+    });
+}
+function calMove(delta) {
+    calMonth += delta;
+    if (calMonth < 0) { calMonth = 11; calYear--; } if (calMonth > 11) { calMonth = 0; calYear++; }
+    renderCalendar();
+}
+function renderCalendar() {
+    const d = STATE.detail[regStaffId]; if (!d) return;
+    document.getElementById('calTitle').textContent = calYear + '年' + (calMonth + 1) + '月';
+    const usedDates = {};
+    (d.uses || []).forEach(u => { usedDates[u.date] = (usedDates[u.date] || 0) + Number(u.days); });
+    const first = new Date(Date.UTC(calYear, calMonth, 1)).getUTCDay();
+    const days = new Date(Date.UTC(calYear, calMonth + 1, 0)).getUTCDate();
+    let html = ['日', '月', '火', '水', '木', '金', '土'].map(w => '<div class="dow">' + w + '</div>').join('');
+    for (let i = 0; i < first; i++) html += '<div class="day empty"></div>';
+    for (let dd = 1; dd <= days; dd++) {
+        const ymd = calYear + '-' + String(calMonth + 1).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+        const dow = new Date(Date.UTC(calYear, calMonth, dd)).getUTCDay();
+        const cls = 'day' + (usedDates[ymd] ? ' used' : '') + (dow === 0 || dow === 6 ? ' weekend' : '');
+        const tag = usedDates[ymd] ? '<span class="tag">取得' + usedDates[ymd] + '</span>' : '';
+        html += '<div class="' + cls + '" onclick="openUseModal(\'' + ymd + '\')">' + dd + tag + '</div>';
+    }
+    document.getElementById('calGrid').innerHTML = html;
+}
+function openUseModal(ymd) {
+    const d = STATE.detail[regStaffId]; if (!d) return;
+    pendingUse = { staffId: regStaffId, date: ymd, isAdvance: false };
+    const avail = residualAt(d.grants, d.uses, ymd);
+    document.getElementById('useModalTitle').textContent = d.staff.name + '　' + ymd;
+    document.getElementById('useModalInfo').textContent = 'この日時点の残日数: ' + avail + '日';
+    document.getElementById('useMemo').value = '';
+    const warn = document.getElementById('useWarn');
+    if (avail < 1) {
+        pendingUse.isAdvance = true;
+        warn.innerHTML = '<div class="warn-box">⚠ この日は残日数が不足（' + avail + '日）。<b>前借（前倒し付与＋即消化）</b>として登録されます。</div>';
+    } else { warn.innerHTML = ''; }
+    document.getElementById('useModal').classList.add('active');
+}
+function setUseDays(days) {
+    if (!pendingUse) return;
+    const d = STATE.detail[pendingUse.staffId];
+    const avail = residualAt(d.grants, d.uses, pendingUse.date);
+    const isAdvance = avail < days;
+    const payload = {
+        action: 'addUse', staff_id: pendingUse.staffId, date: pendingUse.date,
+        days: days, memo: document.getElementById('useMemo').value, allowAdvance: isAdvance
+    };
+    closeModal('useModal');
+    showToast('📤 登録中...');
+    apiPost(payload).then(() => {
+        setTimeout(() => {
+            loadDetail(pendingUse.staffId).then(() => {
+                renderCalendar();
+                document.getElementById('regResidual').textContent = '現在の残: ' + STATE.detail[pendingUse.staffId].residual + '日';
+                reloadDashboardSilently();
+                showToast('✅ ' + pendingUse.date + ' を ' + days + '日' + (isAdvance ? '（前借）' : '') + ' で登録');
+            });
+        }, 1500);
+    });
+}
+function reloadDashboardSilently() {
+    apiGet('list').then(res => { if (res && res.success) { STATE.staff = res.staff; renderDashboard(); } }).catch(() => {});
+}
+
+/* ====== 付与・履歴 ====== */
+function renderHistory() {
+    const id = document.getElementById('histStaff').value;
+    const area = document.getElementById('histArea');
+    if (!id) { area.innerHTML = '<div class="empty-msg">職員を選択してください</div>'; return; }
+    area.innerHTML = '<div class="empty-msg">読み込み中...</div>';
+    loadDetail(id).then(() => {
+        const d = STATE.detail[id]; if (!d || !d.success) { area.innerHTML = '<div class="empty-msg">取得失敗</div>'; return; }
+        // 付与・取得・失効を時系列にまとめる
+        const events = [];
+        (d.grants || []).forEach(g => {
+            events.push({ date: g.date, type: 'grant', html: '<div class="tl-item' + (g.expired ? ' expired' : '') + '"><div class="tl-date">' + g.date + '</div><div class="tl-main">➕ 付与 ' + g.days + '日（' + esc(g.basis) + '）</div><div class="tl-sub">失効 ' + g.expire + '　残' + g.remaining + '日' + (g.expired ? '・失効済' : '') + '</div></div>' });
+            events.push({ date: g.expire, type: 'expire', html: '<div class="tl-item expire' + (g.expired ? ' expired' : '') + '"><div class="tl-date">' + g.expire + '</div><div class="tl-main">⏳ 失効日（' + g.date + '付与分）</div></div>' });
+        });
+        (d.uses || []).forEach(u => {
+            events.push({ date: u.date, type: 'use', html: '<div class="tl-item use"><div class="tl-date">' + u.date + '</div><div class="tl-main">➖ 取得 ' + u.days + '日</div><div class="tl-sub">充当: ' + esc(u.grant_id || '-') + (u.memo ? '・' + esc(u.memo) : '') + ' <button class="btn btn-gray" style="padding:2px 8px;min-height:auto;font-size:12px;" onclick="cancelUse(\'' + esc(u.use_id) + '\',\'' + id + '\')">取消</button></div></div>' });
+        });
+        events.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+        const g5 = d.gono5 || {};
+        const summary = '<div class="card"><div class="card-head"><span class="card-name">' + esc(d.staff.name) + '</span>' +
+            '<div class="residual">' + d.residual + '<span class="unit"> 日 残</span></div></div>' +
+            '<div class="tl-sub" style="margin-top:6px;">入社 ' + d.staff.join + '　基準日 ' + d.staff.baseDate + '　週' + d.staff.weeklyDays + '日' +
+            (d.nextGrant ? '　次回付与 ' + d.nextGrant.date + '（' + (d.nextGrant.days != null ? d.nextGrant.days + '日' : '?') + '）' : '') + '</div></div>';
+        area.innerHTML = summary + '<div class="tl">' + events.map(e => e.html).join('') + '</div>';
+    });
+}
+function cancelUse(useId, staffId) {
+    if (!confirm('この取得記録を取り消しますか？')) return;
+    apiPost({ action: 'cancelUse', use_id: useId }).then(() => {
+        setTimeout(() => { loadDetail(staffId).then(() => { renderHistory(); reloadDashboardSilently(); showToast('🗑️ 取消しました'); }); }, 1500);
+    });
+}
+function openManualGrant() {
+    const id = document.getElementById('histStaff').value;
+    if (!id) { showToast('⚠ 先に職員を選択してください', '#ff9800'); return; }
+    const s = STATE.staff.find(x => x.staff_id === id);
+    document.getElementById('grantStaffName').textContent = (s ? s.name : '') + ' に手動付与します';
+    document.getElementById('grantDate').value = STATE.today;
+    document.getElementById('grantDays').value = '';
+    document.getElementById('grantModal').classList.add('active');
+}
+function submitManualGrant() {
+    const id = document.getElementById('histStaff').value;
+    const date = document.getElementById('grantDate').value;
+    const days = parseFloat(document.getElementById('grantDays').value);
+    if (!date || !(days > 0)) { showToast('⚠ 付与日と日数を入力', '#ff9800'); return; }
+    const basis = document.getElementById('grantBasis').value;
+    closeModal('grantModal');
+    apiPost({ action: 'addGrant', staff_id: id, date: date, days: days, basis: basis }).then(() => {
+        setTimeout(() => { loadDetail(id).then(() => { renderHistory(); reloadDashboardSilently(); showToast('✅ 付与しました'); }); }, 1500);
+    });
+}
+
+/* ====== 管理簿出力 ====== */
+function renderLedger() {
+    const id = document.getElementById('ledStaff').value;
+    const area = document.getElementById('ledArea');
+    if (!id) { area.innerHTML = '<div class="empty-msg">職員を選択してください</div>'; return; }
+    area.innerHTML = '<div class="empty-msg">読み込み中...</div>';
+    loadDetail(id).then(() => {
+        const d = STATE.detail[id]; if (!d || !d.success) { area.innerHTML = '<div class="empty-msg">取得失敗</div>'; return; }
+        const grants = (d.grants || []).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+        // 各付与に紐づく取得日一覧
+        const usesByGrant = {};
+        (d.uses || []).forEach(u => { (usesByGrant[u.grant_id] = usesByGrant[u.grant_id] || []).push(u); });
+        let rows = grants.map(g => {
+            const us = (usesByGrant[g.grant_id] || []).sort((a, b) => a.date < b.date ? -1 : 1);
+            const useList = us.length ? us.map(u => u.date + '（' + u.days + '日）').join('<br>') : '—';
+            const usedSum = us.reduce((s, u) => s + Number(u.days), 0);
+            return '<tr><td>' + g.date + '</td><td>' + esc(g.basis) + '</td><td>' + g.days + '日</td><td>' + g.expire + '</td>' +
+                '<td class="use-list">' + useList + '</td><td>' + usedSum + '日</td><td>' + g.remaining + '日</td></tr>';
+        }).join('');
+        area.innerHTML = '<div class="ledger"><h2>年次有給休暇管理簿</h2>' +
+            '<div class="meta"><div>氏名: <b>' + esc(d.staff.name) + '</b></div><div>入社日: <b>' + d.staff.join + '</b></div>' +
+            '<div>基準日: <b>' + d.staff.baseDate + '</b></div><div>週所定: <b>' + d.staff.weeklyDays + '日</b></div>' +
+            '<div>現在残日数: <b>' + d.residual + '日</b></div></div>' +
+            '<table><thead><tr><th>基準日(付与日)</th><th>種別</th><th>付与日数</th><th>失効日</th><th>取得日</th><th>取得計</th><th>残</th></tr></thead>' +
+            '<tbody>' + (rows || '<tr><td colspan="7">付与記録なし</td></tr>') + '</tbody></table>' +
+            '<p style="margin-top:10px;font-size:12px;color:#888;">※ 労基法上の年次有給休暇管理簿（基準日・日数・時季）。出力日: ' + STATE.today + '</p></div>';
+    });
+}
+
+/* ====== 起動 ====== */
+if (CFG.url && CFG.token) { reload(); }
+</script>
+</body>
+</html>
