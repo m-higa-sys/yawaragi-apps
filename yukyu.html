@@ -142,6 +142,7 @@
 <!-- ダッシュボード -->
 <div class="panel active" id="panel-dashboard">
     <div class="notice">📊 全職員の残日数・次回付与・直近失効・<b>年5日取得義務</b>の進捗。警告者は赤で最上部に表示されます。</div>
+    <div class="row"><label><input type="checkbox" id="hideRetired" checked onchange="renderDashboard()" style="vertical-align:middle;width:18px;height:18px;"> 退職者を非表示</label></div>
     <div id="dashList"><div class="empty-msg">「⚙ 接続設定」でWeb App URLとトークンを設定してください</div></div>
 </div>
 
@@ -327,7 +328,10 @@ function fillStaffSelects() {
 function renderDashboard() {
     const box = document.getElementById('dashList');
     if (!STATE.staff.length) { box.innerHTML = '<div class="empty-msg">職員データがありません</div>'; return; }
-    box.innerHTML = STATE.staff.map(s => {
+    const hideRetired = document.getElementById('hideRetired').checked;
+    const shown = STATE.staff.filter(s => !(hideRetired && s.status === '退職'));
+    if (!shown.length) { box.innerHTML = '<div class="empty-msg">表示対象の職員がいません（退職者非表示中）</div>'; return; }
+    box.innerHTML = shown.map(s => {
         const g5 = s.gono5 || {};
         const isWarn = g5.status === 'warning', isViol = g5.status === 'violation';
         const cls = isViol ? 'card violation' : isWarn ? 'card warn' : 'card';
@@ -347,7 +351,7 @@ function renderDashboard() {
         return '<div class="' + cls + '">' +
             '<div class="card-head"><div><span class="card-name">' + esc(s.name) + '</span>' +
             (s.status === '退職' ? '<span class="badge retired">退職</span>' : '') +
-            '<span class="badge">' + esc(s.etype || '') + '・週' + (s.weeklyDays || '-') + '日</span></div>' +
+            '<span class="badge">' + esc(s.etype || '') + '・週' + (s.weeklyDays || '-') + '日' + (s.weeklyHours ? '/' + s.weeklyHours + 'h' : '') + '</span></div>' +
             '<div class="residual">' + s.residual + '<span class="unit"> 日 残</span></div></div>' +
             '<div class="card-grid">' +
             '<div class="mini"><div class="lbl">次回付与</div><div class="val">' + (next ? next.date + '<br>' + (next.days != null ? next.days + '日' : '?') : '—') + '</div></div>' +
