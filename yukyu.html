@@ -137,6 +137,7 @@
     <div class="tab" data-tab="register" onclick="switchTab('register')">✏️ 取得登録</div>
     <div class="tab" data-tab="history" onclick="switchTab('history')">📜 付与・履歴</div>
     <div class="tab" data-tab="ledger" onclick="switchTab('ledger')">🖨️ 管理簿出力</div>
+    <div class="tab" data-tab="manual" onclick="switchTab('manual')">❓ 使い方</div>
 </div>
 
 <!-- ダッシュボード -->
@@ -182,6 +183,170 @@
         <button class="btn btn-amber" onclick="window.print()">🖨️ 印刷 / PDF</button>
     </div>
     <div id="ledArea"><div class="empty-msg">職員を選択してください</div></div>
+</div>
+
+<!-- ❓ 使い方（マニュアル）===== 純追加・API通信なし・完全静的（接続未完了でも読める） ===== -->
+<style>
+    #panel-manual { max-width: 900px; }
+    .man-toc { background: #e0f2f1; border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; }
+    .man-toc h3 { color: #00695C; font-size: 16px; margin-bottom: 8px; }
+    .man-toc ol { margin: 0; padding-left: 22px; }
+    .man-toc li { margin: 5px 0; }
+    .man-toc a { color: #00695C; text-decoration: none; font-weight: bold; }
+    .man-toc a:hover { text-decoration: underline; }
+    .man-sec { background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: 16px 18px; margin-bottom: 14px; border-left: 5px solid #26A69A; scroll-margin-top: 12px; }
+    .man-sec h2 { color: #00695C; font-size: 18px; margin-bottom: 10px; border-bottom: 2px solid #b2dfdb; padding-bottom: 6px; }
+    .man-sec h3 { color: #00897B; font-size: 15px; margin: 12px 0 6px; }
+    .man-sec p, .man-sec li { line-height: 1.7; font-size: 14px; color: #444; }
+    .man-sec ul, .man-sec ol { padding-left: 22px; margin: 6px 0; }
+    .man-sec b { color: #00695C; }
+    .man-warn { background: #fff3e0; border: 1px solid #ffb74d; color: #e65100; padding: 8px 12px; border-radius: 8px; margin: 8px 0; font-size: 13px; }
+    .man-danger { background: #ffebee; border-left: 4px solid #e53935; padding: 8px 12px; border-radius: 6px; margin: 6px 0; font-size: 13px; }
+    .man-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 8px 0; }
+    .man-table-wrap table { border-collapse: collapse; min-width: 520px; width: 100%; font-size: 13px; }
+    .man-table-wrap th, .man-table-wrap td { border: 1px solid #cfd8dc; padding: 7px 9px; text-align: center; }
+    .man-table-wrap th { background: #e0f2f1; color: #00695C; white-space: nowrap; }
+    .man-table-wrap td.l { text-align: left; }
+    .man-top { font-size: 12px; color: #26A69A; text-decoration: none; }
+    .man-foot { text-align: right; color: #888; font-size: 12px; margin-top: 10px; }
+    .man-kbd { background: #eceff1; border: 1px solid #b0bec5; border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px; white-space: nowrap; }
+</style>
+<div class="panel" id="panel-manual">
+    <div class="notice">❓ <b>有給管理システムの使い方</b>（このページは接続設定が未完了でも読めます。困ったときの確認用）</div>
+
+    <div class="man-toc" id="man-toc">
+        <h3>📑 目次</h3>
+        <ol>
+            <li><a href="#man-ch1">全体像と大原則</a></li>
+            <li><a href="#man-ch2">初期設定（新しい端末で開くとき）</a></li>
+            <li><a href="#man-ch3">日常の使い方</a></li>
+            <li><a href="#man-ch4">メンテナンス（入社・変更・退職・自動処理）</a></li>
+            <li><a href="#man-ch5">管理簿の出力</a></li>
+            <li><a href="#man-ch6">困ったとき（トラブルシューティング）</a></li>
+            <li><a href="#man-ch7">やってはいけないこと</a></li>
+            <li><a href="#man-ch8">法定付与テーブルと年5日義務</a></li>
+        </ol>
+    </div>
+
+    <div class="man-sec" id="man-ch1">
+        <h2>1. 全体像と大原則</h2>
+        <ul>
+            <li><b>画面</b>＝この有給管理アプリ（GitHub Pages 上のページ）。</li>
+            <li><b>計算</b>＝GAS（Google Apps Script）。毎日<b>2時台に自動実行</b>され、付与と時効を処理します。</li>
+            <li><b>データ</b>＝スプレッドシート「<b>有給管理簿</b>」。社長のみがアクセスできます。</li>
+        </ul>
+        <div class="man-warn">⭐ <b>大原則</b>：残日数はどこにも保存していません。<b>常に計算で出します（付与の合計 − 取得の合計 − 失効した分）</b>。
+            だから数字を直したいときは、残日数を書き換えるのではなく<b>必ず元になった履歴（付与記録・取得記録）の行を直します</b>。</div>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+    </div>
+
+    <div class="man-sec" id="man-ch2">
+        <h2>2. 初期設定（新しい端末で開くとき）</h2>
+        <ol>
+            <li>右上の <b>⚙ 接続設定</b> を開く。</li>
+            <li><b>Web App URL</b> と <b>トークン</b> を入力して保存。</li>
+        </ol>
+        <div class="man-warn">🔑 URL・トークンの実際の値は <b>1Password の「yukyu-kanri」</b> が正本です（このマニュアルには載せていません）。</div>
+        <p>設定は<b>端末・ブラウザごとに必要</b>です。新しいスマホ／PC、別ブラウザで開いたときは、その都度この設定をしてください。</p>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+    </div>
+
+    <div class="man-sec" id="man-ch3">
+        <h2>3. 日常の使い方</h2>
+        <h3>📊 ダッシュボード</h3>
+        <p><b>週1回</b>開いて、<b>赤（年5日のペース未達）</b>の人がいないか見ます。</p>
+        <ul>
+            <li><b>赤</b>＝その人に有給を取らせる段取りをする（時季指定の検討も）。</li>
+            <li><b>緑</b>＝順調。<b>灰</b>＝対象外（付与10日未満の人）。</li>
+        </ul>
+        <h3>✏️ 取得登録</h3>
+        <p>職員を選ぶ → カレンダーの日付をタップ → <b>1.0日／0.5日</b>を選ぶ → 確認 → 登録。
+            どの付与から消すか（<b>先入先出＝古い付与から先に充当</b>）は自動です。</p>
+        <h3>⏪ 前借（付与前の日付を登録するとき）</h3>
+        <p>付与より前の日付を登録しようとすると<b>警告</b>が出ます。そのまま進めると「<b>前倒し付与＋即消化</b>」として記録されます。</p>
+        <div class="man-warn">⚠️ 前倒し付与をすると、<b>その付与日が新しい基準日</b>になります（次回付与・年5日の起算が前倒しになる）。
+            必ず<b>本人の確認書面</b>を残してください。</div>
+        <h3>↩️ 誤登録を直す</h3>
+        <p><b>付与・履歴</b>タブのタイムラインから該当の取得を<b>取消</b>し、正しい内容で<b>再登録</b>します。</p>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+    </div>
+
+    <div class="man-sec" id="man-ch4">
+        <h2>4. メンテナンス</h2>
+        <h3>🆕 新入社</h3>
+        <p>職員マスタに<b>行を追加</b>（氏名／入社日／雇用形態／週所定労働日数／週所定時間／適用開始日／状態）。
+            <b>週30時間以上は、週日数に関係なく通常付与</b>になります。あとは<b>入社6ヶ月後に自動で付与</b>されます。</p>
+        <h3>🔄 週所定（日数・時間）の変更</h3>
+        <div class="man-danger">既存行の<b>上書きは禁止</b>。<b>新しい行を追加</b>し、<b>適用開始日を変更日</b>にします。
+            変更後の基準日から新しいテーブルが適用されます。</div>
+        <h3>👋 退職</h3>
+        <p>状態を「<b>退職</b>」に変更。<b>行削除は禁止</b>（3年保存義務）。</p>
+        <h3>🤖 自動処理</h3>
+        <p>毎日<b>2時台</b>に「<b>基準日が来た人への自動付与</b>」と「<b>2年経った付与の自動失効（時効）</b>」が走ります。手作業は不要です。</p>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+    </div>
+
+    <div class="man-sec" id="man-ch5">
+        <h2>5. 管理簿の出力</h2>
+        <p><b>管理簿出力</b>タブ → 職員を選択 → <span class="man-kbd">Ctrl+P</span> で PDF 保存／印刷。
+            これは<b>法定帳簿（年次有給休暇管理簿・3年保存）</b>です。</p>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+    </div>
+
+    <div class="man-sec" id="man-ch6">
+        <h2>6. 困ったとき（トラブルシューティング）</h2>
+        <div class="man-table-wrap">
+            <table>
+                <thead><tr><th>症状</th><th>対処</th></tr></thead>
+                <tbody>
+                    <tr><td class="l">認証エラーが出る</td><td class="l">⚙ 接続設定で<b>トークンを入れ直す</b></td></tr>
+                    <tr><td class="l">表示されない</td><td class="l"><b>Web App URL</b> が正しいか確認</td></tr>
+                    <tr><td class="l">スマホで開くと空</td><td class="l">その端末で<b>初期設定（章2）</b>をやる</td></tr>
+                    <tr><td class="l">残日数がおかしい</td><td class="l"><b>付与・履歴のタイムライン</b>を確認し、<b>履歴の行を直す</b>（残日数を直接書かない）</td></tr>
+                    <tr><td class="l">自動付与されない</td><td class="l">GASエディタの<b>トリガー</b>を確認。無ければ <b>setupTrigger</b> を実行</td></tr>
+                    <tr><td class="l">画面が古い</td><td class="l"><span class="man-kbd">Ctrl+Shift+R</span>（強制再読込）</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+    </div>
+
+    <div class="man-sec" id="man-ch7">
+        <h2>7. やってはいけないこと</h2>
+        <div class="man-danger">
+            <ol>
+                <li><b>行の削除</b>（付与・取得・職員の行を消さない）</li>
+                <li><b>週所定変更の上書き</b>（必ず新行追加）</li>
+                <li><b>残日数の手書き</b>（そもそも入力欄がありません）</li>
+                <li><b>共有設定の追加</b>（シート・フォルダを他人に共有しない）</li>
+                <li><b>口頭だけの有給処理</b>（必ずシステムに記録）</li>
+            </ol>
+        </div>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+    </div>
+
+    <div class="man-sec" id="man-ch8">
+        <h2>8. 法定付与テーブルと年5日義務</h2>
+        <div class="man-table-wrap">
+            <table>
+                <thead><tr><th>区分</th><th>0.5年</th><th>1.5年</th><th>2.5年</th><th>3.5年</th><th>4.5年</th><th>5.5年</th><th>6.5年〜</th></tr></thead>
+                <tbody>
+                    <tr><td class="l">通常（週5日以上 または 週30h以上）</td><td>10</td><td>11</td><td>12</td><td>14</td><td>16</td><td>18</td><td>20</td></tr>
+                    <tr><td class="l">週4日</td><td>7</td><td>8</td><td>9</td><td>10</td><td>12</td><td>13</td><td>15</td></tr>
+                    <tr><td class="l">週3日</td><td>5</td><td>6</td><td>6</td><td>8</td><td>9</td><td>10</td><td>11</td></tr>
+                    <tr><td class="l">週2日</td><td>3</td><td>4</td><td>4</td><td>5</td><td>6</td><td>6</td><td>7</td></tr>
+                    <tr><td class="l">週1日</td><td>1</td><td>2</td><td>2</td><td>2</td><td>3</td><td>3</td><td>3</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <ul>
+            <li><b>年5日取得義務</b>＝<b>付与10日以上</b>の人が対象。<b>使用者（会社）の義務</b>で<b>罰則あり</b>。</li>
+            <li>ダッシュボードで<b>赤表示</b>が出たら、<b>時季指定（会社が日を指定して取らせる）</b>も検討。</li>
+            <li><b>時効は2年</b>。本システムは<b>日単位（0.5日まで）</b>のみで、<b>時間単位年休は対象外</b>です。</li>
+        </ul>
+        <p><a class="man-top" href="#man-toc">▲ 目次へ</a></p>
+        <div class="man-foot">最終更新: 2026-06-10 v1.0</div>
+    </div>
 </div>
 
 <!-- 取得登録モーダル -->
