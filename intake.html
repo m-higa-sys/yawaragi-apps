@@ -270,6 +270,13 @@
         if (ageEl && age >= 0 && age < 130) ageEl.value = age;
     }
     
+    // 今日の日付をJST(日本時間)の yyyy-MM-dd で返す（toISOStringのUTCズレ＝朝9時前に前日になる不具合の対策・2026-06-13）
+    function getTodayJST() {
+      const d = new Date();
+      const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      return jst.toISOString().slice(0, 10);
+    }
+
     // 日本の電話番号を自動でハイフン整形する
     function formatJPPhone(input) {
         if (!input) return '';
@@ -406,7 +413,7 @@
     function gstepDone(d){ return !!(d.sum && d.sum()); }
     
     function buildIntakeGuidedForm(r) {
-        const today = new Date().toISOString().slice(0,10);
+        const today = getTodayJST();
         const careLevels = INTAKE_CARE_LEVELS.slice();
         if (r.介護度 && careLevels.indexOf(r.介護度) === -1) careLevels.unshift(r.介護度);
         const telOpts = ['', '本人','夫','妻','息子','娘','長男','長女','次男','次女','嫁','婿','兄','姉','弟','妹','その他'];
@@ -520,7 +527,7 @@
     
     function openIntakeModalNew() {
         _intakeModalMode = 'new';
-        const today = new Date().toISOString().slice(0,10);
+        const today = getTodayJST();
         const staff = localStorage.getItem('yawaragi_staff') || '';
         _intakeModalDraft = {
             id: '', 種別: 'trial', 問い合わせ日: today, 予定日: '',
@@ -567,8 +574,8 @@
     function intakeWarnings(r) {
         const warns = [];
         if (r.ペースメーカー === '不明') warns.push('🚨ペースメーカー未確認');
-        const today = new Date().toISOString().slice(0,10);
-        const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+        const today = getTodayJST();
+        const tomorrow = new Date(new Date(today).getTime() + 86400000).toISOString().slice(0,10);
         // 体験/見学が明日 → 前日連絡リマインド
         if (r.予定日 === tomorrow && !r.前日連絡日時) {
             warns.push('📞 明日が予定日：前日連絡してください');
@@ -781,7 +788,7 @@
     }
     
     function loadKanbanFunnel(ym) {
-        ym = ym || new Date().toISOString().slice(0,7);
+        ym = ym || getTodayJST().slice(0,7);
         const cb = 'kanbanFunnelCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
         window[cb] = function(resp) {
             try {
@@ -1304,7 +1311,7 @@
     
     function buildIntakeModalHtml(r) {
         const isNew = _intakeModalMode === 'new';
-        const today = new Date().toISOString().slice(0,10);
+        const today = getTodayJST();
         const careOverdue = r.予定日 && r.予定日 < today && !r.ケアマネ連絡済;
     
         const approvalStatus = r.社長確認済
