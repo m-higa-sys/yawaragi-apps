@@ -608,7 +608,10 @@
     </div>
     <span class="filter-label" style="margin-left:8px;">中止:</span>
     <div class="filter-group" id="cancelFilters">
-        <button class="filter-btn" id="cancelToggleBtn" onclick="toggleCancelFilter()">利用中止者</button>
+        <button class="filter-btn active-cancel" onclick="setCancelFilter('')">なし</button>
+        <button class="filter-btn" onclick="setCancelFilter('6m')">6ヶ月</button>
+        <button class="filter-btn" onclick="setCancelFilter('1y')">1年</button>
+        <button class="filter-btn" onclick="setCancelFilter('all')">全期間</button>
     </div>
     <span class="filter-count" id="filterCount"></span>
 </div>
@@ -696,14 +699,37 @@ let appData = {
 // ============ 曜日＋午前/午後フィルター ============
 let filterDay = '';
 let filterAmpm = '';
-let filterCancelled = false; // 利用中止者トグル（ON=過去6ヶ月以内に中止した人だけ表示）
+let filterCancelMode = ''; // 利用中止者フィルタ: '' = なし(通常表示) / '6m' / '1y' / 'all'
 
-// 利用中止者トグル: 押すたびにON/OFF。ON=過去6ヶ月の中止者のみ、OFF=通常表示（現状通り）。
-function toggleCancelFilter() {
-    filterCancelled = !filterCancelled;
-    const btn = document.getElementById('cancelToggleBtn');
-    if (btn) btn.classList.toggle('active-cancel', filterCancelled);
+// 利用中止者フィルタ: 曜日フィルタと同じボタン群。'' = 通常表示、'6m'/'1y'/'all' = その期間内に中止した人だけ表示。
+function setCancelFilter(mode) {
+    filterCancelMode = mode;
+    document.querySelectorAll('#cancelFilters .filter-btn').forEach(b => b.classList.remove('active-cancel'));
+    if (event && event.target) event.target.classList.add('active-cancel');
     renderTable();
+}
+
+// ローカル日付を 'YYYY-MM-DD' 文字列で返す（TZ事故回避・日付比較用）
+function oralLocalYmd(d) {
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+
+// 中止日 cancelDateStr が「期間モード」の窓に入るか（純関数・scripts/test-oral-cancel-window.js がゴールデン）。
+// cutoffStr='' は全期間（下限なし）。未来の中止日は常に除外。すべてローカル日付文字列比較でTZ非依存。
+function oralCancelInPeriod(cancelDateStr, cutoffStr, todayStr) {
+    if (!cancelDateStr) return false;
+    if (cancelDateStr > todayStr) return false;
+    if (cutoffStr && cancelDateStr < cutoffStr) return false;
+    return true;
+}
+
+// 期間モード → 下限日付(YYYY-MM-DD)。'all' は '' (下限なし)。
+function oralCancelCutoff(mode) {
+    if (mode === '6m') { const d = new Date(); d.setMonth(d.getMonth() - 6); return oralLocalYmd(d); }
+    if (mode === '1y') { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return oralLocalYmd(d); }
+    return ''; // 'all' / その他
 }
 
 function setDayFilter(day) {
@@ -1046,13 +1072,14 @@ function changeYear() {
     renderTable();
 }
 
-// 利用中止者トグルON時の描画：過去6ヶ月以内に中止した人だけを表示する。
-// データ源は GAS getOralPlansYear の cancelledUsers（中止履歴の中止日が過去6ヶ月以内の人のみ・cancelDate付き）。
-// 旧 getTerminatedUsers（記録履歴ベースの常時表示）は社長指示2026-06-12で本トグルに一本化し廃止。
-function renderCancelledOnly(year) {
+// 利用中止者フィルタON時の描画：選択期間（6ヶ月/1年/全期間）内に中止した人だけを表示する。
+// データ源は GAS getOralPlansYear の cancelledUsers（中止日のある全中止者・cancelDate付き）。期間の絞り込みはここ（フロント）で行う。
+// 旧 getTerminatedUsers（記録履歴ベースの常時表示）は社長指示2026-06-12で本フィルタに一本化し廃止。
+function renderCancelledOnly(year, mode) {
     const tbody = document.getElementById('tableBody');
     const fcEl = document.getElementById('filterCount');
     const colspan = 3 + MONTHS.length * SUB_COLS.length;
+    const periodLabel = mode === '6m' ? '過去6ヶ月' : mode === '1y' ? '過去1年' : '全期間';
 
     // oralPlansCache（ケアマネ提出列のため先読みされる）に cancelledUsers が乗る。
     // 未ロード時はその旨を出す（先読みfetchが完了すると finally で renderTable が再実行される）。
@@ -1066,18 +1093,23 @@ function renderCancelledOnly(year) {
     if (!appData.checks[year]) appData.checks[year] = {};
     const yearData = appData.checks[year];
 
-    const cancelled = oralPlansCache.cancelledUsers.slice().sort((a, b) =>
-        String(a.furigana || a.name).normalize('NFKC')
-            .localeCompare(String(b.furigana || b.name).normalize('NFKC'), 'ja'));
+    // 期間フィルタ（中止日基準）。cutoff='' は全期間。
+    const todayStr = oralLocalYmd(new Date());
+    const cutoffStr = oralCancelCutoff(mode);
+    const cancelled = oralPlansCache.cancelledUsers
+        .filter(u => oralCancelInPeriod(u.cancelDate, cutoffStr, todayStr))
+        .slice().sort((a, b) =>
+            String(a.furigana || a.name).normalize('NFKC')
+                .localeCompare(String(b.furigana || b.name).normalize('NFKC'), 'ja'));
 
     if (cancelled.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${colspan}" style="padding:14px; color:#888;">過去6ヶ月以内に利用中止した方はいません。</td></tr>`;
-        if (fcEl) fcEl.textContent = '0名';
+        tbody.innerHTML = `<tr><td colspan="${colspan}" style="padding:14px; color:#888;">${periodLabel}に利用中止した方はいません。</td></tr>`;
+        if (fcEl) fcEl.textContent = '0名（' + periodLabel + '）';
         updateStats(appData.users.length, 0, 0, -1);
         return;
     }
 
-    let html = `<tr class="terminated-divider-row"><td colspan="${colspan}">⛔ 利用中止者（過去6ヶ月・${cancelled.length}名）　※中止日基準。過去データは編集可能。</td></tr>`;
+    let html = `<tr class="terminated-divider-row"><td colspan="${colspan}">⛔ 利用中止者（${periodLabel}・${cancelled.length}名）　※中止日基準。過去データは編集可能。</td></tr>`;
     let kaigoCount = 0, shienCount = 0;
     for (const u of cancelled) {
         // category は「要介護度」列の文字列。支援/事業対象は要支援扱い、それ以外は要介護。
@@ -1111,7 +1143,7 @@ function renderCancelledOnly(year) {
     }
 
     tbody.innerHTML = html;
-    if (fcEl) fcEl.textContent = cancelled.length + '名 表示中（利用中止者）';
+    if (fcEl) fcEl.textContent = cancelled.length + '名 表示中（利用中止者・' + periodLabel + '）';
     updateStats(appData.users.length, kaigoCount, shienCount, -1);
     attachOralUserNameHandlers();
 }
@@ -1159,9 +1191,9 @@ function renderTable() {
     h2 += '</tr>';
     thead.innerHTML = h1 + h2;
 
-    // 利用中止者トグルON: 過去6ヶ月以内に中止した人だけ表示（GAS cancelledUsers 由来・中止日基準）
-    if (filterCancelled) {
-        renderCancelledOnly(year);
+    // 利用中止者フィルタON('' 以外): 選択期間内に中止した人だけ表示（GAS cancelledUsers 由来・中止日基準）
+    if (filterCancelMode) {
+        renderCancelledOnly(year, filterCancelMode);
         return;
     }
 
