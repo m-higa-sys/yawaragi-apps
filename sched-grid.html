@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>送迎時間一覧 - yawaragi</title>
+<style>
+:root {
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --border: #cbd5e0;
+  --text: #1a202c;
+  --text2: #4a5568;
+  --am: #3182ce;
+  --pm: #805ad5;
+  --pick: #38a169;
+  --drop: #e65100;
+  --tab-active: #2d3748;
+  --tab-inactive: #a0aec0;
+  --walk: #d69e2e;
+  --family: #e53e3e;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+}
+.header {
+  background: linear-gradient(135deg, #2d3748, #1a202c);
+  color: white;
+  padding: 14px 20px;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.header .subtitle {
+  font-size: 13px;
+  color: rgba(255,255,255,.6);
+  margin-top: 2px;
+}
+
+
+.op-tab {
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: var(--text2);
+  cursor: pointer;
+  white-space: nowrap;
+  border: 2px solid transparent;
+}
+.op-tab:hover { background: #e2e8f0; }
+.op-tab.active {
+  color: white;
+}
+.op-tab.active.pick-am,
+.op-tab.active.pick-pm { background: var(--pick); }
+.op-tab.active.drop-am,
+.op-tab.active.drop-pm { background: var(--drop); }
+.op-tab .badge {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  background: rgba(255,255,255,.3);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.op-tab:not(.active) .badge {
+  background: #cbd5e0;
+  color: #2d3748;
+}
+
+.content {
+  padding: 16px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* ── ルートテーブル（出勤＆送迎表風） ── */
+.route-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  padding: 8px 12px;
+  background: var(--card);
+  border-radius: 8px 8px 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.route-section-title.pick { border-top: 4px solid var(--pick); }
+.route-section-title.drop { border-top: 4px solid var(--drop); }
+.route-section-title .count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text2);
+  font-weight: 500;
+}
+
+.route-table-wrap {
+  overflow-x: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  margin-bottom: 20px;
+}
+table.route-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+table.route-table th {
+  background: #edf2f7;
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  font-weight: 700;
+  color: var(--text2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+table.route-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  vertical-align: middle;
+  text-align: center;
+  white-space: nowrap;
+}
+table.route-table .driver {
+  font-weight: 700;
+  background: #f7fafc;
+  min-width: 70px;
+}
+table.route-table .deptime {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-weight: 700;
+  color: var(--pick);
+  font-size: 22px;
+  background: #f0fff4;
+  min-width: 70px;
+}
+table.route-table .deptime.drop { color: var(--drop); background: #fff7ed; }
+table.route-table .vehicle {
+  background: #f0f4f8;
+  font-weight: 600;
+  font-size: 12px;
+  min-width: 70px;
+}
+table.route-table .user-cell {
+  min-width: 80px;
+  font-weight: 600;
+}
+table.route-table .user-cell .name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+table.route-table .user-cell .time {
+  display: block;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 18px;
+  color: var(--pick);
+  font-weight: 700;
+  margin-top: 3px;
+}
+/* ── 送迎車ごとの行色（薄く） ── */
+table.route-table tr.car-row-1 { background: #e3f2fd; }  /* 1号車: 薄い青 */
+table.route-table tr.car-row-2 { background: #e8f5e9; }  /* 2号車: 薄い緑 */
+table.route-table tr.car-row-3 { background: #fff8e1; }  /* 3号車: 薄い黄 */
+table.route-table tr.car-row-4 { background: #fce4ec; }  /* 4号車: 薄いピンク */
+table.route-table tr.car-row-5 { background: #f3e5f5; }  /* 5号車: 薄い紫 */
+table.route-table tr.car-row-6 { background: #e0f7fa; }  /* 6号車: 薄いシアン */
+/* 行色を尊重させるため、無地のセルは背景透明 */
+table.route-table tr.car-row-1 .user-cell,
+table.route-table tr.car-row-2 .user-cell,
+table.route-table tr.car-row-3 .user-cell,
+table.route-table tr.car-row-4 .user-cell,
+table.route-table tr.car-row-5 .user-cell,
+table.route-table tr.car-row-6 .user-cell { background: transparent; }
+
+table.route-table .empty-cell {
+  background: #f7fafc;
+  color: #cbd5e0;
+}
+/* 欠席セル */
+table.route-table .user-cell.absent-cell {
+  background: #f3f4f6;
+}
+table.route-table .absent-name {
+  text-decoration: line-through;
+  color: #6b7280;
+  font-weight: 700;
+}
+table.route-table .absent-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 6px;
+  background: #fecaca;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+/* 欠席でも時間は通常色で表示 */
+table.route-table .rider-cell {
+  background: #e3f2fd;
+  font-size: 11px;
+  color: var(--am);
+  font-weight: 600;
+}
+table.route-table .route-no {
+  background: #f7fafc;
+  font-weight: 700;
+  min-width: 30px;
+  color: var(--text2);
+}
+
+/* ── 徒歩・家族送迎 ── */
+.other-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+.other-box .other-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+.other-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.other-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.other-tag.walk { background: #fefcbf; color: var(--walk); }
+.other-tag.family { background: #fed7d7; color: var(--family); }
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text2);
+  font-size: 15px;
+}
+.empty-state .icon { font-size: 40px; margin-bottom: 8px; }
+.sync-info {
+  text-align: center;
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.sync-info .time { font-weight: 600; }
+.loading {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text2);
+  font-size: 16px;
+}
+.loading .spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--am);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-msg {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--family);
+  font-size: 15px;
+}
+
+/* ── 日付バー ── */
+.date-bar {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--border);
+  position: sticky; top: 60px; z-index: 99; flex-wrap: wrap;
+}
+.date-bar button {
+  border: 1px solid var(--border); background: #f1f5f9; color: var(--text2);
+  border-radius: 6px; padding: 6px 12px; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.date-bar button:hover { background: #e2e8f0; }
+.date-bar input[type=date] { font-size: 15px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.date-bar .future-badge { font-size: 12px; font-weight: 700; color: #fff; background: var(--pm); padding: 3px 8px; border-radius: 10px; }
+.date-bar .today-btn { background: #e8f5e9; border-color: #43a047; color: #2e7d32; }
+
+/* ── 曜日タブ ── */
+.day-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  background: var(--card);
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 109px;
+  z-index: 99;
+}
+.day-tab {
+  flex: 1;
+  text-align: center;
+  padding: 10px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tab-inactive);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  user-select: none;
+}
+.day-tab:hover { color: var(--tab-active); }
+.day-tab.active {
+  color: var(--tab-active);
+  border-bottom-color: var(--am);
+}
+
+/* ── 運行タブ ── */
+.op-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 156px;
+  z-index: 98;
+  overflow-x: auto;
+}
+
+/* 印刷用 */
+@media print {
+  .header, .date-bar, .day-tabs, .op-tabs, .sync-info { position: static; }
+  .route-table-wrap { break-inside: avoid; overflow: visible; }
+  body { background: white; }
+  table.route-table { font-size: 11pt; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>送迎時間一覧</h1>
+  <div class="subtitle">リハビリデイサービス yawaragi</div>
+</div>
+
+<div class="date-bar" id="dateBar"></div>
+<div class="day-tabs" id="dayTabs"></div>
+<div class="op-tabs" id="opTabs"></div>
+
+<div class="content" id="mainContent">
+  <div class="loading">
+    <div class="spinner"></div>
+    <div>送迎時間データを読み込み中...</div>
+  </div>
+</div>
+
+<div class="sync-info" id="syncInfo"></div>
+
+<script>
+// ── 送迎未来カレンダー: 日付解決の純関数（scripts/lib/sched-resolver.js と同一・インライン）──
+var WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+function fmtDate(d) {
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+function parseDate(dateStr) {
+  var m = String(dateStr || '').match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+function weekdayOf(dateStr) {
+  var d = parseDate(dateStr);
+  if (!d) return '';
+  return WEEKDAY_LABELS[d.getDay()];
+}
+function weekDatesFor(dateStr) {
+  var d = parseDate(dateStr);
+  if (!d) return {};
+  var dow = d.getDay();
+  var toMonday = (dow === 0) ? -6 : (1 - dow);
+  var monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + toMonday);
+  var labels = ['月', '火', '水', '木', '金', '土'];
+  var out = {};
+  for (var i = 0; i < labels.length; i++) {
+    var dd = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+    out[labels[i]] = fmtDate(dd);
+  }
+  return out;
+}
+function emptyRoutes() {
+  return { am: { pick: [], drop: [] }, pm: { pick: [], drop: [] } };
+}
+function normalizeRoutes(routes) {
+  var r = routes || {};
+  var am = r.am || {};
+  var pm = r.pm || {};
+  return {
+    am: { pick: Array.isArray(am.pick) ? am.pick : [], drop: Array.isArray(am.drop) ? am.drop : [] },
+    pm: { pick: Array.isArray(pm.pick) ? pm.pick : [], drop: Array.isArray(pm.drop) ? pm.drop : [] }
+  };
+}
+function baseMembersForWeekday(data, weekday) {
+  var members = {};
+  var ud = (data && data.userDays) || {};
+  var st = (data && data.schedTime) || {};
+  var tp = (data && data.transport) || {};
+  Object.keys(ud).forEach(function (name) {
+    var info = ud[name];
+    if (!info || !info.schedule) return;
+    var ampm = info.schedule[weekday];
+    if (ampm !== 'am' && ampm !== 'pm') return;
+    var time = (st[name] && typeof st[name] === 'object') ? (st[name][weekday] || '') : '';
+    members[name] = { ampm: ampm, time: time, transport: tp[name] || 'shuttle' };
+  });
+  return members;
+}
+function resolveDay(data, dateStr) {
+  var weekday = weekdayOf(dateStr);
+  var overrides = (data && data.overrides) || {};
+  var ov = overrides[dateStr];
+  if (ov) {
+    return {
+      date: dateStr, weekday: weekday, source: 'override',
+      routes: normalizeRoutes(ov.routes),
+      members: ov.members || baseMembersForWeekday(data, weekday)
+    };
+  }
+  var baseRoutes = (data && data.routes && data.routes[weekday]) || null;
+  return {
+    date: dateStr, weekday: weekday, source: 'base',
+    routes: baseRoutes ? normalizeRoutes(baseRoutes) : emptyRoutes(),
+    members: baseMembersForWeekday(data, weekday)
+  };
+}
+
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
+const DAYS = ['月','火','水','木','金','土'];
+// タブ構成（出勤＆送迎表と同じ3タブ構成：午前送り＋午後迎えは同じ運用時間帯なので統合）
+const OPS = [
+  { key:'am_pick', label:'① 午前の迎え', cls:'pick-am', sections:[{ampm:'am',type:'pick'}] },
+  { key:'mid',     label:'② 午前送り／午後迎え', cls:'drop-am', sections:[{ampm:'am',type:'drop'},{ampm:'pm',type:'pick'}] },
+  { key:'pm_drop', label:'③ 午後の送り', cls:'drop-pm', sections:[{ampm:'pm',type:'drop'}] }
+];
+const MAX_STOPS = 7;
+
+let DATA = null;
+let currentDay = '';
+let currentOp = 'am_pick';
+let selectedDate = '';   // 表示中の日付 yyyy-MM-dd
+let RESOLVED = null;     // resolveDay(DATA, selectedDate) の結果
+
+function todayStr(){
+  var d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+}
+
+async function loadData(){
+  try {
+    const res = await fetch(GAS_URL + '?action=getSchedTimes&t=' + Date.now());
+    if(!res.ok) throw new Error('取得失敗');
+    DATA = await res.json();
+    if(!DATA){
+      showEmpty('送迎時間データがまだ登録されていません。<br>出勤＆送迎表で「📤 送迎時間を共有」ボタンを押してください。');
+      return;
+    }
+    selectedDate = selectedDate || todayStr();   // 初回は今日／更新時は選択中の日付を維持
+    currentDay = weekdayOf(selectedDate);
+    RESOLVED = resolveDay(DATA, selectedDate);
+    renderDateBar();
+    renderDayTabs();
+    renderOpTabs();
+    renderCurrent();
+    if(DATA.lastSync){
+      const d = new Date(DATA.lastSync);
+      document.getElementById('syncInfo').innerHTML =
+        '最終同期: <span class="time">' + d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + '</span>';
+    }
+  } catch(e){
+    console.error('データ取得エラー:', e);
+    document.getElementById('mainContent').innerHTML =
+      '<div class="error-msg">データの取得に失敗しました。<br>しばらくしてからページを再読み込みしてください。</div>';
+  }
+}
+
+function showEmpty(msg){
+  document.getElementById('mainContent').innerHTML =
+    '<div class="empty-state"><div class="icon">📋</div>' + msg + '</div>';
+}
+
+function renderDateBar(){
+  var bar = document.getElementById('dateBar');
+  var wd = weekdayOf(selectedDate);
+  var isToday = (selectedDate === todayStr());
+  var label = selectedDate.replace(/-/g,'/') + '（' + wd + '）';
+  bar.innerHTML =
+    '<button onclick="shiftDate(-7)" title="前の週">«</button>' +
+    '<button onclick="shiftDate(-1)" title="前日">‹</button>' +
+    '<input type="date" id="datePicker" value="' + selectedDate + '" onchange="pickDate(this.value)">' +
+    '<button onclick="shiftDate(1)" title="翌日">›</button>' +
+    '<button onclick="shiftDate(7)" title="次の週">»</button>' +
+    '<button class="today-btn" onclick="goToday()">今日</button>' +
+    (isToday ? '' : '<span class="future-badge">' + label + '</span>');
+}
+
+function pickDate(v){
+  if(!v) return;
+  selectedDate = v;
+  currentDay = weekdayOf(selectedDate);
+  RESOLVED = resolveDay(DATA, selectedDate);
+  renderDateBar(); renderDayTabs(); renderOpTabs(); renderCurrent();
+}
+function shiftDate(days){
+  var d = parseDate(selectedDate); if(!d) return;
+  var nd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+  pickDate(fmtDate(nd));
+}
+function goToday(){ pickDate(todayStr()); }
+
+function renderDayTabs(){
+  var tabs = document.getElementById('dayTabs');
+  var week = weekDatesFor(selectedDate);
+  tabs.innerHTML = DAYS.map(function(d){
+    var dateOfTab = week[d] || '';
+    var md = dateOfTab ? dateOfTab.slice(5).replace('-', '/') : '';
+    var active = (d === currentDay);
+    return '<div class="day-tab' + (active ? ' active' : '') + '" onclick="switchDay(\'' + d + '\')">'
+      + d + '<br><span style="font-size:11px;font-weight:500">' + md + '</span></div>';
+  }).join('');
+}
+
+function renderOpTabs(){
+  const tabs = document.getElementById('opTabs');
+  tabs.innerHTML = OPS.map(op => {
+    // 複数セクションを持つタブは合算カウント
+    const n = op.sections.reduce((sum, sec) => sum + getRoutes(sec.ampm, sec.type).length, 0);
+    return '<div class="op-tab ' + op.cls + (op.key===currentOp?' active':'') + '" onclick="switchOp(\'' + op.key + '\')">'
+      + op.label + '<span class="badge">' + n + '</span></div>';
+  }).join('');
+}
+
+function switchDay(d){
+  var week = weekDatesFor(selectedDate);
+  if(week[d]) { pickDate(week[d]); return; }
+  currentDay = d;
+  RESOLVED = resolveDay(DATA, selectedDate);
+  renderDateBar(); renderDayTabs(); renderOpTabs(); renderCurrent();
+}
+function switchOp(k){
+  currentOp = k;
+  renderOpTabs();
+  renderCurrent();
+}
+
+// ── データ構造: RESOLVED（resolveDay の結果）から取得
+function getRoutes(ampm, type){
+  if(!RESOLVED || !RESOLVED.routes) return [];
+  var a = RESOLVED.routes[ampm];
+  if(!a) return [];
+  return Array.isArray(a[type]) ? a[type] : [];
+}
+
+// 徒歩・家族送迎の利用者をこの日・AM/PMで抽出
+function getWalkFamily(ampm){
+  var walk=[], family=[];
+  var members = (RESOLVED && RESOLVED.members) || {};
+  Object.keys(members).forEach(function(name){
+    var m = members[name];
+    if(!m || m.ampm !== ampm) return;
+    if(m.transport === 'walk') walk.push({ name: name, time: m.time || '' });
+    else if(m.transport === 'family') family.push({ name: name, time: m.time || '' });
+  });
+  return { walk: walk, family: family };
+}
+
+// 車両名 → 色インデックス（1-6）のマップ。タブ内の全セクションで共通。
+let vehicleColorMap = {};
+
+function buildVehicleColorMap(sectionData){
+  vehicleColorMap = {};
+  let idx = 0;
+  sectionData.forEach(sd => {
+    sd.routes.forEach(r => {
+      const v = (r.vehicle || '').trim();
+      if(!v) return;
+      if(vehicleColorMap[v] !== undefined) return;
+      idx++;
+      vehicleColorMap[v] = Math.min(idx, 6);
+    });
+  });
+}
+
+function getVehicleColorIdx(vehicle){
+  const v = (vehicle || '').trim();
+  return vehicleColorMap[v] || 0; // 0=色なし
+}
+
+function renderCurrent(){
+  if(!DATA){ showEmpty(''); return; }
+  RESOLVED = resolveDay(DATA, selectedDate);
+
+  const op = OPS.find(o => o.key === currentOp);
+  if(!op){ showEmpty('運行タブが不正です'); return; }
+
+  // 各セクションのデータを集める
+  const sectionData = op.sections.map(sec => ({
+    ampm: sec.ampm,
+    type: sec.type,
+    routes: getRoutes(sec.ampm, sec.type),
+    wf: (sec.type === 'pick') ? getWalkFamily(sec.ampm) : { walk:[], family:[] }
+  }));
+
+  // 車両名→色マップを構築（このタブ内の全車両を通しで割り当て）
+  buildVehicleColorMap(sectionData);
+
+  const hasAnyData = sectionData.some(s => s.routes.length > 0 || s.wf.walk.length > 0 || s.wf.family.length > 0);
+  if(!hasAnyData){
+    showEmpty(currentDay + '曜日 ' + op.label + ' のデータはありません。<br>出勤＆送迎表で該当日の「📤 送迎時間を共有」を押してください。');
+    return;
+  }
+
+  let html = '';
+  sectionData.forEach(sd => {
+    html += renderOneSection(sd);
+  });
+
+  document.getElementById('mainContent').innerHTML = html;
+}
+
+// 1セクション（迎え or 送り）の描画
+function renderOneSection(sd){
+  const routes = sd.routes;
+  const wf = sd.wf;
+  const ampmLabel = sd.ampm === 'am' ? '午前' : '午後';
+  const typeLabel = sd.type === 'pick' ? '迎え' : '送り';
+  const icon = sd.type === 'pick' ? '🚐' : '🏠';
+  const op = { ampm: sd.ampm, type: sd.type };
+
+  if(routes.length === 0 && wf.walk.length === 0 && wf.family.length === 0) return '';
+
+  let html = '';
+
+  // ルートテーブル
+  if(routes.length > 0){
+    const totalUsers = routes.reduce((s,r)=> s + (r.stops||[]).length, 0);
+    html += '<div class="route-section-title ' + sd.type + '">';
+    html += icon + ' ' + ampmLabel + ' ' + typeLabel;
+    html += ' <span class="count">' + routes.length + '台 / ' + totalUsers + '名</span>';
+    html += '</div>';
+    html += '<div class="route-table-wrap">';
+    html += renderRouteTable(routes, op);
+    html += '</div>';
+  }
+
+  // 徒歩・家族送迎（迎えのみ）
+  if(sd.type === 'pick' && (wf.walk.length > 0 || wf.family.length > 0)){
+    html += '<div class="other-box">';
+    html += '<div class="other-title">🚶 / 🚗 送迎車以外</div>';
+    html += '<div class="other-list">';
+    wf.walk.forEach(u => {
+      html += '<div class="other-tag walk">🚶 ' + escHtml(u.name) + (u.time ? ' ' + escHtml(u.time) : '') + '</div>';
+    });
+    wf.family.forEach(u => {
+      html += '<div class="other-tag family">🚗 ' + escHtml(u.name) + (u.time ? ' ' + escHtml(u.time) : '') + '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  return html;
+}
+
+function renderRouteTable(routes, op){
+  let html = '<table class="route-table">';
+
+  // ヘッダー
+  html += '<thead><tr>';
+  if(op.type === 'drop') html += '<th>No</th>';
+  html += '<th>運転手</th>';
+  if(op.type === 'pick') html += '<th>出発</th>';
+  html += '<th colspan="' + MAX_STOPS + '">利用者・時刻</th>';
+  html += '<th>車両</th>';
+  html += '<th>ルート</th>';
+  html += '</tr></thead>';
+
+  // ボディ
+  html += '<tbody>';
+  routes.forEach((route) => {
+    const stops = route.stops || [];
+    const rider = route.rider || '';
+    // 車両名ベースで色を決定（送り・迎え間で色が揃う）
+    const colorIdx = getVehicleColorIdx(route.vehicle);
+    const carClass = colorIdx > 0 ? 'car-row-' + colorIdx : '';
+
+    html += '<tr class="' + carClass + '">';
+    if(op.type === 'drop'){
+      html += '<td class="route-no">' + escHtml(route.no || '') + '</td>';
+    }
+    html += '<td class="driver">' + escHtml(route.driver || '（未）') + '</td>';
+    if(op.type === 'pick'){
+      const depClass = 'deptime' + (op.type==='drop' ? ' drop' : '');
+      html += '<td class="' + depClass + '">' + escHtml(route.depTime || '--:--') + '</td>';
+    }
+
+    // ストップ（1-MAX_STOPS番目）
+    // 送迎時間一覧は「現在の固定ルートを見るページ」なので欠席バッジは表示しない
+    for(let i=0; i<MAX_STOPS; i++){
+      const s = stops[i];
+      if(s && s.user){
+        html += '<td class="user-cell">'
+          + '<div class="name">' + escHtml(sama(s.user)) + '</div>'
+          + '<div class="time">' + escHtml(s.time || '') + '</div>'
+          + '</td>';
+      } else {
+        // 同乗スタッフ枠: 最後のstopの次の列にriderを表示
+        if(rider && i === stops.length){
+          html += '<td class="rider-cell">同乗:<br>' + escHtml(rider) + '</td>';
+        } else {
+          html += '<td class="empty-cell">-</td>';
+        }
+      }
+    }
+
+    html += '<td class="vehicle">' + escHtml(route.vehicle || '') + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  return html;
+}
+
+function sama(name){
+  if(!name) return '';
+  const s = String(name);
+  if(s.endsWith('様') || s.endsWith('さん')) return s;
+  return s + '様';
+}
+
+function escHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// 自動更新（5分ごと、タブ非表示中は止める）
+setInterval(function() {
+  if (document.hidden) return;
+  loadData();
+}, 5 * 60 * 1000);
+
+loadData();
+</script>
+
+</body>
+</html>
