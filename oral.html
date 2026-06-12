@@ -1121,8 +1121,22 @@ function renderTable() {
 
     sortUsers();
 
+    // 利用開始前ユーザーの非表示判定（2026-06-12）
+    // 台帳の利用開始日(riyouStart, 'YYYY-MM-DD')が今日より未来なら非表示。空なら従来通り表示（安全側）。
+    // 日付はローカル日付の文字列比較でTZ事故を回避。
+    const _todayStr = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+    const _isBeforeStart = (u) => {
+        const ei = oralEvalIdx[u.name];
+        const rs = ei && ei.riyouStart;
+        return !!(rs && rs > _todayStr);
+    };
+
     // フィルター適用
-    const filteredUsers = appData.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+    const filteredUsers = appData.users
+        .filter(u => matchesSchedule(u, filterDay, filterAmpm))
+        .filter(u => !_isBeforeStart(u));
     // 対象者を上・非対象を下にグループ化（既存ふりがな順は安定ソートで維持）
     const _isOralTgt = (u) => !!(oralEvalIdx[u.name] && oralEvalIdx[u.name].isTarget);
     filteredUsers.sort((a, b) => (_isOralTgt(b) ? 1 : 0) - (_isOralTgt(a) ? 1 : 0));
@@ -1705,7 +1719,7 @@ function buildOralEvalIndex() {
   const cy = now.getFullYear();
   const cm = now.getMonth() + 1;
   (oralPlansCache.users || []).forEach(function (u) {
-    idx[u.name] = { startedAt: u.startedAt || '', sendMethod: u.sendMethod || 'PDF', isTarget: !!u.isTarget, rec: null };
+    idx[u.name] = { startedAt: u.startedAt || '', sendMethod: u.sendMethod || 'PDF', isTarget: !!u.isTarget, riyouStart: u.riyouStart || '', rec: null };
   });
   (oralPlansCache.records || []).forEach(function (r) {
     if (r.year === cy && r.month === cm && idx[r.userId]) idx[r.userId].rec = r;
