@@ -6454,6 +6454,14 @@ async function absSubmit(opts) {
             btn.textContent = 'この内容で登録する';
             return;
         }
+        // M-6: 長期休み登録前の確認ダイアログ
+        const ltPeriod = absState.dateFrom + (absState.dateTo && absState.dateTo !== absState.dateFrom ? ' 〜 ' + absState.dateTo : '');
+        const ltConfirmMsg = `【長期休み登録の確認】\n利用者：${absState.selectedUser.name}\n期間：${ltPeriod}\nケアマネへ通知を記録します。よろしいですか？`;
+        if (!confirm(ltConfirmMsg)) {
+            btn.disabled = false;
+            btn.textContent = 'この内容で登録する';
+            return;
+        }
         const ltData = {
             action: 'long_term_absence',
             name: absState.selectedUser.name,
@@ -6571,6 +6579,8 @@ async function absSubmit(opts) {
             cmEmail: isFirst && mailSend ? mailCmEmail : '',
             cmName: mailCmName,
             cmCustomBody: isFirst && mailSend ? mailCustomBody : '',
+            // M-1: 2件目のunit登録ではGAS側のメール送信をスキップ（台帳から取得するため isFirst だけでは防げない）
+            skipEmail: !isFirst,
             contactMethod: phoneCalled ? 'phone' : (isFirst && mailSend ? 'mail' : ''),
             // 2026-05-24: メール派ケアマネで「メール送らない」を選んだ時の理由
             // GAS側でcmNotifiedに反映+notify@へ通知メール送信（1件目のみ）
