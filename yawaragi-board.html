@@ -3789,6 +3789,13 @@ function toLocalDateStr(d) {
     return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
 }
 
+// 'YYYY-MM-DD' 文字列 → Date（ローカル時刻・UTCズレなし）
+// new Date('YYYY-MM-DD') はUTC午前0時解釈でタイムゾーン次第に日付がズレるため使用禁止
+function toLocalDate(str) {
+    const parts = str.split('-');
+    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+}
+
 const TB_STORAGE_KEY = 'yawaragi_taskboard';
 const TB_TODAY = toLocalDateStr();
 
@@ -5855,7 +5862,7 @@ function absCheckNotScheduledDay(dateStr) {
         warning.style.display = 'none';
         return true;
     }
-    const d = new Date(dateStr);
+    const d = toLocalDate(dateStr);
     const dow = d.getDay();
     const isScheduled = absState.selectedUser.pattern.some(p => p.day === dow);
     if (!isScheduled) {
@@ -5988,16 +5995,16 @@ function absUpdateConfirm() {
         const t = new Date();
         dateText = `${t.getFullYear()}/${String(t.getMonth()+1).padStart(2,'0')}/${String(t.getDate()).padStart(2,'0')}（${DAY_NAMES[t.getDay()]}）`;
     } else if (absState.dateType === 'specific') {
-        const d = new Date(absState.dateFrom);
+        const d = toLocalDate(absState.dateFrom);
         dateText = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}（${DAY_NAMES[d.getDay()]}）`;
     } else {
-        const df = new Date(absState.dateFrom);
-        const dt = new Date(absState.dateTo);
+        const df = toLocalDate(absState.dateFrom);
+        const dt = toLocalDate(absState.dateTo);
         dateText = `${df.getFullYear()}/${String(df.getMonth()+1).padStart(2,'0')}/${String(df.getDate()).padStart(2,'0')} 〜 ${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}`;
     }
 
     // 連絡日の表示
-    const cd = new Date(absState.contactDate);
+    const cd = toLocalDate(absState.contactDate);
     const contactDateText = `${cd.getFullYear()}/${String(cd.getMonth()+1).padStart(2,'0')}/${String(cd.getDate()).padStart(2,'0')}（${DAY_NAMES[cd.getDay()]}）`;
 
     document.getElementById('abs-confirm-card').innerHTML = `
@@ -6041,8 +6048,8 @@ function absInitUnitRadio() {
 function absBuildTargetDates() {
     const dates = [];
     if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
-        const start = new Date(absState.dateFrom);
-        const end = new Date(absState.dateTo);
+        const start = toLocalDate(absState.dateFrom);
+        const end   = toLocalDate(absState.dateTo);
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             dates.push(toLocalDateStr(d));
         }
@@ -6359,8 +6366,8 @@ async function absSubmit(opts) {
     // 日付リストを作成（期間指定の場合は複数日）
     const dates = [];
     if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
-        const start = new Date(absState.dateFrom);
-        const end = new Date(absState.dateTo);
+        const start = toLocalDate(absState.dateFrom);
+        const end   = toLocalDate(absState.dateTo);
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             dates.push(toLocalDateStr(d));
         }
@@ -6406,7 +6413,7 @@ async function absSubmit(opts) {
         // 通常: 各日付の曜日からunit判定
         const pat = absState.selectedUser.pattern || [];
         for (const dateStr of dates) {
-            const d = new Date(dateStr);
+            const d = toLocalDate(dateStr);
             const dow = d.getDay();
             const matched = pat.filter(p => p.day === dow);
             if (matched.length === 0) continue; // 通所日でない → スキップ
@@ -6641,6 +6648,12 @@ async function absSubmit(opts) {
     // フォームリセット
     absClearName();
     showToast('✅ ' + userNameForToast + ' 欠席登録完了 / ' + cmLine, 5000);
+
+    // M-3: メール派なのにメアド未登録でメール送信もスキップ理由もない場合は警告
+    const _isEmailMode = cmOffice && contact !== 'ケアマネ' && cmAbsMethod !== '電話' && cmAbsMethod !== 'SMS';
+    if (_isEmailMode && !cmEmailInit && !mailSend && !mailSkipReason) {
+        alert('⚠️ ' + userNameForToast + 'のケアマネへの通知ができませんでした（メアド未登録）。\n利用者台帳でメールアドレスを確認してください。');
+    }
 
     // 一覧を更新
     absRenderTodayList();
@@ -7311,8 +7324,8 @@ function absDeleteRecord(id) {
         if (target) {
             const dates = [];
             if (target.dateType === 'range' && target.dateFrom && target.dateTo) {
-                const start = new Date(target.dateFrom);
-                const end = new Date(target.dateTo);
+                const start = toLocalDate(target.dateFrom);
+                const end   = toLocalDate(target.dateTo);
                 for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                     dates.push(toLocalDateStr(d));
                 }
@@ -7738,7 +7751,7 @@ function absSubmitResume() {
 }
 
 function absFormatDate(dateStr) {
-    const d = new Date(dateStr);
+    const d = toLocalDate(dateStr);
     return `${d.getMonth()+1}/${d.getDate()}（${DAY_NAMES[d.getDay()]}）`;
 }
 
@@ -8778,6 +8791,11 @@ async function attCancelAbsence(name, dateStr) {
 
     showToast('欠席を取り消しました');
 
+    // M-4: ケアマネが登録されているがメアドが空でメール送信もしなかった場合は警告
+    if (cmOffice && !cmEmailInit && !mailSend) {
+        alert('⚠️ ' + name + '様のケアマネへの取消通知ができませんでした（メアド未登録）。\n利用者台帳でメールアドレスを確認してください。');
+    }
+
     // 再読込
     setTimeout(function() { attLoad(); }, 300);
 }
@@ -9524,7 +9542,7 @@ function absQuickCheckReady() {
 function absDetectUnit(userName, dateStr) {
     const u = UserStore.get().find(x => x.name === userName);
     const pat = (u && u.pattern) || [];
-    const dow = new Date(dateStr).getDay();
+    const dow = toLocalDate(dateStr).getDay();
     const matched = pat.filter(p => p.day === dow);
     if (matched.length === 0) return null;
     return matched[0].unit === 'pm' ? '午後' : '午前';
