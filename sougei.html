@@ -1865,10 +1865,9 @@ function breakStaffSelect(idx,current){
   return '<select class="sel-staff" onchange="D.breaks['+idx+'].name=this.value;autoSave()">'+opts+'</select>';
 }
 
-function cleanStaffSelect(path,selected,exclude){
+function cleanStaffSelect(path,selected){
   // フロアスタッフ＋比嘉（送迎の小野・林は除外）
-  const excludeSet=new Set(exclude||[]);
-  const floor=activeFloor().filter(n=>!excludeSet.has(n));
+  const floor=activeFloor();
   if(!floor.includes('比嘉')) floor.push('比嘉');
   let h='';
   selected.forEach((n,i)=>{
@@ -2152,7 +2151,7 @@ function renderBreakClean(){
   h+='<div data-pblock="clean"><table class="clean-table">';
   h+='<tr><th colspan="2">清掃・片付け</th></tr>';
   h+='<tr><td style="font-weight:700;font-size:10px;white-space:nowrap">清掃</td><td>'+cleanStaffSelect('D.clean.first',D.clean.first)+'</td></tr>';
-  h+='<tr><td style="font-weight:700;font-size:10px;white-space:nowrap;color:#d32f2f">残りお願い</td><td>'+cleanStaffSelect('D.clean.remain',D.clean.remain,['勝又','星野'])+'</td></tr>';
+  h+='<tr><td style="font-weight:700;font-size:10px;white-space:nowrap;color:#d32f2f">残りお願い</td><td>'+cleanStaffSelect('D.clean.remain',D.clean.remain)+'</td></tr>';
   h+='</table></div>';
   h+='</div>';
   return h;
@@ -2185,9 +2184,8 @@ function leaveTimeSelect(idx,current){
 }
 
 function renderLeave(){
-  // 清掃・片付けスタッフの退社時間を「清掃後」に自動設定（勝又・星野は除外）
+  // 清掃・片付けスタッフの退社時間を「清掃後」に自動設定
   (D.leaveClean||[]).forEach(name=>{
-    if(name==='勝又'||name==='星野') return;
     const lv=D.leave.find(l=>l.name===name);
     if(lv && lv.time!=='清掃後') { lv.time='清掃後'; autoSave(); }
   });
@@ -2215,7 +2213,7 @@ function renderLeave(){
   h+='<div><table class="clean-table"><tr><th>清掃・片付け（最長17時15分まで）</th></tr>';
   h+='<tr><td>'+cleanStaffSelect('D.leaveClean',D.leaveClean)+'</td></tr>';
   h+='</table>';
-
+  h+='<div style="font-size:10px;color:#d32f2f;margin-top:2px;line-height:1.4;font-weight:700">※清掃は1つ終わるごとにアプリでチェック → 全完了で退勤</div>';
   h+='</div>';
   h+='</div></div>';
   return h;
@@ -4557,7 +4555,7 @@ function showToast(msg,color){
 // 利用者台帳GASから利用者リスト読み込み
 // ═══════════════════════════════════════════════
 // 利用者台帳スプレッドシートから直接取得（キャッシュ付き）
-const TAICHO_GAS_URL = RELAY_GAS_URL; // 2026-06-11 RELAYと同一値のため参照に統合（重複defを解消）
+const TAICHO_GAS_URL='https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec';
 const MEASURE_GAS_URL='https://script.google.com/macros/s/AKfycbwqfudNXAiZ3E1RoD3MP0s2cjFajKk_94MvjnWoLUElYNEM32BUPbpGLEyVxUSDmjyW/exec';
 let _taichoCache=null; // {曜日: {am:[], pm:[]}} のキャッシュ
 let _taichoUserInfoCache=null; // {名前: {birthday, planStart}} のキャッシュ
@@ -4751,11 +4749,9 @@ function loadFromShift(dateStr){
     duration:'１時間'
   }));
 
-  // 清掃①: 休憩12:20の人、②: それ以外（勝又・星野は除外）
-  const CLEAN_EXCLUDE=['勝又','星野'];
-  const cleanFirst=data.breaks.filter(b=>b.time==='12:20').map(b=>b.name);
-  data.clean.first=cleanFirst;
-  data.clean.remain=floorInfo.filter(s=>!cleanFirst.includes(s.name)&&!CLEAN_EXCLUDE.includes(s.name)).map(s=>s.name);
+  // 清掃①: 早番（E1等15:00退社）、②: 遅番（B2,C等）
+  data.clean.first=floorInfo.filter(s=>s.end==='15:00'||s.end==='16:00').map(s=>s.name);
+  data.clean.remain=floorInfo.filter(s=>s.end!=='15:00'&&s.end!=='16:00').map(s=>s.name);
 
   // 退社時清掃: 最後まで残るスタッフ
   data.leaveClean=floorInfo.filter(s=>s.end==='16:45'||s.end==='17:00').map(s=>s.name);
