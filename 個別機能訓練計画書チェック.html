@@ -582,6 +582,9 @@ const OPERATOR_KEY = 'yawaragi_keikakusho_operator';
 const OPERATOR_FIXED = ['代表'];  // スタッフ一覧APIに含まれない・先頭固定
 // 測定者/出力者プルダウンの除外（測定は全員実施だが代表・小野・林は対象外。2026-06-15社長確定）
 const MEASURER_EXCLUDE = ['代表', '小野', '林'];
+// ケアマネ未提出 カットオフ日（運用開始日）。これ以降の作成/達成度だけ未提出判定の対象（過去バックログ除外）。
+// ※GAS側 KEIKAKUSHO_SOUFU_CUTOFF と同値で管理すること。
+const KEIKAKUSHO_SOUFU_CUTOFF = '2026-06-15';
 const MONTHS = [
     { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
     { m: 7, label: '7月' }, { m: 8, label: '8月' }, { m: 9, label: '9月' },
@@ -1159,6 +1162,8 @@ function updateStats() {
 //   評価未提出   = tasseido_date有 かつ hyouka_pdf・hyouka_print 両方空
 function judgeUnsubmittedLocal() {
     const has = v => !!(v && String(v).trim());
+    // 日付はgetKeikakushoYearでISO正規化済み。先頭10文字でカットオフ比較。
+    const onOrAfter = v => has(v) && String(v).trim().slice(0, 10) >= KEIKAKUSHO_SOUFU_CUTOFF;
     const plan = [], hyouka = [];
     Object.keys(state.records).forEach(key => {
         const rec = state.records[key] || {};
@@ -1167,10 +1172,11 @@ function judgeUnsubmittedLocal() {
         const month = parts.length >= 2 ? parts[parts.length - 1] : '';
         const year = parts.length >= 3 ? parts[parts.length - 2] : '';
         const name = rec.name || (parts.length >= 3 ? parts.slice(0, parts.length - 2).join('_') : key);
-        if (has(rec.keikaku_date) && !has(rec.keikaku_sent_date)) {
+        // カットオフ以降の作成/達成度だけ対象（過去バックログ除外）
+        if (onOrAfter(rec.keikaku_date) && !has(rec.keikaku_sent_date)) {
             plan.push({ name, year, month, date: rec.keikaku_date });
         }
-        if (has(rec.tasseido_date) && !has(rec.hyouka_pdf_date) && !has(rec.hyouka_print_date)) {
+        if (onOrAfter(rec.tasseido_date) && !has(rec.hyouka_pdf_date) && !has(rec.hyouka_print_date)) {
             hyouka.push({ name, year, month, date: rec.tasseido_date });
         }
     });
@@ -1203,7 +1209,8 @@ function openUnsubmittedView() {
             + '</table>';
     }
     document.getElementById('unsubmittedBody').innerHTML =
-        '<div style="margin-bottom:6px; font-weight:700; color:#742a2a;">📄 計画書 未提出（作成済み・未送付）：' + r.plan.length + '件</div>'
+        '<div style="margin-bottom:10px; padding:6px 10px; background:#fffaf0; border-left:3px solid #dd6b20; font-size:0.82rem; color:#744210;">カットオフ(' + KEIKAKUSHO_SOUFU_CUTOFF + ')以降のみ表示中（運用開始前の過去分は対象外）</div>'
+        + '<div style="margin-bottom:6px; font-weight:700; color:#742a2a;">📄 計画書 未提出（作成済み・未送付）：' + r.plan.length + '件</div>'
         + rows(r.plan, '計画書')
         + '<div style="margin:14px 0 6px; font-weight:700; color:#742a2a;">🎯 評価 未提出（達成度実施済み・未送付）：' + r.hyouka.length + '件</div>'
         + rows(r.hyouka, '評価')
