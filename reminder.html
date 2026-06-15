@@ -30,7 +30,7 @@
   .panel{display:none;} .panel.active{display:block;}
   .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
        padding:12px 14px;margin-bottom:10px;}
-  .row{display:flex;align-items:center;gap:10px;}
+  .row{display:flex;align-items:center;gap:8px;}
   .row .name{flex:1;font-size:16px;}
   .muted{color:var(--sub);font-size:13px;}
   .sec-title{font-size:13px;color:var(--sub);font-weight:bold;margin:18px 4px 8px;}
@@ -42,6 +42,7 @@
        padding:10px 16px;font-size:15px;font-weight:bold;white-space:nowrap;}
   .btn.green{background:var(--green);} .btn.gray{background:#9aa7af;}
   .btn.sm{padding:7px 12px;font-size:13px;}
+  .iconbtn{background:none;border:0;font-size:18px;padding:4px 6px;flex:0 0 auto;cursor:pointer;}
   .chk{width:26px;height:26px;border-radius:6px;border:2px solid var(--accent);
        background:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
   .status{font-size:12px;font-weight:bold;padding:2px 8px;border-radius:10px;flex:0 0 auto;}
@@ -54,19 +55,28 @@
        border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px;}
   .ph{background:#eef3f6;border:1px dashed var(--accent);border-radius:8px;
        padding:14px;color:var(--accent-d);font-size:14px;text-align:center;}
+  .cycle-fields{margin:8px 0;}
+  .wd-grid{display:flex;gap:6px;flex-wrap:wrap;}
+  .wd-grid label{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:14px;}
+  /* ゴミ箱 */
+  .trash-toggle{width:100%;background:#eef1f3;border:1px solid var(--line);border-radius:8px;
+       padding:10px;font-size:14px;color:var(--sub);font-weight:bold;margin-top:20px;}
+  .trash-item{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px dashed var(--line);font-size:14px;}
+  .trash-item .name{flex:1;}
+  .tabbadge{font-size:11px;background:#e3e8ec;color:var(--sub);border-radius:8px;padding:2px 7px;}
   /* モーダル */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
        z-index:50;align-items:center;justify-content:center;padding:20px;}
   .modal-overlay.show{display:flex;}
   .modal{background:#fff;border-radius:12px;padding:18px;max-width:420px;width:100%;
-       max-height:80vh;overflow:auto;}
+       max-height:84vh;overflow:auto;}
   .modal h2{margin:0 0 12px;font-size:18px;}
+  .modal label.fld{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px;font-weight:bold;}
   .staff-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .staff-grid button{padding:14px 8px;border:1px solid var(--line);background:#f7f9fa;
        border-radius:8px;font-size:16px;}
-  .cycle-fields{margin:8px 0;}
-  .wd-grid{display:flex;gap:6px;flex-wrap:wrap;}
-  .wd-grid label{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:14px;}
+  .modal-actions{display:flex;gap:8px;margin-top:16px;}
+  .modal-actions .btn{flex:1;}
   /* トースト */
   #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
        background:#26323a;color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;
@@ -112,17 +122,21 @@
     <div class="card">
       <div class="sec-title" style="margin-top:0;">＋ 掃除項目を登録</div>
       <input type="text" id="cleanName" placeholder="項目名（例：冷蔵庫の掃除）" style="margin-bottom:8px;">
-      <select id="cleanCycleType" onchange="onCycleTypeChange()" style="margin-bottom:8px;">
-        <option value="days">◯日ごと</option>
-        <option value="weekday">指定曜日</option>
+      <select id="addPreset" onchange="onFreqPresetChange('add')" style="margin-bottom:8px;">
+        <option value="weekly">毎週</option>
+        <option value="biweekly">隔週</option>
+        <option value="monthly" selected>毎月</option>
+        <option value="quarter">3ヶ月ごと</option>
+        <option value="weekday">曜日指定</option>
+        <option value="customdays">日数を入力</option>
       </select>
-      <div id="cycleDays" class="cycle-fields">
-        <div class="muted" style="margin-bottom:4px;">何日ごと？（隔週=14・毎月=30）</div>
-        <input type="number" id="cleanDays" value="30" min="1">
+      <div id="addDaysWrap" class="cycle-fields" style="display:none;">
+        <div class="muted" style="margin-bottom:4px;">何日ごと？</div>
+        <input type="number" id="addDays" value="30" min="1">
       </div>
-      <div id="cycleWeekday" class="cycle-fields" style="display:none;">
+      <div id="addWdWrap" class="cycle-fields" style="display:none;">
         <div class="muted" style="margin-bottom:4px;">曜日を選ぶ（複数可）</div>
-        <div class="wd-grid" id="wdGrid"></div>
+        <div class="wd-grid" id="addWd"></div>
       </div>
       <button class="btn" style="margin-top:8px;width:100%;" onclick="addClean()">登録する</button>
     </div>
@@ -142,6 +156,12 @@
     </div>
     <div id="linkList"></div>
   </section>
+
+  <!-- ゴミ箱（全タブ共通） -->
+  <button class="trash-toggle" id="trashToggle" onclick="toggleTrash()">🗑 ゴミ箱（0）</button>
+  <div class="card" id="trashPanel" style="display:none;">
+    <div id="trashList"></div>
+  </div>
 </main>
 
 <!-- スタッフ選択モーダル -->
@@ -150,6 +170,44 @@
     <h2>誰が操作する？</h2>
     <div class="muted" style="margin-bottom:10px;">選ぶと完了記録の「氏名」になります。</div>
     <div class="staff-grid" id="staffGrid"><div class="empty">読み込み中…</div></div>
+  </div>
+</div>
+
+<!-- 編集モーダル -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h2>項目を編集</h2>
+    <label class="fld">名前</label>
+    <input type="text" id="editName">
+    <label class="fld">タブ（移動できます）</label>
+    <select id="editTab" onchange="onEditTabChange()">
+      <option value="buy">🛒 買い出し</option>
+      <option value="clean">🧹 長期掃除</option>
+      <option value="link">🚗 連携</option>
+    </select>
+    <div id="editFreqWrap">
+      <label class="fld">頻度（長期掃除）</label>
+      <select id="editPreset" onchange="onFreqPresetChange('edit')">
+        <option value="weekly">毎週</option>
+        <option value="biweekly">隔週</option>
+        <option value="monthly">毎月</option>
+        <option value="quarter">3ヶ月ごと</option>
+        <option value="weekday">曜日指定</option>
+        <option value="customdays">日数を入力</option>
+      </select>
+      <div id="editDaysWrap" class="cycle-fields" style="display:none;">
+        <div class="muted" style="margin-bottom:4px;">何日ごと？</div>
+        <input type="number" id="editDays" value="30" min="1">
+      </div>
+      <div id="editWdWrap" class="cycle-fields" style="display:none;">
+        <div class="muted" style="margin-bottom:4px;">曜日を選ぶ（複数可）</div>
+        <div class="wd-grid" id="editWd"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn gray" onclick="closeModal('editModal')">やめる</button>
+      <button class="btn" onclick="saveEdit()">保存</button>
+    </div>
   </div>
 </div>
 
@@ -163,13 +221,15 @@ var REMINDER_GAS_URL = localStorage.getItem('reminder_gas_url') ||
 // スタッフ一覧の単一の真実（既存 gyomu GAS）。読み取りのみ流用。
 var GYOMU_GAS_URL = 'https://script.google.com/macros/s/AKfycbzejQJ-JNok50wACj5XRSR13-ODvaocl9GhaHX245EFC7nPeL5jtNSyyqf21mi7DAyi/exec';
 var DOW = ['日','月','火','水','木','金','土'];
+var WD_ORDER = ['月','火','水','木','金','土','日'];
 
 var STATE = {
   currentUser: localStorage.getItem('gyomu_current_user') || '',
   staff: JSON.parse(localStorage.getItem('gyomu_staff_cache') || '[]'),
   tasks: JSON.parse(localStorage.getItem('reminder_tasks_cache') || '[]'),
   logs: JSON.parse(localStorage.getItem('reminder_logs_cache') || '[]'),
-  tab: 'buy'
+  tab: 'buy',
+  editingId: null
 };
 
 /* ===== 純ロジック（reminder-core.js と同等・node TDD 済） ===== */
@@ -193,10 +253,65 @@ function isDue(task,lastDone,today){
   if(task.cycleType==='weekday'){var a=latestWeekdayOnOrBefore(today,task.cycleValue);if(!lastDone)return true;return lastDone<a;}
   return false;
 }
+function cycleLabel(ct,cv){
+  if(ct==='weekday')return '毎週 '+String(cv);
+  if(ct==='days'){var n=parseInt(cv,10);
+    if(n===7)return'毎週';if(n===14)return'隔週';if(n===30)return'毎月';if(n===90)return'3ヶ月ごと';return n+'日ごと';}
+  return '手動';
+}
 function todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
+/* ===== 頻度プルダウン（add/edit 共通） ===== */
+var PRESET_DAYS = { weekly:7, biweekly:14, monthly:30, quarter:90 };
+function onFreqPresetChange(prefix){
+  var p=document.getElementById(prefix+'Preset').value;
+  document.getElementById(prefix+'DaysWrap').style.display = (p==='customdays')?'block':'none';
+  document.getElementById(prefix+'WdWrap').style.display   = (p==='weekday')?'block':'none';
+}
+// プルダウンの選択を {cycleType,cycleValue} に変換。無効なら null。
+function readFreq(prefix){
+  var p=document.getElementById(prefix+'Preset').value;
+  if(PRESET_DAYS[p]) return {cycleType:'days', cycleValue:PRESET_DAYS[p]};
+  if(p==='customdays'){
+    var n=parseInt(document.getElementById(prefix+'Days').value,10);
+    if(!n||n<1){showToast('日数を入れてください');return null;}
+    return {cycleType:'days', cycleValue:n};
+  }
+  if(p==='weekday'){
+    var sel=[];document.querySelectorAll('#'+prefix+'Wd input:checked').forEach(function(c){sel.push(c.value);});
+    if(!sel.length){showToast('曜日を選んでください');return null;}
+    // 曜日順に並べ替え（月→日）
+    sel.sort(function(a,b){return WD_ORDER.indexOf(a)-WD_ORDER.indexOf(b);});
+    return {cycleType:'weekday', cycleValue:sel.join(',')};
+  }
+  return {cycleType:'days', cycleValue:30};
+}
+// 既存の周期 → プルダウン状態へ反映（編集時）
+function setFreq(prefix, ct, cv){
+  var preset='customdays';
+  if(ct==='weekday') preset='weekday';
+  else if(ct==='days'){var n=parseInt(cv,10);
+    if(n===7)preset='weekly';else if(n===14)preset='biweekly';else if(n===30)preset='monthly';
+    else if(n===90)preset='quarter';else preset='customdays';}
+  document.getElementById(prefix+'Preset').value=preset;
+  onFreqPresetChange(prefix);
+  if(preset==='customdays') document.getElementById(prefix+'Days').value=(parseInt(cv,10)||30);
+  if(preset==='weekday'){
+    var set=String(cv).split(',').map(function(s){return s.trim();});
+    document.querySelectorAll('#'+prefix+'Wd input').forEach(function(c){c.checked=set.indexOf(c.value)>=0;});
+  }
+}
+// 曜日チェックボックス生成
+function buildWd(gridId){
+  var g=document.getElementById(gridId);
+  WD_ORDER.forEach(function(d){
+    var l=document.createElement('label');
+    l.innerHTML='<input type="checkbox" value="'+d+'"> '+d;
+    g.appendChild(l);
+  });
+}
+
 /* ===== GAS通信 ===== */
-// JSONP GET（reminder or gyomu）
 function jsonpGet(baseUrl, params){
   return new Promise(function(resolve,reject){
     if(!baseUrl){reject(new Error('URL未設定'));return;}
@@ -210,7 +325,6 @@ function jsonpGet(baseUrl, params){
     document.head.appendChild(sc);
   });
 }
-// no-cors POST（reminder GAS書込・成否は後続getAllで確認）
 function rmdPost(data){
   if(!REMINDER_GAS_URL){showToast('⚠️ GAS未設定のため保存できません');return Promise.resolve(false);}
   return fetch(REMINDER_GAS_URL,{method:'POST',mode:'no-cors',
@@ -225,15 +339,14 @@ function loadStaff(){
       STATE.staff=res.staff;
       localStorage.setItem('gyomu_staff_cache',JSON.stringify(res.staff));
     }
-  }).catch(function(){/*キャッシュで継続*/});
+  }).catch(function(){});
 }
 function openStaffModal(){
   var g=document.getElementById('staffGrid');
   var list=STATE.staff&&STATE.staff.length?STATE.staff:['（スタッフ読込中）'];
   g.innerHTML='';
   list.forEach(function(name){
-    var b=document.createElement('button');
-    b.textContent=name;
+    var b=document.createElement('button');b.textContent=name;
     b.onclick=function(){selectStaff(name);};
     g.appendChild(b);
   });
@@ -262,9 +375,19 @@ function reloadAll(){
     renderAll();
   }).catch(function(){renderAll();});
 }
-function renderAll(){renderBuy();renderClean();renderLink();}
+function renderAll(){renderBuy();renderClean();renderLink();renderTrash();}
 
-function activeTasks(tab){return STATE.tasks.filter(function(t){return t.tab===tab&&t.active;});}
+// 表示対象: 該当タブ・active・未削除
+function activeTasks(tab){return STATE.tasks.filter(function(t){return t.tab===tab&&t.active&&!t.deleted;});}
+
+// 操作ボタン（編集・削除）をカードに付与
+function appendOps(rowEl, t){
+  var e=document.createElement('button');e.className='iconbtn';e.textContent='✏️';e.title='編集';
+  e.onclick=function(){openEdit(t.taskId);};
+  var d=document.createElement('button');d.className='iconbtn';d.textContent='🗑';d.title='削除';
+  d.onclick=function(){deleteTask(t.taskId,t.name);};
+  rowEl.appendChild(e);rowEl.appendChild(d);
+}
 
 function renderBuy(){
   var list=document.getElementById('buyList');
@@ -273,20 +396,20 @@ function renderBuy(){
   items.forEach(function(t){
     var c=document.createElement('div');c.className='card';
     c.innerHTML='<div class="row"><span class="name">'+esc(t.name)+'</span></div>';
+    var r=c.querySelector('.row');
     var btn=document.createElement('button');btn.className='btn green sm';btn.textContent='買った';
     btn.onclick=function(){doCheck(t.taskId,'「'+t.name+'」を購入');};
-    c.querySelector('.row').appendChild(btn);
+    r.appendChild(btn); appendOps(r,t);
     list.appendChild(c);
   });
-  // 履歴（buyタスクのlog・新しい順）
   var hist=document.getElementById('buyHist');
-  var buyIds={}; STATE.tasks.forEach(function(t){if(t.tab==='buy')buyIds[t.taskId]=t.name;});
-  var rows=STATE.logs.filter(function(l){return buyIds[l.taskId];})
+  var buyNames={}; STATE.tasks.forEach(function(t){if(t.tab==='buy')buyNames[t.taskId]=t.name;});
+  var rows=STATE.logs.filter(function(l){return buyNames[l.taskId];})
     .sort(function(a,b){return b.completedAt<a.completedAt?-1:1;});
   hist.innerHTML=rows.length?'':'<div class="empty">履歴はまだありません</div>';
   rows.forEach(function(l){
     var d=document.createElement('div');d.className='hist';
-    d.textContent='✔ '+(buyIds[l.taskId]||'(削除済)')+' ／ '+(l.staffName||'?')+' ／ '+fmtDt(l.completedAt);
+    d.textContent='✔ '+(buyNames[l.taskId]||'(削除済)')+' ／ '+(l.staffName||'?')+' ／ '+fmtDt(l.completedAt);
     hist.appendChild(d);
   });
 }
@@ -294,7 +417,6 @@ function renderBuy(){
 function renderCleanLike(tab,listId){
   var list=document.getElementById(listId);
   var items=activeTasks(tab);
-  // 未を上に、済を下に
   var withState=items.map(function(t){
     var ld=lastDoneForTask(STATE.logs,t.taskId);
     return {t:t,ld:ld,due:(tab==='link'?true:isDue(t,ld,todayStr()))};
@@ -304,25 +426,42 @@ function renderCleanLike(tab,listId){
   withState.forEach(function(o){
     var t=o.t;
     var c=document.createElement('div');c.className='card';
-    var cycleLabel=t.cycleType==='days'?('◯'+t.cycleValue+'日ごと'):
-                   t.cycleType==='weekday'?('毎週 '+t.cycleValue):'手動';
+    var clabel=(tab==='link'&&t.cycleType==='none')?'手動':cycleLabel(t.cycleType,t.cycleValue);
     var statusHtml=o.due?'<span class="status due">未</span>':'<span class="status done">済</span>';
     var doneLine='';
-    if(!o.due&&o.ld){
-      var lg=lastLog(t.taskId);
-      doneLine='<div class="done-line">済 '+o.ld+(lg?(' '+lg.staffName):'')+'</div>';
-    }
+    if(!o.due&&o.ld){var lg=lastLog(t.taskId);
+      doneLine='<div class="done-line">済 '+o.ld+(lg?(' '+lg.staffName):'')+'</div>';}
     c.innerHTML='<div class="row">'+statusHtml+
-      '<span class="name">'+esc(t.name)+'<div class="muted">'+cycleLabel+'</div>'+doneLine+'</span></div>';
+      '<span class="name">'+esc(t.name)+'<div class="muted">'+clabel+'</div>'+doneLine+'</span></div>';
+    var r=c.querySelector('.row');
     var btn=document.createElement('button');btn.className='btn sm '+(o.due?'green':'gray');
     btn.textContent=o.due?'やった':'再記録';
     btn.onclick=function(){doCheck(t.taskId,'「'+t.name+'」完了');};
-    c.querySelector('.row').appendChild(btn);
+    r.appendChild(btn); appendOps(r,t);
     list.appendChild(c);
   });
 }
 function renderClean(){renderCleanLike('clean','cleanList');}
 function renderLink(){renderCleanLike('link','linkList');}
+
+function renderTrash(){
+  var trashed=STATE.tasks.filter(function(t){return t.deleted;});
+  document.getElementById('trashToggle').textContent='🗑 ゴミ箱（'+trashed.length+'）';
+  var list=document.getElementById('trashList');
+  list.innerHTML=trashed.length?'':'<div class="empty">ゴミ箱は空です</div>';
+  var tabName={buy:'買い出し',clean:'長期掃除',link:'連携'};
+  trashed.forEach(function(t){
+    var d=document.createElement('div');d.className='trash-item';
+    d.innerHTML='<span class="tabbadge">'+(tabName[t.tab]||t.tab)+'</span><span class="name">'+esc(t.name)+'</span>';
+    var b=document.createElement('button');b.className='btn sm';b.textContent='戻す';
+    b.onclick=function(){restoreTask(t.taskId,t.name);};
+    d.appendChild(b); list.appendChild(d);
+  });
+}
+function toggleTrash(){
+  var p=document.getElementById('trashPanel');
+  p.style.display=(p.style.display==='none')?'block':'none';
+}
 
 function lastLog(taskId){
   var rows=STATE.logs.filter(function(l){return l.taskId===taskId;})
@@ -330,51 +469,65 @@ function lastLog(taskId){
   return rows[0]||null;
 }
 
-/* ===== 操作 ===== */
+/* ===== 操作（追加・チェック） ===== */
 function addBuy(){
-  var v=document.getElementById('buyInput').value.trim();
-  if(!v)return;
+  var v=document.getElementById('buyInput').value.trim();if(!v)return;
   rmdPost({action:'addTask',tab:'buy',name:v,cycleType:'none',cycleValue:''}).then(function(){
-    document.getElementById('buyInput').value='';
-    showToast('追加しました'); setTimeout(reloadAll,800);
-  });
+    document.getElementById('buyInput').value='';showToast('追加しました');setTimeout(reloadAll,800);});
 }
 function addLink(){
-  var v=document.getElementById('linkInput').value.trim();
-  if(!v)return;
+  var v=document.getElementById('linkInput').value.trim();if(!v)return;
   rmdPost({action:'addTask',tab:'link',name:v,cycleType:'none',cycleValue:''}).then(function(){
-    document.getElementById('linkInput').value='';
-    showToast('追加しました'); setTimeout(reloadAll,800);
-  });
-}
-function onCycleTypeChange(){
-  var ct=document.getElementById('cleanCycleType').value;
-  document.getElementById('cycleDays').style.display=ct==='days'?'block':'none';
-  document.getElementById('cycleWeekday').style.display=ct==='weekday'?'block':'none';
+    document.getElementById('linkInput').value='';showToast('追加しました');setTimeout(reloadAll,800);});
 }
 function addClean(){
   var name=document.getElementById('cleanName').value.trim();
   if(!name){showToast('項目名を入れてください');return;}
-  var ct=document.getElementById('cleanCycleType').value;
-  var cv;
-  if(ct==='days'){
-    cv=parseInt(document.getElementById('cleanDays').value,10);
-    if(!cv||cv<1){showToast('日数を入れてください');return;}
-  }else{
-    var sel=[];document.querySelectorAll('#wdGrid input:checked').forEach(function(c){sel.push(c.value);});
-    if(!sel.length){showToast('曜日を選んでください');return;}
-    cv=sel.join(',');
-  }
-  rmdPost({action:'addTask',tab:'clean',name:name,cycleType:ct,cycleValue:cv}).then(function(){
-    document.getElementById('cleanName').value='';
-    showToast('登録しました'); setTimeout(reloadAll,800);
-  });
+  var f=readFreq('add'); if(!f)return;
+  rmdPost({action:'addTask',tab:'clean',name:name,cycleType:f.cycleType,cycleValue:f.cycleValue}).then(function(){
+    document.getElementById('cleanName').value='';showToast('登録しました');setTimeout(reloadAll,800);});
 }
 function doCheck(taskId,msg){
   if(!ensureUser())return;
   rmdPost({action:'check',taskId:taskId,staff:STATE.currentUser}).then(function(){
-    showToast('✔ '+msg+'（'+STATE.currentUser+'）'); setTimeout(reloadAll,800);
-  });
+    showToast('✔ '+msg+'（'+STATE.currentUser+'）');setTimeout(reloadAll,800);});
+}
+
+/* ===== 操作（削除・復元・編集） ===== */
+function deleteTask(taskId,name){
+  rmdPost({action:'deleteTask',taskId:taskId}).then(function(){
+    showToast('🗑 「'+name+'」をゴミ箱へ');setTimeout(reloadAll,800);});
+}
+function restoreTask(taskId,name){
+  rmdPost({action:'restoreTask',taskId:taskId}).then(function(){
+    showToast('↩ 「'+name+'」を戻しました');setTimeout(reloadAll,800);});
+}
+function openEdit(taskId){
+  var t=STATE.tasks.filter(function(x){return x.taskId===taskId;})[0];
+  if(!t)return;
+  STATE.editingId=taskId;
+  document.getElementById('editName').value=t.name;
+  document.getElementById('editTab').value=t.tab;
+  // 頻度欄は clean のときだけ。clean以外は現状値が無いので既定(毎月)を仮表示
+  if(t.tab==='clean') setFreq('edit',t.cycleType,t.cycleValue);
+  else setFreq('edit','days',30);
+  onEditTabChange();
+  openModal('editModal');
+}
+function onEditTabChange(){
+  var tab=document.getElementById('editTab').value;
+  document.getElementById('editFreqWrap').style.display=(tab==='clean')?'block':'none';
+}
+function saveEdit(){
+  var taskId=STATE.editingId; if(!taskId)return;
+  var name=document.getElementById('editName').value.trim();
+  if(!name){showToast('名前を入れてください');return;}
+  var tab=document.getElementById('editTab').value;
+  var data={action:'updateTask',taskId:taskId,name:name,tab:tab};
+  if(tab==='clean'){var f=readFreq('edit');if(!f)return;data.cycleType=f.cycleType;data.cycleValue=f.cycleValue;}
+  else {data.cycleType='none';data.cycleValue='';}
+  rmdPost(data).then(function(){
+    closeModal('editModal');STATE.editingId=null;showToast('保存しました');setTimeout(reloadAll,800);});
 }
 
 /* ===== タブ ===== */
@@ -393,19 +546,13 @@ function fmtDt(iso){if(!iso)return'';var d=new Date(iso);if(isNaN(d))return Stri
 
 /* ===== 初期化 ===== */
 (function init(){
-  // 曜日チェックボックス生成（月〜日）
-  var wd=['月','火','水','木','金','土','日'];
-  var g=document.getElementById('wdGrid');
-  wd.forEach(function(d){
-    var l=document.createElement('label');
-    l.innerHTML='<input type="checkbox" value="'+d+'"> '+d;
-    g.appendChild(l);
-  });
+  buildWd('addWd'); buildWd('editWd');
+  onFreqPresetChange('add');
   if(STATE.currentUser)document.getElementById('whoName').textContent=STATE.currentUser;
   if(!REMINDER_GAS_URL)document.getElementById('gasBanner').style.display='block';
-  renderAll();          // キャッシュで即描画
-  loadStaff();          // gyomuからスタッフ取得（裏）
-  reloadAll();          // reminder GASから最新取得（裏）
+  renderAll();
+  loadStaff();
+  reloadAll();
   if(!STATE.currentUser)openStaffModal();
 })();
 </script>
