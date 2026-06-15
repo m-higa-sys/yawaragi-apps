@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>リマインダー - yawaragi</title>
+<!-- shared.js は本体scriptより前（head先頭）で読む契約 -->
+<script src="shared.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#fff; --ink:#26323a; --sub:#6b7a85;
+    --line:#e3e8ec; --accent:#3a8ab5; --accent-d:#2c6e92;
+    --red:#d9534f; --green:#5c9a6f; --amber:#e0a32e;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,"Hiragino Sans","Yu Gothic",sans-serif;
+       background:var(--bg);color:var(--ink);font-size:16px;-webkit-text-size-adjust:100%;}
+  header{background:var(--accent);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:10;}
+  header h1{margin:0;font-size:20px;display:flex;align-items:center;gap:8px;}
+  .userbar{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:13px;}
+  .userbar .who{background:rgba(255,255,255,.2);padding:3px 10px;border-radius:14px;}
+  .userbar button{background:#fff;color:var(--accent-d);border:0;border-radius:14px;
+       padding:3px 10px;font-size:12px;font-weight:bold;}
+  .tabs{display:flex;background:var(--card);border-bottom:1px solid var(--line);
+       position:sticky;top:0;z-index:9;}
+  .tabs button{flex:1;border:0;background:none;padding:14px 4px;font-size:15px;
+       color:var(--sub);border-bottom:3px solid transparent;font-weight:bold;}
+  .tabs button.active{color:var(--accent-d);border-bottom-color:var(--accent);}
+  main{padding:14px;max-width:680px;margin:0 auto;}
+  .panel{display:none;} .panel.active{display:block;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+       padding:12px 14px;margin-bottom:10px;}
+  .row{display:flex;align-items:center;gap:10px;}
+  .row .name{flex:1;font-size:16px;}
+  .muted{color:var(--sub);font-size:13px;}
+  .sec-title{font-size:13px;color:var(--sub);font-weight:bold;margin:18px 4px 8px;}
+  input[type=text],input[type=number],select{
+       padding:10px;border:1px solid var(--line);border-radius:8px;font-size:16px;width:100%;}
+  .addrow{display:flex;gap:8px;margin-bottom:8px;}
+  .addrow input{flex:1;}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:8px;
+       padding:10px 16px;font-size:15px;font-weight:bold;white-space:nowrap;}
+  .btn.green{background:var(--green);} .btn.gray{background:#9aa7af;}
+  .btn.sm{padding:7px 12px;font-size:13px;}
+  .chk{width:26px;height:26px;border-radius:6px;border:2px solid var(--accent);
+       background:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .status{font-size:12px;font-weight:bold;padding:2px 8px;border-radius:10px;flex:0 0 auto;}
+  .status.due{background:#fdecea;color:var(--red);}
+  .status.done{background:#eaf5ee;color:var(--green);}
+  .done-line{font-size:12px;color:var(--sub);margin-top:2px;}
+  .hist{font-size:13px;color:var(--sub);padding:6px 2px;border-bottom:1px dashed var(--line);}
+  .empty{color:var(--sub);text-align:center;padding:24px 0;}
+  .banner{background:#fff7e6;border:1px solid var(--amber);color:#8a6d1d;
+       border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px;}
+  .ph{background:#eef3f6;border:1px dashed var(--accent);border-radius:8px;
+       padding:14px;color:var(--accent-d);font-size:14px;text-align:center;}
+  /* モーダル */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+       z-index:50;align-items:center;justify-content:center;padding:20px;}
+  .modal-overlay.show{display:flex;}
+  .modal{background:#fff;border-radius:12px;padding:18px;max-width:420px;width:100%;
+       max-height:80vh;overflow:auto;}
+  .modal h2{margin:0 0 12px;font-size:18px;}
+  .staff-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .staff-grid button{padding:14px 8px;border:1px solid var(--line);background:#f7f9fa;
+       border-radius:8px;font-size:16px;}
+  .cycle-fields{margin:8px 0;}
+  .wd-grid{display:flex;gap:6px;flex-wrap:wrap;}
+  .wd-grid label{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:14px;}
+  /* トースト */
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+       background:#26323a;color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;
+       opacity:0;transition:opacity .2s;z-index:100;pointer-events:none;}
+  #toast.show{opacity:.95;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔔 リマインダー</h1>
+  <div class="userbar">
+    <span class="who" id="whoName">スタッフ未選択</span>
+    <button onclick="openStaffModal()">変更</button>
+    <button onclick="reloadAll()" style="margin-left:auto;">↻ 更新</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button id="tab-buy" class="active" onclick="switchTab('buy')">🛒 買い出し</button>
+  <button id="tab-clean" onclick="switchTab('clean')">🧹 長期掃除</button>
+  <button id="tab-link" onclick="switchTab('link')">🚗 連携</button>
+</div>
+
+<main>
+  <div id="gasBanner" class="banner" style="display:none;">
+    ⚠️ リマインダーのバックエンド(GAS)が未設定です。社長のデプロイ後にURLを設定すると保存が有効になります。
+  </div>
+
+  <!-- 買い出し -->
+  <section id="panel-buy" class="panel active">
+    <div class="addrow">
+      <input type="text" id="buyInput" placeholder="買うもの（例：トイレットペーパー）">
+      <button class="btn" onclick="addBuy()">追加</button>
+    </div>
+    <div id="buyList"></div>
+    <div class="sec-title">🧾 購入済み履歴</div>
+    <div id="buyHist"></div>
+  </section>
+
+  <!-- 長期掃除 -->
+  <section id="panel-clean" class="panel">
+    <div class="card">
+      <div class="sec-title" style="margin-top:0;">＋ 掃除項目を登録</div>
+      <input type="text" id="cleanName" placeholder="項目名（例：冷蔵庫の掃除）" style="margin-bottom:8px;">
+      <select id="cleanCycleType" onchange="onCycleTypeChange()" style="margin-bottom:8px;">
+        <option value="days">◯日ごと</option>
+        <option value="weekday">指定曜日</option>
+      </select>
+      <div id="cycleDays" class="cycle-fields">
+        <div class="muted" style="margin-bottom:4px;">何日ごと？（隔週=14・毎月=30）</div>
+        <input type="number" id="cleanDays" value="30" min="1">
+      </div>
+      <div id="cycleWeekday" class="cycle-fields" style="display:none;">
+        <div class="muted" style="margin-bottom:4px;">曜日を選ぶ（複数可）</div>
+        <div class="wd-grid" id="wdGrid"></div>
+      </div>
+      <button class="btn" style="margin-top:8px;width:100%;" onclick="addClean()">登録する</button>
+    </div>
+    <div id="cleanList"></div>
+  </section>
+
+  <!-- 連携（走行距離） -->
+  <section id="panel-link" class="panel">
+    <div class="ph">
+      🚗 <b>車両メンテナンス管理アプリ連携</b><br>
+      Phase3で走行距離の入力を検知して自動完了する予定です。<br>
+      それまでは下の項目を手動でチェックできます。
+    </div>
+    <div class="addrow" style="margin-top:12px;">
+      <input type="text" id="linkInput" placeholder="連携タスク名（例：走行距離の記録）">
+      <button class="btn" onclick="addLink()">追加</button>
+    </div>
+    <div id="linkList"></div>
+  </section>
+</main>
+
+<!-- スタッフ選択モーダル -->
+<div class="modal-overlay" id="staffModal">
+  <div class="modal">
+    <h2>誰が操作する？</h2>
+    <div class="muted" style="margin-bottom:10px;">選ぶと完了記録の「氏名」になります。</div>
+    <div class="staff-grid" id="staffGrid"><div class="empty">読み込み中…</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ===== 定数 ===== */
+// リマインダー専用GAS（社長デプロイ後に設定）。localStorage で上書き可。
+var REMINDER_GAS_URL = localStorage.getItem('reminder_gas_url') || '';
+// スタッフ一覧の単一の真実（既存 gyomu GAS）。読み取りのみ流用。
+var GYOMU_GAS_URL = 'https://script.google.com/macros/s/AKfycbzejQJ-JNok50wACj5XRSR13-ODvaocl9GhaHX245EFC7nPeL5jtNSyyqf21mi7DAyi/exec';
+var DOW = ['日','月','火','水','木','金','土'];
+
+var STATE = {
+  currentUser: localStorage.getItem('gyomu_current_user') || '',
+  staff: JSON.parse(localStorage.getItem('gyomu_staff_cache') || '[]'),
+  tasks: JSON.parse(localStorage.getItem('reminder_tasks_cache') || '[]'),
+  logs: JSON.parse(localStorage.getItem('reminder_logs_cache') || '[]'),
+  tab: 'buy'
+};
+
+/* ===== 純ロジック（reminder-core.js と同等・node TDD 済） ===== */
+function ymdToUTC(ymd){var p=String(ymd).slice(0,10).split('-');return Date.UTC(+p[0],+p[1]-1,+p[2]);}
+function utcToYmd(ms){var d=new Date(ms);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');}
+function daysSince(a,b){return Math.floor((ymdToUTC(b)-ymdToUTC(a))/86400000);}
+function latestWeekdayOnOrBefore(today,csv){
+  var t=String(csv).split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var base=ymdToUTC(today);
+  for(var i=0;i<7;i++){var ms=base-i*86400000;if(t.indexOf(DOW[new Date(ms).getUTCDay()])>=0)return utcToYmd(ms);}
+  return today;
+}
+function lastDoneForTask(logs,taskId){
+  var ds=(logs||[]).filter(function(l){return l.taskId===taskId;})
+    .map(function(l){return String(l.completedAt||'').slice(0,10);}).filter(Boolean);
+  if(!ds.length)return null; ds.sort(); return ds[ds.length-1];
+}
+function isDue(task,lastDone,today){
+  if(!task)return false;
+  if(task.cycleType==='days'){if(!lastDone)return true;return daysSince(lastDone,today)>=parseInt(task.cycleValue,10);}
+  if(task.cycleType==='weekday'){var a=latestWeekdayOnOrBefore(today,task.cycleValue);if(!lastDone)return true;return lastDone<a;}
+  return false;
+}
+function todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+/* ===== GAS通信 ===== */
+// JSONP GET（reminder or gyomu）
+function jsonpGet(baseUrl, params){
+  return new Promise(function(resolve,reject){
+    if(!baseUrl){reject(new Error('URL未設定'));return;}
+    var cb='_rmdCb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    var sc=document.createElement('script');
+    var to=setTimeout(function(){delete window[cb];if(sc.parentNode)sc.remove();reject(new Error('タイムアウト'));},15000);
+    window[cb]=function(d){clearTimeout(to);delete window[cb];if(sc.parentNode)sc.remove();resolve(d);};
+    params=params||{}; params.callback=cb;
+    sc.src=baseUrl+'?'+new URLSearchParams(params).toString()+'&t='+Date.now();
+    sc.onerror=function(){clearTimeout(to);delete window[cb];if(sc.parentNode)sc.remove();reject(new Error('通信エラー'));};
+    document.head.appendChild(sc);
+  });
+}
+// no-cors POST（reminder GAS書込・成否は後続getAllで確認）
+function rmdPost(data){
+  if(!REMINDER_GAS_URL){showToast('⚠️ GAS未設定のため保存できません');return Promise.resolve(false);}
+  return fetch(REMINDER_GAS_URL,{method:'POST',mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(data)})
+    .then(function(){return true;}).catch(function(){showToast('⚠️ 送信失敗');return false;});
+}
+
+/* ===== スタッフ ===== */
+function loadStaff(){
+  return jsonpGet(GYOMU_GAS_URL,{action:'getAllData'}).then(function(res){
+    if(res&&res.staff&&res.staff.length){
+      STATE.staff=res.staff;
+      localStorage.setItem('gyomu_staff_cache',JSON.stringify(res.staff));
+    }
+  }).catch(function(){/*キャッシュで継続*/});
+}
+function openStaffModal(){
+  var g=document.getElementById('staffGrid');
+  var list=STATE.staff&&STATE.staff.length?STATE.staff:['（スタッフ読込中）'];
+  g.innerHTML='';
+  list.forEach(function(name){
+    var b=document.createElement('button');
+    b.textContent=name;
+    b.onclick=function(){selectStaff(name);};
+    g.appendChild(b);
+  });
+  openModal('staffModal');
+}
+function selectStaff(name){
+  STATE.currentUser=name;
+  localStorage.setItem('gyomu_current_user',name);
+  document.getElementById('whoName').textContent=name;
+  closeModal('staffModal');
+}
+function ensureUser(){
+  if(!STATE.currentUser){openStaffModal();showToast('先にスタッフを選んでください');return false;}
+  return true;
+}
+
+/* ===== データ取得・描画 ===== */
+function reloadAll(){
+  if(!REMINDER_GAS_URL){renderAll();return Promise.resolve();}
+  return jsonpGet(REMINDER_GAS_URL,{action:'getAll'}).then(function(res){
+    if(res&&res.success){
+      STATE.tasks=res.tasks||[]; STATE.logs=res.logs||[];
+      localStorage.setItem('reminder_tasks_cache',JSON.stringify(STATE.tasks));
+      localStorage.setItem('reminder_logs_cache',JSON.stringify(STATE.logs));
+    }
+    renderAll();
+  }).catch(function(){renderAll();});
+}
+function renderAll(){renderBuy();renderClean();renderLink();}
+
+function activeTasks(tab){return STATE.tasks.filter(function(t){return t.tab===tab&&t.active;});}
+
+function renderBuy(){
+  var list=document.getElementById('buyList');
+  var items=activeTasks('buy');
+  list.innerHTML=items.length?'':'<div class="empty">買うものはありません</div>';
+  items.forEach(function(t){
+    var c=document.createElement('div');c.className='card';
+    c.innerHTML='<div class="row"><span class="name">'+esc(t.name)+'</span></div>';
+    var btn=document.createElement('button');btn.className='btn green sm';btn.textContent='買った';
+    btn.onclick=function(){doCheck(t.taskId,'「'+t.name+'」を購入');};
+    c.querySelector('.row').appendChild(btn);
+    list.appendChild(c);
+  });
+  // 履歴（buyタスクのlog・新しい順）
+  var hist=document.getElementById('buyHist');
+  var buyIds={}; STATE.tasks.forEach(function(t){if(t.tab==='buy')buyIds[t.taskId]=t.name;});
+  var rows=STATE.logs.filter(function(l){return buyIds[l.taskId];})
+    .sort(function(a,b){return b.completedAt<a.completedAt?-1:1;});
+  hist.innerHTML=rows.length?'':'<div class="empty">履歴はまだありません</div>';
+  rows.forEach(function(l){
+    var d=document.createElement('div');d.className='hist';
+    d.textContent='✔ '+(buyIds[l.taskId]||'(削除済)')+' ／ '+(l.staffName||'?')+' ／ '+fmtDt(l.completedAt);
+    hist.appendChild(d);
+  });
+}
+
+function renderCleanLike(tab,listId){
+  var list=document.getElementById(listId);
+  var items=activeTasks(tab);
+  // 未を上に、済を下に
+  var withState=items.map(function(t){
+    var ld=lastDoneForTask(STATE.logs,t.taskId);
+    return {t:t,ld:ld,due:(tab==='link'?true:isDue(t,ld,todayStr()))};
+  });
+  withState.sort(function(a,b){return (a.due===b.due)?0:(a.due?-1:1);});
+  list.innerHTML=withState.length?'':'<div class="empty">項目はありません</div>';
+  withState.forEach(function(o){
+    var t=o.t;
+    var c=document.createElement('div');c.className='card';
+    var cycleLabel=t.cycleType==='days'?('◯'+t.cycleValue+'日ごと'):
+                   t.cycleType==='weekday'?('毎週 '+t.cycleValue):'手動';
+    var statusHtml=o.due?'<span class="status due">未</span>':'<span class="status done">済</span>';
+    var doneLine='';
+    if(!o.due&&o.ld){
+      var lg=lastLog(t.taskId);
+      doneLine='<div class="done-line">済 '+o.ld+(lg?(' '+lg.staffName):'')+'</div>';
+    }
+    c.innerHTML='<div class="row">'+statusHtml+
+      '<span class="name">'+esc(t.name)+'<div class="muted">'+cycleLabel+'</div>'+doneLine+'</span></div>';
+    var btn=document.createElement('button');btn.className='btn sm '+(o.due?'green':'gray');
+    btn.textContent=o.due?'やった':'再記録';
+    btn.onclick=function(){doCheck(t.taskId,'「'+t.name+'」完了');};
+    c.querySelector('.row').appendChild(btn);
+    list.appendChild(c);
+  });
+}
+function renderClean(){renderCleanLike('clean','cleanList');}
+function renderLink(){renderCleanLike('link','linkList');}
+
+function lastLog(taskId){
+  var rows=STATE.logs.filter(function(l){return l.taskId===taskId;})
+    .sort(function(a,b){return a.completedAt<b.completedAt?1:-1;});
+  return rows[0]||null;
+}
+
+/* ===== 操作 ===== */
+function addBuy(){
+  var v=document.getElementById('buyInput').value.trim();
+  if(!v)return;
+  rmdPost({action:'addTask',tab:'buy',name:v,cycleType:'none',cycleValue:''}).then(function(){
+    document.getElementById('buyInput').value='';
+    showToast('追加しました'); setTimeout(reloadAll,800);
+  });
+}
+function addLink(){
+  var v=document.getElementById('linkInput').value.trim();
+  if(!v)return;
+  rmdPost({action:'addTask',tab:'link',name:v,cycleType:'none',cycleValue:''}).then(function(){
+    document.getElementById('linkInput').value='';
+    showToast('追加しました'); setTimeout(reloadAll,800);
+  });
+}
+function onCycleTypeChange(){
+  var ct=document.getElementById('cleanCycleType').value;
+  document.getElementById('cycleDays').style.display=ct==='days'?'block':'none';
+  document.getElementById('cycleWeekday').style.display=ct==='weekday'?'block':'none';
+}
+function addClean(){
+  var name=document.getElementById('cleanName').value.trim();
+  if(!name){showToast('項目名を入れてください');return;}
+  var ct=document.getElementById('cleanCycleType').value;
+  var cv;
+  if(ct==='days'){
+    cv=parseInt(document.getElementById('cleanDays').value,10);
+    if(!cv||cv<1){showToast('日数を入れてください');return;}
+  }else{
+    var sel=[];document.querySelectorAll('#wdGrid input:checked').forEach(function(c){sel.push(c.value);});
+    if(!sel.length){showToast('曜日を選んでください');return;}
+    cv=sel.join(',');
+  }
+  rmdPost({action:'addTask',tab:'clean',name:name,cycleType:ct,cycleValue:cv}).then(function(){
+    document.getElementById('cleanName').value='';
+    showToast('登録しました'); setTimeout(reloadAll,800);
+  });
+}
+function doCheck(taskId,msg){
+  if(!ensureUser())return;
+  rmdPost({action:'check',taskId:taskId,staff:STATE.currentUser}).then(function(){
+    showToast('✔ '+msg+'（'+STATE.currentUser+'）'); setTimeout(reloadAll,800);
+  });
+}
+
+/* ===== タブ ===== */
+function switchTab(tab){
+  STATE.tab=tab;
+  ['buy','clean','link'].forEach(function(t){
+    document.getElementById('tab-'+t).classList.toggle('active',t===tab);
+    document.getElementById('panel-'+t).classList.toggle('active',t===tab);
+  });
+}
+
+/* ===== util ===== */
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fmtDt(iso){if(!iso)return'';var d=new Date(iso);if(isNaN(d))return String(iso).slice(0,16).replace('T',' ');
+  return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+
+/* ===== 初期化 ===== */
+(function init(){
+  // 曜日チェックボックス生成（月〜日）
+  var wd=['月','火','水','木','金','土','日'];
+  var g=document.getElementById('wdGrid');
+  wd.forEach(function(d){
+    var l=document.createElement('label');
+    l.innerHTML='<input type="checkbox" value="'+d+'"> '+d;
+    g.appendChild(l);
+  });
+  if(STATE.currentUser)document.getElementById('whoName').textContent=STATE.currentUser;
+  if(!REMINDER_GAS_URL)document.getElementById('gasBanner').style.display='block';
+  renderAll();          // キャッシュで即描画
+  loadStaff();          // gyomuからスタッフ取得（裏）
+  reloadAll();          // reminder GASから最新取得（裏）
+  if(!STATE.currentUser)openStaffModal();
+})();
+</script>
+</body>
+</html>
