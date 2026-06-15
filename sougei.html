@@ -1570,7 +1570,7 @@ function renderUnit(title,key){
       } else {
         const ust=stop.user?userCellClass(effectiveUserStatus(unit,stop.user,'pick')):'';
         h+='<td class="user-cell drop-target'+ust+'"'
-          +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.pick['+ri+'].stops['+si+'].user\')"':'')
+          +(stop.user?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.pick['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
           +' ondragleave="this.classList.remove(\'drag-over\')"'
           +' ondrop="onDrop(event,\'D.'+key+'.pick['+ri+'].stops['+si+'].user\',this)"'
@@ -1674,7 +1674,7 @@ function renderUnit(title,key){
       } else {
         const ust=stop.user?userCellClass(effectiveUserStatus(unit,stop.user,'drop')):'';
         h+='<td class="user-cell drop-target'+ust+'"'
-          +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
+          +(stop.user?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
           +' ondragleave="this.classList.remove(\'drag-over\')"'
           +' ondrop="onDrop(event,\'D.'+key+'.drop['+ri+'].stops['+si+'].user\',this)"'
@@ -1792,7 +1792,7 @@ function renderDropOnly(key){
       } else {
         const ust=stop.user?userCellClass(effectiveUserStatus(unit,stop.user,'drop')):'';
         h+='<td class="user-cell drop-target'+ust+'"'
-          +(stop.user&&unit.userStatus[stop.user]!=='absent'?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
+          +(stop.user?' draggable="true" ondragstart="onDragStartRoute(event,\''+stop.user.replace(/'/g,"\\'")+'\',\'D.'+key+'.drop['+ri+'].stops['+si+'].user\')"':'')
           +' ondragover="event.preventDefault();this.classList.add(\'drag-over\')"'
           +' ondragleave="this.classList.remove(\'drag-over\')"'
           +' ondrop="onDrop(event,\'D.'+key+'.drop['+ri+'].stops['+si+'].user\',this)"'
@@ -2836,7 +2836,8 @@ function setPath(path,val){
 // ドラッグ&ドロップ（利用者リスト → ルート）
 // ═══════════════════════════════════════════════
 function onDragStart(e,name,st){
-  if(isAbsentStatus(st)){e.preventDefault();return;}
+  // 休み・長期休みでもドラッグ可。休みステータスは名前(unit.userStatus[name])に紐づくため
+  // セルを移動してもステータス・グレーアウト表示は保持される。
   e.dataTransfer.setData('text/plain',name);
   e.dataTransfer.setData('source','list');
   e.target.classList.add('dragging');
