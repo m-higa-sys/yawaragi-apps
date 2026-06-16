@@ -9119,7 +9119,7 @@ function attEditAbsence(name, dateStr) {
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
     document.body.appendChild(modal);
 
-    document.getElementById('att-edit-submit').onclick = function() {
+    document.getElementById('att-edit-submit').onclick = async function() {
         const newType = document.getElementById('att-edit-type').value;
         const newReason = document.getElementById('att-edit-reason').value;
         const newContact = document.getElementById('att-edit-contact').value.trim();
@@ -9137,8 +9137,8 @@ function attEditAbsence(name, dateStr) {
         const typeChanged = (newType !== existing.type);
 
         if (!typeChanged) {
-            // 種別不変: update_absence で直接更新（cancel→新規を廃止）
-            gasPost({
+            // 種別不変: update_absence を検証付きで更新（保存がサーバーに届いたか確認・2026-06-15 Phase0）
+            const editOk = await gasPostEditWithVerify({
                 action: 'update_absence',
                 name: name,
                 date: dateStr,
@@ -9148,7 +9148,7 @@ function attEditAbsence(name, dateStr) {
                 contact: newContact,
                 method: newMethod,
                 contactDate: newContactDate
-            }, '編集:欠席更新');
+            }, '欠席内容の更新');
 
             // 種別が長期休みなら再開予定日の更新も
             if (newType === 'longterm' && newResumeDate) {
@@ -9163,6 +9163,10 @@ function attEditAbsence(name, dateStr) {
                     }, '編集:再開予定日設定');
                 }, 1000);
             }
+
+            // 保存がサーバーで確認できなければ：モーダルは閉じず、ローカル楽観更新もしない
+            // （端末間で「変えたつもり」だけ残る取りこぼしを防ぐ。gasPostEditWithVerifyが❌トースト表示済み）
+            if (!editOk) return;
         } else {
             // 種別変更: 旧フロー (cancel → 新規登録)
             gasPost({ action: 'cancel_absence', name: name, date: dateStr, unit: existing.unit || '午前', canceller: existing.reporter || existing.contact || '' }, '編集:旧記録取消');

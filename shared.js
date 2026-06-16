@@ -206,6 +206,108 @@ function verifyAbsenceInGAS(name, date) {
     });
 }
 
+// ===== Phase0 検証付き保存（2026-06-15 欠席編集の保存取りこぼし対策） =====
+// 純関数: action=absences のサーバー行に、送った編集値が反映されたか判定。
+//   serverRow: {unit, reason, reporter, contactDate, ...}（getUpcomingAbsences由来）
+//   expected : {reason, unit, contact, contactDate}（attEditAbsenceが送る値）
+//   ・contact は サーバー側 reporter(F列=連絡者) と突合。
+//   ・cmNotified(H列)は検証しない（編集は連絡状況を触らない仕様のため）。
+//   ・前後空白は無視(trim)。null/undefined/'' は等価(空)。
+//   ・expected に無い項目は判定対象外（部分編集の許容）。
+function _absenceValueMatches_(serverRow, expected) {
+    if (!serverRow || !expected) return false;
+    var norm = function (v) { return String(v == null ? '' : v).trim(); };
+    var map = { reason: 'reason', unit: 'unit', contact: 'reporter', contactDate: 'contactDate' };
+    for (var key in map) {
+        if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
+        if (typeof expected[key] === 'undefined') continue;  // 送っていない項目は対象外
+        if (norm(expected[key]) !== norm(serverRow[map[key]])) return false;
+    }
+    return true;
+}
+
+// 純関数: action=absences レスポンスから欠席配列を取り出す。
+//   現行は data.absences.absences にネスト（getUpcomingAbsences返却形 {absences,longTerm,resumedToday}）。
+//   将来 data.absences が配列に変わっても拾えるよう両対応。取れなければ空配列。
+function _pickAbsenceList_(data) {
+    if (!data || !data.absences) return [];
+    if (Array.isArray(data.absences.absences)) return data.absences.absences;
+    if (Array.isArray(data.absences)) return data.absences;
+    return [];
+}
+
+// JSONP値検証: 編集した欠席行が、送った値どおりにサーバー(生シート)へ反映されたか確認。
+//   ・action=absences を &month=（dateの月）付きで叩く＝過去日も取得できる。
+//   ・no-cors / CORS / localStorage / GASキャッシュを全てバイパス（サーバー都度シート直読み）。
+//   ・absFindAbsenceRecord は local 優先なので検証には使わない（本物のシート値を見る）。
+function verifyAbsenceValueInGAS(name, date, expected) {
+    return new Promise(resolve => {
+        var month = String(date || '').slice(0, 7);  // 'YYYY-MM'
+        const cbName = '_verifyAbsVal_' + Date.now();
+        const script = document.createElement('script');
+        script.src = YAWARAGIBOARD_API_URL + '?action=absences&month=' + month +
+                     '&callback=' + cbName + '&t=' + Date.now();
+        const timeout = setTimeout(() => {
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            resolve(false);
+        }, 8000);
+        window[cbName] = function (data) {
+            clearTimeout(timeout);
+            delete window[cbName];
+            if (script.parentNode) script.remove();
+            if (!data || !data.success) { resolve(false); return; }
+            const row = _pickAbsenceList_(data).find(a => a.name === name && a.date === date);
+            resolve(_absenceValueMatches_(row, expected));
+        };
+        script.onerror = () => {
+            clearTimeout(timeout);
+            delete window[cbName];
+            resolve(false);
+        };
+        document.body.appendChild(script);
+    });
+}
+
+// 欠席編集の検証付きPOST（POST後にJSONP値検証。送った値に一致するまで最大3回再送）。
+//   data: update_absence のペイロード（name/date/originalUnit/newUnit/reason/contact/contactDate）。
+//   既存 gasPostAbsenceWithVerify（登録系・存在チェック）とは別物。編集は値一致まで見る。
+async function gasPostEditWithVerify(data, label) {
+    const maxRetries = 3;
+    const expected = {
+        reason: data.reason,
+        unit: data.newUnit,
+        contact: data.contact,
+        contactDate: data.contactDate
+    };
+    for (let i = 1; i <= maxRetries; i++) {
+        try {
+            await fetch(YAWARAGIBOARD_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+        } catch (err) {
+            console.error('GAS送信エラー (' + i + '/' + maxRetries + ')', err);
+            if (i < maxRetries) { await new Promise(r => setTimeout(r, 2000)); continue; }
+            showToast('❌ 送信に失敗しました。ネットワークを確認してください', 5000);
+            return false;
+        }
+        // 3秒待ってから、送った値どおりに保存されたか検証
+        await new Promise(r => setTimeout(r, 3000));
+        const verified = await verifyAbsenceValueInGAS(data.name, data.date, expected);
+        if (verified) {
+            showToast('✅ ' + (label || '保存') + ' 完了（保存確認済み）', 3000);
+            notifyAbsenceUpdate(data.date || '');
+            return true;
+        }
+        console.warn('編集の値検証失敗 (' + i + '/' + maxRetries + ')');
+    }
+    showToast('❌ 保存できませんでした。もう一度試してください', 5000);
+    return false;
+}
+
 /* ===== §D-2 出席データのヘッドレス取得（2026-06-07 board分割パイロット P1-3） =====
    attLoad（出席予定タブ本体）から「AttStore投入」だけを切り出した最小版。
    画面描画・UserStore補完・ローカル欠席マージ等の副作用は一切持たない。
