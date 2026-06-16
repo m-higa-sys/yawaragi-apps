@@ -1475,6 +1475,25 @@
             String(d.getMonth() + 1).padStart(2, '0') + '-' +
             String(d.getDate()).padStart(2, '0');
     }
+
+    // 中止操作ゲート（請求漏れ防止）: 解禁日 = 最終利用日の「翌月」の「11日」
+    // 理由: けあ蔵→国保連の伝送締めが翌月10日。11日以降なら最終利用月の請求は確定済みとみなせる。
+    // ※ 比較は yyyy-MM-dd 文字列の辞書順で行い、new Date の生比較によるUTCズレ（5時台バグ）を避ける
+    function trmCancelUnlockDate(lastUseDate) {
+        if (!lastUseDate) return '';
+        const parts = String(lastUseDate).split('-');
+        if (parts.length !== 3) return '';
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10); // 1..12（最終利用日の月）
+        // 0-indexed 月で翌月=m。new Date(y, m, 11)=翌月11日。12月(m=12)→翌年1月11日も自動繰上げ。
+        return toLocalDateStr(new Date(y, m, 11));
+    }
+    // ロック判定: 今日 < 解禁日 → true（中止操作チェック不可）
+    function trmIsCancelLocked(lastUseDate, todayStr) {
+        const unlock = trmCancelUnlockDate(lastUseDate);
+        if (!unlock) return false; // 最終利用日不明なら誤ロックしない（業務停止を避ける）
+        return (todayStr || toLocalDateStr()) < unlock; // zero-pad済 yyyy-MM-dd の辞書順比較
+    }
     
     function trmClearName() {
         document.getElementById('trm-name-input').value = '';
@@ -1679,6 +1698,11 @@
         const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isShienMode || t.tasks.kotraining);
         // 段階2: リハブクラウドで利用中止操作（請求対象から外す・必須・2026-05-20順序変更）
         const stage2Done = stage1Done && t.tasks.rihab_chushi;
+        // 中止操作ゲート（請求漏れ防止）: 最終利用月の国保連請求が終わる前の中止操作をロック
+        const cancelLocked = trmIsCancelLocked(t.lastUseDate, toLocalDateStr());
+        const cancelUnlock = trmCancelUnlockDate(t.lastUseDate);
+        const lastUseMonth = (t.lastUseDate && t.lastUseDate.split('-').length === 3) ? parseInt(t.lastUseDate.split('-')[1], 10) : '';
+        const unlockMD = cancelUnlock ? (parseInt(cancelUnlock.split('-')[1], 10) + '/' + parseInt(cancelUnlock.split('-')[2], 10)) : '';
         // 段階3: 要支援なら科学的のみ、要介護なら科学的＋ADL両方
         const stage3Done = stage2Done && t.tasks.kagakuteki && (isShienMode || t.tasks.adl);
         const allDone = stage3Done;
@@ -1723,7 +1747,11 @@
                         ? '段階1完了 → リハブで利用中止操作（請求対象から外す）'
                         : '段階1完了後にチェック可能') +
                 '</div>' +
-                trmTaskItem(t, 'rihab_chushi', 'リハブクラウドで利用中止操作', !stage1Done) +
+                trmTaskItem(t, 'rihab_chushi', 'リハブクラウドで利用中止操作', !stage1Done || cancelLocked) +
+                // 中止操作ゲート: 解禁日前は赤字警告でロック理由を明示、解禁後は控えめな緑で経過を表示
+                (cancelLocked
+                    ? '<div style="color:#c0392b;font-weight:600;font-size:0.8rem;margin:4px 0 2px 26px;">⚠️ ' + lastUseMonth + '月分の国保連請求がまだ。中止操作は ' + unlockMD + ' 以降に</div>'
+                    : (cancelUnlock ? '<div style="color:#2e7d32;font-size:0.78rem;margin:2px 0 2px 26px;opacity:0.85;">✓ ' + lastUseMonth + '月分の請求期間を経過。中止操作OK</div>' : '')) +
     
                 // 段階3: 科学的＋ADL（段階2完了後＝リハブ中止操作後に作業）
                 '<div class="trm-task-step-label ' + (stage2Done ? 'active' : '') + '" style="margin-top:8px;">' +
