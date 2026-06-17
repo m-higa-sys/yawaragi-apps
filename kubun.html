@@ -72,7 +72,13 @@
     .yoyaku-card-actions .btn-apply-now { color: #047857; border-color: #6ee7b7; }
     .yoyaku-section-hint { font-size: 0.78rem; color: #718096; margin: 4px 0 12px; }
     .yoyaku-empty-state { font-size: 0.85rem; color: #a0aec0; padding: 12px; text-align: center; }
-    
+    /* 区変モーダル 自前サジェスト（datalist置換） */
+    #kbnSuggest { position: absolute; z-index: 9999; background: #fff; border: 1px solid #ccc;
+      max-height: 240px; overflow-y: auto; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,.12);
+      border-radius: 0 0 8px 8px; display: none; }
+    .kbn-sg-item { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 0.92rem; }
+    .kbn-sg-item:hover { background: #eef; }
+
   </style>
 </head>
 <body>
@@ -149,8 +155,10 @@
       
                   <div style="margin-bottom:12px;">
                       <label style="display:block; font-weight:600; margin-bottom:4px;">利用者</label>
-                      <input type="text" id="kubun-set-name" list="kubun-set-users-list" autocomplete="off" oninput="refreshKubunSetCurrentDays()" onchange="refreshKubunSetCurrentDays()" placeholder="名前の一部を入力（漢字・ひらがな両方OK）" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
-                      <datalist id="kubun-set-users-list"></datalist>
+                      <div style="position:relative;">
+                          <input type="text" id="kubun-set-name" autocomplete="off" oninput="refreshKubunSetCurrentDays()" onchange="refreshKubunSetCurrentDays()" placeholder="名前の一部を入力（漢字・ひらがな両方OK）" style="width:100%; padding:8px 12px; border:2px solid #e2e8f0; border-radius:8px; font-size:0.95rem;">
+                          <div id="kbnSuggest"></div>
+                      </div>
                       <div id="kubun-set-name-hint" style="font-size:0.75rem; color:#718096; margin-top:4px;"></div>
                   </div>
       
@@ -1534,11 +1542,89 @@
         }
     }
     
+    // ===== 区変モーダル 自前サジェスト（datalist置換・ふりがな対応） =====
+    // 名前検索の正規化：NFKC・カナ→ひらがな・空白除去・主要異体字吸収・小文字化
+    function kbnNormalizeName(s) {
+        if (!s) return '';
+        return String(s).normalize('NFKC')
+            .replace(/[ァ-ヶ]/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0x60); })
+            .replace(/[\s　]+/g, '')
+            .replace(/髙/g, '高').replace(/﨑|嵜/g, '崎').replace(/邊|邉/g, '辺')
+            .toLowerCase();
+    }
+    // 氏名・ふりがな両方を部分一致
+    function kbnMatchUser(u, q) {
+        var nq = kbnNormalizeName(q);
+        if (!nq) return false;
+        return kbnNormalizeName(u.name).indexOf(nq) >= 0 || kbnNormalizeName(u.reading || '').indexOf(nq) >= 0;
+    }
+    var kbnCandidates = [];   // renderList が供給する候補母集合（区変中は除外済み・五十音順）
+    var kbnActive = -1;       // キーボード選択中のindex
+    function kbnEsc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c];
+        });
+    }
+    function renderKbnSuggest() {
+        var input = document.getElementById('kubun-set-name');
+        var box = document.getElementById('kbnSuggest');
+        if (!input || !box) return;
+        var q = input.value;
+        var list = q ? kbnCandidates.filter(function(u) { return kbnMatchUser(u, q); }) : kbnCandidates;
+        if (!list.length) { box.style.display = 'none'; return; }
+        box.innerHTML = list.map(function(u, i) {
+            var sub = u.reading || '';
+            if (u.terminated) { sub = '[中止' + (u.lastUseDate ? ' 最終' + u.lastUseDate : '') + '] ' + sub; }
+            return '<div class="kbn-sg-item" data-name="' + kbnEsc(u.name) + '" data-i="' + i + '">' +
+                   '<span>' + kbnEsc(u.name) + '</span>' +
+                   '<small style="color:#888;margin-left:8px">' + kbnEsc(sub) + '</small></div>';
+        }).join('');
+        box.style.display = 'block';
+        kbnActive = -1;
+    }
+    function kbnPick(name) {
+        var input = document.getElementById('kubun-set-name');
+        var box = document.getElementById('kbnSuggest');
+        if (input) input.value = name;
+        if (box) box.style.display = 'none';
+        // 確定値は kubun-set-name.value を直読みする側（refreshKubunSetCurrentDays / submitKubunSet）に合わせ、日数表示を連動更新
+        if (typeof refreshKubunSetCurrentDays === 'function') refreshKubunSetCurrentDays();
+    }
+    function wireKbnSuggest() {
+        var input = document.getElementById('kubun-set-name');
+        var box = document.getElementById('kbnSuggest');
+        if (!input || !box || input._kbnWired) return; // 二重結線ガード（モーダルは複数回開く）
+        input._kbnWired = true;
+        // 入力中も走らせる（isComposingで早期returnしない）＋ 変換確定でも再描画
+        input.addEventListener('input', renderKbnSuggest);
+        input.addEventListener('compositionend', renderKbnSuggest);
+        input.addEventListener('focus', renderKbnSuggest);
+        input.addEventListener('keydown', function(e) {
+            var items = box.querySelectorAll('.kbn-sg-item');
+            if (!items.length || box.style.display === 'none') return;
+            if (e.key === 'ArrowDown') { kbnActive = Math.min(kbnActive + 1, items.length - 1); e.preventDefault(); }
+            else if (e.key === 'ArrowUp') { kbnActive = Math.max(kbnActive - 1, 0); e.preventDefault(); }
+            else if (e.key === 'Enter') { if (kbnActive >= 0) { kbnPick(items[kbnActive].dataset.name); e.preventDefault(); } return; }
+            else if (e.key === 'Escape') { box.style.display = 'none'; return; }
+            else { return; }
+            items.forEach(function(el, i) {
+                el.style.background = i === kbnActive ? '#eef' : '';
+                if (i === kbnActive && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+            });
+        });
+        box.addEventListener('mousedown', function(e) {
+            var it = e.target.closest('.kbn-sg-item');
+            if (it) { e.preventDefault(); kbnPick(it.dataset.name); }
+        });
+        document.addEventListener('click', function(e) {
+            if (!box.contains(e.target) && e.target !== input) box.style.display = 'none';
+        });
+    }
+
     function openKubunSetModal() {
         const input = document.getElementById('kubun-set-name');
-        const datalist = document.getElementById('kubun-set-users-list');
         const hint = document.getElementById('kubun-set-name-hint');
-        if (!input || !datalist) return;
+        if (!input) return;
     
         let kubunTerminations = _kubunTerminationsCache.slice(); // 前回キャッシュから初期化
     
@@ -1570,27 +1656,19 @@
                 return ra.localeCompare(rb, 'ja');
             });
     
-            datalist.innerHTML = '';
-            let displayCount = 0, terminatedCount = 0;
-            sorted.forEach(function(u) {
-                if (activeSet[u.name]) return; // 区変中の人は除外
-                const opt = document.createElement('option');
-                opt.value = u.name;
-                let label = u.reading || '';
-                if (u.terminated) {
-                    label = '[中止' + (u.lastUseDate ? ' 最終' + u.lastUseDate : '') + '] ' + label;
-                    terminatedCount++;
-                }
-                if (label) opt.label = label;
-                datalist.appendChild(opt);
-                displayCount++;
-            });
+            // 区変中の人を除外した母集合を自前サジェストへ供給（datalist撤去）
+            kbnCandidates = sorted.filter(function(u) { return !activeSet[u.name]; });
+            let displayCount = kbnCandidates.length, terminatedCount = 0;
+            kbnCandidates.forEach(function(u) { if (u.terminated) terminatedCount++; });
             if (hint) {
                 let txt = '候補 ' + displayCount + '名';
                 if (terminatedCount > 0) txt += '（うち中止済み/予定 ' + terminatedCount + '名）';
                 txt += '（入力で絞り込み）';
                 hint.textContent = txt;
             }
+            // 既にサジェストが開いていれば最新候補で再描画
+            var _kbnBox = document.getElementById('kbnSuggest');
+            if (_kbnBox && _kbnBox.style.display === 'block') renderKbnSuggest();
         };
     
         // 区変日デフォルト = 今日
@@ -1636,7 +1714,8 @@
         onKubunSetApplyChange();
     
         openModal('kubun-set-modal');
-    
+        wireKbnSuggest();
+
         renderList();
         if (typeof absLoadUsersFromAPI === 'function') {
             if (hint) hint.textContent = '利用者台帳を最新取得中...';
