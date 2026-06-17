@@ -307,6 +307,9 @@
             box-shadow: 0 4px 16px rgba(0,0,0,0.2);
         }
         .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.toast-error { background: #c0392b; }
+        /* 配置オートセーブ：保存完了時にカード枠を一瞬グリーン */
+        .haichi-saved-flash { outline: 3px solid #38a169 !important; outline-offset: 1px; transition: outline-color 0.4s ease; }
         .staff-color-0 { background: #3182ce; }
         .staff-color-1 { background: #dd6b20; }
         .staff-color-2 { background: #38a169; }
@@ -1707,7 +1710,6 @@
         <textarea id="assign-memo" placeholder="例: 今日は〇〇さんに③を経験させたい"></textarea>
     </div>
     <div class="save-bar">
-        <button class="save-btn primary" onclick="saveAssignment()">保存する</button>
         <button class="save-btn secondary" onclick="clearAssignment()">この枠をクリア</button>
     </div>
 </div>
@@ -1994,6 +1996,28 @@ function setAssignment(date, unit, assignment) {
 function autoSave() {
     currentAssignment.memo = document.getElementById('assign-memo').value;
     setAssignment(currentDate, currentUnit, currentAssignment);
+}
+
+// 配置のオートセーブ（選択即保存）。localStorageへ即時保存し、
+// 連続選択時のトースト乱発を防ぐためフィードバック表示のみデバウンスする。
+let _haichiSaveTimer = null;
+function autoSaveFeedback(posId) {
+    try {
+        autoSave(); // localStorageへ即時保存（取りこぼし防止）
+    } catch (e) {
+        showToast('保存失敗・もう一度タップ', 2500, true);
+        return;
+    }
+    // 操作したカード枠を一瞬グリーン（共有1台運用でも保存を視認できるように）
+    if (posId != null) {
+        const el = document.getElementById('assign-' + posId);
+        if (el) {
+            el.classList.add('haichi-saved-flash');
+            setTimeout(() => el.classList.remove('haichi-saved-flash'), 600);
+        }
+    }
+    if (_haichiSaveTimer) clearTimeout(_haichiSaveTimer);
+    _haichiSaveTimer = setTimeout(() => showToast('✓保存しました'), 400);
 }
 
 // ========== 配置状態管理 ==========
@@ -2380,6 +2404,7 @@ function selectStaff(name, posId) {
     const idx = arr.indexOf(name);
     if (idx >= 0) { arr.splice(idx, 1); } else { arr.push(name); }
     renderAssignments();
+    autoSaveFeedback(posId);
     closeModal('staff-modal');
 }
 
@@ -2390,6 +2415,7 @@ function removeStaff(posId, name) {
     returnAllCardsOfStaff(name);
     renderAssignments();
     renderKarutaPile();
+    autoSaveFeedback(posId);
 }
 
 // ========== 業務かるた取り ==========
@@ -2907,9 +2933,10 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
     o.addEventListener('click', (e) => { if (e.target === o) o.classList.remove('show'); });
 });
 
-function showToast(msg, duration) {
+function showToast(msg, duration, isError) {
     const t = document.getElementById('toast');
     t.textContent = msg;
+    t.classList.toggle('toast-error', !!isError);
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), duration || 2000);
 }
