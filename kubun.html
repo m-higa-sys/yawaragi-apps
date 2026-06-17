@@ -1558,6 +1558,42 @@
         if (!nq) return false;
         return kbnNormalizeName(u.name).indexOf(nq) >= 0 || kbnNormalizeName(u.reading || '').indexOf(nq) >= 0;
     }
+
+    // ===== 現役利用者ローダー（分割アプリkubun.htmlにはモノリスの absLoadUsersFromAPI が無く、
+    //        UserStoreが空のまま＝候補に現役利用者が出なかった。利用者台帳APIから name+ふりがな を最小移植） =====
+    var KBN_USER_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPDnaVvnt2FjU798fRTws1PoDJoLPOi3AmGwcVp-dBkj2zgblVBCEFe1pQ/exec';
+    // API応答(users配列 or patterns辞書)→[{name, reading}]（純関数・DOM非依存）
+    function kbnMapUsers(data) {
+        if (!data) return [];
+        var raw = Array.isArray(data.users) ? data.users : [];
+        if (!raw.length && data.patterns && typeof data.patterns === 'object') {
+            raw = Object.keys(data.patterns).map(function(name) {
+                var p = data.patterns[name] || {};
+                return { name: name, kana: p.kana || '' };
+            });
+        }
+        return raw.map(function(u) { return { name: u.name || '', reading: u.kana || u.reading || '' }; })
+                  .filter(function(u) { return u.name; });
+    }
+    // shared.js UserStore.loadFromAPI / 区変モーダル / 起動時ロード が typeof で委譲する正式名
+    function absLoadUsersFromAPI() {
+        return new Promise(function(resolve, reject) {
+            var cb = 'kbnUserCb_' + Date.now();
+            window[cb] = function(data) {
+                delete window[cb];
+                var s = document.getElementById('kbn-user-script'); if (s) s.remove();
+                if (!data || data.error) { reject(data && data.error); return; }
+                UserStore._set(kbnMapUsers(data)); // _loaded もここで立つ
+                resolve(UserStore.get());
+            };
+            var script = document.createElement('script');
+            script.id = 'kbn-user-script';
+            script.src = KBN_USER_API_URL + '?callback=' + cb + '&t=' + Date.now();
+            script.onerror = function() { delete window[cb]; reject('利用者台帳API取得失敗'); };
+            document.body.appendChild(script);
+        });
+    }
+
     var kbnCandidates = [];   // renderList が供給する候補母集合（区変中は除外済み・五十音順）
     var kbnActive = -1;       // キーボード選択中のindex
     function kbnEsc(s) {

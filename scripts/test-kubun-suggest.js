@@ -37,6 +37,10 @@ const kbnMatchUser = (function () {
   // eslint-disable-next-line no-eval
   return eval('(' + extractFn('kbnMatchUser') + ')');
 })();
+const kbnMapUsers = (function () {
+  // eslint-disable-next-line no-eval
+  return eval('(' + extractFn('kbnMapUsers') + ')');
+})();
 
 // --- ミニテストランナー ---
 let pass = 0, fail = 0;
@@ -76,6 +80,23 @@ ok('髙山「髙山」(原字)でヒット', kbnMatchUser(takayama, '髙山') ==
 // reading空でも氏名で当たる / 空クエリは false
 ok('reading空でも漢字氏名でヒット', kbnMatchUser(noReading, '佐藤') === true);
 ok('空クエリは常に不一致', kbnMatchUser(tanaka, '') === false && kbnMatchUser(tanaka, '　 ') === false);
+
+// ===== kbnMapUsers（利用者台帳API応答→[{name,reading}]） =====
+ok('patterns形からname+reading(kana)',
+  JSON.stringify(kbnMapUsers({ patterns: { '長澤よし': { kana: 'ナガサワヨシ' } } })) === JSON.stringify([{ name: '長澤よし', reading: 'ナガサワヨシ' }]));
+ok('users配列形からname+reading',
+  JSON.stringify(kbnMapUsers({ users: [{ name: '田中', kana: 'タナカ' }] })) === JSON.stringify([{ name: '田中', reading: 'タナカ' }]));
+ok('users優先(両方あればusers)', kbnMapUsers({ users: [{ name: 'A', kana: 'a' }], patterns: { B: { kana: 'b' } } }).length === 1);
+ok('null/空で空配列', kbnMapUsers(null).length === 0 && kbnMapUsers({}).length === 0);
+ok('name欠落行は除外', kbnMapUsers({ users: [{ kana: 'x' }, { name: '実在', kana: 'y' }] }).length === 1);
+
+// ===== 統合：台帳ロード→ふりがな照合（本丸 長澤よし の再現） =====
+(function () {
+  var pool = kbnMapUsers({ patterns: { '長澤よし': { kana: 'ナガサワヨシ' }, '荒谷宗親': { kana: 'アラタニ ムネチカ' } } });
+  ok('★統合 「ながさわ」で長澤よしヒット', pool.some(function (u) { return kbnMatchUser(u, 'ながさわ'); }));
+  ok('★統合 「長澤」で長澤よしヒット', pool.some(function (u) { return kbnMatchUser(u, '長澤'); }));
+  ok('統合 かな空白入り「あらたに」ヒット', pool.some(function (u) { return kbnMatchUser(u, 'あらたに'); }));
+})();
 
 console.log('\n結果: ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail === 0 ? 0 : 1);
