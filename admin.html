@@ -33,8 +33,6 @@ h1 {
   padding: 12px 16px 16px;
   border-radius: 14px;
   border: 2px solid;
-  background: #fff;
-  border-color: #cfd8dc;
 }
 .category-title {
   font-size: 1.05em;
@@ -62,7 +60,6 @@ h1 {
   font-weight: 600;
   transition: transform 0.1s, box-shadow 0.1s;
   -webkit-tap-highlight-color: transparent;
-  border: 1px solid #eceff1;
 }
 .app-btn:active {
   transform: scale(0.97);
@@ -73,15 +70,20 @@ h1 {
   font-size: 0.65em; color: #b71c1c; background: #ffebee;
   border-radius: 4px; padding: 1px 5px; margin-left: auto; font-weight: 700;
 }
-/* カテゴリ色 */
-.cat-color-0 { border-color: #ff9800; }
-.cat-color-1 { border-color: #66bb6a; }
-.cat-color-2 { border-color: #42a5f5; }
-.cat-color-3 { border-color: #26a69a; }
-.cat-color-4 { border-color: #ab47bc; }
-.cat-color-5 { border-color: #a1887f; }
-.cat-color-6 { border-color: #ffca28; }
-.cat-color-7 { border-color: #ec407a; }
+/* カテゴリ色（portal.html と共通の見た目） */
+.cat-main { background: #fff3e0; border-color: #ff9800; }
+.cat-daily { background: #e8f5e9; border-color: #66bb6a; }
+.cat-user { background: #e3f2fd; border-color: #42a5f5; }
+.cat-soudan { background: #e0f2f1; border-color: #26a69a; }
+.cat-monthly { background: #f3e5f5; border-color: #ab47bc; }
+.cat-equip { background: #efebe9; border-color: #a1887f; }
+.cat-rule { background: #fffde7; border-color: #ffca28; }
+.cat-extra { background: #fff; border-color: #cfd8dc; }
+.app-main { font-size: 1.2em; padding: 20px 24px; border: 2px solid #ff9800; min-height: 70px; }
+.app-main .icon { font-size: 2em; width: 50px; }
+.cat-main .apps { grid-template-columns: 1fr; }
+/* 社長専用（ハードコード） */
+.cat-ceo { background: #e8eaf6; border-color: #5c6bc0; }
 /* 経営系（ローカル） */
 .cat-local { background: #fce4ec; border-color: #ec407a; }
 .local-note {
@@ -119,7 +121,7 @@ h1 {
 <body>
 
 <h1>yawaragi アプリ一覧（社長用）</h1>
-<p class="subtitle">全部載せ版 ／ アプリ台帳から自動表示</p>
+<p class="subtitle">全部載せ版 ／ アプリ台帳から自動表示（portal と同じ並び＋internal＋社長専用）</p>
 
 <!-- 管理キー入力（鍵はこの端末のブラウザにだけ保存。ページのソースには一切書かない） -->
 <div class="keybox" id="keybox" style="display:none;">
@@ -132,7 +134,15 @@ h1 {
 
 <div class="status" id="status">読み込み中…</div>
 
-<!-- 台帳から自動生成される本体 -->
+<!-- 社長専用（台帳に載せず固定表示） -->
+<section class="category cat-ceo">
+  <h2 class="category-title">🏖️ 社長専用</h2>
+  <div class="apps">
+    <a class="app-btn" href="yukyu.html"><span class="icon">🏖️</span>有給管理</a>
+  </div>
+</section>
+
+<!-- 台帳から自動生成される本体（scope=all・internalはバッジ・retired除外） -->
 <div id="registry"></div>
 
 <!-- 経営データ系（ローカル参照・公開URLには出していません＝案A） -->
@@ -170,16 +180,11 @@ h1 {
   <a href="#" id="resetkey">管理キーを再入力</a>
 </p>
 
+<script src="applauncher-render.js"></script>
 <script>
-// ===== アプリ台帳 自動読込（足し忘れゼロ：台帳に1行足せばここに自動で載る） =====
+// ===== アプリ台帳 自動読込（scope=all・adminKey必須。描画は portal と共通の applauncher-render.js） =====
 var REGISTRY_API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 var KEY_STORE = 'yawaragi_admin_key';
-// カテゴリ表示順（台帳の値に合わせる。未知カテゴリは末尾に回す）
-var CAT_ORDER = ['メインボード','毎日の業務','利用者の記録','相談員業務','月次・連絡','事務・手続き','設備・備品','ルール参考','その他','(未分類)'];
-var CAT_ICON = {
-  'メインボード':'📋','毎日の業務':'🚐','利用者の記録':'📊','相談員業務':'🧑‍💼',
-  '月次・連絡':'📅','事務・手続き':'🗂','設備・備品':'🛠','ルール参考':'📚','その他':'📌','(未分類)':'📦'
-};
 
 function $(id){ return document.getElementById(id); }
 function getKey(){ try { return localStorage.getItem(KEY_STORE) || ''; } catch(e){ return ''; } }
@@ -203,73 +208,14 @@ function load(){
     .then(function(data){
       if (data && data.error){ clearKey(); showKeyBox('管理キーが正しくないようです。もう一度入力してください。'); return; }
       if (!Array.isArray(data)){ $('status').textContent='台帳の形式が想定外でした。'; $('status').className='status err'; return; }
-      render(data);
+      var total = LauncherRender.render(data, $('registry'), { includeInternal: true });
+      $('status').textContent = '台帳から ' + total + ' アプリを表示中（internalはバッジ表示・retired除外・台帳に1行足せば自動で増えます）';
+      $('status').className = 'status';
     })
-    .catch(function(e){
+    .catch(function(){
       $('status').textContent='読み込みに失敗しました（通信エラー）。時間をおいて再読み込みしてください。';
       $('status').className='status err';
     });
-}
-
-// 安全なURLか（javascript: 等を弾く。台帳は誰でも書ける前提でXSS防止）
-function safeHref(u){
-  if (typeof u !== 'string') return '';
-  return /^https?:\/\//i.test(u) ? u : '';
-}
-
-function render(apps){
-  // URLで重複排除（個別機能訓練計画書の二重登録などを吸収）
-  var seen = {}, list = [];
-  apps.forEach(function(a){
-    if (a['公開区分'] === 'retired') return;   // 廃止・重複でリタイアした行は表示しない
-    var u = safeHref(a['スタッフ用URL']);
-    if (!u) return;                 // URL無し・不正は載せない
-    var k = u.toLowerCase();
-    if (seen[k]) return;
-    seen[k] = true; list.push(a);
-  });
-  // カテゴリでまとめる
-  var groups = {};
-  list.forEach(function(a){
-    var c = a['カテゴリ'] || '(未分類)';
-    (groups[c] = groups[c] || []).push(a);
-  });
-  var cats = Object.keys(groups).sort(function(x,y){
-    var ix=CAT_ORDER.indexOf(x), iy=CAT_ORDER.indexOf(y);
-    if (ix<0) ix=999; if (iy<0) iy=999;
-    return ix-iy || x.localeCompare(y,'ja');
-  });
-  var root = $('registry');
-  root.textContent = '';
-  var colorIdx = 0, total = 0;
-  cats.forEach(function(c){
-    var sec = document.createElement('section');
-    sec.className = 'category cat-color-' + (colorIdx % 8); colorIdx++;
-    var h = document.createElement('h2');
-    h.className = 'category-title';
-    h.textContent = (CAT_ICON[c] || '📁') + ' ' + c;
-    sec.appendChild(h);
-    var wrap = document.createElement('div');
-    wrap.className = 'apps';
-    groups[c].sort(function(a,b){ return (a['アプリ名']||'').localeCompare(b['アプリ名']||'','ja'); });
-    groups[c].forEach(function(a){
-      var btn = document.createElement('a');
-      btn.className = 'app-btn';
-      btn.setAttribute('href', safeHref(a['スタッフ用URL']));
-      var ic = document.createElement('span'); ic.className='icon'; ic.textContent = CAT_ICON[c] || '📄';
-      var nm = document.createElement('span'); nm.textContent = a['アプリ名'] || '(名称未設定)';
-      btn.appendChild(ic); btn.appendChild(nm);
-      if (a['説明']) btn.setAttribute('title', a['説明']);
-      if (a['公開区分'] === 'internal'){
-        var bd = document.createElement('span'); bd.className='badge-internal'; bd.textContent='内部'; btn.appendChild(bd);
-      }
-      wrap.appendChild(btn); total++;
-    });
-    sec.appendChild(wrap);
-    root.appendChild(sec);
-  });
-  $('status').textContent = '台帳から ' + total + ' アプリを表示中（台帳に1行足せば自動で増えます）';
-  $('status').className = 'status';
 }
 
 $('keysave').addEventListener('click', function(){
