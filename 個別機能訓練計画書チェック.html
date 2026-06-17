@@ -522,20 +522,21 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
                 <button class="ok" onclick="saveHyoukaTasseido()">達成度を保存</button>
             </div>
         </div>
-        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
-            <div style="font-weight:600; margin-bottom:6px;">📄 PDF送付（ケアマネ提出）</div>
+        <div id="hyoukaMethodHint" style="display:none; margin:6px 0; padding:6px 10px; border-radius:6px; font-size:0.82rem;"></div>
+        <div id="hyoukaPdfSection" style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">📧 PDFで送付（メール/FAX）</div>
             <input type="date" id="hyoukaPdfInput" style="width:100%;">
             <div class="btn-row" style="margin-top:6px;">
                 <button class="clear" onclick="clearHyoukaField('hyouka_pdf_date')">クリア</button>
-                <button class="ok" onclick="saveHyoukaField('hyouka_pdf_date')">PDF保存</button>
+                <button class="ok" onclick="saveHyoukaField('hyouka_pdf_date')">PDF送付を記録</button>
             </div>
         </div>
-        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
-            <div style="font-weight:600; margin-bottom:6px;">🖨 印刷送付</div>
+        <div id="hyoukaPrintSection" style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">🖨 印刷で送付（持参/郵送）</div>
             <input type="date" id="hyoukaPrintInput" style="width:100%;">
             <div class="btn-row" style="margin-top:6px;">
                 <button class="clear" onclick="clearHyoukaField('hyouka_print_date')">クリア</button>
-                <button class="ok" onclick="saveHyoukaField('hyouka_print_date')">印刷保存</button>
+                <button class="ok" onclick="saveHyoukaField('hyouka_print_date')">印刷送付を記録</button>
             </div>
         </div>
         <div class="btn-row" style="margin-top:10px;">
@@ -1037,10 +1038,18 @@ function renderTable() {
                         || isPending(u.userId, cellYear, mo.m, 'hyouka_print_date')
                         || isPending(u.userId, cellYear, mo.m, 'tasseido_date')) cls += ' pending';
 
+                    // 送付方法バッジ（PDF=メール/FAX, 印刷=持参/郵送）。sendMethod未配信時は無表示で従来動作。
+                    const sm = u.sendMethod || '';
+                    const smBadge = sm === '印刷'
+                        ? '<span style="font-size:0.62rem; color:#9c4221; font-weight:700;">🖨印刷' + (u.sendMethodOverride ? '✎' : '') + '</span>'
+                        : sm === 'PDF'
+                            ? '<span style="font-size:0.62rem; color:#2b6cb0; font-weight:700;">📧PDF' + (u.sendMethodOverride ? '✎' : '') + '</span>'
+                            : '';
                     let inner = '';
                     if (hyoukaBlocked) {
                         inner = '<div style="font-size:0.9rem;">⏸</div>';
                     } else {
+                        if (smBadge) inner += '<div>' + smBadge + '</div>';
                         if (tasseido) inner += '<div style="font-size:0.72rem; color:#2c3e50;">達成度 ' + formatMD(tasseido) + '</div>';
                         // 提出ステータス（達成度実施済みのときに意味を持つ）
                         if (submitted) {
@@ -1058,6 +1067,7 @@ function renderTable() {
                           + ' data-month="' + mo.m + '"'
                           + ' data-field="hyouka"'
                           + ' data-fieldlabel="評価"'
+                          + ' data-sendmethod="' + escapeAttr(sm) + '"'
                           + ' onclick="onHyoukaCellTap(this)">' + inner + '</td>';
                     return;
                 }
@@ -1480,19 +1490,42 @@ function onHyoukaCellTap(td) {
     const name = td.dataset.name;
     const year = parseInt(td.dataset.year, 10);
     const month = parseInt(td.dataset.month, 10);
-    openHyoukaDialog(userId, name, year, month);
+    openHyoukaDialog(userId, name, year, month, td.dataset.sendmethod || '');
 }
 
-function openHyoukaDialog(userId, name, year, month) {
+function openHyoukaDialog(userId, name, year, month, sendMethod) {
     hyoukaDialogState = { userId, name, year, month };
     const key = userId + '_' + year + '_' + month;
     const rec = state.records[key] || { hyouka_pdf_date: '', hyouka_print_date: '' };
+    // sendMethod未指定なら state.users から補完（ダイアログ再描画時など）
+    if (sendMethod === undefined || sendMethod === null) {
+        const u = state.users.find(x => x.userId === userId);
+        sendMethod = u ? (u.sendMethod || '') : '';
+    }
     document.getElementById('hyoukaDialogTitle').textContent = name + '  ' + month + '月の評価';
     document.getElementById('hyoukaDialogSub').textContent =
         'PDF: ' + (rec.hyouka_pdf_date || '(未送付)') + ' ／ 印刷: ' + (rec.hyouka_print_date || '(未送付)');
     document.getElementById('hyoukaPdfInput').value = rec.hyouka_pdf_date || formatTodayISO();
     document.getElementById('hyoukaPrintInput').value = rec.hyouka_print_date || formatTodayISO();
     document.getElementById('tasseidoInput').value = rec.tasseido_date || '';
+
+    // 送付方法で出力ボタンを出し分け。既に値がある側は誤入力修正のため常時表示。
+    const pdfSec = document.getElementById('hyoukaPdfSection');
+    const printSec = document.getElementById('hyoukaPrintSection');
+    const hint = document.getElementById('hyoukaMethodHint');
+    const showPdf = (sendMethod !== '印刷') || !!rec.hyouka_pdf_date;
+    const showPrint = (sendMethod !== 'PDF') || !!rec.hyouka_print_date;
+    pdfSec.style.display = showPdf ? 'block' : 'none';
+    printSec.style.display = showPrint ? 'block' : 'none';
+    if (sendMethod === 'PDF') {
+        hint.textContent = '📧 この利用者はメール/FAX事業所 → PDFで送付';
+        hint.style.cssText = 'margin:6px 0; padding:6px 10px; border-radius:6px; font-size:0.82rem; background:#ebf8ff; color:#2b6cb0; display:block;';
+    } else if (sendMethod === '印刷') {
+        hint.textContent = '🖨 この利用者は持参/郵送事業所 → 印刷で送付';
+        hint.style.cssText = 'margin:6px 0; padding:6px 10px; border-radius:6px; font-size:0.82rem; background:#fffaf0; color:#9c4221; display:block;';
+    } else {
+        hint.style.display = 'none';  // sendMethod不明（GAS未配信等）は両方表示で従来動作
+    }
     document.getElementById('hyoukaDialog').classList.add('show');
 }
 
