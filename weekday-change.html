@@ -1722,6 +1722,8 @@ function udcInitForm() {
     // 5. メモ欄クリア
     document.getElementById('udc-leadership-memo').value = '';
     document.getElementById('udc-memo').value = '';
+    // 6. 保留中ケアマネ情報をリセット（前回選択の持ち越し防止）
+    udcPendingCm = null;
 }
 
 // ----- 利用者検索ボックス：候補クリックで確定（2026-05-22）-----
@@ -1740,36 +1742,40 @@ function udcSelectUser(userName) {
 }
 
 // 利用者台帳の currentCmOffice / currentCmStaff を Step 4・5 にプリフィル（手入力負担の削減）
-// ケアマネ事業所プルダウンは _cmFetchContacts() で非同期構築されるため、完了を待ってからセット
-// （待たないと .then による innerHTML 再構築でセット値が上書きされ消える）
+// プルダウンは非同期構築されるため「保留→構築完了時にも再適用」で順序競合を確実に回避する
+var udcPendingCm = null;
 function udcPrefillCaremanager(user) {
     const office = (user.currentCmOffice || '').trim();
-    if (!office) return;   // 台帳にケアマネ事業所が無ければ手動選択にフォールバック
-    const staff = (user.currentCmStaff || '').trim();
-    _cmFetchContacts().then(function() {
-        const officeSel = document.getElementById('udc-cm-office');
-        if (!officeSel) return;
-        // 事業所がプルダウンに無ければ動的に追加（非表示事業所でも確実にセット）
-        if (!Array.from(officeSel.options).some(function(o) { return o.value === office; })) {
-            const opt = document.createElement('option');
-            opt.value = office; opt.textContent = office;
-            officeSel.appendChild(opt);
-        }
-        officeSel.value = office;
-        udcOnOfficeChange();   // 担当者プルダウンを連動生成
-        // 担当者をセット
-        if (staff) {
-            const staffSel = document.getElementById('udc-cm-contact');
-            if (staffSel) {
-                if (!Array.from(staffSel.options).some(function(o) { return o.value === staff; })) {
-                    const opt = document.createElement('option');
-                    opt.value = staff; opt.textContent = staff;
-                    staffSel.appendChild(opt);
-                }
-                staffSel.value = staff;
+    if (!office) { udcPendingCm = null; return; }   // 台帳に無ければ手動選択にフォールバック
+    udcPendingCm = { office: office, staff: (user.currentCmStaff || '').trim() };
+    udcApplyPendingCm();                          // プルダウン構築済みなら即適用
+    _cmFetchContacts().then(udcApplyPendingCm);   // 未構築なら取得完了後にも適用
+}
+
+// 保留中のケアマネ情報を Step4/5 に適用（利用者選択時・プルダウン構築完了時の両方から呼ぶ）
+function udcApplyPendingCm() {
+    if (!udcPendingCm) return;
+    const officeSel = document.getElementById('udc-cm-office');
+    if (!officeSel) return;
+    const office = udcPendingCm.office, staff = udcPendingCm.staff;
+    if (!Array.from(officeSel.options).some(function(o) { return o.value === office; })) {
+        const opt = document.createElement('option');
+        opt.value = office; opt.textContent = office;
+        officeSel.appendChild(opt);
+    }
+    officeSel.value = office;
+    udcOnOfficeChange();   // 担当者プルダウンを連動生成
+    if (staff) {
+        const staffSel = document.getElementById('udc-cm-contact');
+        if (staffSel) {
+            if (!Array.from(staffSel.options).some(function(o) { return o.value === staff; })) {
+                const opt = document.createElement('option');
+                opt.value = staff; opt.textContent = staff;
+                staffSel.appendChild(opt);
             }
+            staffSel.value = staff;
         }
-    });
+    }
 }
 
 function udcToday() {
@@ -1889,6 +1895,8 @@ function udcInitCmDropdowns() {
         // 担当者初期化
         const staffSel = document.getElementById('udc-cm-contact');
         staffSel.innerHTML = '<option value="">先に事業所を選んでください</option>';
+        // プルダウン構築完了後、保留中のケアマネ情報があれば適用（順序競合の最終保険）
+        udcApplyPendingCm();
     });
 }
 
