@@ -6950,45 +6950,52 @@ function dengonRender(items) {
                 宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${x.deadline ? ' ・ <span style="color:#d69e2e;">期限: ' + escapeHtml(x.deadline) + '</span>' : ''}
             </div>
             <div style="margin:4px 0 8px; white-space:pre-wrap;">${escapeHtml(x.body)}</div>
-            <button onclick="dengonComplete('${x.id}')" style="background:#38a169; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">✓ 完了にする</button>
+            <button onclick="dengonComplete('${x.id}', this)" style="background:#38a169; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">✓ 完了にする</button>
         </div>
     `).join('');
 }
 
 // 投稿（no-cors POST＝成否は拾えない→800ms後に再読込で反映確認）
 function dengonSubmit() {
+    const btn = document.getElementById('dengon-submit-btn');
+    if (btn.disabled) return; // 連打ガード（レスポンス処理中は再押下不可）
     if (!dengonSelectedStaff) { alert('投稿者（あなた）を選んでください'); return; }
     const to = document.getElementById('dengon-to').value;
     const body = document.getElementById('dengon-body').value.trim();
     const deadline = document.getElementById('dengon-deadline').value;
     if (!body) { alert('一言を入力してください'); return; }
+    btn.disabled = true; btn.textContent = '投稿中…'; btn.style.background = '#a0aec0';
     const payload = { action: 'add_dengon_message', from: dengonSelectedStaff, to: to, body: body, deadline: deadline };
     fetch(DENGON_API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(() => {
             document.getElementById('dengon-body').value = '';
             document.getElementById('dengon-deadline').value = '';
-            const btn = document.getElementById('dengon-submit-btn');
             btn.textContent = '投稿しました！'; btn.style.background = '#38a169';
-            setTimeout(() => { btn.textContent = '投稿する'; btn.style.background = '#3182ce'; }, 1500);
+            setTimeout(() => { btn.textContent = '投稿する'; btn.style.background = '#3182ce'; btn.disabled = false; }, 1500);
             setTimeout(dengonLoad, 800);
         })
-        .catch(() => { alert('投稿に失敗しました'); });
+        .catch(() => { alert('投稿に失敗しました'); btn.textContent = '投稿する'; btn.style.background = '#3182ce'; btn.disabled = false; });
 }
 
 // 完了（JSONP・サーバーが書込後read-backしverified返す／スタッフ宛てはnotify@）
-function dengonComplete(id) {
+function dengonComplete(id, btn) {
+    if (btn && btn.disabled) return; // 連打ガード（完了の二重発火＝notify@二重送信を防ぐ）
     if (!confirm('この伝達を完了にしますか？')) return;
+    if (btn) { btn.disabled = true; btn.textContent = '完了中…'; btn.style.background = '#a0aec0'; }
     const doneBy = dengonSelectedStaff || '';
     const cb = 'dengonDoneCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=completeDengonMessage"]').forEach(s => s.remove());
-        if (resp && resp.ok) { dengonLoad(); }
-        else { alert('完了に失敗しました: ' + (resp && resp.error || '不明')); }
+        if (resp && resp.ok) { dengonLoad(); } // 成功＝一覧再描画でボタンごと消える
+        else {
+            alert('完了に失敗しました: ' + (resp && resp.error || '不明'));
+            if (btn) { btn.disabled = false; btn.textContent = '✓ 完了にする'; btn.style.background = '#38a169'; }
+        }
         try { delete window[cb]; } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=completeDengonMessage&id=' + encodeURIComponent(id) + '&doneBy=' + encodeURIComponent(doneBy) + '&callback=' + cb;
-    s.onerror = () => { s.remove(); };
+    s.onerror = () => { if (btn) { btn.disabled = false; btn.textContent = '✓ 完了にする'; btn.style.background = '#38a169'; } s.remove(); };
     document.body.appendChild(s);
 }
 
