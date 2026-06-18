@@ -1262,6 +1262,7 @@
     <button class="tab-btn" data-tab="assign">配置登録</button>
     <button class="tab-btn" data-tab="stats">集計</button>
     <button class="tab-btn" data-tab="data">データ管理</button>
+    <button class="tab-btn" data-tab="dengon" style="color:#3182ce;">📢伝達ボード</button>
 </div>
 
 <!-- ===== 出席予定タブ ===== -->
@@ -1681,6 +1682,38 @@
     </div>
 </div>
 
+<!-- ===== 伝達ボードタブ ===== -->
+<div id="tab-dengon" class="tab-content">
+    <h2 style="font-size:1.1rem; margin:0 0 12px;">📢 伝達ボード</h2>
+    <p style="font-size:0.8rem; color:#718096; margin:0 0 12px;">社長⇄スタッフ⇄スタッフの連絡板。完了したらタップで消える（期限を過ぎたものも自動で消える）。</p>
+
+    <!-- 最小フォーム -->
+    <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:16px; background:#f7fafc;">
+        <div style="margin-bottom:8px; font-size:0.85rem;">
+            <span style="color:#4a5568;">投稿者（あなた）：</span>
+            <span id="dengon-from-current" style="font-weight:700; color:#2b6cb0;">未選択</span>
+        </div>
+        <div id="dengon-staff-select" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"></div>
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:8px;">
+            <label style="font-size:0.85rem;">宛先：
+                <select id="dengon-to" style="padding:6px; border-radius:6px; border:1px solid #cbd5e0;">
+                    <option value="全員">全員</option>
+                    <option value="社長">社長</option>
+                    <optgroup label="特定スタッフ" id="dengon-to-staff"></optgroup>
+                </select>
+            </label>
+            <label style="font-size:0.85rem;">期限（任意）：
+                <input type="date" id="dengon-deadline" style="padding:6px; border-radius:6px; border:1px solid #cbd5e0;">
+            </label>
+        </div>
+        <input type="text" id="dengon-body" maxlength="200" placeholder="一言（例：体温計の電池が切れました）" style="width:100%; box-sizing:border-box; padding:8px; border-radius:6px; border:1px solid #cbd5e0; margin-bottom:8px;">
+        <button id="dengon-submit-btn" onclick="dengonSubmit()" style="background:#3182ce; color:#fff; border:none; border-radius:6px; padding:8px 18px; font-weight:700; cursor:pointer;">投稿する</button>
+    </div>
+
+    <!-- 一覧 -->
+    <div id="dengon-list"></div>
+</div>
+
 <!-- ===== 配置登録タブ ===== -->
 <div id="tab-assign" class="tab-content">
     <div class="date-selector">
@@ -2074,6 +2107,7 @@ function setupTabs() {
             if (btn.dataset.tab === 'data') absRenderUserManage();
             if (btn.dataset.tab === 'terminate') { trmInit(); trmLoadList(); }
             if (btn.dataset.tab === 'jisseki-send') jsInitTab();
+            if (btn.dataset.tab === 'dengon') dengonLoad();
         });
     });
 }
@@ -6861,6 +6895,101 @@ function rmdToggleBirthday(name) {
     }
     rmdSaveBirthdayPhotos(data);
     rmdRender();
+}
+
+// ========== 伝達ボード（本番固定URL＝他機能と同じyawaragiボードGAS） ==========
+const DENGON_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+let dengonSelectedStaff = null;
+
+// 投稿者選択（既存 getStaff() を流用）
+function dengonRenderStaffSelect() {
+    const staff = (typeof getStaff === 'function') ? getStaff() : [];
+    const grid = document.getElementById('dengon-staff-select');
+    if (grid) {
+        grid.innerHTML = staff.map(name =>
+            `<button class="task-staff-chip ${dengonSelectedStaff === name ? 'selected' : ''}" onclick="dengonSelectStaff('${name.replace(/'/g, "\\'")}')">${dengonSelectedStaff === name ? '✓ ' : ''}${escapeHtml(name)}</button>`
+        ).join('') || '<span style="color:#a0aec0; font-size:0.8rem;">「データ管理」でスタッフ登録を</span>';
+    }
+    const og = document.getElementById('dengon-to-staff');
+    if (og) og.innerHTML = staff.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+}
+function dengonSelectStaff(name) {
+    dengonSelectedStaff = name;
+    const cur = document.getElementById('dengon-from-current');
+    if (cur) cur.textContent = name;
+    dengonRenderStaffSelect();
+}
+
+// 一覧取得（JSONP・dbFilterActive_準拠＝未完了かつ期限内のみサーバーが返す）
+function dengonLoad() {
+    dengonRenderStaffSelect();
+    const cb = 'dengonCb_' + Date.now();
+    window[cb] = function (resp) {
+        document.querySelectorAll('script[src*="action=dengonBoard"]').forEach(s => s.remove());
+        dengonRender(resp && resp.items ? resp.items : []);
+        try { delete window[cb]; } catch (e) {}
+    };
+    const s = document.createElement('script');
+    s.src = DENGON_API_URL + '?action=dengonBoard&today=' + toLocalDateStr() + '&callback=' + cb;
+    s.onerror = () => { s.remove(); };
+    document.body.appendChild(s);
+}
+
+// 一覧描画。to=社長 はスタッフ板に出さない（社長のみ）デフォルト。
+function dengonRender(items) {
+    const visible = (items || []).filter(x => x.to !== '社長');
+    const list = document.getElementById('dengon-list');
+    if (!list) return;
+    if (!visible.length) {
+        list.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">表示する伝達はありません</p>';
+        return;
+    }
+    list.innerHTML = visible.map(x => `
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff;">
+            <div style="font-size:0.78rem; color:#718096; margin-bottom:4px;">
+                宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${x.deadline ? ' ・ <span style="color:#d69e2e;">期限: ' + escapeHtml(x.deadline) + '</span>' : ''}
+            </div>
+            <div style="margin:4px 0 8px; white-space:pre-wrap;">${escapeHtml(x.body)}</div>
+            <button onclick="dengonComplete('${x.id}')" style="background:#38a169; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">✓ 完了にする</button>
+        </div>
+    `).join('');
+}
+
+// 投稿（no-cors POST＝成否は拾えない→800ms後に再読込で反映確認）
+function dengonSubmit() {
+    if (!dengonSelectedStaff) { alert('投稿者（あなた）を選んでください'); return; }
+    const to = document.getElementById('dengon-to').value;
+    const body = document.getElementById('dengon-body').value.trim();
+    const deadline = document.getElementById('dengon-deadline').value;
+    if (!body) { alert('一言を入力してください'); return; }
+    const payload = { action: 'add_dengon_message', from: dengonSelectedStaff, to: to, body: body, deadline: deadline };
+    fetch(DENGON_API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(() => {
+            document.getElementById('dengon-body').value = '';
+            document.getElementById('dengon-deadline').value = '';
+            const btn = document.getElementById('dengon-submit-btn');
+            btn.textContent = '投稿しました！'; btn.style.background = '#38a169';
+            setTimeout(() => { btn.textContent = '投稿する'; btn.style.background = '#3182ce'; }, 1500);
+            setTimeout(dengonLoad, 800);
+        })
+        .catch(() => { alert('投稿に失敗しました'); });
+}
+
+// 完了（JSONP・サーバーが書込後read-backしverified返す／スタッフ宛てはnotify@）
+function dengonComplete(id) {
+    if (!confirm('この伝達を完了にしますか？')) return;
+    const doneBy = dengonSelectedStaff || '';
+    const cb = 'dengonDoneCb_' + Date.now();
+    window[cb] = function (resp) {
+        document.querySelectorAll('script[src*="action=completeDengonMessage"]').forEach(s => s.remove());
+        if (resp && resp.ok) { dengonLoad(); }
+        else { alert('完了に失敗しました: ' + (resp && resp.error || '不明')); }
+        try { delete window[cb]; } catch (e) {}
+    };
+    const s = document.createElement('script');
+    s.src = DENGON_API_URL + '?action=completeDengonMessage&id=' + encodeURIComponent(id) + '&doneBy=' + encodeURIComponent(doneBy) + '&callback=' + cb;
+    s.onerror = () => { s.remove(); };
+    document.body.appendChild(s);
 }
 
 // ========== 初期化 ==========
