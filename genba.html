@@ -540,6 +540,20 @@
         .att-user-reason {
             width: 100%; margin-left: 42px; font-size: 0.78rem; color: #e53e3e; font-weight: 600;
         }
+        /* ----- 前回お休みマーク（声かけトリガー） ----- */
+        .att-prev-absent {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            background: #ff8c00;
+            color: #fff;
+            border: none;
+            vertical-align: middle;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        }
         .att-loading { text-align: center; padding: 40px; color: #a0aec0; font-size: 0.9rem; }
         .att-empty { text-align: center; padding: 20px; color: #a0aec0; font-size: 0.9rem; }
 
@@ -4921,6 +4935,19 @@ function attRender(data) {
     content.innerHTML = html;
 }
 
+// 表示日より前の、契約曜日に当たる直近の利用予定日を 'YYYY-MM-DD' で返す（前回お休み判定用）
+function attPrevScheduledDate(weekdaysRaw, baseDate) {
+    if (!weekdaysRaw) return null;
+    var d = new Date(baseDate.getTime());
+    for (var i = 0; i < 14; i++) {           // 最大2週間さかのぼれば週1契約でも見つかる
+        d.setDate(d.getDate() - 1);
+        if (weekdaysRaw.indexOf(ATT_DAY_NAMES[d.getDay()]) >= 0) {
+            return attFormatDate(d);
+        }
+    }
+    return null;
+}
+
 function attRenderUser(u) {
     const isAbsent = u.status === '欠席';
     const iconClass = isAbsent ? 'absent' : 'present';
@@ -4955,6 +4982,15 @@ function attRenderUser(u) {
             'title="利用率情報"></span>';
     }
 
+    // 前回お休みマーク（前回の利用予定日に欠席していた出席者に表示・声かけトリガー）
+    var prevAbsentBadge = '';
+    if (!isAbsent && ua && ua.weekdaysRaw && ua.recentAbsences && ua.recentAbsences.length) {
+        var prevSchedDate = attPrevScheduledDate(ua.weekdaysRaw, attCurrentDate);
+        if (prevSchedDate && ua.recentAbsences.some(function(a) { return a.date === prevSchedDate; })) {
+            prevAbsentBadge = '<span class="att-prev-absent">🌼 前回お休み</span>';
+        }
+    }
+
     var careCls = '';
     if (u.care) { careCls = (String(u.care).indexOf('要介護') !== -1) ? 'care-kaigo' : 'care-shien'; }
     return '<div class="att-user-row">' +
@@ -4966,6 +5002,7 @@ function attRenderUser(u) {
         '</span>' +
         '<div class="att-row-body">' +
             '<span class="att-user-name ' + careCls + '" onclick="event.stopPropagation();attShowMonthlyUsage(\'' + escapedName + '\')" style="cursor:pointer;">' + u.name + '</span>' +
+            prevAbsentBadge +
             (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
             (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
             resumeText +
