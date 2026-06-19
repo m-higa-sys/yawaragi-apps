@@ -540,6 +540,15 @@
         .att-user-reason {
             width: 100%; margin-left: 42px; font-size: 0.78rem; color: #e53e3e; font-weight: 600;
         }
+        /* ----- 連絡状況テキスト（表示専用・社長ボード踏襲／タップ不可） ----- */
+        .att-contact-text { font-size: 0.85rem; font-weight: 700; }
+        .att-contact-text.done  { color: #3182ce; }
+        .att-contact-text.aware { color: #3182ce; }
+        .att-contact-text.err   { color: #c05621; }
+        .att-contact-text.unsent {
+            color: #c53030; background: #fed7d7; padding: 2px 12px;
+            border-radius: 10px; font-weight: 800; border: 1px solid #fc8181;
+        }
         /* ----- 前回お休みマーク（声かけトリガー） ----- */
         .att-prev-absent {
             display: inline-block;
@@ -4246,8 +4255,15 @@ function absRenderUpcomingList() {
 }
 
 function absRenderUpcomingListFromData(gasAbsences) {
-    // 重複チェック用にGASデータをキャッシュ（absSubmitで参照）
+    // 重複チェック用にGASデータをキャッシュ（absSubmitで参照／出席タブの連絡状況表示でも読み取り流用）
     window._cachedGasAbsences = gasAbsences || [];
+    // 出席予定タブが既に描画済みなら連絡状況を反映して再描画（読み取り専用・無限ループなし）
+    try {
+        if (typeof attRender === 'function' && typeof attLastData !== 'undefined' &&
+            (attLastData.am.length || attLastData.pm.length)) {
+            attRender({ am: attLastData.am, pm: attLastData.pm });
+        }
+    } catch (e) {}
 
     const el = document.getElementById('abs-upcoming-list');
     const localRecords = absGetRecords();
@@ -4935,6 +4951,34 @@ function attRender(data) {
     content.innerHTML = html;
 }
 
+// cmNotified の値を連絡状況の表示用に分類（表示専用・社長ボード absContactStatus 踏襲・書き込みなし）
+function absContactStatus(cmNotified) {
+    var v = String(cmNotified || '').trim();
+    if (v === '送信済' || v === '手動メール送信済' || v === '電話連絡済' || v === 'SMS送信済') {
+        return { label: '連絡済み', cls: 'done' };
+    }
+    if (v === 'ケアマネ把握済') return { label: 'ケアマネ連絡', cls: 'aware' };
+    if (v.indexOf('エラー') === 0) return { label: 'メール失敗', cls: 'err' };
+    // メールなし / 空 / 下書き保存 / その他 → 連絡未
+    return { label: '連絡未', cls: 'unsent' };
+}
+
+// 表示日の欠席レコードから cmNotified を引く（_cachedGasAbsences=action=absences の生データを読み取り専用で流用）
+// 同名同日が複数ある場合は「より連絡が進んだ」状態を優先（done>aware>err>unsent）
+function attLookupCmNotified(name, dateStr) {
+    var recs = (window._cachedGasAbsences || []).filter(function(r) {
+        return r && r.name === name && r.date === dateStr;
+    });
+    if (!recs.length) return '';
+    var rank = { done: 3, aware: 2, err: 1, unsent: 0 };
+    var best = '', bestRank = -1;
+    recs.forEach(function(r) {
+        var c = rank[absContactStatus(r.cmNotified).cls];
+        if (c > bestRank) { bestRank = c; best = r.cmNotified; }
+    });
+    return best;
+}
+
 // 表示日より前の、契約曜日に当たる直近の利用予定日を 'YYYY-MM-DD' で返す（前回お休み判定用）
 function attPrevScheduledDate(weekdaysRaw, baseDate) {
     if (!weekdaysRaw) return null;
@@ -4991,6 +5035,19 @@ function attRenderUser(u) {
         }
     }
 
+    // 連絡状況テキスト（欠席利用者のみ・表示専用／社長ボード踏襲・書き込みなし・タップ不可）
+    var contactDisplay = '';
+    var contactCls = '';
+    if (isAbsent) {
+        var lookupDate = attFormatDate(attCurrentDate);
+        if (absLongTermMap[u.name] && absLongTermMap[u.name].startDate) {
+            lookupDate = absLongTermMap[u.name].startDate;
+        }
+        var cst = absContactStatus(attLookupCmNotified(u.name, lookupDate));
+        contactCls = cst.cls;
+        contactDisplay = (cst.cls === 'done' || cst.cls === 'aware') ? ('✓' + cst.label) : cst.label;
+    }
+
     var careCls = '';
     if (u.care) { careCls = (String(u.care).indexOf('要介護') !== -1) ? 'care-kaigo' : 'care-shien'; }
     return '<div class="att-user-row">' +
@@ -5005,6 +5062,7 @@ function attRenderUser(u) {
             prevAbsentBadge +
             (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
             (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
+            (contactDisplay ? '<span class="att-contact-text ' + contactCls + '">' + contactDisplay + '</span>' : '') +
             resumeText +
         '</div>' +
         '</div>';
