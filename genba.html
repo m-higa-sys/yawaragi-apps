@@ -3692,6 +3692,51 @@ function absParsePattern(daysStr, ampmStr) {
     return pattern;
 }
 
+// ===== 2026-06-19 休み連絡メールリニューアル: (date,unit)集合 純関数 =====
+// 全入口（単日/連続/飛び石/今週まるごと）を (date,unit) 集合に正規化してGASへ送る。
+// GAS側 absence-slots-core.js と同一ロジック（scripts/test-genba-absence-slots.js で実コード抽出テスト）。
+
+// 任意の (date,unit) 入力を重複排除・昇順(date→午前先)に正規化。'am'/'pm'→'午前'/'午後'。
+function gnbNormalizeSlots(slots) {
+    const seen = {}, out = [];
+    (slots || []).forEach(function (s) {
+        const u = (s.unit === 'pm' || s.unit === '午後') ? '午後' : '午前';
+        const k = s.date + '|' + u;
+        if (seen[k]) return;
+        seen[k] = true;
+        out.push({ date: s.date, unit: u });
+    });
+    out.sort(function (a, b) {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        return a.unit === '午前' ? -1 : 1;
+    });
+    return out;
+}
+
+// pattern[{day:0..6(0=日), unit:'am'|'pm'}] と todayStr から、今週(月〜日)の今日以降の通所(date,unit)を生成。
+function gnbWeekAbsenceSlots(pattern, todayStr) {
+    const parse = function (s) { const p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+    const ymd = function (d) { const y = d.getFullYear(), m = ('0' + (d.getMonth() + 1)).slice(-2), da = ('0' + d.getDate()).slice(-2); return y + '-' + m + '-' + da; };
+    const today = parse(todayStr);
+    const dow = today.getDay();                      // 0=日
+    const offsetToMon = (dow === 0 ? -6 : 1 - dow);  // その週の月曜まで
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + offsetToMon);
+    const slots = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        if (ymd(d) < todayStr) continue;             // 今日(アンカー)以降のみ
+        const wd = d.getDay();
+        ['am', 'pm'].forEach(function (u) {
+            if ((pattern || []).some(function (p) { return p.day === wd && p.unit === u; })) {
+                slots.push({ date: ymd(d), unit: (u === 'pm' ? '午後' : '午前') });
+            }
+        });
+    }
+    return gnbNormalizeSlots(slots);
+}
+
 // ----- 欠席データ -----
 function absGetRecords() {
     try {
