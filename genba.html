@@ -404,6 +404,49 @@
         }
         .abs-date-type-btn.active { background: #2c7a7b; color: white; border-color: #2c7a7b; }
         .abs-date-type-btn:hover:not(.active) { border-color: #2c7a7b; color: #2c7a7b; }
+        /* 2026-06-19 飛び石チップ＋今週まるごと */
+        .abs-week-all-btn {
+            padding: 10px 16px; border: 2px solid #2c7a7b; border-radius: 10px;
+            background: #2c7a7b; color: white; font-size: 0.9rem; font-weight: 700;
+            cursor: pointer; font-family: inherit;
+        }
+        .abs-week-all-btn:hover { background: #236566; }
+        .abs-flat-chip {
+            padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 18px;
+            background: white; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+            font-family: inherit; color: #2d3748; transition: all 0.15s;
+        }
+        .abs-flat-chip.selected { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .abs-flat-chip:hover:not(.selected) { border-color: #2c7a7b; }
+        /* 2026-06-19 休み連絡メール プレビューモーダル */
+        .abs-preview-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999; padding: 16px;
+        }
+        .abs-preview-box {
+            background: white; border-radius: 14px; padding: 20px;
+            width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+        }
+        .abs-preview-title { font-size: 1.1rem; font-weight: 700; color: #2c7a7b; margin-bottom: 12px; }
+        .abs-preview-row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f4f8; font-size: 0.9rem; }
+        .abs-preview-key { font-weight: 700; color: #718096; min-width: 48px; }
+        .abs-preview-val { color: #2d3748; word-break: break-all; }
+        .abs-preview-body {
+            width: 100%; box-sizing: border-box; margin-top: 6px; padding: 12px;
+            border: 2px solid #e2e8f0; border-radius: 10px; font-size: 0.92rem;
+            font-family: inherit; line-height: 1.6; resize: vertical;
+        }
+        .abs-preview-note { font-size: 0.8rem; color: #718096; margin-top: 6px; }
+        .abs-preview-actions { display: flex; gap: 10px; margin-top: 14px; }
+        .abs-preview-cancel, .abs-preview-send {
+            flex: 1; padding: 12px; border-radius: 10px; font-size: 0.95rem;
+            font-weight: 700; cursor: pointer; font-family: inherit; border: 2px solid;
+        }
+        .abs-preview-cancel { background: white; color: #718096; border-color: #cbd5e0; }
+        .abs-preview-send { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .abs-preview-send:hover { background: #236566; }
         .abs-date-inputs { margin-top: 8px; }
         .abs-date-inputs input[type="date"] {
             padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px;
@@ -569,6 +612,11 @@
         .att-contact-text.unsent {
             color: #c53030; background: #fed7d7; padding: 2px 12px;
             border-radius: 10px; font-weight: 800; border: 1px solid #fc8181;
+        }
+        /* 2026-06-19 要電話連絡（メアド無効）= amber で目立たせる */
+        .att-contact-text.callreq {
+            color: #975a16; background: #fefcbf; padding: 2px 12px;
+            border-radius: 10px; font-weight: 800; border: 1px solid #ecc94b;
         }
         /* ----- 前回お休みマーク（声かけトリガー） ----- */
         .att-prev-absent {
@@ -1387,6 +1435,7 @@
                 <button class="abs-date-type-btn active" data-type="today" onclick="absSelectDateType('today')">今日</button>
                 <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
                 <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
+                <button class="abs-date-type-btn" data-type="flatday" onclick="absSelectDateType('flatday')">今週から選ぶ</button>
                 <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')" style="background:#e53e3e;color:white;border-color:#e53e3e;">長期休み</button>
             </div>
             <div class="abs-date-inputs" id="abs-date-inputs"></div>
@@ -1439,6 +1488,22 @@
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
             <button class="abs-submit-btn" id="abs-submit-btn" onclick="absSubmit()">この内容で登録する</button>
+        </div>
+    </div>
+
+    <!-- 2026-06-19 休み連絡メール プレビュー編集モーダル（独立要素・既存DOM非依存） -->
+    <div id="abs-preview-modal" class="abs-preview-overlay" style="display:none;">
+        <div class="abs-preview-box">
+            <h3 class="abs-preview-title">ケアマネへ休み連絡メール（確認）</h3>
+            <div class="abs-preview-row"><span class="abs-preview-key">宛先</span><span id="abs-preview-to" class="abs-preview-val"></span></div>
+            <div class="abs-preview-row"><span class="abs-preview-key">件名</span><span id="abs-preview-subject" class="abs-preview-val"></span></div>
+            <label class="abs-preview-key" style="display:block;margin-top:10px;">本文（必要なら修正）</label>
+            <textarea id="abs-preview-body" class="abs-preview-body" rows="14"></textarea>
+            <p class="abs-preview-note">宛先は台帳のメアドに自動送信されます（編集不可）。本文は自動生成です。修正しなければそのまま送ります。</p>
+            <div class="abs-preview-actions">
+                <button type="button" class="abs-preview-cancel" onclick="absPreviewCancel()">送らず登録のみ</button>
+                <button type="button" class="abs-preview-send" onclick="absPreviewSend()">この内容で送信</button>
+            </div>
         </div>
     </div>
 
@@ -3589,10 +3654,11 @@ const ABS_REASONS = [
 
 // 欠席登録の状態
 let absState = {
-    selectedUser: null,    // { name, reading, pattern, nextDate }
-    dateType: 'today',     // 'today' | 'specific' | 'range'
+    selectedUser: null,    // { name, reading, pattern, nextDate, cmEmail }
+    dateType: 'today',     // 'today' | 'specific' | 'range' | 'flatday' | 'longterm'
     dateFrom: '',
     dateTo: '',
+    flatSlots: [],         // 2026-06-19: 飛び石/今週まるごと用 [{date,unit:'午前'|'午後'}]
     reason: '',
     reasonOther: '',
     contact: '',
@@ -3600,6 +3666,7 @@ let absState = {
     method: '',            // 連絡方法
     contactDate: ''        // 連絡日
 };
+let absPreviewState = null;   // 2026-06-19: 休み連絡メール プレビュー中の保留データ { slots, reason, contact, initialBody }
 
 // ----- 利用者データ（利用者台帳スプレッドシートからGAS経由で自動取得） -----
 function absGetUsers() {
@@ -3900,6 +3967,10 @@ function absClearName() {
     absState.contact = '';
     absState.method = '';
     absState.contactDate = '';
+    // 2026-06-19: 飛び石選択の残留防止（次の利用者に持ち越さない）
+    absState.flatSlots = [];
+    absState.dateType = 'today';
+    absPreviewState = null;
 }
 
 // ----- 日付選択 -----
@@ -3941,6 +4012,12 @@ function absSelectDateType(type) {
             </div>
         `;
         absOnDateRange();
+    } else if (type === 'flatday') {
+        // 2026-06-19: 今週の通所日チップから飛び石選択（今日以降・曜日ごとunit）
+        absState.dateFrom = '';
+        absState.dateTo = '';
+        absState.flatSlots = [];
+        absRenderFlatChips();
     } else if (type === 'longterm') {
         absState.dateFrom = todayStr;
         absState.dateTo = '';
@@ -3960,6 +4037,57 @@ function absOnDateSpecific(val) {
     absState.dateTo = val;
     absCheckNotScheduledDay(val);
     absShowReasonStep();
+}
+
+// ===== 2026-06-19: 飛び石（今週の通所日チップ）＋今週まるごと =====
+// チップは選択利用者の今週通所日（今日以降）を gnbWeekAbsenceSlots から生成。曜日ごとunitを保持。
+function absRenderFlatChips() {
+    const container = document.getElementById('abs-date-inputs');
+    if (!container) return;
+    const user = absState.selectedUser;
+    const pattern = (user && user.pattern) || [];
+    const todayStr = toLocalDateStr(new Date());
+    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr);
+    if (weekSlots.length === 0) {
+        container.innerHTML = '<p style="font-size:0.9rem;color:#718096;padding:8px 0;">今週（今日以降）の通所予定がありません。「日付を指定」「期間で指定」をお使いください。</p>';
+        return;
+    }
+    const DOW = ['日', '月', '火', '水', '木', '金', '土'];
+    const chipsHtml = weekSlots.map(function (s) {
+        const sel = absState.flatSlots.some(function (x) { return x.date === s.date && x.unit === s.unit; });
+        const d = new Date(s.date.split('-')[0], +s.date.split('-')[1] - 1, +s.date.split('-')[2]);
+        const label = (d.getMonth() + 1) + '/' + d.getDate() + '(' + DOW[d.getDay()] + ')' + s.unit;
+        return '<button type="button" class="abs-flat-chip' + (sel ? ' selected' : '') +
+            '" onclick="absToggleFlatSlot(\'' + s.date + '\',\'' + s.unit + '\')">' + label + '</button>';
+    }).join('');
+    const allOn = absState.flatSlots.length === weekSlots.length && weekSlots.length > 0;
+    container.innerHTML =
+        '<div style="padding:6px 0;">' +
+        '<button type="button" class="abs-week-all-btn" onclick="absToggleAllWeek()">' +
+        (allOn ? '今週まるごと解除' : '今週まるごとお休み') + '</button>' +
+        '<div class="abs-flat-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">' + chipsHtml + '</div>' +
+        '<p style="font-size:0.8rem;color:#718096;margin-top:6px;">タップで選択／解除（今週・今日以降の通所コマ）</p>' +
+        '</div>';
+}
+
+function absToggleFlatSlot(date, unit) {
+    const idx = absState.flatSlots.findIndex(function (x) { return x.date === date && x.unit === unit; });
+    if (idx >= 0) absState.flatSlots.splice(idx, 1);
+    else absState.flatSlots.push({ date: date, unit: unit });
+    absState.flatSlots = gnbNormalizeSlots(absState.flatSlots);
+    absRenderFlatChips();
+    if (absState.flatSlots.length > 0) absShowReasonStep();
+}
+
+function absToggleAllWeek() {
+    const user = absState.selectedUser;
+    const pattern = (user && user.pattern) || [];
+    const todayStr = toLocalDateStr(new Date());
+    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr);
+    const allOn = absState.flatSlots.length === weekSlots.length && weekSlots.length > 0;
+    absState.flatSlots = allOn ? [] : weekSlots.slice();
+    absRenderFlatChips();
+    if (absState.flatSlots.length > 0) absShowReasonStep();
 }
 
 function absOnDateRange() {
@@ -4147,9 +4275,14 @@ function absSubmit() {
     const reason = absState.reason === 'その他' ? (absState.reasonOther || 'その他') : absState.reason;
     const contact = absState.contact === 'その他' ? (absState.contactOther || 'その他') : absState.contact;
 
-    // 日付リストを作成（期間指定の場合は複数日）
+    // 日付リストを作成（飛び石=チップ選択 / 期間指定=複数日 / それ以外=単日）
     const dates = [];
-    if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
+    if (absState.dateType === 'flatday') {
+        absState.flatSlots = gnbNormalizeSlots(absState.flatSlots || []);
+        if (absState.flatSlots.length === 0) { alert('お休みする日（コマ）を1つ以上選んでください'); return; }
+        const seenFD = {};
+        absState.flatSlots.forEach(function (s) { if (!seenFD[s.date]) { seenFD[s.date] = true; dates.push(s.date); } });
+    } else if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
         const start = new Date(absState.dateFrom);
         const end = new Date(absState.dateTo);
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -4222,14 +4355,10 @@ function absSubmit() {
     btn.disabled = true;
     btn.textContent = '登録中...';
 
-    // 午前/午後判定
-    let unit = '午前';
-    if (absState.selectedUser.pattern && absState.selectedUser.pattern.length > 0) {
-        const hasAm = absState.selectedUser.pattern.some(p => p.unit === 'am');
-        const hasPm = absState.selectedUser.pattern.some(p => p.unit === 'pm');
-        if (hasAm && hasPm) unit = '終日';
-        else if (hasPm) unit = '午後';
-    }
+    // (date,unit)集合を構築（飛び石=チップ／それ以外=日付×利用者パターン・終日はam/pm2分解）
+    const slots = (absState.dateType === 'flatday')
+        ? gnbNormalizeSlots(absState.flatSlots || [])
+        : absBuildSlotsFromDates(dates);
 
     // 長期休みの場合は別アクション
     if (absState.dateType === 'longterm') {
@@ -4254,62 +4383,171 @@ function absSubmit() {
         return;
     }
 
-    // GASにPOST送信
+    // ケアマネメアドで分岐（a: プレビュー送信 / b: 要電話連絡案内 / c: メールなし）
+    // 実送信先は送信時にGASが台帳N列を再取得＝ここの cmEmail は表示/分岐用のみ。
+    const em = String((absState.selectedUser && absState.selectedUser.cmEmail) || '').trim();
+    if (em.indexOf('@') >= 0) {
+        // a) プレビュー編集モーダルを開く（「送信」で doSendEmail:true）
+        absOpenPreview(slots, reason, contact, em);
+    } else if (em === 'なし' || em !== '') {
+        // b) "なし" / 無効（@無し）→ 送らず案内ポップアップ＋登録のみ
+        alert('このケアマネはメール連絡できません（メアド未登録/無効）。\nお手数ですが電話で連絡してください。');
+        absDoRegister(slots, reason, contact, { doSendEmail: false });
+    } else {
+        // c) 空欄＝メールなし扱い（案内なし・登録のみ）
+        absDoRegister(slots, reason, contact, { doSendEmail: false });
+    }
+}
+
+// 各日付について利用者パターンのその曜日のunitで (date,unit) を作る。
+// 非通所日は全体パターンから推定（am+pm→両方/pm→午後/それ以外→午前）。終日相当はam/pm2分解。
+function absBuildSlotsFromDates(dates) {
+    const pat = (absState.selectedUser && absState.selectedUser.pattern) || [];
+    const hasAmAny = pat.some(function (p) { return p.unit === 'am'; });
+    const hasPmAny = pat.some(function (p) { return p.unit === 'pm'; });
+    const out = [];
+    (dates || []).forEach(function (dStr) {
+        if (!dStr) return;
+        const parts = dStr.split('-');
+        const dow = new Date(+parts[0], +parts[1] - 1, +parts[2]).getDay();
+        const dayUnits = [];
+        pat.forEach(function (p) { if (p.day === dow) dayUnits.push(p.unit === 'pm' ? '午後' : '午前'); });
+        let units = dayUnits;
+        if (units.length === 0) {
+            if (hasAmAny && hasPmAny) units = ['午前', '午後'];
+            else if (hasPmAny && !hasAmAny) units = ['午後'];
+            else units = ['午前'];
+        }
+        units.forEach(function (u) { out.push({ date: dStr, unit: u }); });
+    });
+    return gnbNormalizeSlots(out);
+}
+
+// 実登録（GAS送信＋localStorage即時反映＋リセット）。opts: { doSendEmail, cmCustomBody }
+function absDoRegister(slots, reason, contact, opts) {
+    opts = opts || {};
+    const btn = document.getElementById('abs-submit-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '登録中...'; }
+
     const postData = {
         action: 'absence',
         name: absState.selectedUser.name,
-        dates: dates,
-        unit: unit,
+        slots: slots,                       // [{date,unit}]・GASが (date,unit) 集合で処理
         reason: reason,
         reporter: absReceptionist || contact,
         contact: contact,
         method: absState.method,
         contactDate: absState.contactDate,
         cmOffice: absState.selectedUser.cmOffice || '',
-        cmEmail: '',
-        cmName: ''
+        doSendEmail: opts.doSendEmail === true,   // プレビューで「送信」を押した時のみ true
+        cmCustomBody: opts.cmCustomBody || ''      // 編集本文（あれば本文全置換）
     };
 
-    // GAS送信（検証付きリトライ・バックグラウンドで実行）
-    gasPostAbsenceWithVerify(postData, absState.selectedUser.name + '様の欠席登録').then(ok => {
+    gasPostAbsenceWithVerify(postData, absState.selectedUser.name + '様の欠席登録').then(function (ok) {
         if (!ok) console.error('欠席登録: GAS送信失敗（' + absState.selectedUser.name + '）');
     });
 
-    // localStorageにも保存（即座に画面反映するため）
-    const record = {
-        id: Date.now(),
-        userName: absState.selectedUser.name,
-        dateFrom: absState.dateFrom,
-        dateTo: absState.dateTo,
-        dateType: absState.dateType,
-        reason: reason,
-        contact: contact,
-        method: absState.method,
-        contactDate: absState.contactDate,
-        registeredAt: new Date().toISOString(),
-        registeredBy: absReceptionist
-    };
-
+    // localStorage（即時表示・ユニーク日付ごと）
     const records = absGetRecords();
-    records.push(record);
+    const seenLS = {};
+    (slots || []).forEach(function (s) {
+        if (seenLS[s.date]) return;
+        seenLS[s.date] = true;
+        records.push({
+            id: String(Date.now()) + '_' + s.date,
+            userName: absState.selectedUser.name,
+            dateFrom: s.date, dateTo: s.date, dateType: 'specific',
+            reason: reason, contact: contact, method: absState.method,
+            contactDate: absState.contactDate,
+            registeredAt: new Date().toISOString(), registeredBy: absReceptionist
+        });
+    });
     absSaveRecords(records);
 
-    // フォームリセット
     absClearName();
     showToast('欠席を登録しました');
-
-    // 一覧を更新
     absRenderTodayList();
     absRenderUpcomingList();
 
-    // 登録ボタンのフィードバック
-    btn.disabled = false;
-    btn.textContent = '登録しました！';
-    btn.style.background = '#38a169';
-    setTimeout(() => {
-        btn.textContent = 'この内容で登録する';
-        btn.style.background = '';
-    }, 2000);
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = '登録しました！';
+        btn.style.background = '#38a169';
+        setTimeout(function () { btn.textContent = 'この内容で登録する'; btn.style.background = ''; }, 2000);
+    }
+}
+
+// ===== 2026-06-19 休み連絡メール プレビュー編集モーダル =====
+// (date,unit)集合→日付重複排除して「M月D日(曜)」連結（GAS buildAbsenceDateLabel_ と同形・1通ラベル）
+function absBuildDateLabel(slots) {
+    const DOW = ['日', '月', '火', '水', '木', '金', '土'];
+    const seen = {}, labels = [];
+    gnbNormalizeSlots(slots).forEach(function (s) {
+        if (seen[s.date]) return;
+        seen[s.date] = true;
+        const p = s.date.split('-');
+        const d = new Date(+p[0], +p[1] - 1, +p[2]);
+        labels.push((d.getMonth() + 1) + '月' + d.getDate() + '日(' + DOW[d.getDay()] + ')');
+    });
+    return labels.join('、');
+}
+
+// プレビュー本文を生成（未編集ならGAS既定テンプレ＝cmName入りを使うので、これは確認/編集の叩き台）
+function absBuildPreviewBody(dateLabel, name, reason) {
+    const office = (absState.selectedUser && absState.selectedUser.cmOffice) || '';
+    return (office ? office + '\n' : '') +
+        'ご担当者様\n\n' +
+        'いつもお世話になっております。\nリハビリデイサービス yawaragi です。\n\n' +
+        dateLabel + '、' + name + '様より「' + (reason || '体調不良') + '」とのご連絡があり、\n' +
+        'yawaragiをお休みされる旨伺いましたのでご報告いたします。\n\n' +
+        'ご確認のほどよろしくお願いいたします。\n\n' +
+        '━━━━━━━━━━━━━━━━━━\n' +
+        'リハビリデイサービス yawaragi\nTEL/FAX: 0493-81-5125\n' +
+        '━━━━━━━━━━━━━━━━━━';
+}
+
+function absOpenPreview(slots, reason, contact, em) {
+    const modal = document.getElementById('abs-preview-modal');
+    if (!modal) { // モーダルが無ければ安全側＝送らず登録のみ
+        absDoRegister(slots, reason, contact, { doSendEmail: false });
+        return;
+    }
+    const name = absState.selectedUser.name;
+    const dateLabel = absBuildDateLabel(slots);
+    const subject = '【yawaragi】' + dateLabel + ' ' + name + '様 お休み連絡';
+    const body = absBuildPreviewBody(dateLabel, name, reason);
+    absPreviewState = { slots: slots, reason: reason, contact: contact, initialBody: body };
+    const toEl = document.getElementById('abs-preview-to');
+    const subEl = document.getElementById('abs-preview-subject');
+    const bodyEl = document.getElementById('abs-preview-body');
+    if (toEl) toEl.textContent = em;
+    if (subEl) subEl.textContent = subject;
+    if (bodyEl) bodyEl.value = body;
+    modal.style.display = 'flex';
+}
+
+function absHidePreview() {
+    const modal = document.getElementById('abs-preview-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function absPreviewSend() {
+    const p = absPreviewState;
+    if (!p) { absHidePreview(); return; }
+    const bodyEl = document.getElementById('abs-preview-body');
+    const edited = bodyEl ? bodyEl.value : '';
+    // 未編集なら cmCustomBody='' を渡し、GAS既定テンプレ（cmName入り）を使わせる
+    const custom = (edited === p.initialBody) ? '' : edited;
+    absHidePreview();
+    absDoRegister(p.slots, p.reason, p.contact, { doSendEmail: true, cmCustomBody: custom });
+    absPreviewState = null;
+}
+
+function absPreviewCancel() {
+    const p = absPreviewState;
+    absHidePreview();
+    if (p) absDoRegister(p.slots, p.reason, p.contact, { doSendEmail: false });
+    absPreviewState = null;
 }
 
 // ----- 今日の欠席一覧（HTML削除済み・互換用） -----
@@ -5068,8 +5306,9 @@ function absContactStatus(cmNotified) {
         return { label: '連絡済み', cls: 'done' };
     }
     if (v === 'ケアマネ把握済') return { label: 'ケアマネ連絡', cls: 'aware' };
+    if (v === '要電話連絡') return { label: '要電話連絡', cls: 'callreq' };  // 2026-06-19: メアド無効＝手動電話連絡を促す(amber)
     if (v.indexOf('エラー') === 0) return { label: 'メール失敗', cls: 'err' };
-    // メールなし / 空 / 下書き保存 / その他 → 連絡未
+    // メールなし / メール未送信 / 自動送信停止 / 空 / 下書き保存 / その他 → 連絡未
     return { label: '連絡未', cls: 'unsent' };
 }
 
