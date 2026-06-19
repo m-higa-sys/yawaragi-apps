@@ -1955,7 +1955,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="shared.js?v=2026-06-20-02"></script>
+<script src="shared.js?v=2026-06-20-03"></script>
 <script>
 // ========== 配置管理データ定義 ==========
 
@@ -5312,14 +5312,16 @@ function attRender(data) {
 // cmNotified の値を連絡状況の表示用に分類（表示専用・社長ボード absContactStatus 踏襲・書き込みなし）
 function absContactStatus(cmNotified) {
     var v = String(cmNotified || '').trim();
-    if (v === '送信済' || v === '手動メール送信済' || v === '電話連絡済' || v === 'SMS送信済') {
-        return { label: '連絡済み', cls: 'done' };
+    // 案B(2026-06-20): アイコン＋短語表示。色クラス(cls)と分類は不変・ラベル文言のみ変更。
+    if (v === '送信済' || v === '手動メール送信済' || v === 'SMS送信済') {
+        return { label: '✉️送信済', cls: 'done' };
     }
-    if (v === 'ケアマネ把握済') return { label: 'ケアマネ連絡', cls: 'aware' };
-    if (v === '要電話連絡') return { label: '要電話連絡', cls: 'callreq' };  // 2026-06-19: メアド無効＝手動電話連絡を促す(amber)
-    if (v.indexOf('エラー') === 0) return { label: 'メール失敗', cls: 'err' };
-    // メールなし / メール未送信 / 自動送信停止 / 空 / 下書き保存 / その他 → 連絡未
-    return { label: '連絡未', cls: 'unsent' };
+    if (v === '電話連絡済') return { label: '📞電話済', cls: 'done' };
+    if (v === 'ケアマネ把握済') return { label: '✓ケアマネ連絡', cls: 'aware' };
+    if (v === '要電話連絡') return { label: '📞要連絡', cls: 'callreq' };  // 2026-06-19: メアド無効＝手動電話連絡を促す(amber)
+    if (v.indexOf('エラー') === 0) return { label: '✉️失敗', cls: 'err' };
+    // メールなし / メール未送信 / 自動送信停止 / 空 / 下書き保存 / その他 → 未連絡
+    return { label: '未連絡', cls: 'unsent' };
 }
 
 // 表示日の欠席レコードから cmNotified を引く（_cachedGasAbsences=action=absences の生データを読み取り専用で流用）
@@ -5420,7 +5422,7 @@ function attRenderUser(u) {
         }
         var cst = absContactStatus(attLookupCmNotified(u.name, lookupDate));
         contactCls = cst.cls;
-        contactDisplay = (cst.cls === 'done' || cst.cls === 'aware') ? ('✓' + cst.label) : cst.label;
+        contactDisplay = cst.label;  // 案B: アイコンはlabelに内蔵済み（done=✉️/📞・aware=✓）
     }
 
     var careCls = '';
