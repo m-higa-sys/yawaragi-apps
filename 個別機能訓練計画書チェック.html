@@ -551,6 +551,14 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         <h3 id="planStartTitle">計画書開始月の編集</h3>
         <div class="sub" id="planStartSub"></div>
         <input type="month" id="planStartInput">
+        <div style="margin-top:12px;">
+            <label for="planMonthsInput" style="display:block; font-size:0.9rem; color:#2c3e50; font-weight:bold; margin-bottom:4px;">計画の長さ</label>
+            <select id="planMonthsInput" style="width:100%; padding:8px; font-size:1rem; border:1px solid #cbd5e0; border-radius:6px;">
+                <option value="3">3ヶ月（既定）</option>
+                <option value="2">2ヶ月</option>
+                <option value="1">1ヶ月</option>
+            </select>
+        </div>
         <div class="btn-row">
             <button class="clear" onclick="clearPlanStart()">クリア</button>
             <button class="ok" onclick="savePlanStartFromDialog()">OK</button>
@@ -748,14 +756,17 @@ async function retryPending() {
 }
 
 // ============ 3ヶ月サイクル判定 ============
-function isPlanMonth(planStart, year, month) {
+function isPlanMonth(planStart, planMonths, year, month) {
     if (!planStart) return false;
     const m = planStart.match(/^(\d{4})-(\d{2})$/);
     if (!m) return false;
     const py = parseInt(m[1], 10);
     const pm = parseInt(m[2], 10);
     const diff = (year - py) * 12 + (month - pm);
-    return diff >= 0 && diff % 3 === 0;
+    const pmNum = parseInt(planMonths, 10);
+    const L = (pmNum >= 1 && pmNum <= 12) ? pmNum : 3;
+    if (L === 3) return diff >= 0 && diff % 3 === 0;   // 既定3ヶ月: 現行と完全同一（無回帰最優先）
+    return diff === 0;                                  // 変則(1/2ヶ月等): 開始月のみ計画月（単発・自動リピートなし）
 }
 
 // 評価月判定: 計画書スタート月の翌々月（=次計画前月）が評価月
@@ -763,15 +774,22 @@ function isPlanMonth(planStart, year, month) {
 // 加えて: 計画書開始月の前月（diff===-1）も評価月扱い。
 //   計画書更新時にplanStartを上書きする運用で、前計画の評価を直前月に入力するため
 //   例: planStart=2026-06 → 2026-05 も評価月扱い（6月計画書作成前の前計画評価）
-function isHyoukaMonth(planStart, year, month) {
+function isHyoukaMonth(planStart, planMonths, year, month) {
     if (!planStart) return false;
     const m = planStart.match(/^(\d{4})-(\d{2})$/);
     if (!m) return false;
     const py = parseInt(m[1], 10);
     const pm = parseInt(m[2], 10);
     const diff = (year - py) * 12 + (month - pm);
-    if (diff >= 2 && diff % 3 === 2) return true;
-    if (diff === -1) return true;
+    const pmNum = parseInt(planMonths, 10);
+    const L = (pmNum >= 1 && pmNum <= 12) ? pmNum : 3;
+    if (L === 3) {                                      // 既定3ヶ月: 現行と完全同一（無回帰最優先）
+        if (diff >= 2 && diff % 3 === 2) return true;
+        if (diff === -1) return true;
+        return false;
+    }
+    if (diff === (L - 1)) return true;                  // 変則(1/2ヶ月等): 計画最終月（開始月含むLヶ月目）が評価月
+    if (diff === -1) return true;                        // 開始月の前月も評価月扱い（前計画評価・現行踏襲）
     return false;
 }
 
@@ -1004,7 +1022,7 @@ function renderTable() {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
             const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: '' };
-            const isPlan = isPlanMonth(u.planStart, cellYear, mo.m);
+            const isPlan = isPlanMonth(u.planStart, u.planMonths, cellYear, mo.m);
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
             const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
             const filled = ['kyoumi_date','seikatsu_date','keikaku_date'].filter(f => rec[f]).length;
@@ -1017,8 +1035,10 @@ function renderTable() {
 
                 // ===== 評価セル（達成度＋ケアマネ提出）=====
                 if (sub.field === 'hyouka') {
-                    const isHyouka = isHyoukaMonth(u.planStart, cellYear, mo.m);
-                    if (!isHyouka) {
+                    const isHyouka = isHyoukaMonth(u.planStart, u.planMonths, cellYear, mo.m);
+                    // データが入っているセルは評価月でなくても常に表示（planStart移動で過去評価が '-' に隠れるのを防ぐ）
+                    const hasHyoukaData = !!(rec.tasseido_date || rec.hyouka_pdf_date || rec.hyouka_print_date);
+                    if (!isHyouka && !hasHyoukaData) {
                         cls += ' disabled';
                         html += '<td class="' + cls + '">-</td>';
                         return;
@@ -1073,7 +1093,11 @@ function renderTable() {
                 }
 
                 // ===== 計画セル（案1: 開始/作成/測定/出力/提出の積み上げ）=====
-                if (!isPlan) {
+                // データが入っているセルは計画月でなくても常に表示（planStart移動で過去計画が '-' に隠れるのを防ぐ）
+                const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
+                    || rec.keikaku_sent_date || rec.sokutei_date || rec.sokutei_by || rec.output_by
+                    || rec.blocked_reason);
+                if (!isPlan && !hasPlanData) {
                     cls += ' disabled';
                     html += '<td class="' + cls + '">-</td>';
                     return;
@@ -1148,11 +1172,11 @@ function updateStats() {
     state.users.forEach(u => {
         const key = u.userId + '_' + ny + '_' + nm;
         const rec = state.records[key];
-        if (isPlanMonth(u.planStart, ny, nm)) {
+        if (isPlanMonth(u.planStart, u.planMonths, ny, nm)) {
             thisMonth++;
             if (rec && rec.keikaku_date) done++;   // 興味/生活は非表示・作成済み＝計画書作成日あり
         }
-        if (isHyoukaMonth(u.planStart, ny, nm)) {
+        if (isHyoukaMonth(u.planStart, u.planMonths, ny, nm)) {
             hyoukaThisMonth++;
             if (rec && (rec.hyouka_pdf_date || rec.hyouka_print_date)) hyoukaDone++;
         }
@@ -1686,8 +1710,11 @@ function openPlanStartDialog(td) {
         '<div style="margin-bottom:10px; padding:8px 10px; background:#f0fff4; border-left:3px solid #2c7a7b; font-size:0.95rem; color:#2c7a7b; font-weight:bold;">'
         + escapeHtml(officeLine)
         + '</div>'
-        + '<div>現在: ' + escapeHtml(currentValue || '未設定') + '（変更すると 3 ヶ月サイクルが再計算されます）</div>';
+        + '<div>現在: ' + escapeHtml(currentValue || '未設定') + '（変更すると評価サイクルが再計算されます）</div>';
     document.getElementById('planStartInput').value = currentValue || '';
+    // 計画の長さ（計画月数）を初期選択（無効・未設定は既定3）
+    const curMonths = (u && parseInt(u.planMonths, 10) >= 1 && parseInt(u.planMonths, 10) <= 12) ? parseInt(u.planMonths, 10) : 3;
+    document.getElementById('planMonthsInput').value = String(curMonths);
     document.getElementById('planStartDialog').classList.add('show');
 }
 
@@ -1698,9 +1725,11 @@ function closePlanStartDialog() {
 async function savePlanStartFromDialog() {
     const v = document.getElementById('planStartInput').value;
     if (!v) { showToast('⚠ 月が選択されていません', 'error'); return; }
+    const pmRaw = parseInt(document.getElementById('planMonthsInput').value, 10);
+    const planMonths = (pmRaw >= 1 && pmRaw <= 12) ? pmRaw : 3;
     const ds = planStartDialogState;
     closePlanStartDialog();
-    await applyPlanStart(ds.userId, ds.name, v);
+    await applyPlanStart(ds.userId, ds.name, v, planMonths);
 }
 
 async function clearPlanStart() {
@@ -1710,19 +1739,26 @@ async function clearPlanStart() {
     await applyPlanStart(ds.userId, ds.name, '');
 }
 
-async function applyPlanStart(userId, name, value) {
+async function applyPlanStart(userId, name, value, planMonths) {
     // 楽観更新
     const u = state.users.find(x => x.userId === userId);
-    if (u) u.planStart = value;
+    if (u) {
+        u.planStart = value;
+        if (planMonths !== undefined && planMonths !== null) u.planMonths = planMonths;
+    }
     saveCache();
     renderTable();
 
     try {
-        const url = API_BASE + '?action=updatePlanStart'
+        let url = API_BASE + '?action=updatePlanStart'
             + '&userId=' + encodeURIComponent(userId)
             + '&value=' + encodeURIComponent(value)
             + '&operator=' + encodeURIComponent(getOperator())
             + '&t=' + Date.now();
+        // planMonths は指定時のみ送信（オフライン再送のplanStart単独送信では計画月数を触らない＝誤クリア防止）
+        if (planMonths !== undefined && planMonths !== null) {
+            url += '&planMonths=' + encodeURIComponent(planMonths);
+        }
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
