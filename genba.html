@@ -3545,6 +3545,37 @@ const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgm
 // 利用者データキャッシュ
 let absUserCache = [];
 let absUserLoaded = false;
+// 2026-06-19 休み連絡メールリニューアル: ケアマネメアドのマップ（name→cmEmail）。
+// 利用者リストは ABS_USER_API_URL(利用者台帳WebApp) 由来で cmEmail を持たないため、
+// yawaragiボードGAS getUserList(action=user_list) を併読して表示/分岐用にマージする。
+// 実送信先は GAS が台帳N列を再取得（client値は信用しない）。
+let absCmEmailMap = {};
+
+// getUserList(action=user_list) を JSONP 取得して name→cmEmail マップを作る。
+// 失敗時は空マップで resolve（プレビュー表示が出ないだけ＝branch c 扱いに倒れる・固まらせない）。
+function absLoadCmEmailMap() {
+    const cbName = 'absCmEmailCb_' + Date.now();
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = (map) => { if (done) return; done = true; try { delete window[cbName]; } catch {} const el = document.getElementById('abs-cmemail-script'); if (el) el.remove(); resolve(map || {}); };
+        window[cbName] = function(data) {
+            const map = {};
+            const list = (data && data.user_list) || [];
+            list.forEach(function(u) {
+                const nm = String(u.userName || '').trim();
+                if (nm) map[nm] = String(u.cmEmail || '').trim();
+            });
+            finish(map);
+        };
+        const script = document.createElement('script');
+        script.id = 'abs-cmemail-script';
+        script.src = ABS_BOARD_API_URL + '?action=user_list&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function() { finish({}); };
+        document.body.appendChild(script);
+        // 保険: 8秒で諦めて空マップ（固まらせない）
+        setTimeout(function() { finish({}); }, 8000);
+    });
+}
 
 // 欠席理由リスト
 const ABS_REASONS = [
@@ -3598,17 +3629,23 @@ function absLoadUsersFromAPI() {
                     reading: u.kana || '',
                     pattern: pattern,
                     care: u.care || '',
-                    cmOffice: u.cmOffice || ''
+                    cmOffice: u.cmOffice || '',
+                    cmEmail: ''   // 後で getUserList 由来のマップでマージ
                 };
             });
 
             absUserLoaded = true;
-            // キャッシュにも保存（次回のオフライン起動用）
-            try {
-                localStorage.setItem(ABS_USERS_KEY, JSON.stringify(absUserCache));
-            } catch {}
 
-            resolve(absUserCache);
+            // 2026-06-19: ケアマネメアドを getUserList から併読してマージ（表示/分岐用）
+            absLoadCmEmailMap().then(function(map) {
+                absCmEmailMap = map;
+                absUserCache.forEach(function(u) { u.cmEmail = map[u.name] || ''; });
+                // キャッシュにも保存（次回のオフライン起動用・cmEmail込み）
+                try {
+                    localStorage.setItem(ABS_USERS_KEY, JSON.stringify(absUserCache));
+                } catch {}
+                resolve(absUserCache);
+            });
         };
 
         const script = document.createElement('script');
