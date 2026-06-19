@@ -4262,6 +4262,10 @@ function absRenderUpcomingList() {
             } else if (data.absences.absences) {
                 gasAbsences = data.absences.absences;
                 longTermData = data.absences.longTerm || [];
+                // 当日再開バッジ用：resumedToday の名前リストを保持（読み取り専用）
+                absResumedTodayList = (data.absences.resumedToday || [])
+                    .filter(function(i) { return i && i.name; })
+                    .map(function(i) { return i.name; });
             }
         }
         absRenderUpcomingListFromData(gasAbsences);
@@ -4390,6 +4394,9 @@ function absDeleteRecord(id) {
 // ===== 長期休み一覧 =====
 // 長期休み利用者の再開予定マップ（出席予定タブからも参照）
 let absLongTermMap = {};
+
+// 当日が再開日の利用者名リスト（action=absences の resumedToday を読み取り流用・板AttStore.resumedToday相当）
+let absResumedTodayList = [];
 
 function absRenderLongTermList(longTermData) {
     // マップを更新（出席予定タブで参照する用）
@@ -5056,6 +5063,11 @@ function attRenderUser(u) {
         }
     }
 
+    // 当日再開バッジ（長期休みから本日再開した出席者に表示／resumedToday読み取り専用・板踏襲）
+    var resumedBadge = (!isAbsent && absResumedTodayList.indexOf(u.name) >= 0)
+        ? '<span style="display:inline-block;background:#a7f3d0;color:#065f46;font-size:0.7rem;font-weight:900;padding:2px 8px;border-radius:10px;margin-left:6px;">🌱 利用再開</span>'
+        : '';
+
     // 連絡状況テキスト（欠席利用者のみ・表示専用／社長ボード踏襲・書き込みなし・タップ不可）
     var contactDisplay = '';
     var contactCls = '';
@@ -5081,6 +5093,7 @@ function attRenderUser(u) {
         '<div class="att-row-body">' +
             '<span class="att-user-name ' + careCls + '" onclick="event.stopPropagation();attShowMonthlyUsage(\'' + escapedName + '\')" style="cursor:pointer;">' + u.name + '</span>' +
             prevAbsentBadge +
+            resumedBadge +
             (u.care ? '<span class="att-user-care">' + u.care + '</span>' : '') +
             (isAbsent && u.reason ? '<span class="att-user-reason">' + u.reason + '</span>' : '') +
             (contactDisplay ? '<span class="att-contact-text ' + contactCls + '">' + contactDisplay + '</span>' : '') +
