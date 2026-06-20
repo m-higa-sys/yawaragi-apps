@@ -1967,7 +1967,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="shared.js?v=2026-06-20-05"></script>
+<script src="shared.js?v=2026-06-20-06"></script>
 <script>
 // ========== 配置管理データ定義 ==========
 
@@ -4874,31 +4874,44 @@ function khRender(list, month) {
     });
     const dates = Object.keys(byDate).sort(function(x, y) { return x < y ? 1 : (x > y ? -1 : 0); });
     const dowNames = ['日', '月', '火', '水', '木', '金', '土'];
+    function isAm(u) { return (u || '').indexOf('午前') >= 0; }
+    function recHtml(a) {
+        const name = a.name || '';
+        const reason = a.reason || '';
+        const reporter = a.reporter || '';
+        let h = '<div class="kh-rec" style="padding:3px 0; border-bottom:1px solid #f4f4f4; font-size:0.88rem; line-height:1.4;">';
+        h += '<span style="font-weight:600;">' + name + '</span>';
+        if (reason) h += ' <span style="color:#4a5568;">' + reason + '</span>';
+        if (reporter) h += ' <span style="color:#cbd5e0; font-size:0.78rem;">(' + reporter + ')</span>';
+        h += '</div>';
+        return h;
+    }
+    function colHtml(label, recs, color) {
+        let h = '<div style="flex:1; min-width:0;">';
+        h += '<div style="font-size:0.8rem; font-weight:700; color:' + color + '; border-bottom:2px solid ' + color + '; padding-bottom:2px; margin-bottom:4px;">' + label + ' <span style="color:#a0aec0; font-weight:500;">' + recs.length + '</span></div>';
+        if (recs.length === 0) h += '<div style="color:#cbd5e0; font-size:0.82rem; padding:3px 0;">—</div>';
+        else recs.forEach(function(a) { h += recHtml(a); });
+        h += '</div>';
+        return h;
+    }
     let html = '';
     dates.forEach(function(d) {
         const recs = byDate[d];
+        const am = recs.filter(function(a) { return isAm(a.unit); });
+        const pm = recs.filter(function(a) { return !isAm(a.unit); });
         const parts = d.split('-');
-        let dateLabel = d;
-        let dowLabel = '';
+        let dateLabel = d, dowLabel = '';
         if (parts.length === 3) {
             const dt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             dateLabel = parseInt(parts[1]) + '/' + parseInt(parts[2]);
             dowLabel = '（' + dowNames[dt.getDay()] + '）';
         }
-        html += '<div class="kh-day-group" style="margin-bottom:16px;">';
-        html += '<div class="kh-day-header" style="font-weight:700; font-size:1rem; color:#2d3748; padding:6px 10px; background:#edf2f7; border-radius:6px; margin-bottom:6px;">' + dateLabel + ' ' + dowLabel + ' <span style="font-weight:500; color:#718096; font-size:0.85rem;">' + recs.length + '件</span></div>';
-        recs.forEach(function(a) {
-            const name = a.name || '';
-            const unit = a.unit || '';
-            const reason = a.reason || '';
-            const reporter = a.reporter || '';
-            html += '<div class="kh-rec" style="padding:8px 12px; border-bottom:1px solid #f0f0f0; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">';
-            html += '<span style="font-weight:600; min-width:7em;">' + name + '</span>';
-            if (unit) html += '<span style="font-size:0.85rem; color:#5a67d8; background:#ebf0ff; padding:2px 8px; border-radius:4px;">' + unit + '</span>';
-            if (reason) html += '<span style="font-size:0.9rem; color:#4a5568;">' + reason + '</span>';
-            if (reporter) html += '<span style="font-size:0.8rem; color:#a0aec0; margin-left:auto;">受付: ' + reporter + '</span>';
-            html += '</div>';
-        });
+        html += '<div class="kh-day-group" style="margin-bottom:12px;">';
+        html += '<div class="kh-day-header" style="font-weight:700; font-size:0.95rem; color:#2d3748; padding:4px 8px; background:#edf2f7; border-radius:5px; margin-bottom:5px;">' + dateLabel + ' ' + dowLabel + ' <span style="font-weight:500; color:#718096; font-size:0.82rem;">午前' + am.length + ' / 午後' + pm.length + '</span></div>';
+        html += '<div class="kh-cols" style="display:flex; gap:16px; padding:0 4px;">';
+        html += colHtml('午前', am, '#3182ce');
+        html += colHtml('午後', pm, '#dd6b20');
+        html += '</div>';
         html += '</div>';
     });
     wrap.innerHTML = html;
