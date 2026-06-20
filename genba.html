@@ -1968,7 +1968,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="shared.js?v=2026-06-20-11"></script>
+<script src="shared.js?v=2026-06-20-12"></script>
 <script>
 // ========== 配置管理データ定義 ==========
 
@@ -2134,6 +2134,44 @@ function getData() {
     } catch { return { assignments: {}, staff: [...DEFAULT_STAFF] }; }
 }
 function saveData(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+
+// ===== 配置データのクラウド「読み込み」専用（書き込みは行わない・2026-06-20移植） =====
+// 本番GAS（シート「配置データ」A1のJSON）から配置を取得し、表示用にlocalStorageへマージする。
+// genbaはローカル入力をサーバーへ送らない（save_haichiは実装しない）。閲覧のみクラウドに合わせる。
+const HAICHI_SYNC_URL = (typeof YAWARAGIBOARD_API_URL !== 'undefined')
+    ? YAWARAGIBOARD_API_URL
+    : 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+function haichiCloudLoad(callback) {
+    const cbName = '_haichiCb_' + Date.now();
+    const script = document.createElement('script');
+    let timeout = setTimeout(function() { cleanup(); if(callback) callback(null); }, 8000);
+    function cleanup() {
+        clearTimeout(timeout);
+        try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = function(data) {
+        cleanup();
+        if (data && data.success && data.haichi) {
+            // クラウドデータとローカルをマージ（クラウド優先、ローカルにしかないものも保持）
+            const local = getData();
+            const cloud = data.haichi;
+            if (cloud.assignments) {
+                Object.keys(cloud.assignments).forEach(function(key) {
+                    local.assignments[key] = cloud.assignments[key];
+                });
+            }
+            if (cloud.staff && cloud.staff.length > 0) local.staff = cloud.staff;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+            if (callback) callback(local);
+        } else {
+            if (callback) callback(null);
+        }
+    };
+    script.src = HAICHI_SYNC_URL + '?action=haichi&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() { cleanup(); if(callback) callback(null); };
+    document.head.appendChild(script);
+}
 function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
 function getAssignmentKey(date, unit) { return date + '_' + unit; }
 
@@ -2227,6 +2265,10 @@ function setupTabs() {
             btn.classList.add('active');
             document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
             // タブ切替時に表示を更新
+            // 配置系タブはクラウド（本番GAS）から最新を取得して描画（読み込みのみ）。
+            if (btn.dataset.tab === 'assign') loadAssignment();
+            if (btn.dataset.tab === 'stats') haichiCloudLoad(function() { showStats(); });
+            if (btn.dataset.tab === 'history') haichiCloudLoad(function() { showHistory(); });
             if (btn.dataset.tab === 'attendance') {
                 attLoad();
                 // 長期休み一覧も再取得（再開予定日が更新されているかも）
@@ -2511,12 +2553,16 @@ function updateBusyNotice() {
 
 function loadAssignment() {
     currentDate = document.getElementById('assign-date').value;
-    currentAssignment = getAssignment(currentDate, currentUnit);
-    openChecklists = {};
-    renderAssignments();
-    renderKarutaPile();
-    document.getElementById('assign-memo').value = currentAssignment.memo || '';
-    updateBusyNotice();
+    // クラウド（本番GAS）から最新の配置を取得してから表示。
+    // 取得失敗時は callback(null) が呼ばれるが、getAssignment は localStorage を読むのでフォールバック動作する。
+    haichiCloudLoad(function() {
+        currentAssignment = getAssignment(currentDate, currentUnit);
+        openChecklists = {};
+        renderAssignments();
+        renderKarutaPile();
+        document.getElementById('assign-memo').value = currentAssignment.memo || '';
+        updateBusyNotice();
+    });
 }
 
 function saveAssignment() {
