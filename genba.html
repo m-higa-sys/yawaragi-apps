@@ -523,7 +523,18 @@
         .abs-record:last-child { margin-bottom: 0; }
         .abs-record-main { flex: 1; }
         .abs-record-name { font-size: 1rem; font-weight: 700; color: #2d3748; }
-        .abs-record-detail { font-size: 0.82rem; color: #718096; margin-top: 4px; line-height: 1.5; }
+        /* detailは既存のフォント/色/余白を維持しつつ、横位置を整えるため4列グリッド化。
+           日付だけ固定幅で左レールを揃え（理由の開始位置が行間で一致）、理由・連絡者・受付は
+           内容幅(minmax(0,max-content))に詰める＝短い理由の行で右側がスカスカに離れない。
+           狭幅時は各列が縮んでellipsisするので崩れない。 */
+        .abs-record-detail {
+            font-size: 0.82rem; color: #718096; margin-top: 4px; line-height: 1.5;
+            display: grid;
+            grid-template-columns: 80px minmax(0, max-content) minmax(0, max-content) minmax(0, max-content);
+            column-gap: 12px; align-items: baseline;
+        }
+        .abs-record-detail > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .abs-rc-date { font-weight: 600; color: #4a5568; }
         .abs-record-delete {
             padding: 6px 12px; border: 1px solid #fed7d7; border-radius: 8px;
             background: white; color: #e53e3e; font-size: 0.75rem; font-weight: 600;
@@ -4775,12 +4786,16 @@ function absRenderUpcomingListFromData(gasAbsences, gasFailed) {
         const deleteBtn = r.type === 'local'
             ? `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`
             : '';
+        const contactText = r.contact ? (r.contact + (r.method ? '（' + r.method + '）' : '')) : '';
         return `
         <div class="abs-record">
             <div class="abs-record-main">
                 <div class="abs-record-name">${r.userName}</div>
                 <div class="abs-record-detail">
-                    ${dateText}　理由: ${r.reason}　連絡者: ${r.contact}${r.method ? '（' + r.method + '）' : ''}${r.registeredBy ? '　受付: ' + r.registeredBy : ''}
+                    <span class="abs-rc-date">${dateText}</span>
+                    <span class="abs-rc-reason">${r.reason || ''}</span>
+                    <span class="abs-rc-contact">${contactText}</span>
+                    <span class="abs-rc-staff">${r.registeredBy ? '受付: ' + r.registeredBy : ''}</span>
                 </div>
             </div>
             ${deleteBtn}
