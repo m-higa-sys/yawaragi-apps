@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
     <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭） -->
@@ -1365,6 +1365,7 @@
     <button class="tab-btn" data-tab="stats">集計</button>
     <button class="tab-btn" data-tab="data">データ管理</button>
     <button class="tab-btn" data-tab="dengon" style="color:#3182ce;">📢伝達ボード</button>
+    <button class="tab-btn" data-tab="kesseki-history">欠席履歴</button>
 </div>
 
 <!-- ===== 出席予定タブ ===== -->
@@ -1802,6 +1803,17 @@
 </div>
 
 <!-- ===== 伝達ボードタブ ===== -->
+
+<!-- ===== 欠席履歴タブ ===== -->
+<div id="tab-kesseki-history" class="tab-content">
+    <h2 style="font-size:1.1rem; margin:0 0 12px;">📅 欠席履歴</h2>
+    <div class="kh-controls" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        <button class="kh-prev-btn" onclick="khPrevMonth()" style="padding:8px 14px; border:1px solid #cbd5e0; border-radius:8px; background:#fff; font-size:0.95rem; cursor:pointer;">‹ 前月</button>
+        <input type="month" id="kh-month" onchange="khLoad()" style="padding:8px 10px; border:1px solid #cbd5e0; border-radius:8px; font-size:0.95rem;">
+        <span class="kh-summary" id="kh-summary" style="font-size:0.95rem; color:#4a5568; font-weight:600;"></span>
+    </div>
+    <div id="kh-list-wrap"></div>
+</div>
 <div id="tab-dengon" class="tab-content">
     <h2 style="font-size:1.1rem; margin:0 0 12px;">📢 伝達ボード</h2>
     <p style="font-size:0.8rem; color:#718096; margin:0 0 12px;">社長⇄スタッフ⇄スタッフの連絡板。完了したらタップで消える（期限を過ぎたものも自動で消える）。</p>
@@ -1955,7 +1967,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="shared.js?v=2026-06-20-04"></script>
+<script src="shared.js?v=2026-06-20-05"></script>
 <script>
 // ========== 配置管理データ定義 ==========
 
@@ -2227,6 +2239,7 @@ function setupTabs() {
             if (btn.dataset.tab === 'terminate') { trmInit(); trmLoadList(); }
             if (btn.dataset.tab === 'jisseki-send') jsInitTab();
             if (btn.dataset.tab === 'dengon') dengonLoad();
+            if (btn.dataset.tab === 'kesseki-history') khInit();
         });
     });
 }
@@ -4795,6 +4808,101 @@ function absRenderLongTermList(longTermData) {
     el.innerHTML = html;
 }
 
+
+// ===== 欠席履歴タブ (kesseki-history) =====
+function khInit() {
+    const inp = document.getElementById('kh-month');
+    if (inp && !inp.value) {
+        const now = new Date();
+        inp.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    }
+    khLoad();
+}
+function khPrevMonth() {
+    const inp = document.getElementById('kh-month');
+    if (!inp || !inp.value) return;
+    const parts = inp.value.split('-');
+    let y = parseInt(parts[0]), m = parseInt(parts[1]);
+    m -= 1;
+    if (m < 1) { m = 12; y -= 1; }
+    inp.value = y + '-' + String(m).padStart(2, '0');
+    khLoad();
+}
+function khLoad() {
+    const inp = document.getElementById('kh-month');
+    const wrap = document.getElementById('kh-list-wrap');
+    const summary = document.getElementById('kh-summary');
+    if (!inp || !inp.value) return;
+    const month = inp.value;
+    if (summary) summary.textContent = '';
+    if (wrap) wrap.innerHTML = '<p style="text-align:center; color:#a0aec0; padding:30px;">読み込み中...</p>';
+    const cbName = '_khCb_' + Date.now();
+    const script = document.createElement('script');
+    script.src = ABS_BOARD_API_URL + '?action=absences&month=' + month + '&callback=' + cbName + '&t=' + Date.now();
+    window[cbName] = function(data) {
+        delete window[cbName];
+        let list = [];
+        if (data && data.absences) {
+            if (Array.isArray(data.absences)) list = data.absences;
+            else if (Array.isArray(data.absences.absences)) list = data.absences.absences;
+        }
+        khRender(list, month);
+    };
+    script.onerror = function() {
+        delete window[cbName];
+        if (wrap) wrap.innerHTML = '<p style="text-align:center; color:#e53e3e; padding:30px;">取得に失敗しました。もう一度お試しください。</p>';
+    };
+    document.body.appendChild(script);
+}
+function khRender(list, month) {
+    const wrap = document.getElementById('kh-list-wrap');
+    const summary = document.getElementById('kh-summary');
+    if (!wrap) return;
+    const mParts = month.split('-');
+    const monthLabel = parseInt(mParts[0]) + '年' + parseInt(mParts[1]) + '月';
+    if (!list || list.length === 0) {
+        if (summary) summary.textContent = monthLabel + '：欠席 0件';
+        wrap.innerHTML = '<p style="text-align:center; color:#a0aec0; padding:30px;">この月の欠席記録はありません</p>';
+        return;
+    }
+    if (summary) summary.textContent = monthLabel + '：欠席 ' + list.length + '件';
+    const byDate = {};
+    list.forEach(function(a) {
+        const d = a.date || '';
+        if (!byDate[d]) byDate[d] = [];
+        byDate[d].push(a);
+    });
+    const dates = Object.keys(byDate).sort(function(x, y) { return x < y ? 1 : (x > y ? -1 : 0); });
+    const dowNames = ['日', '月', '火', '水', '木', '金', '土'];
+    let html = '';
+    dates.forEach(function(d) {
+        const recs = byDate[d];
+        const parts = d.split('-');
+        let dateLabel = d;
+        let dowLabel = '';
+        if (parts.length === 3) {
+            const dt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            dateLabel = parseInt(parts[1]) + '/' + parseInt(parts[2]);
+            dowLabel = '（' + dowNames[dt.getDay()] + '）';
+        }
+        html += '<div class="kh-day-group" style="margin-bottom:16px;">';
+        html += '<div class="kh-day-header" style="font-weight:700; font-size:1rem; color:#2d3748; padding:6px 10px; background:#edf2f7; border-radius:6px; margin-bottom:6px;">' + dateLabel + ' ' + dowLabel + ' <span style="font-weight:500; color:#718096; font-size:0.85rem;">' + recs.length + '件</span></div>';
+        recs.forEach(function(a) {
+            const name = a.name || '';
+            const unit = a.unit || '';
+            const reason = a.reason || '';
+            const reporter = a.reporter || '';
+            html += '<div class="kh-rec" style="padding:8px 12px; border-bottom:1px solid #f0f0f0; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">';
+            html += '<span style="font-weight:600; min-width:7em;">' + name + '</span>';
+            if (unit) html += '<span style="font-size:0.85rem; color:#5a67d8; background:#ebf0ff; padding:2px 8px; border-radius:4px;">' + unit + '</span>';
+            if (reason) html += '<span style="font-size:0.9rem; color:#4a5568;">' + reason + '</span>';
+            if (reporter) html += '<span style="font-size:0.8rem; color:#a0aec0; margin-left:auto;">受付: ' + reporter + '</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+    });
+    wrap.innerHTML = html;
+}
 function absLoadLongTermList() {
     const cbName = '_absLtCb_' + Date.now();
     const script = document.createElement('script');
