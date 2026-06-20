@@ -1,0 +1,1893 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>シフト作成（ケアズ風）</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Yu Gothic", "Meiryo", sans-serif;
+    margin: 0;
+    padding: 12px;
+    background: #f5f5f5;
+    font-size: 13px;
+  }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  .top {
+    background: #fff;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .top label { font-size: 13px; }
+  .top select, .top button {
+    font-size: 14px;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    background: white;
+  }
+  .top button { background: #1976d2; color: white; border: none; }
+  .top button:hover { background: #1565c0; }
+  .top button.secondary { background: #757575; }
+  .top button.success { background: #2e7d32; }
+  .top button.danger { background: #c62828; }
+  .info {
+    color: #666;
+    font-size: 12px;
+    margin: 6px 0 0;
+  }
+  .table-wrap {
+    overflow: auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    padding: 4px;
+    max-height: 70vh;
+  }
+  table {
+    border-collapse: collapse;
+    font-size: 12px;
+    width: max-content;
+    min-width: 100%;
+  }
+  th, td {
+    border: 1px solid #ccc;
+    padding: 1px 3px;
+    text-align: center;
+    height: 26px;
+    min-width: 38px;
+    white-space: nowrap;
+  }
+  th {
+    background: #f5f5f5;
+    font-weight: normal;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+  }
+  th.staff-h, td.staff-h {
+    text-align: left;
+    padding: 1px 8px;
+    background: #f5f5f5;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    min-width: 90px;
+  }
+  th.staff-h { z-index: 4; }
+  th.dow-sat { background: #e3f2fd; color: #1565c0; }
+  th.dow-sun, th.dow-holiday { background: #ffcdd2; color: #c62828; }
+  th.summary, td.summary { background: #f9fbe7; min-width: 36px; }
+  td.cell {
+    cursor: pointer;
+    user-select: none;
+    font-weight: bold;
+    font-size: 11px;
+  }
+  td.cell:hover { outline: 2px solid #1976d2; outline-offset: -2px; }
+  td.cell.full { background: #fff59d; color: #000; }
+  td.cell.short { background: #fff59d; color: #000; }
+  td.cell.escort { background: #e0e0e0; color: #000; }
+  td.cell.off { background: #ffcdd2; color: #b71c1c; }
+  td.cell.leave { background: #ffe0b2; color: #e65100; }
+  td.cell.half-leave { background: #f8bbd0; color: #ad1457; }
+  td.cell.empty { background: #fff; }
+  td.cell.closed { background: #eeeeee; color: #999; cursor: not-allowed; }
+  .summary-row { background: #f9fbe7; font-weight: bold; }
+  .summary-row td { padding: 1px 4px; }
+  .summary-row td.floor-ok { background: #4caf50; color: white; font-size: 13px; }
+  .summary-row td.floor-warn { background: #fff176; color: #f57f17; }
+  .summary-row td.floor-err { background: #f44336; color: white; }
+  .summary-row td.neutral { background: #e0e0e0; color: #c62828; font-weight: bold; }
+  .summary-row td.light-ok { background: #c8e6c9; color: #000; font-weight: bold; }
+  .summary-row td.light-err { background: #c8e6c9; color: #c62828; font-weight: bold; }
+  .summary-row td.closed-day { background: #fafafa; color: #bbb; }
+  .summary-row td.nurse-ok { background: #c5e1a5; color: #33691e; }
+  .summary-row td.nurse-warn { background: #fff59d; color: #f57f17; }
+  .summary-row td.nurse-err { background: #ef9a9a; color: #b71c1c; }
+  .alerts {
+    background: #fff;
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .alert-item {
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .alert-error { background: #ffebee; color: #b71c1c; border-left: 4px solid #f44336; }
+  .alert-warn { background: #fff3e0; color: #e65100; border-left: 4px solid #ff9800; }
+  .alert-info { background: #e8f5e9; color: #1b5e20; border-left: 4px solid #4caf50; }
+
+  /* ブラシバー */
+  .brush-bar {
+    background: #fff8e1;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    display: none;
+    gap: 12px;
+    align-items: center;
+    border: 2px solid #ffc107;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  .brush-bar.active { display: flex; }
+  .brush-current {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 14px;
+    border: 1px solid #999;
+  }
+  .brush-current.full, .brush-current.short { background: #fff59d; }
+  .brush-current.escort { background: #e0e0e0; }
+  .brush-current.off { background: #ffcdd2; color: #b71c1c; }
+  .brush-current.leave { background: #ffe0b2; color: #e65100; }
+  .brush-current.half-leave { background: #f8bbd0; color: #ad1457; }
+  .brush-current.empty { background: #fff; border: 1px dashed #999; color: #666; }
+  .brush-clear-btn {
+    background: #fff;
+    border: 1px solid #c62828;
+    color: #c62828;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  .brush-clear-btn:hover { background: #ffebee; }
+
+  /* 記号選択ポップアップ */
+  .popup-bg {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+  }
+  .popup-bg.show { display: flex; }
+  .popup {
+    background: white;
+    padding: 16px;
+    border-radius: 8px;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .popup h3 { margin: 0 0 8px; font-size: 16px; }
+  .popup .sub { font-size: 12px; color: #666; margin: 0 0 12px; }
+  .popup-header-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 1;
+  }
+  .popup-mini-btn {
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+  .popup-clear-mini { background: #ffcdd2; border: 1px solid #ef9a9a; color: #b71c1c; }
+  .popup-clear-mini:hover { background: #ef9a9a; }
+  .popup-cancel-mini { background: #eee; border: 1px solid #ccc; color: #555; }
+  .popup-cancel-mini:hover { background: #ddd; }
+  .pattern-group { margin-bottom: 12px; }
+  .pattern-group h4 {
+    margin: 8px 0 4px;
+    font-size: 13px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 2px;
+  }
+  .pattern-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 4px;
+  }
+  .pattern-btn {
+    border: 1px solid #ccc;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+    background: white;
+  }
+  .pattern-btn:hover { background: #f5f5f5; }
+  .pattern-btn .label {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: bold;
+    margin-right: 4px;
+  }
+  .pattern-btn .full .label { background: #fff59d; }
+  .pattern-btn .escort .label { background: #e0e0e0; }
+  .pattern-btn .off .label { background: #ffcdd2; }
+  .pattern-btn .leave .label { background: #ffe0b2; }
+  .pattern-btn .half-leave .label { background: #f8bbd0; }
+  .popup-footer {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .popup-footer button { padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+
+  @media print {
+    body { background: white; padding: 4px; font-size: 11px; }
+    .top, .alerts, .info { display: none; }
+    .table-wrap { box-shadow: none; padding: 0; max-height: none; overflow: visible; }
+    th, td { font-size: 10px; padding: 1px 2px; min-width: 24px; height: 20px; }
+    th.staff-h, td.staff-h { min-width: 70px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>シフト作成（ケアズ風）</h1>
+
+<div class="top">
+  <label>月: <select id="monthSel">
+    <option value="2026-06" selected>2026年06月</option>
+    <option value="2026-05">2026年05月</option>
+  </select></label>
+  <label>事業所: <select disabled><option>yawaragi</option></select></label>
+  <button id="loadWishesBtn">希望休を再取得</button>
+  <button id="resetBtn" class="secondary">リセット</button>
+  <button id="hardResetBtn" style="background:#ffebee;border:1px solid #c62828;color:#b71c1c;font-weight:700" title="localStorageを削除して、HTMLのINDIVIDUAL_DAYSを強制再適用する。シフトのコードを変更したのに画面に反映されない時に押す">🔄 強制初期化（コード変更反映）</button>
+  <button id="blankResetBtn" style="background:#fff3e0;border:1px solid #f57c00;color:#e65100">🧹 真っさら（希望休のみ）</button>
+  <button id="lockBtn" style="background:#e8f5e9;border:2px solid #2e7d32;color:#1b5e20;font-weight:700" title="シフト完成後にロックすると、解除するまで変更不可になる">🔒 ロック</button>
+  <span id="lockStatus" style="color:#c62828;font-weight:bold;margin-left:8px"></span>
+  <button id="exportCsvBtn" class="success">CSV出力</button>
+  <button id="printBtn" class="secondary">印刷</button>
+  <button id="cloudSyncBtn" style="background:#e3f2fd;border:1px solid #1976d2;color:#1976d2">☁️ クラウド同期設定</button>
+  <button id="cloudRestoreBtn" style="background:#fce4ec;border:1px solid #c2185b;color:#880e4f">📂 クラウドから復元</button>
+  <button id="applyToOpsBtn" style="background:#fff3e0;border:1px solid #ef6c00;color:#bf360c;font-weight:700">🔄 出勤＆送迎表に反映</button>
+  <span class="save-status" id="saveStatus" style="margin-left:auto; font-size:12px; color:#2e7d32; font-weight:bold"></span>
+  <span id="cloudSyncStatus" style="font-size:12px; color:#1976d2; font-weight:bold"></span>
+</div>
+<div class="info">凡例: <span style="background:#fff59d;padding:1px 6px">通常/短時間勤務</span> <span style="background:#e0e0e0;padding:1px 6px">送迎</span> <span style="background:#ffcdd2;padding:1px 6px">希望休</span> <span style="background:#ffe0b2;padding:1px 6px">有給</span> <span style="background:#f8bbd0;padding:1px 6px">半日有給(有AM/有PM)</span></div>
+
+<div class="brush-bar" id="brushBar">
+  <span style="font-weight:bold">🖌 ブラシモード</span>
+  <span id="brushDisplay"></span>
+  <span style="color:#666;font-size:12px;flex:1">セルをクリックまたはドラッグで連続入力できます</span>
+  <button class="brush-clear-btn" id="brushSwitchToClearBtn" style="border-color:#1976d2;color:#1976d2">🧹 空欄ブラシに切替</button>
+  <button class="brush-clear-btn" id="brushClearBtn">解除（通常モードに戻る）</button>
+</div>
+
+<div class="table-wrap">
+  <table id="shiftTable">
+    <thead></thead>
+    <tbody></tbody>
+    <tfoot></tfoot>
+  </table>
+</div>
+
+<div class="alerts" id="alerts"></div>
+
+<!-- 記号選択ポップアップ -->
+<div class="popup-bg" id="popupBg">
+  <div class="popup">
+    <h3 id="popupTitle">勤務パターンを選択</h3>
+    <div class="popup-header-row">
+      <p class="sub" id="popupSub" style="margin:0;flex:1"></p>
+      <button id="popupClearTop" class="popup-mini-btn popup-clear-mini">🧹 クリア（空欄に）</button>
+      <button id="popupCancelTop" class="popup-mini-btn popup-cancel-mini">✕ キャンセル</button>
+    </div>
+    <div id="patternGroups"></div>
+    <div class="popup-footer">
+      <button id="popupClear" style="background:#ffcdd2;border:1px solid #ef9a9a">クリア（空欄に）</button>
+      <button id="popupCancel" style="background:#eee;border:1px solid #ccc">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ 設定 ============
+const STAFF = ["勝又裕子", "星野友太", "下浦理絵", "工藤経子", "髙山奈緒美", "春山忍", "石井祐子", "大久保好美", "小野重次郎", "林秀明", "比嘉学"];
+const STAFF_KEY = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "石井", "大久保", "小野", "林", "比嘉"];
+const NURSE = ["髙山", "春山", "石井"]; // 下浦は介護福祉士・メイン相談員（看護師ではない）
+const KAIGOFUKUSHI = ["比嘉", "星野", "勝又", "下浦", "大久保"];
+const SODANIN = ["星野", "勝又", "下浦", "工藤"]; // 生活相談員（兼務含む）
+const ESCORT = ["小野", "林"]; // 送迎専属（1号便）
+const ESCORT_KENMU = ["勝又", "星野"]; // 送迎兼務（2号便・B2でも送迎にカウント）
+const ESCORT_BACKUP = ["勝又", "星野"];
+const FLOOR_STAFF = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "大久保", "石井"];
+const TRIPLE_BAN = ["石井", "下浦", "春山", "髙山"];
+const KUDO_LIMIT = 3;
+
+// 仮時給（社長が後で修正）
+const HOURLY_WAGE = {
+  "比嘉": 0,        // 役員報酬・計算外
+  "勝又": 1500,    // 月給制（MONTHLY_SALARY参照）
+  "星野": 1500,    // 月給制（MONTHLY_SALARY参照）
+  "下浦": 1500,    // 2026年4月勤務分から1,450→1,500に変更
+  "工藤": 1300,
+  "髙山": 1600,
+  "春山": 1500,
+  "石井": 1650,    // 確定
+  "大久保": 1100,
+  "小野": 1100,
+  "林": 1050
+};
+
+// 月給制スタッフ（時給計算ではなく固定額表示）
+const MONTHLY_SALARY = {
+  "勝又": 250000,  // 25万/月（固定）
+  "星野": 220000   // 22万/月（固定）
+};
+
+// シフト記号 → 勤務時間（時間・休憩控除済み）
+// 🔴 ルール: 全スタッフ通常勤務・短時間勤務は1時間休憩（社長指示・2026/4/26）
+//          送迎は休憩なし（短時間業務のため）
+function calcWorkHours(pattern) {
+  const p = PATTERNS[pattern];
+  if (!p || !p.time) return 0;
+  const slots = p.time.split("/").map(s => s.trim());
+  let totalMin = 0;
+  slots.forEach(slot => {
+    const [start, end] = slot.split("-").map(s => s.trim());
+    if (!start || !end) return;
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    totalMin += (eh*60+em) - (sh*60+sm);
+  });
+  // 通常勤務（full）・短時間勤務（short）は一律1時間休憩控除
+  if (p.category === "full" || p.category === "short") {
+    totalMin -= 60;
+  }
+  return Math.max(0, totalMin / 60);
+}
+
+// シフト記号体系（ケアズアプリ準拠）
+const PATTERNS = {
+  // 通常勤務（フルタイム）
+  "A":  {time: "08:00-17:00", category: "full"},
+  "B1": {time: "07:30-16:30", category: "full"},
+  "B2": {time: "07:45-16:45", category: "full"},
+  "B3": {time: "08:00-17:00", category: "full"},
+  "B4": {time: "08:15-17:15", category: "full"},
+  "B5": {time: "08:30-17:30", category: "full"},
+  "C":  {time: "08:45-17:00", category: "full"},
+  // 短時間勤務
+  "D":  {time: "08:00-09:15", category: "short"},
+  "E1": {time: "08:45-15:00", category: "short"},
+  "F":  {time: "08:45-16:00", category: "short"},
+  "H":  {time: "08:45-16:30", category: "short"},
+  "健診": {time: "08:30-12:30", category: "short"},
+  "昼": {time: "11:45-13:30", category: "short"},
+  "昼夕": {time: "11:45-13:30 / 16:15-17:00", category: "short"},
+  // 休暇
+  "休": {time: "", category: "off"},
+  "有給": {time: "", category: "leave"},
+  "有AM": {time: "13:15-17:15", category: "half-leave"},
+  "有PM": {time: "08:30-12:30", category: "half-leave"},
+  "有PM2": {time: "08:00-12:00", category: "half-leave"},
+  // 送迎（7時台）
+  "7①": {time: "07:45-09:00", category: "escort"},
+  "7②": {time: "07:45-09:00 / 11:45-13:30", category: "escort"},
+  "7③": {time: "07:45-09:00 / 11:45-13:30 / 16:15-17:00", category: "escort"},
+  // 送迎（8時台）
+  "8①": {time: "08:00-09:00", category: "escort"},
+  "8②": {time: "08:00-09:00 / 11:45-13:30", category: "escort"},
+  "8③": {time: "08:00-09:00 / 11:45-13:30 / 16:15-17:00", category: "escort"},
+  // ドライバー（7時台）
+  "ド⑦1": {time: "07:45-09:00", category: "escort"},
+  "ド⑦2": {time: "07:45-09:00 / 12:00-13:30", category: "escort"},
+  "ド⑦3": {time: "07:45-09:00 / 12:00-13:30 / 16:30-17:00", category: "escort"},
+  "ド⑦4": {time: "07:45-09:00 / 16:30-17:00", category: "escort"},
+  "ド⑦1イ": {time: "08:15-09:30", category: "escort"},
+  // ドライバー（8時台）
+  "ド⑧1": {time: "08:00-09:00", category: "escort"},
+  "ド⑧2": {time: "08:00-09:00 / 12:00-13:30", category: "escort"},
+  "ド⑧3": {time: "08:00-09:00 / 12:00-13:30 / 16:30-17:00", category: "escort"},
+  "ド⑧4": {time: "08:00-09:00 / 16:30-17:00", category: "escort"},
+  "ド昼夕": {time: "11:45-13:30 / 16:15-17:00", category: "escort"},
+  "ド夕": {time: "16:15-17:00", category: "escort"}
+};
+
+// パターングループ（ポップアップ表示順）
+const PATTERN_GROUPS = [
+  {title: "通常勤務 (A〜C)", patterns: ["A","B1","B2","B3","B4","B5","C"]},
+  {title: "短時間勤務", patterns: ["D","E1","F","H","健診","昼","昼夕"]},
+  {title: "送迎 7時台", patterns: ["7①","7②","7③"]},
+  {title: "送迎 8時台", patterns: ["8①","8②","8③"]},
+  {title: "ドライバー 7時台", patterns: ["ド⑦1","ド⑦2","ド⑦3","ド⑦4","ド⑦1イ"]},
+  {title: "ドライバー 8時台", patterns: ["ド⑧1","ド⑧2","ド⑧3","ド⑧4","ド昼夕","ド夕"]},
+  {title: "休暇", patterns: ["休","有給","有AM","有PM","有PM2"]}
+];
+
+// 各スタッフのデフォルト曜日パターン（クロコの初期案）
+// 数字は曜日: 0=日,1=月,2=火,3=水,4=木,5=金,6=土
+const DEFAULT_PATTERNS = {
+  "比嘉":  {1:"B2", 2:"B2", 3:"B2", 4:"B2", 5:"B2"},   // 月〜金
+  "勝又":  {1:"B2", 2:"B2", 3:"B2", 4:"B2", 5:"B2"},   // 月〜金
+  "星野":  {1:"B2", 2:"B2", 3:"B2", 4:"B2", 5:"B2"},   // 月〜金（5/5,5/6希望休）
+  "下浦":  {2:"H",  3:"H",  5:"H"},                     // 火水金（3連勤NG・介護福祉士/メイン相談員）
+  "工藤":  {1:"H",  3:"H",  4:"H"},                     // 月水木（週3固定）
+  "髙山":  {1:"E1", 3:"E1", 5:"E1"},                    // 月水金（土日祝休み・看護師）
+  "春山":  {2:"E1", 4:"E1", 5:"E1"},                    // 火木金（運転不可・看護師）
+  "石井":  {2:"E1", 4:"E1"},                            // 火木（希望休6日多いため週2）
+  "大久保": {1:"B2", 4:"B2"},                           // 月木のみ
+  "小野":  {1:"7①", 2:"7①", 3:"7①", 4:"7①", 5:"7①"}, // 月〜金 送迎
+  "林":    {} // 週2・送迎専属・個別指定（INDIVIDUAL_DAYS参照）
+};
+
+// 曜日パターンに収まらないスタッフの個別出勤日
+const INDIVIDUAL_DAYS = {
+  "2026-05": {
+    "林": [
+      // 林は送迎専属。送迎=2の薄い日（星野休 等）に優先配置
+      {day: 5,  pattern: "7①"}, // 火（5/4月→振替・星野休で送迎2のためカバー）
+      {day: 6,  pattern: "7①"}, // 水（5/8金→振替・星野休で送迎2のためカバー）
+      {day: 13, pattern: "7①"}, // 水
+      {day: 15, pattern: "7①"}, // 金
+      {day: 19, pattern: "7①"}, // 火
+      {day: 22, pattern: "7①"}, // 金
+      {day: 26, pattern: "7①"}, // 火
+      {day: 29, pattern: "7①"}  // 金
+    ],
+    "大久保": [
+      {day: 13, pattern: "B2"}, // 第3週・水（木5/14休の振替）
+      {day: 20, pattern: "B2"}  // 第4週・水（木5/21希望休の振替）
+    ],
+    "髙山": [
+      // 祝日は自動で休み（initShiftDataで祝日除外ロジック）
+      // 水抜き火振替を取消（看護師ゼロを防ぐため・2026/4/26 社長承認）
+    ],
+    "石井": [
+      {day: 7, pattern: ""}     // 木抜き（5/7フロア7→6人化、5/12は通常出勤）
+    ],
+    "工藤": [
+      {day: 4, pattern: ""},    // 月→火振替で休
+      {day: 5, pattern: "H"}    // 火出勤（5/5の15時以降フロア確保）
+    ]
+  },
+  "2026-06": {
+    // 🔴2026-05-24社長指示反映版
+    // (1) 大久保以外は曜日ローテーション（固定で会わない利用者を作らない）
+    // (2) 春山・髙山・石井・工藤・下浦は全員週3日勤務
+    // (3) 春山は水曜休（基本）・15時以降不足日はF延長優先
+    // (4) 必ず勝又or下浦のどちらかが勤務
+    // → 6/1月（勝又希望休）は下浦必須出勤
+
+    "工藤": [
+      // 社長指示：6/1月→6/2火に移動、6/16火外し（6/16はフロア6で多い）
+      {day: 1,  pattern: ""},   // 月→6/2火振替（6/1月のフロア6人化解消）
+      {day: 2,  pattern: "H"},  // 火追加（6/1から振替）
+      {day: 4,  pattern: ""},   // 木→振替で休
+      {day: 5,  pattern: "H"},  // 金追加（下浦休カバー）
+      // 6/10水C延長削除→DEFAULT Hに戻す（春山6/10F追加で15時以降4達成）
+      {day: 12, pattern: ""},   // 金→休
+      {day: 16, pattern: ""},   // 火→振替で休（6/16フロア6人化解消）
+      {day: 18, pattern: ""},   // 木→振替で休
+      {day: 19, pattern: "H"},  // 金追加（下浦休カバー）
+      {day: 29, pattern: ""}    // 月→振替で休
+    ],
+
+    "下浦": [
+      // 通常DEFAULT=火水金H（週3）→ 月木追加で週3確保（13日）
+      // 月：6/1(勝又休カバー必須),6/8,6/22 火：DEFAULT 水：6/3,6/17(6/24""休)
+      // 木：6/4,6/11,6/25 金：DEFAULT(6/12,6/26)
+      {day: 1,  pattern: "H"},  // 月追加（勝又休カバー・必須）
+      {day: 4,  pattern: "H"},  // 木追加
+      {day: 8,  pattern: ""},   // 月→休（6/8月フロア7人化解消）
+      {day: 11, pattern: ""},   // 木→休
+      {day: 18, pattern: "H"},  // 木追加（6/18フロア4→5対策）
+      {day: 22, pattern: "H"}   // 月追加（6/22フロア4→5対策）
+      // 6/24水→DEFAULT通り出勤
+      // 6/25木→追加削除（6/25木フロア7人化解消）
+    ],
+
+    "髙山": [
+      // 通常DEFAULT=月水金E1（週3+土日祝休）→ 火木追加で全曜日カバー（13日）
+      // 月：6/8,6/15,6/22 火：6/9F,6/16,6/23F 水：6/3,6/10F,6/24
+      // 木：6/18 金：6/5,6/12(6/19,6/26""休)
+      // 🚨髙山はF/H/C不可（16時以降勤務NG）・E1のみ
+      {day: 9,  pattern: "E1"}, // 火追加（春山休カバー）
+      {day: 10, pattern: "E1"}, // 水追加（DEFAULT通り・F不可）
+      {day: 16, pattern: "E1"}, // 火追加（6/16林休カバー・必須）
+      {day: 17, pattern: ""},   // 水→振替で休
+      {day: 19, pattern: ""},   // 金→振替で休
+      {day: 23, pattern: "E1"}  // 火追加（社長指示「15時まで」厳守・髙山F不可・15時以降3許容）
+      // 6/2火→追加削除（6/2火フロア6人化解消）
+      // 6/18木→追加削除（6/18木は下浦H追加で対応）
+      // 6/26金はDEFAULT通り出勤
+    ],
+
+    "春山": [
+      // 通常DEFAULT=火木金E1（週3）→ 月追加・水休・F延長優先（13日）
+      // 月：6/1F,6/8E1,6/29F 火：全F 水：0(本人希望)
+      // 木：6/25E1(他""休) 金：全F
+      {day: 1,  pattern: "F"},  // 月追加F（6/1月15時以降4達成・勝又休のため）
+      {day: 2,  pattern: "F"},  // 火F延長
+      {day: 4,  pattern: ""},   // 木→振替で休（フロア過多回避）
+      {day: 5,  pattern: "F"},  // 金F延長（下浦休カバー）
+      {day: 8,  pattern: ""},   // 月→休（6/8月フロア7人化解消）
+      {day: 9,  pattern: "F"},  // 火F延長
+      {day: 10, pattern: "F"},  // 水F追加（社長指示・水曜柔軟化・石井→春山交換で15時以降4達成）
+      {day: 11, pattern: "E1"}, // 木E1（15時以降4達成のためF不要）
+      {day: 12, pattern: "F"},  // 金F延長
+      {day: 16, pattern: "F"},  // 火F延長（林休）
+      {day: 18, pattern: ""},   // 木→振替で休
+      {day: 19, pattern: "F"},  // 金F延長（下浦休カバー）
+      // 6/22月→春山追加なし（下浦H+大久保で15時以降4達成・春山12日キープ）
+      {day: 23, pattern: "F"},  // 火F延長（最厳日）
+      {day: 25, pattern: ""},   // 木→休（6/25木フロア7人化解消）
+      {day: 26, pattern: "F"},  // 金F延長
+      {day: 29, pattern: "F"},  // 月追加F（髙山休カバー）
+      {day: 30, pattern: "F"}   // 火F延長（林休）
+    ],
+
+    "石井": [
+      // 通常DEFAULT=火木E1（週2）→ 週3に増やす（13日）
+      // 月：6/1,6/15,6/29 火：6/2,6/9,6/23,6/30(6/16""休)
+      // 水：6/10,6/17 木：6/4,6/25(6/11,6/18""休) 金：6/19
+      {day: 1,  pattern: "E1"}, // 月追加（看護師確保・髙山休）
+      {day: 9,  pattern: ""},   // 火→休（6/9火フロア6人化解消）
+      // 6/10水→休に変更（春山6/10F追加と交換・社長指示）
+      {day: 11, pattern: ""},   // 木→振替で休
+      {day: 12, pattern: ""},   // 金→休（6/12金フロア6人化解消）
+      {day: 15, pattern: ""},   // 月→休（6/15月フロア6人化解消）
+      {day: 16, pattern: ""},   // 火→振替で休
+      {day: 17, pattern: "E1"}, // 水追加
+      {day: 19, pattern: "E1"}, // 金追加（下浦休カバー）
+      {day: 29, pattern: "E1"}  // 月追加（看護師確保・髙山休）
+      // 6/18木はDEFAULT通り出勤（""削除・6/18木フロア4→5対策）
+    ],
+
+    "林": [
+      // 送迎専属8日（社長指示「林週2でいい」=月8日厳守）
+      // 6/5金→6/1月に振替（社長指示・6/1月送迎3確保＋週2維持）
+      {day: 1,  pattern: "7①"}, // 月（6/5金から振替・勝又休カバー）
+      {day: 2,  pattern: "7①"}, // 火（下浦休）
+      {day: 9,  pattern: "7①"}, // 火
+      {day: 12, pattern: "7①"}, // 金
+      {day: 17, pattern: "7①"}, // 水
+      {day: 19, pattern: "7①"}, // 金（下浦休）
+      {day: 24, pattern: "7①"}, // 水（石井休）
+      {day: 26, pattern: "7①"}  // 金
+    ],
+
+    "小野": [
+      // 🚨各週で週4厳守＝月18日勤務・4日休み（社長指示・週3週は作らない）
+      // 林がいる日に集約（送迎3確保）
+      {day: 2,  pattern: ""},   // 火休（林あり）第1週
+      {day: 12, pattern: ""},   // 金休（林あり）第2週
+      {day: 17, pattern: ""},   // 水休（林あり）第3週
+      {day: 26, pattern: ""}    // 金休（林あり）第4週
+      // 第5週(6/29,6/30)は出勤・送迎カウント維持
+    ],
+
+    // 大久保：DEFAULT月木週2固定のまま（社長指示・例外なし）
+    // 比嘉/勝又/星野：DEFAULT月〜金（社員常勤）
+  }
+};
+
+// シフト希望入力アプリAPI（GAS）
+// スタッフが入力した最新の希望休をJSONP取得
+const SHIFT_WISHES_API = 'https://script.google.com/macros/s/AKfycby-Btc1XdsqKAgVwycKzYSyJJz9lIHVkPDIJ-TwlJmVTxzUtb6-o5qHr1hKHH7eXHOjqA/exec';
+
+// 5月希望データ（取得済み・APIで自動上書きされる）
+const WISH_DATA = {
+  "2026-05": {
+    wishes: [
+      {staff: "星野", day: 5}, {staff: "星野", day: 6},
+      {staff: "石井", day: 1}, {staff: "石井", day: 8}, {staff: "石井", day: 11},
+      {staff: "石井", day: 13}, {staff: "石井", day: 27}, {staff: "石井", day: 29},
+      {staff: "春山", day: 6}, {staff: "春山", day: 28},
+      {staff: "工藤", day: 11}, {staff: "工藤", day: 12},
+      {staff: "下浦", day: 4}, {staff: "下浦", day: 8}, {staff: "下浦", day: 11}, {staff: "下浦", day: 29},
+      {staff: "林", day: 11}, {staff: "林", day: 27},
+      {staff: "大久保", day: 21}
+    ],
+    absences: [
+      // wishesと重複するもの（保険として残す）
+      {staff: "星野", days: [5,6]},
+      {staff: "石井", days: [1]},
+      {staff: "下浦", days: [4]},
+      {staff: "下浦", days: [29]}
+      // 大久保5/28,29はクロコが勝手に追加していたため削除（2026/4/26 シフト希望アプリと照合）
+    ]
+  },
+  "2026-06": {
+    // 6月希望休17件（2026-05-24引き継ぎ・APIで自動上書きされる）
+    wishes: [
+      // 下浦 6日
+      {staff: "下浦", day: 2}, {staff: "下浦", day: 5}, {staff: "下浦", day: 10},
+      {staff: "下浦", day: 19}, {staff: "下浦", day: 23}, {staff: "下浦", day: 29},
+      // 林 3日
+      {staff: "林", day: 15}, {staff: "林", day: 16}, {staff: "林", day: 30},
+      // 工藤 2日
+      {staff: "工藤", day: 22}, {staff: "工藤", day: 23},
+      // 髙山 2日（土日休と別の希望休）
+      {staff: "髙山", day: 1}, {staff: "髙山", day: 29},
+      // 石井 2日
+      {staff: "石井", day: 5}, {staff: "石井", day: 24},
+      // 春山 1日
+      {staff: "春山", day: 3},
+      // 勝又 1日
+      {staff: "勝又", day: 1}
+    ],
+    absences: [
+      // バックアップ（wishesと重複・保険）
+      {staff: "下浦", days: [2,5,10,19,23,29]},
+      {staff: "林",   days: [15,16,30]},
+      {staff: "工藤", days: [22,23]},
+      {staff: "髙山", days: [1,29]},
+      {staff: "石井", days: [5,24]},
+      {staff: "春山", days: [3]},
+      {staff: "勝又", days: [1]}
+    ]
+  }
+};
+
+// 5月の祝日（休館候補）
+const HOLIDAYS = {
+  "2026-05-03": "憲法記念日",
+  "2026-05-04": "みどりの日",
+  "2026-05-05": "こどもの日",
+  "2026-05-06": "振替休日"
+};
+
+// ============ 状態 ============
+// shiftData[staff][dateStr] = "B2" 等
+let shiftData = {};
+let calendar = [];
+let currentCell = null; // ポップアップ対象のセル
+let currentBrush = null; // null=通常モード, "B2"等=ブラシモード, "__CLEAR__"=空欄ブラシ
+let isDragging = false;
+let isInitializing = false; // 初期化中は保存しない
+
+// ============ 自動保存（localStorage） ============
+const STORAGE_KEY_PREFIX = 'yawaragi_shift_';
+function saveToLocal(yearMonth) {
+  if (isInitializing) return;
+  try {
+    localStorage.setItem(STORAGE_KEY_PREFIX + yearMonth, JSON.stringify({
+      data: shiftData,
+      savedAt: new Date().toISOString()
+    }));
+    const now = new Date();
+    const ts = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0") + ":" + String(now.getSeconds()).padStart(2,"0");
+    document.getElementById("saveStatus").textContent = "✓ 自動保存 " + ts;
+    // クラウド同期もキック（debounce）
+    debouncedCloudSync(yearMonth);
+  } catch (e) {
+    console.error("保存失敗", e);
+    document.getElementById("saveStatus").textContent = "❌ 保存失敗";
+  }
+}
+
+// ============ クラウド同期（File System Access API） ============
+// Googleドライブミラーフォルダの所定JSONファイルへ自動書き込み
+// 初回のみファイル選択（IndexedDBにハンドル保存→以後再起動後も再利用可）
+let cloudFileHandle = null;
+let cloudSyncTimer = null;
+
+function openHandleDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('yawaragi_shift_sync', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('handles');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function saveHandleToIDB(handle) {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(handle, 'syncFile');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function loadHandleFromIDB() {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readonly');
+    const req = tx.objectStore('handles').get('syncFile');
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function setupCloudSync() {
+  try {
+    if (!('showSaveFilePicker' in window)) {
+      alert('お使いのブラウザはクラウド同期に対応していません。Chrome または Edge をお使いください。');
+      return;
+    }
+    const yearMonth = document.getElementById("monthSel").value;
+    const handle = await window.showSaveFilePicker({
+      suggestedName: `shift_${yearMonth}.json`,
+      types: [{description: 'JSON', accept: {'application/json': ['.json']}}]
+    });
+    await saveHandleToIDB(handle);
+    cloudFileHandle = handle;
+    document.getElementById('cloudSyncStatus').textContent = '☁️ 同期ON: ' + handle.name;
+    // すぐ書き込み
+    await syncToCloudFile(yearMonth);
+    alert('クラウド同期を設定しました。\nファイル: ' + handle.name + '\n\n以後、シフト編集のたびに自動でこのファイルへ保存されます。');
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.error('クラウド同期設定失敗', e);
+      alert('クラウド同期設定に失敗しました: ' + e.message);
+    }
+  }
+}
+async function syncToCloudFile(yearMonth) {
+  try {
+    if (!cloudFileHandle) {
+      cloudFileHandle = await loadHandleFromIDB();
+      if (!cloudFileHandle) return; // 未設定
+    }
+    // 書き込み許可確認（必要なら再度求める）
+    const perm = await cloudFileHandle.queryPermission({mode: 'readwrite'});
+    if (perm !== 'granted') {
+      const newPerm = await cloudFileHandle.requestPermission({mode: 'readwrite'});
+      if (newPerm !== 'granted') {
+        document.getElementById('cloudSyncStatus').textContent = '☁️ 同期権限なし';
+        return;
+      }
+    }
+    const payload = {
+      yearMonth: yearMonth,
+      shiftData: shiftData,
+      savedAt: new Date().toISOString()
+    };
+    const writable = await cloudFileHandle.createWritable();
+    await writable.write(JSON.stringify(payload, null, 2));
+    await writable.close();
+    const now = new Date();
+    const ts = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0") + ":" + String(now.getSeconds()).padStart(2,"0");
+    document.getElementById('cloudSyncStatus').textContent = '☁️ 同期 ' + ts;
+  } catch (e) {
+    console.error('クラウド同期失敗', e);
+    document.getElementById('cloudSyncStatus').textContent = '☁️ 同期失敗';
+  }
+}
+function debouncedCloudSync(yearMonth) {
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(() => syncToCloudFile(yearMonth), 3000);
+}
+// 起動時にIndexedDBから既存ハンドル復元
+(async () => {
+  try {
+    const handle = await loadHandleFromIDB();
+    if (handle) {
+      cloudFileHandle = handle;
+      document.getElementById('cloudSyncStatus').textContent = '☁️ 同期準備OK: ' + handle.name;
+    }
+  } catch (e) {
+    console.error('ハンドル復元失敗', e);
+  }
+})();
+function loadFromLocal(yearMonth) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_PREFIX + yearMonth);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error("読み込み失敗", e);
+    return null;
+  }
+}
+function clearLocal(yearMonth) {
+  try {
+    localStorage.removeItem(STORAGE_KEY_PREFIX + yearMonth);
+  } catch (e) {}
+}
+
+// ============ カレンダー生成 ============
+function buildCalendar(yearMonth) {
+  const [y, m] = yearMonth.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const dows = ["日","月","火","水","木","金","土"];
+  const cal = [];
+  for (let d = 1; d <= lastDay; d++) {
+    const date = new Date(y, m-1, d);
+    const dow = dows[date.getDay()];
+    const dateStr = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const isWeekend = (dow === "土" || dow === "日");
+    const isHoliday = !!HOLIDAYS[dateStr];
+    // 営業日判定: 土日のみ休館、祝日は営業
+    const isOpen = !isWeekend;
+    cal.push({day: d, date: dateStr, dow, isOpen, isWeekend, isHoliday});
+  }
+  return cal;
+}
+
+// ============ シフトデータ初期化 ============
+// blankMode=true: 希望休のみ・出勤データゼロ（社長が一から組む用）
+function initShiftData(yearMonth, blankMode) {
+  const cal = buildCalendar(yearMonth);
+  const data = {};
+  STAFF_KEY.forEach(s => data[s] = {});
+  const wd = WISH_DATA[yearMonth] || {wishes:[], absences:[]};
+
+  if (!blankMode) {
+    // 1. クロコの初期案（曜日パターン）を反映
+    cal.forEach(c => {
+      if (!c.isOpen) return;
+      const dowNum = new Date(c.date).getDay(); // 0=日,1=月,...,6=土
+      STAFF_KEY.forEach(s => {
+        const pattern = DEFAULT_PATTERNS[s]?.[dowNum];
+        if (pattern) data[s][c.date] = pattern;
+      });
+      // 🔴 髙山さんは「土日祝休み契約」 → 祝日は絶対に出勤させない
+      if (HOLIDAYS[c.date] && data["髙山"]) {
+        data["髙山"][c.date] = ""; // 祝日は空欄（休み）に強制
+      }
+    });
+
+    // 1b. 個別指定の出勤日を反映（林さんなど）
+    const indv = INDIVIDUAL_DAYS[yearMonth] || {};
+    Object.entries(indv).forEach(([staff, days]) => {
+      days.forEach(d => {
+        const ds = `${yearMonth}-${String(d.day).padStart(2,"0")}`;
+        data[staff][ds] = d.pattern;
+      });
+    });
+  }
+
+  // 2. 希望休 → "休"（初期案を上書き）
+  wd.wishes.forEach(w => {
+    const ds = `${yearMonth}-${String(w.day).padStart(2,"0")}`;
+    data[w.staff][ds] = "休";
+  });
+  // 3. 外せない予定も「休」扱い
+  wd.absences.forEach(a => {
+    a.days.forEach(d => {
+      const ds = `${yearMonth}-${String(d).padStart(2,"0")}`;
+      data[a.staff][ds] = "休";
+    });
+  });
+
+  return {data, calendar: cal};
+}
+
+// ============ レンダリング ============
+function patternClass(pattern) {
+  if (!pattern) return "empty";
+  const p = PATTERNS[pattern];
+  if (!p) return "empty";
+  return p.category;
+}
+
+function render() {
+  const table = document.getElementById("shiftTable");
+  const thead = table.querySelector("thead");
+  const tbody = table.querySelector("tbody");
+  const tfoot = table.querySelector("tfoot");
+
+  // ヘッダー
+  thead.innerHTML = "";
+  const tr1 = document.createElement("tr");
+  let h1 = `<th class="staff-h" rowspan="2">スタッフ</th>`;
+  calendar.forEach(c => {
+    let cls = "";
+    if (c.dow === "土") cls = "dow-sat";
+    else if (c.dow === "日" || c.isHoliday) cls = "dow-sun";
+    h1 += `<th class="${cls}">${c.day}</th>`;
+  });
+  h1 += `<th class="summary" rowspan="2">勤務</th><th class="summary" rowspan="2">休日</th><th class="summary" rowspan="2">有給</th><th class="summary" rowspan="2">出勤</th><th class="summary" rowspan="2">月人件費</th>`;
+  tr1.innerHTML = h1;
+  thead.appendChild(tr1);
+
+  const tr2 = document.createElement("tr");
+  let h2 = "";
+  calendar.forEach(c => {
+    let cls = "";
+    if (c.dow === "土") cls = "dow-sat";
+    else if (c.dow === "日" || c.isHoliday) cls = "dow-sun";
+    h2 += `<th class="${cls}">${c.dow}</th>`;
+  });
+  tr2.innerHTML = h2;
+  thead.appendChild(tr2);
+
+  // 本体（小野・林はフッター送迎エリアに表示するため別保存）
+  tbody.innerHTML = "";
+  const escortSpecialRows = {};
+  STAFF.forEach((name, idx) => {
+    const skey = STAFF_KEY[idx];
+    const tr = document.createElement("tr");
+    let html = `<td class="staff-h">${name}</td>`;
+    let work = 0, off = 0, leave = 0, attend = 0, monthlyWage = 0;
+
+    calendar.forEach(c => {
+      const v = shiftData[skey][c.date] || "";
+      let cls = "cell " + patternClass(v);
+      let display = v || (c.isOpen ? "" : "-");
+      if (!c.isOpen) {
+        cls = "cell closed";
+        display = "-";
+      }
+      // 小野・林は送迎専属だが、見た目はフロアと同じ黄色で表示
+    if ((skey === "小野" || skey === "林") && cls.includes("escort")) {
+      cls = cls.replace("escort", "full");
+    }
+    html += `<td class="${cls}" data-staff="${skey}" data-date="${c.date}">${display}</td>`;
+
+      if (c.isOpen && v) {
+        const cat = PATTERNS[v]?.category;
+        if (cat === "full" || cat === "short" || cat === "escort") {
+          work++;
+          attend++;
+          // 人件費加算
+          const hours = calcWorkHours(v);
+          const wage = HOURLY_WAGE[skey] || 0;
+          monthlyWage += hours * wage;
+        } else if (cat === "off") {
+          off++;
+        } else if (cat === "leave" || cat === "half-leave") {
+          leave++;
+          if (cat === "half-leave") attend++;
+        }
+      } else if (c.isOpen && !v) {
+        off++;
+      }
+    });
+
+    // 月給制スタッフ（勝又・星野）は固定額表示。出勤がある月のみ表示
+    const monthlyFixed = MONTHLY_SALARY[skey];
+    let wageDisplay;
+    if (monthlyFixed && work > 0) {
+      wageDisplay = "¥" + monthlyFixed.toLocaleString() + "(月給)";
+    } else {
+      wageDisplay = monthlyWage > 0 ? "¥" + Math.round(monthlyWage).toLocaleString() : "-";
+    }
+    html += `<td class="summary">${work}</td><td class="summary">${off}</td><td class="summary">${leave}</td><td class="summary">${attend}</td><td class="summary" style="text-align:right;padding-right:6px">${wageDisplay}</td>`;
+    tr.innerHTML = html;
+
+    // 小野・林は本体には追加せず、後でフッターに挿入
+    if (skey === "小野" || skey === "林") {
+      escortSpecialRows[skey] = tr;
+    } else {
+      tbody.appendChild(tr);
+    }
+  });
+
+  // フッター（フロア人数 → 看護師数 → 送迎数 → 出勤計 の順）
+  tfoot.innerHTML = "";
+
+  // 2. 看護師カウント行（1名以上でOK・0名のみ赤エラー）
+  // 🔴 ルール: 看護師2名・フロア5人の日は春山に振替候補
+  const nurseRow = document.createElement("tr");
+  nurseRow.className = "summary-row";
+  let nh = `<td class="staff-h">看護師 (1+)</td>`;
+  calendar.forEach(c => {
+    if (!c.isOpen) {
+      nh += `<td class="closed-day">-</td>`;
+    } else {
+      let cnt = 0;
+      let haruyamaWorking = false;
+      NURSE.forEach(s => {
+        const v = shiftData[s][c.date];
+        const cat = PATTERNS[v]?.category;
+        if (cat === "full" || cat === "short" || cat === "escort") {
+          cnt++;
+          if (s === "春山") haruyamaWorking = true;
+        }
+      });
+      // フロア人数（FLOOR_STAFFのうち出勤者）
+      let floorCnt = 0;
+      FLOOR_STAFF.forEach(s => {
+        const v = shiftData[s][c.date];
+        const cat = PATTERNS[v]?.category;
+        if (cat === "full" || cat === "short") floorCnt++;
+      });
+      let cls = "";
+      if (cnt >= 2) cls = "nurse-ok";       // 2名以上=理想（深緑）
+      else if (cnt === 1) cls = "floor-ok"; // 1名=OK（緑）
+      else cls = "floor-err";                // 0名=NG（赤）
+      // 春山候補マーカー: 看護師2名・フロア5人・春山未出勤
+      let label = String(cnt);
+      let title = "";
+      if (cnt === 2 && floorCnt === 5 && !haruyamaWorking) {
+        label = cnt + "💡";
+        title = ' title="看護師2名・フロア5人 → 春山に振替候補（社長ルール）"';
+      }
+      nh += `<td class="${cls}"${title}>${label}</td>`;
+    }
+  });
+  nh += `<td colspan="5"></td>`;
+  nurseRow.innerHTML = nh;
+  tfoot.appendChild(nurseRow);
+
+  // 2a. 15時以降在席フロア人数（比嘉除く・FLOOR_STAFFのうち終了時刻>15:00の人）
+  // 🔴 ルール: 4名以上必要（3名以下は手薄・利用者安全リスク）
+  // 春山がE1（15時上がり）の日は16時延長候補→💡マーク
+  function endsAfter15(pattern) {
+    const p = PATTERNS[pattern];
+    if (!p || !p.time) return false;
+    const slots = p.time.split("/").map(s => s.trim());
+    return slots.some(slot => {
+      const [start, end] = slot.split("-").map(s => s.trim());
+      if (!end) return false;
+      const [eh, em] = end.split(":").map(Number);
+      return (eh * 60 + em) > 15 * 60; // 15:00より後まで在席
+    });
+  }
+  const after15Row = document.createElement("tr");
+  after15Row.className = "summary-row";
+  let a15 = `<td class="staff-h">15時以降フロア (4+/比嘉除く)</td>`;
+  calendar.forEach(c => {
+    if (!c.isOpen) {
+      a15 += `<td class="closed-day">-</td>`;
+    } else {
+      let cnt = 0;
+      let haruyamaE1 = false;
+      FLOOR_STAFF.forEach(s => {
+        const v = shiftData[s][c.date];
+        if (endsAfter15(v)) cnt++;
+        if (s === "春山" && v === "E1") haruyamaE1 = true;
+      });
+      let cls = "";
+      if (cnt >= 4) cls = "nurse-ok";       // 4名以上=安心（深緑）
+      else if (cnt === 3) cls = "floor-ok"; // 3名=注意（薄緑）
+      else cls = "floor-err";                // 2名以下=NG（赤）
+      let label = String(cnt);
+      let title = "";
+      // 4名未満かつ春山E1出勤 → 春山16時延長候補
+      if (cnt < 4 && haruyamaE1) {
+        label = cnt + "💡";
+        title = ' title="15時以降4名未満・春山E1出勤 → 春山に16時延長依頼候補"';
+      }
+      a15 += `<td class="${cls}"${title}>${label}</td>`;
+    }
+  });
+  a15 += `<td colspan="5"></td>`;
+  after15Row.innerHTML = a15;
+  tfoot.appendChild(after15Row);
+
+  // 2b. 機能訓練指導員カウント行（比嘉=柔整 + 看護師 = 基本2名）
+  const kinoRow = document.createElement("tr");
+  kinoRow.className = "summary-row";
+  let kih = `<td class="staff-h">機能訓練指導員 (目標2+)</td>`;
+  calendar.forEach(c => {
+    if (!c.isOpen) {
+      kih += `<td class="closed-day">-</td>`;
+    } else {
+      let cnt = 0;
+      // 比嘉（柔整）
+      const hv = shiftData["比嘉"][c.date];
+      const hcat = PATTERNS[hv]?.category;
+      if (hcat === "full" || hcat === "short" || hcat === "escort") cnt++;
+      // 看護師全員
+      NURSE.forEach(s => {
+        const v = shiftData[s][c.date];
+        const cat = PATTERNS[v]?.category;
+        if (cat === "full" || cat === "short" || cat === "escort") cnt++;
+      });
+      let cls = "";
+      if (cnt >= 2) cls = "floor-ok";
+      else if (cnt === 1) cls = "floor-warn";
+      else cls = "floor-err";
+      const mark = cnt >= 2 ? "✓" : "";
+      kih += `<td class="${cls}">${mark}${cnt}</td>`;
+    }
+  });
+  kih += `<td colspan="5"></td>`;
+  kinoRow.innerHTML = kih;
+  tfoot.appendChild(kinoRow);
+
+  // 3-4. 介護福祉士・相談員（排他カウント）
+  // 相談員候補が出勤してれば相談員=1、その人が介護福祉士兼務なら介護福祉士から-1
+  const fukushiRow = document.createElement("tr");
+  fukushiRow.className = "summary-row";
+  let kh = `<td class="staff-h">介護福祉士 (目標2+)</td>`;
+  const sodanRow = document.createElement("tr");
+  sodanRow.className = "summary-row";
+  let dh = `<td class="staff-h">相談員 (目標1+)</td>`;
+
+  calendar.forEach(c => {
+    if (!c.isOpen) {
+      kh += `<td class="closed-day">-</td>`;
+      dh += `<td class="closed-day">-</td>`;
+      return;
+    }
+    const isOn = (s) => {
+      const v = shiftData[s][c.date];
+      const cat = PATTERNS[v]?.category;
+      return cat === "full" || cat === "short" || cat === "escort";
+    };
+    const sodanOn = SODANIN.filter(isOn);
+    const kfOn = KAIGOFUKUSHI.filter(isOn);
+    // 兼務（相談員かつ介護福祉士）優先で振り分ける
+    const overlap = sodanOn.filter(s => KAIGOFUKUSHI.includes(s));
+
+    let sodanCnt = 0;
+    let kfCnt = kfOn.length;
+    if (sodanOn.length > 0) {
+      sodanCnt = 1;
+      // 兼務者がいれば、その1名を相談員側に振り分け（介護福祉士から-1）
+      if (overlap.length > 0) {
+        kfCnt = Math.max(0, kfCnt - 1);
+      }
+    }
+
+    // 介護福祉士セル
+    let kfcls = "";
+    if (kfCnt >= 2) kfcls = "floor-ok";
+    else if (kfCnt === 1) kfcls = "floor-warn";
+    else kfcls = "floor-err";
+    const kfmark = kfCnt >= 2 ? "✓" : "";
+    kh += `<td class="${kfcls}">${kfmark}${kfCnt}</td>`;
+
+    // 相談員セル
+    let dcls = "";
+    if (sodanCnt >= 1) dcls = "floor-ok";
+    else dcls = "floor-err";
+    const dmark = sodanCnt >= 1 ? "✓" : "";
+    dh += `<td class="${dcls}">${dmark}${sodanCnt}</td>`;
+  });
+
+  kh += `<td colspan="5"></td>`;
+  dh += `<td colspan="5"></td>`;
+  fukushiRow.innerHTML = kh;
+  sodanRow.innerHTML = dh;
+  tfoot.appendChild(fukushiRow);
+  tfoot.appendChild(sodanRow);
+
+  // 4a. フロア (目標5+) ← 重要指標として相談員の直下・送迎エリアの上に配置
+  const floorRow = document.createElement("tr");
+  floorRow.className = "summary-row";
+  let fh = `<td class="staff-h">フロア (目標5+)</td>`;
+  calendar.forEach(c => {
+    if (!c.isOpen) {
+      fh += `<td class="closed-day">-</td>`;
+    } else {
+      let cnt = 0;
+      FLOOR_STAFF.forEach(s => {
+        const v = shiftData[s][c.date];
+        const cat = PATTERNS[v]?.category;
+        if (cat === "full" || cat === "short") cnt++;
+      });
+      let cls = "";
+      if (cnt >= 5) cls = "light-ok";
+      else cls = "light-err"; // 薄緑背景・赤数字
+      const mark = cnt >= 5 ? "✓" : "";
+      fh += `<td class="${cls}">${mark}${cnt}</td>`;
+    }
+  });
+  fh += `<td colspan="5"></td>`;
+  floorRow.innerHTML = fh;
+  tfoot.appendChild(floorRow);
+
+  // 4a-2. スペース行（フロア集計と送迎エリアの視覚的分離）
+  const spaceRow = document.createElement("tr");
+  spaceRow.innerHTML = `<td colspan="${calendar.length + 5}" style="height:8px;background:#fafafa;border-left:none;border-right:none;padding:0"></td>`;
+  tfoot.appendChild(spaceRow);
+
+  // 4b. 小野・林の本体行をフッターに移植（送迎エリアにグループ化）
+  if (escortSpecialRows["小野"]) tfoot.appendChild(escortSpecialRows["小野"]);
+  if (escortSpecialRows["林"]) tfoot.appendChild(escortSpecialRows["林"]);
+
+  // 5. 送迎カウント行（小野・林=送迎専属 + 勝又・星野=送迎兼務、目標3+）
+  const escortRow = document.createElement("tr");
+  escortRow.className = "summary-row";
+  let eh = `<td class="staff-h">送迎 (目標3+)</td>`;
+  calendar.forEach(c => {
+    if (!c.isOpen) {
+      eh += `<td class="closed-day">-</td>`;
+    } else {
+      let cnt = 0;
+      STAFF_KEY.forEach(s => {
+        if (s === "比嘉") return;
+        const v = shiftData[s][c.date];
+        const cat = PATTERNS[v]?.category;
+        if (cat === "escort") cnt++;
+        else if (ESCORT_KENMU.includes(s) && (cat === "full" || cat === "short")) cnt++;
+      });
+      let cls = "";
+      if (cnt >= 3) cls = "light-ok";
+      else cls = "light-err"; // 薄緑背景・赤数字
+      const mark = cnt >= 3 ? "✓" : "";
+      eh += `<td class="${cls}">${mark}${cnt}</td>`;
+    }
+  });
+  eh += `<td colspan="5"></td>`;
+  escortRow.innerHTML = eh;
+  tfoot.appendChild(escortRow);
+
+  // 7. 日ごと人件費（比嘉除く全員）
+  const wageRow = document.createElement("tr");
+  wageRow.className = "summary-row";
+  let wh = `<td class="staff-h">日ごと人件費</td>`;
+  let monthTotal = 0;
+  calendar.forEach(c => {
+    if (!c.isOpen) {
+      wh += `<td class="closed-day">-</td>`;
+    } else {
+      let dayTotal = 0;
+      STAFF_KEY.forEach(s => {
+        if (s === "比嘉") return;
+        const v = shiftData[s][c.date];
+        const cat = PATTERNS[v]?.category;
+        if (cat === "full" || cat === "short" || cat === "escort") {
+          const hours = calcWorkHours(v);
+          const wage = HOURLY_WAGE[s] || 0;
+          dayTotal += hours * wage;
+        }
+      });
+      monthTotal += dayTotal;
+      const display = dayTotal > 0 ? "¥" + Math.round(dayTotal).toLocaleString() : "-";
+      wh += `<td style="font-size:10px;text-align:right;padding-right:4px">${display}</td>`;
+    }
+  });
+  const monthDisplay = "¥" + Math.round(monthTotal).toLocaleString();
+  wh += `<td colspan="5" style="text-align:right;padding-right:6px;font-weight:bold;background:#fff3e0">月合計: ${monthDisplay}</td>`;
+  wageRow.innerHTML = wh;
+  tfoot.appendChild(wageRow);
+
+
+  // クリック・ドラッグイベント
+  document.querySelectorAll("td.cell").forEach(td => {
+    if (td.classList.contains("closed")) return;
+    td.addEventListener("mousedown", e => {
+      // 🔒 ロック中は編集不可
+      const ym = document.getElementById("monthSel").value;
+      if (isLocked(ym)) {
+        e.preventDefault();
+        alert("🔒 " + ym + " はロック中です。編集するにはロックを解除してください。");
+        return;
+      }
+      if (currentBrush !== null) {
+        paintCell(td);
+        isDragging = true;
+        e.preventDefault();
+      } else {
+        openPopup(td);
+      }
+    });
+    td.addEventListener("mouseover", () => {
+      if (isDragging && currentBrush !== null) {
+        paintCell(td);
+      }
+    });
+    // タッチ対応（スマホ・タブレット）
+    td.addEventListener("touchstart", e => {
+      if (currentBrush !== null) {
+        paintCell(td);
+        e.preventDefault();
+      }
+    }, {passive: false});
+  });
+
+  checkAlerts();
+  saveToLocal(document.getElementById("monthSel").value);
+}
+
+// ============ ブラシ機能 ============
+function setBrush(pattern) {
+  currentBrush = pattern;
+  updateBrushBar();
+}
+function clearBrush() {
+  currentBrush = null;
+  updateBrushBar();
+}
+function updateBrushBar() {
+  const bar = document.getElementById("brushBar");
+  const display = document.getElementById("brushDisplay");
+  if (currentBrush === null) {
+    bar.classList.remove("active");
+    return;
+  }
+  bar.classList.add("active");
+  if (currentBrush === "__CLEAR__") {
+    display.innerHTML = `<span class="brush-current empty">空欄（クリア）</span>`;
+  } else {
+    const cls = patternClass(currentBrush);
+    const time = PATTERNS[currentBrush]?.time || "-";
+    display.innerHTML = `<span class="brush-current ${cls}">${currentBrush}</span> <span style="color:#666;font-size:12px">${time}</span>`;
+  }
+}
+function paintCell(td) {
+  const staff = td.dataset.staff;
+  const date = td.dataset.date;
+  if (!staff || !date) return;
+  if (td.classList.contains("closed")) return;
+  if (currentBrush === "__CLEAR__") {
+    delete shiftData[staff][date];
+  } else {
+    shiftData[staff][date] = currentBrush;
+  }
+  // セル見た目を即時更新（render()は重いのでmouseupまで待つ）
+  const v = shiftData[staff][date] || "";
+  td.className = "cell " + (v ? patternClass(v) : "empty");
+  td.textContent = v;
+}
+
+// ============ ポップアップ ============
+function openPopup(td) {
+  currentCell = {staff: td.dataset.staff, date: td.dataset.date};
+  const c = calendar.find(c => c.date === currentCell.date);
+  const staffName = STAFF[STAFF_KEY.indexOf(currentCell.staff)];
+  document.getElementById("popupTitle").textContent = `勤務パターンを選択 — ${staffName} (${c.day}日 ${c.dow})`;
+  const cur = shiftData[currentCell.staff][currentCell.date] || "（空欄）";
+  document.getElementById("popupSub").textContent = `現在: ${cur}`;
+
+  const groups = document.getElementById("patternGroups");
+  groups.innerHTML = "";
+  PATTERN_GROUPS.forEach(g => {
+    const div = document.createElement("div");
+    div.className = "pattern-group";
+    let html = `<h4>${g.title}</h4><div class="pattern-list">`;
+    g.patterns.forEach(p => {
+      const info = PATTERNS[p];
+      const cat = info.category;
+      html += `<button class="pattern-btn ${cat}" data-pattern="${p}">
+        <span class="${cat}"><span class="label">${p}</span></span>
+        <span style="font-size:11px;color:#666">${info.time || "-"}</span>
+      </button>`;
+    });
+    html += `</div>`;
+    div.innerHTML = html;
+    groups.appendChild(div);
+  });
+
+  document.querySelectorAll(".pattern-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = btn.dataset.pattern;
+      shiftData[currentCell.staff][currentCell.date] = p;
+      setBrush(p); // この記号をブラシとして保持
+      closePopup();
+      render();
+    });
+  });
+
+  document.getElementById("popupBg").classList.add("show");
+}
+function closePopup() {
+  document.getElementById("popupBg").classList.remove("show");
+  currentCell = null;
+}
+document.getElementById("popupClear").addEventListener("click", () => {
+  if (currentCell) {
+    delete shiftData[currentCell.staff][currentCell.date];
+    setBrush("__CLEAR__"); // クリアブラシ起動
+    closePopup();
+    render();
+  }
+});
+document.getElementById("popupCancel").addEventListener("click", closePopup);
+document.getElementById("popupClearTop").addEventListener("click", () => document.getElementById("popupClear").click());
+document.getElementById("popupCancelTop").addEventListener("click", closePopup);
+document.getElementById("popupBg").addEventListener("click", e => {
+  if (e.target === document.getElementById("popupBg")) closePopup();
+});
+
+// ============ 警告チェック ============
+function isWorking(v) {
+  const cat = PATTERNS[v]?.category;
+  return cat === "full" || cat === "short" || cat === "escort";
+}
+function isFloorWork(v) {
+  const cat = PATTERNS[v]?.category;
+  return cat === "full" || cat === "short";
+}
+function isEscortWork(v) {
+  return PATTERNS[v]?.category === "escort";
+}
+function checkAlerts() {
+  const alerts = [];
+
+  calendar.forEach(c => {
+    if (!c.isOpen) return;
+
+    const onDuty = STAFF_KEY.filter(s => s !== "比嘉" && isWorking(shiftData[s][c.date]));
+    const floorOn = onDuty.filter(s => FLOOR_STAFF.includes(s));
+    const escortOn = onDuty.filter(s => ESCORT.includes(s));
+    const escortBackupOn = onDuty.filter(s => ESCORT_BACKUP.includes(s));
+    const nurseOn = onDuty.filter(s => NURSE.includes(s));
+
+    let needsCover = Math.max(0, 2 - escortOn.length);
+    let floorAfterCover = floorOn.length - Math.min(needsCover, escortBackupOn.length);
+
+    if (floorAfterCover < 5) {
+      alerts.push({type:"error", msg:`${c.day}日(${c.dow}): フロア${floorAfterCover}名（5名必要）`});
+    }
+    if (escortOn.length + Math.min(needsCover, escortBackupOn.length) < 2) {
+      alerts.push({type:"error", msg:`${c.day}日(${c.dow}): 送迎が不足（カバー含めて2名必要）`});
+    }
+    if (nurseOn.length === 0) {
+      alerts.push({type:"error", msg:`${c.day}日(${c.dow}): 看護師ゼロ`});
+    } else if (nurseOn.length === 1) {
+      alerts.push({type:"warn", msg:`${c.day}日(${c.dow}): 看護師1名（${nurseOn[0]}）`});
+    }
+    if (isWorking(shiftData["大久保"][c.date]) && c.dow !== "月" && c.dow !== "木") {
+      alerts.push({type:"warn", msg:`${c.day}日(${c.dow}): 大久保が月木以外に出勤`});
+    }
+  });
+
+  // 工藤週3
+  const kudoWeekly = {};
+  calendar.forEach(c => {
+    if (!c.isOpen) return;
+    if (isWorking(shiftData["工藤"][c.date])) {
+      const d = new Date(c.date);
+      const day = d.getDay();
+      const offset = (day === 0 ? 6 : day - 1);
+      d.setDate(d.getDate() - offset);
+      const wkKey = d.toISOString().slice(0,10);
+      kudoWeekly[wkKey] = (kudoWeekly[wkKey] || 0) + 1;
+    }
+  });
+  Object.entries(kudoWeekly).forEach(([wk, n]) => {
+    if (n > KUDO_LIMIT) {
+      alerts.push({type:"error", msg:`工藤さん 週${wk}〜${n}日出勤（上限${KUDO_LIMIT}日）`});
+    }
+  });
+
+  // 3連勤
+  TRIPLE_BAN.forEach(s => {
+    let streak = 0, streakStart = null;
+    calendar.forEach(c => {
+      if (isWorking(shiftData[s][c.date])) {
+        if (streak === 0) streakStart = c.day;
+        streak++;
+        if (streak === 3) {
+          alerts.push({type:"warn", msg:`${s}さん ${streakStart}日〜${c.day}日が3連勤`});
+        }
+      } else if (c.isOpen) {
+        streak = 0;
+      }
+    });
+  });
+
+  const div = document.getElementById("alerts");
+  if (alerts.length === 0) {
+    div.innerHTML = `<div class="alert-info">✅ 警告なし</div>`;
+  } else {
+    const errs = alerts.filter(a => a.type === "error");
+    const warns = alerts.filter(a => a.type === "warn");
+    const info = alerts.filter(a => a.type === "info");
+    let html = "";
+    if (errs.length) html += `<div style="font-weight:bold;font-size:13px;margin-bottom:4px">🔴 要対応 (${errs.length}件)</div>`;
+    errs.forEach(a => html += `<div class="alert-item alert-error">${a.msg}</div>`);
+    if (warns.length) html += `<div style="font-weight:bold;font-size:13px;margin:8px 0 4px">⚠️ 注意 (${warns.length}件)</div>`;
+    warns.forEach(a => html += `<div class="alert-item alert-warn">${a.msg}</div>`);
+    info.forEach(a => html += `<div class="alert-item alert-info">${a.msg}</div>`);
+    div.innerHTML = html;
+  }
+}
+
+// ============ CSV出力 ============
+function exportCsv() {
+  const yearMonth = document.getElementById("monthSel").value;
+  // ケアズ風CSV: 日付横軸版
+  let csv = "日付,曜日," + STAFF.join(",") + "\n";
+  calendar.forEach(c => {
+    const row = [c.date, c.dow];
+    STAFF_KEY.forEach(s => row.push(shiftData[s][c.date] || ""));
+    csv += row.join(",") + "\n";
+  });
+  const blob = new Blob(["﻿" + csv], {type: "text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${yearMonth}_シフト_完成版.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  alert("CSVをダウンロードしました。");
+}
+
+// ============ 起動 ============
+// forceReset: 自動保存を無視して初期案で再生成
+// blankMode: 希望休のみ・出勤データゼロで再生成
+function reload(forceReset, blankMode) {
+  const yearMonth = document.getElementById("monthSel").value;
+  isInitializing = true;
+
+  // 🔴 localStorageに保存データがあれば完全置換（INDIVIDUAL_DAYSをスキップ）
+  // 月切替や再読み込み時に社長の手動修正が消えないようにする
+  let useLocalStorage = false;
+  if (!forceReset) {
+    const saved = loadFromLocal(yearMonth);
+    if (saved && saved.data) {
+      shiftData = saved.data;
+      calendar = buildCalendar(yearMonth);
+      const savedDate = new Date(saved.savedAt);
+      const ago = Math.round((Date.now() - savedDate.getTime()) / 60000);
+      document.getElementById("saveStatus").textContent = `📂 ${ago}分前のデータを完全復元`;
+      useLocalStorage = true;
+    }
+  }
+
+  // localStorageに保存データがない、または forceReset時はINDIVIDUAL_DAYSから初期化
+  if (!useLocalStorage) {
+    const init = initShiftData(yearMonth, blankMode);
+    shiftData = init.data;
+    calendar = init.calendar;
+  }
+  // 🔴 起動時セーフティネット: 髙山さんの祝日出勤を強制クリア
+  // （手動編集データを維持しつつ、髙山の祝日だけ確実に休みにする）
+  let cleared = [];
+  if (shiftData["髙山"]) {
+    calendar.forEach(c => {
+      if (HOLIDAYS[c.date] && shiftData["髙山"][c.date] && shiftData["髙山"][c.date] !== "") {
+        cleared.push(c.date + "(" + (HOLIDAYS[c.date] || "") + ")");
+        shiftData["髙山"][c.date] = "";
+      }
+    });
+  }
+  if (cleared.length > 0) {
+    console.log("髙山さんの祝日出勤を自動クリアしました:", cleared);
+    // 自動保存し直す
+    setTimeout(() => saveToLocal(yearMonth), 100);
+  }
+  isInitializing = false;
+  render();
+  // ロックUI更新（月切替時にロック状態を画面に反映）
+  if (typeof updateLockUI === "function") updateLockUI();
+}
+
+document.getElementById("monthSel").addEventListener("change", () => reload());
+
+// シフト希望入力アプリAPIから最新データ取得（JSONP）
+function fetchWishesFromAPI(yearMonth) {
+  return new Promise((resolve, reject) => {
+    const cbName = '_wishesCb_' + Date.now();
+    let timeout;
+    window[cbName] = (data) => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      const s = document.getElementById(cbName);
+      if (s) s.remove();
+      resolve(data);
+    };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.src = `${SHIFT_WISHES_API}?action=getWishes&month=${yearMonth}&callback=${cbName}`;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      script.remove();
+      reject(new Error('API接続失敗'));
+    };
+    document.head.appendChild(script);
+    timeout = setTimeout(() => {
+      delete window[cbName];
+      script.remove();
+      reject(new Error('API取得タイムアウト'));
+    }, 10000);
+  });
+}
+
+document.getElementById("loadWishesBtn").addEventListener("click", async () => {
+  if (!confirm("シフト希望入力アプリから最新の希望休を取得します。\n現在の入力（自動保存分）は失われます。続けますか？")) return;
+  const ym = document.getElementById("monthSel").value;
+  document.getElementById("saveStatus").textContent = "🔄 API取得中...";
+  try {
+    const data = await fetchWishesFromAPI(ym);
+    if (data && Array.isArray(data.wishes)) {
+      // 0件は月指定ミス/API不調の可能性。手組みシフトを消す前に再確認（2026-05-23）
+      if (data.wishes.length === 0 &&
+          !confirm("APIから取得した希望休が0件でした。\nこのまま反映すると現在の自動保存（手組み分）が消えます。\n月の指定ミスやAPI不調の可能性もあります。続けますか？")) {
+        document.getElementById("saveStatus").textContent = "（取得を中止しました）";
+        return;
+      }
+      // APIから取得したデータでWISH_DATAを上書き
+      WISH_DATA[ym] = {
+        wishes: data.wishes.map(w => ({staff: w.staff, day: w.day})),
+        absences: (WISH_DATA[ym] && WISH_DATA[ym].absences) || []
+      };
+      clearLocal(ym);
+      reload(true);
+      document.getElementById("saveStatus").textContent = `✓ API取得 ${data.wishes.length}件 反映`;
+      alert(`シフト希望入力アプリから ${data.wishes.length} 件の希望休を取得しました。`);
+    } else {
+      throw new Error('wishes配列が取得できませんでした');
+    }
+  } catch (e) {
+    console.error('希望休API取得失敗', e);
+    document.getElementById("saveStatus").textContent = "❌ API取得失敗";
+    alert("希望休の取得に失敗しました: " + e.message);
+  }
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  const ym = document.getElementById("monthSel").value;
+  if (isLocked(ym)) { alert("🔒 ロック中です。解除してから操作してください。"); return; }
+  if (confirm("シフトをリセットしてクロコの初期案＋希望休の状態に戻します。自動保存分も削除されます。続けますか？")) {
+    clearLocal(ym);
+    reload(true);
+  }
+});
+// 🔄 強制初期化（HTMLコード変更時の確実な反映用）
+// localStorage削除 + HTMLブラウザキャッシュ回避のためタイムスタンプ付きURLで再読み込み
+document.getElementById("hardResetBtn").addEventListener("click", () => {
+  const ym = document.getElementById("monthSel").value;
+  if (isLocked(ym)) { alert("🔒 ロック中です。解除してから操作してください。"); return; }
+  if (confirm("【強制初期化】\n\n" + ym + " のシフトデータを完全に削除して、HTML最新版のINDIVIDUAL_DAYSで再構築します。\n\n・社長の手動編集分も消えます\n・クロコがコード修正した内容が画面に反映されます\n\n続けますか？")) {
+    try {
+      localStorage.removeItem("yawaragi_shift_" + ym);
+      alert("✅ " + ym + " のキャッシュを削除しました。ページを再読み込みします。");
+      // ブラウザのHTMLキャッシュも回避するためタイムスタンプ付きURLで再読み込み
+      location.href = location.pathname + '?v=' + Date.now();
+    } catch (e) {
+      alert("❌ 削除失敗: " + e.message);
+    }
+  }
+});
+
+// 🔒 ロック機能（シフト完成後・解除しない限り変更不可）
+function isLocked(yearMonth) {
+  return localStorage.getItem("yawaragi_shift_lock_" + yearMonth) === "true";
+}
+function setLock(yearMonth, locked) {
+  if (locked) localStorage.setItem("yawaragi_shift_lock_" + yearMonth, "true");
+  else localStorage.removeItem("yawaragi_shift_lock_" + yearMonth);
+}
+function updateLockUI() {
+  const ym = document.getElementById("monthSel").value;
+  const locked = isLocked(ym);
+  const btn = document.getElementById("lockBtn");
+  const status = document.getElementById("lockStatus");
+  if (locked) {
+    btn.textContent = "🔓 解除";
+    btn.style.background = "#ffebee";
+    btn.style.borderColor = "#c62828";
+    btn.style.color = "#b71c1c";
+    status.textContent = "🔒 " + ym + " ロック中（編集不可）";
+    document.body.style.background = "#fff5f5";
+  } else {
+    btn.textContent = "🔒 ロック";
+    btn.style.background = "#e8f5e9";
+    btn.style.borderColor = "#2e7d32";
+    btn.style.color = "#1b5e20";
+    status.textContent = "";
+    document.body.style.background = "";
+  }
+}
+document.getElementById("lockBtn").addEventListener("click", () => {
+  const ym = document.getElementById("monthSel").value;
+  const locked = isLocked(ym);
+  if (locked) {
+    if (confirm("🔓 " + ym + " のロックを解除しますか？\n\n解除すると編集可能になります。")) {
+      setLock(ym, false);
+      updateLockUI();
+      alert("🔓 ロック解除しました。編集可能です。");
+    }
+  } else {
+    if (confirm("🔒 " + ym + " をロックしますか？\n\nロック中は：\n・セル編集不可\n・強制初期化/リセット/真っさら/クラウドから復元 不可\n・解除するまで変更できません\n\n続けますか？")) {
+      setLock(ym, true);
+      updateLockUI();
+      alert("🔒 ロックしました。解除するまで変更不可。");
+    }
+  }
+});
+document.getElementById("blankResetBtn").addEventListener("click", () => {
+  const ym = document.getElementById("monthSel").value;
+  if (isLocked(ym)) { alert("🔒 ロック中です。解除してから操作してください。"); return; }
+  if (confirm("【真っさら】 希望休のみ反映し、出勤データを全部消します。\n社長が一から組み直す場合に使ってください。\n自動保存分も削除されます。続けますか？")) {
+    clearLocal(ym);
+    reload(true, true); // forceReset=true, blankMode=true
+  }
+});
+document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
+document.getElementById("cloudSyncBtn").addEventListener("click", setupCloudSync);
+
+// クラウド同期ファイルから復元（バージョン履歴復元後の取り込みに使う）
+// 🔴 重要: initShiftData/INDIVIDUAL_DAYS/DEFAULT_PATTERNSをスキップしJSONそのまま反映（完全復元）
+async function restoreFromCloudFile() {
+  try {
+    if (!cloudFileHandle) {
+      cloudFileHandle = await loadHandleFromIDB();
+      if (!cloudFileHandle) {
+        alert('クラウド同期ファイルが設定されていません。\n先に「☁️ クラウド同期設定」を実行してください。');
+        return;
+      }
+    }
+    const perm = await cloudFileHandle.queryPermission({mode: 'read'});
+    if (perm !== 'granted') {
+      const newPerm = await cloudFileHandle.requestPermission({mode: 'read'});
+      if (newPerm !== 'granted') {
+        alert('読み取り権限がありません。');
+        return;
+      }
+    }
+    const file = await cloudFileHandle.getFile();
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    if (!payload || !payload.shiftData) {
+      alert('JSONフォーマットが異常です。');
+      return;
+    }
+    if (!confirm(`クラウドJSONから完全復元します。\n保存日時: ${payload.savedAt}\n\n現在の入力（自動保存分）は失われます。続けますか？`)) {
+      return;
+    }
+    const ym = document.getElementById("monthSel").value;
+    isInitializing = true;
+    // 🔴 initShiftData()を呼ばない。INDIVIDUAL_DAYS/DEFAULT_PATTERNSの干渉を排除
+    calendar = buildCalendar(ym);
+    shiftData = {};
+    STAFF_KEY.forEach(s => shiftData[s] = {});
+    // payloadのデータをそのまま反映（完全コピー）
+    Object.keys(payload.shiftData).forEach(staff => {
+      if (!shiftData[staff]) shiftData[staff] = {};
+      Object.assign(shiftData[staff], payload.shiftData[staff]);
+    });
+    // localStorageに書き込み
+    localStorage.setItem(STORAGE_KEY_PREFIX + ym, JSON.stringify({
+      data: shiftData,
+      savedAt: payload.savedAt
+    }));
+    isInitializing = false;
+    render();
+    alert(`完全復元完了！\n${payload.savedAt} 時点のデータをそのまま反映しました。`);
+  } catch (e) {
+    console.error('クラウド復元失敗', e);
+    alert('復元失敗: ' + e.message);
+  }
+}
+document.getElementById("cloudRestoreBtn").addEventListener("click", restoreFromCloudFile);
+
+document.getElementById("printBtn").addEventListener("click", () => window.print());
+document.getElementById("brushClearBtn").addEventListener("click", clearBrush);
+
+// ドラッグ完了 → 全体再描画（サマリ・警告更新）
+document.addEventListener("mouseup", () => {
+  if (isDragging) {
+    isDragging = false;
+    render();
+  }
+});
+
+// ESC キーでブラシ解除
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && currentBrush !== null) {
+    clearBrush();
+  }
+});
+
+// ============ 出勤＆送迎表に反映 ============
+const OPS_GAS_URL_FOR_APPLY = 'https://script.google.com/macros/s/AKfycbyh_h7qB93S17_9mI52uTcCfUfBjeX9K4Xaq6LIX3d8Bae4w0lqKY-Gsqnw173atAvm7Q/exec';
+
+function buildApplyPayload(yearMonth) {
+  const saved = loadFromLocal(yearMonth);
+  if (!saved || !saved.data) return null;
+
+  const shifts = {};
+  const unknownCodes = {};
+  Object.keys(saved.data).forEach(function(staffName) {
+    Object.keys(saved.data[staffName]).forEach(function(date) {
+      const code = saved.data[staffName][date];
+      if (!code) return;
+      const pat = PATTERNS[code];
+      if (!pat) {
+        unknownCodes[code] = (unknownCodes[code] || 0) + 1;
+        return;
+      }
+      if (!shifts[date]) shifts[date] = {};
+      shifts[date][staffName] = {
+        code: code,
+        time: pat.time || '',
+        category: pat.category
+      };
+    });
+  });
+
+  if (Object.keys(unknownCodes).length > 0) {
+    console.warn('未定義シフトコード（スキップ）:', unknownCodes);
+  }
+
+  return { type: 'apply_shift_data', month: yearMonth, shifts: shifts, unknownCodes: unknownCodes };
+}
+
+async function applyShiftToOps() {
+  const yearMonth = document.getElementById('monthSel').value;
+  const payload = buildApplyPayload(yearMonth);
+  if (!payload) {
+    alert('シフトデータが見つかりません。先にシフトを作成・保存してください。');
+    return;
+  }
+
+  const dateCount = Object.keys(payload.shifts).length;
+  if (dateCount === 0) {
+    alert('反映するシフトがありません（' + yearMonth + ' に登録されたコードがゼロ）');
+    return;
+  }
+
+  let confirmMsg = yearMonth + ' の ' + dateCount + '日分を出勤＆送迎表に反映します。\n空欄のセルだけ埋めます（手修正は保護）。';
+  if (Object.keys(payload.unknownCodes).length > 0) {
+    confirmMsg += '\n\n⚠ 未定義シフトコードがあります（スキップ）:\n' + Object.keys(payload.unknownCodes).join(', ');
+  }
+  confirmMsg += '\n\nよろしいですか？';
+  if (!confirm(confirmMsg)) return;
+
+  const btn = document.getElementById('applyToOpsBtn');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '📤 反映中...';
+
+  try {
+    const sendPayload = { type: payload.type, month: payload.month, shifts: payload.shifts };
+    const res = await fetch(OPS_GAS_URL_FOR_APPLY, {
+      method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(sendPayload)
+    });
+    const result = await res.json();
+    console.log('apply_shift_data result:', result);
+
+    if (!result.success) {
+      alert('失敗: ' + (result.error || JSON.stringify(result)));
+      return;
+    }
+
+    let msg = '✓ 反映完了\n';
+    msg += '反映: ' + (result.applied ? result.applied.length : 0) + '日分（合計 ' + result.total_filled + 'セル）\n';
+    msg += 'スキップ: ' + (result.skipped ? result.skipped.length : 0) + '日分（既入力 ' + result.total_skipped + 'セル）\n';
+    if (result.unmatched_staff && Object.keys(result.unmatched_staff).length > 0) {
+      msg += '\nマッチしなかったスタッフ: ' + Object.keys(result.unmatched_staff).join(', ');
+    }
+    msg += '\n\n詳細はコンソール（F12）で確認できます';
+    alert(msg);
+  } catch (e) {
+    console.error('apply_shift_data error:', e);
+    alert('通信失敗: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+  }
+}
+
+document.getElementById('applyToOpsBtn').addEventListener('click', applyShiftToOps);
+
+reload();
+</script>
+
+</body>
+</html>
