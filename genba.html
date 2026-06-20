@@ -3253,6 +3253,17 @@ function toLocalDateStr(d) {
     return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
 }
 
+// 「今日」をJST(Asia/Tokyo)固定でYYYY-MM-dd文字列で返す。
+// 端末のタイムゾーンがズレても境界判定が狂わないようにする（利用曜日変更アプリのUTCズレバグの反省）。
+// GAS側（getUpcomingAbsences / month=）も Asia/Tokyo 基準なので、これで両者のタイムゾーンを揃える。
+function jstTodayStr() {
+    const p = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(new Date());
+    const g = function (t) { const x = p.find(function (e) { return e.type === t; }); return x ? x.value : ''; };
+    return g('year') + '-' + g('month') + '-' + g('day');
+}
+
 const TB_STORAGE_KEY = 'yawaragi_taskboard';
 const TB_TODAY = toLocalDateStr();
 
@@ -4740,14 +4751,23 @@ function absRenderUpcomingListFromData(gasAbsences, gasFailed) {
         });
     });
 
-    merged.sort((a, b) => b.dateFrom.localeCompare(a.dateFrom));
+    // 欠席登録タブの一覧は「今日以降（当日含む）」のみ表示。昨日以前は欠席履歴タブの役割（重複ゼロ）。
+    // 「今日」はJST固定で判定（端末TZズレ対策）。GASは month無し呼び出しで既に今日〜30日後に絞っているので、
+    // ここで効くのは主にlocalStorageの過去レコード。範囲欠席は終了日が今日以降なら表示する。
+    const _absToday = jstTodayStr();
+    const upcoming = merged.filter(r => {
+        const end = (r.dateType === 'range' && r.dateTo) ? r.dateTo : r.dateFrom;
+        return end >= _absToday;
+    });
 
-    if (merged.length === 0) {
+    upcoming.sort((a, b) => b.dateFrom.localeCompare(a.dateFrom));
+
+    if (upcoming.length === 0) {
         el.innerHTML = warnHtml + '<div class="abs-empty">登録済みの欠席はありません</div>';
         return;
     }
 
-    el.innerHTML = warnHtml + merged.map(r => {
+    el.innerHTML = warnHtml + upcoming.map(r => {
         let dateText = absFormatDate(r.dateFrom);
         if (r.dateType === 'range' && r.dateTo && r.dateTo !== r.dateFrom) {
             dateText = `${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}`;
@@ -4905,6 +4925,16 @@ function khRender(list, month) {
     const wrap = document.getElementById('kh-list-wrap');
     const summary = document.getElementById('kh-summary');
     if (!wrap) return;
+    // 欠席履歴は「今日より前（昨日以前）」のみ表示。当日・未来分は欠席登録タブの役割（重複ゼロ）。
+    // 「今日」はJST固定。GASは month=でその月の1日〜月末を全件返すため、当月は当日以降をここで除外する。
+    // 日付が変われば当日分が自動でこちら（履歴）側に落ちる。
+    // 判定軸は登録タブと統一して必ず「終了日」基準。現状GASの欠席行は1日1行（終了日=a.date）だが、
+    // 万一 dateTo を持つ範囲行が来ても終了日で割れるよう dateTo を優先する（開始日基準による二重表示を防ぐ）。
+    const _khToday = jstTodayStr();
+    list = (list || []).filter(function (a) {
+        const end = a.dateTo || a.date || '';
+        return end < _khToday;
+    });
     const mParts = month.split('-');
     const monthLabel = parseInt(mParts[0]) + '年' + parseInt(mParts[1]) + '月';
     if (!list || list.length === 0) {
