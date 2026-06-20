@@ -595,8 +595,8 @@
         .att-user-icon.absent { background: #e53e3e; }
         .att-user-name {
             font-size: 0.95rem; font-weight: 600; color: #2d3748;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            min-width: 3em; flex: 0 1 auto;   /* 名前は中程度に縮む */
+            white-space: nowrap; overflow: visible; text-overflow: clip;
+            flex: 0 0 auto;   /* 2026-06-20: 名前は省略せず必ず全表示（縮まない・ellipsis無し） */
         }
         .att-user-name.care-kaigo { background: #fde2e2; padding: 2px 8px; border-radius: 8px; }
         .att-user-name.care-shien { background: #dbeafe; padding: 2px 8px; border-radius: 8px; }
@@ -1955,7 +1955,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="shared.js?v=2026-06-20-03"></script>
+<script src="shared.js?v=2026-06-20-04"></script>
 <script>
 // ========== 配置管理データ定義 ==========
 
@@ -4565,24 +4565,45 @@ function absRenderTodayList() { return; }
 
 // ----- 登録済みの欠席一覧 -----
 // GAS（スプレッドシート）とlocalStorageの両方から取得して統合表示
-function absRenderUpcomingList() {
+function absRenderUpcomingList(attempt) {
+    // 2026-06-20: GAS取得失敗を「黙ってlocalStorageだけ表示」にしない。
+    //   timeout 5s→8s＋1回リトライし、最終失敗時は警告＋再読込ボタンを必ず併記する。
+    attempt = attempt || 0;
     const el = document.getElementById('abs-upcoming-list');
-    el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
+    if (!el) return;  // DOM安全：要素が無ければ何もしない
+    if (attempt === 0) el.innerHTML = '<div class="abs-empty" style="color:#a0aec0">読み込み中...</div>';
 
     // GASからJSONPで取得
     const cbName = '_absUpCb_' + Date.now();
     const script = document.createElement('script');
     script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
 
-    const timeout = setTimeout(() => {
-        delete window[cbName];
-        // GAS取得失敗 → localStorageだけで表示
-        absRenderUpcomingListFromData([]);
-    }, 5000);
-
-    window[cbName] = function(data) {
+    let settled = false;  // timeout/onerror/成功の多重発火ガード
+    const cleanupScript = function() {
+        try { if (script.parentNode) script.parentNode.removeChild(script); } catch (e) {}
+    };
+    const onFail = function() {
+        if (settled) return;
+        settled = true;
         clearTimeout(timeout);
         delete window[cbName];
+        cleanupScript();
+        if (attempt < 1) {
+            absRenderUpcomingList(attempt + 1);  // 1回だけリトライ
+        } else {
+            // 取得不能 → localStorageは出すが警告を必ず併記（gasFailed=true）
+            absRenderUpcomingListFromData([], true);
+        }
+    };
+
+    const timeout = setTimeout(onFail, 8000);
+
+    window[cbName] = function(data) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        delete window[cbName];
+        cleanupScript();
         // GAS側が新しい形式（{absences, longTerm}）か旧形式（配列）か対応
         let gasAbsences = [];
         let longTermData = [];
@@ -4598,18 +4619,14 @@ function absRenderUpcomingList() {
                     .map(function(i) { return i.name; });
             }
         }
-        absRenderUpcomingListFromData(gasAbsences);
+        absRenderUpcomingListFromData(gasAbsences, false);
         absRenderLongTermList(longTermData);
     };
-    script.onerror = () => {
-        clearTimeout(timeout);
-        delete window[cbName];
-        absRenderUpcomingListFromData([]);
-    };
+    script.onerror = onFail;
     document.body.appendChild(script);
 }
 
-function absRenderUpcomingListFromData(gasAbsences) {
+function absRenderUpcomingListFromData(gasAbsences, gasFailed) {
     // 重複チェック用にGASデータをキャッシュ（absSubmitで参照／出席タブの連絡状況表示でも読み取り流用）
     window._cachedGasAbsences = gasAbsences || [];
     // 出席予定タブが既に描画済みなら連絡状況を反映して再描画（読み取り専用・無限ループなし）
@@ -4621,7 +4638,16 @@ function absRenderUpcomingListFromData(gasAbsences) {
     } catch (e) {}
 
     const el = document.getElementById('abs-upcoming-list');
+    if (!el) return;  // DOM安全
     const localRecords = absGetRecords();
+
+    // 2026-06-20: GAS取得失敗時の警告バナー（localStorage分は出すが「表示が不完全」を明示＋再読込）
+    const warnHtml = gasFailed
+        ? '<div class="abs-fetch-warn" style="margin-bottom:10px;padding:10px 12px;background:#fefcbf;border:1px solid #ecc94b;border-radius:8px;color:#975a16;font-weight:700;font-size:0.85rem;line-height:1.5;">' +
+            '⚠️ サーバーから取得できませんでした（表示が不完全です）' +
+            '<button type="button" onclick="absRenderUpcomingList()" style="margin-left:10px;padding:3px 12px;background:#d69e2e;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;">再読込</button>' +
+          '</div>'
+        : '';
 
     // 統合リストを作る（重複排除はキーで管理）
     const seen = new Set();
@@ -4657,11 +4683,11 @@ function absRenderUpcomingListFromData(gasAbsences) {
     merged.sort((a, b) => b.dateFrom.localeCompare(a.dateFrom));
 
     if (merged.length === 0) {
-        el.innerHTML = '<div class="abs-empty">登録済みの欠席はありません</div>';
+        el.innerHTML = warnHtml + '<div class="abs-empty">登録済みの欠席はありません</div>';
         return;
     }
 
-    el.innerHTML = merged.map(r => {
+    el.innerHTML = warnHtml + merged.map(r => {
         let dateText = absFormatDate(r.dateFrom);
         if (r.dateType === 'range' && r.dateTo && r.dateTo !== r.dateFrom) {
             dateText = `${absFormatDate(r.dateFrom)} 〜 ${absFormatDate(r.dateTo)}`;
@@ -5319,8 +5345,9 @@ function absContactStatus(cmNotified) {
     if (v === '電話連絡済') return { label: '📞電話済', cls: 'done' };
     if (v === 'ケアマネ把握済') return { label: '✓ケアマネ連絡', cls: 'aware' };
     if (v === '要電話連絡') return { label: '📞要連絡', cls: 'callreq' };  // 2026-06-19: メアド無効＝手動電話連絡を促す(amber)
+    if (v === '自動送信停止') return { label: '要連絡', cls: 'callreq' };  // 2026-06-20: 自動送信停止＝手動連絡が必要(amber)
     if (v.indexOf('エラー') === 0) return { label: '✉️失敗', cls: 'err' };
-    // メールなし / メール未送信 / 自動送信停止 / 空 / 下書き保存 / その他 → 未連絡
+    // メールなし / メール未送信 / 空 / 下書き保存 / その他 → 未連絡
     return { label: '未連絡', cls: 'unsent' };
 }
 
@@ -5438,8 +5465,9 @@ function attRenderUser(u) {
             '<span class="att-user-name ' + careCls + '" onclick="event.stopPropagation();attShowMonthlyUsage(\'' + escapedName + '\')" style="cursor:pointer;">' + u.name + '</span>' +
             prevAbsentBadge +
             resumedBadge +
-            (u.care ? '<span class="att-user-care ' + careCls + '" title="' + String(u.care).replace(/"/g, '&quot;') + '">' + attCareAbbrev(u.care) + '</span>' : '') +
-            (isAbsent && u.reason ? '<span class="att-user-reason" title="' + String(u.reason).replace(/"/g, '&quot;') + '">' + u.reason + '</span>' : '') +
+            // 2026-06-20: 行簡素化。介護度バッジと欠席理由テキストは行から削除。
+            //   介護度の区分は att-user-name の色クラス(care-kaigo=赤系/care-shien=青系)で表現。
+            //   欠席理由は「〇タップ→利用者情報モーダル」で確認する運用に移行。
             (contactDisplay ? '<span class="att-contact-text ' + contactCls + '">' + contactDisplay + '</span>' : '') +
             resumeText +
         '</div>' +
@@ -5667,7 +5695,29 @@ function _renderUsageDetailBody(ua, body) {
 function attShowMonthlyUsage(name) {
     var modal = document.getElementById('mu-modal');
     if (!modal) return;
-    document.getElementById('mu-user-name').textContent = name;
+    var nameEl = document.getElementById('mu-user-name');
+    if (nameEl) nameEl.textContent = name;
+    // 2026-06-20: 介護度を追加表示（要介護N=赤系/要支援N・事業対象者=青系）。
+    //   出席予定リストの行から介護度バッジを外した代わりに、ここで確認できるようにする。
+    //   介護度は attLastData(am/pm) の利用者レコードから読み取り専用で引く。
+    var careEl = document.getElementById('mu-user-care');
+    if (careEl) {
+        var cu = null;
+        try {
+            if (typeof attLastData !== 'undefined' && attLastData) {
+                cu = attLastData.am.concat(attLastData.pm).find(function(x) { return x && x.name === name; });
+            }
+        } catch (e) {}
+        var careTxt = (cu && cu.care) ? String(cu.care).trim() : '';
+        if (careTxt) {
+            careEl.textContent = '介護度：' + careTxt;
+            careEl.style.color = (careTxt.indexOf('要介護') !== -1) ? '#842029' : '#1e40af';
+            careEl.style.display = '';
+        } else {
+            careEl.textContent = '';
+            careEl.style.display = 'none';
+        }
+    }
     modal.dataset.userName = name;
     modal.style.display = 'flex';
     var todayStr = attFormatDate(new Date());
@@ -7497,6 +7547,7 @@ init();
       </div>
       <button type="button" class="mu-close-btn" onclick="muCloseModal()">✕</button>
     </div>
+    <div class="mu-care-line" id="mu-user-care" style="display:none;padding:6px 18px 0;font-weight:700;font-size:0.9rem;"></div>
     <div class="mu-month-tabs" id="mu-month-tabs"></div>
     <div class="mu-summary" id="mu-summary"></div>
     <div class="mu-calendar" id="mu-calendar"></div>
