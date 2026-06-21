@@ -7946,10 +7946,13 @@ function dengonRender(items) {
     }
     list.innerHTML = visible.map(x => {
         const id = String(x.id);
+        const req = dengonRequestedMD_(x.createdAt);          // B：依頼日（無効/空は非表示）
+        const reqHtml = req ? ' ・ 依頼 ' + req : '';
+        const dlHtml = dengonDeadlineBadge_(x.deadline);      // A：期限バッジ（今日基準）
         return `
         <div class="dengon-card" data-id="${escapeHtml(id)}" style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff;">
             <div style="font-size:0.78rem; color:#718096; margin-bottom:4px;">
-                宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${x.deadline ? ' ・ <span style="color:#d69e2e;">期限: ' + escapeHtml(x.deadline) + '</span>' : ''}
+                宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${reqHtml}${dlHtml}
             </div>
             <div style="margin:4px 0 8px; white-space:pre-wrap;">${escapeHtml(x.body)}</div>
             <div class="dg-normal">
@@ -7964,6 +7967,35 @@ function dengonRender(items) {
             </div>
         </div>`;
     }).join('');
+}
+
+// 端末ローカルの今日（YYYY-MM-DD）
+function dengonTodayStr_() {
+    const d = new Date();
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+// 期限バッジHTML（A：今日基準で状態分け）。期限なし→''。判定は文字列比較（YYYY-MM-DD=辞書順=日付順）。
+function dengonDeadlineBadge_(deadline) {
+    const dl = String(deadline || '').trim();
+    if (!dl) return ''; // 期限なし→何も出さない
+    const today = dengonTodayStr_();
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dl);
+    const md = m ? (parseInt(m[2], 10) + '/' + parseInt(m[3], 10)) : escapeHtml(dl);
+    if (m && dl < today) { // 過去日＝期限超過（赤強調）
+        return ' ・ <span style="background:#fed7d7; color:#c53030; font-weight:700; border-radius:4px; padding:1px 6px;">⚠️期限超過 ' + md + '</span>';
+    }
+    if (m && dl === today) { // 本日締切
+        return ' ・ <span style="background:#feebc8; color:#c05621; font-weight:700; border-radius:4px; padding:1px 6px;">本日締切</span>';
+    }
+    return ' ・ <span style="color:#d69e2e;">締切 ' + escapeHtml(dl) + '</span>'; // 未来＝控えめ
+}
+// 依頼日 M/D（B：createdAtベース）。空/パース不能→''（非表示）。
+function dengonRequestedMD_(createdAt) {
+    const s = String(createdAt || '').trim();
+    if (!s) return '';
+    const t = new Date(s);
+    if (isNaN(t.getTime())) return '';
+    return (t.getMonth() + 1) + '/' + t.getDate();
 }
 
 // data-id でカード要素を引く（id に特殊文字が入っても安全なよう走査）
