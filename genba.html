@@ -418,6 +418,36 @@
         }
         .abs-flat-chip.selected { background: #2c7a7b; color: white; border-color: #2c7a7b; }
         .abs-flat-chip:hover:not(.selected) { border-color: #2c7a7b; }
+        /* 2026-06-21 ③主動線UX: 逃げ道トグル＋手動unit */
+        .abs-escape { margin-top: 12px; border-top: 1px dashed #cbd5e0; padding-top: 8px; }
+        .abs-escape-summary {
+            cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #718096;
+            list-style: none; padding: 6px 2px; user-select: none;
+        }
+        .abs-escape-summary::-webkit-details-marker { display: none; }
+        .abs-escape-summary::before { content: '▸ '; color: #a0aec0; }
+        .abs-escape[open] .abs-escape-summary::before { content: '▾ '; }
+        .abs-escape-summary:hover { color: #2c7a7b; }
+        .abs-escape-body { padding: 6px 2px 2px; }
+        .abs-escape-guide {
+            font-size: 0.85rem; color: #c05621; background: #fffaf0;
+            border: 1px solid #feebc8; border-radius: 8px; padding: 8px 10px;
+            margin: 0 0 10px; line-height: 1.5;
+        }
+        .abs-escape-guide:empty { display: none; }
+        .abs-sublabel { display: block; font-size: 0.82rem; font-weight: 600; color: #4a5568; margin: 8px 0 6px; }
+        .abs-unit-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+        .abs-unit-btn {
+            flex: 1; min-width: 80px; padding: 11px 8px; border: 2px solid #e2e8f0;
+            border-radius: 10px; background: white; font-size: 0.9rem;
+            font-weight: 600; cursor: pointer; text-align: center;
+            transition: all 0.2s; font-family: inherit; color: #2d3748;
+        }
+        .abs-unit-btn.active { background: #2c7a7b; color: white; border-color: #2c7a7b; }
+        .abs-unit-btn:hover:not(.active) { border-color: #2c7a7b; }
+        /* 区分外: グレーアウトするが押下は可能（押した瞬間だけ確認） */
+        .abs-unit-btn.offpattern { color: #a0aec0; border-color: #edf2f7; background: #f7fafc; }
+        .abs-unit-btn.offpattern.active { background: #b7791f; color: white; border-color: #b7791f; }
         /* 2026-06-19 休み連絡メール プレビューモーダル */
         .abs-preview-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -1454,14 +1484,29 @@
         <!-- STEP2: いつ休み？ -->
         <div class="abs-step" id="abs-step-date" style="display:none;">
             <label class="abs-label">2. いつ休み？</label>
-            <div class="abs-date-type-btns">
-                <button class="abs-date-type-btn active" data-type="today" onclick="absSelectDateType('today')">今日</button>
-                <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
-                <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
-                <button class="abs-date-type-btn" data-type="flatday" onclick="absSelectDateType('flatday')">今週から選ぶ</button>
-                <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')" style="background:#e53e3e;color:white;border-color:#e53e3e;">長期休み</button>
-            </div>
+            <!-- 主動線: 利用区分に合った通所コマ(2週分)だけをチップ表示 -->
             <div class="abs-date-inputs" id="abs-date-inputs"></div>
+            <!-- 長期休み（残置・別動線） -->
+            <div style="margin-top:10px;">
+                <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')" style="flex:0 0 auto;background:#e53e3e;color:white;border-color:#e53e3e;">長期休み</button>
+            </div>
+            <!-- 逃げ道: 既定で閉じる。区分外・先の日付・イレギュラー用 -->
+            <details class="abs-escape" id="abs-escape">
+                <summary class="abs-escape-summary">区分外・イレギュラーも登録</summary>
+                <div class="abs-escape-body">
+                    <p class="abs-escape-guide" id="abs-escape-guide"></p>
+                    <div class="abs-date-type-btns" style="margin-bottom:8px;">
+                        <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
+                        <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
+                    </div>
+                    <div class="abs-date-inputs" id="abs-escape-inputs"></div>
+                    <!-- 手動 午前/午後/終日（自動推定をやめ明示選択） -->
+                    <div class="abs-unit-select" id="abs-unit-select" style="display:none;">
+                        <label class="abs-sublabel">区分（午前 / 午後 / 終日）</label>
+                        <div class="abs-unit-btns" id="abs-unit-btns"></div>
+                    </div>
+                </div>
+            </details>
             <div class="abs-date-warning" id="abs-date-warning" style="display:none;"></div>
         </div>
 
@@ -1979,7 +2024,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="shared.js?v=2026-06-20-15"></script>
+<script src="shared.js?v=2026-06-21-01"></script>
 <script>
 // ========== 配置管理データ定義 ==========
 
@@ -3751,6 +3796,7 @@ let absState = {
     dateFrom: '',
     dateTo: '',
     flatSlots: [],         // 2026-06-19: 飛び石/今週まるごと用 [{date,unit:'午前'|'午後'}]
+    manualUnit: '',        // 2026-06-21: 逃げ道(日付指定/期間指定)の手動区分 '午前'|'午後'|'終日'
     reason: '',
     reasonOther: '',
     contact: '',
@@ -3780,18 +3826,34 @@ function absLoadUsersFromAPI() {
             }
 
             // APIの返すデータ形式をアプリ内形式に変換
-            absUserCache = (data.users || []).map(u => {
-                // days列（例: "月水金"）とampm列（例: "午前"）からpattern配列を作る
-                const pattern = absParsePattern(u.days, u.ampm);
-                return {
-                    name: u.name,
-                    reading: u.kana || '',
-                    pattern: pattern,
-                    care: u.care || '',
-                    cmOffice: u.cmOffice || '',
-                    cmEmail: ''   // 後で getUserList 由来のマップでマージ
-                };
-            });
+            // ライブAPIは data.patterns（{ 名前: {days, unit, kana, care} }）を返す。
+            // 旧 data.users（配列・{name, days, ampm, kana, care, cmOffice}）にも後方互換で対応。
+            // どちらも days/ampm文字列 → absParsePattern で pattern配列([{day,unit}]) に変換する。
+            if (data.patterns && typeof data.patterns === 'object') {
+                absUserCache = Object.keys(data.patterns).map(name => {
+                    const p = data.patterns[name] || {};
+                    return {
+                        name: name,
+                        reading: p.kana || '',
+                        pattern: absParsePattern(p.days, p.unit),
+                        care: p.care || '',
+                        cmOffice: p.cmOffice || '',
+                        cmEmail: ''   // 後で getUserList 由来のマップでマージ
+                    };
+                });
+            } else {
+                absUserCache = (data.users || []).map(u => {
+                    // days列（例: "月水金"）とampm列（例: "午前"）からpattern配列を作る
+                    return {
+                        name: u.name,
+                        reading: u.kana || '',
+                        pattern: absParsePattern(u.days, u.ampm),
+                        care: u.care || '',
+                        cmOffice: u.cmOffice || '',
+                        cmEmail: ''   // 後で getUserList 由来のマップでマージ
+                    };
+                });
+            }
 
             absUserLoaded = true;
 
@@ -3800,9 +3862,12 @@ function absLoadUsersFromAPI() {
                 absCmEmailMap = map;
                 absUserCache.forEach(function(u) { u.cmEmail = map[u.name] || ''; });
                 // キャッシュにも保存（次回のオフライン起動用・cmEmail込み）
-                try {
-                    localStorage.setItem(ABS_USERS_KEY, JSON.stringify(absUserCache));
-                } catch {}
+                // 空配列では保存しない＝取得失敗時に既存の良いキャッシュを潰さない
+                if (absUserCache.length > 0) {
+                    try {
+                        localStorage.setItem(ABS_USERS_KEY, JSON.stringify(absUserCache));
+                    } catch {}
+                }
                 resolve(absUserCache);
             });
         };
@@ -3872,8 +3937,10 @@ function gnbNormalizeSlots(slots) {
     return out;
 }
 
-// pattern[{day:0..6(0=日), unit:'am'|'pm'}] と todayStr から、今週(月〜日)の今日以降の通所(date,unit)を生成。
-function gnbWeekAbsenceSlots(pattern, todayStr) {
+// pattern[{day:0..6(0=日), unit:'am'|'pm'}] と todayStr から、weeks週分(月〜日)の今日以降の通所(date,unit)を生成。
+// weeks: 表示する週数（既定1=今週のみ。2=今週＋来週）。先の欠席連絡が多いため主動線では2を渡す。
+function gnbWeekAbsenceSlots(pattern, todayStr, weeks) {
+    weeks = weeks && weeks > 0 ? weeks : 1;
     const parse = function (s) { const p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
     const ymd = function (d) { const y = d.getFullYear(), m = ('0' + (d.getMonth() + 1)).slice(-2), da = ('0' + d.getDate()).slice(-2); return y + '-' + m + '-' + da; };
     const today = parse(todayStr);
@@ -3882,7 +3949,7 @@ function gnbWeekAbsenceSlots(pattern, todayStr) {
     const monday = new Date(today);
     monday.setDate(today.getDate() + offsetToMon);
     const slots = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 7 * weeks; i++) {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
         if (ymd(d) < todayStr) continue;             // 今日(アンカー)以降のみ
@@ -4035,9 +4102,31 @@ function absSelectUser(idx, name) {
         </div>
     `;
 
-    // STEP2を表示
+    // STEP2を表示（主動線＝利用区分に合った通所コマのチップを既定表示）
     document.getElementById('abs-step-date').style.display = 'block';
-    absSelectDateType('today');
+    // 逃げ道は毎回閉じた状態に戻す＋ガイド文をこの利用者の通常区分から生成
+    const esc = document.getElementById('abs-escape');
+    if (esc) esc.open = false;
+    const guide = document.getElementById('abs-escape-guide');
+    if (guide) guide.textContent = absGuideText(user);
+    const us = document.getElementById('abs-unit-select');
+    if (us) us.style.display = 'none';
+    absState.manualUnit = '';
+    absSelectDateType('flatday');
+}
+
+// 利用者の通常利用区分（午前/午後どちらを使うか）。グレーアウト判定とガイド文に使用。
+function absUsualUnits(user) {
+    const pat = (user && user.pattern) || [];
+    return { hasAm: pat.some(p => p.unit === 'am'), hasPm: pat.some(p => p.unit === 'pm') };
+}
+
+// 「○○さんは通常 火・金の午後利用です」を pattern から動的生成（patternText流用）。
+function absGuideText(user) {
+    const pat = (user && user.pattern) || [];
+    if (!pat.length) return (user ? user.name : 'この利用者') + 'さんは通所パターン未設定です。区分を確認して登録してください。';
+    const label = pat.map(p => DAY_NAMES[p.day] + '（' + (p.unit === 'am' ? '午前' : '午後') + '）').join('・');
+    return user.name + 'さんは通常 ' + label + ' 利用です。';
 }
 
 function absClearName() {
@@ -4061,6 +4150,7 @@ function absClearName() {
     absState.contactDate = '';
     // 2026-06-19: 飛び石選択の残留防止（次の利用者に持ち越さない）
     absState.flatSlots = [];
+    absState.manualUnit = '';
     absState.dateType = 'today';
     absPreviewState = null;
 }
@@ -4072,40 +4162,39 @@ function absSelectDateType(type) {
         b.classList.toggle('active', b.dataset.type === type);
     });
 
-    const container = document.getElementById('abs-date-inputs');
+    // 主動線(flatday)/長期休みは abs-date-inputs、逃げ道(specific/range)は abs-escape-inputs に描画
+    const mainContainer = document.getElementById('abs-date-inputs');
+    const escContainer = document.getElementById('abs-escape-inputs');
+    const unitSelect = document.getElementById('abs-unit-select');
     const warning = document.getElementById('abs-date-warning');
     warning.style.display = 'none';
 
     const today = new Date();
     const todayStr = toLocalDateStr(today);
 
-    if (type === 'today') {
-        absState.dateFrom = todayStr;
-        absState.dateTo = todayStr;
-        container.innerHTML = `<p style="font-size:0.9rem; color:#2d3748; font-weight:600; padding:8px 0;">
-            ${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}（${DAY_NAMES[today.getDay()]}）
-        </p>`;
-        // 通所日でない日でも警告だけ出して登録は可能にする
-        absCheckNotScheduledDay(todayStr);
-        absShowReasonStep();
-    } else if (type === 'specific') {
+    if (type === 'specific') {
         absState.dateFrom = '';
         absState.dateTo = '';
-        container.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
+        escContainer.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
+        // 逃げ道は自動推定をやめ、手動 午前/午後/終日 を明示選択させる
+        absBuildUnitSelector();
+        if (unitSelect) unitSelect.style.display = 'block';
         absOnDateSpecific(todayStr);
     } else if (type === 'range') {
         absState.dateFrom = '';
         absState.dateTo = '';
-        container.innerHTML = `
+        escContainer.innerHTML = `
             <div class="abs-date-range-wrap">
                 <input type="date" id="abs-date-from" value="${todayStr}" onchange="absOnDateRange()">
                 <span>〜</span>
                 <input type="date" id="abs-date-to" value="${todayStr}" onchange="absOnDateRange()">
             </div>
         `;
+        absBuildUnitSelector();
+        if (unitSelect) unitSelect.style.display = 'block';
         absOnDateRange();
     } else if (type === 'flatday') {
-        // 2026-06-19: 今週の通所日チップから飛び石選択（今日以降・曜日ごとunit）
+        // 主動線: 利用区分に合った通所コマ(2週分)のチップから選択（今日以降・曜日ごとunit）
         absState.dateFrom = '';
         absState.dateTo = '';
         absState.flatSlots = [];
@@ -4113,7 +4202,7 @@ function absSelectDateType(type) {
     } else if (type === 'longterm') {
         absState.dateFrom = todayStr;
         absState.dateTo = '';
-        container.innerHTML = `
+        mainContainer.innerHTML = `
             <div style="margin-bottom:8px;">
                 <label style="font-weight:600;font-size:0.85rem;">開始日</label>
                 <input type="date" id="abs-lt-start" value="${todayStr}" style="padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:1rem;width:100%;box-sizing:border-box;margin-top:4px;" onchange="absState.dateFrom=this.value">
@@ -4133,36 +4222,53 @@ function absOnDateSpecific(val) {
 
 // ===== 2026-06-19: 飛び石（今週の通所日チップ）＋今週まるごと =====
 // チップは選択利用者の今週通所日（今日以降）を gnbWeekAbsenceSlots から生成。曜日ごとunitを保持。
+// 主動線で表示する週数（今週＋来週）。3週以降は逃げ道へ。
+const ABS_MAIN_WEEKS = 2;
 function absRenderFlatChips() {
     const container = document.getElementById('abs-date-inputs');
     if (!container) return;
     const user = absState.selectedUser;
     const pattern = (user && user.pattern) || [];
     const todayStr = toLocalDateStr(new Date());
-    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr);
+    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr, ABS_MAIN_WEEKS);
     if (weekSlots.length === 0) {
-        container.innerHTML = '<p style="font-size:0.9rem;color:#718096;padding:8px 0;">今週（今日以降）の通所予定がありません。「日付を指定」「期間で指定」をお使いください。</p>';
+        container.innerHTML = '<p style="font-size:0.9rem;color:#718096;padding:8px 0;">' +
+            '今週・来週（今日以降）の通所予定がありません。<br>先の日付や区分外は下の「区分外・イレギュラーも登録」からどうぞ。</p>';
         return;
     }
     const DOW = ['日', '月', '火', '水', '木', '金', '土'];
-    const chipsHtml = weekSlots.map(function (s) {
+    // 今週末（その週の日曜）で 今週/来週 にグループ分け
+    const tD = new Date(todayStr.split('-')[0], +todayStr.split('-')[1] - 1, +todayStr.split('-')[2]);
+    const sundayOffset = (tD.getDay() === 0 ? 0 : 7 - tD.getDay());
+    const thisSunday = new Date(tD); thisSunday.setDate(tD.getDate() + sundayOffset);
+    const thisSundayStr = toLocalDateStr(thisSunday);
+    const chip = function (s) {
         const sel = absState.flatSlots.some(function (x) { return x.date === s.date && x.unit === s.unit; });
         const d = new Date(s.date.split('-')[0], +s.date.split('-')[1] - 1, +s.date.split('-')[2]);
         const label = (d.getMonth() + 1) + '/' + d.getDate() + '(' + DOW[d.getDay()] + ')' + s.unit;
         return '<button type="button" class="abs-flat-chip' + (sel ? ' selected' : '') +
             '" onclick="absToggleFlatSlot(\'' + s.date + '\',\'' + s.unit + '\')">' + label + '</button>';
-    }).join('');
+    };
+    const groupHtml = function (title, list) {
+        if (!list.length) return '';
+        return '<div style="font-size:0.78rem;color:#718096;font-weight:700;margin:6px 0 4px;">' + title + '</div>' +
+            '<div class="abs-flat-chips" style="display:flex;flex-wrap:wrap;gap:8px;">' + list.map(chip).join('') + '</div>';
+    };
+    const wkThis = weekSlots.filter(function (s) { return s.date <= thisSundayStr; });
+    const wkNext = weekSlots.filter(function (s) { return s.date > thisSundayStr; });
     const allOn = absState.flatSlots.length === weekSlots.length && weekSlots.length > 0;
     container.innerHTML =
         '<div style="padding:6px 0;">' +
         '<button type="button" class="abs-week-all-btn" onclick="absToggleAllWeek()">' +
-        (allOn ? '今週まるごと解除' : '今週まるごとお休み') + '</button>' +
-        '<div class="abs-flat-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">' + chipsHtml + '</div>' +
-        '<p style="font-size:0.8rem;color:#718096;margin-top:6px;">タップで選択／解除（今週・今日以降の通所コマ）</p>' +
+        (allOn ? '表示中をまとめて解除' : '2週分まとめてお休み') + '</button>' +
+        groupHtml('今週', wkThis) +
+        groupHtml('来週', wkNext) +
+        '<p style="font-size:0.8rem;color:#718096;margin-top:6px;">タップで選択／解除（利用区分に合う通所コマ・今日以降2週分）</p>' +
         '</div>';
 }
 
 function absToggleFlatSlot(date, unit) {
+    absState.dateType = 'flatday';   // チップ操作＝主動線に戻す（逃げ道を開いた後でも整合）
     const idx = absState.flatSlots.findIndex(function (x) { return x.date === date && x.unit === unit; });
     if (idx >= 0) absState.flatSlots.splice(idx, 1);
     else absState.flatSlots.push({ date: date, unit: unit });
@@ -4172,10 +4278,11 @@ function absToggleFlatSlot(date, unit) {
 }
 
 function absToggleAllWeek() {
+    absState.dateType = 'flatday';   // 主動線に戻す
     const user = absState.selectedUser;
     const pattern = (user && user.pattern) || [];
     const todayStr = toLocalDateStr(new Date());
-    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr);
+    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr, ABS_MAIN_WEEKS);
     const allOn = absState.flatSlots.length === weekSlots.length && weekSlots.length > 0;
     absState.flatSlots = allOn ? [] : weekSlots.slice();
     absRenderFlatChips();
@@ -4331,16 +4438,29 @@ function absUpdateConfirm() {
     const contact = absState.contact === 'その他' ? (absState.contactOther || 'その他') : absState.contact;
 
     let dateText = '';
-    if (absState.dateType === 'today') {
+    if (absState.dateType === 'flatday') {
+        // 主動線チップ: 選択コマを「M/D(曜)区分」で列挙
+        const slots = gnbNormalizeSlots(absState.flatSlots || []);
+        dateText = slots.map(function (s) {
+            const p = s.date.split('-');
+            const d = new Date(+p[0], +p[1] - 1, +p[2]);
+            return `${d.getMonth() + 1}/${d.getDate()}（${DAY_NAMES[d.getDay()]}）${s.unit}`;
+        }).join('、') || '（コマ未選択）';
+    } else if (absState.dateType === 'today') {
         const t = new Date();
         dateText = `${t.getFullYear()}/${String(t.getMonth()+1).padStart(2,'0')}/${String(t.getDate()).padStart(2,'0')}（${DAY_NAMES[t.getDay()]}）`;
     } else if (absState.dateType === 'specific') {
         const d = new Date(absState.dateFrom);
-        dateText = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}（${DAY_NAMES[d.getDay()]}）`;
-    } else {
+        const uTxt = absState.manualUnit ? `　区分: ${absState.manualUnit}` : '';
+        dateText = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}（${DAY_NAMES[d.getDay()]}）${uTxt}`;
+    } else if (absState.dateType === 'range') {
         const df = new Date(absState.dateFrom);
         const dt = new Date(absState.dateTo);
-        dateText = `${df.getFullYear()}/${String(df.getMonth()+1).padStart(2,'0')}/${String(df.getDate()).padStart(2,'0')} 〜 ${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}`;
+        const uTxt = absState.manualUnit ? `　区分: ${absState.manualUnit}` : '';
+        dateText = `${df.getFullYear()}/${String(df.getMonth()+1).padStart(2,'0')}/${String(df.getDate()).padStart(2,'0')} 〜 ${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}${uTxt}`;
+    } else {
+        const df = new Date(absState.dateFrom);
+        dateText = `${df.getFullYear()}/${String(df.getMonth()+1).padStart(2,'0')}/${String(df.getDate()).padStart(2,'0')}（長期休み開始）`;
     }
 
     // 連絡日の表示
@@ -4361,6 +4481,11 @@ function absUpdateConfirm() {
 function absSubmit() {
     if (!absState.selectedUser || !absState.reason || !absState.contact || !absState.method || !absState.contactDate) {
         alert('すべての項目を入力してください');
+        return;
+    }
+    // 逃げ道(日付指定/期間指定)は手動区分を必須に（自動推定はしない）
+    if ((absState.dateType === 'specific' || absState.dateType === 'range') && !absState.manualUnit) {
+        alert('区分（午前 / 午後 / 終日）を選んでください');
         return;
     }
 
@@ -4447,10 +4572,18 @@ function absSubmit() {
     btn.disabled = true;
     btn.textContent = '登録中...';
 
-    // (date,unit)集合を構築（飛び石=チップ／それ以外=日付×利用者パターン・終日はam/pm2分解）
-    const slots = (absState.dateType === 'flatday')
-        ? gnbNormalizeSlots(absState.flatSlots || [])
-        : absBuildSlotsFromDates(dates);
+    // (date,unit)集合を構築
+    //  - 主動線チップ(flatday): 選択コマそのまま
+    //  - 逃げ道(specific/range): 手動区分(午前/午後/終日)で構築 ※自動推定はしない
+    //  - その他(longterm等): 従来のパターン推定（longtermは後段で別処理）
+    let slots;
+    if (absState.dateType === 'flatday') {
+        slots = gnbNormalizeSlots(absState.flatSlots || []);
+    } else if (absState.dateType === 'specific' || absState.dateType === 'range') {
+        slots = absBuildSlotsFromManual(dates, absState.manualUnit);
+    } else {
+        slots = absBuildSlotsFromDates(dates);
+    }
 
     // 長期休みの場合は別アクション
     if (absState.dateType === 'longterm') {
@@ -4489,6 +4622,87 @@ function absSubmit() {
         // c) 空欄＝メールなし扱い（案内なし・登録のみ）
         absDoRegister(slots, reason, contact, { doSendEmail: false });
     }
+}
+
+// 各日付について利用者パターンのその曜日のunitで (date,unit) を作る。
+// 非通所日は全体パターンから推定（am+pm→両方/pm→午後/それ以外→午前）。終日相当はam/pm2分解。
+function absBuildSlotsFromDates(dates) {
+    const pat = (absState.selectedUser && absState.selectedUser.pattern) || [];
+    const hasAmAny = pat.some(function (p) { return p.unit === 'am'; });
+    const hasPmAny = pat.some(function (p) { return p.unit === 'pm'; });
+    const out = [];
+    (dates || []).forEach(function (dStr) {
+        if (!dStr) return;
+        const parts = dStr.split('-');
+        const dow = new Date(+parts[0], +parts[1] - 1, +parts[2]).getDay();
+        const dayUnits = [];
+        pat.forEach(function (p) { if (p.day === dow) dayUnits.push(p.unit === 'pm' ? '午後' : '午前'); });
+        let units = dayUnits;
+        if (units.length === 0) {
+            if (hasAmAny && hasPmAny) units = ['午前', '午後'];
+            else if (hasPmAny && !hasAmAny) units = ['午後'];
+            else units = ['午前'];
+        }
+        units.forEach(function (u) { out.push({ date: dStr, unit: u }); });
+    });
+    return gnbNormalizeSlots(out);
+}
+
+// ===== 2026-06-21 ③逃げ道: 手動 午前/午後/終日 =====
+// 逃げ道の手動unitセレクタを構築。通常区分外(その人が使わない側)はグレーアウト＋既定で通常側を選択。
+function absBuildUnitSelector() {
+    const wrap = document.getElementById('abs-unit-btns');
+    if (!wrap) return;
+    const u = absUsualUnits(absState.selectedUser);
+    // 通常区分（午前の人=午前 / 午後の人=午後 / 両方の人=両方が通常）
+    const isOff = function (unit) {
+        if (u.hasAm && u.hasPm) return false;          // 両方使う人は区分外なし
+        if (u.hasPm && !u.hasAm) return unit !== '午後';  // 午後の人: 午前と終日が区分外
+        if (u.hasAm && !u.hasPm) return unit !== '午前';  // 午前の人: 午後と終日が区分外
+        return false;                                   // パターン未設定: 制限なし
+    };
+    // 既定選択: 通常側（午後の人→午後, 午前の人→午前, 両方→午前）。未設定時は未選択。
+    let def = '';
+    if (u.hasPm && !u.hasAm) def = '午後';
+    else if (u.hasAm) def = '午前';
+    absState.manualUnit = def;
+    const units = ['午前', '午後', '終日'];
+    wrap.innerHTML = units.map(function (unit) {
+        const off = isOff(unit);
+        const active = (unit === absState.manualUnit);
+        return '<button type="button" class="abs-unit-btn' + (off ? ' offpattern' : '') + (active ? ' active' : '') +
+            '" data-unit="' + unit + '" onclick="absSelectManualUnit(\'' + unit + '\',' + off + ')">' + unit + '</button>';
+    }).join('');
+}
+
+// 手動unit選択。区分外(off=true)を選んだ瞬間だけ確認を一拍挟む（最後の砦）。
+function absSelectManualUnit(unit, off) {
+    if (off) {
+        const u = absState.selectedUser;
+        const name = (u && u.name) ? u.name : 'この利用者';
+        const usual = (function () {
+            const uu = absUsualUnits(u);
+            return (uu.hasPm && !uu.hasAm) ? '午後' : (uu.hasAm && !uu.hasPm) ? '午前' : '通常区分';
+        })();
+        const ok = confirm(name + 'さんは通常' + usual + '利用です。' + unit + 'で登録しますか？');
+        if (!ok) return;
+    }
+    absState.manualUnit = unit;
+    document.querySelectorAll('#abs-unit-btns .abs-unit-btn').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.unit === unit);
+    });
+    absShowReasonStep();
+}
+
+// 逃げ道: 選んだ日付群 × 手動unit で (date,unit) 集合を作る。終日→午前+午後に2分解。
+function absBuildSlotsFromManual(dates, unit) {
+    const out = [];
+    (dates || []).forEach(function (dStr) {
+        if (!dStr) return;
+        if (unit === '終日') { out.push({ date: dStr, unit: '午前' }); out.push({ date: dStr, unit: '午後' }); }
+        else { out.push({ date: dStr, unit: unit === '午前' ? '午前' : '午後' }); }
+    });
+    return gnbNormalizeSlots(out);
 }
 
 // 各日付について利用者パターンのその曜日のunitで (date,unit) を作る。
@@ -6142,6 +6356,7 @@ function attLoadAllUsers() {
         if (!data.success) return;
 
         // patternsは { "名前": { days, unit, kana, care }, ... } 形式
+        // days/unit文字列 → absParsePattern で pattern配列化（区分絞り込みの土台）
         if (data.patterns) {
             Object.keys(data.patterns).forEach(name => {
                 const p = data.patterns[name];
@@ -6149,9 +6364,14 @@ function attLoadAllUsers() {
                 if (existing) {
                     if (!existing.reading && p.kana) existing.reading = p.kana;
                     if (!existing.care && p.care) existing.care = p.care;
+                    // pattern が未充填なら days/unit から埋める
+                    if (!existing.pattern || existing.pattern.length === 0) {
+                        existing.pattern = absParsePattern(p.days, p.unit);
+                    }
                 } else {
                     absUserCache.push({
-                        name: name, reading: p.kana || '', pattern: [],
+                        name: name, reading: p.kana || '',
+                        pattern: absParsePattern(p.days, p.unit),
                         care: p.care || '', cmOffice: ''
                     });
                 }
