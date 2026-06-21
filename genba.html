@@ -1873,10 +1873,16 @@
 </div>
 <div id="tab-dengon" class="tab-content active">
     <h2 style="font-size:1.1rem; margin:0 0 12px;">📢 伝達ボード</h2>
-    <p style="font-size:0.8rem; color:#718096; margin:0 0 12px;">社長⇄スタッフ⇄スタッフの連絡板。完了したらタップで消える（期限を過ぎたものも自動で消える）。</p>
+    <p style="font-size:0.8rem; color:#718096; margin:0 0 12px;">社長⇄スタッフ⇄スタッフの連絡板。完了したらタップで消える。期限を過ぎても、完了するまで残ります。</p>
 
-    <!-- 最小フォーム -->
-    <div style="border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:16px; background:#f7fafc;">
+    <!-- 表示切替（未完了 / 完了履歴） -->
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button id="dengon-tab-active" onclick="dengonSwitchView('active')" style="padding:6px 16px; border:1px solid #3182ce; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:700; background:#3182ce; color:#fff;">未完了</button>
+        <button id="dengon-tab-history" onclick="dengonSwitchView('history')" style="padding:6px 16px; border:1px solid #3182ce; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:700; background:#fff; color:#3182ce;">完了履歴</button>
+    </div>
+
+    <!-- 最小フォーム（未完了ビューのみ表示） -->
+    <div id="dengon-compose" style="border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:16px; background:#f7fafc;">
         <div style="margin-bottom:8px; font-size:0.85rem;">
             <span style="color:#4a5568;">投稿者（あなた）：</span>
             <span id="dengon-from-current" style="font-weight:700; color:#2b6cb0;">未選択</span>
@@ -7861,6 +7867,23 @@ function rmdToggleBirthday(name) {
 // ========== 伝達ボード（本番固定URL＝他機能と同じyawaragiボードGAS） ==========
 const DENGON_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 let dengonSelectedStaff = null;
+let dengonView = 'active'; // 'active'=未完了 / 'history'=完了履歴
+const DENGON_VIEWBTN_BASE = 'padding:6px 16px; border:1px solid #3182ce; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:700; ';
+const dengonConfirmTimers = {}; // 完了2段階確認の自動キャンセル用タイマー
+
+// 表示切替（未完了 / 完了履歴）
+function dengonSwitchView(view) {
+    dengonView = view;
+    const aBtn = document.getElementById('dengon-tab-active');
+    const hBtn = document.getElementById('dengon-tab-history');
+    const on = 'background:#3182ce; color:#fff;';
+    const off = 'background:#fff; color:#3182ce;';
+    if (aBtn) aBtn.setAttribute('style', DENGON_VIEWBTN_BASE + (view === 'active' ? on : off));
+    if (hBtn) hBtn.setAttribute('style', DENGON_VIEWBTN_BASE + (view === 'history' ? on : off));
+    const compose = document.getElementById('dengon-compose');
+    if (compose) compose.style.display = (view === 'active') ? '' : 'none';
+    dengonLoad();
+}
 
 // 投稿者選択（既存 getStaff() を流用）
 function dengonRenderStaffSelect() {
@@ -7881,9 +7904,10 @@ function dengonSelectStaff(name) {
     dengonRenderStaffSelect();
 }
 
-// 一覧取得（JSONP・dbFilterActive_準拠＝未完了かつ期限内のみサーバーが返す）
+// 一覧取得。未完了ビューはサーバーの未完了一覧（期限切れも含む）、完了履歴ビューは履歴を取得。
 function dengonLoad() {
     dengonRenderStaffSelect();
+    if (dengonView === 'history') { dengonLoadHistory(); return; }
     const cb = 'dengonCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=dengonBoard"]').forEach(s => s.remove());
@@ -7896,24 +7920,103 @@ function dengonLoad() {
     document.body.appendChild(s);
 }
 
-// 一覧描画。to=社長 はスタッフ板に出さない（社長のみ）デフォルト。
+// 完了履歴取得（JSONP・done=true を doneAt降順）
+function dengonLoadHistory() {
+    const cb = 'dengonHistCb_' + Date.now();
+    window[cb] = function (resp) {
+        document.querySelectorAll('script[src*="action=dengonHistory"]').forEach(s => s.remove());
+        dengonRenderHistory(resp && resp.items ? resp.items : []);
+        try { delete window[cb]; } catch (e) {}
+    };
+    const s = document.createElement('script');
+    s.src = DENGON_API_URL + '?action=dengonHistory&callback=' + cb;
+    s.onerror = () => { s.remove(); };
+    document.body.appendChild(s);
+}
+
+// 一覧描画（未完了）。to=社長 はスタッフ板に出さない（社長のみ）デフォルト。
+// 完了は2段階確認：「完了にする」→確認状態（完了する/キャンセル）→確定。5秒放置で自動キャンセル。
 function dengonRender(items) {
     const visible = (items || []).filter(x => x.to !== '社長');
     const list = document.getElementById('dengon-list');
     if (!list) return;
     if (!visible.length) {
-        list.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">表示する伝達はありません</p>';
+        list.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">未完了の伝達はありません</p>';
         return;
     }
-    list.innerHTML = visible.map(x => `
-        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff;">
+    list.innerHTML = visible.map(x => {
+        const id = String(x.id);
+        return `
+        <div class="dengon-card" data-id="${escapeHtml(id)}" style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff;">
             <div style="font-size:0.78rem; color:#718096; margin-bottom:4px;">
                 宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${x.deadline ? ' ・ <span style="color:#d69e2e;">期限: ' + escapeHtml(x.deadline) + '</span>' : ''}
             </div>
             <div style="margin:4px 0 8px; white-space:pre-wrap;">${escapeHtml(x.body)}</div>
-            <button onclick="dengonComplete('${x.id}', this)" style="background:#38a169; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">✓ 完了にする</button>
-        </div>
-    `).join('');
+            <div class="dg-normal">
+                <button onclick="dengonAskConfirm('${id}')" style="background:#38a169; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">完了にする</button>
+            </div>
+            <div class="dg-confirm" style="display:none;">
+                <div style="font-size:0.85rem; color:#c53030; font-weight:700; margin:2px 0 4px;">完了にする？</div>
+                <div style="display:flex; gap:8px; margin-top:6px;">
+                    <button onclick="dengonComplete('${id}', this)" style="background:#38a169; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">完了する</button>
+                    <button onclick="dengonCancelConfirm('${id}')" style="background:#fff; color:#4a5568; border:1px solid #cbd5e0; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">キャンセル</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// data-id でカード要素を引く（id に特殊文字が入っても安全なよう走査）
+function dengonCardEl_(id) {
+    const cards = document.querySelectorAll('.dengon-card');
+    for (let i = 0; i < cards.length; i++) {
+        if (cards[i].getAttribute('data-id') === String(id)) return cards[i];
+    }
+    return null;
+}
+
+// 完了2段階確認：1回目タップで確認状態へ。5秒放置で自動的に通常へ戻す。
+function dengonAskConfirm(id) {
+    const card = dengonCardEl_(id);
+    if (!card) return;
+    const normal = card.querySelector('.dg-normal');
+    const confirm = card.querySelector('.dg-confirm');
+    if (normal) normal.style.display = 'none';
+    if (confirm) confirm.style.display = '';
+    if (dengonConfirmTimers[id]) clearTimeout(dengonConfirmTimers[id]);
+    dengonConfirmTimers[id] = setTimeout(() => dengonCancelConfirm(id), 5000);
+}
+function dengonCancelConfirm(id) {
+    if (dengonConfirmTimers[id]) { clearTimeout(dengonConfirmTimers[id]); delete dengonConfirmTimers[id]; }
+    const card = dengonCardEl_(id);
+    if (!card) return;
+    const normal = card.querySelector('.dg-normal');
+    const confirm = card.querySelector('.dg-confirm');
+    if (confirm) confirm.style.display = 'none';
+    if (normal) normal.style.display = '';
+}
+
+// 完了履歴描画（done=true）。「未完了に戻す」で復元。to=社長 はスタッフ板に出さない。
+function dengonRenderHistory(items) {
+    const visible = (items || []).filter(x => x.to !== '社長');
+    const list = document.getElementById('dengon-list');
+    if (!list) return;
+    if (!visible.length) {
+        list.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">完了履歴はありません</p>';
+        return;
+    }
+    list.innerHTML = visible.map(x => {
+        const id = String(x.id);
+        return `
+        <div class="dengon-card" data-id="${escapeHtml(id)}" style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; background:#f7fafc; opacity:0.9;">
+            <div style="font-size:0.78rem; color:#718096; margin-bottom:4px;">
+                宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${x.deadline ? ' ・ 期限: ' + escapeHtml(x.deadline) : ''}
+            </div>
+            <div style="margin:4px 0 6px; white-space:pre-wrap; text-decoration:line-through; color:#718096;">${escapeHtml(x.body)}</div>
+            <div style="font-size:0.75rem; color:#38a169; margin-bottom:8px;">✓ 完了${x.doneBy ? '：' + escapeHtml(x.doneBy) : ''}${x.doneAt ? '（' + escapeHtml(x.doneAt) + '）' : ''}</div>
+            <button onclick="dengonReopen('${id}', this)" style="background:#fff; color:#4a5568; border:1px solid #cbd5e0; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">未完了に戻す</button>
+        </div>`;
+    }).join('');
 }
 
 // 投稿（no-cors POST＝成否は拾えない→800ms後に再読込で反映確認）
@@ -7938,25 +8041,46 @@ function dengonSubmit() {
         .catch(() => { alert('投稿に失敗しました'); btn.textContent = '投稿する'; btn.style.background = '#3182ce'; btn.disabled = false; });
 }
 
-// 完了（JSONP・サーバーが書込後read-backしverified返す／スタッフ宛てはnotify@）
+// 完了確定（2段階確認の「完了する」から呼ばれる）。JSONP・サーバーが書込後read-backしverified返す／スタッフ宛てはnotify@。
 function dengonComplete(id, btn) {
     if (btn && btn.disabled) return; // 連打ガード（完了の二重発火＝notify@二重送信を防ぐ）
-    if (!confirm('この伝達を完了にしますか？')) return;
+    if (dengonConfirmTimers[id]) { clearTimeout(dengonConfirmTimers[id]); delete dengonConfirmTimers[id]; }
     if (btn) { btn.disabled = true; btn.textContent = '完了中…'; btn.style.background = '#a0aec0'; }
     const doneBy = dengonSelectedStaff || '';
     const cb = 'dengonDoneCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=completeDengonMessage"]').forEach(s => s.remove());
-        if (resp && resp.ok) { dengonLoad(); } // 成功＝一覧再描画でボタンごと消える
+        if (resp && resp.ok) { dengonLoad(); } // 成功＝一覧再描画でカードごと消える（行は残り完了履歴へ）
         else {
             alert('完了に失敗しました: ' + (resp && resp.error || '不明'));
-            if (btn) { btn.disabled = false; btn.textContent = '✓ 完了にする'; btn.style.background = '#38a169'; }
+            dengonCancelConfirm(id); // カードを通常状態へ戻す
         }
         try { delete window[cb]; } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=completeDengonMessage&id=' + encodeURIComponent(id) + '&doneBy=' + encodeURIComponent(doneBy) + '&callback=' + cb;
-    s.onerror = () => { if (btn) { btn.disabled = false; btn.textContent = '✓ 完了にする'; btn.style.background = '#38a169'; } s.remove(); };
+    s.onerror = () => { dengonCancelConfirm(id); s.remove(); };
+    document.body.appendChild(s);
+}
+
+// 未完了に戻す（完了履歴タブから）。done=false に戻し doneAt/doneBy をクリア。
+function dengonReopen(id, btn) {
+    if (btn && btn.disabled) return;
+    if (!confirm('この伝達を未完了に戻しますか？')) return;
+    if (btn) { btn.disabled = true; btn.textContent = '戻し中…'; }
+    const cb = 'dengonReopenCb_' + Date.now();
+    window[cb] = function (resp) {
+        document.querySelectorAll('script[src*="action=reopenDengonMessage"]').forEach(s => s.remove());
+        if (resp && resp.ok) { dengonLoad(); } // 履歴再描画で消える（未完了一覧へ復活）
+        else {
+            alert('未完了に戻すのに失敗しました: ' + (resp && resp.error || '不明'));
+            if (btn) { btn.disabled = false; btn.textContent = '未完了に戻す'; }
+        }
+        try { delete window[cb]; } catch (e) {}
+    };
+    const s = document.createElement('script');
+    s.src = DENGON_API_URL + '?action=reopenDengonMessage&id=' + encodeURIComponent(id) + '&callback=' + cb;
+    s.onerror = () => { if (btn) { btn.disabled = false; btn.textContent = '未完了に戻す'; } s.remove(); };
     document.body.appendChild(s);
 }
 
