@@ -299,6 +299,8 @@
   <button class="brush-clear-btn" id="brushClearBtn">解除（通常モードに戻る）</button>
 </div>
 
+<div class="alerts" id="alerts"></div>
+
 <div class="table-wrap">
   <table id="shiftTable">
     <thead></thead>
@@ -306,8 +308,6 @@
     <tfoot></tfoot>
   </table>
 </div>
-
-<div class="alerts" id="alerts"></div>
 
 <!-- 記号選択ポップアップ -->
 <div class="popup-bg" id="popupBg">
@@ -1490,6 +1490,10 @@ function checkAlerts() {
       alerts.push({type:"error", msg:`${c.day}日(${c.dow}): 看護師ゼロ`});
     } else if (nurseOn.length === 1) {
       alerts.push({type:"warn", msg:`${c.day}日(${c.dow}): 看護師1名（${nurseOn[0]}）`});
+    }
+    // 下浦さん・髙山さんが両方とも休みの日を警告（メイン相談員＋看護師が同時に不在・看護師ゼロと同パターン）
+    if (!isWorking(shiftData["下浦"][c.date]) && !isWorking(shiftData["髙山"][c.date])) {
+      alerts.push({type:"error", msg:`${c.day}日(${c.dow}): 下浦・髙山ともに休み`});
     }
     if (isWorking(shiftData["大久保"][c.date]) && c.dow !== "月" && c.dow !== "木") {
       alerts.push({type:"warn", msg:`${c.day}日(${c.dow}): 大久保が月木以外に出勤`});
