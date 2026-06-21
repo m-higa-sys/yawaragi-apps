@@ -273,11 +273,7 @@
 <h1>シフト作成（ケアズ風）</h1>
 
 <div class="top">
-  <label>月: <select id="monthSel">
-    <option value="2026-07">2026年07月</option>
-    <option value="2026-06" selected>2026年06月</option>
-    <option value="2026-05">2026年05月</option>
-  </select></label>
+  <label>月: <select id="monthSel"><!-- 選択肢はJSで自動生成（renderMonthOptions） --></select></label>
   <label>事業所: <select disabled><option>yawaragi</option></select></label>
   <button id="loadWishesBtn">希望休を再取得</button>
   <button id="resetBtn" class="secondary">リセット</button>
@@ -670,13 +666,63 @@ const WISH_DATA = {
   }
 };
 
-// 祝日（休館候補）
+// 祝日（休館候補）— 内閣府データ準拠。2026-2027は公式、2028は規則＋春分3/20秋分9/22で算出。
+// 年1回（内閣府が翌々年分を公表する2月頃）に翌年分を追記してください。
 const HOLIDAYS = {
+  // 2026年
+  "2026-01-01": "元日",
+  "2026-01-12": "成人の日",
+  "2026-02-11": "建国記念の日",
+  "2026-02-23": "天皇誕生日",
+  "2026-03-20": "春分の日",
+  "2026-04-29": "昭和の日",
   "2026-05-03": "憲法記念日",
   "2026-05-04": "みどりの日",
   "2026-05-05": "こどもの日",
   "2026-05-06": "振替休日",
-  "2026-07-20": "海の日"
+  "2026-07-20": "海の日",
+  "2026-08-11": "山の日",
+  "2026-09-21": "敬老の日",
+  "2026-09-22": "国民の休日",
+  "2026-09-23": "秋分の日",
+  "2026-10-12": "スポーツの日",
+  "2026-11-03": "文化の日",
+  "2026-11-23": "勤労感謝の日",
+  // 2027年
+  "2027-01-01": "元日",
+  "2027-01-11": "成人の日",
+  "2027-02-11": "建国記念の日",
+  "2027-02-23": "天皇誕生日",
+  "2027-03-21": "春分の日",
+  "2027-03-22": "振替休日",
+  "2027-04-29": "昭和の日",
+  "2027-05-03": "憲法記念日",
+  "2027-05-04": "みどりの日",
+  "2027-05-05": "こどもの日",
+  "2027-07-19": "海の日",
+  "2027-08-11": "山の日",
+  "2027-09-20": "敬老の日",
+  "2027-09-23": "秋分の日",
+  "2027-10-11": "スポーツの日",
+  "2027-11-03": "文化の日",
+  "2027-11-23": "勤労感謝の日",
+  // 2028年（公式公表前のため規則ベース。公表後に要確認）
+  "2028-01-01": "元日",
+  "2028-01-10": "成人の日",
+  "2028-02-11": "建国記念の日",
+  "2028-02-23": "天皇誕生日",
+  "2028-03-20": "春分の日",
+  "2028-04-29": "昭和の日",
+  "2028-05-03": "憲法記念日",
+  "2028-05-04": "みどりの日",
+  "2028-05-05": "こどもの日",
+  "2028-07-17": "海の日",
+  "2028-08-11": "山の日",
+  "2028-09-18": "敬老の日",
+  "2028-09-22": "秋分の日",
+  "2028-10-09": "スポーツの日",
+  "2028-11-03": "文化の日",
+  "2028-11-23": "勤労感謝の日"
 };
 
 // ============ 状態 ============
@@ -1887,6 +1933,38 @@ async function applyShiftToOps() {
 }
 
 document.getElementById('applyToOpsBtn').addEventListener('click', applyShiftToOps);
+
+// 月プルダウンを自動生成：当月〜6ヶ月先＋既存データのある月。既定selected＝翌月。
+// （ハードコードを廃止し、毎月HTMLを書き換える手作業をなくす）
+function renderMonthOptions() {
+  const sel = document.getElementById("monthSel");
+  const now = new Date();
+  const months = new Set();
+  // 1) 既存データのある月は必ず候補に（過去月が選べなくなる事故を防ぐ）
+  Object.keys(WISH_DATA).forEach(k => { if (/^\d{4}-\d{2}$/.test(k)) months.add(k); });
+  Object.keys(INDIVIDUAL_DAYS).forEach(k => { if (/^\d{4}-\d{2}$/.test(k)) months.add(k); });
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.indexOf(STORAGE_KEY_PREFIX) === 0) {
+      const ym = key.slice(STORAGE_KEY_PREFIX.length); // lockキー等は下のregexで除外
+      if (/^\d{4}-\d{2}$/.test(ym)) months.add(ym);
+    }
+  }
+  // 2) 当月〜6ヶ月先を自動追加
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    months.add(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"));
+  }
+  // 既定＝翌月（前月に翌月分を作る実務に合わせる）
+  const nx = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const defaultYm = nx.getFullYear() + "-" + String(nx.getMonth() + 1).padStart(2, "0");
+  const sorted = Array.from(months).sort();
+  sel.innerHTML = sorted.map(ym => {
+    const [y, m] = ym.split("-");
+    return '<option value="' + ym + '"' + (ym === defaultYm ? ' selected' : '') + '>' + y + '年' + m + '月</option>';
+  }).join("");
+}
+renderMonthOptions();
 
 reload();
 </script>
