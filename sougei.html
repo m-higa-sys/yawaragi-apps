@@ -4917,11 +4917,11 @@ function restoreBackup(){
 // silent=true: アラート出さず、console.log のみ（自動同期用）
 // ═══════════════════════════════════════════════
 function syncSchedTimesToStaff(silent){
-  if(!D.date){ if(!silent) alert('日付が選択されていません'); return; }
+  if(!D.date){ if(!silent) alert('日付が選択されていません'); return null; }
   const dayMap={0:'日',1:'月',2:'火',3:'水',4:'木',5:'金',6:'土'};
   const dt=new Date(D.date+'T00:00:00');
   const dayOfWeek=dayMap[dt.getDay()];
-  if(!dayOfWeek||dayOfWeek==='日'){ if(!silent) alert('日曜日のデータは共有できません'); return; }
+  if(!dayOfWeek||dayOfWeek==='日'){ if(!silent) alert('日曜日のデータは共有できません'); return null; }
 
   // ─── 旧形式（後方互換）: 利用者単位のデータ ───
   const schedTime={};
@@ -4998,13 +4998,14 @@ function syncSchedTimesToStaff(silent){
 
   const routeCount = routes.am.pick.length + routes.am.drop.length + routes.pm.pick.length + routes.pm.drop.length;
   const userCount=Object.keys(schedTime).length;
-  if(userCount===0 && routeCount===0){ if(!silent) alert('共有できる送迎データがありません'); return; }
+  if(userCount===0 && routeCount===0){ if(!silent) alert('共有できる送迎データがありません'); return null; }
 
   // 2026-05-03 routes対応: 中継GAS側で routes フィールドを直接保存
   // routes は曜日キー直下に格納（routes[dayOfWeek] = {am:{...}, pm:{...}}）
   var routesByDay = {};
   routesByDay[dayOfWeek] = routes;
 
+  var nowIso = new Date().toISOString();
   var payload=JSON.stringify({
     action:'saveSchedTimes',
     merge:true,
@@ -5014,7 +5015,7 @@ function syncSchedTimesToStaff(silent){
       userDays:userDays,
       transport:transport,
       routes:routesByDay,
-      lastSync:new Date().toISOString()
+      lastSync:nowIso
     }
   });
 
@@ -5040,6 +5041,57 @@ function syncSchedTimesToStaff(silent){
         alert("❌ 送信エラー: "+err.message);
       }
     });
+  return nowIso; // 送信したlastSyncを返す（確定時の検証GET用。既存呼び出し元は戻り値未使用）
+}
+
+// 確定して公開時の一覧同期 検証GET。verifyCloudSync(OPS系)と同じ作り:
+// GETでgetSchedTimesを引き、返ったlastSyncが送信値以上ならOK。
+// リトライ最大CLOUD_SYNC_MAX_RETRY回・バックオフ n*3000ms（OPS系cloudSyncOpsと同値・独自に増やさない）。
+async function verifySchedSync(sentIso){
+  if(!sentIso) return false;
+  var sentT = new Date(sentIso).getTime();
+  for(var attempt=0; attempt<=CLOUD_SYNC_MAX_RETRY; attempt++){
+    if(attempt>0){ await new Promise(function(r){ setTimeout(r, attempt*3000); }); }
+    try{
+      var sep = RELAY_GAS_URL.includes('?') ? '&' : '?';
+      var res = await fetch(RELAY_GAS_URL + sep + 'action=getSchedTimes&t=' + Date.now());
+      if(res.ok){
+        var data = await res.json();
+        if(data && data.lastSync && new Date(data.lastSync).getTime() >= sentT){
+          return true;
+        }
+      }
+    }catch(e){ /* ネットワーク失敗はリトライ継続 */ }
+  }
+  return false;
+}
+
+// 確定OK＋同期検証OK時のみ呼ぶ。伝達ボード(伝達事項)へ更新通知を1回送信（定期送信はしない）。
+// 利用者名はD（その日のデータ）から実行時に取得。author は暫定「社長」。
+function firstSchedUserName_(){
+  var units=[D.am, D.pm];
+  for(var u=0; u<units.length; u++){
+    if(!units[u]) continue;
+    var types=[units[u].pick, units[u].drop];
+    for(var t=0; t<types.length; t++){
+      var routes=types[t]||[];
+      for(var r=0; r<routes.length; r++){
+        var stops=(routes[r]&&routes[r].stops)||[];
+        for(var s=0; s<stops.length; s++){ if(stops[s] && stops[s].user) return stops[s].user; }
+      }
+    }
+  }
+  return '';
+}
+function postSchedUpdateToBoard(){
+  var parts=String(D.date).split('-');
+  var md=parseInt(parts[1],10)+'/'+parseInt(parts[2],10);
+  var rep=firstSchedUserName_();
+  var who=rep ? (rep+'様 等') : '送迎';
+  var content='【送迎時間更新】'+md+' '+who+'の送迎時間を更新しました。一覧でご確認ください\n'
+    + 'https://m-higa-sys.github.io/yawaragi-apps/sched-grid.html';
+  var payload=JSON.stringify({ action:'message', date:D.date, author:'社長', content:content });
+  fetch(ABS_BOARD_API_URL, {method:'POST', mode:'no-cors', body:payload, keepalive:true}).catch(function(){});
 }
 
 // ═══════════════════════════════════════════════
@@ -6356,22 +6408,44 @@ let _roCloudData = {}; // 閲覧専用モード用のクラウドデータキャ
 // ═══════════════════════════════════════════════
 // 確定ボタン（スタッフへの公開制御）
 // ═══════════════════════════════════════════════
-function toggleConfirm(){
+async function toggleConfirm(){
   if(!D.date) return;
   if(D.confirmed){
-    // 確定解除
-    if(!confirm(D.date+' の確定を解除しますか？\nスタッフの閲覧ページに表示されなくなります。')) return;
+    // ── 確定解除（案A: 一覧データ(RELAY)は触らない。曜日キーのため一斉消去の危険を避ける）──
+    if(!confirm(D.date+' の確定を解除しますか？\n送迎時間一覧は、次にこの曜日を確定し直すまで前回の内容のまま表示されます。')) return;
     D.confirmed=false;
-  } else {
-    // 確定
-    D.confirmed=true;
+    autoSave({keepConfirmed: true});
+    updateConfirmBtn();
+    // 確定フラグ(OPS系)を即クラウド同期
+    if(getOpsGasUrl()){ if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer); cloudSyncOps(); }
+    return; // 解除時は伝達投稿しない
   }
-  autoSave({keepConfirmed: true});
+  // ── 確定して公開 ──
+  D.confirmed=true;
+  autoSave({keepConfirmed: true});   // ここで debouncedSyncSchedTimes が5秒後に予約される
   updateConfirmBtn();
-  // 確定フラグを即クラウド同期
-  if(getOpsGasUrl()){
-    if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
-    cloudSyncOps();
+  // 確定フラグ(OPS系・自己検証あり)を即クラウド同期
+  if(getOpsGasUrl()){ if(_cloudSyncTimer) clearTimeout(_cloudSyncTimer); cloudSyncOps(); }
+  // 候補2対策: 一覧同期(RELAY)の5秒デバウンスをキャンセルし、即時送信する
+  if(_schedSyncAutoTimer){ clearTimeout(_schedSyncAutoTimer); _schedSyncAutoTimer=null; }
+  var sentIso = syncSchedTimesToStaff(true);   // silent送信。送ったlastSyncを返す。null=共有対象なし
+  if(sentIso === null){
+    alert('確定しました。\n（この日は送迎時間の共有対象データがないため、一覧への反映はありません）');
+    return; // 反映対象なし→伝達投稿しない
+  }
+  // 候補1対策: no-cors送信は成否不明のため、検証GETで到着を確認する
+  var ok = await verifySchedSync(sentIso);
+  if(ok){
+    alert('確定し、一覧に反映しました。');
+    postSchedUpdateToBoard();   // ② 確定OK＋検証OK時のみ伝達投稿
+    return;
+  }
+  // 確定はできたが一覧反映を確認できない → 嘘通知を避けるため伝達投稿せず、再試行導線を出す
+  if(confirm('確定しました。\nただし送迎時間一覧への反映が確認できませんでした。\n\n再同期しますか？')){
+    var sent2 = syncSchedTimesToStaff(true);
+    var ok2 = (sent2 !== null) && (await verifySchedSync(sent2));
+    if(ok2){ alert('再同期に成功し、一覧に反映しました。'); postSchedUpdateToBoard(); }
+    else { alert('再同期も確認できませんでした。\n通信状況を確認のうえ、後ほど「📤 送迎時間を共有」でお試しください。\n（伝達ボードへの通知は送っていません）'); }
   }
 }
 

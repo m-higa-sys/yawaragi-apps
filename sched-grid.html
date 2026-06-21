@@ -359,9 +359,17 @@ table.route-table .route-no {
   body { background: white; }
   table.route-table { font-size: 11pt; }
 }
+/* 鮮度バー（DATA.lastSync 基準・常時表示） */
+.fresh-bar{display:none;padding:9px 16px;font-size:.84rem;font-weight:700;text-align:center;line-height:1.45}
+.fresh-bar.show{display:block}
+.fresh-bar.green{background:#e8f5e9;color:#2e7d32}
+.fresh-bar.yellow{background:#fff8e1;color:#ef6c00}
+.fresh-bar.gray{background:#eceff1;color:#78909c}
+.fresh-bar.red{position:fixed;top:0;left:0;right:0;background:#c62828;color:#fff;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 </style>
 </head>
 <body>
+<div id="freshBar" class="fresh-bar"></div>
 
 <div class="header">
   <h1>送迎時間一覧</h1>
@@ -479,6 +487,38 @@ function todayStr(){
   return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
 }
 
+// ── 鮮度バー: しきい値は定数1か所に集約（後から数値変更はここだけ） ──
+const FRESH_WARN_H = 24;   // これ未満：緑（控えめ）
+const FRESH_ALERT_H = 72;  // これ以上：赤（上部固定の警告）／間は黄
+function renderFreshness(lastSyncIso){
+  var bar = document.getElementById('freshBar');
+  if(!bar) return;
+  bar.className = 'fresh-bar';
+  document.body.style.paddingTop = '';   // 赤(固定)時に付けた余白をリセット
+  var t = lastSyncIso ? new Date(lastSyncIso).getTime() : NaN;
+  if(!lastSyncIso || isNaN(t)){
+    bar.classList.add('show','gray');
+    bar.textContent = '更新時刻を取得できません';
+    return;
+  }
+  var hours = (Date.now() - t) / 3600000;
+  var d = new Date(t);
+  var md = (d.getMonth()+1) + '/' + d.getDate();
+  var hm = ('0'+d.getHours()).slice(-2) + ':' + ('0'+d.getMinutes()).slice(-2);
+  if(hours < FRESH_WARN_H){
+    bar.classList.add('show','green');
+    bar.textContent = '最終更新 ' + md + ' ' + hm;
+  } else if(hours < FRESH_ALERT_H){
+    bar.classList.add('show','yellow');
+    bar.textContent = '最終更新 ' + md + ' ' + hm + ' ／ 1日以上経過';
+  } else {
+    var days = Math.floor(hours / 24);
+    bar.classList.add('show','red');
+    bar.textContent = '⚠ 最終更新 ' + md + ' ／ ' + days + '日前の情報です';
+    document.body.style.paddingTop = bar.offsetHeight + 'px'; // 固定バーの高さ分だけ本文を下げる
+  }
+}
+
 async function loadData(){
   try {
     const res = await fetch(GAS_URL + '?action=getSchedTimes&t=' + Date.now());
@@ -500,10 +540,12 @@ async function loadData(){
       document.getElementById('syncInfo').innerHTML =
         '最終同期: <span class="time">' + d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + '</span>';
     }
+    renderFreshness(DATA.lastSync || null);   // 鮮度バー更新
   } catch(e){
     console.error('データ取得エラー:', e);
     document.getElementById('mainContent').innerHTML =
       '<div class="error-msg">データの取得に失敗しました。<br>しばらくしてからページを再読み込みしてください。</div>';
+    renderFreshness(null);   // 取得失敗→グレー表示
   }
 }
 
