@@ -300,6 +300,11 @@
 </div>
 
 <div class="alerts" id="alerts"></div>
+<div id="requestsPanel" style="margin:6px 0 10px; padding:8px 12px; background:#f3e5f5; border:1px solid #ce93d8; border-radius:6px; font-size:13px; line-height:1.5;">
+  <div id="haruyamaCounter" style="font-weight:bold; color:#00695c; margin-bottom:6px;"></div>
+  <div style="font-weight:bold; color:#6a1b9a; margin-bottom:4px;">📋 承認済みの要望</div>
+  <div id="requestsList" style="color:#333;">読み込み中…</div>
+</div>
 
 <div class="table-wrap">
   <table id="shiftTable">
@@ -339,6 +344,7 @@ const ESCORT_BACKUP = ["勝又", "星野"];
 const FLOOR_STAFF = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "大久保", "石井"];
 const TRIPLE_BAN = ["石井", "下浦", "春山", "髙山"];
 const KUDO_LIMIT = 3;
+const HARUYAMA_F_RATIO = 2/3; // 春山さんの16時(F)上限＝当月出勤日数×この割合(切り捨て)。社長が調整可。
 
 // 仮時給（社長が後で修正）
 const HOURLY_WAGE = {
@@ -1535,6 +1541,21 @@ function checkAlerts() {
     });
   });
 
+  // 春山さんの16時(F)上限チェック＝当月出勤日数 × HARUYAMA_F_RATIO（切り捨て）。既存の💡延長候補表示はそのまま。
+  let haruWork = 0, haruF = 0;
+  calendar.forEach(c => {
+    if (!c.isOpen) return;
+    const hv = shiftData["春山"][c.date];
+    if (isWorking(hv)) haruWork++;
+    if (hv === "F") haruF++;
+  });
+  const haruLimit = Math.floor(haruWork * HARUYAMA_F_RATIO);
+  if (haruF > haruLimit) {
+    alerts.push({type:"warn", msg:`春山16時が上限超過（${haruF}/${haruLimit}日）`});
+  }
+  const haruCounterEl = document.getElementById("haruyamaCounter");
+  if (haruCounterEl) haruCounterEl.textContent = `🕓 春山16時(F): ${haruF}/${haruLimit}日（上限＝出勤${haruWork}日×${Math.round(HARUYAMA_F_RATIO*100)}%）`;
+
   const div = document.getElementById("alerts");
   if (alerts.length === 0) {
     div.innerHTML = `<div class="alert-info">✅ 警告なし</div>`;
@@ -1968,9 +1989,42 @@ function renderMonthOptions() {
     return '<option value="' + ym + '"' + (ym === defaultYm ? ' selected' : '') + '>' + y + '年' + m + '月</option>';
   }).join("");
 }
+// 承認済みの要望をシフト希望入力アプリから取得して表示（読み取り専用・盤面やcheckAlertsには非干渉）
+function fetchConditionsFromAPI() {
+  return new Promise((resolve, reject) => {
+    const cbName = '_condCb_' + Date.now();
+    let timeout;
+    window[cbName] = (data) => { clearTimeout(timeout); delete window[cbName]; const s=document.getElementById(cbName); if(s) s.remove(); resolve(data); };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.src = `${SHIFT_WISHES_API}?action=getConditions&callback=${cbName}`;
+    script.onerror = () => { clearTimeout(timeout); delete window[cbName]; script.remove(); reject(new Error('API接続失敗')); };
+    document.head.appendChild(script);
+    timeout = setTimeout(() => { delete window[cbName]; script.remove(); reject(new Error('API取得タイムアウト')); }, 10000);
+  });
+}
+function escapeReq(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+async function loadRequests() {
+  const listEl = document.getElementById('requestsList');
+  if (!listEl) return;
+  try {
+    const data = await fetchConditionsFromAPI();
+    const conds = (data && Array.isArray(data.conditions)) ? data.conditions : [];
+    const approved = conds.filter(c => c.status === '承認済み');
+    if (approved.length === 0) {
+      listEl.innerHTML = '<span style="color:#888">承認済みの要望なし</span>';
+      return;
+    }
+    listEl.innerHTML = approved.map(c => `<div style="margin:2px 0">・<b>${escapeReq(c.staff)}</b>: ${escapeReq(c.content)}</div>`).join("");
+  } catch (e) {
+    listEl.innerHTML = '<span style="color:#c62828">要望の取得に失敗（時間をおいて再読込）</span>';
+  }
+}
+
 renderMonthOptions();
 
 reload();
+loadRequests();
 </script>
 
 </body>
