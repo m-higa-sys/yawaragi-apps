@@ -366,6 +366,8 @@ table.route-table .route-no {
 .fresh-bar.yellow{background:#fff8e1;color:#ef6c00}
 .fresh-bar.gray{background:#eceff1;color:#78909c}
 .fresh-bar.red{position:fixed;top:0;left:0;right:0;background:#c62828;color:#fff;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+/* 「変更済み」印（控えめ・後で微調整前提） */
+.chg-badge{display:inline-block;font-size:.6em;font-weight:700;color:#e65100;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -387,7 +389,7 @@ table.route-table .route-no {
   </div>
 </div>
 
-<div class="sync-info" id="syncInfo"></div>
+<!-- 旧「最終同期」表示(#syncInfo)は上部の色付き鮮度バー(#freshBar)に一本化したため撤去 -->
 
 <script>
 // ── 送迎未来カレンダー: 日付解決の純関数（scripts/lib/sched-resolver.js と同一・インライン）──
@@ -526,6 +528,7 @@ async function loadData(){
     DATA = await res.json();
     if(!DATA){
       showEmpty('送迎時間データがまだ登録されていません。<br>出勤＆送迎表で「📤 送迎時間を共有」ボタンを押してください。');
+      renderFreshness(null);   // データ未登録でも鮮度バーは必ず出す（グレー）。B撤去後に無表示を作らないため
       return;
     }
     selectedDate = selectedDate || todayStr();   // 初回は今日／更新時は選択中の日付を維持
@@ -535,12 +538,7 @@ async function loadData(){
     renderDayTabs();
     renderOpTabs();
     renderCurrent();
-    if(DATA.lastSync){
-      const d = new Date(DATA.lastSync);
-      document.getElementById('syncInfo').innerHTML =
-        '最終同期: <span class="time">' + d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}) + '</span>';
-    }
-    renderFreshness(DATA.lastSync || null);   // 鮮度バー更新
+    renderFreshness(DATA.lastSync || null);   // 最終更新時刻は上部の色付き鮮度バー(A)に一本化（旧#syncInfoは撤去）
   } catch(e){
     console.error('データ取得エラー:', e);
     document.getElementById('mainContent').innerHTML =
@@ -770,7 +768,7 @@ function renderRouteTable(routes, op){
       const s = stops[i];
       if(s && s.user){
         html += '<td class="user-cell">'
-          + '<div class="name">' + escHtml(sama(s.user)) + '</div>'
+          + '<div class="name">' + escHtml(sama(s.user)) + (s.timeChanged ? '<span class="chg-badge">変更</span>' : '') + '</div>'
           + '<div class="time">' + escHtml(s.time || '') + '</div>'
           + '</td>';
       } else {
