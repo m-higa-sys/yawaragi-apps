@@ -2195,11 +2195,16 @@ function getData() {
         return d || { assignments: {}, staff: [...DEFAULT_STAFF] };
     } catch { return { assignments: {}, staff: [...DEFAULT_STAFF] }; }
 }
-function saveData(d) { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+function saveData(d) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+    haichiCloudSave(d); // 2026-06-22: 配置をGASへも保存（全端末で共有するため書込パスを復活）
+}
 
-// ===== 配置データのクラウド「読み込み」専用（書き込みは行わない・2026-06-20移植） =====
+// ===== 配置データのクラウド「読み書き」（読込:2026-06-20移植 / 書込:2026-06-22復活） =====
 // 本番GAS（シート「配置データ」A1のJSON）から配置を取得し、表示用にlocalStorageへマージする。
-// genbaはローカル入力をサーバーへ送らない（save_haichiは実装しない）。閲覧のみクラウドに合わせる。
+// 書込は haichiCloudSave で全体(local)をPOSTしA1を上書き保存する。
+// 旧 yawaragi-board.html と同方式。loadAssignment/init で必ずクラウドをマージ済みのため、
+// 全体POSTでも他日の配置は消えず、当日分だけが更新される。
 const HAICHI_SYNC_URL = (typeof YAWARAGIBOARD_API_URL !== 'undefined')
     ? YAWARAGIBOARD_API_URL
     : 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -2233,6 +2238,24 @@ function haichiCloudLoad(callback) {
     script.src = HAICHI_SYNC_URL + '?action=haichi&callback=' + cbName + '&t=' + Date.now();
     script.onerror = function() { cleanup(); if(callback) callback(null); };
     document.head.appendChild(script);
+}
+
+// ===== 配置データのクラウド「書き込み」（2026-06-22復活・旧yawaragi-board.htmlと同方式）=====
+// 全体(local)をGASへPOSTしてA1を上書き保存する。GASのsave_haichiはA1を丸ごと上書きするため、
+// 必ず loadAssignment/init で haichiCloudLoad 済み（local=クラウド∪編集）の状態で呼ぶ。
+// 連続タップでのPOST乱発を防ぐため2秒デバウンス。no-corsなので結果は確認しない（投げっぱなし）。
+let _haichiSyncTimer = null;
+function haichiCloudSave(d) {
+    if (_haichiSyncTimer) clearTimeout(_haichiSyncTimer);
+    _haichiSyncTimer = setTimeout(function() {
+        try {
+            fetch(HAICHI_SYNC_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: JSON.stringify({ action: 'save_haichi', haichi: d })
+            }).catch(function(){});
+        } catch (e) {}
+    }, 2000);
 }
 function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
 function getAssignmentKey(date, unit) { return date + '_' + unit; }
