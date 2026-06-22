@@ -330,6 +330,20 @@
         .toast.toast-error { background: #c0392b; }
         /* 配置オートセーブ：保存完了時にカード枠を一瞬グリーン */
         .haichi-saved-flash { outline: 3px solid #38a169 !important; outline-offset: 1px; transition: outline-color 0.4s ease; }
+        /* ===== サーバー反映ステータス表示（2026-06-22・将来shared.jsへ共通化予定） ===== */
+        .save-status { position: fixed; right: 16px; bottom: 16px; z-index: 10000;
+            display: none; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 24px;
+            font-size: 0.9rem; font-weight: 700; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+            max-width: 80vw; }
+        .save-status.show { display: inline-flex; }
+        .save-status.saving { background: #fff8e1; color: #8a6d3b; border: 1px solid #f0d98c; }
+        .save-status.done   { background: #e6f7ed; color: #1e7a46; border: 1px solid #9fdcb8; }
+        .save-status.error  { background: #fdecea; color: #b3261e; border: 1px solid #f0b3ad; }
+        .save-status .ss-spinner { width: 14px; height: 14px; border: 2px solid currentColor;
+            border-top-color: transparent; border-radius: 50%; animation: ss-spin 0.7s linear infinite; flex: 0 0 auto; }
+        .save-status .ss-retry { margin-left: 6px; padding: 4px 12px; border: none; border-radius: 14px;
+            background: #b3261e; color: #fff; font-weight: 700; font-size: 0.85rem; cursor: pointer; }
+        @keyframes ss-spin { to { transform: rotate(360deg); } }
         .staff-color-0 { background: #3182ce; }
         .staff-color-1 { background: #dd6b20; }
         .staff-color-2 { background: #38a169; }
@@ -2029,6 +2043,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="save-status" id="save-status" aria-live="polite"></div>
 
 <script src="shared.js?v=2026-06-21-01"></script>
 <script>
@@ -2246,17 +2261,27 @@ function haichiCloudLoad(callback) {
 // 連続タップでのPOST乱発を防ぐため2秒デバウンス。no-corsなので結果は確認しない（投げっぱなし）。
 let _haichiSyncTimer = null;
 function haichiCloudSave(d) {
+    showSaveStatus('saving', '保存中…'); // 編集直後に即「保存中…」を出す（タイムラグの不安解消）
     if (_haichiSyncTimer) clearTimeout(_haichiSyncTimer);
-    _haichiSyncTimer = setTimeout(function() {
-        try {
-            fetch(HAICHI_SYNC_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                body: JSON.stringify({ action: 'save_haichi', haichi: d })
-            }).catch(function(){});
-        } catch (e) {}
-    }, 2000);
+    _haichiSyncTimer = setTimeout(_postHaichiToCloud, 2000);
 }
+// 実際のPOST。送信時点の最新local（getDataは常に最新）を送る。
+// no-corsのため応答内容は読めず、送信完了＝done / ネットワーク失敗＝error として扱う。
+function _postHaichiToCloud() {
+    var d = getData();
+    try {
+        fetch(HAICHI_SYNC_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({ action: 'save_haichi', haichi: d })
+        }).then(function(){ showSaveStatus('done', '保存しました'); })
+          .catch(function(){ showSaveStatus('error', '保存できませんでした'); });
+    } catch (e) {
+        showSaveStatus('error', '保存できませんでした');
+    }
+}
+// 失敗時の再試行（save-status内の「再試行」ボタンから呼ばれる）
+function retryHaichiSave() { showSaveStatus('saving', '保存中…'); _postHaichiToCloud(); }
 function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
 function getAssignmentKey(date, unit) { return date + '_' + unit; }
 
@@ -2304,8 +2329,8 @@ function autoSaveFeedback(posId) {
             setTimeout(() => el.classList.remove('haichi-saved-flash'), 600);
         }
     }
-    if (_haichiSaveTimer) clearTimeout(_haichiSaveTimer);
-    _haichiSaveTimer = setTimeout(() => showToast('✓保存しました'), 400);
+    // 保存状況は save-status（保存中…→保存しました）で表示するためトーストは出さない（二重防止）。
+    // 「保存中…」は autoSave→saveData→haichiCloudSave 経由で即時表示される。
 }
 
 // ========== 配置状態管理 ==========
@@ -3237,6 +3262,31 @@ function showToast(msg, duration, isError) {
     t.classList.toggle('toast-error', !!isError);
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), duration || 2000);
+}
+
+// ===== サーバー反映ステータス表示（2026-06-22）=====
+// state: 'saving'（スピナー＋文言／消えない）| 'done'（✓／1.5秒で自動で消える）
+//       | 'error'（⚠＋再試行ボタン／押すまで残る）
+// 将来 shared.js に showStatus(type, message) として共通化予定。文言は操作で可変（保存中/検索中/読込中）。
+let _saveStatusTimer = null;
+function showSaveStatus(state, message) {
+    const el = document.getElementById('save-status');
+    if (!el) return;
+    if (_saveStatusTimer) { clearTimeout(_saveStatusTimer); _saveStatusTimer = null; }
+    el.className = 'save-status show ' + state;
+    if (state === 'saving') {
+        el.innerHTML = '<span class="ss-spinner"></span><span>' + (message || '保存中…') + '</span>';
+    } else if (state === 'done') {
+        el.innerHTML = '<span>✓ ' + (message || '保存しました') + '</span>';
+        _saveStatusTimer = setTimeout(hideSaveStatus, 1500);
+    } else if (state === 'error') {
+        el.innerHTML = '<span>⚠ ' + (message || '保存できませんでした') + '</span>'
+            + '<button type="button" class="ss-retry" onclick="retryHaichiSave()">再試行</button>';
+    }
+}
+function hideSaveStatus() {
+    const el = document.getElementById('save-status');
+    if (el) el.className = 'save-status';
 }
 
 // ===== リトライ付きGAS POST送信 =====
