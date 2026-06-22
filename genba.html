@@ -5722,6 +5722,10 @@ function jisRender() {
 // ================================================================
 
 let attCurrentDate = new Date();
+// 2026-06-23: 過去日の連絡状況バグ対策。表示月の欠席を action=absences&month= で別取得し
+// ここに「月別」で追加キャッシュする（today〜+30の_cachedGasAbsencesには触れない＝回帰ゼロ）。
+// キー = 'YYYY-MM' / 値 = その月の欠席レコード配列。attLookupCmNotifiedが ∪ で参照する。
+let attMonthAbsCache = {};
 const ATT_DAY_NAMES = ['日','月','火','水','木','金','土'];
 // ATT_CACHE_KEY は共通定義に集約
 
@@ -5826,6 +5830,64 @@ function attLoad() {
         delete window[cbName];
         if (!cacheShown) content.innerHTML = '<div class="att-loading">通信エラー。再読み込みしてください。</div>';
     };
+    document.body.appendChild(script);
+
+    // 2026-06-23: 過去日の連絡状況補完。表示月（＋長期休みstartDateの月）を月別キャッシュに確保し、
+    // 揃ったら再描画して cmNotified を拾い直す。失敗しても従来表示のまま壊さない。
+    const monthsNeeded = {};
+    monthsNeeded[dateStr.slice(0, 7)] = dateStr;
+    try {
+        Object.keys(absLongTermMap || {}).forEach(function(nm) {
+            const sd = absLongTermMap[nm] && absLongTermMap[nm].startDate;
+            if (sd && sd.length >= 7) monthsNeeded[sd.slice(0, 7)] = sd;
+        });
+    } catch (e) {}
+    const ymKeys = Object.keys(monthsNeeded);
+    let pend = ymKeys.length;
+    ymKeys.forEach(function(ym) {
+        attEnsureMonthAbsences(monthsNeeded[ym], function() {
+            pend--;
+            if (pend === 0 && attLastData) { try { attRender(attLastData); } catch (e) {} }
+        });
+    });
+}
+
+// 表示月の欠席を action=absences&month= でJSONP取得し、月別キャッシュ attMonthAbsCache へ「追加」する。
+// 既存の today〜+30 absences 呼び出し(_cachedGasAbsences)・欠席一覧には一切触れない（回帰ゼロ）。
+// データ形 {absences:{absences,longTerm}} / {absences:[...]} 両対応（既存4985-4996踏襲）。
+function attEnsureMonthAbsences(dateStr, cb) {
+    cb = cb || function() {};
+    if (!dateStr || dateStr.length < 7) { cb(); return; }
+    const ym = dateStr.slice(0, 7);
+    if (attMonthAbsCache[ym]) { cb(); return; }  // 取得済み（空配列含む）なら再取得しない
+    const cbName = '_attMonthCb_' + ym.replace('-', '') + '_' + Date.now();
+    const script = document.createElement('script');
+    let settled = false;
+    const cleanup = function() { try { if (script.parentNode) script.parentNode.removeChild(script); } catch (e) {} };
+    const timeout = setTimeout(function() {
+        if (settled) return; settled = true;
+        delete window[cbName]; cleanup();
+        cb();  // 失敗時も続行（連絡状況は従来どおり＝壊さない・次回再取得可）
+    }, 8000);
+    window[cbName] = function(data) {
+        if (settled) return; settled = true;
+        clearTimeout(timeout);
+        delete window[cbName]; cleanup();
+        let arr = [];
+        if (data && data.absences) {
+            if (Array.isArray(data.absences)) arr = data.absences;
+            else if (data.absences.absences) arr = data.absences.absences;
+        }
+        attMonthAbsCache[ym] = arr || [];
+        cb();
+    };
+    script.onerror = function() {
+        if (settled) return; settled = true;
+        clearTimeout(timeout);
+        delete window[cbName]; cleanup();
+        cb();
+    };
+    script.src = ABS_BOARD_API_URL + '?action=absences&month=' + ym + '&callback=' + cbName + '&t=' + Date.now();
     document.body.appendChild(script);
 }
 
@@ -5948,7 +6010,11 @@ function absContactStatus(cmNotified) {
 // 表示日の欠席レコードから cmNotified を引く（_cachedGasAbsences=action=absences の生データを読み取り専用で流用）
 // 同名同日が複数ある場合は「より連絡が進んだ」状態を優先（done>aware>err>unsent）
 function attLookupCmNotified(name, dateStr) {
-    var recs = (window._cachedGasAbsences || []).filter(function(r) {
+    // _cachedGasAbsences(today〜+30) ∪ attMonthAbsCache[表示月] を参照（過去日の連絡状況も拾う）
+    var ym = String(dateStr || '').slice(0, 7);
+    var pool = (window._cachedGasAbsences || []);
+    if (ym && attMonthAbsCache[ym]) pool = pool.concat(attMonthAbsCache[ym]);
+    var recs = pool.filter(function(r) {
         return r && r.name === name && r.date === dateStr;
     });
     if (!recs.length) return '';
