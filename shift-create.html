@@ -299,11 +299,20 @@
   <button class="brush-clear-btn" id="brushClearBtn">解除（通常モードに戻る）</button>
 </div>
 
-<div class="alerts" id="alerts"></div>
-<div id="requestsPanel" style="margin:6px 0 10px; padding:8px 12px; background:#f3e5f5; border:1px solid #ce93d8; border-radius:6px; font-size:13px; line-height:1.5;">
-  <div id="haruyamaCounter" style="font-weight:bold; color:#00695c; margin-bottom:6px;"></div>
-  <div style="font-weight:bold; color:#6a1b9a; margin-bottom:4px;">📋 承認済みの要望</div>
-  <div id="requestsList" style="color:#333;">読み込み中…</div>
+<div id="alertBox" style="margin:6px 0 10px; border:1px solid #ddd; border-radius:6px; overflow:hidden;">
+  <div id="alertBoxHeader" onclick="toggleAlertBox()" style="cursor:pointer; padding:8px 12px; background:#fafafa; font-weight:bold; display:flex; align-items:center; gap:10px; user-select:none;">
+    <span id="alertBoxCaret">▶</span>
+    <span>⚠️ アラート・要望</span>
+    <span id="alertBoxBadges" style="font-size:12px; font-weight:normal;"></span>
+  </div>
+  <div id="alertBoxBody" style="display:none; padding:8px 12px 12px;">
+    <div class="alerts" id="alerts"></div>
+    <div id="requestsPanel" style="margin:6px 0 0; padding:8px 12px; background:#f3e5f5; border:1px solid #ce93d8; border-radius:6px; font-size:13px; line-height:1.5;">
+      <div id="haruyamaCounter" style="font-weight:bold; color:#00695c; margin-bottom:6px;"></div>
+      <div style="font-weight:bold; color:#6a1b9a; margin-bottom:4px;">📋 承認済みの要望</div>
+      <div id="requestsList" style="color:#333;">読み込み中…</div>
+    </div>
+  </div>
 </div>
 
 <div class="table-wrap">
@@ -1471,6 +1480,32 @@ function isFloorWork(v) {
 function isEscortWork(v) {
   return PATTERNS[v]?.category === "escort";
 }
+// ===== アラート・要望パネルの折りたたみ（表示のみ・既定は閉・状態はlocalStorage記憶） =====
+let _alertErrN = 0, _alertWarnN = 0, _reqN = 0;
+function renderAlertBadges() {
+  const b = document.getElementById("alertBoxBadges");
+  if (!b) return;
+  b.innerHTML = `<span style="color:${_alertErrN>0?'#c62828':'#999'}">🔴${_alertErrN}</span> `
+    + `<span style="color:${_alertWarnN>0?'#e65100':'#999'}">⚠️${_alertWarnN}</span>`
+    + ` ｜ <span style="color:#6a1b9a">📋要望${_reqN}</span>`;
+}
+function toggleAlertBox() {
+  const body = document.getElementById("alertBoxBody");
+  const caret = document.getElementById("alertBoxCaret");
+  if (!body) return;
+  const willOpen = (body.style.display === "none");
+  body.style.display = willOpen ? "block" : "none";
+  if (caret) caret.textContent = willOpen ? "▼" : "▶";
+  try { localStorage.setItem("yawaragi_shift_alertbox_open", willOpen ? "1" : "0"); } catch(e){}
+}
+function initAlertBox() {
+  let open = false;
+  try { open = localStorage.getItem("yawaragi_shift_alertbox_open") === "1"; } catch(e){}
+  const body = document.getElementById("alertBoxBody");
+  const caret = document.getElementById("alertBoxCaret");
+  if (body) body.style.display = open ? "block" : "none";
+  if (caret) caret.textContent = open ? "▼" : "▶";
+}
 function checkAlerts() {
   const alerts = [];
 
@@ -1571,6 +1606,9 @@ function checkAlerts() {
     info.forEach(a => html += `<div class="alert-item alert-info">${a.msg}</div>`);
     div.innerHTML = html;
   }
+  _alertErrN = alerts.filter(a => a.type === "error").length;
+  _alertWarnN = alerts.filter(a => a.type === "warn").length;
+  renderAlertBadges();
 }
 
 // ============ CSV出力 ============
@@ -2011,6 +2049,7 @@ async function loadRequests() {
     const data = await fetchConditionsFromAPI();
     const conds = (data && Array.isArray(data.conditions)) ? data.conditions : [];
     const approved = conds.filter(c => c.status === '承認済み');
+    _reqN = approved.length; renderAlertBadges();
     if (approved.length === 0) {
       listEl.innerHTML = '<span style="color:#888">承認済みの要望なし</span>';
       return;
@@ -2022,6 +2061,7 @@ async function loadRequests() {
 }
 
 renderMonthOptions();
+initAlertBox();
 
 reload();
 loadRequests();
