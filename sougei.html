@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>出勤＆送迎表 - やわらぎ</title>
 <script>
 // ═══════════════════════════════════════════════
@@ -5067,6 +5070,54 @@ async function verifySchedSync(sentIso){
   return false;
 }
 
+// ═══════════════════════════════════════════════
+// 確定して公開 前チェック（特定日例外の「巻き戻り」警告）
+// 公開側「送迎時間一覧」は曜日キー(月/火…)でしか時刻を持たないため、
+// 特定日だけ時刻を変えると、同じ曜日の別日を公開した時に元へ戻る。
+// → その日の迎え時刻が公開側の同曜日の現在値と1件でも異なる時だけ警告する。
+// 通常日(差なし)は無音。戻り値: true=公開してよい / false=ユーザーが中止を選んだ。
+// ═══════════════════════════════════════════════
+async function confirmSchedOverrideBeforePublish_(){
+  try{
+    if(!D.date) return true;
+    var dMap={0:'日',1:'月',2:'火',3:'水',4:'木',5:'金',6:'土'};
+    var dow=dMap[new Date(D.date+'T00:00:00').getDay()];
+    if(!dow || dow==='日') return true; // 日曜は共有対象外＝警告不要
+
+    // 当日の迎え時刻マップ {利用者: 時刻}（送迎時間一覧に出るのは迎え時刻）
+    var todayTimes={};
+    [].concat((D.am&&D.am.pick)||[], (D.pm&&D.pm.pick)||[]).forEach(function(route){
+      (route.stops||[]).forEach(function(s){
+        if(s.user && s.time) todayTimes[s.user]=s.time;
+      });
+    });
+    if(Object.keys(todayTimes).length===0) return true; // 比較対象なし
+
+    // 公開側(RELAY)の現在値を取得（失敗時は fail-open＝警告せず従来通り公開）
+    var sep=RELAY_GAS_URL.includes('?')?'&':'?';
+    var res=await fetch(RELAY_GAS_URL+sep+'action=getSchedTimes&t='+Date.now());
+    if(!res.ok) return true;
+    var data=await res.json();
+    var pubSched=(data&&data.schedTime)||{};
+
+    // 公開側にも居る利用者で、迎え時刻が1件でも違えば「特定日例外」
+    var hasDiff=false;
+    Object.keys(todayTimes).forEach(function(u){
+      var pub=pubSched[u]&&pubSched[u][dow];
+      if(pub && pub!==todayTimes[u]) hasDiff=true;
+    });
+    if(!hasDiff) return true; // 通常日＝無音で公開
+
+    var md=parseInt(D.date.slice(5,7),10)+'/'+parseInt(D.date.slice(8,10),10);
+    return confirm('この日（'+md+'）は曜日ベースと違う時刻が設定されています。\n'
+      +'同じ曜日の別の日を公開すると、この日の時刻も元に戻ります。\n\n'
+      +'このまま公開しますか？');
+  }catch(e){
+    console.warn('公開前チェック失敗(fail-open):', e);
+    return true; // 失敗時は従来通り公開
+  }
+}
+
 // 確定OK＋同期検証OK時のみ呼ぶ。伝達ボード(伝達事項)へ更新通知を1回送信（定期送信はしない）。
 // 利用者名はD（その日のデータ）から実行時に取得。author は暫定「社長」。
 function firstSchedUserName_(){
@@ -6422,6 +6473,8 @@ async function toggleConfirm(){
     return; // 解除時は伝達投稿しない
   }
   // ── 確定して公開 ──
+  // 特定日だけの時刻例外がある場合のみ、巻き戻りリスクを警告（通常日は無音）
+  if(!(await confirmSchedOverrideBeforePublish_())) return; // キャンセル＝確定も公開もしない
   D.confirmed=true;
   autoSave({keepConfirmed: true});   // ここで debouncedSyncSchedTimes が5秒後に予約される
   updateConfirmBtn();
