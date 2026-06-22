@@ -4641,7 +4641,7 @@ function absSubmit() {
 
             // 古いGASレコードも削除（重複日ごとにキャンセル送信）
             dupDates.forEach(dateStr => {
-                gasPost({ action: 'cancel_absence', name: targetName, date: dateStr, unit: '終日' }, '重複取消');
+                gasPost({ action: 'cancel_absence', name: targetName, date: dateStr, unit: '終日', canceller: absReceptionist || contact }, '重複取消');
             });
         }
     }
@@ -5078,7 +5078,7 @@ function absRenderUpcomingListFromData(gasAbsences, gasFailed) {
         }
         const deleteBtn = r.type === 'local'
             ? `<button class="abs-record-delete" onclick="absDeleteRecord(${r.id})">取消</button>`
-            : '';
+            : `<button class="abs-record-delete" onclick="absDeleteGasRecord('${String(r.userName).replace(/'/g, "\\'")}','${r.dateFrom}')">取消</button>`;
         const contactText = r.contact ? (r.contact + (r.method ? '（' + r.method + '）' : '')) : '';
         return `
         <div class="abs-record">
@@ -5098,41 +5098,125 @@ function absRenderUpcomingListFromData(gasAbsences, gasFailed) {
 }
 
 function absDeleteRecord(id) {
-    if (!confirm('この欠席記録を取り消しますか？')) return;
-    let records = absGetRecords();
-    const target = records.find(r => r.id === id);
+    // 2026-06-23: 取消操作者を必須化（canceller未送信→本番cancelAbsence拒否で削除未完走バグ修正）
+    const targetPreview = absGetRecords().find(r => r.id === id);
+    const nameLabel = targetPreview ? (targetPreview.userName + '様の欠席記録') : 'この欠席記録';
+    absPromptCanceller('欠席を取り消す', nameLabel + 'を取り消します', function(canceller) {
+        let records = absGetRecords();
+        const target = records.find(r => r.id === id);
 
-    // GAS側のデータも削除
-    if (target) {
-        const dates = [];
-        if (target.dateType === 'range' && target.dateFrom && target.dateTo) {
-            const start = new Date(target.dateFrom);
-            const end = new Date(target.dateTo);
-            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                dates.push(toLocalDateStr(d));
+        // GAS側のデータも削除
+        if (target) {
+            const dates = [];
+            if (target.dateType === 'range' && target.dateFrom && target.dateTo) {
+                const start = new Date(target.dateFrom);
+                const end = new Date(target.dateTo);
+                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                    dates.push(toLocalDateStr(d));
+                }
+            } else {
+                dates.push(target.dateFrom);
             }
-        } else {
-            dates.push(target.dateFrom);
+            // 各日付のGASデータを削除
+            dates.forEach(dateStr => {
+                gasPost({ action: 'cancel_absence', name: target.userName, date: dateStr, unit: '終日', canceller: canceller }, '欠席取消');
+            });
         }
-        // 各日付のGASデータを削除
-        dates.forEach(dateStr => {
-            gasPost({ action: 'cancel_absence', name: target.userName, date: dateStr, unit: '終日' }, '欠席取消');
+
+        // ローカルデータ削除（canceller保証によりサーバー受理確実→無条件削除で安全）
+        records = records.filter(r => r.id !== id);
+        absSaveRecords(records);
+
+        // 出席予定キャッシュもクリア（次回GASから再取得）
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+
+        absRenderTodayList();
+        absRenderUpcomingList();
+        showToast('欠席を取り消しました');
+
+        // 出席予定タブを再読み込み
+        attLoad();
+    });
+}
+
+// GAS登録済み（ローカルに無い）欠席の取消（取消操作者を必須化・同じモーダル経由）
+function absDeleteGasRecord(userName, dateFrom) {
+    absPromptCanceller('欠席を取り消す', userName + '様 ' + absFormatDate(dateFrom) + ' の欠席を取り消します', function(canceller) {
+        gasPost({ action: 'cancel_absence', name: userName, date: dateFrom, unit: '終日', canceller: canceller }, '欠席取消');
+
+        // 出席予定キャッシュもクリア（次回GASから再取得）
+        try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
+
+        // UIから即座に削除（楽観的更新）
+        if (window._cachedGasAbsences) {
+            window._cachedGasAbsences = window._cachedGasAbsences.filter(g => !(g.name === userName && g.date === dateFrom));
+            absRenderUpcomingListFromData(window._cachedGasAbsences);
+        } else {
+            absRenderUpcomingList();
+        }
+        absRenderTodayList();
+        showToast('欠席を取り消しました');
+        attLoad();
+    });
+}
+
+// 2026-06-23: 欠席取消の操作者を聞くモーダル（yawaragi-board.htmlから移植）
+// 取消操作者を選ぶまでOKボタン無効＝canceller必須化（本番cancelAbsenceの拒否を防ぐ）
+// onConfirm(canceller) を渡す or Promise を await できる。
+// キャンセル時は callback 版は呼ばれない / Promise 版は null を返す。
+function absPromptCanceller(title, detail, onConfirm) {
+    return new Promise(function(resolve) {
+        let picked = '';
+        const modal = document.createElement('div');
+        modal.id = 'abs-canceller-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;';
+        const staffHtml = getStaff().map(s =>
+            '<button class="abs-canceller-staff-btn" data-staff="' + s + '" style="padding:10px 14px;background:#fff;border:2px solid #cbd5e0;border-radius:8px;font-size:0.95rem;font-weight:700;cursor:pointer;">' + s + '</button>'
+        ).join('');
+        modal.innerHTML =
+            '<div style="background:#fff;border-radius:14px;padding:24px;width:min(460px,92%);box-shadow:0 10px 30px rgba(0,0,0,0.4);">' +
+            '<div style="font-size:1.1rem;font-weight:800;text-align:center;color:#2d3748;margin-bottom:6px;">' + title + '</div>' +
+            '<div style="font-size:0.9rem;color:#4a5568;text-align:center;margin-bottom:14px;">' + detail + '</div>' +
+            '<div style="font-size:0.9rem;font-weight:700;color:#2d3748;margin-bottom:8px;">取消操作者を選んでください：</div>' +
+            '<div id="abs-canceller-btns" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;">' + staffHtml + '</div>' +
+            '<button id="abs-canceller-ok" disabled style="display:block;width:100%;padding:14px;background:#cbd5e0;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:800;cursor:not-allowed;margin-bottom:8px;">取り消す</button>' +
+            '<button id="abs-canceller-cancel" style="display:block;width:100%;padding:12px;background:#f7fafc;border:1.5px solid #cbd5e0;color:#2d3748;border-radius:10px;font-size:0.95rem;font-weight:700;cursor:pointer;">やめる</button>' +
+            '</div>';
+        document.body.appendChild(modal);
+
+        function close(result) {
+            if (!modal.parentNode) return;
+            modal.remove();
+            if (result && typeof onConfirm === 'function') onConfirm(result);
+            resolve(result || null);
+        }
+
+        modal.querySelectorAll('.abs-canceller-staff-btn').forEach(btn => {
+            btn.onclick = function() {
+                picked = btn.dataset.staff;
+                modal.querySelectorAll('.abs-canceller-staff-btn').forEach(b => {
+                    if (b.dataset.staff === picked) {
+                        b.style.background = '#3182ce'; b.style.color = '#fff'; b.style.borderColor = '#2c5282';
+                    } else {
+                        b.style.background = '#fff'; b.style.color = '#2d3748'; b.style.borderColor = '#cbd5e0';
+                    }
+                });
+                const okBtn = document.getElementById('abs-canceller-ok');
+                okBtn.disabled = false;
+                okBtn.style.background = '#e53e3e';
+                okBtn.style.cursor = 'pointer';
+            };
         });
-    }
-
-    // ローカルデータ削除
-    records = records.filter(r => r.id !== id);
-    absSaveRecords(records);
-
-    // 出席予定キャッシュもクリア（次回GASから再取得）
-    try { localStorage.removeItem(ATT_CACHE_KEY); } catch {}
-
-    absRenderTodayList();
-    absRenderUpcomingList();
-    showToast('欠席を取り消しました');
-
-    // 出席予定タブを再読み込み
-    attLoad();
+        document.getElementById('abs-canceller-ok').onclick = function() {
+            if (!picked) {
+                alert('取消操作者を選んでください\n（上のスタッフ名ボタンを押してから「取り消す」を押してください）');
+                return;
+            }
+            close(picked);
+        };
+        document.getElementById('abs-canceller-cancel').onclick = function() { close(null); };
+        modal.addEventListener('click', function(e) { if (e.target === modal) close(null); });
+    });
 }
 
 // ===== 長期休み一覧 =====
