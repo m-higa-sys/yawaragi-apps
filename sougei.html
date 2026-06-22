@@ -5085,26 +5085,41 @@ async function confirmSchedOverrideBeforePublish_(){
     if(!dow || dow==='日') return true; // 日曜は共有対象外＝警告不要
 
     // 当日の迎え時刻マップ {利用者: 時刻}（送迎時間一覧に出るのは迎え時刻）
-    var todayTimes={};
-    [].concat((D.am&&D.am.pick)||[], (D.pm&&D.pm.pick)||[]).forEach(function(route){
-      (route.stops||[]).forEach(function(s){
-        if(s.user && s.time) todayTimes[s.user]=s.time;
+    function collectPickTimes(day){
+      var m={};
+      [].concat((day&&day.am&&day.am.pick)||[], (day&&day.pm&&day.pm.pick)||[]).forEach(function(route){
+        (route.stops||[]).forEach(function(s){
+          if(s.user && s.time) m[s.user]=s.time;
+        });
       });
-    });
+      return m;
+    }
+    var todayTimes=collectPickTimes(D);
     if(Object.keys(todayTimes).length===0) return true; // 比較対象なし
 
-    // 公開側(RELAY)の現在値を取得（失敗時は fail-open＝警告せず従来通り公開）
-    var sep=RELAY_GAS_URL.includes('?')?'&':'?';
-    var res=await fetch(RELAY_GAS_URL+sep+'action=getSchedTimes&t='+Date.now());
-    if(!res.ok) return true;
-    var data=await res.json();
-    var pubSched=(data&&data.schedTime)||{};
+    // 「曜日ベース」= ローカルdailyOpsの"同じ曜日の他の保存済み日付"の迎え時刻（利用者ごと最頻値）。
+    // autoSaveの公開側自動同期には一切依存しない（ローカルのみ参照）。
+    var all=loadAllData();
+    var baseCount={}; // {利用者: {時刻: 件数}}
+    Object.keys(all).forEach(function(dateStr){
+      if(dateStr===D.date) return;                 // 当日は除外
+      var dd=new Date(dateStr+'T00:00:00');
+      if(isNaN(dd.getTime()) || dMap[dd.getDay()]!==dow) return; // 同じ曜日のみ
+      var times=collectPickTimes(all[dateStr]);
+      Object.keys(times).forEach(function(u){
+        if(!baseCount[u]) baseCount[u]={};
+        baseCount[u][times[u]]=(baseCount[u][times[u]]||0)+1;
+      });
+    });
 
-    // 公開側にも居る利用者で、迎え時刻が1件でも違えば「特定日例外」
+    // 利用者ごとに曜日ベース(最頻時刻)を出し、当日と1件でも違えば「特定日例外」
     var hasDiff=false;
     Object.keys(todayTimes).forEach(function(u){
-      var pub=pubSched[u]&&pubSched[u][dow];
-      if(pub && pub!==todayTimes[u]) hasDiff=true;
+      var counts=baseCount[u];
+      if(!counts) return;                          // 同曜日の他日にこの利用者がいない＝比較対象なし
+      var baseTime='', max=-1;
+      Object.keys(counts).forEach(function(t){ if(counts[t]>max){ max=counts[t]; baseTime=t; } });
+      if(baseTime && baseTime!==todayTimes[u]) hasDiff=true;
     });
     if(!hasDiff) return true; // 通常日＝無音で公開
 
