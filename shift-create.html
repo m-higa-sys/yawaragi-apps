@@ -500,6 +500,71 @@ function rulePatternForDay(name, dowNum) {
   return undefined;
 }
 
+// ===== Phase 1: weekly型の自動割当 =====
+// 本番既定はOFF（=Phase0/従来どおり）。社長承認後にtrueへ。試運転はテストでこのフラグをONにする。
+var USE_WEEKLY_ASSIGN = false;
+// 社長確定(2026-06-22/連勤上限は2026-06-23指定): count=週N回 / maxConsec=連勤上限(null=なし) / prefDays=既定希望曜日(1=月..6=土)
+const WEEKLY_RULES = {
+  "春山": { count:3, prefDays:[2,4,5], maxConsec:2,    pattern:"E1", noHolidayWeekday:false },
+  "髙山": { count:3, prefDays:[1,3,5], maxConsec:2,    pattern:"E1", noHolidayWeekday:true  },
+  "石井": { count:3, prefDays:[2,4],   maxConsec:null, pattern:"E1", noHolidayWeekday:false },
+  "下浦": { count:3, prefDays:[2,3,5], maxConsec:3,    pattern:"H",  noHolidayWeekday:false },
+  "工藤": { count:3, prefDays:[1,3,4], maxConsec:null, pattern:"H",  noHolidayWeekday:false },
+  "小野": { count:4, prefDays:[1,2,3,4,5], maxConsec:null, pattern:"7①", noHolidayWeekday:false },
+  "林":   { count:2, prefDays:[1,2,3,4,5], maxConsec:null, pattern:"7①", noHolidayWeekday:false }
+};
+
+// weekly型を週N回・連勤上限・希望休除外で割り当てる（既存fixed展開分は上書き）。
+// 仮置き(安全側): 候補=平日(月〜金, dow1..5)。按分=round(count * その週の平日数 / 5)。希望曜日が無い月は既定prefDaysを使用。
+function assignWeekly(yearMonth, data, cal, wd) {
+  const wishSet = {};
+  (wd && wd.wishes || []).forEach(function(w){
+    const ds = yearMonth + "-" + String(w.day).padStart(2,"0");
+    (wishSet[w.staff] = wishSet[w.staff] || {})[ds] = true;
+  });
+  // 日曜始まりで週分割
+  const weeks = []; let cur = [];
+  cal.forEach(function(c){
+    const dn = new Date(c.date).getDay();
+    if (dn === 0 && cur.length) { weeks.push(cur); cur = []; }
+    cur.push(c);
+  });
+  if (cur.length) weeks.push(cur);
+  const dnum = function(c){ return new Date(c.date).getDay(); };
+
+  Object.keys(WEEKLY_RULES).forEach(function(name){
+    const r = WEEKLY_RULES[name];
+    if (!data[name]) return;
+    cal.forEach(function(c){ delete data[name][c.date]; }); // 既存(fixed/個別)をクリアして再配置
+    weeks.forEach(function(week){
+      const weekdays = week.filter(function(c){ var d=dnum(c); return d>=1 && d<=5; }); // 平日のみ(土日は休館扱い)
+      const cand = weekdays.filter(function(c){
+        if (r.noHolidayWeekday && c.isHoliday) return false; // 髙山:祝日除外
+        if (wishSet[name] && wishSet[name][c.date]) return false; // 希望休除外
+        return true;
+      });
+      var weekCount = Math.round(r.count * weekdays.length / 5);
+      weekCount = Math.max(0, Math.min(weekCount, cand.length));
+      const pref = [], rest = [];
+      cand.forEach(function(c){ (r.prefDays.indexOf(dnum(c)) >= 0 ? pref : rest).push(c); });
+      pref.sort(function(a,b){ return (r.prefDays.indexOf(dnum(a)) - r.prefDays.indexOf(dnum(b))) || (a.day - b.day); });
+      rest.sort(function(a,b){ return a.day - b.day; });
+      const ordered = pref.concat(rest);
+      const chosenDays = {}; var picked = 0;
+      for (var i=0;i<ordered.length && picked<weekCount;i++){
+        const c = ordered[i];
+        if (r.maxConsec != null) {
+          var len = 1, d = c.day - 1;
+          while (chosenDays[d]) { len++; d--; }
+          d = c.day + 1; while (chosenDays[d]) { len++; d++; }
+          if (len > r.maxConsec) continue;
+        }
+        data[name][c.date] = r.pattern; chosenDays[c.day] = true; picked++;
+      }
+    });
+  });
+}
+
 // 曜日パターンに収まらないスタッフの個別出勤日
 const INDIVIDUAL_DAYS = {
   "2026-05": {
@@ -966,6 +1031,9 @@ function initShiftData(yearMonth, blankMode) {
         data[staff][ds] = d.pattern;
       });
     });
+
+    // Phase1: weekly型の自動割当（本番既定OFF・社長承認後にON）
+    if (USE_WEEKLY_ASSIGN) assignWeekly(yearMonth, data, cal, wd);
   }
 
   // 2. 希望休 → "休"（初期案を上書き）
