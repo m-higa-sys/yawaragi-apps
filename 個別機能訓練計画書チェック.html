@@ -372,6 +372,55 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     display: none;
 }
 
+/* ===== 月次利用状況モーダル（genba/board から移植・2026-06-24） ===== */
+.mu-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 10000; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+}
+.mu-modal-box {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 480px;
+    max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.mu-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
+}
+.mu-title { font-size: 1.05rem; font-weight: 700; color: #2d3748; }
+.mu-title-sub { font-weight: 500; color: #4a5568; font-size: 0.95rem; margin-left: 4px; }
+.mu-close-btn { background: none; border: none; font-size: 1.4rem; color: #718096; cursor: pointer; padding: 4px 8px; line-height: 1; }
+.mu-month-tabs { display: flex; gap: 8px; padding: 12px 18px; border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
+.mu-month-tab {
+    flex: 1; padding: 8px 4px; border: 1px solid #cbd5e0; border-radius: 8px;
+    background: #fff; color: #4a5568; font-size: 0.95rem; font-weight: 600;
+    cursor: pointer; text-align: center; font-family: inherit;
+}
+.mu-month-tab.active { background: #2c5282; color: #fff; border-color: #2c5282; }
+.mu-summary { padding: 12px 18px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #2d3748; }
+.mu-summary .mu-summary-main { font-weight: 600; margin-bottom: 6px; }
+.mu-summary .mu-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.mu-badge { display: inline-block; padding: 4px 10px; border-radius: 14px; font-size: 0.82rem; font-weight: 600; }
+.mu-badge.danger  { background: #fed7d7; color: #c53030; }
+.mu-badge.info    { background: #bee3f8; color: #2c5282; }
+.mu-badge.success { background: #c6f6d5; color: #22543d; }
+.mu-calendar { padding: 14px 18px; flex: 1; overflow-y: auto; }
+.mu-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mu-cal-head { text-align: center; font-size: 0.78rem; font-weight: 700; color: #718096; padding: 4px 0; }
+.mu-cal-cell {
+    aspect-ratio: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; border-radius: 8px;
+    font-size: 0.88rem; color: #2d3748; background: #f7fafc;
+}
+.mu-cal-cell.empty     { background: transparent; }
+.mu-cal-cell.scheduled { background: #edf2f7; }
+.mu-cal-cell.attended  { background: #c6f6d5; color: #22543d; font-weight: 700; }
+.mu-cal-cell.absent    { background: #fed7d7; color: #c53030; font-weight: 700; }
+.mu-cal-cell.attended.absent { background: linear-gradient(135deg, #c6f6d5 50%, #fed7d7 50%); color: #2d3748; }
+.mu-cal-cell.attended.nopickup::after { content: '🔵'; font-size: 0.6rem; line-height: 1; }
+.mu-cal-cell.today { box-shadow: inset 0 0 0 2px #3182ce; }
+.mu-legend { padding: 10px 18px; font-size: 0.78rem; color: #718096; border-top: 1px solid #f1f5f9; text-align: center; }
+
 @media print {
     body { background: #fff; }
     header { background: #fff; border-bottom: 1px solid #000; }
@@ -569,20 +618,26 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     </div>
 </div>
 
-<!-- 利用状況モーダル（2026-06-23 案A: usage_stats軽量版・氏名クリックで表示・読み取りのみ） -->
-<div class="modal-overlay" id="usageModal" onclick="if(event.target===this)closeUsageModal()">
-    <div class="modal" style="max-width:460px; max-height:85vh; overflow:auto; position:relative;">
-        <button onclick="closeUsageModal()" aria-label="閉じる" style="position:absolute; top:8px; right:12px; border:none; background:transparent; font-size:1.6rem; line-height:1; color:#a0aec0; cursor:pointer;">×</button>
-        <h3 id="usageModalTitle" style="padding-right:28px;">利用状況</h3>
-        <div id="usageModalBody" style="margin-top:10px;"></div>
-        <div class="btn-row" style="margin-top:16px;">
-            <button class="ok" onclick="openPlanStartFromUsage()">📅 計画書開始月を変更</button>
-            <button class="cancel" onclick="closeUsageModal()">閉じる</button>
-        </div>
-        <div style="margin-top:10px; font-size:0.72rem; color:#a0aec0; line-height:1.4;">
-            ※ 出席回数は「契約曜日の予定回数 − 欠席登録」からの推定値です（実際の来所記録ではありません）。
-        </div>
+<!-- 利用状況モーダル（2026-06-24 monthly_usage 日ごとカレンダー版・genba移植・読み取りのみ） -->
+<div id="mu-modal" class="mu-modal-overlay" style="display:none;" onclick="if(event.target===this)closeUsageModal()">
+  <div class="mu-modal-box">
+    <div class="mu-modal-header">
+      <div class="mu-title">
+        <span id="mu-user-name"></span>
+        <span class="mu-title-sub">さん 月次利用状況</span>
+      </div>
+      <button type="button" class="mu-close-btn" onclick="closeUsageModal()">✕</button>
     </div>
+    <div class="mu-care-line" id="mu-user-care" style="display:none;padding:6px 18px 0;font-weight:700;font-size:0.9rem;"></div>
+    <div class="mu-month-tabs" id="mu-month-tabs"></div>
+    <div class="mu-summary" id="mu-summary"></div>
+    <div class="mu-calendar" id="mu-calendar"></div>
+    <div class="mu-legend">🟢=来館　🔴=欠席　🔵=送迎なし　灰=予定なし　※来館は出勤送迎表ベースの実績</div>
+    <div style="padding:12px 18px; border-top:1px solid #f1f5f9; display:flex; gap:8px;">
+      <button type="button" style="flex:1; padding:10px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit; background:#2c7a7b; color:#fff;" onclick="openPlanStartFromUsage()">📅 計画書開始月を変更</button>
+      <button type="button" style="flex:1; padding:10px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit; background:#edf2f7; color:#4a5568;" onclick="closeUsageModal()">閉じる</button>
+    </div>
+  </div>
 </div>
 
 <!-- ケアマネ未提出ビュー（代表向け・2026-06-15 個訓Phase1） -->
@@ -1747,160 +1802,176 @@ function closePlanStartDialog() {
     document.getElementById('planStartDialog').classList.remove('show');
 }
 
-// ============ 利用状況モーダル（案A: usage_stats軽量版・2026-06-23）============
-// 氏名クリックで開く。直近3ヶ月の月別サマリ（出席=予定−欠席の推定）と利用パターンを表示。
-// データ源: 同一GAS(yawaragiボード)の ?action=usage_stats。読み取りのみ・新規保存は一切しない。
-let _usageStatsCache = null;     // { name: { name, weekdaysRaw, monthly } }
-let _usageStatsCacheKey = '';    // 'from_to'
+// ============ 利用状況モーダル（monthly_usage 日ごとカレンダー版・2026-06-24 genba移植）============
+// 氏名クリックで開く。月タブで直近3ヶ月、日ごとカレンダー（🟢来館/🔴欠席/🔵送迎なし）＋
+// 連続欠席・直近来館・利用率を表示。データ源: 同一GAS(yawaragiボード)の ?action=monthly_usage（JSONP）。
+// 来館は出勤送迎表ベースの実績（予定−欠席の推定ではない）。読み取りのみ・新規保存は一切しない。
 let usageModalState = { userId: '', name: '', planStart: '' };
-
-function recentThreeMonths() {
-    const now = new Date();
-    const arr = [];
-    for (let i = 2; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        arr.push({
-            key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
-            label: (d.getMonth() + 1) + '月'
-        });
-    }
-    return arr;
-}
-
-async function ensureUsageStats() {
-    const months = recentThreeMonths();
-    const from = months[0].key, to = months[months.length - 1].key;
-    const ck = from + '_' + to;
-    if (_usageStatsCache && _usageStatsCacheKey === ck) return _usageStatsCache;
-    const url = API_BASE + '?action=usage_stats&from=' + from + '&to=' + to + '&t=' + Date.now();
-    const res = await fetch(url);
-    const json = await res.json();
-    const users = (json && json.usageStats && json.usageStats.users) || [];
-    const map = {};
-    users.forEach(u => { map[(u.name || '').trim()] = u; });
-    _usageStatsCache = map;
-    _usageStatsCacheKey = ck;
-    return map;
-}
-
-// usage_stats(利用者台帳の名前) と本アプリの氏名を照合。空白・全半角ゆらぎを吸収。
-function findUsageRec(map, name) {
-    const n = (name || '').trim();
-    if (map[n]) return map[n];
-    const norm = s => (s || '').replace(/[\s　]/g, '').normalize('NFKC');
-    const target = norm(n);
-    for (const k in map) { if (norm(k) === target) return map[k]; }
-    return null;
-}
-
-function renderUsagePattern(u) {
-    const days = u.days || '';
-    const ampm = u.ampm || '';
-    const week = ['月', '火', '水', '木', '金', '土'];
-    const cells = week.map(d => {
-        const on = days.indexOf(d) >= 0;
-        return '<div style="flex:1; text-align:center; padding:6px 2px; border-radius:6px; font-size:0.8rem; '
-            + (on ? 'background:#2c7a7b; color:#fff; font-weight:bold;' : 'background:#edf2f7; color:#a0aec0;') + '">'
-            + d + (on ? '<div style="font-size:0.62rem; margin-top:2px;">' + escapeHtml(ampm || '○') + '</div>' : '')
-            + '</div>';
-    }).join('');
-    const summary = (days ? days.split('').join('・') : '（曜日未登録）') + (ampm ? ' ／ ' + escapeHtml(ampm) : '');
-    return '<div style="padding:10px; background:#f7fafc; border-radius:8px;">'
-        + '<div style="font-weight:700; color:#2c7a7b; margin-bottom:6px;">📅 利用パターン</div>'
-        + '<div style="font-size:0.9rem; margin-bottom:8px;">' + escapeHtml(summary) + '</div>'
-        + '<div style="display:flex; gap:4px;">' + cells + '</div>'
-        + '</div>';
-}
-
-// 欠席アラート（月次近似・案C簡易版）。usage_statsの月別カウントのみで算出（日付ベースの正確な連続欠席は別途）。
-// red: 今月、予定があるのに出席0（全欠）／ warn: 直近2ヶ月で欠席が予定の半分超。
-function computeAbsenceFlag(rec) {
-    if (!rec || !rec.monthly) return null;
-    const months = recentThreeMonths();
-    const cur = rec.monthly[months[months.length - 1].key];
-    if (cur && !cur.isPreOperational && (cur.scheduled || 0) > 0 && (cur.absences || 0) >= (cur.scheduled || 0)) {
-        return { level: 'red', text: '🔴 今月 全欠（予定' + cur.scheduled + '回・出席0）' };
-    }
-    const last2 = [months[months.length - 2], months[months.length - 1]]
-        .map(m => rec.monthly[m.key]).filter(mm => mm && !mm.isPreOperational);
-    let sch = 0, abs = 0;
-    last2.forEach(mm => { sch += (mm.scheduled || 0); abs += (mm.absences || 0); });
-    if (sch > 0 && abs * 2 > sch) {
-        return { level: 'warn', text: '⚠ 直近2ヶ月 欠席が予定の半分超（予定' + sch + '・欠席' + abs + '）' };
-    }
-    return null;
-}
-
-function renderUsageMonthly(rec) {
-    const months = recentThreeMonths();
-    if (!rec || !rec.monthly) {
-        return '<div style="margin-top:14px; padding:10px; color:#718096; font-size:0.88rem;">利用実績データが見つかりませんでした（氏名不一致、または中止者の可能性）。</div>';
-    }
-    // 欠席アラート（月次近似）
-    const flag = computeAbsenceFlag(rec);
-    let flagBanner = '';
-    if (flag) {
-        const st = flag.level === 'red'
-            ? 'background:#fff5f5; border-left:4px solid #c53030; color:#742a2a;'
-            : 'background:#fffaf0; border-left:4px solid #dd6b20; color:#744210;';
-        flagBanner = '<div style="margin:10px 0; padding:8px 12px; border-radius:6px; font-weight:700; font-size:0.9rem; ' + st + '">'
-            + escapeHtml(flag.text)
-            + '<div style="font-weight:400; font-size:0.72rem; margin-top:3px; opacity:0.85;">※月次集計ベースの簡易判定（何日連続かは日付ベース版で対応予定）</div>'
-            + '</div>';
-    } else {
-        flagBanner = '<div style="margin:10px 0; padding:6px 12px; border-radius:6px; background:#f0fff4; color:#276749; font-size:0.82rem;">✓ 直近の欠席アラートなし（月次集計ベース）</div>';
-    }
-    const rows = months.map(m => {
-        const mm = rec.monthly[m.key];
-        if (!mm) {
-            return '<tr style="border-top:1px solid #edf2f7;"><td style="padding:8px; font-weight:600;">' + m.label + '</td><td colspan="3" style="padding:8px; color:#a0aec0;">データなし</td></tr>';
-        }
-        if (mm.isPreOperational) {
-            return '<tr style="border-top:1px solid #edf2f7;"><td style="padding:8px; font-weight:600;">' + m.label + '</td><td colspan="3" style="padding:8px; color:#a0aec0;">運用開始前</td></tr>';
-        }
-        const scheduled = mm.scheduled || 0;
-        const absences = mm.absences || 0;
-        const attended = Math.max(0, scheduled - absences);
-        const absColor = absences > 0 ? '#c53030' : '#a0aec0';
-        return '<tr style="border-top:1px solid #edf2f7;">'
-            + '<td style="padding:8px; font-weight:600;">' + m.label + '</td>'
-            + '<td style="padding:8px; text-align:center; color:#276749; font-weight:700;">出席 ' + attended + '回</td>'
-            + '<td style="padding:8px; text-align:center; color:' + absColor + '; font-weight:700;">欠席 ' + absences + '回</td>'
-            + '<td style="padding:8px; text-align:center; color:#718096; font-size:0.8rem;">予定 ' + scheduled + '</td>'
-            + '</tr>';
-    }).join('');
-    return '<div style="margin-top:14px;">'
-        + '<div style="font-weight:700; color:#2c7a7b; margin-bottom:6px;">📊 直近3ヶ月の出欠</div>'
-        + flagBanner
-        + '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;"><tbody>' + rows + '</tbody></table>'
-        + '</div>';
-}
 
 function openUsageModal(td) {
     const userId = td.dataset.userid;
     const u = state.users.find(x => x.userId === userId);
     if (!u) return;
     usageModalState = { userId, name: u.name, planStart: u.planStart || '' };
-    const careMatch = (u.category || '').match(/要介護(\d)/);
-    const badge = careMatch ? '<span class="care-badge">介' + careMatch[1] + '</span>' : '';
-    document.getElementById('usageModalTitle').innerHTML = escapeHtml(u.name) + 'さん 利用状況（直近3ヶ月）' + badge;
-    document.getElementById('usageModalBody').innerHTML =
-        renderUsagePattern(u)
-        + '<div id="usageMonthly" style="margin-top:14px; color:#718096; font-size:0.88rem;">📊 出欠実績を読み込み中...</div>';
-    document.getElementById('usageModal').classList.add('show');
-    ensureUsageStats().then(map => {
-        const rec = findUsageRec(map, u.name);
-        const el = document.getElementById('usageMonthly');
-        if (el) el.outerHTML = renderUsageMonthly(rec);
-    }).catch(e => {
-        console.error('usage_stats error:', e);
-        const el = document.getElementById('usageMonthly');
-        if (el) el.innerHTML = '<div style="color:#c53030; font-size:0.88rem;">⚠ 出欠実績の取得に失敗しました（ネット接続を確認）</div>';
-    });
+    document.getElementById('mu-user-name').textContent = u.name;
+    // 介護度（要介護=赤系/それ以外=青系）
+    const careEl = document.getElementById('mu-user-care');
+    const careTxt = (u.category || '').trim();
+    if (careTxt) {
+        careEl.textContent = '介護度：' + careTxt;
+        careEl.style.color = (careTxt.indexOf('要介護') !== -1) ? '#842029' : '#1e40af';
+        careEl.style.display = '';
+    } else {
+        careEl.textContent = '';
+        careEl.style.display = 'none';
+    }
+    document.getElementById('mu-modal').style.display = 'flex';
+    const ym = formatTodayISO().substring(0, 7);
+    muRenderMonthTabs(u.name, ym);
+    muLoadMonth(u.name, ym);
 }
 
 function closeUsageModal() {
-    document.getElementById('usageModal').classList.remove('show');
+    document.getElementById('mu-modal').style.display = 'none';
+}
+
+function muRenderMonthTabs(name, selectedYm) {
+    const box = document.getElementById('mu-month-tabs');
+    const today = new Date();
+    const tabs = [];
+    for (let i = 2; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const ym = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+        tabs.push({ ym: ym, label: (d.getMonth() + 1) + '月' });
+    }
+    const nameEsc = name.replace(/'/g, "\\'");
+    box.innerHTML = tabs.map(function(t) {
+        const active = (t.ym === selectedYm) ? ' active' : '';
+        return '<button type="button" class="mu-month-tab' + active + '" '
+            + 'onclick="muLoadMonth(\'' + nameEsc + '\',\'' + t.ym + '\');muRenderMonthTabs(\'' + nameEsc + '\',\'' + t.ym + '\')">'
+            + t.label + '</button>';
+    }).join('');
+}
+
+// monthly_usage は JSONP（callback付き）で取得。同一GAS URLへ name + yearMonth を渡す。
+function muFetchMonthly(name, ym, callback) {
+    const cbName = 'muCb_' + Date.now();
+    window[cbName] = function(data) {
+        delete window[cbName];
+        const s = document.getElementById(cbName);
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+        callback(data);
+    };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.src = API_BASE
+        + '?action=monthly_usage&name=' + encodeURIComponent(name)
+        + '&yearMonth=' + encodeURIComponent(ym)
+        + '&callback=' + cbName + '&t=' + Date.now();
+    document.body.appendChild(script);
+}
+
+function muLoadMonth(name, ym) {
+    document.getElementById('mu-summary').innerHTML = '<div style="color:#718096;">読込中…</div>';
+    document.getElementById('mu-calendar').innerHTML = '';
+    muFetchMonthly(name, ym, function(data) {
+        if (!data || !data.success) {
+            document.getElementById('mu-summary').innerHTML =
+                '<div style="color:#c53030;">' + (data && data.error ? escapeHtml(data.error) : 'データ取得に失敗しました。もう一度開いてください。') + '</div>';
+            return;
+        }
+        muRenderSummary(data);
+        muRenderCalendar(data);
+    });
+}
+
+function muRenderSummary(data) {
+    const s = data.summary || {};
+    const ym = data.yearMonth || '';
+    const monthLabel = ym ? (parseInt(ym.split('-')[1], 10) + '月') : '';
+    const main = monthLabel + '：利用 ' + (s.attended || 0) + '回 / 欠席 ' + (s.absent || 0) + '回 / 送迎なし ' + (s.noPickup || 0) + '回';
+    let badges = '';
+    const consec = muCalcConsecutiveAbsence(data);
+    if (consec) badges += '<span class="mu-badge danger">🔴 連続欠席' + consec + '日</span>';
+    const lastVisit = muCalcLastVisit(data);
+    if (lastVisit) {
+        const lv = lastVisit.split('-');
+        badges += '<span class="mu-badge info">📅 直近来館 ' + parseInt(lv[1], 10) + '/' + parseInt(lv[2], 10) + '</span>';
+    }
+    const util = muCalcUtilization(data);
+    if (util !== null) badges += '<span class="mu-badge success">📈 利用率 ' + util + '%</span>';
+    document.getElementById('mu-summary').innerHTML =
+        '<div class="mu-summary-main">' + escapeHtml(main) + '</div>'
+        + '<div class="mu-badges">' + badges + '</div>';
+}
+
+function muRenderCalendar(data) {
+    const ym = data.yearMonth;
+    const parts = ym.split('-');
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const firstDow = new Date(y, m - 1, 1).getDay();
+    const lastDay = new Date(y, m, 0).getDate();
+    const dayByDate = {};
+    (data.days || []).forEach(function(d) { dayByDate[d.date] = d; });
+    const todayStr = formatTodayISO();
+    let html = '<div class="mu-cal-grid">';
+    ['日', '月', '火', '水', '木', '金', '土'].forEach(function(label, i) {
+        const color = i === 0 ? 'color:#e53e3e;' : (i === 6 ? 'color:#3182ce;' : '');
+        html += '<div class="mu-cal-head" style="' + color + '">' + label + '</div>';
+    });
+    for (let i = 0; i < firstDow; i++) html += '<div class="mu-cal-cell empty"></div>';
+    for (let day = 1; day <= lastDay; day++) {
+        const dateStr = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + day).slice(-2);
+        const info = dayByDate[dateStr];
+        let cls = 'mu-cal-cell';
+        if (info) {
+            if (info.attended) cls += ' attended';
+            if (info.absent) cls += ' absent';
+            if (!info.attended && !info.absent) cls += ' scheduled';
+            if (info.noPickup) cls += ' nopickup';
+        }
+        if (dateStr === todayStr) cls += ' today';
+        html += '<div class="' + cls + '"><span>' + day + '</span></div>';
+    }
+    html += '</div>';
+    document.getElementById('mu-calendar').innerHTML = html;
+}
+
+// 連続欠席（その月のbasis日以前で、直近から連続する欠席日数）。来館で途切れる。
+function muBasisStr(ym) {
+    const todayStr = formatTodayISO();
+    if (todayStr.indexOf(ym) === 0) return todayStr;
+    const parts = ym.split('-');
+    const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10), 0);
+    return dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+}
+
+function muCalcConsecutiveAbsence(data) {
+    const basisStr = muBasisStr(data.yearMonth);
+    const dayByDate = {};
+    (data.days || []).forEach(function(d) { dayByDate[d.date] = d; });
+    const dates = Object.keys(dayByDate).filter(function(date) { return date <= basisStr; }).sort().reverse();
+    let count = 0;
+    for (let i = 0; i < dates.length; i++) {
+        const info = dayByDate[dates[i]];
+        if (info.attended) break;
+        if (info.absent) count++;
+        else break;
+    }
+    return count > 0 ? count : null;
+}
+
+function muCalcLastVisit(data) {
+    const basisStr = muBasisStr(data.yearMonth);
+    const visited = (data.days || []).filter(function(d) { return d.attended && d.date <= basisStr; }).map(function(d) { return d.date; }).sort();
+    return visited.length ? visited[visited.length - 1] : null;
+}
+
+function muCalcUtilization(data) {
+    const s = data.summary || {};
+    if (!s.scheduledTotal) return null;
+    return Math.round((s.attended || 0) / s.scheduledTotal * 100);
 }
 
 // モーダル内「計画書開始月を変更」→ 既存ダイアログへ（疑似td要素を渡す）
