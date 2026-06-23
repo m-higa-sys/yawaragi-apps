@@ -330,6 +330,13 @@
         .toast.toast-error { background: #c0392b; }
         /* 配置オートセーブ：保存完了時にカード枠を一瞬グリーン */
         .haichi-saved-flash { outline: 3px solid #38a169 !important; outline-offset: 1px; transition: outline-color 0.4s ease; }
+        /* ===== 本番オリジン警告バナー（2026-06-23・⑤再発防止：本番URL以外で開いた誤入力防止） ===== */
+        .origin-warn { position: fixed; top: 0; left: 0; right: 0; z-index: 20000;
+            display: none; background: #c0392b; color: #fff; padding: 12px 16px;
+            font-size: 0.92rem; font-weight: 700; line-height: 1.5; text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        .origin-warn.show { display: block; }
+        .origin-warn a { color: #fff; text-decoration: underline; word-break: break-all; }
         /* ===== サーバー反映ステータス表示（2026-06-22・将来shared.jsへ共通化予定） ===== */
         .save-status { position: fixed; right: 16px; bottom: 16px; z-index: 10000;
             display: none; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 24px;
@@ -1402,6 +1409,8 @@
 </head>
 <body>
 
+<div class="origin-warn" id="origin-warn"></div>
+
 <div class="header">
     <div>
         <h1>yawaragiボード</h1>
@@ -1906,7 +1915,10 @@
             <label style="font-size:0.85rem;">宛先：
                 <select id="dengon-to" style="padding:6px; border-radius:6px; border:1px solid #cbd5e0;">
                     <option value="全員">全員</option>
-                    <option value="社長">社長</option>
+                    <optgroup label="役割宛">
+                        <option value="看護師">看護師</option>
+                        <option value="相談員">相談員</option>
+                    </optgroup>
                     <optgroup label="特定スタッフ" id="dengon-to-staff"></optgroup>
                 </select>
             </label>
@@ -2340,7 +2352,23 @@ let currentAssignment = emptyAssignment();
 let openChecklists = {};
 let movingJobId = null;
 
+// ===== 本番オリジン警告（2026-06-23・⑤）=====
+// localStorageはオリジン単位。本番URL(github.io)以外で開くと入力が本番に保存/共有されないため警告する。
+// 本番オリジン完全一致のときのみ非表示（誤検知ゼロ優先）。?v= 等のクエリ/パスは location.origin に
+// 含まれない（scheme+host+portのみ）ため、版違いURLでは出ない。
+const PROD_ORIGIN = 'https://m-higa-sys.github.io';
+const PROD_URL = 'https://m-higa-sys.github.io/yawaragi-apps/genba.html';
+function checkProductionOrigin() {
+    const el = document.getElementById('origin-warn');
+    if (!el) return;
+    if (location.origin === PROD_ORIGIN) { el.className = 'origin-warn'; return; } // 本番のみ非表示
+    el.innerHTML = '⚠ 本番URL以外で開いています。入力しても保存されません。<br>'
+        + '正しいURL: <a href="' + PROD_URL + '">' + PROD_URL + '</a>';
+    el.className = 'origin-warn show';
+}
+
 function init() {
+    checkProductionOrigin(); // ⑤ 本番以外で開いていたら先頭で警告（入力前に気づけるよう最優先）
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
