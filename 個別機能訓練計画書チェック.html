@@ -389,7 +389,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 
 <header>
     <h1>📋 個別機能訓練計画書チェック</h1>
-    <p>要介護のみ 3 ヶ月サイクル。月ごとに「計画」「評価」を管理します。計画セルで作成日・測定・出力・ケアマネ提出、評価セルで達成度・提出を入力。名前タップで計画書開始月を変更できます。</p>
+    <p>要介護のみ 3 ヶ月サイクル。月ごとに「計画」「評価」を管理します。計画セルで作成日・測定・出力・ケアマネ提出、評価セルで達成度・提出を入力。名前タップで利用状況（直近3ヶ月）を表示し、そこから計画書開始月も変更できます。</p>
 </header>
 
 <div id="offlineBanner">⚠ オフライン表示中(最新データの取得に失敗しています)</div>
@@ -565,6 +565,22 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         </div>
         <div class="btn-row" style="margin-top:6px;">
             <button class="cancel" onclick="closePlanStartDialog()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<!-- 利用状況モーダル（2026-06-23 案A: usage_stats軽量版・氏名クリックで表示・読み取りのみ） -->
+<div class="modal-overlay" id="usageModal" onclick="if(event.target===this)closeUsageModal()">
+    <div class="modal" style="max-width:460px; max-height:85vh; overflow:auto; position:relative;">
+        <button onclick="closeUsageModal()" aria-label="閉じる" style="position:absolute; top:8px; right:12px; border:none; background:transparent; font-size:1.6rem; line-height:1; color:#a0aec0; cursor:pointer;">×</button>
+        <h3 id="usageModalTitle" style="padding-right:28px;">利用状況</h3>
+        <div id="usageModalBody" style="margin-top:10px;"></div>
+        <div class="btn-row" style="margin-top:16px;">
+            <button class="ok" onclick="openPlanStartFromUsage()">📅 計画書開始月を変更</button>
+            <button class="cancel" onclick="closeUsageModal()">閉じる</button>
+        </div>
+        <div style="margin-top:10px; font-size:0.72rem; color:#a0aec0; line-height:1.4;">
+            ※ 出席回数は「契約曜日の予定回数 − 欠席登録」からの推定値です（実際の来所記録ではありません）。
         </div>
     </div>
 </div>
@@ -1015,7 +1031,7 @@ function renderTable() {
         const cancelBadge = u.cancelled ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;background:#c0392b;color:white;font-size:0.7rem;font-weight:700;">中止</span>' : '';
         html += '<tr class="' + rowClass + '"' + (u.cancelled ? ' style="opacity:0.7;background:#fef5f5;"' : '') + '>';
         html += '<td class="group-cell"></td>';
-        html += '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-planstart="' + escapeAttr(u.planStart || '') + '" onclick="openPlanStartDialog(this)">'
+        html += '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-planstart="' + escapeAttr(u.planStart || '') + '" onclick="openUsageModal(this)">'
               + escapeHtml(u.name) + badge + cancelBadge + '</td>';
 
         MONTHS.forEach(mo => {
@@ -1729,6 +1745,135 @@ function openPlanStartDialog(td) {
 
 function closePlanStartDialog() {
     document.getElementById('planStartDialog').classList.remove('show');
+}
+
+// ============ 利用状況モーダル（案A: usage_stats軽量版・2026-06-23）============
+// 氏名クリックで開く。直近3ヶ月の月別サマリ（出席=予定−欠席の推定）と利用パターンを表示。
+// データ源: 同一GAS(yawaragiボード)の ?action=usage_stats。読み取りのみ・新規保存は一切しない。
+let _usageStatsCache = null;     // { name: { name, weekdaysRaw, monthly } }
+let _usageStatsCacheKey = '';    // 'from_to'
+let usageModalState = { userId: '', name: '', planStart: '' };
+
+function recentThreeMonths() {
+    const now = new Date();
+    const arr = [];
+    for (let i = 2; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        arr.push({
+            key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
+            label: (d.getMonth() + 1) + '月'
+        });
+    }
+    return arr;
+}
+
+async function ensureUsageStats() {
+    const months = recentThreeMonths();
+    const from = months[0].key, to = months[months.length - 1].key;
+    const ck = from + '_' + to;
+    if (_usageStatsCache && _usageStatsCacheKey === ck) return _usageStatsCache;
+    const url = API_BASE + '?action=usage_stats&from=' + from + '&to=' + to + '&t=' + Date.now();
+    const res = await fetch(url);
+    const json = await res.json();
+    const users = (json && json.usageStats && json.usageStats.users) || [];
+    const map = {};
+    users.forEach(u => { map[(u.name || '').trim()] = u; });
+    _usageStatsCache = map;
+    _usageStatsCacheKey = ck;
+    return map;
+}
+
+// usage_stats(利用者台帳の名前) と本アプリの氏名を照合。空白・全半角ゆらぎを吸収。
+function findUsageRec(map, name) {
+    const n = (name || '').trim();
+    if (map[n]) return map[n];
+    const norm = s => (s || '').replace(/[\s　]/g, '').normalize('NFKC');
+    const target = norm(n);
+    for (const k in map) { if (norm(k) === target) return map[k]; }
+    return null;
+}
+
+function renderUsagePattern(u) {
+    const days = u.days || '';
+    const ampm = u.ampm || '';
+    const week = ['月', '火', '水', '木', '金', '土'];
+    const cells = week.map(d => {
+        const on = days.indexOf(d) >= 0;
+        return '<div style="flex:1; text-align:center; padding:6px 2px; border-radius:6px; font-size:0.8rem; '
+            + (on ? 'background:#2c7a7b; color:#fff; font-weight:bold;' : 'background:#edf2f7; color:#a0aec0;') + '">'
+            + d + (on ? '<div style="font-size:0.62rem; margin-top:2px;">' + escapeHtml(ampm || '○') + '</div>' : '')
+            + '</div>';
+    }).join('');
+    const summary = (days ? days.split('').join('・') : '（曜日未登録）') + (ampm ? ' ／ ' + escapeHtml(ampm) : '');
+    return '<div style="padding:10px; background:#f7fafc; border-radius:8px;">'
+        + '<div style="font-weight:700; color:#2c7a7b; margin-bottom:6px;">📅 利用パターン</div>'
+        + '<div style="font-size:0.9rem; margin-bottom:8px;">' + escapeHtml(summary) + '</div>'
+        + '<div style="display:flex; gap:4px;">' + cells + '</div>'
+        + '</div>';
+}
+
+function renderUsageMonthly(rec) {
+    const months = recentThreeMonths();
+    if (!rec || !rec.monthly) {
+        return '<div style="margin-top:14px; padding:10px; color:#718096; font-size:0.88rem;">利用実績データが見つかりませんでした（氏名不一致、または中止者の可能性）。</div>';
+    }
+    const rows = months.map(m => {
+        const mm = rec.monthly[m.key];
+        if (!mm) {
+            return '<tr style="border-top:1px solid #edf2f7;"><td style="padding:8px; font-weight:600;">' + m.label + '</td><td colspan="3" style="padding:8px; color:#a0aec0;">データなし</td></tr>';
+        }
+        if (mm.isPreOperational) {
+            return '<tr style="border-top:1px solid #edf2f7;"><td style="padding:8px; font-weight:600;">' + m.label + '</td><td colspan="3" style="padding:8px; color:#a0aec0;">運用開始前</td></tr>';
+        }
+        const scheduled = mm.scheduled || 0;
+        const absences = mm.absences || 0;
+        const attended = Math.max(0, scheduled - absences);
+        const absColor = absences > 0 ? '#c53030' : '#a0aec0';
+        return '<tr style="border-top:1px solid #edf2f7;">'
+            + '<td style="padding:8px; font-weight:600;">' + m.label + '</td>'
+            + '<td style="padding:8px; text-align:center; color:#276749; font-weight:700;">出席 ' + attended + '回</td>'
+            + '<td style="padding:8px; text-align:center; color:' + absColor + '; font-weight:700;">欠席 ' + absences + '回</td>'
+            + '<td style="padding:8px; text-align:center; color:#718096; font-size:0.8rem;">予定 ' + scheduled + '</td>'
+            + '</tr>';
+    }).join('');
+    return '<div style="margin-top:14px;">'
+        + '<div style="font-weight:700; color:#2c7a7b; margin-bottom:6px;">📊 直近3ヶ月の出欠</div>'
+        + '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;"><tbody>' + rows + '</tbody></table>'
+        + '</div>';
+}
+
+function openUsageModal(td) {
+    const userId = td.dataset.userid;
+    const u = state.users.find(x => x.userId === userId);
+    if (!u) return;
+    usageModalState = { userId, name: u.name, planStart: u.planStart || '' };
+    const careMatch = (u.category || '').match(/要介護(\d)/);
+    const badge = careMatch ? '<span class="care-badge">介' + careMatch[1] + '</span>' : '';
+    document.getElementById('usageModalTitle').innerHTML = escapeHtml(u.name) + 'さん 利用状況（直近3ヶ月）' + badge;
+    document.getElementById('usageModalBody').innerHTML =
+        renderUsagePattern(u)
+        + '<div id="usageMonthly" style="margin-top:14px; color:#718096; font-size:0.88rem;">📊 出欠実績を読み込み中...</div>';
+    document.getElementById('usageModal').classList.add('show');
+    ensureUsageStats().then(map => {
+        const rec = findUsageRec(map, u.name);
+        const el = document.getElementById('usageMonthly');
+        if (el) el.outerHTML = renderUsageMonthly(rec);
+    }).catch(e => {
+        console.error('usage_stats error:', e);
+        const el = document.getElementById('usageMonthly');
+        if (el) el.innerHTML = '<div style="color:#c53030; font-size:0.88rem;">⚠ 出欠実績の取得に失敗しました（ネット接続を確認）</div>';
+    });
+}
+
+function closeUsageModal() {
+    document.getElementById('usageModal').classList.remove('show');
+}
+
+// モーダル内「計画書開始月を変更」→ 既存ダイアログへ（疑似td要素を渡す）
+function openPlanStartFromUsage() {
+    const st = usageModalState;
+    closeUsageModal();
+    openPlanStartDialog({ dataset: { userid: st.userId, name: st.name, planstart: st.planStart } });
 }
 
 async function savePlanStartFromDialog() {
