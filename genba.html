@@ -346,6 +346,7 @@
         .save-status.saving { background: #fff8e1; color: #8a6d3b; border: 1px solid #f0d98c; }
         .save-status.done   { background: #e6f7ed; color: #1e7a46; border: 1px solid #9fdcb8; }
         .save-status.error  { background: #fdecea; color: #b3261e; border: 1px solid #f0b3ad; }
+        .save-status.unconfirmed { background: #fff4e5; color: #9a5b00; border: 1px solid #f0c27a; } /* ④確認できず（橙） */
         .save-status .ss-spinner { width: 14px; height: 14px; border: 2px solid currentColor;
             border-top-color: transparent; border-radius: 50%; animation: ss-spin 0.7s linear infinite; flex: 0 0 auto; }
         .save-status .ss-retry { margin-left: 6px; padding: 4px 12px; border: none; border-radius: 14px;
@@ -2267,33 +2268,90 @@ function haichiCloudLoad(callback) {
     document.head.appendChild(script);
 }
 
-// ===== 配置データのクラウド「書き込み」（2026-06-22復活・旧yawaragi-board.htmlと同方式）=====
-// 全体(local)をGASへPOSTしてA1を上書き保存する。GASのsave_haichiはA1を丸ごと上書きするため、
-// 必ず loadAssignment/init で haichiCloudLoad 済み（local=クラウド∪編集）の状態で呼ぶ。
-// 連続タップでのPOST乱発を防ぐため2秒デバウンス。no-corsなので結果は確認しない（投げっぱなし）。
+// ===== 配置データのクラウド「書き込み」＋ライトバック検証（2026-06-22書込 / 2026-06-23 ④検証）=====
+// 全体(local)をGASへPOSTしA1を上書き保存。GASのsave_haichiはA1を丸ごと上書きのため、必ず
+// loadAssignment/init で haichiCloudLoad 済み（local=クラウド∪編集）の状態で呼ぶ。2秒デバウンス。
+// no-corsで送信成否が読めないため、POST後N秒でクラウドを読み直し当日キーの反映を検証する（④）。
+const HAICHI_VERIFY_DELAY_MS = 6000; // POST送出→検証の待ち（GAS書込確定＋反映＋読込往復の安全側／設計5〜8s）
 let _haichiSyncTimer = null;
+let _verifyKey = null;       // 検証対象キー（最後に編集した 日付_単位）
+let _verifyExpected = null;  // 送信時のそのキー値（stableStringify済み）
+let _verifyTimer = null;     // 検証デバウンス（連続入力では最後の1回だけ検証）
 function haichiCloudSave(d) {
     showSaveStatus('saving', '保存中…'); // 編集直後に即「保存中…」を出す（タイムラグの不安解消）
+    _verifyKey = getAssignmentKey(currentDate, currentUnit); // ④ 検証対象キーを記録
     if (_haichiSyncTimer) clearTimeout(_haichiSyncTimer);
     _haichiSyncTimer = setTimeout(_postHaichiToCloud, 2000);
 }
-// 実際のPOST。送信時点の最新local（getDataは常に最新）を送る。
-// no-corsのため応答内容は読めず、送信完了＝done / ネットワーク失敗＝error として扱う。
+// 実際のPOST。送信時点の最新local（getDataは常に最新）を送る。送信後は「確認中…」にし、
+// no-corsの成否表示はせず、N秒後のライトバック検証（_runHaichiVerify）で実態を判定する。
 function _postHaichiToCloud() {
     var d = getData();
+    // ④ 送信値スナップショット（検証用）。当日キーが無ければ null 扱い（=削除）。
+    _verifyExpected = stableStringify((d.assignments && d.assignments[_verifyKey]) || null);
     try {
         fetch(HAICHI_SYNC_URL, {
             method: 'POST',
             mode: 'no-cors',
             body: JSON.stringify({ action: 'save_haichi', haichi: d })
-        }).then(function(){ showSaveStatus('done', '保存しました'); })
-          .catch(function(){ showSaveStatus('error', '保存できませんでした'); });
+        }).catch(function(){ /* no-corsのthen/catchは信頼度が低いため検証に委ねる */ });
     } catch (e) {
         showSaveStatus('error', '保存できませんでした');
+        return;
     }
+    showSaveStatus('verifying', '確認中…');
+    _scheduleHaichiVerify();
 }
-// 失敗時の再試行（save-status内の「再試行」ボタンから呼ばれる）
+// ④ 検証デバウンス：連続入力では最後のPOST送出の HAICHI_VERIFY_DELAY_MS 後に1回だけ検証する。
+function _scheduleHaichiVerify() {
+    if (_verifyTimer) clearTimeout(_verifyTimer);
+    _verifyTimer = setTimeout(_runHaichiVerify, HAICHI_VERIFY_DELAY_MS);
+}
+function _runHaichiVerify() { haichiCloudVerify(_verifyKey, _verifyExpected, _applyVerifyResult); }
+function _applyVerifyResult(result) {
+    if (result === 'match') showSaveStatus('verified', '保存✓ 確認済み');
+    else if (result === 'mismatch') showSaveStatus('unsaved', '未保存：再送');
+    else showSaveStatus('unconfirmed', '確認できず：再確認');
+}
+// キー順・空白差による誤不一致を防ぐ正規化JSON化（比較の両辺に適用）。
+function stableStringify(value) {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+    return '{' + Object.keys(value).sort().map(function(k){
+        return JSON.stringify(k) + ':' + stableStringify(value[k]);
+    }).join(',') + '}';
+}
+// ④ 検証専用・非破壊。haichiCloudLoadのJSONP機構を流用するが localStorage には一切書かない。
+// cb(result): 'match'（クラウドに同キー在り＆値一致／削除も一致）| 'mismatch'（キー無し/値違い）| 'error'（読込失敗）
+function haichiCloudVerify(key, expectedJson, cb) {
+    const cbName = '_haichiVerifyCb_' + Date.now();
+    const script = document.createElement('script');
+    let timeout = setTimeout(function() { cleanup(); if (cb) cb('error'); }, 8000);
+    function cleanup() {
+        clearTimeout(timeout);
+        try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+    }
+    window[cbName] = function(data) {
+        cleanup();
+        if (!data || !data.success || !data.haichi) { if (cb) cb('error'); return; }
+        const cloudAssign = data.haichi.assignments || {};
+        if (!(key in cloudAssign)) {
+            // クラウドにキー無し。送信値もnull（=削除）なら反映成功とみなす。
+            if (cb) cb(expectedJson === 'null' ? 'match' : 'mismatch');
+            return;
+        }
+        const cloudJson = stableStringify(cloudAssign[key]);
+        if (cb) cb(cloudJson === expectedJson ? 'match' : 'mismatch');
+    };
+    script.src = HAICHI_SYNC_URL + '?action=haichi&callback=' + cbName + '&t=' + Date.now();
+    script.onerror = function() { cleanup(); if (cb) cb('error'); };
+    document.head.appendChild(script);
+}
+// 「未保存：再送」から呼ぶ。POST再送→確認中→N秒後に再検証。
 function retryHaichiSave() { showSaveStatus('saving', '保存中…'); _postHaichiToCloud(); }
+// 「確認できず：再確認」から呼ぶ。POSTせず検証のみ再実行。
+function reverifyHaichi() { showSaveStatus('verifying', '確認中…'); haichiCloudVerify(_verifyKey, _verifyExpected, _applyVerifyResult); }
 function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
 function getAssignmentKey(date, unit) { return date + '_' + unit; }
 
@@ -3292,24 +3350,31 @@ function showToast(msg, duration, isError) {
     setTimeout(() => t.classList.remove('show'), duration || 2000);
 }
 
-// ===== サーバー反映ステータス表示（2026-06-22）=====
-// state: 'saving'（スピナー＋文言／消えない）| 'done'（✓／1.5秒で自動で消える）
-//       | 'error'（⚠＋再試行ボタン／押すまで残る）
-// 将来 shared.js に showStatus(type, message) として共通化予定。文言は操作で可変（保存中/検索中/読込中）。
+// ===== サーバー反映ステータス表示（2026-06-22 / 2026-06-23 ④検証で状態拡張）=====
+// state: 'saving'/'verifying'（スピナー）| 'done'/'verified'（✓・1.5秒で消滅）
+//        | 'error'/'unsaved'（⚠＋再送）| 'unconfirmed'（⚠＋再確認）
+// 色は流用: verifying=saving(黄) / verified=done(緑) / unsaved=error(赤)。unconfirmedのみ橙(新CSS)。
 let _saveStatusTimer = null;
 function showSaveStatus(state, message) {
     const el = document.getElementById('save-status');
     if (!el) return;
     if (_saveStatusTimer) { clearTimeout(_saveStatusTimer); _saveStatusTimer = null; }
-    el.className = 'save-status show ' + state;
-    if (state === 'saving') {
+    const cls = (state === 'verifying') ? 'saving'
+              : (state === 'verified') ? 'done'
+              : (state === 'unsaved') ? 'error'
+              : state; // saving/error/unconfirmed はそのまま
+    el.className = 'save-status show ' + cls;
+    if (state === 'saving' || state === 'verifying') {
         el.innerHTML = '<span class="ss-spinner"></span><span>' + (message || '保存中…') + '</span>';
-    } else if (state === 'done') {
+    } else if (state === 'done' || state === 'verified') {
         el.innerHTML = '<span>✓ ' + (message || '保存しました') + '</span>';
         _saveStatusTimer = setTimeout(hideSaveStatus, 1500);
-    } else if (state === 'error') {
+    } else if (state === 'error' || state === 'unsaved') {
         el.innerHTML = '<span>⚠ ' + (message || '保存できませんでした') + '</span>'
-            + '<button type="button" class="ss-retry" onclick="retryHaichiSave()">再試行</button>';
+            + '<button type="button" class="ss-retry" onclick="retryHaichiSave()">再送</button>';
+    } else if (state === 'unconfirmed') {
+        el.innerHTML = '<span>⚠ ' + (message || '確認できず') + '</span>'
+            + '<button type="button" class="ss-retry" onclick="reverifyHaichi()">再確認</button>';
     }
 }
 function hideSaveStatus() {
