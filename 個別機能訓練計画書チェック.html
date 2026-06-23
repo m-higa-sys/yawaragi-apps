@@ -1812,10 +1812,43 @@ function renderUsagePattern(u) {
         + '</div>';
 }
 
+// 欠席アラート（月次近似・案C簡易版）。usage_statsの月別カウントのみで算出（日付ベースの正確な連続欠席は別途）。
+// red: 今月、予定があるのに出席0（全欠）／ warn: 直近2ヶ月で欠席が予定の半分超。
+function computeAbsenceFlag(rec) {
+    if (!rec || !rec.monthly) return null;
+    const months = recentThreeMonths();
+    const cur = rec.monthly[months[months.length - 1].key];
+    if (cur && !cur.isPreOperational && (cur.scheduled || 0) > 0 && (cur.absences || 0) >= (cur.scheduled || 0)) {
+        return { level: 'red', text: '🔴 今月 全欠（予定' + cur.scheduled + '回・出席0）' };
+    }
+    const last2 = [months[months.length - 2], months[months.length - 1]]
+        .map(m => rec.monthly[m.key]).filter(mm => mm && !mm.isPreOperational);
+    let sch = 0, abs = 0;
+    last2.forEach(mm => { sch += (mm.scheduled || 0); abs += (mm.absences || 0); });
+    if (sch > 0 && abs * 2 > sch) {
+        return { level: 'warn', text: '⚠ 直近2ヶ月 欠席が予定の半分超（予定' + sch + '・欠席' + abs + '）' };
+    }
+    return null;
+}
+
 function renderUsageMonthly(rec) {
     const months = recentThreeMonths();
     if (!rec || !rec.monthly) {
         return '<div style="margin-top:14px; padding:10px; color:#718096; font-size:0.88rem;">利用実績データが見つかりませんでした（氏名不一致、または中止者の可能性）。</div>';
+    }
+    // 欠席アラート（月次近似）
+    const flag = computeAbsenceFlag(rec);
+    let flagBanner = '';
+    if (flag) {
+        const st = flag.level === 'red'
+            ? 'background:#fff5f5; border-left:4px solid #c53030; color:#742a2a;'
+            : 'background:#fffaf0; border-left:4px solid #dd6b20; color:#744210;';
+        flagBanner = '<div style="margin:10px 0; padding:8px 12px; border-radius:6px; font-weight:700; font-size:0.9rem; ' + st + '">'
+            + escapeHtml(flag.text)
+            + '<div style="font-weight:400; font-size:0.72rem; margin-top:3px; opacity:0.85;">※月次集計ベースの簡易判定（何日連続かは日付ベース版で対応予定）</div>'
+            + '</div>';
+    } else {
+        flagBanner = '<div style="margin:10px 0; padding:6px 12px; border-radius:6px; background:#f0fff4; color:#276749; font-size:0.82rem;">✓ 直近の欠席アラートなし（月次集計ベース）</div>';
     }
     const rows = months.map(m => {
         const mm = rec.monthly[m.key];
@@ -1838,6 +1871,7 @@ function renderUsageMonthly(rec) {
     }).join('');
     return '<div style="margin-top:14px;">'
         + '<div style="font-weight:700; color:#2c7a7b; margin-bottom:6px;">📊 直近3ヶ月の出欠</div>'
+        + flagBanner
         + '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;"><tbody>' + rows + '</tbody></table>'
         + '</div>';
 }
