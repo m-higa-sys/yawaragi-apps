@@ -457,6 +457,21 @@
             margin: 0 0 10px; line-height: 1.5;
         }
         .abs-escape-guide:empty { display: none; }
+        /* 2026-06-25 ②別の日を選ぶ: 区分外フォールドと違い、発見可能なトップレベルCTA */
+        .abs-otherday { margin-top: 12px; }
+        .abs-otherday-summary {
+            cursor: pointer; list-style: none; user-select: none;
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 11px 16px; border: 2px solid #2c7a7b; border-radius: 10px;
+            background: #fff; color: #2c7a7b; font-size: 0.95rem; font-weight: 700;
+            transition: background 0.2s;
+        }
+        .abs-otherday-summary::-webkit-details-marker { display: none; }
+        .abs-otherday-summary:hover { background: #e6fffa; }
+        .abs-otherday[open] .abs-otherday-summary { background: #e6fffa; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+        .abs-otherday-body { padding: 10px 2px 2px; }
+        .abs-otherday-hint { font-size: 0.8rem; color: #718096; margin: 2px 0 10px; line-height: 1.5; }
+        .abs-escape-note { font-size: 0.8rem; color: #718096; margin: 10px 0 0; line-height: 1.5; }
         .abs-sublabel { display: block; font-size: 0.82rem; font-weight: 600; color: #4a5568; margin: 8px 0 6px; }
         .abs-unit-btns { display: flex; gap: 6px; flex-wrap: wrap; }
         .abs-unit-btn {
@@ -1508,27 +1523,37 @@
         <!-- STEP2: いつ休み？ -->
         <div class="abs-step" id="abs-step-date" style="display:none;">
             <label class="abs-label">2. いつ休み？</label>
-            <!-- 主動線: 利用区分に合った通所コマ(2週分)だけをチップ表示 -->
+            <!-- ① かんたん: 利用区分に合った通所コマ(2週分)だけをチップ表示 -->
             <div class="abs-date-inputs" id="abs-date-inputs"></div>
-            <!-- 長期休み（残置・別動線） -->
-            <div style="margin-top:10px;">
-                <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')" style="flex:0 0 auto;background:#e53e3e;color:white;border-color:#e53e3e;">長期休み</button>
-            </div>
-            <!-- 逃げ道: 既定で閉じる。区分外・先の日付・イレギュラー用 -->
-            <details class="abs-escape" id="abs-escape">
-                <summary class="abs-escape-summary">区分外・イレギュラーも登録</summary>
-                <div class="abs-escape-body">
-                    <p class="abs-escape-guide" id="abs-escape-guide"></p>
+            <!-- ② 別の日を選ぶ: トップレベルCTA。単日／範囲の日付入力（区分内・区分外を問わず任意日）。
+                 ※コマは通常区分が既定。送信は従来どおり specific/range の slots 経路（ロジック無変更）。 -->
+            <details class="abs-otherday" id="abs-otherday">
+                <summary class="abs-otherday-summary">別の日を選ぶ 📅</summary>
+                <div class="abs-otherday-body">
+                    <p class="abs-otherday-hint">区分内・区分外を問わず、任意の日を選べます（コマは通常区分が既定。違うコマで出すときは下の「区分外コマで登録」から）。</p>
                     <div class="abs-date-type-btns" style="margin-bottom:8px;">
-                        <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
+                        <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定（単日）</button>
                         <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
                     </div>
                     <div class="abs-date-inputs" id="abs-escape-inputs"></div>
-                    <!-- 手動 午前/午後/終日（自動推定をやめ明示選択） -->
+                </div>
+            </details>
+            <!-- ③ 長期休み（残置・別動線） -->
+            <div style="margin-top:10px;">
+                <button class="abs-date-type-btn" data-type="longterm" onclick="absSelectDateType('longterm')" style="flex:0 0 auto;background:#e53e3e;color:white;border-color:#e53e3e;">長期休み</button>
+            </div>
+            <!-- ④ 区分外コマで登録: 既定で閉じる。"通常と違うコマ"だけをここで明示。
+                 区分外unit選択時の confirm 一拍（absSelectManualUnit）は温存。 -->
+            <details class="abs-escape" id="abs-escape">
+                <summary class="abs-escape-summary">区分外コマで登録（午後の人を午前 等）</summary>
+                <div class="abs-escape-body">
+                    <p class="abs-escape-guide" id="abs-escape-guide"></p>
+                    <!-- 手動 午前/午後/終日（自動推定をやめ明示選択）。区分外は押下時に確認一拍。 -->
                     <div class="abs-unit-select" id="abs-unit-select" style="display:none;">
                         <label class="abs-sublabel">区分（午前 / 午後 / 終日）</label>
                         <div class="abs-unit-btns" id="abs-unit-btns"></div>
                     </div>
+                    <p class="abs-escape-note">※先に「別の日を選ぶ 📅」で日付を選んでから、ここでコマを変更してください。</p>
                 </div>
             </details>
             <div class="abs-date-warning" id="abs-date-warning" style="display:none;"></div>
@@ -4276,7 +4301,9 @@ function absSelectUser(idx, name) {
 
     // STEP2を表示（主動線＝利用区分に合った通所コマのチップを既定表示）
     document.getElementById('abs-step-date').style.display = 'block';
-    // 逃げ道は毎回閉じた状態に戻す＋ガイド文をこの利用者の通常区分から生成
+    // ②別の日／④区分外コマは毎回閉じた状態に戻す＋ガイド文をこの利用者の通常区分から生成
+    const otherday = document.getElementById('abs-otherday');
+    if (otherday) otherday.open = false;
     const esc = document.getElementById('abs-escape');
     if (esc) esc.open = false;
     const guide = document.getElementById('abs-escape-guide');
