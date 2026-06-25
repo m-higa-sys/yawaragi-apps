@@ -12,9 +12,23 @@ const src = fs.readFileSync(SHARED_PATH, 'utf8');
 
 // function NAME(...) { ... } を波括弧の対応を数えて切り出す
 function extractFn(name) {
-  const sig = 'function ' + name;
-  const start = src.indexOf(sig);
-  if (start < 0) throw new Error('shared.js に ' + sig + ' が無い（未実装＝RED）');
+  // トークン境界化: name直後が '(' か 空白+'(' のものだけを正規の定義とみなす
+  // （単純な部分一致だと isPlanMonthV2 を isPlanMonth で誤マッチする）。
+  const sigParen = 'function ' + name + '(';
+  const sigSpace = 'function ' + name + ' (';
+  function findSig(from) {
+    const a = src.indexOf(sigParen, from);
+    const b = src.indexOf(sigSpace, from);
+    if (a < 0) return b < 0 ? -1 : b;
+    if (b < 0) return a;
+    return Math.min(a, b);
+  }
+  const start = findSig(0);
+  if (start < 0) throw new Error('shared.js に function ' + name + ' が無い（未実装＝RED）');
+  // 同名重複ガード: 2個目が見つかったら抽出器が誤った塊を掴む恐れ → throw
+  if (findSig(start + ('function ' + name).length) >= 0) {
+    throw new Error(name + ' が shared.js に複数定義（抽出器が誤った塊を掴む恐れ）');
+  }
   const braceOpen = src.indexOf('{', start);
   let depth = 0, i = braceOpen;
   for (; i < src.length; i++) {
