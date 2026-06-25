@@ -1813,7 +1813,13 @@ function renderOralSubmitCell(name, idx, cy, cm) {
     const by = rec.sent_by || '';
     return `<td${_cls} style="text-align:center; background:#e8f5e9; cursor:pointer;" onclick="openOralSubmitModal('${escapeAttr(name)}')">✅ ${escapeHtml(d)}${by ? ' ' + escapeHtml(by) : ''}</td>`;
   }
-  return `<td${_cls} style="text-align:center; background:#ffebee; color:#c62828; font-weight:bold; cursor:pointer;" onclick="openOralSubmitModal('${escapeAttr(name)}')">⏳ 未提出</td>`;
+  // 未送付。plan_date の有無で文字を3色と整合させる（背景・枠は cell-* が担うので inline背景は付けない）。
+  if (rec && rec.plan_date) {
+    // 作成済・未送付＝緑(cell-ready)。赤太字をやめ緑系の「あと送るだけ」表現に。
+    return `<td${_cls} style="text-align:center; color:#2e7d32; font-weight:bold; cursor:pointer;" onclick="openOralSubmitModal('${escapeAttr(name)}')">📋 作成済（未送付）</td>`;
+  }
+  // 未作成＝赤(cell-todo)。従来どおり赤系。
+  return `<td${_cls} style="text-align:center; color:#c62828; font-weight:bold; cursor:pointer;" onclick="openOralSubmitModal('${escapeAttr(name)}')">⏳ 未提出</td>`;
 }
 
 // ----- ケアマネ提出管理モーダル -----
