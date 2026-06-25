@@ -424,6 +424,8 @@ main { padding: 16px 24px 48px; }
   <div id="loading">データ取得中...</div>
 </main>
 
+<!-- 当月判定の正準関数（§I cycle-judge）。本体scriptより前に読む契約。?v=で④だけ新版を取得 -->
+<script src="shared.js?v=2026-06-25a"></script>
 <script>
 // ===== 設定 =====
 const YAWARAGI_BOARD_API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -621,20 +623,8 @@ function monthShort(ym) {
 // 「測定・訪問・誕生日一覧」アプリの isMeasurementMonth() を ym 文字列ベースに移植。
 // 要介護=3ヶ月サイクル / 要支援=4ヶ月サイクル（2026/4/18ルール）
 // 利用開始日(startDate)があれば利用開始月を基準、なければ計画書開始月(planStart)基準。
-// 個訓 目標達成評価月判定: 計画書スタート月の翌々月（=次計画前月）
-// 例: planStart=2026-04 → 評価月: 2026-06 / 2026-09 / 2026-12 / 2027-03
-function isHyoukaMonth(planStart, ym) {
-  if (!planStart) return false;
-  const psMatch = planStart.match(/^(\d{4})-(\d{2})$/);
-  const ymMatch = ym.match(/^(\d{4})-(\d{2})$/);
-  if (!psMatch || !ymMatch) return false;
-  const py = parseInt(psMatch[1], 10);
-  const pm = parseInt(psMatch[2], 10);
-  const cy = parseInt(ymMatch[1], 10);
-  const cm = parseInt(ymMatch[2], 10);
-  const diff = (cy - py) * 12 + (cm - pm);
-  return diff >= 2 && diff % 3 === 2;
-}
+// 個訓 目標達成評価月判定は shared.js §I の正準版 isHyoukaMonth(planStart, planMonths, year, month) を使用。
+// （旧④自前版は planMonths非対応のdrift版だったため削除。①と件数一致させるため正準版へ集約）
 
 function isMeasureMonth(planStart, ym, startDate, care) {
   if (!planStart) return false;
@@ -852,6 +842,8 @@ async function fetchAll() {
   allData.tsushoPlans = (tsushoPlansRes && tsushoPlansRes.ok) ? tsushoPlansRes : { plans: [], unsent: [] };
   allData.oralPlans = (oralPlansRes && oralPlansRes.ok) ? oralPlansRes : { plans: [], unsent: [] };
   allData.keikakushoRecords = (keikakushoRes && keikakushoRes.records) ? keikakushoRes.records : [];
+  // 個訓 計画開始月/計画月数（planStart, planMonths）= ①と同源。評価月判定の正準化に使う
+  allData.keikakushoUsers = (keikakushoRes && keikakushoRes.users) ? keikakushoRes.users : [];
 }
 
 // ===== 対象者抽出 =====
@@ -922,9 +914,16 @@ function buildTargets(ym) {
         oralPlanSent: oralSentSet.has(u.name)
       });
     } else if (u.care === 'kaigo') {
-      // 個訓 目標達成評価: 評価月該当判定とPDF/印刷送付状況
-      const isHyouka = isHyoukaMonth(planStart, ym);
+      // 個訓 計画/評価: ①と同源(getKeikakushoYear users)の planStart/planMonths で正準判定。
+      // これで計画月・評価月とも①の isPlanMonth/isHyoukaMonth と件数一致する（完了条件2）。
+      const kUser = (allData.keikakushoUsers || []).find(ku => ku.userId === u.name) || {};
+      const kPlanStart = kUser.planStart || '';
+      const kPlanMonths = kUser.planMonths || 3;
       const [hY, hM] = ym.split('-').map(Number);
+      const isHyouka = isHyoukaMonth(kPlanStart, kPlanMonths, hY, hM);
+      // 計画月も①同源に正準化（従来の planStart===ym 単発判定を置換）。
+      // ※挙動変化: 3ヶ月毎の計画月に個別計画書チップが出る（=①と同基準・運用上より正確）。
+      const hasNewPlanK = isPlanMonth(kPlanStart, kPlanMonths, hY, hM);
       const hyoukaRec = (allData.keikakushoRecords || []).find(r =>
         r.userId === u.name && r.year === hY && r.month === hM
       );
@@ -935,7 +934,7 @@ function buildTargets(ym) {
         name: u.name,
         care: u.care,
         office: u.cmOffice || '(事業所未登録)',
-        hasNewPlan: hasNewPlan,
+        hasNewPlan: hasNewPlanK,
         isMeasure: isMeasure,
         days: u.days || '',
         ampm: u.ampm || '',
