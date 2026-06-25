@@ -423,6 +423,10 @@ main { padding: 16px 24px 48px; }
   </div>
 </div>
 
+<div id="summaryBar" class="summary-bar" style="padding:8px 12px;margin:6px 0;background:#f0f7ff;border:1px solid #cfe2ff;border-radius:6px;font-size:14px;font-weight:600;color:#1a4d7a;">
+  <!-- render() が当月件数を流し込む -->
+</div>
+
 <main id="main">
   <div class="help-hint" style="margin: 12px 24px 0; line-height:1.7;">
     💡 <strong>3つの操作を使い分け</strong>:<br>
@@ -1043,6 +1047,18 @@ function render() {
     escapeHtml(ym) + ' 対象者: ' + targets.length + '名 / ' +
     new Set(targets.map(t => t.office)).size + '事業所' +
     (holdCount > 0 ? ' <span class="hold-summary" id="holdSummary" title="タップして保留中の利用者を確認">⏸️ 保留中: ' + holdCount + '名</span>' : '');
+
+  // 件数サマリー（常設）。同じ targets から数える＝ビュー切替で不変・月切替で更新。
+  const sumPlan = targets.filter(t => t.hasNewPlan === true).length;
+  const sumHyouka = targets.filter(t => t.needsHyouka === true).length;
+  const sumJisseki = targets.length;
+  const sumMonitoring = targets.filter(t => t.care === 'shien').length;
+  const summaryEl = document.getElementById('summaryBar');
+  if (summaryEl) {
+    summaryEl.innerHTML = '📋 ' + escapeHtml(ym) + ' の提出予定：' +
+      '計画 <b>' + sumPlan + '</b>人 ／ 評価 <b>' + sumHyouka + '</b>人 ／ ' +
+      '実績 <b>' + sumJisseki + '</b>人 ／ 通所モニ <b>' + sumMonitoring + '</b>人';
+  }
 
   // ビューモード（事業所別 / 利用者別）。同じ targets を並べ替えるだけ・再取得しない。
   const viewMode = (document.getElementById('viewModeSel')?.value) || 'office';
