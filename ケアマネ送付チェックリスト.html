@@ -60,6 +60,7 @@ main { padding: 16px 24px 48px; }
 .badge.shien { background: #feebc8; color: #9c4221; }
 .badge.kaigo { background: #bee3f8; color: #2c5282; }
 .badge.newplan { background: #fed7d7; color: #c53030; }
+.badge.careplan-tag { background: #e9d8fd; color: #553c9a; font-weight: 700; }
 /* ===== 区変中表示（2026/4/27追加） ===== */
 .user-row.user-row-kubun {
   background: #fff5f5;
@@ -710,6 +711,19 @@ function canFinalizeJisseki(daysStr, ym, ampm) {
   return { ok: minutes >= threshold, last: last };
 }
 
+// ===== 事業所名の正規化（NFKC＋全角/半角スペース除去）=====
+// 他アプリ(sougei等)の normNameStrict と同方式。送付用居宅一覧と利用者台帳の事業所名表記ゆれ吸収用。
+function normOffice(s){ return String(s||'').normalize('NFKC').replace(/[\s　]/g,''); }
+
+// ===== 送付方法の解決（ケアプランデータ連携=ケアプー対応）=====
+// ケアプーは提供票"データ"の送信であり、紙の書類(サイン書類等)は別途送る必要がある＝fallback方式。
+// 送付用居宅一覧に「書類fallback方法」列が無いため、当面はケアプー事業所＝持参(印刷系)を既定とする。
+function resolveSoufu(method){
+  const m = String(method || '');
+  const isCarePlan = m.indexOf('ケアプランデータ連携') >= 0 || m.indexOf('ケアプー') >= 0;
+  return { isCarePlan: isCarePlan, docMethod: isCarePlan ? '持参' : m };
+}
+
 // ===== チェック項目定義 =====
 // 区分×新計画書×送付方法 で項目を出し分け
 // 送付方法別の工程:
@@ -935,6 +949,13 @@ function buildTargets(ym) {
       });
     }
   });
+
+  // 🔧 事業所名の表記ゆれ吸収（保険）: 送付用居宅一覧(連絡先)の表記を正本に、NFKC＋スペース無視で寄せる。
+  // これで contactMap[t.office] / グループ化キーが実質正規化照合になる（現役データはクリーンなので退行ゼロ）。
+  const canonByNorm = {};
+  allData.contacts.forEach(c => { const k = normOffice(c.office); if (c.office && !(k in canonByNorm)) canonByNorm[k] = c.office; });
+  targets.forEach(t => { const canon = canonByNorm[normOffice(t.office)]; if (canon) t.office = canon; });
+
   return { targets, contactMap };
 }
 
@@ -1097,12 +1118,14 @@ function render() {
     }
     const contact = contactMap[office] || {};
     const method = contact.method || (contact.email ? 'メール候補' : contact.fax ? 'FAX候補' : '未設定');
-    const methodClass = method.includes('メール') ? 'mail' : method.includes('FAX') ? 'fax' : method.includes('持参') ? 'visit' : method.includes('郵送') ? 'mailing' : 'unset';
-    const methodIcon = method.includes('メール') ? '📧' : method.includes('FAX') ? '📠' : method.includes('持参') ? '🚶' : method.includes('郵送') ? '📮' : '❓';
+    const isCarePlan = resolveSoufu(method).isCarePlan;
+    const badgeMethod = isCarePlan ? '持参' : method;  // ケアプー事業所はバッジ/工程を書類fallback=持参で判定
+    const methodClass = badgeMethod.includes('メール') ? 'mail' : badgeMethod.includes('FAX') ? 'fax' : badgeMethod.includes('持参') ? 'visit' : badgeMethod.includes('郵送') ? 'mailing' : 'unset';
+    const methodIcon = badgeMethod.includes('メール') ? '📧' : badgeMethod.includes('FAX') ? '📠' : badgeMethod.includes('持参') ? '🚶' : badgeMethod.includes('郵送') ? '📮' : '❓';
     const contactInfo = [contact.email, contact.fax].filter(x => x).join(' / ') || '';
 
-    // 事業所の送付方法を取得（method系判定）
-    const officeMethod = contact.method || '';
+    // 事業所の送付方法を取得（method系判定。ケアプー事業所は書類fallback=持参）
+    const officeMethod = isCarePlan ? '持参' : (contact.method || '');
     let officeDone = 0, officeTotal = 0, officeHoldExcluded = 0;
     const userHtml = users.map(u => {
       const userKey = u.name;
@@ -1298,10 +1321,10 @@ function render() {
     const cmNameAttr = contact.name || '';
     // 送付完了ボタンのラベル（送付方法別）
     let bulkBtnLabel = '全員まとめて送付済';
-    if (method.includes('メール')) bulkBtnLabel = '📧 全員まとめてメール送信済';
-    else if (method.includes('FAX')) bulkBtnLabel = '📠 全員まとめてFAX送信済';
-    else if (method.includes('持参')) bulkBtnLabel = '🚶 全員まとめて持参済';
-    else if (method.includes('郵送')) bulkBtnLabel = '📮 全員まとめて郵送済';
+    if (badgeMethod.includes('メール')) bulkBtnLabel = '📧 全員まとめてメール送信済';
+    else if (badgeMethod.includes('FAX')) bulkBtnLabel = '📠 全員まとめてFAX送信済';
+    else if (badgeMethod.includes('持参')) bulkBtnLabel = '🚶 全員まとめて持参済';
+    else if (badgeMethod.includes('郵送')) bulkBtnLabel = '📮 全員まとめて郵送済';
     const bulkBtnHtml = '<button class="bulk-sent-btn" data-office="' + escapeAttr(office) + '" data-method="' + escapeAttr(methodAttr) + '">' + bulkBtnLabel + '</button>';
 
     // 🔴 事業所別「実績OK状況」バッジ（2026/4/27 追加）
@@ -1326,12 +1349,15 @@ function render() {
       pairBadge = '<span class="badge same-location-badge" title="同じ敷地内にあります。持参のときは一緒に届けられます。">🏢 同一敷地：' + escapeHtml(pairPartner) + 'と一緒に持参可</span>';
     }
 
+    // 📡 ケアプー併記タグ（バッジは書類fallback方法・タグでデータ連携対応を明示）
+    const careplanTag = isCarePlan ? ' <span class="badge careplan-tag" title="ケアプランデータ連携(ケアプー)対応事業所。提供票データはケアプーで送信。紙の書類は' + escapeHtml(badgeMethod) + 'で送付。">📡 ケアプー</span>' : '';
+
     // 完了判定：通常完了 OR 全員「今月対象外」保留中
     const isOfficeComplete = (officeTotal > 0 && officeDone === officeTotal)
       || (officeTotal === 0 && officeHoldExcluded > 0 && officeHoldExcluded === users.length);
     const html = '<div class="office-block" data-office="' + escapeAttr(office) + '">'
       + '<div class="office-header">'
-      +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + methodClass + '" data-office="' + escapeAttr(office) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + methodIcon + ' ' + escapeHtml(method) + '</span> ' + readyBadge + ' ' + pairBadge
+      +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + methodClass + '" data-office="' + escapeAttr(office) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + methodIcon + ' ' + escapeHtml(badgeMethod) + '</span>' + careplanTag + ' ' + readyBadge + ' ' + pairBadge
       +     '<div class="office-meta">' + users.length + '名 ' + (contactInfo ? '／ ' + escapeHtml(contactInfo) : '') + '</div>'
       +   '</div>'
       +   '<div class="office-right"><span class="method-tag ' + methodClass + '" data-office="' + escapeAttr(office) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="送付方法を編集">✎ 編集</span><div>' + percent + '% (' + officeDone + '/' + officeTotal + ')</div></div>'
@@ -1495,7 +1521,7 @@ function bindEvents() {
       const { targets, contactMap } = buildTargets(ym);
       const officeUsers = targets.filter(t => t.office === office);
       const contact = contactMap[office] || {};
-      const officeMethod = contact.method || '';
+      const officeMethod = resolveSoufu(contact.method || '').docMethod;
 
       // 未完了（他項目が全部済でない）利用者をチェック
       const progress = loadProgress();
@@ -1884,6 +1910,7 @@ function openEditModal(contact) {
       '<option value="FAX"' + (contact.method === 'FAX' ? ' selected' : '') + '>FAX</option>' +
       '<option value="郵送"' + (contact.method === '郵送' ? ' selected' : '') + '>郵送</option>' +
       '<option value="持参"' + (contact.method === '持参' ? ' selected' : '') + '>持参</option>' +
+      '<option value="ケアプランデータ連携"' + (contact.method === 'ケアプランデータ連携' ? ' selected' : '') + '>ケアプランデータ連携(ケアプー)</option>' +
     '</select></label>' +
     '<label>メールアドレス<input type="email" id="em_email" value="' + escapeAttr(contact.email) + '" placeholder="例: info@example.jp"></label>' +
     '<label>FAX番号<input type="text" id="em_fax" value="' + escapeAttr(contact.fax) + '" placeholder="例: 0493-00-0000"></label>' +
@@ -1980,8 +2007,9 @@ document.getElementById('printWorklistBtn').onclick = function() {
   const digitalOffices = [];
   Object.keys(grouped).sort((a,b) => grouped[b].length - grouped[a].length).forEach(office => {
     const c = contactMap[office] || {};
-    const m = c.method || '';
-    const entry = { office, method: m || '未設定', contact: c, users: grouped[office] };
+    const soufuW = resolveSoufu(c.method || '');
+    const m = soufuW.docMethod;  // ケアプー→持参(印刷グループへ)
+    const entry = { office, method: soufuW.isCarePlan ? (m + '（📡ケアプー）') : (c.method || '未設定'), contact: c, users: grouped[office] };
     if (m === '持参' || m === '郵送') physicalOffices.push(entry);
     else digitalOffices.push(entry);
   });
@@ -2097,7 +2125,7 @@ document.getElementById('exportBtn').onclick = function() {
   const headers = ['事業所','利用者','区分','新計画書','進捗項目','状態'];
   const rows = [headers.join(',')];
   targets.forEach(t => {
-    const method = (contactMap[t.office] || {}).method || '';
+    const method = resolveSoufu((contactMap[t.office] || {}).method || '').docMethod;
     const items = getCheckItems(t.care, t.hasNewPlan, method, t.isMeasure, t.needsTsushoPlan, t.needsOralPlan, t.needsHyouka);
     items.forEach(it => {
       const userProg = progress[t.name] || {};
