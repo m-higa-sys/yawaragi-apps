@@ -3453,7 +3453,10 @@ async function gasPostAbsenceWithVerify(data, label) {
 
         // 3秒待ってからGASに記録されたか検証
         await new Promise(r => setTimeout(r, 3000));
-        const verified = await verifyAbsenceInGAS(data.name, data.dates ? data.dates[0] : data.startDate);
+        // 検証日付の導出: 旧 dates[]／長期 startDate に加え、新フロントの slots[{date,unit}] にも対応
+        // （slotsペイロードで dates/startDate が無く undefined になり検証空振りしていた不具合の修正）
+        const verifyDate = data.dates ? data.dates[0] : (data.slots && data.slots[0] ? data.slots[0].date : data.startDate);
+        const verified = await verifyAbsenceInGAS(data.name, verifyDate);
         if (verified) {
             showToast('✅ ' + (label || '送信') + ' 完了（通知も送信済み）', 3000);
             return true;
@@ -3482,8 +3485,12 @@ function verifyAbsenceInGAS(name, date) {
             delete window[cbName];
             if (script.parentNode) script.remove();
 
-            if (!data || !data.success || !data.absences) { resolve(false); return; }
-            const found = data.absences.some(a => a.name === name && a.date === date);
+            // 応答は {absences:{absences:[...]}} のネスト形。shared.js のグローバル
+            // _pickAbsenceList_ でネスト/フラット両対応に取り出す（旧 data.absences.some は
+            // オブジェクトに .some を呼び TypeError でハングしていた不具合の修正。shared.js は
+            // 2086 で先読み＝load順OK）。
+            if (!data || !data.success) { resolve(false); return; }
+            const found = _pickAbsenceList_(data).some(a => a.name === name && a.date === date);
             resolve(found);
         };
 

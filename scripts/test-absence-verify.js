@@ -17,6 +17,14 @@ const path = require('path');
 const SHARED = path.join(__dirname, '..', 'shared.js');
 const src = fs.readFileSync(SHARED, 'utf8');
 
+// genba.html の検証付きPOSTから「verifyDate 導出式」を実コード抽出（slots/dates/startDate対応の確認用）
+const GENBA = path.join(__dirname, '..', 'genba.html');
+const genbaSrc = fs.readFileSync(GENBA, 'utf8');
+const _vdMatch = genbaSrc.match(/const verifyDate = (data\.dates[^;]+);/);
+if (!_vdMatch) throw new Error('genba.html に verifyDate 導出式が見つかりません（修正未適用?）');
+// eslint-disable-next-line no-eval
+const deriveVerifyDate = eval('(function(data){ return ' + _vdMatch[1] + '; })');
+
 // --- shared.js から _absenceValueMatches_ 関数本体を波括弧対応で抽出 ---
 function extractFn(name) {
   const marker = 'function ' + name;
@@ -91,6 +99,25 @@ ok('フラット形でも配列を取得', JSON.stringify(_pickAbsenceList_({ ab
 ok('absences欠落で空配列', JSON.stringify(_pickAbsenceList_({ success: true })) === JSON.stringify([]));
 // 14. null → 空配列（防御）
 ok('null入力で空配列', JSON.stringify(_pickAbsenceList_(null)) === JSON.stringify([]));
+
+// --- verifyAbsenceInGAS 修正: live実測ネスト形に対する存在判定（_pickAbsenceList_().some）---
+// 旧コードは data.absences.some をオブジェクトに呼んで TypeError でハングしていた。
+const liveResp = {
+  success: true, date: '2026-06-25',
+  absences: { absences: [{ name: '吉田美ち子', date: '2026-06-25', unit: '午前' }], longTerm: [], resumedToday: [] }
+};
+// 15. ネスト応答で一致 → true（修正で検証が通る）
+ok('検証: live nest形で一致true', _pickAbsenceList_(liveResp).some(a => a.name === '吉田美ち子' && a.date === '2026-06-25') === true);
+// 16. 不一致 → false（誤検証しない）
+ok('検証: 不一致でfalse', _pickAbsenceList_(liveResp).some(a => a.name === '居ない人' && a.date === '2026-06-25') === false);
+
+// --- verifyDate 導出（genba.html 実コードを抽出して評価）---
+// 17. slots ペイロード → slots[0].date（今回の本丸）
+ok('導出: slots→slots[0].date', deriveVerifyDate({ name: 'X', slots: [{ date: '2026-07-01', unit: '午前' }] }) === '2026-07-01');
+// 18. 旧 dates[] → dates[0]（後方互換）
+ok('導出: dates→dates[0]', deriveVerifyDate({ name: 'X', dates: ['2026-07-02', '2026-07-03'] }) === '2026-07-02');
+// 19. 長期 startDate → startDate（後方互換）
+ok('導出: startDate→startDate', deriveVerifyDate({ name: 'X', startDate: '2026-07-04' }) === '2026-07-04');
 
 console.log('\n結果: ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail === 0 ? 0 : 1);
