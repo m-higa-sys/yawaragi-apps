@@ -457,3 +457,12 @@ function monitoringFinalEvalMonth(planStart, finalEvalMonth) {
     const d = new Date(y, mo - 1 + 11, 1);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
+
+// 当月提出セルの色: 非該当→''／送付済→'blue'／作成済未送付→'green'／該当未作成→'red'。
+// ①②③の当月セル色分けで共通利用（状態→色の一本化）。
+function submitCellColor(isApplicable, hasCreated, hasSent) {
+    if (!isApplicable) return '';
+    if (hasSent) return 'blue';
+    if (hasCreated) return 'green';
+    return 'red';
+}

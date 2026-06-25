@@ -41,11 +41,13 @@ function extractFn(name) {
 const sandbox = {};
 const code = extractFn('isPlanMonth') + '\n' + extractFn('isHyoukaMonth') + '\n' +
   extractFn('isOralEvalMonth') + '\n' + extractFn('monitoringFinalEvalMonth') + '\n' +
+  extractFn('submitCellColor') + '\n' +
   'sandbox.isPlanMonth = isPlanMonth; sandbox.isHyoukaMonth = isHyoukaMonth;' +
   'sandbox.isOralEvalMonth = isOralEvalMonth;' +
-  'sandbox.monitoringFinalEvalMonth = monitoringFinalEvalMonth;';
+  'sandbox.monitoringFinalEvalMonth = monitoringFinalEvalMonth;' +
+  'sandbox.submitCellColor = submitCellColor;';
 (function () { eval(code); })();
-const { isPlanMonth, isHyoukaMonth, isOralEvalMonth, monitoringFinalEvalMonth } = sandbox;
+const { isPlanMonth, isHyoukaMonth, isOralEvalMonth, monitoringFinalEvalMonth, submitCellColor } = sandbox;
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {
@@ -85,6 +87,14 @@ eq(monitoringFinalEvalMonth('2026-01', ''), '2026-12', '空→+11');
 eq(monitoringFinalEvalMonth('2026-04', ''), '2027-03', '空→+11(跨年)');
 eq(monitoringFinalEvalMonth('2025-12', '2026-03'), '2026-03', 'override優先');
 eq(monitoringFinalEvalMonth('', ''), '', 'planStart空→空文字');
+
+console.log('[submitCellColor] 該当→赤/緑/青、非該当→空');
+eq(submitCellColor(false, false, false), '', '非該当=空');
+eq(submitCellColor(false, true, true), '', '非該当は作成/送付に関わらず空');
+eq(submitCellColor(true, false, false), 'red', '該当・未作成=red');
+eq(submitCellColor(true, true, false), 'green', '該当・作成済・未送付=green');
+eq(submitCellColor(true, true, true), 'blue', '該当・送付済=blue');
+eq(submitCellColor(true, false, true), 'blue', '送付済は作成有無に関わらずblue');
 
 console.log('\n' + pass + ' PASS / ' + fail + ' FAIL');
 if (fail > 0) process.exit(1);
