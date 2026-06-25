@@ -421,6 +421,11 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .mu-cal-cell.today { box-shadow: inset 0 0 0 2px #3182ce; }
 .mu-legend { padding: 10px 18px; font-size: 0.78rem; color: #718096; border-top: 1px solid #f1f5f9; text-align: center; }
 
+/* 当月の提出セル 3色（赤=未作成/緑=作成済未送付/青=送付済）。当月セルのみに付与 */
+.cell-todo  { background:#ffebee !important; box-shadow: inset 0 0 0 2px #e53935 !important; }
+.cell-ready { background:#e8f5e9 !important; box-shadow: inset 0 0 0 2px #43a047 !important; }
+.cell-done  { background:#e3f2fd !important; box-shadow: inset 0 0 0 2px #1e88e5 !important; }
+
 @media print {
     body { background: #fff; }
     header { background: #fff; border-bottom: 1px solid #000; }
@@ -653,6 +658,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 
 <div id="toast" class="toast"></div>
 
+<script src="shared.js?v=2026-06-26a"></script>
 <script>
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -827,42 +833,8 @@ async function retryPending() {
 }
 
 // ============ 3ヶ月サイクル判定 ============
-function isPlanMonth(planStart, planMonths, year, month) {
-    if (!planStart) return false;
-    const m = planStart.match(/^(\d{4})-(\d{2})$/);
-    if (!m) return false;
-    const py = parseInt(m[1], 10);
-    const pm = parseInt(m[2], 10);
-    const diff = (year - py) * 12 + (month - pm);
-    const pmNum = parseInt(planMonths, 10);
-    const L = (pmNum >= 1 && pmNum <= 12) ? pmNum : 3;
-    if (L === 3) return diff >= 0 && diff % 3 === 0;   // 既定3ヶ月: 現行と完全同一（無回帰最優先）
-    return diff === 0;                                  // 変則(1/2ヶ月等): 開始月のみ計画月（単発・自動リピートなし）
-}
-
-// 評価月判定: 計画書スタート月の翌々月（=次計画前月）が評価月
-// 例: planStart=2026-04 → 評価月: 2026-06 / 2026-09 / 2026-12 / 2027-03
-// 加えて: 計画書開始月の前月（diff===-1）も評価月扱い。
-//   計画書更新時にplanStartを上書きする運用で、前計画の評価を直前月に入力するため
-//   例: planStart=2026-06 → 2026-05 も評価月扱い（6月計画書作成前の前計画評価）
-function isHyoukaMonth(planStart, planMonths, year, month) {
-    if (!planStart) return false;
-    const m = planStart.match(/^(\d{4})-(\d{2})$/);
-    if (!m) return false;
-    const py = parseInt(m[1], 10);
-    const pm = parseInt(m[2], 10);
-    const diff = (year - py) * 12 + (month - pm);
-    const pmNum = parseInt(planMonths, 10);
-    const L = (pmNum >= 1 && pmNum <= 12) ? pmNum : 3;
-    if (L === 3) {                                      // 既定3ヶ月: 現行と完全同一（無回帰最優先）
-        if (diff >= 2 && diff % 3 === 2) return true;
-        if (diff === -1) return true;
-        return false;
-    }
-    if (diff === (L - 1)) return true;                  // 変則(1/2ヶ月等): 計画最終月（開始月含むLヶ月目）が評価月
-    if (diff === -1) return true;                        // 開始月の前月も評価月扱い（前計画評価・現行踏襲）
-    return false;
-}
+// isPlanMonth / isHyoukaMonth は shared.js §I（submitCellColor 同梱）へ集約。
+// 引数・ロジックは従来と同一（無回帰）。本体は §I 参照のみ。
 
 // ============ ふりがなグループ ============
 function getGroup(kana) {
@@ -1125,6 +1097,11 @@ function renderTable() {
                     else if (hyoukaBlocked) cls += ' blocked-mitei';
                     else if (isPast) cls += ' highlight-undone';
                     if (isCurrent) cls += ' current';
+                    // 当月の評価セル: 提出状態を3色化（§I submitCellColor）。当月のみ・他月不変。
+                    if (isCurrent && isHyouka) {
+                        const _cc = submitCellColor(true, !!rec.tasseido_date, !!(rec.hyouka_pdf_date || rec.hyouka_print_date));
+                        if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
+                    }
                     if (isPending(u.userId, cellYear, mo.m, 'hyouka_pdf_date')
                         || isPending(u.userId, cellYear, mo.m, 'hyouka_print_date')
                         || isPending(u.userId, cellYear, mo.m, 'tasseido_date')) cls += ' pending';
@@ -1192,6 +1169,11 @@ function renderTable() {
                 else if (keikaku) cls += ' checked';
                 else if (isPast) cls += ' highlight-undone';
                 if (isCurrent) cls += ' current';
+                // 当月の計画セル: 提出状態を3色化（§I submitCellColor）。当月のみ・他月不変。
+                if (isCurrent && isPlan) {
+                    const _cc = submitCellColor(true, !!rec.keikaku_date, !!rec.keikaku_sent_date);
+                    if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
+                }
                 if (isPending(u.userId, cellYear, mo.m, 'keikaku_date')
                     || isPending(u.userId, cellYear, mo.m, 'blocked_reason')
                     || isPending(u.userId, cellYear, mo.m, 'keikaku_sent_date')
