@@ -485,6 +485,14 @@
         .abs-otherday[open] .abs-otherday-summary { background: #e6fffa; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
         .abs-otherday-body { padding: 10px 2px 2px; }
         .abs-otherday-hint { font-size: 0.8rem; color: #718096; margin: 2px 0 10px; line-height: 1.5; }
+        /* 2026-06-26 range健全化: 登録される日プレビュー＋長期休み案内 */
+        #abs-range-preview { margin-top: 8px; }
+        .abs-range-list { font-size: 0.85rem; color: #2d3748; background: #f0fff4; border: 1px solid #c6f6d5; border-radius: 8px; padding: 8px 10px; line-height: 1.6; }
+        .abs-range-list b { color: #276749; }
+        .abs-range-empty { font-size: 0.85rem; color: #c05621; background: #fffaf0; border: 1px solid #feebc8; border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
+        .abs-range-longterm-tip { margin-top: 8px; font-size: 0.83rem; color: #2c5282; background: #ebf8ff; border: 1px solid #bee3f8; border-radius: 8px; padding: 8px 10px; line-height: 1.6; }
+        .abs-range-lt-btn { display: inline-block; margin-top: 6px; padding: 7px 14px; border: 2px solid #3182ce; border-radius: 8px; background: #fff; color: #2b6cb0; font-weight: 700; font-size: 0.83rem; cursor: pointer; font-family: inherit; }
+        .abs-range-lt-btn:hover { background: #ebf8ff; }
         .abs-escape-note { font-size: 0.8rem; color: #718096; margin: 10px 0 0; line-height: 1.5; }
         .abs-sublabel { display: block; font-size: 0.82rem; font-weight: 600; color: #4a5568; margin: 8px 0 6px; }
         .abs-unit-btns { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1548,6 +1556,8 @@
                         <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
                     </div>
                     <div class="abs-date-inputs" id="abs-escape-inputs"></div>
+                    <!-- range: 登録される日プレビュー＋長期休み案内（absRenderRangePreview が描画） -->
+                    <div id="abs-range-preview"></div>
                 </div>
             </details>
             <!-- ③ 長期休み（残置・別動線） -->
@@ -4472,6 +4482,7 @@ function absClearName() {
 // ----- 日付選択 -----
 function absSelectDateType(type) {
     absState.dateType = type;
+    absState._rangeSlots = [];   // 型切替で前回rangeの絞り込み結果を持ち越さない
     document.querySelectorAll('.abs-date-type-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.type === type);
     });
@@ -4606,15 +4617,68 @@ function absToggleAllWeek() {
 function absOnDateRange() {
     absState.dateFrom = document.getElementById('abs-date-from').value;
     absState.dateTo = document.getElementById('abs-date-to').value;
-    if (absState.dateFrom && absState.dateTo) {
-        if (absState.dateTo < absState.dateFrom) {
-            document.getElementById('abs-date-warning').style.display = 'block';
-            document.getElementById('abs-date-warning').textContent = '終了日は開始日より後にしてください';
-            return;
-        }
-        document.getElementById('abs-date-warning').style.display = 'none';
-        absShowReasonStep();
+    const warning = document.getElementById('abs-date-warning');
+    const preview = document.getElementById('abs-range-preview');
+    if (!(absState.dateFrom && absState.dateTo)) { if (preview) preview.innerHTML = ''; return; }
+    if (absState.dateTo < absState.dateFrom) {
+        warning.style.display = 'block';
+        warning.textContent = '終了日は開始日より後にしてください';
+        if (preview) preview.innerHTML = '';
+        absState._rangeSlots = [];
+        return;
     }
+    warning.style.display = 'none';
+    // 利用パターンで絞り込み（土日・非利用曜日は除外）。プレビューと送信で同じ集合を使う。
+    const pattern = (absState.selectedUser && absState.selectedUser.pattern) || [];
+    const slots = absRangePatternSlots(pattern, absState.dateFrom, absState.dateTo);
+    absState._rangeSlots = slots;
+    absRenderRangePreview(slots);
+    if (slots.length === 0) {
+        // 0日: 後続ステップへ進めない（登録ボタンに到達させない）。submit側でも二重ガード。
+        return;
+    }
+    absShowReasonStep();
+}
+
+// rangeの登録対象(date,unit)プレビュー＋長期休み案内バナーを描画。
+function absRenderRangePreview(slots) {
+    const preview = document.getElementById('abs-range-preview');
+    if (!preview) return;
+    const DOW = ['日', '月', '火', '水', '木', '金', '土'];
+    const fmt = function (s) {
+        const p = s.date.split('-');
+        const d = new Date(+p[0], +p[1] - 1, +p[2]);
+        return (d.getMonth() + 1) + '/' + d.getDate() + '(' + DOW[d.getDay()] + ')' + s.unit;
+    };
+    let html = '';
+    if (!slots || slots.length === 0) {
+        html += '<div class="abs-range-empty">この期間にこの利用者の利用日がありません（土日・利用日以外は登録されません）。<br>単日で休む場合は「日付を指定（単日）」をお使いください。</div>';
+    } else {
+        const label = slots.map(fmt).join('、');
+        html += '<div class="abs-range-list"><b>登録される日（計' + slots.length + '日）:</b><br>' + label + '</div>';
+    }
+    // 長期休み案内（約1か月=28日以上）。ブロックせず案内のみ。
+    const span = absRangeSpanDays(absState.dateFrom, absState.dateTo);
+    if (span >= 28) {
+        html += '<div class="abs-range-longterm-tip">' +
+            '🗓️ 1か月以上のお休みは「長期休み」が便利です（ケアマネ自動連絡つき・期間入力不要）。' +
+            '<button type="button" class="abs-range-lt-btn" onclick="absRangeToLongTerm()">長期休みにする</button>' +
+            '</div>';
+    }
+    preview.innerHTML = html;
+}
+
+// rangeの開始日を引き継いで長期休み入力へ切り替える（案内バナーのショートカット）。
+function absRangeToLongTerm() {
+    const from = absState.dateFrom;
+    absSelectDateType('longterm');
+    if (from) {
+        absState.dateFrom = from;
+        const el = document.getElementById('abs-lt-start');
+        if (el) el.value = from;
+    }
+    const preview = document.getElementById('abs-range-preview');
+    if (preview) preview.innerHTML = '';
 }
 
 function absCheckNotScheduledDay(dateStr) {
@@ -4797,8 +4861,9 @@ function absSubmit() {
         alert('すべての項目を入力してください');
         return;
     }
-    // 逃げ道(日付指定/期間指定)は手動区分を必須に（自動推定はしない）
-    if ((absState.dateType === 'specific' || absState.dateType === 'range') && !absState.manualUnit) {
+    // 単日(specific)は手動区分を必須に（自動推定はしない）。
+    // range は利用パターン(利用曜日・コマ)で生成するため手動区分は不要。
+    if (absState.dateType === 'specific' && !absState.manualUnit) {
         alert('区分（午前 / 午後 / 終日）を選んでください');
         return;
     }
@@ -4814,11 +4879,18 @@ function absSubmit() {
         const seenFD = {};
         absState.flatSlots.forEach(function (s) { if (!seenFD[s.date]) { seenFD[s.date] = true; dates.push(s.date); } });
     } else if (absState.dateType === 'range' && absState.dateFrom && absState.dateTo) {
-        const start = new Date(absState.dateFrom);
-        const end = new Date(absState.dateTo);
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            dates.push(toLocalDateStr(d));
+        // 利用パターン(利用曜日・コマ)で絞り込む。土日・非利用曜日は展開しない（全日展開の事故防止）。
+        const pat = (absState.selectedUser && absState.selectedUser.pattern) || [];
+        const rangeSlots = (absState._rangeSlots && absState._rangeSlots.length)
+            ? absState._rangeSlots
+            : absRangePatternSlots(pat, absState.dateFrom, absState.dateTo);
+        absState._rangeSlots = rangeSlots;
+        if (rangeSlots.length === 0) {
+            alert('この期間にこの利用者の利用日がありません。\n（土日・利用日以外は登録できません。単日は「日付を指定（単日）」をお使いください）');
+            return;
         }
+        const seenR = {};
+        rangeSlots.forEach(function (s) { if (!seenR[s.date]) { seenR[s.date] = true; dates.push(s.date); } });
     } else {
         dates.push(absState.dateFrom);
     }
@@ -4893,7 +4965,12 @@ function absSubmit() {
     let slots;
     if (absState.dateType === 'flatday') {
         slots = gnbNormalizeSlots(absState.flatSlots || []);
-    } else if (absState.dateType === 'specific' || absState.dateType === 'range') {
+    } else if (absState.dateType === 'range') {
+        // range はパターン絞り込み済みの (date,unit) をそのまま使う（手動区分ではなく利用コマ）。
+        slots = (absState._rangeSlots && absState._rangeSlots.length)
+            ? absState._rangeSlots
+            : absRangePatternSlots((absState.selectedUser && absState.selectedUser.pattern) || [], absState.dateFrom, absState.dateTo);
+    } else if (absState.dateType === 'specific') {
         slots = absBuildSlotsFromManual(dates, absState.manualUnit);
     } else {
         slots = absBuildSlotsFromDates(dates);
@@ -5017,6 +5094,37 @@ function absBuildSlotsFromManual(dates, unit) {
         else { out.push({ date: dStr, unit: unit === '午前' ? '午前' : '午後' }); }
     });
     return gnbNormalizeSlots(out);
+}
+
+// 2026-06-26 range健全化: 期間[from,to] ∩ 利用パターン(利用曜日×コマ) の (date,unit) 集合。
+// 土日・非利用曜日は生成しない。unit は曜日ごとのパターン(am/pm)に従う（区分外は生成しない）。
+// 純関数（gnbNormalizeSlots を呼ぶのみ・absState非依存）。node テスト対象。
+function absRangePatternSlots(pattern, fromStr, toStr) {
+    if (!fromStr || !toStr) return [];
+    const parse = function (s) { const p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+    const ymd = function (d) { const y = d.getFullYear(), m = ('0' + (d.getMonth() + 1)).slice(-2), da = ('0' + d.getDate()).slice(-2); return y + '-' + m + '-' + da; };
+    const start = parse(fromStr), end = parse(toStr);
+    if (end < start) return [];
+    const pat = pattern || [];
+    const out = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const wd = d.getDay();
+        ['am', 'pm'].forEach(function (u) {
+            if (pat.some(function (p) { return p.day === wd && p.unit === u; })) {
+                out.push({ date: ymd(d), unit: (u === 'pm' ? '午後' : '午前') });
+            }
+        });
+    }
+    return gnbNormalizeSlots(out);
+}
+
+// range期間の暦日数(両端含む)。28日以上で長期休み案内を出す閾値判定に使う。純関数。
+function absRangeSpanDays(fromStr, toStr) {
+    if (!fromStr || !toStr) return 0;
+    const parse = function (s) { const p = String(s).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+    const start = parse(fromStr), end = parse(toStr);
+    if (end < start) return 0;
+    return Math.round((end - start) / 86400000) + 1;
 }
 
 // 各日付について利用者パターンのその曜日のunitで (date,unit) を作る。
