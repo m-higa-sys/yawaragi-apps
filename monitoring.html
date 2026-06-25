@@ -441,6 +441,15 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
     border-left: 4px solid #c62828;
     border-radius: 8px;
 }
+
+/* 当月の提出セル 3色（赤=未作成/緑=作成済未送付/青=送付済）。当月セル/現行カードのみ */
+.cell-todo  { background:#ffebee !important; box-shadow: inset 0 0 0 2px #e53935 !important; }
+.cell-ready { background:#e8f5e9 !important; box-shadow: inset 0 0 0 2px #43a047 !important; }
+.cell-done  { background:#e3f2fd !important; box-shadow: inset 0 0 0 2px #1e88e5 !important; }
+/* 計画書カードへの3色（左ボーダーで現状の作成/送付状態を示す。背景は淡色） */
+.plan-card.cell-todo  { border-left-color:#e53935 !important; background:#fff5f5 !important; }
+.plan-card.cell-ready { border-left-color:#43a047 !important; background:#f4fbf5 !important; }
+.plan-card.cell-done  { border-left-color:#1e88e5 !important; background:#f3f9fe !important; }
 </style>
 </head>
 <body>
@@ -628,6 +637,7 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 
 <div id="toast" class="toast"></div>
 
+<script src="shared.js?v=2026-06-26a"></script>
 <script>
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -806,17 +816,9 @@ function getGroup(kana) {
     return '他';
 }
 
-// 最終評価月の判定: override があればそれを優先、無ければ計画開始月+11ヶ月（=計画期間1年の最終月）
-function getFinalEvalMonth(planStart, override) {
-    if (override) return override;
-    if (!planStart) return null;
-    const m = String(planStart).match(/^(\d{4})-(\d{2})$/);
-    if (!m) return null;
-    const y = parseInt(m[1], 10);
-    const mo = parseInt(m[2], 10);
-    const d = new Date(y, mo - 1 + 11, 1);
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-}
+// 最終評価月の判定は shared.js §I monitoringFinalEvalMonth(planStart, finalEvalMonth) に一本化。
+// （override優先・算出不能時は '' を返す。旧ローカル版は null を返していたが、
+//  両呼び出しとも ymKey === ... の一致判定のみで '' でも非一致＝挙動不変。）
 
 function sortUsers() {
     monitoringState.users.sort((a, b) =>
@@ -1100,7 +1102,7 @@ function renderTable() {
             // 運用開始月より前は対象外
             const isBeforeStart = (cellYear < START_YEAR) || (cellYear === START_YEAR && mo.m < START_MONTH);
             const ymKey = cellYear + '-' + String(mo.m).padStart(2, '0');
-            const isFinalEval = (ymKey === getFinalEvalMonth(u.planStart, u.finalEvalMonth));
+            const isFinalEval = (ymKey === monitoringFinalEvalMonth(u.planStart, u.finalEvalMonth));
 
             let cls = 'check-cell send-cell month-border';
             if (isBeforeStart) {
@@ -1126,7 +1128,13 @@ function renderTable() {
                 cls += ' final-eval';
                 text = (!pdfSend && !printSend && !isPast) ? '✍' : ('✍' + text);
             }
-            if (isCurrent) cls += ' current';
+            if (isCurrent) {
+                cls += ' current';
+                // 当月セルの統一3色（モニは作成ステップ無し→赤=未送付/青=送付済）。✍等の既存表示は維持。
+                const _cc = submitCellColor(true, false, !!(pdfSend || printSend));
+                if (_cc === 'red') cls += ' cell-todo';
+                else if (_cc === 'blue') cls += ' cell-done';
+            }
             if (isPending(u.userId, cellYear, mo.m, 'pdfSendDate') || isPending(u.userId, cellYear, mo.m, 'printSendDate')) cls += ' pending';
 
             html += '<td class="' + cls + '"'
@@ -1235,7 +1243,7 @@ function openSendDialog(userId, name, year, month) {
     document.getElementById('sendPdfInput').value = rec.pdfSendDate || '';
     document.getElementById('sendPrintInput').value = rec.printSendDate || '';
     const ymKey = year + '-' + String(month).padStart(2, '0');
-    const isFinalEval = !!(user && ymKey === getFinalEvalMonth(user.planStart, user.finalEvalMonth));
+    const isFinalEval = !!(user && ymKey === monitoringFinalEvalMonth(user.planStart, user.finalEvalMonth));
     document.getElementById('sendDialogFinalEvalBadge').style.display = isFinalEval ? 'block' : 'none';
     document.getElementById('sendDialog').classList.add('active');
 }
@@ -1496,7 +1504,10 @@ function renderTsushoPlans() {
         const rec = (byUser[u.userId] && byUser[u.userId][0]) || null;
         const lastDate = rec ? rec.plan_date : '';
         const status = computeTsushoStatus(lastDate, u.cycleMonths || 12);
-        html += '<div class="plan-card status-' + status + '" data-user="' + escapeHtml(u.userId) + '">';
+        // 現行カードの統一3色（赤=未作成/緑=作成済未送付/青=送付済）。既存 status-* と入力UIは維持。
+        const _cc = submitCellColor(true, !!lastDate, !!(rec && rec.sent_to_cm));
+        const colorCls = _cc === 'red' ? ' cell-todo' : _cc === 'green' ? ' cell-ready' : _cc === 'blue' ? ' cell-done' : '';
+        html += '<div class="plan-card status-' + status + colorCls + '" data-user="' + escapeHtml(u.userId) + '">';
         html += '<div class="plan-card-head">';
         html += '<div>';
         html += '<div class="plan-user-name">' + escapeHtml(u.name) + '</div>';
