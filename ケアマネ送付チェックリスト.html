@@ -395,6 +395,12 @@ main { padding: 16px 24px 48px; }
 
 <div class="controls">
   <label>対象月: <select id="monthSel"></select></label>
+  <label style="margin-left:12px;">表示:
+    <select id="viewModeSel">
+      <option value="office" selected>事業所別</option>
+      <option value="user">利用者別</option>
+    </select>
+  </label>
   <label style="background:#c6f6d5; padding:4px 10px; border-radius:6px; cursor:pointer; border:2px solid #38a169;">
     <input type="checkbox" id="filterFinalizableOnly" style="margin-right:6px;">
     <span style="color:#22543d; font-weight:700;">✅実績OK者だけ表示</span>
@@ -412,6 +418,9 @@ main { padding: 16px 24px 48px; }
   <button id="printWorklistBtn">🖨️ 作業一覧を印刷</button>
   <button id="exportBtn">📥 CSV出力</button>
   <button id="resetBtn" class="reset-btn">⚠️ リセット</button>
+  <div class="approx-note" style="flex-basis:100%;font-size:12px;color:#a05a00;margin-top:4px;">
+    ※ 通所介護計画の周期は<strong>1年固定の近似</strong>表示です（ケアプラン期限連動はrebuild後に正確化）。
+  </div>
 </div>
 
 <main id="main">
@@ -570,6 +579,8 @@ function initMonthSelector() {
     try { await fetchAll(); } catch (e) { console.error('fetchAll on month change failed', e); }
     render();
   });
+  // 表示切替（事業所別⇄利用者別）は再取得せず render() のみ＝並べ替えのみ
+  document.getElementById('viewModeSel').addEventListener('change', render);
 }
 
 // ===== 書類スキップのグループ定義（モーダル編集用） =====
@@ -719,7 +730,7 @@ function resolveSoufu(method){
 // 送付方法別の工程:
 //   メール/FAX: PDF化が必要（スキャン工程あり）
 //   持参/郵送: 紙のまま → スキャン不要・印刷のみ
-function getCheckItems(care, hasNewPlan, method, isMeasure, needsTsushoPlan, needsOralPlan, needsHyouka) {
+function getCheckItems(care, hasNewPlan, method, isMeasure, needsTsushoPlan, needsOralPlan, needsHyouka, monitoringSignRequired) {
   const m = method || '';
   const isPhysical = m === '持参' || m === '郵送';  // 紙のまま渡す
   const isDigital = m === 'メール' || m === 'FAX';  // PDF化必要
@@ -733,12 +744,13 @@ function getCheckItems(care, hasNewPlan, method, isMeasure, needsTsushoPlan, nee
     items.push({ key: 'jisseki', label: '🔴実績PDF' });
   }
 
-  // 通所モニタリング（要支援のみ）
+  // 通所モニタリング（要支援のみ）。最終評価月はサイン要(✍)をラベル先頭に付す。
   if (care === 'shien') {
+    const monSign = monitoringSignRequired === true ? '✍ ' : '';
     if (isPhysical) {
-      items.push({ key: 'monitoring_print', label: '通所モニ 印刷' });
+      items.push({ key: 'monitoring_print', label: monSign + '通所モニ 印刷' });
     } else {
-      items.push({ key: 'monitoring', label: '通所モニPDF' });
+      items.push({ key: 'monitoring', label: monSign + '通所モニPDF' });
     }
   }
 
@@ -1032,28 +1044,37 @@ function render() {
     new Set(targets.map(t => t.office)).size + '事業所' +
     (holdCount > 0 ? ' <span class="hold-summary" id="holdSummary" title="タップして保留中の利用者を確認">⏸️ 保留中: ' + holdCount + '名</span>' : '');
 
-  // 事業所別グループ化
+  // ビューモード（事業所別 / 利用者別）。同じ targets を並べ替えるだけ・再取得しない。
+  const viewMode = (document.getElementById('viewModeSel')?.value) || 'office';
+
+  // グループ化: office=事業所キー / user=利用者名キー（1人1グループ・ふりがな順）
   const grouped = {};
-  targets.forEach(t => {
-    if (!grouped[t.office]) grouped[t.office] = [];
-    grouped[t.office].push(t);
-  });
-
-  // 人数多い順にソート
-  const baseSorted = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length);
-
-  // 同一敷地ペアを隣接配置（2026/4/29追加）
-  // 元の人数順を保ちつつ、ペアの片方が出てきた直後にもう片方を挿入する。
-  const sortedOffices = [];
-  const placed = new Set();
-  for (const office of baseSorted) {
-    if (placed.has(office)) continue;
-    sortedOffices.push(office);
-    placed.add(office);
-    const partner = getPairPartner(office);
-    if (partner && grouped[partner] && !placed.has(partner)) {
-      sortedOffices.push(partner);
-      placed.add(partner);
+  let sortedOffices;
+  if (viewMode === 'user') {
+    targets.forEach(t => { grouped[t.name] = [t]; });
+    const furiOf = (name) => {
+      const u = allData.users.find(uu => uu.name === name);
+      return (u && u.furigana) ? u.furigana : name;
+    };
+    sortedOffices = Object.keys(grouped).sort((a, b) => furiOf(a).localeCompare(furiOf(b), 'ja'));
+  } else {
+    targets.forEach(t => {
+      if (!grouped[t.office]) grouped[t.office] = [];
+      grouped[t.office].push(t);
+    });
+    // 人数多い順 ＋ 同一敷地ペア隣接（従来挙動）
+    const baseSorted = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length);
+    sortedOffices = [];
+    const placed = new Set();
+    for (const office of baseSorted) {
+      if (placed.has(office)) continue;
+      sortedOffices.push(office);
+      placed.add(office);
+      const partner = getPairPartner(office);
+      if (partner && grouped[partner] && !placed.has(partner)) {
+        sortedOffices.push(partner);
+        placed.add(partner);
+      }
     }
   }
 
@@ -1164,7 +1185,7 @@ function render() {
       u.effectiveNewPlan = effectiveNewPlan;
       u.effectiveMeasure = effectiveMeasure;
       u.override = override;
-      let items = getCheckItems(u.care, effectiveNewPlan, officeMethod, effectiveMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka);
+      let items = getCheckItems(u.care, effectiveNewPlan, officeMethod, effectiveMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka, u.monitoringSignRequired);
       if (override.skip) {
         items = items.filter(it => {
           for (const gKey in SKIP_GROUPS) {
@@ -1551,7 +1572,7 @@ function bindEvents() {
       if (!progress[ym]) progress[ym] = {};
       const incomplete = [];
       officeUsers.forEach(u => {
-        const items = getCheckItems(u.care, u.hasNewPlan, officeMethod, u.isMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka);
+        const items = getCheckItems(u.care, u.hasNewPlan, officeMethod, u.isMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka, u.monitoringSignRequired);
         const prog = progress[ym][u.name] || {};
         // hyouka はGAS側状態を見る・sentは除外
         const otherDone = items.filter(x => x.key !== 'sent').every(x => {
@@ -1570,7 +1591,7 @@ function bindEvents() {
       // 他項目完了済の人だけ sent=true
       let applied = 0;
       officeUsers.forEach(u => {
-        const items = getCheckItems(u.care, u.hasNewPlan, officeMethod, u.isMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka);
+        const items = getCheckItems(u.care, u.hasNewPlan, officeMethod, u.isMeasure, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka, u.monitoringSignRequired);
         const prog = progress[ym][u.name] || (progress[ym][u.name] = {});
         const otherDone = items.filter(x => x.key !== 'sent').every(x => {
           if (x.key === 'hyouka') return !!(u.hyoukaPdfSent || u.hyoukaPrintSent);
@@ -2149,7 +2170,7 @@ document.getElementById('exportBtn').onclick = function() {
   const rows = [headers.join(',')];
   targets.forEach(t => {
     const method = resolveSoufu((contactMap[t.office] || {}).method || '').docMethod;
-    const items = getCheckItems(t.care, t.hasNewPlan, method, t.isMeasure, t.needsTsushoPlan, t.needsOralPlan, t.needsHyouka);
+    const items = getCheckItems(t.care, t.hasNewPlan, method, t.isMeasure, t.needsTsushoPlan, t.needsOralPlan, t.needsHyouka, t.monitoringSignRequired);
     items.forEach(it => {
       const userProg = progress[t.name] || {};
       let state;
