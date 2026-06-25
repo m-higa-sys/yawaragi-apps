@@ -1160,7 +1160,13 @@ function render() {
     if (searchQuery) {
       users = users.filter(matchesSearch);
     }
-    const contact = contactMap[office] || {};
+    // user モードは1グループ=1名。office依存の参照は、その人の実 office を使う。
+    // office モードでは effectiveOffice === office となり従来挙動と完全に一致する。
+    const groupMembers = grouped[office];
+    const effectiveOffice = (viewMode === 'user')
+      ? ((groupMembers && groupMembers[0] && groupMembers[0].office) || office)
+      : office;
+    const contact = contactMap[effectiveOffice] || {};
     const method = contact.method || (contact.email ? 'メール候補' : contact.fax ? 'FAX候補' : '未設定');
     const isCarePlan = resolveSoufu(method).isCarePlan;
     const badgeMethod = isCarePlan ? '持参' : method;  // ケアプー事業所はバッジ/工程を書類fallback=持参で判定
@@ -1369,7 +1375,10 @@ function render() {
     else if (badgeMethod.includes('FAX')) bulkBtnLabel = '📠 全員まとめてFAX送信済';
     else if (badgeMethod.includes('持参')) bulkBtnLabel = '🚶 全員まとめて持参済';
     else if (badgeMethod.includes('郵送')) bulkBtnLabel = '📮 全員まとめて郵送済';
-    const bulkBtnHtml = '<button class="bulk-sent-btn" data-office="' + escapeAttr(office) + '" data-method="' + escapeAttr(methodAttr) + '">' + bulkBtnLabel + '</button>';
+    // 一括「全員送付済」は事業所集約の操作。user モード（1グループ=1名）では概念が成り立たないため出さない。
+    const bulkBtnHtml = (viewMode === 'user')
+      ? ''
+      : '<button class="bulk-sent-btn" data-office="' + escapeAttr(office) + '" data-method="' + escapeAttr(methodAttr) + '">' + bulkBtnLabel + '</button>';
 
     // 🔴 事業所別「実績OK状況」バッジ（2026/4/27 追加）
     const officeAllUsers = grouped[office]; // フィルター前の全員
@@ -1387,10 +1396,13 @@ function render() {
     }
 
     // 同一敷地ペアバッジ（2026/4/29追加）：両方とも当月対象者がいるときだけ表示
+    // 事業所集約の概念なので user モードでは抑止（グループキーが利用者名でペア判定が成立しない）
     let pairBadge = '';
-    const pairPartner = getPairPartner(office);
-    if (pairPartner && grouped[pairPartner] && grouped[pairPartner].length > 0) {
-      pairBadge = '<span class="badge same-location-badge" title="同じ敷地内にあります。持参のときは一緒に届けられます。">🏢 同一敷地：' + escapeHtml(pairPartner) + 'と一緒に持参可</span>';
+    if (viewMode !== 'user') {
+      const pairPartner = getPairPartner(office);
+      if (pairPartner && grouped[pairPartner] && grouped[pairPartner].length > 0) {
+        pairBadge = '<span class="badge same-location-badge" title="同じ敷地内にあります。持参のときは一緒に届けられます。">🏢 同一敷地：' + escapeHtml(pairPartner) + 'と一緒に持参可</span>';
+      }
     }
 
     // 📡 ケアプー併記タグ（バッジは書類fallback方法・タグでデータ連携対応を明示）
