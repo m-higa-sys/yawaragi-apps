@@ -1098,7 +1098,8 @@ function renderTable() {
                     else if (isPast) cls += ' highlight-undone';
                     if (isCurrent) cls += ' current';
                     // 当月の評価セル: 提出状態を3色化（§I submitCellColor）。当月のみ・他月不変。
-                    if (isCurrent && isHyouka) {
+                    // 保留(hyoukaBlocked=未提出かつ未達成かつ保留理由あり)は保留色維持のため3色対象外。
+                    if (isCurrent && isHyouka && !hyoukaBlocked) {
                         const _cc = submitCellColor(true, !!rec.tasseido_date, !!(rec.hyouka_pdf_date || rec.hyouka_print_date));
                         if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
                     }
@@ -1170,7 +1171,8 @@ function renderTable() {
                 else if (isPast) cls += ' highlight-undone';
                 if (isCurrent) cls += ' current';
                 // 当月の計画セル: 提出状態を3色化（§I submitCellColor）。当月のみ・他月不変。
-                if (isCurrent && isPlan) {
+                // 保留(isBlocked=保険未登録/利用継続未確定)は保留色維持のため3色対象外。
+                if (isCurrent && isPlan && !isBlocked) {
                     const _cc = submitCellColor(true, !!rec.keikaku_date, !!rec.keikaku_sent_date);
                     if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
                 }
