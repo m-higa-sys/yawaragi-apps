@@ -818,7 +818,7 @@ async function fetchAll() {
   const [_fyY, _fyM] = ymForPlans.split('-').map(Number);
   const fiscalYear = (_fyM >= 4) ? _fyY : _fyY - 1;
 
-  const [usersRes, measureRes, contactsRes, kubunRes, kubunDelayedRes, tsushoPlansRes, oralPlansRes, keikakushoRes] = await Promise.all([
+  const [usersRes, measureRes, contactsRes, kubunRes, kubunDelayedRes, tsushoPlansRes, oralPlansRes, keikakushoRes, monitoringRes] = await Promise.all([
     jsonp(USERS_API),
     jsonp(MEASURE_API),
     jsonp(YAWARAGI_BOARD_API + '?action=contacts'),
@@ -833,6 +833,10 @@ async function fetchAll() {
     // 個訓 目標達成評価: 年度全体の記録を取得
     jsonp(YAWARAGI_BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear)
       .catch(() => ({ ok: false, records: [] }))
+    ,
+    // 通所モニタリング: 年度の利用者(planStart,finalEvalMonth,caremaneOffice)と記録
+    jsonp(YAWARAGI_BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear)
+      .catch(() => ({ ok: false, users: [], records: [] }))
   ]);
   allData.users = usersRes.users || [];
   allData.measure = (measureRes.data) || [];
@@ -844,6 +848,8 @@ async function fetchAll() {
   allData.keikakushoRecords = (keikakushoRes && keikakushoRes.records) ? keikakushoRes.records : [];
   // 個訓 計画開始月/計画月数（planStart, planMonths）= ①と同源。評価月判定の正準化に使う
   allData.keikakushoUsers = (keikakushoRes && keikakushoRes.users) ? keikakushoRes.users : [];
+  // 通所モニタリング年度データ（users: planStart/finalEvalMonth/caremaneOffice, records: 送付日）
+  allData.monitoring = (monitoringRes && monitoringRes.ok) ? monitoringRes : { users: [], records: [] };
 }
 
 // ===== 対象者抽出 =====
@@ -869,6 +875,15 @@ function buildTargets(ym) {
   oralUnsent.forEach(p => oralNeededSet.add(p.userId));
   const oralSentSet = new Set();
   oralPlans.forEach(p => { if (p.sentToCm) oralSentSet.add(p.userId); });
+
+  // 通所モニタリング: userId → finalEvalMonth（最終評価月＝サイン要）索引。caremaneOffice名寄せ用も保持
+  const monUsers = (allData.monitoring && allData.monitoring.users) || [];
+  const monFinalEvalMap = {};
+  const monOfficeMap = {};
+  monUsers.forEach(mu => {
+    if (mu.finalEvalMonth) monFinalEvalMap[mu.userId] = mu.finalEvalMonth;
+    if (mu.caremaneOffice) monOfficeMap[mu.userId] = mu.caremaneOffice;
+  });
 
   const targets = [];
   // 表示月（ym）の年月数値（例: 2026-04 → 24316）
@@ -911,7 +926,11 @@ function buildTargets(ym) {
         needsTsushoPlan: tsushoNeededSet.has(u.name),
         tsushoPlanSent: tsushoSentSet.has(u.name),
         needsOralPlan: oralNeededSet.has(u.name),
-        oralPlanSent: oralSentSet.has(u.name)
+        oralPlanSent: oralSentSet.has(u.name),
+        // 通所モニタリング: 要支援/事業対象は毎月対象。finalEvalMonth の月はサイン要(✍)
+        needsMonitoring: true,
+        monitoringSignRequired: (monFinalEvalMap[u.name] === ym),
+        monitoringOffice: monOfficeMap[u.name] || ''
       });
     } else if (u.care === 'kaigo') {
       // 個訓 計画/評価: ①と同源(getKeikakushoYear users)の planStart/planMonths で正準判定。
@@ -951,6 +970,10 @@ function buildTargets(ym) {
 
   // 🔧 事業所名の表記ゆれ吸収（保険）: 送付用居宅一覧(連絡先)の表記を正本に、NFKC＋スペース無視で寄せる。
   // これで contactMap[t.office] / グループ化キーが実質正規化照合になる（現役データはクリーンなので退行ゼロ）。
+  // cmOffice未登録の利用者は通所モニの caremaneOffice をofficeフォールバックに使う（名寄せ前）
+  targets.forEach(t => {
+    if ((t.office === '(事業所未登録)' || !t.office) && t.monitoringOffice) t.office = t.monitoringOffice;
+  });
   const canonByNorm = {};
   allData.contacts.forEach(c => { const k = normOffice(c.office); if (c.office && !(k in canonByNorm)) canonByNorm[k] = c.office; });
   targets.forEach(t => { const canon = canonByNorm[normOffice(t.office)]; if (canon) t.office = canon; });
