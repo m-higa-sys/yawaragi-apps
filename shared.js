@@ -395,3 +395,53 @@ function notifyAbsenceUpdate(dateStr) {
 function _isAbsenceAction(action) {
     return action === 'absence' || action === 'long_term_absence' || action === 'cancel_absence';
 }
+
+/* ===== §I cycle-judge（加算サイクル当月判定・2026-06-25 横断ビュー④用に集約） =====
+   個訓(①)・口腔(②)の当月判定の唯一の置き場。④がこれを読む。
+   ①②本体はまだ自前定義を持つ（次フェーズで本関数へ切替）。本関数は純関数・DOM非依存。 */
+
+// 個訓 計画月: planStart起点。既定3ヶ月は diff%3===0、変則(planMonths 1-12)は開始月のみ。
+// ①個別機能訓練計画書チェック.html の同名関数を移植（無回帰のため完全同一ロジック）。
+function isPlanMonth(planStart, planMonths, year, month) {
+    if (!planStart) return false;
+    const m = String(planStart).match(/^(\d{4})-(\d{2})$/);
+    if (!m) return false;
+    const py = parseInt(m[1], 10);
+    const pm = parseInt(m[2], 10);
+    const diff = (year - py) * 12 + (month - pm);
+    const pmNum = parseInt(planMonths, 10);
+    const L = (pmNum >= 1 && pmNum <= 12) ? pmNum : 3;
+    if (L === 3) return diff >= 0 && diff % 3 === 0;
+    return diff === 0;
+}
+
+// 個訓 評価月: 計画スタート月の翌々月（=次計画前月）。開始前月(diff===-1)も評価月扱い。
+// ①の同名関数を移植。
+function isHyoukaMonth(planStart, planMonths, year, month) {
+    if (!planStart) return false;
+    const m = String(planStart).match(/^(\d{4})-(\d{2})$/);
+    if (!m) return false;
+    const py = parseInt(m[1], 10);
+    const pm = parseInt(m[2], 10);
+    const diff = (year - py) * 12 + (month - pm);
+    const pmNum = parseInt(planMonths, 10);
+    const L = (pmNum >= 1 && pmNum <= 12) ? pmNum : 3;
+    if (L === 3) {
+        if (diff >= 2 && diff % 3 === 2) return true;
+        if (diff === -1) return true;
+        return false;
+    }
+    if (diff === (L - 1)) return true;
+    if (diff === -1) return true;
+    return false;
+}
+
+// 口腔 評価月: startedAt起点3ヶ月毎。②oral.html の同名関数を移植。
+function isOralEvalMonth(startedAt, year, month) {
+    const m = String(startedAt || '').match(/^(\d{4})-(\d{2})/);
+    if (!m) return false;
+    const sTotal = parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
+    const tTotal = year * 12 + month;
+    if (tTotal < sTotal) return false;
+    return (tTotal - sTotal) % 3 === 0;
+}
