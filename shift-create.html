@@ -1576,6 +1576,21 @@ function isFloorWork(v) {
 function isEscortWork(v) {
   return PATTERNS[v]?.category === "escort";
 }
+// フロア在席判定（フロア勤務=full/short のみ対象。終了時刻で日中/夕方を区別）
+function floorMaxEndMin(v) {
+  const p = PATTERNS[v];
+  if (!p || !p.time || !(p.category === "full" || p.category === "short")) return -1;
+  let maxEnd = -1;
+  p.time.split("/").forEach(slot => {
+    const end = slot.split("-").map(s => s.trim())[1];
+    if (!end) return;
+    const [eh, em] = end.split(":").map(Number);
+    maxEnd = Math.max(maxEnd, eh * 60 + em);
+  });
+  return maxEnd;
+}
+function staysUntil15(v) { return floorMaxEndMin(v) >= 15 * 60; } // 15:00まで在席（E1=15:00を含む）
+function staysAfter15(v) { return floorMaxEndMin(v) > 15 * 60; }  // 15:00より後まで在席（E1除外）
 // ===== アラート・要望パネルの折りたたみ（表示のみ・既定は閉・状態はlocalStorage記憶） =====
 let _alertErrN = 0, _alertWarnN = 0, _reqN = 0;
 function renderAlertBadges() {
@@ -1609,24 +1624,29 @@ function checkAlerts() {
     if (!c.isOpen) return;
 
     const onDuty = STAFF_KEY.filter(s => s !== "比嘉" && isWorking(shiftData[s][c.date]));
-    const floorOn = onDuty.filter(s => FLOOR_STAFF.includes(s));
     const escortOn = onDuty.filter(s => ESCORT.includes(s));
     const escortBackupOn = onDuty.filter(s => ESCORT_BACKUP.includes(s));
     const nurseOn = onDuty.filter(s => NURSE.includes(s));
 
-    let needsCover = Math.max(0, 2 - escortOn.length);
-    let floorAfterCover = floorOn.length - Math.min(needsCover, escortBackupOn.length);
-
-    if (floorAfterCover < 5) {
-      alerts.push({type:"error", msg:`${c.day}日(${c.dow}): フロア${floorAfterCover}名（5名必要）`});
+    // 🔴 フロア：15時まで在席する人の生の頭数（FLOOR_STAFF＝専門役も1人として数える・差し引きなし）
+    const floorUntil15 = FLOOR_STAFF.filter(s => staysUntil15(shiftData[s][c.date]));
+    if (floorUntil15.length < 5) {
+      alerts.push({type:"error", msg:`${c.day}日(${c.dow}): フロア${floorUntil15.length}名（5名必要）`});
     }
+    // ⚠️ 15時以降フロア：3名以下の日だけ注意（4名は基準内＝出さない・tfoot行は別途情報表示で残す）
+    const floorAfter15 = FLOOR_STAFF.filter(s => staysAfter15(shiftData[s][c.date]));
+    if (floorAfter15.length <= 3) {
+      alerts.push({type:"warn", msg:`${c.day}日(${c.dow}): 15時以降フロア${floorAfter15.length}名`});
+    }
+
+    // 送迎（カバー含めて2名必要）— 既存ロジック維持
+    let needsCover = Math.max(0, 2 - escortOn.length);
     if (escortOn.length + Math.min(needsCover, escortBackupOn.length) < 2) {
       alerts.push({type:"error", msg:`${c.day}日(${c.dow}): 送迎が不足（カバー含めて2名必要）`});
     }
+    // 看護師：0名の日だけ🔴（1名は人員基準クリアのため出さない）
     if (nurseOn.length === 0) {
       alerts.push({type:"error", msg:`${c.day}日(${c.dow}): 看護師ゼロ`});
-    } else if (nurseOn.length === 1) {
-      alerts.push({type:"warn", msg:`${c.day}日(${c.dow}): 看護師1名（${nurseOn[0]}）`});
     }
     // 下浦さん・髙山さんが両方とも休みの日を警告（メイン相談員＋看護師が同時に不在・看護師ゼロと同パターン）
     if (!isWorking(shiftData["下浦"][c.date]) && !isWorking(shiftData["髙山"][c.date])) {
