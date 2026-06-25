@@ -881,7 +881,9 @@ function buildTargets(ym) {
   const monFinalEvalMap = {};
   const monOfficeMap = {};
   monUsers.forEach(mu => {
-    if (mu.finalEvalMonth) monFinalEvalMap[mu.userId] = mu.finalEvalMonth;
+    // finalEvalMonth(override)優先、無ければ planStart+11ヶ月（③と同基準）
+    const fem = monitoringFinalEvalMonth(mu.planStart, mu.finalEvalMonth);
+    if (fem) monFinalEvalMap[mu.userId] = fem;
     if (mu.caremaneOffice) monOfficeMap[mu.userId] = mu.caremaneOffice;
   });
 
@@ -927,8 +929,7 @@ function buildTargets(ym) {
         tsushoPlanSent: tsushoSentSet.has(u.name),
         needsOralPlan: oralNeededSet.has(u.name),
         oralPlanSent: oralSentSet.has(u.name),
-        // 通所モニタリング: 要支援/事業対象は毎月対象。finalEvalMonth の月はサイン要(✍)
-        needsMonitoring: true,
+        // 通所モニタリング: finalEvalMonth の月はサイン要(✍)。事業所キーは名寄せフォールバック用
         monitoringSignRequired: (monFinalEvalMap[u.name] === ym),
         monitoringOffice: monOfficeMap[u.name] || ''
       });
@@ -968,12 +969,12 @@ function buildTargets(ym) {
     }
   });
 
-  // 🔧 事業所名の表記ゆれ吸収（保険）: 送付用居宅一覧(連絡先)の表記を正本に、NFKC＋スペース無視で寄せる。
-  // これで contactMap[t.office] / グループ化キーが実質正規化照合になる（現役データはクリーンなので退行ゼロ）。
   // cmOffice未登録の利用者は通所モニの caremaneOffice をofficeフォールバックに使う（名寄せ前）
   targets.forEach(t => {
     if ((t.office === '(事業所未登録)' || !t.office) && t.monitoringOffice) t.office = t.monitoringOffice;
   });
+  // 🔧 事業所名の表記ゆれ吸収（保険）: 送付用居宅一覧(連絡先)の表記を正本に、NFKC＋スペース無視で寄せる。
+  // これで contactMap[t.office] / グループ化キーが実質正規化照合になる（現役データはクリーンなので退行ゼロ）。
   const canonByNorm = {};
   allData.contacts.forEach(c => { const k = normOffice(c.office); if (c.office && !(k in canonByNorm)) canonByNorm[k] = c.office; });
   targets.forEach(t => { const canon = canonByNorm[normOffice(t.office)]; if (canon) t.office = canon; });

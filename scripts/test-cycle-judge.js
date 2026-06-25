@@ -40,11 +40,12 @@ function extractFn(name) {
 
 const sandbox = {};
 const code = extractFn('isPlanMonth') + '\n' + extractFn('isHyoukaMonth') + '\n' +
-  extractFn('isOralEvalMonth') + '\n' +
+  extractFn('isOralEvalMonth') + '\n' + extractFn('monitoringFinalEvalMonth') + '\n' +
   'sandbox.isPlanMonth = isPlanMonth; sandbox.isHyoukaMonth = isHyoukaMonth;' +
-  'sandbox.isOralEvalMonth = isOralEvalMonth;';
+  'sandbox.isOralEvalMonth = isOralEvalMonth;' +
+  'sandbox.monitoringFinalEvalMonth = monitoringFinalEvalMonth;';
 (function () { eval(code); })();
-const { isPlanMonth, isHyoukaMonth, isOralEvalMonth } = sandbox;
+const { isPlanMonth, isHyoukaMonth, isOralEvalMonth, monitoringFinalEvalMonth } = sandbox;
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {
@@ -77,6 +78,13 @@ eq(isOralEvalMonth('2026-06', 2026, 9), true,  '+3=評価月');
 eq(isOralEvalMonth('2026-06', 2026, 7), false, '+1=非評価月');
 eq(isOralEvalMonth('2026-06', 2026, 5), false, '開始前=false');
 eq(isOralEvalMonth('', 2026, 6), false, 'startedAt空=false');
+
+console.log('[monitoringFinalEvalMonth] override優先・無ければ planStart+11');
+eq(monitoringFinalEvalMonth('2025-12', ''), '2026-11', '空→planStart+11ヶ月');
+eq(monitoringFinalEvalMonth('2026-01', ''), '2026-12', '空→+11');
+eq(monitoringFinalEvalMonth('2026-04', ''), '2027-03', '空→+11(跨年)');
+eq(monitoringFinalEvalMonth('2025-12', '2026-03'), '2026-03', 'override優先');
+eq(monitoringFinalEvalMonth('', ''), '', 'planStart空→空文字');
 
 console.log('\n' + pass + ' PASS / ' + fail + ' FAIL');
 if (fail > 0) process.exit(1);

@@ -445,3 +445,15 @@ function isOralEvalMonth(startedAt, year, month) {
     if (tTotal < sTotal) return false;
     return (tTotal - sTotal) % 3 === 0;
 }
+
+// 通所介護計画 最終評価月(=サイン要月): finalEvalMonth(override)優先、無ければ planStart+11ヶ月。
+// ③monitoring.html の getFinalEvalMonth を移植。算出不能時は '' を返す。
+function monitoringFinalEvalMonth(planStart, finalEvalMonth) {
+    if (finalEvalMonth) return finalEvalMonth;
+    const m = String(planStart || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return '';
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10);
+    const d = new Date(y, mo - 1 + 11, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
