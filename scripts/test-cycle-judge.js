@@ -41,13 +41,14 @@ function extractFn(name) {
 const sandbox = {};
 const code = extractFn('isPlanMonth') + '\n' + extractFn('isHyoukaMonth') + '\n' +
   extractFn('isOralEvalMonth') + '\n' + extractFn('monitoringFinalEvalMonth') + '\n' +
-  extractFn('submitCellColor') + '\n' +
+  extractFn('submitCellColor') + '\n' + extractFn('isBeforePlanStart') + '\n' +
   'sandbox.isPlanMonth = isPlanMonth; sandbox.isHyoukaMonth = isHyoukaMonth;' +
   'sandbox.isOralEvalMonth = isOralEvalMonth;' +
   'sandbox.monitoringFinalEvalMonth = monitoringFinalEvalMonth;' +
-  'sandbox.submitCellColor = submitCellColor;';
+  'sandbox.submitCellColor = submitCellColor;' +
+  'sandbox.isBeforePlanStart = isBeforePlanStart;';
 (function () { eval(code); })();
-const { isPlanMonth, isHyoukaMonth, isOralEvalMonth, monitoringFinalEvalMonth, submitCellColor } = sandbox;
+const { isPlanMonth, isHyoukaMonth, isOralEvalMonth, monitoringFinalEvalMonth, submitCellColor, isBeforePlanStart } = sandbox;
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {
@@ -95,6 +96,14 @@ eq(submitCellColor(true, false, false), 'red', '該当・未作成=red');
 eq(submitCellColor(true, true, false), 'green', '該当・作成済・未送付=green');
 eq(submitCellColor(true, true, true), 'blue', '該当・送付済=blue');
 eq(submitCellColor(true, false, true), 'blue', '送付済は作成有無に関わらずblue');
+
+console.log('[isBeforePlanStart] 利用開始(planStart)より前の月＝描画ガード true');
+eq(isBeforePlanStart('2026-06', 2026, 5), true,  '前月(diff=-1)=開始前');
+eq(isBeforePlanStart('2026-06', 2025, 12), true, '前年=開始前');
+eq(isBeforePlanStart('2026-06', 2026, 6), false, '当月=開始前でない');
+eq(isBeforePlanStart('2026-06', 2026, 8), false, '評価月(以降)=開始前でない');
+eq(isBeforePlanStart('2026-01', 2025, 12), true, '跨年の前月=開始前');
+eq(isBeforePlanStart('', 2026, 5), false, 'planStart空=false(従来表示=安全側)');
 
 console.log('\n' + pass + ' PASS / ' + fail + ' FAIL');
 if (fail > 0) process.exit(1);

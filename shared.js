@@ -466,3 +466,13 @@ function submitCellColor(isApplicable, hasCreated, hasSent) {
     if (hasCreated) return 'green';
     return 'red';
 }
+
+// 利用開始(planStart)より前の月か: diff<0。利用開始月より前のセルは計画/評価/PDF/色を
+// 一切描画しないための表示ガード（状態判定の isPlanMonth/isHyoukaMonth は変えない）。
+// planStart不明('')は false＝従来表示（安全側）。①③の描画ガードで使用。純関数・DOM非依存。
+function isBeforePlanStart(planStart, year, month) {
+    const m = String(planStart || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return false;
+    const diff = (year - parseInt(m[1], 10)) * 12 + (month - parseInt(m[2], 10));
+    return diff < 0;
+}

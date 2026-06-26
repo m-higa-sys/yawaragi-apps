@@ -660,7 +660,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 
 <div id="toast" class="toast"></div>
 
-<script src="shared.js?v=2026-06-26a"></script>
+<script src="shared.js?v=2026-06-26b"></script>
 <script>
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -1083,7 +1083,8 @@ function renderTable() {
                     const isHyouka = isHyoukaMonth(u.planStart, u.planMonths, cellYear, mo.m);
                     // データが入っているセルは評価月でなくても常に表示（planStart移動で過去評価が '-' に隠れるのを防ぐ）
                     const hasHyoukaData = !!(rec.tasseido_date || rec.hyouka_pdf_date || rec.hyouka_print_date);
-                    if (!isHyouka && !hasHyoukaData) {
+                    // 利用開始月より前は計画/評価/PDF/色を一切描画しない（評価月判定の開始前月ルールより優先）。
+                    if (isBeforePlanStart(u.planStart, cellYear, mo.m) || (!isHyouka && !hasHyoukaData)) {
                         cls += ' disabled';
                         html += '<td class="' + cls + '">-</td>';
                         return;
@@ -1148,7 +1149,8 @@ function renderTable() {
                 const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
                     || rec.keikaku_sent_date || rec.sokutei_date || rec.sokutei_by || rec.output_by
                     || rec.blocked_reason);
-                if (!isPlan && !hasPlanData) {
+                // 利用開始月より前は計画セルも一切描画しない。
+                if (isBeforePlanStart(u.planStart, cellYear, mo.m) || (!isPlan && !hasPlanData)) {
                     cls += ' disabled';
                     html += '<td class="' + cls + '">-</td>';
                     return;
