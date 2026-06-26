@@ -248,7 +248,7 @@
       
                   <div style="display:flex; gap:8px; justify-content:flex-end;">
                       <button class="data-btn" onclick="closeModal('kubun-set-modal')">キャンセル</button>
-                      <button class="data-btn" style="background:#dc3545; color:#fff;" onclick="submitKubunSet()">📝 登録する</button>
+                      <button class="data-btn" id="kubun-set-submit-btn" style="background:#dc3545; color:#fff;" onclick="submitKubunSet()">📝 登録する</button>
                   </div>
               </div>
           </div>
@@ -464,6 +464,13 @@
     function escapeAttr(str) {
         if (str == null) return '';
         return String(str).replace(/'/g, '\\\'').replace(/"/g, '&quot;');
+    }
+
+    // onclick="..('...')" 等の JS文字列リテラル用エスケープ。
+    // yawaragi-board.html から区分変更タブを切り出した際(e501de0)に持ってこ忘れたため
+    // ReferenceErrorで区変リスト描画・登録後処理が落ちていた。board版と同一実装(2026-06-27)。
+    function escapeJsString(s) {
+        return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     }
 
     /* ===== 区変管理(kubun) board 1:1移植(board 11000-12856) =====
@@ -890,7 +897,7 @@
                     // 編集・削除（完了/未完了 共通・登録ミスやテスト行の修正用）
                     html += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">';
                     html += '<button type="button" onclick="openKubunHistoryEditModal(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.applyDate || '') + '\', \'' + escapeJsString(u.resultDate || '') + '\', \'' + escapeJsString(u.prevCare || '') + '\', \'' + escapeJsString(u.newCare || '') + '\')" style="padding:5px 12px; font-size:0.8rem; background:#edf2f7; color:#4a5568; border:1px solid #cbd5e0; border-radius:6px; cursor:pointer;">✏️ 編集</button>';
-                    html += '<button type="button" onclick="kubunHistoryDeleteRecord(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\')" style="padding:5px 12px; font-size:0.8rem; background:#fff5f5; color:#c53030; border:1px solid #feb2b2; border-radius:6px; cursor:pointer;">🗑️ 削除</button>';
+                    html += '<button type="button" onclick="kubunHistoryDeleteRecord(' + u.rowIndex + ', \'' + escapeJsString(u.name) + '\', \'' + escapeJsString(u.applyDate || '') + '\', \'' + escapeJsString(u.prevCare || '') + '\', \'' + escapeJsString(u.newCare || '') + '\')" style="padding:5px 12px; font-size:0.8rem; background:#fff5f5; color:#c53030; border:1px solid #feb2b2; border-radius:6px; cursor:pointer;">🗑️ 削除</button>';
                     html += '</div>';
     
                     html += '</div>';
@@ -1122,8 +1129,12 @@
     }
     
     // ===== 後続作業カード 削除（行ごと物理削除・テスト行/登録ミス掃除用） =====
-    function kubunHistoryDeleteRecord(rowIndex, name) {
-        if (!confirm(name + '様の後続作業カードを削除します。\n\n⚠️ この区変・更新の記録（月遅れ請求対象月などを含む）が完全に消えます。\nテスト行や登録ミスの場合のみ実行してください。\n\n本当に削除しますか？')) return;
+    function kubunHistoryDeleteRecord(rowIndex, name, applyDate, prevCare, newCare) {
+        // #3 強化(2026-06-27): 同じ人の重複カードを見分けられるよう、確認文に区変日・介護度を出す。
+        var _detail = (applyDate || prevCare || newCare)
+            ? '\n対象: ' + (applyDate || '日付不明') + '（' + (prevCare || '?') + ' → ' + (newCare || '?') + '）\n'
+            : '';
+        if (!confirm(name + '様の後続作業カードを削除します。' + _detail + '\n⚠️ この区変・更新の記録（月遅れ請求対象月などを含む）が完全に消えます。\n同じ人の重複カードがあるときは、上の「対象（日付・介護度）」が消したいものか必ず確認してください。\nテスト行や登録ミスの場合のみ実行してください。\n\n本当に削除しますか？')) return;
     
         const cbName = 'kubunHistDelCb_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
         window[cbName] = function(res) {
@@ -1661,6 +1672,10 @@
         const input = document.getElementById('kubun-set-name');
         const hint = document.getElementById('kubun-set-name-hint');
         if (!input) return;
+
+        // 二度押し防止で前回 disabled のままなら復帰(2026-06-27)
+        const _reopenBtn = document.getElementById('kubun-set-submit-btn');
+        if (_reopenBtn) { _reopenBtn.disabled = false; _reopenBtn.style.opacity = ''; _reopenBtn.style.cursor = ''; }
     
         let kubunTerminations = _kubunTerminationsCache.slice(); // 前回キャッシュから初期化
     
@@ -2039,7 +2054,18 @@
         if (!existsInUsers && !existsInTerm) {
             if (!confirm('「' + name + '」は利用者台帳にも中止履歴にも見つかりません。このまま登録しますか？\n（候補から選び直すにはキャンセル）')) return;
         }
-    
+
+        // #2 二度押し防止(2026-06-27): 送信中は登録ボタンを無効化（連打→重複登録の防止）。
+        // 成功時はモーダルが閉じる。通信が返らない保険として8秒で自動復帰。
+        const _kSubmitBtn = document.getElementById('kubun-set-submit-btn');
+        if (_kSubmitBtn) {
+            if (_kSubmitBtn.disabled) return; // 既に送信中
+            _kSubmitBtn.disabled = true;
+            _kSubmitBtn.style.opacity = '0.6';
+            _kSubmitBtn.style.cursor = 'not-allowed';
+            setTimeout(function () { _kSubmitBtn.disabled = false; _kSubmitBtn.style.opacity = ''; _kSubmitBtn.style.cursor = ''; }, 8000);
+        }
+
         // Step 1: kubunSet（区変開始）を呼ぶ
         const cbName = 'kubunSetCb_' + Date.now();
         window[cbName] = function(data) {
@@ -2416,5 +2442,11 @@
       console.log('[kubun.html] 初期化完了');
     });
   </script>
+<!-- shared.js の showToast(#toast前提・nullガード無し)用。切り出し時に持ってこ忘れていた要素＋CSS(board版同一・2026-06-27) -->
+<style>
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #2d3748; color: #fff; padding: 12px 24px; border-radius: 10px; font-weight: 600; font-size: 0.9rem; z-index: 2000; transition: transform 0.3s ease; box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+.toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+<div class="toast" id="toast"></div>
 </body>
 </html>
