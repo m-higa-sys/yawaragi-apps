@@ -148,6 +148,11 @@ function getSchedTimesResponse(callback) {
       try { data = JSON.parse(current); } catch(err) { data = {}; }
     }
   }
+  // Phase2b: overrides は別シート(送迎時間_overrides)から読み、レスポンスに合成する。
+  // 読み手 sched-grid の resolveDay は data.overrides[日付] を見るだけ（無改修）。
+  var _ov = _readSchedOverrides();
+  if (_ov && Object.keys(_ov).length > 0) { data.overrides = _ov; }
+  else if (data.overrides) { delete data.overrides; }
   var json = JSON.stringify(data);
   if (callback) {
     return ContentService.createTextOutput(callback + '(' + json + ')')
@@ -264,15 +269,86 @@ function saveSchedTimes(jsonStr) {
     if (newData.routes && newData.routes[mergeDay]) {
       existing.routes[mergeDay] = newData.routes[mergeDay];
     }
+
+    // ── 日付キー化（2026-06-26 Phase2/2b / design A案 §4-1,§4-3）──
+    // overrideDate（その日のISO日付）が来たら、曜日ベースとは別に overrides[日付] へ
+    // “その日だけ”のルートを保存する。他の日付・他の曜日ベースには一切触れない（巻き戻り根治）。
+    // 読み手 sched-grid の resolveDay は overrides[日付] を曜日ベースより優先で読む（実装済み）。
+    // Phase2b: overrides は A1 と別シート(送迎時間_overrides)へチャンク分割保存し、A1の5万字上限を回避。
+    //          過去日付は読み手が見ないので書き込み時に間引く（_pruneSchedOverrides）。
+    // 空ガードと連動: _hasRoutes が false（stops無し）なら overrides を一切いじらず既存日付を保持。
+    if (parsed.overrideDate && _hasRoutes) {
+      var _ovStore = _readSchedOverrides();
+      var _ovRoutes = (newData.routes && newData.routes[mergeDay])
+        ? newData.routes[mergeDay]
+        : { am: { pick: [], drop: [] }, pm: { pick: [], drop: [] } };
+      var _ovEntry = { routes: _ovRoutes, weekday: mergeDay, savedAt: new Date().toISOString() };
+      // members（徒歩/家族の判定用）は来ていれば保存。無ければ resolveDay が曜日ベースへフォールバック
+      if (newData.members && typeof newData.members === 'object') _ovEntry.members = newData.members;
+      _ovStore[parsed.overrideDate] = _ovEntry;
+      _pruneSchedOverrides(_ovStore); // 過去日付・不正キーを間引き（A1肥大防止）
+      _writeSchedOverrides(_ovStore);
+    }
   } else {
     // 全データ上書き（一括同期用）
     existing = newData;
     if (!existing.routes) existing.routes = {};
   }
 
+  // overrides は別シート管理に移行済み。A1には絶対に持たせない（旧データ/全置換経由の混入も除去）
+  if (existing.overrides) delete existing.overrides;
+
   existing.lastSync = new Date().toISOString();
   sheet.getRange('A1').setValue(JSON.stringify(existing));
   return 'OK';
+}
+
+// ═══════════════════════════════════════════════════════════
+// 送迎時間 overrides（日付キー）専用ストア（2026-06-26 Phase2b）
+// A1の5万字上限を回避するため overrides を別シートにチャンク分割保存する。
+// 出勤送迎表データの _readOpsMulti/_writeOpsMulti と同方式（45k分割）。
+// 読み手 sched-grid は getSchedTimesResponse が合成した data.overrides を見るだけ（無改修）。
+// ═══════════════════════════════════════════════════════════
+const SCHED_OVERRIDES_SHEET_ID = '1-CryIbGLFERANKWeHul1zPfFEHfuE6WfGXsZNiD6TGw';
+const SCHED_OVERRIDES_SHEET = '送迎時間_overrides';
+const SCHED_OVERRIDES_CHUNK_SIZE = 45000;
+
+function _readSchedOverrides() {
+  var ss = SpreadsheetApp.openById(SCHED_OVERRIDES_SHEET_ID);
+  var sheet = ss.getSheetByName(SCHED_OVERRIDES_SHEET);
+  if (!sheet) return {};
+  var lastRow = sheet.getLastRow();
+  if (lastRow === 0) return {};
+  var values = sheet.getRange(1, 1, lastRow, 1).getValues();
+  var joined = values.map(function(r){ return r[0] || ''; }).join('');
+  if (!joined) return {};
+  try { return JSON.parse(joined); } catch (e) { return {}; }
+}
+
+function _writeSchedOverrides(obj) {
+  var ss = SpreadsheetApp.openById(SCHED_OVERRIDES_SHEET_ID);
+  var sheet = ss.getSheetByName(SCHED_OVERRIDES_SHEET);
+  if (!sheet) sheet = ss.insertSheet(SCHED_OVERRIDES_SHEET);
+  var jsonStr = JSON.stringify(obj || {});
+  var chunks = [];
+  for (var i = 0; i < jsonStr.length; i += SCHED_OVERRIDES_CHUNK_SIZE) {
+    chunks.push(jsonStr.substring(i, i + SCHED_OVERRIDES_CHUNK_SIZE));
+  }
+  if (chunks.length === 0) chunks.push('');
+  var oldLastRow = sheet.getLastRow();
+  if (oldLastRow > chunks.length) {
+    sheet.getRange(chunks.length + 1, 1, oldLastRow - chunks.length, 1).clearContent();
+  }
+  sheet.getRange(1, 1, chunks.length, 1).setValues(chunks.map(function(c){ return [c]; }));
+}
+
+// 過去日付（< 今日 Asia/Tokyo）と日付形式でないキーを除去。読み手は未来日しか見ないので安全。
+function _pruneSchedOverrides(ov) {
+  var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  for (var d in ov) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < today) delete ov[d];
+  }
+  return ov;
 }
 
 // POST受け取り
