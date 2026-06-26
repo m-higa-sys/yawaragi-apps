@@ -599,6 +599,20 @@ const SKIP_GROUPS = {
   measure: { label: '体力測定', keys: ['measure', 'measure_print'] }
 };
 
+// ===== 書類名の3つの呼び名（件数超短縮 mini / チップ短縮 short / 正式名 full）=====
+// 横断ビューの件数内訳・チップ・ツールチップで共有する一元マップ（2026-06-27 社長指定）。
+// 旧3「個訓の測定・単独」は廃止。測定は #2(介護=要介護)・#8(支援=要支援) に care で振り分け。
+const DOC_NAMES = {
+  trainPlan:    { mini: '個別計画', short: '個別計画書',     full: '個別機能訓練計画書' },
+  kaigoMeasure: { mini: '介・測定', short: '介護・測定結果', full: '個別・身体機能評価（要介護）' },
+  oralPlan:     { mini: '口腔計画', short: '口腔計画書',     full: '口腔機能改善管理計画' },
+  oralEval:     { mini: '口腔評価', short: '口腔評価',       full: '口腔の健康状態の評価・再評価' },
+  tsushoPlan:   { mini: '通所計画', short: '通所計画書',     full: '通所介護計画書' },
+  monitoring:   { mini: '通所モニ', short: '通所モニタリング', full: '通所モニタリング報告書' },
+  shienMeasure: { mini: '支・測定', short: '支援・測定結果', full: '支援・身体機能評価（要介護以外/要支援）' },
+  jisseki:      { mini: '実績',     short: '実績',           full: '実績（提供票＋別表）' }
+};
+
 // ===== キーラベル辞書（繰越表示等で使う） =====
 const KEY_LABELS = {
   'jisseki': '🔴実績PDF',
@@ -1431,6 +1445,28 @@ function render() {
     // 📡 ケアプー：送付方法バッジ自体を「📡 ケアプー」にしたため、別途の併記タグは廃止（持参との二重表示を解消・2026/6/26）。
     const careplanTag = '';
 
+    // 件数内訳（事業所カード単位・2026/6/27）。officeAllUsers=この事業所の当月対象者全員。
+    // ツールチップに正式名＋該当者氏名を出す（件数の裏取り用）。個別計画は要介護のみ（care明示ガード）。
+    // 口腔は現データ1フラグ（計画/評価の区別なし）のため当面「口腔」1列。支・測定はまだ管理外で0固定。
+    const _oa = officeAllUsers;
+    const _bdData = [
+      [DOC_NAMES.trainPlan,    _oa.filter(u => u.hasNewPlan === true && u.care === 'kaigo')],
+      [DOC_NAMES.kaigoMeasure, _oa.filter(u => u.isMeasure === true && u.care === 'kaigo')],
+      [{ mini: '口腔', full: '口腔(II)計画書/モニタリング（計画#4・評価#5の分割はGASデータ拡張後に正確化）' },
+                               _oa.filter(u => u.needsOralPlan === true)],
+      [DOC_NAMES.tsushoPlan,   _oa.filter(u => u.needsTsushoPlan === true)],
+      [DOC_NAMES.monitoring,   _oa.filter(u => u.care === 'shien')],
+      [{ mini: '支・測定', full: '支援・身体機能評価（要介護以外/要支援）｜まだ管理外のため0固定' }, []],
+      [DOC_NAMES.jisseki,      _oa]
+    ];
+    const breakdownHtml = '<div class="office-breakdown" style="margin-top:5px;font-size:12px;color:#475569;display:flex;flex-wrap:wrap;align-items:center;gap:2px 4px;">'
+      + _bdData.map(function (d) {
+          const arr = d[1], n = arr.length;
+          const tip = d[0].full + (n > 0 ? '｜該当: ' + arr.map(u => u.name).join('、') : '');
+          return '<span title="' + escapeAttr(tip) + '">' + escapeHtml(d[0].mini) + ' <b style="color:#1a4d7a;">' + n + '</b></span>';
+        }).join('<span style="color:#cbd5e1;margin:0 4px;">／</span>')
+      + '</div>';
+
     // 完了判定：通常完了 OR 全員「今月対象外」保留中
     const isOfficeComplete = (officeTotal > 0 && officeDone === officeTotal)
       || (officeTotal === 0 && officeHoldExcluded > 0 && officeHoldExcluded === users.length);
@@ -1438,6 +1474,7 @@ function render() {
       + '<div class="office-header">'
       +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + displayClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + displayIcon + ' ' + escapeHtml(displayMethod) + '</span>' + careplanTag + ' ' + readyBadge + ' ' + pairBadge
       +     '<div class="office-meta">' + users.length + '名 ' + (contactInfo ? '／ ' + escapeHtml(contactInfo) : '') + '</div>'
+      +     breakdownHtml
       +   '</div>'
       +   '<div class="office-right"><span class="method-tag ' + methodClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="送付方法を編集">✎ 編集</span><div>' + percent + '% (' + officeDone + '/' + officeTotal + ')</div></div>'
       + '</div>'
