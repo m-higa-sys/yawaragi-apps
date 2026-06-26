@@ -137,6 +137,7 @@ main { padding: 16px 24px 48px; }
 .method-badge.visit { background: #fbd5f8; color: #702459; }
 .method-badge.mailing { background: #bee3f8; color: #2c5282; }
 .method-badge.unset { background: #fed7d7; color: #c53030; }
+.method-badge.careplan { background: #e9d8fd; color: #553c9a; }
 .hold-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: 700; margin-left: 6px; cursor: pointer; vertical-align: middle; }
 .hold-badge.kmcheck { background: #fed7aa; color: #9a3412; }
 .hold-badge.staffcheck { background: #ddd6fe; color: #5b21b6; }
@@ -1188,6 +1189,11 @@ function render() {
     const badgeMethod = isCarePlan ? '持参' : method;  // ケアプー事業所はバッジ/工程を書類fallback=持参で判定
     const methodClass = badgeMethod.includes('メール') ? 'mail' : badgeMethod.includes('FAX') ? 'fax' : badgeMethod.includes('持参') ? 'visit' : badgeMethod.includes('郵送') ? 'mailing' : 'unset';
     const methodIcon = badgeMethod.includes('メール') ? '📧' : badgeMethod.includes('FAX') ? '📠' : badgeMethod.includes('持参') ? '🚶' : badgeMethod.includes('郵送') ? '📮' : '❓';
+    // 🆕 表示用の送付方法バッジ（2026/6/26）：ケアプー事業所は送付方法バッジ自体を「📡 ケアプー」にし、
+    //    書類fallback=持参は"表に出さない"。badgeMethod は工程(印刷/PDF)・集計・一括ボタン判定に引き続き使用。
+    const displayMethod = isCarePlan ? 'ケアプー' : badgeMethod;
+    const displayIcon   = isCarePlan ? '📡' : methodIcon;
+    const displayClass  = isCarePlan ? 'careplan' : methodClass;
     const contactInfo = [contact.email, contact.fax].filter(x => x).join(' / ') || '';
 
     // 事業所の送付方法を取得（method系判定。ケアプー事業所は書類fallback=持参）
@@ -1413,23 +1419,24 @@ function render() {
 
     // 同一敷地ペアバッジ（2026/4/29追加）：両方とも当月対象者がいるときだけ表示
     // 事業所集約の概念なので user モードでは抑止（グループキーが利用者名でペア判定が成立しない）
+    // 同一敷地…持参可は「持参で一緒に届けられる」案内。ケアプー事業所は持参を表に出さない方針なので抑止（2026/6/26）。
     let pairBadge = '';
-    if (viewMode !== 'user') {
+    if (viewMode !== 'user' && !isCarePlan) {
       const pairPartner = getPairPartner(office);
       if (pairPartner && grouped[pairPartner] && grouped[pairPartner].length > 0) {
         pairBadge = '<span class="badge same-location-badge" title="同じ敷地内にあります。持参のときは一緒に届けられます。">🏢 同一敷地：' + escapeHtml(pairPartner) + 'と一緒に持参可</span>';
       }
     }
 
-    // 📡 ケアプー併記タグ（バッジは書類fallback方法・タグでデータ連携対応を明示）
-    const careplanTag = isCarePlan ? ' <span class="badge careplan-tag" title="ケアプランデータ連携(ケアプー)対応事業所。提供票データはケアプーで送信。紙の書類は' + escapeHtml(badgeMethod) + 'で送付。">📡 ケアプー</span>' : '';
+    // 📡 ケアプー：送付方法バッジ自体を「📡 ケアプー」にしたため、別途の併記タグは廃止（持参との二重表示を解消・2026/6/26）。
+    const careplanTag = '';
 
     // 完了判定：通常完了 OR 全員「今月対象外」保留中
     const isOfficeComplete = (officeTotal > 0 && officeDone === officeTotal)
       || (officeTotal === 0 && officeHoldExcluded > 0 && officeHoldExcluded === users.length);
     const html = '<div class="office-block" data-office="' + escapeAttr(office) + '">'
       + '<div class="office-header">'
-      +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + methodClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + methodIcon + ' ' + escapeHtml(badgeMethod) + '</span>' + careplanTag + ' ' + readyBadge + ' ' + pairBadge
+      +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + displayClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + displayIcon + ' ' + escapeHtml(displayMethod) + '</span>' + careplanTag + ' ' + readyBadge + ' ' + pairBadge
       +     '<div class="office-meta">' + users.length + '名 ' + (contactInfo ? '／ ' + escapeHtml(contactInfo) : '') + '</div>'
       +   '</div>'
       +   '<div class="office-right"><span class="method-tag ' + methodClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="送付方法を編集">✎ 編集</span><div>' + percent + '% (' + officeDone + '/' + officeTotal + ')</div></div>'
