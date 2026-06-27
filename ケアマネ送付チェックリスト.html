@@ -557,6 +557,31 @@ function loadProgress() {
         });
       });
     });
+    // マイグレーションB（2026-06-27）: 段階チェック(印刷/サイン/スキャン)→現物1チェックへ集約。
+    // 既存の完了を新基準へ引き継ぐ（6月分などをリセットしない）。
+    // done=「現物あり」の判定キー（train/eval は サイン済 or スキャンPDF）。drop=削除する旧キー。
+    const MIG_B = [
+      { nk: 'jisseki',    done: ['jisseki', 'jisseki_print'],         drop: ['jisseki_print'] },
+      { nk: 'monitoring', done: ['monitoring', 'monitoring_print'],   drop: ['monitoring_print'] },
+      { nk: 'measure',    done: ['measure', 'measure_print'],         drop: ['measure_print'] },
+      { nk: 'train',      done: ['trainSign', 'trainScan'],           drop: ['trainPrint', 'trainSign', 'trainScan'] },
+      { nk: 'eval',       done: ['evalSign', 'evalScan'],             drop: ['evalPrint', 'evalSign', 'evalScan'] }
+    ];
+    Object.keys(raw).forEach(ym => {
+      Object.keys(raw[ym] || {}).forEach(name => {
+        const obj = raw[ym][name];
+        if (!obj || typeof obj !== 'object') return;
+        MIG_B.forEach(({ nk, done, drop }) => {
+          const touched = done.concat(drop);
+          const present = touched.some(k => (k in obj) || ((k + '_next') in obj));
+          if (!present) return;
+          if (done.some(k => obj[k] === true)) obj[nk] = true;
+          if (touched.some(k => obj[k + '_next'] === true)) obj[nk + '_next'] = true;
+          drop.forEach(k => { if (k !== nk) { delete obj[k]; delete obj[k + '_next']; } });
+          migrated = true;
+        });
+      });
+    });
     if (migrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
     return raw;
   } catch { return {}; }
@@ -590,13 +615,13 @@ function initMonthSelector() {
 
 // ===== 書類スキップのグループ定義（モーダル編集用） =====
 const SKIP_GROUPS = {
-  jisseki: { label: '🔴実績', keys: ['jisseki', 'jisseki_print'] },
-  monitoring: { label: '通所モニタリング', keys: ['monitoring', 'monitoring_print'] },
-  train: { label: '個別機能訓練計画書', keys: ['trainPrint', 'trainSign', 'trainScan'] },
+  jisseki: { label: '🔴実績', keys: ['jisseki'] },
+  monitoring: { label: '通所モニタリング', keys: ['monitoring'] },
+  train: { label: '個別機能訓練計画書', keys: ['train'] },
   tsushoPlan: { label: '📝通所計画書', keys: ['tsushoPlan'] },
   oralPlan: { label: '🦷口腔(II)計画書/モニタリング', keys: ['oralPlan'] },
-  eval: { label: '第一号評価', keys: ['evalPrint', 'evalSign', 'evalScan'] },
-  measure: { label: '体力測定', keys: ['measure', 'measure_print'] }
+  eval: { label: '支・測定', keys: ['eval'] },
+  measure: { label: '体力測定', keys: ['measure'] }
 };
 
 // ===== 書類名の3つの呼び名（件数超短縮 mini / チップ短縮 short / 正式名 full）=====
@@ -615,20 +640,13 @@ const DOC_NAMES = {
 
 // ===== キーラベル辞書（繰越表示等で使う） =====
 const KEY_LABELS = {
-  'jisseki': '🔴実績PDF',
-  'jisseki_print': '🔴実績 印刷',
-  'monitoring': '通所モニPDF',
-  'monitoring_print': '通所モニ 印刷',
-  'trainPrint': '個別-印刷',
-  'trainSign': '個別-サイン',
-  'trainScan': '個別-スキャンPDF',
+  'jisseki': '🔴実績',
+  'monitoring': '通所モニ',
+  'train': '個別計画書',
   'tsushoPlan': '📝通所計画書',
   'oralPlan': '🦷口腔(II)計画書/モニタリング',
-  'evalPrint': '第一号-印刷',
-  'evalSign': '第一号-サイン',
-  'evalScan': '第一号-スキャンPDF',
-  'measure': '体測PDF',
-  'measure_print': '体測 印刷',
+  'eval': '支・測定',
+  'measure': '体測',
   'combined': 'PDF結合済',
   'fax_10page': '⚠️10ページ以内',
   'envelope': '封筒詰め',
@@ -751,33 +769,24 @@ function resolveSoufu(method){
 //   持参/郵送: 紙のまま → スキャン不要・印刷のみ
 function getCheckItems(care, hasNewPlan, method, isMeasure, needsTsushoPlan, needsOralPlan, needsHyouka, monitoringSignRequired) {
   const m = method || '';
-  const isPhysical = m === '持参' || m === '郵送';  // 紙のまま渡す
-  const isDigital = m === 'メール' || m === 'FAX';  // PDF化必要
+  // チェック基準は「現物の有無」（2026-06-27）。送付方法での出し分けは廃止し、
+  // 各書類は「現物 or PDF があれば済」の1チェックに集約する。
+  // ※送付アクション層（書類をまとめる/封筒/結合/送付済 等）だけは方法依存のまま下に残す。
 
   const items = [];
 
   // 🔴 実績（提供票＋別表）: 全員・毎月・最重要
-  if (isPhysical) {
-    items.push({ key: 'jisseki_print', label: '🔴実績 印刷' });
-  } else {
-    items.push({ key: 'jisseki', label: '🔴実績PDF' });
-  }
+  items.push({ key: 'jisseki', label: '🔴実績' });
 
   // 通所モニタリング（要支援のみ）。最終評価月はサイン要(✍)をラベル先頭に付す。
   if (care === 'shien') {
     const monSign = monitoringSignRequired === true ? '✍ ' : '';
-    if (isPhysical) {
-      items.push({ key: 'monitoring_print', label: monSign + '通所モニ 印刷' });
-    } else {
-      items.push({ key: 'monitoring', label: monSign + '通所モニPDF' });
-    }
+    items.push({ key: 'monitoring', label: monSign + '通所モニ' });
   }
 
-  // 個別機能訓練計画書（新計画書あり）
+  // 個別機能訓練計画書（新計画書あり）。現物=サイン済 or スキャンPDF の1チェック。
   if (hasNewPlan) {
-    items.push({ key: 'trainPrint', label: '個別-印刷' });
-    items.push({ key: 'trainSign', label: '個別-サイン' });
-    if (!isPhysical) items.push({ key: 'trainScan', label: '個別-スキャンPDF' });
+    items.push({ key: 'train', label: '個別計画書' });
   }
 
   // 通所介護計画書（Phase 1-D 追加・3/6/12ヶ月サイクル）
@@ -795,20 +804,14 @@ function getCheckItems(care, hasNewPlan, method, isMeasure, needsTsushoPlan, nee
     items.push({ key: 'hyouka', label: '📊個訓評価' });
   }
 
-  // 第一号評価（要支援のみ）
+  // 支・測定（要支援のみ）。現物=サイン済 or スキャンPDF の1チェック。
   if (care === 'shien') {
-    items.push({ key: 'evalPrint', label: '第一号-印刷' });
-    items.push({ key: 'evalSign', label: '第一号-サイン' });
-    if (!isPhysical) items.push({ key: 'evalScan', label: '第一号-スキャンPDF' });
+    items.push({ key: 'eval', label: '支・測定' });
   }
 
   // 体力測定（要介護=3ヶ月・要支援=4ヶ月のサイクル月のみ）
   if (isMeasure) {
-    if (isPhysical) {
-      items.push({ key: 'measure_print', label: '体測 印刷' });
-    } else {
-      items.push({ key: 'measure', label: '体測PDF' });
-    }
+    items.push({ key: 'measure', label: '体測' });
   }
 
   // 送付方法別の最終工程
@@ -2147,17 +2150,17 @@ document.getElementById('printWorklistBtn').onclick = function() {
       // 今月分の書類（通常対象の場合のみ）
       const isThisMonthTarget = u.care === 'shien' || u.hasNewPlan;
       if (isThisMonthTarget) {
-        docs.push('<span class="doc-chip">🔴実績 ' + (physical ? '印刷' : 'PDF') + '</span>');
+        docs.push('<span class="doc-chip">🔴実績</span>');
         if (u.care === 'shien') {
-          docs.push('<span class="doc-chip">通所モニ ' + (physical ? '印刷' : 'PDF') + '</span>');
+          docs.push('<span class="doc-chip">通所モニ</span>');
         }
         if (u.hasNewPlan) {
-          docs.push('<span class="doc-chip">個別訓練計画書 印刷→サイン' + (physical ? '' : '→スキャンPDF') + '</span>');
+          docs.push('<span class="doc-chip">個別計画書</span>');
         }
         if (u.care === 'shien') {
-          docs.push('<span class="doc-chip">第一号評価 印刷→サイン' + (physical ? '' : '→スキャンPDF') + '</span>');
+          docs.push('<span class="doc-chip">支・測定</span>');
         }
-        docs.push('<span class="doc-chip">体測 ' + (physical ? '印刷' : 'PDF') + '</span>');
+        docs.push('<span class="doc-chip">体測</span>');
       }
 
       // 🔴 繰越分の書類
