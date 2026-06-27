@@ -290,6 +290,26 @@ main { padding: 16px 24px 48px; }
     print-color-adjust: exact !important;
   }
 }
+/* ===== 送付方法別グループヘッダー（2026/6/27追加） ===== */
+.method-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 8px;
+  padding: 8px 14px;
+  background: #edf2f7;
+  border-left: 5px solid #4a5568;
+  border-radius: 6px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #2d3748;
+}
+.method-group-header .mg-count {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #718096;
+}
+.method-group-header:first-child { margin-top: 4px; }
 /* ===== 同一敷地ペアバッジ（2026/4/29追加） ===== */
 .badge.same-location-badge {
   background: #fef3c7;
@@ -400,6 +420,7 @@ main { padding: 16px 24px 48px; }
     <select id="viewModeSel">
       <option value="office" selected>事業所別</option>
       <option value="user">利用者別</option>
+      <option value="method">送付方法別</option>
     </select>
   </label>
   <label style="background:#c6f6d5; padding:4px 10px; border-radius:6px; cursor:pointer; border:2px solid #38a169;">
@@ -760,6 +781,27 @@ function resolveSoufu(method){
   const m = String(method || '');
   const isCarePlan = m.indexOf('ケアプランデータ連携') >= 0 || m.indexOf('ケアプー') >= 0;
   return { isCarePlan: isCarePlan, docMethod: isCarePlan ? '持参' : m };
+}
+
+// ===== 送付方法別ビューのグループ定義（2026-06-27追加） =====
+// 表示順＝この配列順: 持参 → ケアプー → メール → FAX → その他。
+// 判定は「送付用居宅一覧」の送付方法列(contact.method)を正本に使う（ハードコードmapは持たない）。
+const METHOD_GROUPS = [
+  { key: 'visit',    icon: '🚶', label: '持参' },
+  { key: 'careplan', icon: '📡', label: 'ケアプー' },
+  { key: 'mail',     icon: '📧', label: 'メール' },
+  { key: 'fax',      icon: '📠', label: 'FAX' },
+  { key: 'other',    icon: '📦', label: 'その他' }
+];
+// 4分類のどれにも一致しない事業所（郵送・未登録・想定外文字列）は必ず 'other' に入れる＝画面から消さない。
+function methodGroupOf(office, contactMap){
+  const contact = contactMap[office] || {};
+  const method = String(contact.method || '');
+  if (resolveSoufu(method).isCarePlan) return 'careplan';
+  if (method.indexOf('持参') >= 0) return 'visit';
+  if (method.indexOf('メール') >= 0) return 'mail';
+  if (method.indexOf('FAX') >= 0) return 'fax';
+  return 'other';
 }
 
 // ===== チェック項目定義 =====
@@ -1486,27 +1528,46 @@ function render() {
       +   userHtml
       + '</div>'
       + '</div>';
-    return { html, isComplete: isOfficeComplete };
+    return { html, isComplete: isOfficeComplete, group: methodGroupOf(effectiveOffice, contactMap) };
   });
 
-  // 未完了と完了を分離（送付完了セクションを下部に集約）
-  const incompleteHtml = officeBlocks.filter(b => !b.isComplete).map(b => b.html).join('');
-  const completeBlocks = officeBlocks.filter(b => b.isComplete);
-  let completedSectionHtml = '';
-  if (completeBlocks.length > 0) {
-    const expCls = completedSectionExpanded ? ' expanded' : '';
-    completedSectionHtml =
-      '<div class="completed-section' + expCls + '">'
-      + '<div class="completed-section-header" id="completedSectionToggle">'
-      +   '<span class="toggle-icon">▶</span>'
-      +   '<span>✅ 送付完了 (' + completeBlocks.length + '事業所)</span>'
-      + '</div>'
-      + '<div class="completed-section-body">'
-      +   completeBlocks.map(b => b.html).join('')
-      + '</div>'
-      + '</div>';
+  if (viewMode === 'method') {
+    // 送付方法別: 完了分離は使わず、METHOD_GROUPS順にヘッダー＋グループ内ブロックを出力。
+    // グループ内順序は filteredOffices 順（人数多い順＋同一敷地ペア隣接）＝事業所別と同一。
+    const byGroup = {};
+    officeBlocks.forEach(b => { (byGroup[b.group] = byGroup[b.group] || []).push(b); });
+    let methodHtml = '';
+    for (const g of METHOD_GROUPS) {
+      const blocks = byGroup[g.key] || [];
+      if (blocks.length === 0) continue; // 空グループ（空の「その他」含む）は非表示
+      methodHtml +=
+        '<div class="method-group-header">'
+        + g.icon + ' ' + escapeHtml(g.label)
+        + '<span class="mg-count">(' + blocks.length + '事業所)</span>'
+        + '</div>'
+        + blocks.map(b => b.html).join('');
+    }
+    main.innerHTML = methodHtml;
+  } else {
+    // 未完了と完了を分離（送付完了セクションを下部に集約）
+    const incompleteHtml = officeBlocks.filter(b => !b.isComplete).map(b => b.html).join('');
+    const completeBlocks = officeBlocks.filter(b => b.isComplete);
+    let completedSectionHtml = '';
+    if (completeBlocks.length > 0) {
+      const expCls = completedSectionExpanded ? ' expanded' : '';
+      completedSectionHtml =
+        '<div class="completed-section' + expCls + '">'
+        + '<div class="completed-section-header" id="completedSectionToggle">'
+        +   '<span class="toggle-icon">▶</span>'
+        +   '<span>✅ 送付完了 (' + completeBlocks.length + '事業所)</span>'
+        + '</div>'
+        + '<div class="completed-section-body">'
+        +   completeBlocks.map(b => b.html).join('')
+        + '</div>'
+        + '</div>';
+    }
+    main.innerHTML = incompleteHtml + completedSectionHtml;
   }
-  main.innerHTML = incompleteHtml + completedSectionHtml;
 
   updateProgress(done, total);
   saveProgress(progress);
