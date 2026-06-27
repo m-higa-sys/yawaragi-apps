@@ -1383,6 +1383,8 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value, d
 let TSUSHO_PLANS_CACHE = null;
 let TSUSHO_PLANS_YEAR = null;
 let TSUSHO_PLANS_LOADED = false;
+// リハブ由来の実満了日マップ {userId: 'YYYY-MM-DD'}（2026-06-27案2投入分・getTsushoDueDates）
+let TSUSHO_DUE_MAP = {};
 let plansSearchText = '';
 let plansRowFilter = '';
 let plansStatusFilter = '';
@@ -1433,6 +1435,12 @@ async function loadTsushoPlans(force) {
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || 'API error');
+        // リハブ由来の実満了日マップを取得（任意・失敗してもタブは従来通り出す）
+        try {
+            const dueRes = await fetch(API_BASE + '?action=getTsushoDueDates&t=' + Date.now());
+            const dueJson = await dueRes.json();
+            TSUSHO_DUE_MAP = (dueJson && dueJson.ok && dueJson.dueDates) ? dueJson.dueDates : {};
+        } catch (dueErr) { TSUSHO_DUE_MAP = {}; }
         TSUSHO_PLANS_CACHE = json;
         TSUSHO_PLANS_YEAR = year;
         TSUSHO_PLANS_LOADED = true;
@@ -1465,6 +1473,17 @@ function computeMantan(planDate, cycleMonths) {
     const daysLeft = Math.round((due - today) / (1000 * 60 * 60 * 24));
     const md = (due.getMonth() + 1) + '/' + due.getDate();
     return { due: due, daysLeft: daysLeft, md: md };
+}
+
+// リハブ由来の実満了日(YYYY-MM-DD)から残日数を計算（暫定でなく確定値）。2026-06-27案2。
+function mantanFromDue(dueStr) {
+    if (!dueStr || !/^\d{4}-\d{2}-\d{2}$/.test(dueStr)) return null;
+    const d = new Date(dueStr);
+    if (isNaN(d.getTime())) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((d - today) / (1000 * 60 * 60 * 24));
+    const md = (d.getMonth() + 1) + '/' + d.getDate();
+    return { due: d, daysLeft: daysLeft, md: md };
 }
 
 function filterPlansUsers(users) {
@@ -1565,15 +1584,28 @@ function renderTsushoPlans() {
         });
         html += '</select></div>';
         html += '<div class="plan-row">最終作成日: <input type="date" class="plan-date-input" data-user="' + escapeHtml(u.userId) + '" value="' + escapeHtml(lastDate) + '"></div>';
-        const _mt = computeMantan(lastDate, u.cycleMonths || 12);
-        if (_mt) {
-            const _over = _mt.daysLeft < 0;
+        // 満了日: リハブ由来の実満了日があれば確定表示、無ければ「最終作成日+サイクル」の暫定にフォールバック
+        const _realDue = TSUSHO_DUE_MAP[u.userId];
+        const _mtReal = _realDue ? mantanFromDue(_realDue) : null;
+        if (_mtReal) {
+            const _over = _mtReal.daysLeft < 0;
             const _label = _over
-                ? ('満了 ' + _mt.md + ' ・ ' + Math.abs(_mt.daysLeft) + '日超過')
-                : ('満了予定 ' + _mt.md + ' ・ あと' + _mt.daysLeft + '日');
+                ? ('満了 ' + _mtReal.md + ' ・ ' + Math.abs(_mtReal.daysLeft) + '日超過')
+                : ('満了 ' + _mtReal.md + ' ・ あと' + _mtReal.daysLeft + '日');
             html += '<div class="plan-row plan-mantan' + (_over ? ' over' : '') + '">'
-                + (_over ? '🔴 ' : '≈ ') + escapeHtml(_label)
-                + ' <span class="mantan-zantei">(暫定·サイクル' + (u.cycleMonths || 12) + 'ヶ月)</span></div>';
+                + (_over ? '🔴 ' : '📅 ') + escapeHtml(_label)
+                + ' <span class="mantan-zantei" style="color:#1b5e20;">(リハブ満了日)</span></div>';
+        } else {
+            const _mt = computeMantan(lastDate, u.cycleMonths || 12);
+            if (_mt) {
+                const _over = _mt.daysLeft < 0;
+                const _label = _over
+                    ? ('満了 ' + _mt.md + ' ・ ' + Math.abs(_mt.daysLeft) + '日超過')
+                    : ('満了予定 ' + _mt.md + ' ・ あと' + _mt.daysLeft + '日');
+                html += '<div class="plan-row plan-mantan' + (_over ? ' over' : '') + '">'
+                    + (_over ? '🔴 ' : '≈ ') + escapeHtml(_label)
+                    + ' <span class="mantan-zantei">(暫定·サイクル' + (u.cycleMonths || 12) + 'ヶ月)</span></div>';
+            }
         }
         if (rec) {
             html += '<div class="plan-sent-row">';
