@@ -454,6 +454,16 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 .plan-card.cell-done  { border-left-color:#1e88e5 !important; background:#f3f9fe !important; }
 /* カードは border-left＋淡背景で状態を示す方針。汎用 .cell-* の inset枠を打ち消し、カード既定の落ち影を維持 */
 .plan-card.cell-todo, .plan-card.cell-ready, .plan-card.cell-done { box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important; }
+/* ===== 見える化(案1・2026-06-28)：未入力進捗バー / 未設定バッジ / 満了予定 ===== */
+.plans-summary { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; padding:10px 14px; margin:0 0 12px; background:#fff8e1; border:1px solid #ffe082; border-radius:8px; }
+.plans-summary .ps-unset { font-size:14px; font-weight:600; color:#5d4037; }
+.plans-summary .ps-unset.has { color:#c62828; }
+.plans-summary .ps-unset b { font-size:18px; }
+.plans-summary .ps-note { font-size:12px; color:#8d6e63; }
+.plan-unset-badge { margin-top:8px; padding:4px 8px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:6px; font-size:13px; font-weight:700; display:inline-block; }
+.plan-mantan { color:#1b5e20; font-weight:600; }
+.plan-mantan.over { color:#c62828; }
+.plan-mantan .mantan-zantei { color:#9e9e9e; font-weight:400; font-size:11px; margin-left:4px; }
 </style>
 </head>
 <body>
@@ -572,7 +582,7 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
             <button class="plans-status-btn active" data-status="">全</button>
             <button class="plans-status-btn" data-status="danger">🔴期限超</button>
             <button class="plans-status-btn" data-status="warn">🟡もうすぐ</button>
-            <button class="plans-status-btn" data-status="none">⚪未入力</button>
+            <button class="plans-status-btn" data-status="none">⚠未設定</button>
         </div>
         <div class="plans-count" id="plans-count"></div>
     </div>
@@ -1443,6 +1453,20 @@ function computeTsushoStatus(planDate, cycleMonths) {
     return 'ok';
 }
 
+// 満了予定日＝最終作成日＋サイクル(月)。残日数も返す。
+// ※サイクルが現状全員12固定のため「暫定」。正確な満了日(min(ケアプラン,1年))は次回案2(GAS改修)。
+function computeMantan(planDate, cycleMonths) {
+    if (!planDate) return null;
+    const d = new Date(planDate);
+    if (isNaN(d.getTime())) return null;
+    const cyc = cycleMonths || 12;
+    const due = new Date(d.getFullYear(), d.getMonth() + cyc, d.getDate());
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((due - today) / (1000 * 60 * 60 * 24));
+    const md = (due.getMonth() + 1) + '/' + due.getDate();
+    return { due: due, daysLeft: daysLeft, md: md };
+}
+
 function filterPlansUsers(users) {
     const q = plansSearchText.toLowerCase();
     return users.filter(function (u) {
@@ -1478,7 +1502,8 @@ function renderTsushoPlans() {
     });
 
     const statusColors = { ok: '#4CAF50', warn: '#FFC107', danger: '#F44336', none: '#9E9E9E' };
-    const statusEmoji = { ok: '🟢', warn: '🟡', danger: '🔴', none: '⚪' };
+    // none(最終作成日なし)は「未設定＝要対応」として⚠で明示（⚪で埋もれさせない・2026-06-28）
+    const statusEmoji = { ok: '🟢', warn: '🟡', danger: '🔴', none: '⚠️' };
 
     // フィルタ適用
     let users = filterPlansUsers(allUsers);
@@ -1504,7 +1529,18 @@ function renderTsushoPlans() {
         return;
     }
 
-    let html = '<div class="plan-cards">';
+    // 未入力（最終作成日なし）件数＝全員ベース。スタッフが少しずつ埋められるよう進捗表示。
+    const unsetCount = allUsers.filter(function (u) {
+        const r = (byUser[u.userId] && byUser[u.userId][0]) || null;
+        return !(r && r.plan_date);
+    }).length;
+
+    let html = '';
+    html += '<div class="plans-summary">';
+    html += '<span class="ps-unset' + (unsetCount > 0 ? ' has' : '') + '">📊 最終作成日 未入力 <b>' + unsetCount + '</b> / ' + allUsers.length + '人</span>';
+    html += '<span class="ps-note">満了予定はサイクル（現在全員12ヶ月）からの暫定計算。正確な満了日は次回対応。</span>';
+    html += '</div>';
+    html += '<div class="plan-cards">';
     users.forEach(function (u) {
         const rec = (byUser[u.userId] && byUser[u.userId][0]) || null;
         const lastDate = rec ? rec.plan_date : '';
@@ -1520,12 +1556,25 @@ function renderTsushoPlans() {
         html += '</div>';
         html += '<div class="plan-status-emoji">' + statusEmoji[status] + '</div>';
         html += '</div>';
+        if (status === 'none') {
+            html += '<div class="plan-unset-badge">⚠ 最終作成日 未設定</div>';
+        }
         html += '<div class="plan-row">サイクル: <select class="cycle-select" data-user="' + escapeHtml(u.userId) + '">';
         [3, 6, 12].forEach(function (c) {
             html += '<option value="' + c + '"' + ((u.cycleMonths || 12) === c ? ' selected' : '') + '>' + c + 'ヶ月</option>';
         });
         html += '</select></div>';
         html += '<div class="plan-row">最終作成日: <input type="date" class="plan-date-input" data-user="' + escapeHtml(u.userId) + '" value="' + escapeHtml(lastDate) + '"></div>';
+        const _mt = computeMantan(lastDate, u.cycleMonths || 12);
+        if (_mt) {
+            const _over = _mt.daysLeft < 0;
+            const _label = _over
+                ? ('満了 ' + _mt.md + ' ・ ' + Math.abs(_mt.daysLeft) + '日超過')
+                : ('満了予定 ' + _mt.md + ' ・ あと' + _mt.daysLeft + '日');
+            html += '<div class="plan-row plan-mantan' + (_over ? ' over' : '') + '">'
+                + (_over ? '🔴 ' : '≈ ') + escapeHtml(_label)
+                + ' <span class="mantan-zantei">(暫定·サイクル' + (u.cycleMonths || 12) + 'ヶ月)</span></div>';
+        }
         if (rec) {
             html += '<div class="plan-sent-row">';
             html += '<label><input type="checkbox" class="sent-check" data-user="' + escapeHtml(u.userId) + '" data-year="' + rec.year + '" data-month="' + rec.month + '"' + (rec.sent_to_cm ? ' checked' : '') + '> ケアマネ送付済み</label>';
