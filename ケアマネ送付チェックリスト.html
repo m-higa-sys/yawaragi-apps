@@ -1285,9 +1285,12 @@ function render() {
           return true;
         });
       }
+      // 🆕 Phase3(2026-06-28): 区変中フラグ。実績(jisseki)だけ送付不可・他項目は通常。allOthersDone と各カウントで使う。
+      const _isKubun = (allData.kubunActive || []).some(k => k.name === u.name);
       // 「送付済」系のロック判定：他の項目が全部 済(true) でないとクリック不可
       // hyouka はGAS側状態（u.hyoukaPdfSent/PrintSent）を参照
-      const allOthersDone = items.filter(x => x.key !== 'sent').every(x => {
+      //   ※Phase3: 区変中は実績(jisseki)を送れないため jisseki を「他の項目」から除外し、送付済をアンロック可能にする
+      const allOthersDone = items.filter(x => x.key !== 'sent' && !(_isKubun && x.key === 'jisseki')).every(x => {
         if (x.key === 'hyouka') return !!(u.hyoukaPdfSent || u.hyoukaPrintSent);
         return progress[monthKey][userKey][x.key] === true;
       });
@@ -1310,7 +1313,7 @@ function render() {
       const _isOkurePre = !_isKubunPre && !!_delayedEntryPre;
       const _delayedReadyPre = !!(_delayedEntryPre && _delayedEntryPre.insuranceReceivedAt);
       const _isOkureWaitPre = _isOkurePre && !_delayedReadyPre;
-      const isExcludedFromCount = isHoldExcluded || hasQuickExclude || _isKubunPre || _isOkureWaitPre;
+      const isExcludedFromCount = isHoldExcluded || hasQuickExclude || _isOkureWaitPre; // Phase3: 区変中は全除外しない（実績だけ別扱い）
       if (isExcludedFromCount) officeHoldExcluded++;
 
       // クイック除外チップHTML生成
@@ -1345,12 +1348,12 @@ function render() {
             + '</span>';
         }
 
-        if (!isExcludedFromCount) { officeTotal++; total++; }
+        if (!isExcludedFromCount && !(_isKubun && it.key === 'jisseki')) { officeTotal++; total++; }
         const doneState = progress[monthKey][userKey][it.key];
         const nextState = progress[monthKey][userKey][it.key + '_next'];
         const isDone = doneState === true;
         const hasNext = nextState === true;
-        if (isDone && !isExcludedFromCount) { officeDone++; done++; }
+        if (isDone && !isExcludedFromCount && !(_isKubun && it.key === 'jisseki')) { officeDone++; done++; }
         let cls = '';
         if (isDone) cls += ' checked';
         if (hasNext) cls += ' has-next';
@@ -1358,12 +1361,12 @@ function render() {
         const isSent = it.key === 'sent';
         const isSentLocked = isSent && !allOthersDone && !isDone;
         // 保留中ロック（全項目）
-        const isLocked = isSentLocked || !!holdLockCat;
+        const isLocked = isSentLocked || !!holdLockCat || (_isKubun && it.key === 'jisseki'); // Phase3: 区変中は実績だけロック
         if (isLocked) cls += ' locked';
         const mainIcon = isDone ? '✅' : '☐';
         const flagCls = hasNext ? 'next-flag active' : 'next-flag';
         const flagTitle = hasNext ? '📅 来月送付ON（クリックで解除）' : '📅 来月送付にする';
-        const mainTitle = holdLockCat ? holdLockTitle : (isSentLocked ? '他の項目を全て完了してから押せます' : '');
+        const mainTitle = holdLockCat ? holdLockTitle : (isSentLocked ? '他の項目を全て完了してから押せます' : ((_isKubun && it.key === 'jisseki') ? '🔴実績は区変確定後に送付します（今は送れません）' : ''));
         return '<span class="check-item' + cls + '" data-user="' + escapeAttr(u.name) + '" data-key="' + it.key + '" data-target-ym="' + monthKey + '">'
           + '<span class="check-main" title="' + escapeAttr(mainTitle) + '">' + mainIcon + ' ' + it.label + '</span>'
           + '<span class="' + flagCls + '" title="' + flagTitle + '">📅</span>'
@@ -1437,7 +1440,7 @@ function render() {
         + (isReady ? ' user-row-ready' : '')
         + (holdInfo ? ' user-row-hold' : '')
         + (isExcludedFromCount ? ' user-row-hold-excluded' : '');
-      const kubunBadgeHtml = isKubun ? '<span class="badge-kubun">🔴 区変中・送れません！</span>' : '';
+      const kubunBadgeHtml = isKubun ? '<span class="badge-kubun">🔴 区変中・実績だけ送れません</span>' : '';
       let holdBadgeHtml;
       if (holdInfo) {
         const cat = HOLD_CATEGORIES[holdInfo.category] || HOLD_CATEGORIES.other;
@@ -1499,17 +1502,17 @@ function render() {
       const _isOkureEx = !_isKubunEx && !!_de;
       const _deReady = !!(_de && _de.insuranceReceivedAt);
       const _isOkureWaitEx = _isOkureEx && !_deReady;
-      const _excluded = _isHoldEx || _hasQuickEx || _isKubunEx || _isOkureWaitEx;
+      const _excluded = _isHoldEx || _hasQuickEx || _isOkureWaitEx; // Phase3: 区変中は全除外しない（実績だけ別扱い）
       if (_excluded) {
         let _reason = 'other';
-        if (_isKubunEx) _reason = 'kubun';
-        else if (_isOkureWaitEx) _reason = 'okure';
+        if (_isOkureWaitEx) _reason = 'okure';
         else if (_isHoldEx) _reason = 'hold';
         else if (_hasQuickEx) _reason = 'quick';
-        return { excluded: true, total: 0, done: 0, reason: _reason };
+        return { excluded: true, isKubun: false, total: 0, done: 0, reason: _reason };
       }
       let _t = 0, _d = 0;
       _items.forEach(it => {
+        if (_isKubunEx && it.key === 'jisseki') return; // Phase3: 区変中は実績を母数に入れない
         if (it.key === 'hyouka') { _t++; if (u.hyoukaPdfSent || u.hyoukaPrintSent) _d++; }
         else { _t++; if (_pg[it.key] === true) _d++; }
       });
@@ -1520,7 +1523,7 @@ function render() {
           if (_pp[co.key] === true) _d++;
         });
       }
-      return { excluded: false, total: _t, done: _d, reason: null };
+      return { excluded: false, isKubun: _isKubunEx, total: _t, done: _d, reason: null };
     };
     let allTotal = 0, allDone = 0, allHoldExcluded = 0;
     let sendableTotal = 0, sendableOk = 0; // 🆕 Phase2: 除外を除いた「送れる母数」と、そのうち実績OK数
@@ -1530,9 +1533,11 @@ function render() {
       if (_r.excluded) { allHoldExcluded++; _reasonCount[_r.reason] = (_reasonCount[_r.reason] || 0) + 1; }
       else {
         allTotal += _r.total; allDone += _r.done;
-        sendableTotal++;
-        const _fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
-        if (_fin.ok) sendableOk++;
+        if (!_r.isKubun) { // Phase3: 区変中はreadyBadge（実績を今月送れる母数）に入れない
+          sendableTotal++;
+          const _fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
+          if (_fin.ok) sendableOk++;
+        }
       }
     });
     // 全員が除外状態（区変中等）＝「今月は送付対象外」。送付完了とは区別する。
@@ -1541,8 +1546,7 @@ function render() {
     let readyBadge = '';
     if (isOfficeExcludedAll) {
       // 送付対象外グループ：◯/◯名OK は出さず、除外理由サマリを出す
-      const _parts = [];
-      if (_reasonCount.kubun) _parts.push('区変中' + _reasonCount.kubun + '名');
+      const _parts = []; // Phase3: 区変中は対象外でなくなったため除外理由から撤去
       if (_reasonCount.okure) _parts.push('月遅れ待ち' + _reasonCount.okure + '名');
       if (_reasonCount.hold)  _parts.push('保留' + _reasonCount.hold + '名');
       if (_reasonCount.quick) _parts.push('対象外' + _reasonCount.quick + '名');
@@ -1748,7 +1752,9 @@ function bindEvents() {
         const ymCur = document.getElementById('monthSel').value;
         const progNow = loadProgress();
         const userProg = (progNow[ymCur] || {})[c.dataset.user] || {};
-        if (userProg._hold) {
+        if (c.dataset.key === 'jisseki' && (allData.kubunActive || []).some(k => k.name === c.dataset.user)) {
+          if (typeof alert === 'function') alert('🔴実績は区変中のため今は送れません。\n区変が確定してから送付してください。\n（実績以外は通常どおりチェックできます）');
+        } else if (userProg._hold) {
           const cat = HOLD_CATEGORIES[userProg._hold.category] || HOLD_CATEGORIES.other;
           if (typeof alert === 'function') alert('⏸️ ' + cat.label + '中です。\n保留解除してから操作してください。\n\n（バッジ「⏸️ ' + cat.label + '」をタップで解除できます）');
         } else {
