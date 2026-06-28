@@ -1467,11 +1467,8 @@ function render() {
 
     // 🔴 事業所別「実績OK状況」バッジ（2026/4/27 追加）
     const officeAllUsers = grouped[office]; // フィルター前の全員
-    const okCount = officeAllUsers.filter(u => {
-      const fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
-      return fin.ok;
-    }).length;
-    const totalUsers = officeAllUsers.length;
+    // 🆕 Phase2(2026-06-28): 旧 okCount/totalUsers（officeAllUsers全員＝区変中等の除外者も含む母数）は廃止。
+    //   readyBadge は下の all-tally で求める sendableOk/sendableTotal（除外を除いた「送れる母数」）を使う。
 
     // 🆕 Phase1(2026-06-28): グループ判定専用「事業所全員」集計（表示フィルター非依存）。
     //   表示用 officeTotal/officeDone/officeHoldExcluded（users基準）は触らず、完了/対象外の判定だけ
@@ -1526,11 +1523,17 @@ function render() {
       return { excluded: false, total: _t, done: _d, reason: null };
     };
     let allTotal = 0, allDone = 0, allHoldExcluded = 0;
+    let sendableTotal = 0, sendableOk = 0; // 🆕 Phase2: 除外を除いた「送れる母数」と、そのうち実績OK数
     const _reasonCount = { kubun: 0, okure: 0, hold: 0, quick: 0, other: 0 };
     officeAllUsers.forEach(u => {
       const _r = _tallyUserAll(u);
       if (_r.excluded) { allHoldExcluded++; _reasonCount[_r.reason] = (_reasonCount[_r.reason] || 0) + 1; }
-      else { allTotal += _r.total; allDone += _r.done; }
+      else {
+        allTotal += _r.total; allDone += _r.done;
+        sendableTotal++;
+        const _fin = canFinalizeJisseki(u.days || '', monthKey, u.ampm || '');
+        if (_fin.ok) sendableOk++;
+      }
     });
     // 全員が除外状態（区変中等）＝「今月は送付対象外」。送付完了とは区別する。
     const isOfficeExcludedAll = (allTotal === 0 && allHoldExcluded > 0 && allHoldExcluded === officeAllUsers.length);
@@ -1544,11 +1547,11 @@ function render() {
       if (_reasonCount.hold)  _parts.push('保留' + _reasonCount.hold + '名');
       if (_reasonCount.quick) _parts.push('対象外' + _reasonCount.quick + '名');
       readyBadge = '<span class="badge" style="background:#e5e7eb; color:#374151; font-weight:700;">⏸ 今月は送付対象外（' + (_parts.join('・') || (officeAllUsers.length + '名')) + '）</span>';
-    } else if (okCount === totalUsers && totalUsers > 0) {
+    } else if (sendableOk === sendableTotal && sendableTotal > 0) {
       readyBadge = '<span class="badge" style="background:#38a169; color:#fff; font-weight:900; padding:3px 10px; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.2);">📬 全員揃いました・即送付可</span>';
-    } else if (okCount > 0) {
-      const remain = totalUsers - okCount;
-      readyBadge = '<span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">⏳ ' + okCount + '/' + totalUsers + '名OK・あと' + remain + '名待ち</span>';
+    } else if (sendableOk > 0) {
+      const remain = sendableTotal - sendableOk;
+      readyBadge = '<span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">⏳ ' + sendableOk + '/' + sendableTotal + '名OK・あと' + remain + '名待ち</span>';
     }
 
     // 同一敷地ペアバッジ（2026/4/29追加）：両方とも当月対象者がいるときだけ表示
@@ -1595,7 +1598,7 @@ function render() {
     const html = '<div class="office-block" data-office="' + escapeAttr(office) + '">'
       + '<div class="office-header">'
       +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + displayClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + displayIcon + ' ' + escapeHtml(displayMethod) + '</span>' + careplanTag + ' ' + readyBadge + ' ' + pairBadge
-      +     '<div class="office-meta">' + users.length + '名 ' + (contactInfo ? '／ ' + escapeHtml(contactInfo) : '') + '</div>'
+      +     '<div class="office-meta">' + (officeAllUsers.length === users.length ? (officeAllUsers.length + '名') : ('対象' + officeAllUsers.length + '名（表示中' + users.length + '名）')) + ' ' + (contactInfo ? '／ ' + escapeHtml(contactInfo) : '') + '</div>'
       +     breakdownHtml
       +   '</div>'
       +   '<div class="office-right"><span class="method-tag ' + methodClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="送付方法を編集">✎ 編集</span><div>' + percent + '% (' + officeDone + '/' + officeTotal + ')</div></div>'
