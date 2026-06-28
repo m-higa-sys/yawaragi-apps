@@ -1018,6 +1018,8 @@ function renderTable() {
     const now = new Date();
     const nowYear = now.getFullYear();
     const nowMonth = now.getMonth() + 1;
+    const nowYM = nowYear + '-' + String(nowMonth).padStart(2, '0');
+    const gateNames = new Set();   // 当月適用の作成済/達成済・未送付セル → 当月来所実績で⚠を出し分け（B案）
 
     // ヘッダ
     let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="background:#2c7a7b; left:30px; min-width:110px;">氏名</th>';
@@ -1127,7 +1129,10 @@ function renderTable() {
                         if (submitted) {
                             inner += '<div style="font-size:0.72rem; color:#276749; font-weight:700;">提出済✓ ' + formatMD(printDate || pdfDate) + '</div>';
                         } else if (tasseido) {
-                            inner += '<div style="font-size:0.72rem; color:#c53030; font-weight:700;">⚠未提出</div>';
+                            // 評価の適用月＝そのセルの評価月(cellYear/mo.m)。当月分は当月来所実績でゲート（B案）。
+                            const _ym = cellYear + '-' + String(mo.m).padStart(2, '0');
+                            if (_ym === nowYM) gateNames.add(u.name);
+                            inner += unsentLineHTML(u.name, cellYear, mo.m);
                         }
                         if (!inner) inner = '<div style="color:#cbd5e0;">—</div>';
                     }
@@ -1162,10 +1167,11 @@ function renderTable() {
                 //  ・計画月でないがデータがあり、翌月が計画月 → 翌月（前倒し作成: 4月セルの5月計画→5月〜）
                 //  ・どちらでもない → そのセルの月（フォールバック）
                 let labelMonth = mo.m;
+                let labelYear = cellYear;
                 if (!isPlan) {
                     const lblNextYear = (mo.m === 12) ? cellYear + 1 : cellYear;
                     const lblNextMonth = (mo.m === 12) ? 1 : mo.m + 1;
-                    if (isPlanMonth(u.planStart, u.planMonths, lblNextYear, lblNextMonth)) labelMonth = lblNextMonth;
+                    if (isPlanMonth(u.planStart, u.planMonths, lblNextYear, lblNextMonth)) { labelMonth = lblNextMonth; labelYear = lblNextYear; }
                 }
                 const startLabel = labelMonth + '月〜';
                 if (isBlocked) {
@@ -1201,9 +1207,14 @@ function renderTable() {
                         inner += '<div style="font-size:0.68rem; color:#4a5568;">出力 ' + escapeHtml(rec.output_by) + '</div>';
                     }
                     if (keikaku) {
-                        inner += sentDate
-                            ? '<div style="font-size:0.7rem; color:#276749; font-weight:700;">提出済✓ ' + formatMD(sentDate) + '</div>'
-                            : '<div style="font-size:0.7rem; color:#c53030; font-weight:700;">⚠未提出</div>';
+                        if (sentDate) {
+                            inner += '<div style="font-size:0.7rem; color:#276749; font-weight:700;">提出済✓ ' + formatMD(sentDate) + '</div>';
+                        } else {
+                            // 適用月＝labelYear/labelMonth。当月適用分は当月来所実績でゲート（B案）。
+                            const _ym = labelYear + '-' + String(labelMonth).padStart(2, '0');
+                            if (_ym === nowYM) gateNames.add(u.name);
+                            inner += unsentLineHTML(u.name, labelYear, labelMonth);
+                        }
                     }
                 }
                 html += '<td class="' + cls + '"'
@@ -1221,6 +1232,8 @@ function renderTable() {
     });
     tbody.innerHTML = html;
     updateStats();
+    // 当月適用・未送付セルの来所実績を非同期取得 → 揃ったら一度だけ再描画（tried で再enqueue防止）
+    ensureUsageGate([...gateNames]);
 }
 
 function matchesFilter(u) {
@@ -1960,6 +1973,75 @@ function muCalcUtilization(data) {
     const s = data.summary || {};
     if (!s.scheduledTotal) return null;
     return Math.round((s.attended || 0) / s.scheduledTotal * 100);
+}
+
+// ============ 未提出⚠ ゲート（当月初回来所後に発火・2026-06-28 B案）============
+// 計画書/評価が「作成済(達成済)・未送付」でも、当月来所前は⚠を出さない（サインは当月来所後にしか取れない＝誤督促防止）。
+// 判定: 適用月(labelMonth/評価月)の月次利用状況(monthly_usage)を name 単位で取得し、
+//   今日以前に attended が1日以上 → 当月実績あり → ⚠未提出
+//   今日以前に attended なし        → 実績なし   → 中立「サイン待ち」
+//   取得失敗(JSONP不達/タイムアウト/success:false) → 保留 → 中立（⚠も提出済確定も出さない＝安全側）
+// ※ attended は出勤送迎表ベースで欠席除外済み(GAS 8931/9040)・未来日は乗らない(A-1)ため attended 単独でよい。
+// ※ 送迎表GASダウン時は attended=0 と未来所が区別不能 → 中立に寄せる（督促漏れ方向・誤督促はしない）。
+const usageGate = {};   // name -> { state:'attended'|'none'|'pending', tried:bool }
+let _muGateSeq = 0;
+
+// バッチ用 monthly_usage JSONP（モーダルの muFetchMonthly とは別系統・cb一意化＋タイムアウト付き）
+function muFetchMonthlyGate(name, ym, cb) {
+    const cbName = 'muGateCb_' + Date.now() + '_' + (_muGateSeq++);
+    let done = false;
+    function cleanup() {
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        const s = document.getElementById(cbName);
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+    }
+    function settle(data) { if (done) return; done = true; clearTimeout(timer); cleanup(); cb(data); }
+    const timer = setTimeout(function () { settle(null); }, 12000);
+    window[cbName] = function (data) { settle(data); };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.onerror = function () { settle(null); };
+    script.src = API_BASE
+        + '?action=monthly_usage&name=' + encodeURIComponent(name)
+        + '&yearMonth=' + encodeURIComponent(ym)
+        + '&callback=' + cbName + '&t=' + Date.now();
+    document.body.appendChild(script);
+}
+
+// 当月分の name 群を取得（未取得のみ）。バッチ完了で一度だけ再描画。tried で再enqueue/無限ループを防止。
+function ensureUsageGate(names) {
+    const ym = formatTodayISO().slice(0, 7);
+    const todo = names.filter(function (n) { return !(usageGate[n] && usageGate[n].tried); });
+    if (!todo.length) return;
+    let remaining = todo.length;
+    todo.forEach(function (name) {
+        usageGate[name] = { state: 'pending', tried: true };
+        muFetchMonthlyGate(name, ym, function (data) {
+            if (data && data.success) {
+                usageGate[name].state = (muCalcLastVisit(data) !== null) ? 'attended' : 'none';
+            } else {
+                usageGate[name].state = 'pending';   // 取得失敗＝保留（中立寄せ）
+            }
+            if (--remaining === 0) renderTable();
+        });
+    });
+}
+
+// 未送付セルの表示行HTML（適用月 applyYear/applyMonth 基準）。キャッシュ参照のみ・副作用なし。
+function unsentLineHTML(name, applyYear, applyMonth) {
+    const nowYM = formatTodayISO().slice(0, 7);
+    const ym = applyYear + '-' + String(applyMonth).padStart(2, '0');
+    const WARN = '<div style="font-size:0.7rem; color:#c53030; font-weight:700;">⚠未提出</div>';
+    const NEU = function (t) {
+        return '<div style="font-size:0.7rem; color:#718096; font-weight:600;" title="サインは当月来所後に取得するため、来所実績が出るまで督促しません">' + t + '</div>';
+    };
+    if (ym < nowYM) return WARN;                       // 過去＝バックログ（来所機会は過ぎている）
+    if (ym > nowYM) return NEU('🖊 翌月提出予定');       // 前倒し作成（適用月はまだ先）
+    const g = usageGate[name];                          // 適用月＝当月
+    if (!g || g.state === 'pending') return NEU('⏳ 来所確認中');             // 保留
+    return g.state === 'attended'
+        ? WARN
+        : NEU('🖊 サイン待ち（当月提出予定）');           // 当月まだ来所なし
 }
 
 // モーダル内「計画書開始月を変更」→ 既存ダイアログへ（疑似td要素を渡す）
