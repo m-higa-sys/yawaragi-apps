@@ -460,6 +460,11 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 .plans-summary .ps-unset.has { color:#c62828; }
 .plans-summary .ps-unset b { font-size:18px; }
 .plans-summary .ps-note { font-size:12px; color:#8d6e63; }
+.plans-submit-counts { background:#e3f2fd; border-color:#90caf9; }
+.plans-submit-counts .psc-title { font-size:14px; font-weight:700; color:#1565c0; }
+.plans-submit-counts .psc-item { font-size:13px; color:#37474f; }
+.plans-submit-counts .psc-item b { font-size:18px; color:#0d47a1; margin:0 2px; }
+.plans-submit-counts .psc-note { font-size:11px; color:#789; }
 .plan-unset-badge { margin-top:8px; padding:4px 8px; background:#ffebee; color:#c62828; border:1px solid #ef9a9a; border-radius:6px; font-size:13px; font-weight:700; display:inline-block; }
 .plan-mantan { color:#1b5e20; font-weight:600; }
 .plan-mantan.over { color:#c62828; }
@@ -1504,6 +1509,24 @@ function filterPlansUsers(users) {
     });
 }
 
+// Phase A: 今月ケアマネ提出の種類別カウント（満了月＝実満了日で判定・要支援/要介護出し分け・二重計上防止）。
+// 母集団はフィルタ前のallUsers＝当月の総仕事量。退所者(cancelled)は除外。設計=2026-06-28-phaseA-...-design.md。
+function tsushoSubmitCounts(allUsers, dueMap) {
+    const now = new Date();
+    const curYM = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    let keikaku = 0, hyouka = 0, moni = 0;
+    (allUsers || []).forEach(function (u) {
+        if (u.cancelled) return;                                  // 退所者は除外
+        const cat = u.category || '';
+        const isShien = cat.indexOf('要支援') >= 0 || cat.indexOf('事業対象') >= 0;
+        const dueYM = (dueMap[u.userId] || '').slice(0, 7);       // 満了日YYYY-MM（未設定は''）
+        const isManryou = !!dueYM && dueYM === curYM;             // 満了月＝作る月
+        if (isManryou) keikaku++;                                 // 計画書＝満了月の全員（支援も介護も）
+        if (isShien) { if (isManryou) hyouka++; else moni++; }    // 支援: 満了月→評価 / 普通月→モニ
+    });
+    return { keikaku: keikaku, hyouka: hyouka, moni: moni, ym: curYM };
+}
+
 function renderTsushoPlans() {
     const container = document.getElementById('plans-container');
     if (!TSUSHO_PLANS_CACHE) return;
@@ -1558,6 +1581,16 @@ function renderTsushoPlans() {
     html += '<div class="plans-summary">';
     html += '<span class="ps-unset' + (unsetCount > 0 ? ' has' : '') + '">📊 最終作成日 未入力 <b>' + unsetCount + '</b> / ' + allUsers.length + '人</span>';
     html += '<span class="ps-note">満了予定はサイクル（現在全員12ヶ月）からの暫定計算。正確な満了日は次回対応。</span>';
+    html += '</div>';
+    // Phase A: 今月ケアマネ提出 種類別カウント（満了月＝リハブ実満了日で判定）
+    const _sc = tsushoSubmitCounts(allUsers, TSUSHO_DUE_MAP);
+    const _scYm = _sc.ym.replace('-', '年') + '月';
+    html += '<div class="plans-summary plans-submit-counts">';
+    html += '<span class="psc-title">📤 今月（' + _scYm + '）ケアマネ提出</span>';
+    html += '<span class="psc-item">通所モニ <b>' + _sc.moni + '</b></span>';
+    html += '<span class="psc-item">通所評価 <b>' + _sc.hyouka + '</b></span>';
+    html += '<span class="psc-item">通所計画書 <b>' + _sc.keikaku + '</b></span>';
+    html += '<span class="psc-note">満了月＝作る月（要支援は評価+計画書／要介護は計画書のみ）。事業対象者は名簿未登録のためモニ未計上。</span>';
     html += '</div>';
     html += '<div class="plan-cards">';
     users.forEach(function (u) {
