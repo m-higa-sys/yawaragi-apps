@@ -41,6 +41,9 @@ main { padding: 16px 24px 48px; }
 .completed-section .office-block { opacity: 0.55; }
 .completed-section .office-block:hover { opacity: 0.9; }
 .completed-section .office-header { background: #f0fff4; }
+.excluded-section .completed-section-header { background: #eef2f7; }
+.excluded-section .completed-section-header:hover { background: #dde5ee; }
+.excluded-section .office-header { background: #f3f4f6; }
 .toggle-icon { display: inline-block; transition: transform 0.2s; margin-right: 6px; }
 .user-row { padding: 10px 0; border-bottom: 1px solid #edf2f7; }
 .user-row:last-child { border-bottom: none; }
@@ -1062,6 +1065,7 @@ function buildTargets(ym) {
 const expandedOffices = new Set();
 // 「送付完了」セクションの展開状態（セッション内のみ・デフォルト折りたたみ）
 let completedSectionExpanded = false;
+let excludedSectionExpanded = false;
 
 // ===== 描画 =====
 function render() {
@@ -1468,8 +1472,79 @@ function render() {
       return fin.ok;
     }).length;
     const totalUsers = officeAllUsers.length;
+
+    // 🆕 Phase1(2026-06-28): グループ判定専用「事業所全員」集計（表示フィルター非依存）。
+    //   表示用 officeTotal/officeDone/officeHoldExcluded（users基準）は触らず、完了/対象外の判定だけ
+    //   officeAllUsers(=grouped[office]) 全員で別途数える。数え方は上の表示ループと同一ロジックを複製。
+    const _tallyUserAll = (u) => {
+      const _uk = u.name;
+      const _pg = (progress[monthKey] && progress[monthKey][_uk]) || {};
+      const _ov = _pg._override || {};
+      let _enp = u.hasNewPlan;
+      if (_ov.hasNewPlan === true) _enp = true; else if (_ov.hasNewPlan === false) _enp = false;
+      let _ems = u.isMeasure;
+      if (_ov.hasMeasure === true) _ems = true; else if (_ov.hasMeasure === false) _ems = false;
+      let _items = getCheckItems(u.care, _enp, officeMethod, _ems, u.needsTsushoPlan, u.needsOralPlan, u.needsHyouka, u.monitoringSignRequired);
+      if (_ov.skip) {
+        _items = _items.filter(it => {
+          for (const gKey in SKIP_GROUPS) {
+            if (_ov.skip[gKey] && SKIP_GROUPS[gKey].keys.indexOf(it.key) >= 0) return false;
+          }
+          return true;
+        });
+      }
+      const _h = _pg._hold;
+      const _isHoldEx = !!(_h && HOLD_EXCLUDE_FROM_COUNT.has(_h.category));
+      const _ef = _pg._excludeFlags || {};
+      const _hasQuickEx = QUICK_EXCLUDE_FLAGS.some(k => _ef[k] === true);
+      const _isKubunEx = (allData.kubunActive || []).some(k => k.name === u.name);
+      const _de = (allData.kubunDelayed || []).find(d => d.name === u.name && (d.months || []).indexOf(monthKey) >= 0);
+      const _isOkureEx = !_isKubunEx && !!_de;
+      const _deReady = !!(_de && _de.insuranceReceivedAt);
+      const _isOkureWaitEx = _isOkureEx && !_deReady;
+      const _excluded = _isHoldEx || _hasQuickEx || _isKubunEx || _isOkureWaitEx;
+      if (_excluded) {
+        let _reason = 'other';
+        if (_isKubunEx) _reason = 'kubun';
+        else if (_isOkureWaitEx) _reason = 'okure';
+        else if (_isHoldEx) _reason = 'hold';
+        else if (_hasQuickEx) _reason = 'quick';
+        return { excluded: true, total: 0, done: 0, reason: _reason };
+      }
+      let _t = 0, _d = 0;
+      _items.forEach(it => {
+        if (it.key === 'hyouka') { _t++; if (u.hyoukaPdfSent || u.hyoukaPrintSent) _d++; }
+        else { _t++; if (_pg[it.key] === true) _d++; }
+      });
+      if (u.carryOver && u.carryOver.length > 0) {
+        u.carryOver.forEach(co => {
+          _t++;
+          const _pp = (progress[co.originYm] || {})[u.name] || {};
+          if (_pp[co.key] === true) _d++;
+        });
+      }
+      return { excluded: false, total: _t, done: _d, reason: null };
+    };
+    let allTotal = 0, allDone = 0, allHoldExcluded = 0;
+    const _reasonCount = { kubun: 0, okure: 0, hold: 0, quick: 0, other: 0 };
+    officeAllUsers.forEach(u => {
+      const _r = _tallyUserAll(u);
+      if (_r.excluded) { allHoldExcluded++; _reasonCount[_r.reason] = (_reasonCount[_r.reason] || 0) + 1; }
+      else { allTotal += _r.total; allDone += _r.done; }
+    });
+    // 全員が除外状態（区変中等）＝「今月は送付対象外」。送付完了とは区別する。
+    const isOfficeExcludedAll = (allTotal === 0 && allHoldExcluded > 0 && allHoldExcluded === officeAllUsers.length);
+
     let readyBadge = '';
-    if (okCount === totalUsers && totalUsers > 0) {
+    if (isOfficeExcludedAll) {
+      // 送付対象外グループ：◯/◯名OK は出さず、除外理由サマリを出す
+      const _parts = [];
+      if (_reasonCount.kubun) _parts.push('区変中' + _reasonCount.kubun + '名');
+      if (_reasonCount.okure) _parts.push('月遅れ待ち' + _reasonCount.okure + '名');
+      if (_reasonCount.hold)  _parts.push('保留' + _reasonCount.hold + '名');
+      if (_reasonCount.quick) _parts.push('対象外' + _reasonCount.quick + '名');
+      readyBadge = '<span class="badge" style="background:#e5e7eb; color:#374151; font-weight:700;">⏸ 今月は送付対象外（' + (_parts.join('・') || (officeAllUsers.length + '名')) + '）</span>';
+    } else if (okCount === totalUsers && totalUsers > 0) {
       readyBadge = '<span class="badge" style="background:#38a169; color:#fff; font-weight:900; padding:3px 10px; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.2);">📬 全員揃いました・即送付可</span>';
     } else if (okCount > 0) {
       const remain = totalUsers - okCount;
@@ -1512,9 +1587,11 @@ function render() {
         }).join('<span style="color:#cbd5e1;margin:0 4px;">／</span>')
       + '</div>';
 
-    // 完了判定：通常完了 OR 全員「今月対象外」保留中
-    const isOfficeComplete = (officeTotal > 0 && officeDone === officeTotal)
-      || (officeTotal === 0 && officeHoldExcluded > 0 && officeHoldExcluded === users.length);
+    // 完了判定（2026-06-28 改修）：母数は表示フィルター非依存の officeAllUsers 基準。
+    //   送付完了 = 送る人がいて全員済。送付対象外(全員除外)は完了に混ぜず officeStatus で分離。
+    //   旧②（officeHoldExcluded === users.length）はフィルター後の users を見て誤完了する罠のため廃止。
+    const isOfficeComplete = !isOfficeExcludedAll && (allTotal > 0 && allDone === allTotal);
+    const officeStatus = isOfficeExcludedAll ? 'excluded' : (isOfficeComplete ? 'complete' : 'incomplete');
     const html = '<div class="office-block" data-office="' + escapeAttr(office) + '">'
       + '<div class="office-header">'
       +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + displayClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + displayIcon + ' ' + escapeHtml(displayMethod) + '</span>' + careplanTag + ' ' + readyBadge + ' ' + pairBadge
@@ -1528,7 +1605,7 @@ function render() {
       +   userHtml
       + '</div>'
       + '</div>';
-    return { html, isComplete: isOfficeComplete, group: methodGroupOf(effectiveOffice, contactMap) };
+    return { html, isComplete: isOfficeComplete, status: officeStatus, group: methodGroupOf(effectiveOffice, contactMap) };
   });
 
   if (viewMode === 'method') {
@@ -1549,9 +1626,25 @@ function render() {
     }
     main.innerHTML = methodHtml;
   } else {
-    // 未完了と完了を分離（送付完了セクションを下部に集約）
-    const incompleteHtml = officeBlocks.filter(b => !b.isComplete).map(b => b.html).join('');
-    const completeBlocks = officeBlocks.filter(b => b.isComplete);
+    // 未完了 → ⏸今月は送付対象外 → ✅送付完了 の3グループに分離（2026-06-28 改修）。
+    const incompleteHtml = officeBlocks.filter(b => b.status === 'incomplete').map(b => b.html).join('');
+    const excludedBlocks = officeBlocks.filter(b => b.status === 'excluded');
+    const completeBlocks = officeBlocks.filter(b => b.status === 'complete');
+    // ⏸ 今月は送付対象外（区変中など「送れない人」しかいない事業所）。完了とは別グループ。
+    let excludedSectionHtml = '';
+    if (excludedBlocks.length > 0) {
+      const expCls = excludedSectionExpanded ? ' expanded' : '';
+      excludedSectionHtml =
+        '<div class="completed-section excluded-section' + expCls + '">'
+        + '<div class="completed-section-header" id="excludedSectionToggle">'
+        +   '<span class="toggle-icon">▶</span>'
+        +   '<span>⏸ 今月は送付対象外 (' + excludedBlocks.length + '事業所)</span>'
+        + '</div>'
+        + '<div class="completed-section-body">'
+        +   excludedBlocks.map(b => b.html).join('')
+        + '</div>'
+        + '</div>';
+    }
     let completedSectionHtml = '';
     if (completeBlocks.length > 0) {
       const expCls = completedSectionExpanded ? ' expanded' : '';
@@ -1566,7 +1659,7 @@ function render() {
         + '</div>'
         + '</div>';
     }
-    main.innerHTML = incompleteHtml + completedSectionHtml;
+    main.innerHTML = incompleteHtml + excludedSectionHtml + completedSectionHtml;
   }
 
   updateProgress(done, total);
@@ -1600,6 +1693,15 @@ function bindEvents() {
     completedToggle.onclick = function() {
       const section = completedToggle.parentElement;
       completedSectionExpanded = section.classList.toggle('expanded');
+    };
+  }
+
+  // 「今月は送付対象外」セクションの折りたたみトグル
+  const excludedToggle = document.getElementById('excludedSectionToggle');
+  if (excludedToggle) {
+    excludedToggle.onclick = function() {
+      const section = excludedToggle.parentElement;
+      excludedSectionExpanded = section.classList.toggle('expanded');
     };
   }
 
