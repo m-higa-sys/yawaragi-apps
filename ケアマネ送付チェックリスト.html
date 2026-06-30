@@ -313,17 +313,6 @@ main { padding: 16px 24px 48px; }
   color: #718096;
 }
 .method-group-header:first-child { margin-top: 4px; }
-/* ===== 同一敷地ペアバッジ（2026/4/29追加） ===== */
-.badge.same-location-badge {
-  background: #fef3c7;
-  color: #92400e;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 12px;
-  border: 1.5px dashed #d97706;
-  margin-left: 6px;
-  font-size: 0.82rem;
-}
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
 .modal-box { background: white; border-radius: 10px; padding: 24px; width: 90%; max-width: 480px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
 .modal-box h3 { margin: 0 0 16px; font-size: 1.1rem; }
@@ -488,9 +477,9 @@ const HOLD_EXCLUDE_FROM_COUNT = new Set(['tsukiokure', 'riyo_nashi', 'jihi', 'ny
 // クイックトグルチップに表示する3項目（高頻度のみ・1クリックON/OFF）
 const QUICK_EXCLUDE_FLAGS = ['tsukiokure', 'riyo_nashi', 'jihi'];
 
-// ===== 同一敷地ペア（2026/4/29追加） =====
+// ===== same-location ペア（2026/4/29追加） =====
 // 物理的に同じ敷地内にあり、持参で一緒に届けられる事業所のペア。
-// 表示上は隣接配置＆両方とも当月対象者がいるときだけ「🏢 同一敷地」バッジが出る。
+// 表示上は隣接配置する（並び順のみ。バッジ表示は2026/7廃止）。
 // 追加するときはこの配列に1行追記すればOK（ペアの順序はどちらでも可）。
 const SAME_LOCATION_PAIRS = [
   ['わかばの丘地域包括支援センター', '居宅介護支援事業所わかばの丘'],
@@ -1142,7 +1131,7 @@ function render() {
       if (!grouped[t.office]) grouped[t.office] = [];
       grouped[t.office].push(t);
     });
-    // 人数多い順 ＋ 同一敷地ペア隣接（従来挙動）
+    // 人数多い順 ＋ same-location ペア隣接（従来挙動）
     const baseSorted = Object.keys(grouped).sort((a, b) => grouped[b].length - grouped[a].length);
     sortedOffices = [];
     const placed = new Set();
@@ -1558,18 +1547,6 @@ function render() {
       readyBadge = '<span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">⏳ ' + sendableOk + '/' + sendableTotal + '名OK・あと' + remain + '名待ち</span>';
     }
 
-    // 同一敷地ペアバッジ（2026/4/29追加）：両方とも当月対象者がいるときだけ表示
-    // 事業所集約の概念なので user モードでは抑止（グループキーが利用者名でペア判定が成立しない）
-    // 同一敷地…持参可は「持参で一緒に届けられる」案内。ケアプー事業所は持参を表に出さない方針なので抑止（2026/6/26）。
-    let pairBadge = '';
-    if (viewMode !== 'user' && !isCarePlan) {
-      const pairPartner = getPairPartner(office);
-      if (pairPartner && grouped[pairPartner] && grouped[pairPartner].length > 0) {
-        // 🚫2026-07-01 同一敷地バッジ表示抑止(社長指示・表示層のみ／CSS・ペア判定ロジックは温存)。戻すには次行先頭の「// 」を外す
-        // pairBadge = '<span class="badge same-location-badge" title="同じ敷地内にあります。持参のときは一緒に届けられます。">🏢 同一敷地：' + escapeHtml(pairPartner) + 'と一緒に持参可</span>';
-      }
-    }
-
     // 📡 ケアプー：送付方法バッジ自体を「📡 ケアプー」にしたため、別途の併記タグは廃止（持参との二重表示を解消・2026/6/26）。
     const careplanTag = '';
 
@@ -1602,7 +1579,7 @@ function render() {
     const officeStatus = isOfficeExcludedAll ? 'excluded' : (isOfficeComplete ? 'complete' : 'incomplete');
     const html = '<div class="office-block" data-office="' + escapeAttr(office) + '">'
       + '<div class="office-header">'
-      +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + displayClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + displayIcon + ' ' + escapeHtml(displayMethod) + '</span>' + careplanTag + ' ' + readyBadge + ' ' + pairBadge
+      +   '<div><span class="toggle-icon">▶</span><span class="office-name">' + escapeHtml(office) + '</span><span class="method-badge ' + displayClass + '" data-office="' + escapeAttr(effectiveOffice) + '" data-email="' + escapeAttr(emailAttr) + '" data-fax="' + escapeAttr(faxAttr) + '" data-method="' + escapeAttr(methodAttr) + '" data-cmname="' + escapeAttr(cmNameAttr) + '" title="クリックして送付方法を編集">' + displayIcon + ' ' + escapeHtml(displayMethod) + '</span>' + careplanTag + ' ' + readyBadge
       +     '<div class="office-meta">' + (officeAllUsers.length === users.length ? (officeAllUsers.length + '名') : ('対象' + officeAllUsers.length + '名（表示中' + users.length + '名）')) + ' ' + (contactInfo ? '／ ' + escapeHtml(contactInfo) : '') + '</div>'
       +     breakdownHtml
       +   '</div>'
@@ -1618,7 +1595,7 @@ function render() {
 
   if (viewMode === 'method') {
     // 送付方法別: 完了分離は使わず、METHOD_GROUPS順にヘッダー＋グループ内ブロックを出力。
-    // グループ内順序は filteredOffices 順（人数多い順＋同一敷地ペア隣接）＝事業所別と同一。
+    // グループ内順序は filteredOffices 順（人数多い順＋same-location ペア隣接）＝事業所別と同一。
     const byGroup = {};
     officeBlocks.forEach(b => { (byGroup[b.group] = byGroup[b.group] || []).push(b); });
     let methodHtml = '';
