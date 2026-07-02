@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>【モック】ケアマネ提出物 統合管理 — スタッフビュー画面案 v1</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; background: #f0f2f5; color: #333; padding-bottom: 40px; }
+  .mock-banner { background: #ff9800; color: #fff; text-align: center; padding: 6px; font-size: 13px; font-weight: bold; position: sticky; top: 0; z-index: 100; }
+
+  header { background: #2c6e49; color: #fff; padding: 12px 16px; }
+  header h1 { font-size: 18px; display: flex; align-items: center; gap: 8px; }
+  .header-sub { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 13px; }
+  .month-nav { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: bold; }
+  .month-nav button { background: rgba(255,255,255,.2); border: none; color: #fff; border-radius: 6px; padding: 2px 10px; font-size: 16px; }
+  .sync-info { opacity: .85; font-size: 11px; text-align: right; }
+
+  .operator-bar { background: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #e0e0e0; }
+  .operator-bar .label { font-size: 13px; color: #666; }
+  .operator-chip { background: #2c6e49; color: #fff; border-radius: 16px; padding: 5px 14px; font-size: 14px; font-weight: bold; }
+  .operator-hint { font-size: 11px; color: #999; }
+
+  .summary { display: flex; gap: 8px; padding: 10px 16px; overflow-x: auto; }
+  .stat { background: #fff; border-radius: 10px; padding: 8px 14px; text-align: center; min-width: 90px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .stat .num { font-size: 22px; font-weight: bold; }
+  .stat .cap { font-size: 11px; color: #666; }
+  .stat.red .num { color: #d32f2f; }
+  .stat.orange .num { color: #ef6c00; }
+  .stat.green .num { color: #2e7d32; }
+
+  .filters { display: flex; gap: 6px; padding: 4px 16px 10px; overflow-x: auto; }
+  .fchip { background: #fff; border: 1px solid #ccc; border-radius: 14px; padding: 4px 12px; font-size: 13px; white-space: nowrap; color: #555; }
+  .fchip.on { background: #2c6e49; border-color: #2c6e49; color: #fff; font-weight: bold; }
+
+  .office { margin: 10px 12px; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .office-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #e8f0eb; font-size: 14px; font-weight: bold; }
+  .office-head .method { font-size: 12px; background: #2c6e49; color: #fff; border-radius: 10px; padding: 2px 10px; font-weight: normal; }
+  .office-head .method.fax { background: #7b1fa2; }
+  .office-head .method.carepoo { background: #0277bd; }
+  .office-head .method.jisan { background: #5d4037; }
+
+  .task { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid #eee; }
+  .task .who { min-width: 84px; font-weight: bold; font-size: 15px; }
+  .task .body { flex: 1; min-width: 0; }
+  .task .doc { font-size: 14px; }
+  .task .doc .ym { font-weight: bold; }
+  .task .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .badge { font-size: 11px; border-radius: 9px; padding: 2px 8px; }
+  .b-carry { background: #fff3e0; color: #ef6c00; border: 1px solid #ffb74d; font-weight: bold; }
+  .b-reason { background: #f3e5f5; color: #7b1fa2; }
+  .b-reason.empty { background: #fce4ec; color: #c2185b; border: 1px dashed #c2185b; }
+  .b-kigen { background: #ffebee; color: #c62828; font-weight: bold; }
+  .b-out { background: #e3f2fd; color: #1565c0; }
+  .task .action { min-width: 88px; text-align: right; }
+  .btn { border: none; border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: bold; width: 88px; }
+  .btn-sorotta { background: #fff; color: #2e7d32; border: 2px solid #2e7d32; }
+  .btn-done-sorotta { background: #e8f5e9; color: #2e7d32; border: 2px solid #a5d6a7; font-size: 11px; }
+  .btn-sent { background: #e3f2fd; color: #1565c0; border: 2px solid #90caf9; font-size: 11px; }
+  .task.state-red { border-left: 4px solid #d32f2f; }
+  .task.state-green { border-left: 4px solid #2e7d32; }
+  .task.state-blue { border-left: 4px solid #1565c0; opacity: .7; }
+
+  .note { margin: 18px 12px 6px; background: #fffde7; border: 1px solid #ffe082; border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.7; }
+  .note h3 { font-size: 14px; margin-bottom: 6px; }
+  .undo-toast { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; border-radius: 20px; padding: 10px 18px; font-size: 13px; display: flex; gap: 12px; align-items: center; box-shadow: 0 3px 10px rgba(0,0,0,.3); }
+  .undo-toast button { background: #ffb74d; border: none; border-radius: 12px; padding: 4px 12px; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="mock-banner">⚠ 画面モック（動きません）— レイアウト確認用 v1 2026-07-03</div>
+
+<header>
+  <h1>📤 ケアマネ提出物 統合管理</h1>
+  <div class="header-sub">
+    <div class="month-nav"><button>‹</button> 2026年7月 <button>›</button></div>
+    <div class="sync-info">☁️ 最終同期 07/03 08:10<br>タップで再読込</div>
+  </div>
+</header>
+
+<div class="operator-bar">
+  <span class="label">操作者:</span>
+  <span class="operator-chip">勝又 ▾</span>
+  <span class="operator-hint">← 最初に自分の名前を選択（端末が記憶）</span>
+</div>
+
+<div class="summary">
+  <div class="stat red"><div class="num">12</div><div class="cap">今月あと</div></div>
+  <div class="stat orange"><div class="num">3</div><div class="cap">先月からの繰越</div></div>
+  <div class="stat green"><div class="num">8</div><div class="cap">揃った(送付待ち)</div></div>
+  <div class="stat"><div class="num">103</div><div class="cap">送付済</div></div>
+</div>
+
+<div class="filters">
+  <span class="fchip on">すべて</span>
+  <span class="fchip">個訓</span>
+  <span class="fchip">口腔</span>
+  <span class="fchip">通所</span>
+  <span class="fchip">測定</span>
+  <span class="fchip on">未完了のみ ✓</span>
+</div>
+
+<!-- 事業所グループ: 送付方法順(持参→ケアプー→メール→FAX) -->
+<div class="office">
+  <div class="office-head">
+    <span>わかばの丘地域包括支援センター <small>(あと3件)</small></span>
+    <span class="method">📧 メール=PDF化</span>
+  </div>
+
+  <!-- 繰越タスク: 月ラベル保持+理由チップ+サイン期限バッジ -->
+  <div class="task state-red">
+    <div class="who">荒谷宗親</div>
+    <div class="body">
+      <div class="doc"><span class="ym">6月分:</span> 個訓セット（7月〜）</div>
+      <div class="badges">
+        <span class="badge b-carry">↩ 6月から繰越</span>
+        <span class="badge b-reason">🖊 サイン待ち</span>
+        <span class="badge b-kigen">⚠ 7/7初回利用までにサイン必須</span>
+        <span class="badge b-out">PDF化</span>
+      </div>
+    </div>
+    <div class="action"><button class="btn btn-sorotta">揃った</button></div>
+  </div>
+
+  <!-- 理由未設定の繰越: ❓バッジで目立たせる -->
+  <div class="task state-red">
+    <div class="who">鈴木菊枝</div>
+    <div class="body">
+      <div class="doc"><span class="ym">6月分:</span> 口腔 計画書＋評価（7月〜）</div>
+      <div class="badges">
+        <span class="badge b-carry">↩ 6月から繰越</span>
+        <span class="badge b-reason empty">❓ 理由（タップで設定）</span>
+        <span class="badge b-out">PDF化</span>
+      </div>
+    </div>
+    <div class="action"><button class="btn btn-sorotta">揃った</button></div>
+  </div>
+
+  <!-- 当月・揃った済み -->
+  <div class="task state-green">
+    <div class="who">塩島孝子</div>
+    <div class="body">
+      <div class="doc"><span class="ym">7月分:</span> 通所モニ</div>
+      <div class="badges"><span class="badge b-out">PDF化</span></div>
+    </div>
+    <div class="action"><button class="btn btn-done-sorotta">✓ 揃った<br><small>勝又 7/3</small></button></div>
+  </div>
+</div>
+
+<div class="office">
+  <div class="office-head">
+    <span>ハートケアプラン <small>(あと1件)</small></span>
+    <span class="method carepoo">🔗 ケアプー=PDF添付</span>
+  </div>
+  <div class="task state-red">
+    <div class="who">佐藤サンプル</div>
+    <div class="body">
+      <div class="doc"><span class="ym">7月分:</span> 測定結果</div>
+      <div class="badges"><span class="badge b-out">PDF化</span></div>
+    </div>
+    <div class="action"><button class="btn btn-sorotta">揃った</button></div>
+  </div>
+  <!-- 送付済(当月分のみ薄く表示・未完了フィルタOFF時) -->
+  <div class="task state-blue">
+    <div class="who">高橋義昭</div>
+    <div class="body">
+      <div class="doc"><span class="ym">7月分:</span> 通所モニ</div>
+      <div class="badges"><span class="badge b-out">送付済 7/2（社長）</span></div>
+    </div>
+    <div class="action"><button class="btn btn-sent">✓ 送付済</button></div>
+  </div>
+</div>
+
+<div class="office">
+  <div class="office-head">
+    <span>総合福祉エリア地域包括支援センター <small>(あと1件)</small></span>
+    <span class="method fax">📠 FAX=PDF化(秒速FAX)</span>
+  </div>
+  <div class="task state-red">
+    <div class="who">南靜子</div>
+    <div class="body">
+      <div class="doc"><span class="ym">7月分:</span> 口腔 計画書＋評価（8月〜）</div>
+      <div class="badges">
+        <span class="badge b-kigen">⚠ 8/5初回利用までにサイン必須</span>
+        <span class="badge b-out">PDF化</span>
+      </div>
+    </div>
+    <div class="action"><button class="btn btn-sorotta">揃った</button></div>
+  </div>
+</div>
+
+<!-- 操作直後の「元に戻す」トースト(UI安全ルール) -->
+<div class="undo-toast">✓ 塩島孝子 通所モニを「揃った」にしました <button>元に戻す</button></div>
+
+<div class="note">
+  <h3>📝 このモックの前提（v1）</h3>
+  ・「揃った」＝<b>サイン完了・即送付可能な状態</b>で押す（確定定義）<br>
+  ・「送付済」ボタンは当面社長のみ運用（画面上は全員に見えるが、運用ルールで統制）<br>
+  ・繰越タスクは月ラベルを保ったまま送付済まで残る。理由チップはタップ式・任意（未設定は❓）<br>
+  ・事業所は送付方法順（持参→ケアプー→メール→FAX）。行の左帯: 赤=未作成/緑=揃った/青=送付済<br>
+  ・実績（事業所単位・社長業務）はこのスタッフビューには出さず管理者ビューのみ（要確認②）<br>
+  ・利用終了者（例: 平野啓二さん）の過去行は履歴として台帳に残るが、この画面には出ない
+</div>
+
+</body>
+</html>
