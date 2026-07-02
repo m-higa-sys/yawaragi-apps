@@ -85,13 +85,21 @@ if (extraWts.length === 0) {
     const dirtyN = st.ok ? st.out.split(/\r?\n/).filter(Boolean).length : -1;
     const merged = w.branch && !unmerged.includes(w.branch);
     const label = w.detached ? '(detached)' : (w.branch || '(?)');
-    const mergeNote = w.detached ? '' : (merged ? ' / master反映済み→削除候補' : ' / 未マージ');
-    console.log('  - ' + w.path + '  [' + label + ']' +
-      (dirtyN > 0 ? ' / 未コミット変更 ' + dirtyN + ' 件' : dirtyN === 0 ? ' / クリーン' : ' / 状態取得失敗') +
-      mergeNote);
+    let note;
+    if (dirtyN > 0) {
+      // ブランチが反映済みでも未コミット差分は未反映の実作業かもしれない
+      // （2026-07-02: 連続欠席バッジ撤去がWTの未コミット差分に眠っていた教訓）
+      note = ' / 未コミット作業 ' + dirtyN + ' 件 ⚠️要確認（中身を反映するまで削除しない）';
+    } else if (dirtyN === 0) {
+      note = ' / クリーン' + (w.detached ? '' : (merged ? ' / master反映済み→削除候補' : ' / 未マージ'));
+    } else {
+      note = ' / 状態取得失敗';
+    }
+    console.log('  - ' + w.path + '  [' + label + ']' + note);
     warnCount++;
   }
   console.log('  → クリーン＆master反映済みのWTは `git worktree remove <path>` で削除。');
+  console.log('  → ⚠️付きWTは先に未コミット差分の中身を確認（本番未反映の作業の可能性）。');
 }
 
 console.log('');
