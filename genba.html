@@ -2278,6 +2278,7 @@ function haichiCloudLoad(callback) {
             const cloud = data.haichi;
             if (cloud.assignments) {
                 Object.keys(cloud.assignments).forEach(function(key) {
+                    if (_dirtyKeys.has(key)) return; // Bug A: 未確認の編集キーはローカル優先（クラウドで上書きしない）
                     local.assignments[key] = cloud.assignments[key];
                 });
             }
@@ -2302,9 +2303,19 @@ let _haichiSyncTimer = null;
 let _verifyKey = null;       // 検証対象キー（最後に編集した 日付_単位）
 let _verifyExpected = null;  // 送信時のそのキー値（stableStringify済み）
 let _verifyTimer = null;     // 検証デバウンス（連続入力では最後の1回だけ検証）
+// Bug A（巻き戻り対策）: 編集したがライトバック検証「確認済み」になっていないキーの集合。
+// クラウド優先マージ時に dirty キーだけはローカル優先で保護し、直近のタップ消失を防ぐ。
+const _dirtyKeys = new Set();
+function markHaichiDirty(key) { if (key) _dirtyKeys.add(key); }
+function clearHaichiDirty(key) { if (key) _dirtyKeys.delete(key); }
+// タブ/午前午後/日付の切替直前に、デバウンス待ちのPOSTがあれば即時送出してから読み直す。
+function flushHaichiSave() {
+    if (_haichiSyncTimer) { clearTimeout(_haichiSyncTimer); _haichiSyncTimer = null; _postHaichiToCloud(); }
+}
 function haichiCloudSave(d) {
     showSaveStatus('saving', '保存中…'); // 編集直後に即「保存中…」を出す（タイムラグの不安解消）
     _verifyKey = getAssignmentKey(currentDate, currentUnit); // ④ 検証対象キーを記録
+    markHaichiDirty(_verifyKey); // Bug A: 確認済みになるまでこのキーはクラウド上書きから保護
     if (_haichiSyncTimer) clearTimeout(_haichiSyncTimer);
     _haichiSyncTimer = setTimeout(_postHaichiToCloud, 2000);
 }
@@ -2334,7 +2345,7 @@ function _scheduleHaichiVerify() {
 }
 function _runHaichiVerify() { haichiCloudVerify(_verifyKey, _verifyExpected, _applyVerifyResult); }
 function _applyVerifyResult(result) {
-    if (result === 'match') showSaveStatus('verified', '保存✓ 確認済み');
+    if (result === 'match') { clearHaichiDirty(_verifyKey); showSaveStatus('verified', '保存✓ 確認済み'); } // Bug A: 保存確認できたキーは保護解除
     else if (result === 'mismatch') showSaveStatus('unsaved', '未保存：再送');
     else showSaveStatus('unconfirmed', '確認できず：再確認');
 }
@@ -2378,7 +2389,7 @@ function retryHaichiSave() { showSaveStatus('saving', '保存中…'); _postHaic
 // 「確認できず：再確認」から呼ぶ。POSTせず検証のみ再実行。
 function reverifyHaichi() { showSaveStatus('verifying', '確認中…'); haichiCloudVerify(_verifyKey, _verifyExpected, _applyVerifyResult); }
 function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
-function getAssignmentKey(date, unit) { return date + '_' + unit; }
+function getAssignmentKey(date, unit) { if (!date) return null; return date + '_' + unit; }
 
 function emptyAssignment() {
     return { positions: {1:[], 2:[], 3:[], 4:[], 5:[]}, jobChecks: {}, jobMoves: {}, customJobs: {}, memo: '', cardCatches: {} };
@@ -2396,8 +2407,10 @@ function getAssignment(date, unit) {
 }
 
 function setAssignment(date, unit, assignment) {
+    const key = getAssignmentKey(date, unit);
+    if (!key) { showToast('日付を選んでください', 2500, true); return; } // 空日付ガード（"_am"キー生成を防止）
     const d = getData();
-    d.assignments[getAssignmentKey(date, unit)] = assignment;
+    d.assignments[key] = assignment;
     saveData(d);
 }
 
@@ -2481,6 +2494,7 @@ function init() {
 function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            flushHaichiSave(); // Bug A: タブ切替で離脱する前に保留POSTを先に送る
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
@@ -2622,7 +2636,7 @@ function renderJobChecklist(posId) {
 
         html += `<div class="job-item ${checked ? 'checked' : ''}">
             <input type="checkbox" ${checked ? 'checked' : ''} onclick="toggleJobCheck('${j.id}', ${posId})">
-            <span class="job-item-text" onclick="toggleJobCheck('${j.id}', ${posId})">${tags} ${j.text}</span>`;
+            <span class="job-item-text" onclick="toggleJobCheck('${j.id}', ${posId})">${tags} ${escapeHtml(j.text)}</span>`;
 
         if (j.isCustom) {
             html += `<button class="custom-job-remove" onclick="removeCustomJob(${posId}, '${j.id}')" title="削除">&times;</button>`;
@@ -2639,7 +2653,7 @@ function renderJobChecklist(posId) {
             html += `<div class="job-item" style="opacity:0.4;">
                 <span class="job-item-text" style="text-decoration:line-through; font-size:0.75rem;">
                     <span class="job-moved-tag" style="background:#fff5f5; color:#e53e3e;">${moves[j.id]}${toName}へ移動</span>
-                    ${j.text}
+                    ${escapeHtml(j.text)}
                 </span>
                 <button class="job-item-move" onclick="undoMoveJob('${j.id}')" title="移動を取消" style="color:#e53e3e; border-color:#fed7d7;">&#x21A9;</button>
             </div>`;
@@ -2682,7 +2696,7 @@ function openMoveModal(jobId, currentPosId) {
     const origPosName = POSITIONS.find(p => p.id === job.origPos).name;
 
     let html = `<div class="move-job-text">
-        <strong>「${job.text}」</strong><br>
+        <strong>「${escapeHtml(job.text)}」</strong><br>
         <span style="font-size:0.8rem; color:#718096;">元のポジション: ${job.origPos} ${origPosName}</span>
     </div>`;
     html += '<p style="font-size:0.9rem; font-weight:600; margin-bottom:8px;">移動先を選んでください:</p>';
@@ -2773,6 +2787,7 @@ function updateBusyNotice() {
 // ========== 配置の読み込み・保存 ==========
 
 function loadAssignment() {
+    flushHaichiSave(); // Bug A: 日付/午前午後の切替で読み直す前に、保留POSTを先に送る
     currentDate = document.getElementById('assign-date').value;
     // クラウド（本番GAS）から最新の配置を取得してから表示。
     // 取得失敗時は callback(null) が呼ばれるが、getAssignment は localStorage を読むのでフォールバック動作する。
@@ -2796,9 +2811,11 @@ function clearAssignment() {
     if (!confirm('この枠の配置をクリアしますか？')) return;
     currentAssignment = emptyAssignment();
     renderAssignments();
+    renderKarutaPile(); // Bug G: クリア後は札の山表示も更新（残留表示を防止）
     document.getElementById('assign-memo').value = '';
     const d = getData();
-    delete d.assignments[getAssignmentKey(currentDate, currentUnit)];
+    const clearKey = getAssignmentKey(currentDate, currentUnit);
+    if (clearKey) delete d.assignments[clearKey];
     saveData(d);
     showToast('クリアしました');
 }
@@ -2823,10 +2840,11 @@ function openStaffSelect(posId) {
     grid.innerHTML = staff.map(s => {
         const alreadyElsewhere = assigned.has(s) && !inThisPos.has(s);
         const inThis = inThisPos.has(s);
+        const safeS = s.replace(/'/g, "\\'");
         return `<button class="staff-select-btn ${alreadyElsewhere ? 'already' : ''}"
-            onclick="${alreadyElsewhere ? '' : `selectStaff('${s}', ${posId})`}"
+            onclick="${alreadyElsewhere ? '' : `selectStaff('${safeS}', ${posId})`}"
             ${alreadyElsewhere ? 'disabled' : ''}>
-            ${s}${inThis ? ' (配置済み)' : ''}${alreadyElsewhere ? ' (他に配置中)' : ''}
+            ${escapeHtml(s)}${inThis ? ' (配置済み)' : ''}${alreadyElsewhere ? ' (他に配置中)' : ''}
         </button>`;
     }).join('');
     openModal('staff-modal');
@@ -2835,8 +2853,15 @@ function openStaffSelect(posId) {
 function selectStaff(name, posId) {
     if (!currentAssignment.positions[posId]) currentAssignment.positions[posId] = [];
     const arr = currentAssignment.positions[posId];
-    const idx = arr.indexOf(name);
-    if (idx >= 0) { arr.splice(idx, 1); } else { arr.push(name); }
+    if (arr.indexOf(name) >= 0) {
+        // 本人が既にこの枠 → 解除（かるた札も山へ戻す）
+        arr.splice(arr.indexOf(name), 1);
+        returnAllCardsOfStaff(name);
+    } else {
+        // 1枠1人・入れ替え式：既存者（過去データの複数人も全員）の札を戻してから1人だけに置換
+        arr.forEach(existing => returnAllCardsOfStaff(existing));
+        currentAssignment.positions[posId] = [name];
+    }
     renderAssignments();
     autoSaveFeedback(posId);
     closeModal('staff-modal');
@@ -2906,11 +2931,10 @@ function catchCard(taskId, staffName) {
     const currentPos = findStaffPosition(staffName);
 
     if (currentPos === null) {
-        // 未配置 → 推奨配置に自動配置
-        if (!currentAssignment.positions[card.recommendedPos]) {
-            currentAssignment.positions[card.recommendedPos] = [];
-        }
-        currentAssignment.positions[card.recommendedPos].push(staffName);
+        // 未配置 → 推奨配置に1人だけ配置（selectStaffと同じ入れ替え式・既存者の札は山へ戻す）
+        const recArr = currentAssignment.positions[card.recommendedPos] || [];
+        recArr.forEach(existing => { if (existing !== staffName) returnAllCardsOfStaff(existing); });
+        currentAssignment.positions[card.recommendedPos] = [staffName];
         showToast(`✅ ${staffName}さんを${card.recommendedPos}に配置しました`, 2500);
     } else if (currentPos !== card.recommendedPos) {
         // 既に別配置 → 警告のみ（強制移動はしない）
@@ -3287,10 +3311,10 @@ function renderStaffManage() {
     assignStaffColors();
     const el = document.getElementById('staff-manage-list');
     el.innerHTML = '<div style="display:flex; flex-wrap:wrap; gap:8px;">' +
-        staff.map(s => `<span class="staff-chip ${STAFF_COLORS[s]}" style="cursor:default;">
-            ${s}
-            <span class="remove-x" style="cursor:pointer;" onclick="removeStaffFromList('${s}')">&times;</span>
-        </span>`).join('') + '</div>';
+        staff.map(s => { const safeS = s.replace(/'/g, "\\'"); return `<span class="staff-chip ${STAFF_COLORS[s]}" style="cursor:default;">
+            ${escapeHtml(s)}
+            <span class="remove-x" style="cursor:pointer;" onclick="removeStaffFromList('${safeS}')">&times;</span>
+        </span>`; }).join('') + '</div>';
 }
 
 function addStaff() {
