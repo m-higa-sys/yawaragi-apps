@@ -98,6 +98,7 @@
         .pos-3 .position-header { background: linear-gradient(135deg, #38a169, #2f855a); }
         .pos-4 .position-header { background: linear-gradient(135deg, #805ad5, #6b46c1); }
         .pos-5 .position-header { background: linear-gradient(135deg, #d69e2e, #b7791f); }
+        .pos-6 .position-header { background: linear-gradient(135deg, #d53f8c, #b83280); }
         .position-body { padding: 14px 16px; }
         .equipment-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
         .eq-tag {
@@ -2140,7 +2141,7 @@ const TASK_LEVEL_LABELS = {
     white: '⚪ 低優先'
 };
 
-const POS_COLORS = { 1: '#3182ce', 2: '#dd6b20', 3: '#38a169', 4: '#805ad5', 5: '#d69e2e' };
+const POS_COLORS = { 1: '#3182ce', 2: '#dd6b20', 3: '#38a169', 4: '#805ad5', 5: '#d69e2e', 6: '#d53f8c' };
 
 const POSITIONS = [
     {
@@ -2188,6 +2189,14 @@ const POSITIONS = [
             { category: '運動', items: ['時間があればyトレを提案・実施'] },
             { category: '入力', items: ['介護記録（連絡帳）の入力'] }
         ]
+    },
+    {
+        id: 6, name: '体操サポート', color: POS_COLORS[6], equipment: [],
+        jobs: [
+            { category: '誘導', items: ['体操の誘導'] },
+            { category: 'サポート', items: ['運動のサポート・見守り'] },
+            { category: '声かけ', items: ['声かけ・応援'] }
+        ]
     }
 ];
 
@@ -2204,7 +2213,7 @@ function getBaseJobList(posId) {
 
 function getAllBaseJobs() {
     const all = [];
-    for (let pid = 1; pid <= 5; pid++) { all.push(...getBaseJobList(pid)); }
+    for (let pid = 1; pid <= POSITIONS.length; pid++) { all.push(...getBaseJobList(pid)); }
     return all;
 }
 
@@ -2212,7 +2221,7 @@ function getEffectiveJobs(posId) {
     const moves = currentAssignment.jobMoves || {};
     const customJobs = (currentAssignment.customJobs || {})[posId] || [];
     const jobs = [];
-    for (let pid = 1; pid <= 5; pid++) {
+    for (let pid = 1; pid <= POSITIONS.length; pid++) {
         getBaseJobList(pid).forEach(j => {
             const movedTo = moves[j.id];
             if (pid === posId && movedTo === undefined) {
@@ -2320,10 +2329,25 @@ function haichiCloudSave(d) {
 }
 // 実際のPOST。送信時点の最新local（getDataは常に最新）を送る。送信後は「確認中…」にし、
 // no-corsの成否表示はせず、N秒後のライトバック検証（_runHaichiVerify）で実態を判定する。
+// GAS isHaichiClearMarker_ のフロント版：positions の全キーが空配列なら
+// クリア(=削除)マーカー。空/欠落/不正は安全側で false（削除扱いにしない）。
+function isHaichiClearMarkerFront(rec) {
+    if (!rec || !rec.positions || typeof rec.positions !== 'object') return false;
+    var keys = Object.keys(rec.positions);
+    if (keys.length === 0) return false;
+    for (var i = 0; i < keys.length; i++) {
+        var arr = rec.positions[keys[i]];
+        if (arr && arr.length > 0) return false;
+    }
+    return true;
+}
 function _postHaichiToCloud() {
     var d = getData();
     // ④ 送信値スナップショット（検証用）。当日キーが無ければ null 扱い（=削除）。
-    _verifyExpected = stableStringify((d.assignments && d.assignments[_verifyKey]) || null);
+    var rec = (d.assignments && d.assignments[_verifyKey]) || null;
+    // Bug B: クリアマーカー（全枠空）は GAS 側で当該キー削除になるため、
+    // 検証の期待値は「キー無し（null）」に合わせる（=緑まで到達させる）。
+    _verifyExpected = (rec && isHaichiClearMarkerFront(rec)) ? 'null' : stableStringify(rec);
     try {
         fetch(HAICHI_SYNC_URL, {
             method: 'POST',
@@ -2391,7 +2415,9 @@ function getStaff() { return getData().staff || [...DEFAULT_STAFF]; }
 function getAssignmentKey(date, unit) { if (!date) return null; return date + '_' + unit; }
 
 function emptyAssignment() {
-    return { positions: {1:[], 2:[], 3:[], 4:[], 5:[]}, jobChecks: {}, jobMoves: {}, customJobs: {}, memo: '', cardCatches: {} };
+    const positions = {};
+    POSITIONS.forEach(p => { positions[p.id] = []; });
+    return { positions, jobChecks: {}, jobMoves: {}, customJobs: {}, memo: '', cardCatches: {} };
 }
 
 function getAssignment(date, unit) {
@@ -2562,6 +2588,7 @@ function renderFloorMap() {
                     <span class="assign-placeholder">タップしてスタッフを配置</span>
                 </div>
                 <div class="job-checklist" id="jobcl-${pos.id}"></div>
+                ${pos.id === 4 ? `<div class="work-report" id="workreport-4"></div>` : ''}
             </div>
         `;
         map.appendChild(card);
@@ -2597,6 +2624,86 @@ function renderAssignments() {
         }
         renderJobChecklist(pos.id);
     });
+    renderWorkReport();
+}
+
+// ========== ④業務報告（社長へ送信） ==========
+// ④に配置された人がいる時だけ活性。入力値は currentAssignment.workReport に保存し、
+// 日付・単位を切り替えて戻っても復元される（saveData 経由でクラウドにも載るため
+// haichiCloudLoad のマージ上書きでも消えない）。
+function renderWorkReport() {
+    const wrap = document.getElementById('workreport-4');
+    if (!wrap) return;
+    const staff = currentAssignment.positions[4] || [];
+    const active = staff.length > 0;
+    const reporter = active ? staff[0] : '';
+    const val = currentAssignment.workReport || '';
+    wrap.innerHTML = `
+        <div class="wr-title" style="font-size:0.8rem; font-weight:700; color:#805ad5; margin-bottom:6px;">
+            &#128232; ④業務報告${active ? '（' + escapeHtml(reporter) + '）' : '（配置者がいません）'}
+        </div>
+        <div class="wr-row" style="display:flex; gap:6px;">
+            <input type="text" id="wr-input" class="wr-input"
+                style="flex:1; min-width:0; padding:8px 10px; border:1px solid #cbd5e0; border-radius:8px; font-size:0.85rem;"
+                placeholder="今日の業務報告を入力" ${active ? '' : 'disabled'}
+                oninput="onWorkReportInput(this.value)">
+            <button class="wr-send-btn" onclick="sendWorkReport()" ${active ? '' : 'disabled'}
+                style="flex:0 0 auto; padding:8px 12px; border:none; border-radius:8px; font-size:0.85rem; font-weight:700; color:white; background:${active ? '#805ad5' : '#cbd5e0'}; cursor:${active ? 'pointer' : 'not-allowed'};">
+                社長へ送信
+            </button>
+        </div>
+    `;
+    // 値は属性でなくプロパティで設定（エスケープ事故防止・IME中の再描画対策）
+    const input = document.getElementById('wr-input');
+    if (input) input.value = val;
+}
+
+function onWorkReportInput(value) {
+    currentAssignment.workReport = value;
+    // localStorage 即時保存＋クラウドへ debounced POST（復元保証）
+    autoSave();
+}
+
+function sendWorkReport() {
+    const staff = currentAssignment.positions[4] || [];
+    if (staff.length === 0) { showToast('④に配置された人がいません', 2500, true); return; }
+    const reporter = staff[0];
+    const input = document.getElementById('wr-input');
+    const report = (input ? input.value : '').trim();
+    if (!report) { showToast('業務報告を入力してください', 2500, true); return; }
+    // 送信前に保存（復元用・送信失敗しても入力は残る）
+    currentAssignment.workReport = report;
+    autoSave();
+    const btn = document.querySelector('.wr-send-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '送信中…'; }
+    const body = JSON.stringify({
+        action: 'send_work_report',
+        date: currentDate,
+        unit: currentUnit,
+        staff: reporter,
+        report: report
+    });
+    // text/plain にして CORS プリフライトを避ける（GAS は e.postData.contents を JSON.parse）。
+    fetch(HAICHI_SYNC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: body,
+        redirect: 'follow'
+    })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            if (res && res.success) {
+                showToast('社長へ送信しました');
+            } else {
+                showToast('送信失敗：' + ((res && res.error) || 'もう一度「社長へ送信」を押してください'), 3500, true);
+            }
+        })
+        .catch(function () {
+            showToast('送信できたか確認できません。届いていなければもう一度お試しください', 4000, true);
+        })
+        .finally(function () {
+            if (btn) { btn.disabled = false; btn.textContent = '社長へ送信'; }
+        });
 }
 
 // ========== 仕事チェックリスト ==========
@@ -2825,7 +2932,12 @@ function clearAssignment() {
     document.getElementById('assign-memo').value = '';
     const d = getData();
     const clearKey = getAssignmentKey(currentDate, currentUnit);
-    if (clearKey) delete d.assignments[clearKey];
+    // Bug B: 保存はマージ方式(saveHaichiMerged)のため、キーをdeleteして全体POSTしても
+    // 送信データに含まれない当該キーはクラウドで削除されず残る（クリアが効かない）。
+    // 全枠空配列のクリアマーカーを当該キーに入れて送信し、GAS側の汎用クリア判定
+    // (isHaichiClearMarker_)で削除扱いにする。マーカー在庫時の検証は_postHaichiToCloudで
+    // 期待値null（=削除）に合わせるため、ライトバック検証も緑まで進む。
+    if (clearKey) d.assignments[clearKey] = emptyAssignment();
     saveData(d);
     showToast('クリアしました');
 }
@@ -2834,7 +2946,7 @@ function clearAssignment() {
 
 function getAllAssignedStaff() {
     const assigned = new Set();
-    for (let pid = 1; pid <= 5; pid++) {
+    for (let pid = 1; pid <= POSITIONS.length; pid++) {
         (currentAssignment.positions[pid] || []).forEach(s => assigned.add(s));
     }
     return assigned;
@@ -2910,7 +3022,7 @@ function getStaffCards(staffName) {
 }
 
 function findStaffPosition(staffName) {
-    for (const posId of [1,2,3,4,5]) {
+    for (const posId of POSITIONS.map(p => p.id)) {
         if ((currentAssignment.positions[posId] || []).includes(staffName)) return posId;
     }
     return null;
@@ -3150,7 +3262,7 @@ function getEffectiveJobsForAssignment(posId, assignment) {
     const moves = assignment.jobMoves || {};
     const customJobs = (assignment.customJobs || {})[posId] || [];
     const jobs = [];
-    for (let pid = 1; pid <= 5; pid++) {
+    for (let pid = 1; pid <= POSITIONS.length; pid++) {
         getBaseJobList(pid).forEach(j => {
             const movedTo = moves[j.id];
             if (pid === posId && movedTo === undefined) jobs.push(j);
@@ -3167,15 +3279,16 @@ function showStats() {
     const d = getData();
     const staff = getStaff();
     const counts = {};
-    staff.forEach(s => { counts[s] = {1:0, 2:0, 3:0, 4:0, 5:0, total:0}; });
+    staff.forEach(s => { counts[s] = { total: 0 }; POSITIONS.forEach(p => { counts[s][p.id] = 0; }); });
 
     let totalJobs = 0, totalDone = 0;
-    const posJobStats = {1:{total:0,done:0}, 2:{total:0,done:0}, 3:{total:0,done:0}, 4:{total:0,done:0}, 5:{total:0,done:0}};
+    const posJobStats = {};
+    POSITIONS.forEach(p => { posJobStats[p.id] = { total: 0, done: 0 }; });
 
     Object.keys(d.assignments).forEach(key => {
         if (!key.startsWith(month)) return;
         const a = d.assignments[key];
-        for (let pid = 1; pid <= 5; pid++) {
+        for (let pid = 1; pid <= POSITIONS.length; pid++) {
             (a.positions[pid] || []).forEach(s => {
                 if (counts[s]) { counts[s][pid]++; counts[s].total++; }
             });
@@ -3194,8 +3307,8 @@ function showStats() {
     staff.forEach(s => {
         const c = counts[s];
         html += `<tr><td>${s}</td>`;
-        const maxPos = Math.max(c[1], c[2], c[3], c[4], c[5]);
-        for (let pid = 1; pid <= 5; pid++) {
+        const maxPos = Math.max(...POSITIONS.map(p => c[p.id]));
+        for (let pid = 1; pid <= POSITIONS.length; pid++) {
             const val = c[pid]; let cls = '';
             if (val === 0) cls = 'count-zero';
             else if (val === maxPos && c.total > 3 && maxPos > c.total * 0.6) cls = 'count-high';
@@ -3231,7 +3344,7 @@ function showStats() {
     staff.forEach(s => {
         const c = counts[s];
         if (c.total < 4) return;
-        for (let pid = 1; pid <= 5; pid++) {
+        for (let pid = 1; pid <= POSITIONS.length; pid++) {
             const ratio = c[pid] / c.total;
             if (ratio >= 0.7) {
                 const posName = POSITIONS.find(p => p.id === pid).name;
@@ -3276,7 +3389,7 @@ function showHistory() {
 
         let totalJ = 0, doneJ = 0;
         const checks = e.data.jobChecks || {};
-        for (let pid = 1; pid <= 5; pid++) {
+        for (let pid = 1; pid <= POSITIONS.length; pid++) {
             getEffectiveJobsForAssignment(pid, e.data).forEach(j => { totalJ++; if (checks[j.id]) doneJ++; });
         }
         const jobPct = totalJ > 0 ? Math.round(doneJ / totalJ * 100) : 0;
@@ -3297,7 +3410,7 @@ function showHistory() {
                 ${customCount > 0 ? `<span style="margin-left:8px; font-size:0.75rem; color:#2b6cb0;">追加${customCount}件</span>` : ''}
             </div>
             <div class="history-positions">`;
-        for (let pid = 1; pid <= 5; pid++) {
+        for (let pid = 1; pid <= POSITIONS.length; pid++) {
             const staff = e.data.positions[pid] || [];
             if (staff.length > 0) {
                 const pJobs = getEffectiveJobsForAssignment(pid, e.data);
