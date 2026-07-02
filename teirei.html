@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>📅 月次定例タスク（社長用）</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; background: #f0f4f8; min-height: 100vh; padding: 16px; }
+h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #7f8c8d; font-size: 0.85em; margin-bottom: 16px; }
+.wrap { max-width: 720px; margin: 0 auto; }
+.card { background: #fff; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; border-left: 6px solid #b0bec5; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card.normal { border-left-color: #42a5f5; }
+.card.warn { border-left-color: #ffa726; background: #fff8ef; }
+.card.overdue { border-left-color: #ef5350; background: #fdeeee; }
+.card.done { border-left-color: #66bb6a; opacity: .55; }
+.card.hidden-task { border-left-color: #cfd8dc; opacity: .55; }
+.title { font-weight: 700; color: #2c3e50; margin-bottom: 4px; }
+.meta { font-size: .8em; color: #607d8b; line-height: 1.5; }
+.due { font-weight: 700; }
+.due.overdue-t { color: #c62828; }
+.due.warn-t { color: #e65100; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row .info { flex: 1; }
+button { border: none; border-radius: 8px; padding: 10px 14px; font-size: .9em; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.btn-done { background: #43a047; color: #fff; }
+.btn-undo { background: #eceff1; color: #546e7a; }
+button:disabled { opacity: .5; cursor: wait; }
+.pill { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 999px; font-size: .78em; font-weight: 700; }
+.pill.ok { background: #e8f5e9; color: #2e7d32; }
+.pill.ng { background: #ffebee; color: #c62828; }
+#status { text-align: center; color: #7f8c8d; padding: 20px; }
+.section-label { font-size: .85em; font-weight: 700; color: #78909c; margin: 14px 0 6px; }
+</style>
+</head>
+<body>
+<h1>📅 月次定例タスク</h1>
+<div class="subtitle" id="monthLabel">— 完了するまで毎朝出ます（終わるまで方式）—</div>
+<div class="wrap">
+  <div id="status">読み込み中…</div>
+  <div id="list"></div>
+</div>
+<script>
+const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+let currentMonth = '';
+
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+
+async function load() {
+  const status = document.getElementById('status');
+  status.textContent = '読み込み中…';
+  try {
+    const res = await fetch(GAS + '?action=teireiList', { redirect: 'follow' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'teireiList failed');
+    currentMonth = data.month;
+    document.getElementById('monthLabel').textContent = data.month + ' — 完了するまで毎朝出ます（終わるまで方式）';
+    render(data.tasks);
+    status.textContent = '';
+  } catch (err) {
+    status.textContent = '読み込み失敗: ' + err.message + '（リロードしてください）';
+  }
+}
+
+function render(tasks) {
+  const list = document.getElementById('list');
+  const active = tasks.filter(t => t.show);
+  const doneList = tasks.filter(t => t.done);
+  const hiddenList = tasks.filter(t => !t.done && !t.show);
+  let html = '';
+  if (active.length === 0) html += '<div class="card done"><div class="title">🎉 当月の表示中タスクはすべて完了</div></div>';
+  for (const t of active) html += cardHtml(t, 'active');
+  if (hiddenList.length) {
+    html += '<div class="section-label">⏳ まだ表示期間前（' + hiddenList.length + '件）</div>';
+    for (const t of hiddenList) html += cardHtml(t, 'hidden');
+  }
+  if (doneList.length) {
+    html += '<div class="section-label">✅ 当月完了済み（' + doneList.length + '件）</div>';
+    for (const t of doneList) html += cardHtml(t, 'done');
+  }
+  list.innerHTML = html;
+}
+
+function cardHtml(t, mode) {
+  const cls = mode === 'done' ? 'done' : (mode === 'hidden' ? 'hidden-task' : t.urgency);
+  const dueCls = t.urgency === 'overdue' ? 'overdue-t' : (t.urgency === 'warn' ? 'warn-t' : '');
+  const dueMark = t.urgency === 'overdue' ? '⚠⚠ 期限超過 ' : (t.urgency === 'warn' ? '⚠ ' : '');
+  const btn = mode === 'done'
+    ? '<button class="btn-undo" onclick="undoTask(\'' + t.id + '\', this)">戻す</button>'
+    : (mode === 'active' ? '<button class="btn-done" onclick="completeTask(\'' + t.id + '\', this)">完了</button>' : '');
+  return '<div class="card ' + cls + '" id="card-' + t.id + '">'
+    + '<div class="row"><div class="info">'
+    + '<div class="title">' + esc(t.title) + '</div>'
+    + '<div class="meta"><span class="due ' + dueCls + '">' + dueMark + '期限: 毎月' + t.dueDay + '日</span>'
+    + (t.source ? ' ／ 在り処: ' + esc(t.source) : '')
+    + (t.dest ? ' ／ 保存先: ' + esc(t.dest) : '')
+    + (t.note ? '<br>' + esc(t.note) : '') + '</div>'
+    + '<div id="pill-' + t.id + '"></div>'
+    + '</div>' + btn + '</div></div>';
+}
+
+async function completeTask(id, btn) {
+  btn.disabled = true;
+  const pill = document.getElementById('pill-' + id);
+  pill.innerHTML = '<span class="pill">保存中…</span>';
+  try {
+    const res = await fetch(GAS + '?action=completeTeirei&id=' + encodeURIComponent(id) + '&month=' + encodeURIComponent(currentMonth) + '&note=' + encodeURIComponent('teirei.html'), { redirect: 'follow' });
+    const data = await res.json();
+    if (data.ok && data.verified) {
+      pill.innerHTML = '<span class="pill ok">✓ 完了を記録し読み戻し検証OK</span>';
+      setTimeout(load, 900);
+    } else {
+      pill.innerHTML = '<span class="pill ng">✗ 検証失敗（' + esc(data.error || 'unknown') + '）— もう一度押してください</span>';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    pill.innerHTML = '<span class="pill ng">✗ 通信失敗 — もう一度押してください</span>';
+    btn.disabled = false;
+  }
+}
+
+async function undoTask(id, btn) {
+  btn.disabled = true;
+  const pill = document.getElementById('pill-' + id);
+  pill.innerHTML = '<span class="pill">取消中…</span>';
+  try {
+    const res = await fetch(GAS + '?action=uncompleteTeirei&id=' + encodeURIComponent(id) + '&month=' + encodeURIComponent(currentMonth), { redirect: 'follow' });
+    const data = await res.json();
+    if (data.ok && data.verified) {
+      pill.innerHTML = '<span class="pill ok">✓ 取消し読み戻し検証OK</span>';
+      setTimeout(load, 900);
+    } else {
+      pill.innerHTML = '<span class="pill ng">✗ 取消失敗（' + esc(data.error || 'unknown') + '）</span>';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    pill.innerHTML = '<span class="pill ng">✗ 通信失敗</span>';
+    btn.disabled = false;
+  }
+}
+
+load();
+</script>
+</body>
+</html>
