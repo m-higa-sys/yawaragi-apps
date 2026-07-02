@@ -1821,7 +1821,7 @@
                 <div class="abs-date-type-btns">
                     <button class="abs-date-type-btn active" data-type="today" onclick="absSelectDateType('today')">今日</button>
                     <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定</button>
-                    <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
+                    <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')" style="opacity:.5;" title="期間登録はgenba（現場アプリ）へ">期間で指定</button>
                 </div>
                 <!-- 単発・期間用の日付入力コンテナ（ボタングループ直下） -->
                 <div class="abs-date-inputs" id="abs-date-inputs" style="margin-top:8px;"></div>
@@ -5778,6 +5778,13 @@ function absClearName() {
 
 // ----- 日付選択 -----
 function absSelectDateType(type) {
+    // 2026-07-02: 期間登録はgenba（現場アプリ）へ一本化。
+    // このアプリのrange展開はpattern取得失敗時に全日展開する弱点があり、
+    // genba側は「期間∩利用曜日」絞り込み+プレビュー済みのため受け付けない（伊藤直29件事故の再発防止）
+    if (type === 'range') {
+        alert('期間のお休みは現場アプリ（genba）から登録してください。\n利用曜日（例：火金の午前）だけに自動で絞り込まれます。\n終了日未定の長いお休みは「長期休み」をご利用ください。');
+        return;
+    }
     absState.dateType = type;
     // 2026-05-26: 長期休みモードのときだけCM連絡セクションを表示
     var cmSection = document.getElementById('abs-step-cm-contact');
@@ -6381,6 +6388,12 @@ async function absSubmit(opts) {
     opts = opts || {};
     if (!absState.selectedUser || !absState.reason || !absState.contact || !absState.method || !absState.contactDate) {
         alert('すべての項目を入力してください');
+        return;
+    }
+
+    // 2026-07-02: rangeは受け付けない（absSelectDateTypeで塞いだ上での二重ガード）
+    if (absState.dateType === 'range') {
+        alert('期間のお休みは現場アプリ（genba）から登録してください。');
         return;
     }
 
