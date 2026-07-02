@@ -1969,7 +1969,6 @@
             <button class="unit-btn active" data-unit="am">午前（1単位）</button>
             <button class="unit-btn" data-unit="pm">午後（2単位）</button>
         </div>
-        <button class="save-btn secondary" onclick="loadAssignment()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
     </div>
     <div id="busy-notice"></div>
 
@@ -2489,6 +2488,15 @@ function init() {
     attInit();
     // 欠席登録初期化
     absInit();
+    // リロード後に最後に見ていたタブを復元（無効値・未保存時は既定タブ=伝達ボードのまま）。
+    // 既存のタブclickハンドラを再利用し、そのタブのデータロードも走らせる。URL/historyには触れない。
+    try {
+        const lastTab = localStorage.getItem('genba_last_tab');
+        if (lastTab) {
+            const lastBtn = document.querySelector('.tab-btn[data-tab="' + lastTab + '"]');
+            if (lastBtn) lastBtn.click();
+        }
+    } catch (e) {}
 }
 
 function setupTabs() {
@@ -2518,6 +2526,8 @@ function setupTabs() {
             if (btn.dataset.tab === 'jisseki-send') jsInitTab();
             if (btn.dataset.tab === 'dengon') dengonLoad();
             if (btn.dataset.tab === 'kesseki-history') khInit();
+            // リロード後に最後のタブを復元するため保存（URL/historyには触れない）
+            try { localStorage.setItem('genba_last_tab', btn.dataset.tab); } catch (e) {}
         });
     });
 }
