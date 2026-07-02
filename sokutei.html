@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>📏 測定管理（機能訓練）</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; background: #f0f4f8; min-height: 100vh; padding: 16px; }
+h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
+.subtitle { text-align: center; color: #7f8c8d; font-size: 0.85em; margin-bottom: 14px; }
+.wrap { max-width: 760px; margin: 0 auto; }
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.tab-btn { flex: 1; padding: 11px 6px; border: none; border-radius: 10px; background: #fff; color: #546e7a; font-weight: 700; font-size: .9em; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-family: inherit; }
+.tab-btn.active { background: #2c3e50; color: #fff; }
+.card { background: #fff; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; border-left: 6px solid #b0bec5; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card.b-red { border-left-color: #ef5350; }
+.card.b-yellow { border-left-color: #ffa726; }
+.card.b-white { border-left-color: #b0bec5; }
+.card.gray { opacity: .55; }
+.rowline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bdg { font-size: 1.0em; }
+.nm { font-weight: 700; color: #2c3e50; font-size: 1.02em; }
+.cr { font-size: .76em; color: #607d8b; background: #eceff1; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.tag { font-size: .76em; color: #90a4ae; border: 1px solid #cfd8dc; border-radius: 6px; padding: 1px 7px; }
+.meta { font-size: .8em; color: #607d8b; line-height: 1.6; margin-top: 3px; }
+.over { color: #c62828; font-weight: 700; }
+.hdr { font-size: .88em; font-weight: 700; color: #455a64; margin: 4px 2px 10px; }
+.section-label { font-size: .85em; font-weight: 700; color: #78909c; margin: 16px 0 6px; }
+.note { font-size: .78em; color: #90a4ae; margin: 10px 2px 4px; }
+.filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.f-btn { padding: 8px 14px; border: none; border-radius: 999px; background: #fff; color: #546e7a; font-weight: 700; font-size: .82em; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.08); font-family: inherit; }
+.f-btn.active { background: #4272D8; color: #fff; }
+.sbar-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.sbar-row:last-child { border-bottom: none; }
+.sbar-name { width: 5.5em; font-size: .85em; font-weight: 700; color: #2c3e50; flex-shrink: 0; }
+.sbar-track { flex: 1; min-width: 60px; }
+.sbar-fill { height: 12px; border-radius: 0 4px 4px 0; background: #4272D8; }
+.sbar-val { width: 6.5em; text-align: right; font-size: .82em; color: #2c3e50; font-weight: 700; flex-shrink: 0; }
+.sbar-last { width: 7em; text-align: right; font-size: .76em; color: #90a4ae; flex-shrink: 0; }
+#status { text-align: center; color: #7f8c8d; padding: 20px; }
+.reload-row { text-align: center; margin: 14px 0 4px; }
+.reload-btn { border: none; border-radius: 8px; padding: 8px 18px; font-size: .85em; font-weight: 700; cursor: pointer; background: #eceff1; color: #546e7a; font-family: inherit; }
+</style>
+</head>
+<body>
+<h1>📏 測定管理</h1>
+<div class="subtitle">機能訓練 測定の優先度と実施バランス（要介護分・Phase A）</div>
+<div class="wrap">
+  <div class="tabs">
+    <button type="button" class="tab-btn active" id="tabbtn1" onclick="showTab(1)">📋 今日の優先</button>
+    <button type="button" class="tab-btn" id="tabbtn2" onclick="showTab(2)">👥 全利用者</button>
+    <button type="button" class="tab-btn" id="tabbtn3" onclick="showTab(3)">📊 スタッフ%</button>
+  </div>
+  <div id="status">読み込み中…</div>
+  <div id="tab1"></div>
+  <div id="tab2" style="display:none"></div>
+  <div id="tab3" style="display:none"></div>
+  <div class="reload-row"><button type="button" class="reload-btn" onclick="load()">↻ 再読込</button></div>
+</div>
+<script>
+const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+// 測定者候補の除外（個訓アプリ MEASURER_EXCLUDE と同値・2026-06-15社長確定）
+const MEASURER_EXCLUDE = ['代表', '小野', '林'];
+const BADGE_EMOJI = { red: '🔴', yellow: '🟡', white: '⚪' };
+const YOUBI_ARR = ['日', '月', '火', '水', '木', '金', '土'];
+
+// ===== 優先度純関数（正本 = my-project/scripts/test-sokutei-priority.js から同一コード転記・1文字も変えない） =====
+
+function sokuteiCycleMonths_(care) {
+  return String(care || '').indexOf('要介護') === 0 ? 3 : 4;
+}
+
+function sokuteiDueDate_(baseDateStr, care) {
+  var y = parseInt(String(baseDateStr).slice(0, 4), 10);
+  var m = parseInt(String(baseDateStr).slice(5, 7), 10);
+  var d = parseInt(String(baseDateStr).slice(8, 10), 10);
+  var add = sokuteiCycleMonths_(care);
+  var m0 = (m - 1) + add;               // 0始まり月に加算
+  var ny = y + Math.floor(m0 / 12);
+  var nm = (m0 % 12) + 1;               // 1-12
+  var lastDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate(); // 翌月0日=当月末日
+  var nd = d > lastDay ? lastDay : d;
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  return ny + '-' + pad(nm) + '-' + pad(nd);
+}
+
+function sokuteiRemaining_(dueDateStr, todayStr) {
+  var due = Date.parse(String(dueDateStr) + 'T00:00:00Z');
+  var today = Date.parse(String(todayStr) + 'T00:00:00Z');
+  return Math.round((due - today) / 86400000);
+}
+
+function sokuteiTier_(care, remaining) {
+  var kaigo = String(care || '').indexOf('要介護') === 0;
+  if (kaigo && remaining < 0) return 0;
+  if (kaigo && remaining <= 30) return 1;
+  if (!kaigo && remaining < 0) return 2;
+  return 3;
+}
+
+function sokuteiBadge_(care, remaining) {
+  var kaigo = String(care || '').indexOf('要介護') === 0;
+  if ((kaigo && remaining < 0) || (remaining >= 0 && remaining <= 7)) return 'red';
+  if (remaining <= 30 || (!kaigo && remaining < 0)) return 'yellow';
+  return 'white';
+}
+
+function sokuteiUsageRate_(months) {
+  var s = 0, a = 0;
+  for (var i = 0; i < (months || []).length; i++) {
+    var sch = Number(months[i].scheduled) || 0;
+    if (sch > 0) { s += sch; a += Number(months[i].attended) || 0; }
+  }
+  return s > 0 ? a / s : 1;
+}
+
+function sokuteiRemainingVisits_(daysStr, todayStr) {
+  var s = String(daysStr || '');
+  var y = parseInt(String(todayStr).slice(0, 4), 10);
+  var m = parseInt(String(todayStr).slice(5, 7), 10);
+  var d = parseInt(String(todayStr).slice(8, 10), 10);
+  var lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  var youbi = ['日', '月', '火', '水', '木', '金', '土'];
+  var count = 0;
+  for (var day = d + 1; day <= lastDay; day++) {
+    var w = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
+    if (s.indexOf(youbi[w]) !== -1) count++;
+  }
+  return count;
+}
+
+function sokuteiSort_(rows) {
+  var out = [];
+  for (var i = 0; i < (rows || []).length; i++) {
+    var r = rows[i];
+    var c = {};
+    for (var k in r) c[k] = r[k];
+    c.tier = sokuteiTier_(r.care, r.remaining);
+    c.badge = sokuteiBadge_(r.care, r.remaining);
+    c.E = Number(r.R) * Number(r.U);
+    out.push(c);
+  }
+  out.sort(function (a, b) {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    if (a.E !== b.E) return a.E - b.E;
+    var ka = String(a.kana || a.name || ''), kb = String(b.kana || b.name || '');
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  return out;
+}
+
+// ===== ユーティリティ =====
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+function fmtYMD(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+function todayStr() { return fmtYMD(new Date()); }
+// 'YYYY-MM-DD' へ正規化（'2026/6/5'・ISO日時・月だけの 'YYYY-MM'（planStart実測形式・日=01扱い）にも耐える）。解釈不能は ''
+function normDate(s) {
+  if (s == null) return '';
+  const m = String(s).match(/^(\d{4})[\/\-](\d{1,2})(?:[\/\-](\d{1,2}))?/);
+  return m ? m[1] + '-' + pad2(+m[2]) + '-' + pad2(m[3] ? +m[3] : 1) : '';
+}
+// 表示用 'M/D'（年が違えば 'YYYY/M/D'）
+function fmtMD(ymd) {
+  if (!ymd) return '—';
+  const y = +ymd.slice(0, 4), m = +ymd.slice(5, 7), d = +ymd.slice(8, 10);
+  return (y === new Date().getFullYear() ? '' : y + '/') + m + '/' + d;
+}
+function fiscalYear() { const n = new Date(); return (n.getMonth() + 1) >= 4 ? n.getFullYear() : n.getFullYear() - 1; }
+// 前月から遡って n ヶ月分の 'YYYY-MM'（昇順・当月は含めない＝月途中の scheduled 歪み回避）
+function prevMonthsList(n) {
+  const now = new Date(); const list = [];
+  for (let i = n; i >= 1; i--) {
+    const t = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    list.push(t.getFullYear() + '-' + pad2(t.getMonth() + 1));
+  }
+  return list;
+}
+// 今日から n ヶ月前の 'YYYY-MM-DD'（月末丸め）
+function monthsAgoStr(n) {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() - n, 1);
+  const lastDay = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  return first.getFullYear() + '-' + pad2(first.getMonth() + 1) + '-' + pad2(Math.min(now.getDate(), lastDay));
+}
+// 利用曜日から今日以降の直近該当日 '7/4(金)'（4週先まで探して無ければ '—'）
+function nextVisitStr(daysStr, tStr) {
+  const s = String(daysStr || '');
+  if (!s) return '—';
+  const y = +tStr.slice(0, 4), m = +tStr.slice(5, 7), d = +tStr.slice(8, 10);
+  for (let i = 0; i < 28; i++) {
+    const t = new Date(Date.UTC(y, m - 1, d + i));
+    const w = t.getUTCDay();
+    if (s.indexOf(YOUBI_ARR[w]) !== -1) return (t.getUTCMonth() + 1) + '/' + t.getUTCDate() + '(' + YOUBI_ARR[w] + ')';
+  }
+  return '—';
+}
+
+// ===== 状態 =====
+const state = { today: todayStr(), att: null, usage: null, users: [], records: [], staff: [], errs: {} };
+let derived = { rowByName: {} };
+let careFilter = 'all';   // タブ2 介護度フィルタ
+let periodMonths = 1;     // タブ3 期間（1/2/3ヶ月）
+let currentTab = 1;
+
+// ===== 取得（Promise.allSettled・1つ失敗しても他タブは描画 = teirei の safe 精神） =====
+async function fetchJson(url) {
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+function errMsg(r) { return r.status === 'rejected' ? ((r.reason && r.reason.message) || String(r.reason)) : '応答形式エラー'; }
+
+async function load() {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = '読み込み中…';
+  state.errs = {};
+  const t = state.today = todayStr();
+  const fy = fiscalYear();
+  const months = prevMonthsList(3);
+  const results = await Promise.allSettled([
+    fetchJson(GAS + '?action=attendance&date=' + t + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=usage_stats&from=' + months[0] + '&to=' + months[months.length - 1] + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=getKeikakushoYear&year=' + fy + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy + 1) + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=staff_list&t=' + Date.now())
+  ]);
+  const att = results[0], usage = results[1], y1 = results[2], y2 = results[3], staff = results[4];
+  if (att.status === 'fulfilled' && att.value && att.value.success && att.value.attendance) state.att = att.value;
+  else { state.att = null; state.errs.att = errMsg(att); }
+  if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) state.usage = usage.value.usageStats;
+  else { state.usage = null; state.errs.usage = errMsg(usage); }
+  const ok1 = y1.status === 'fulfilled' && y1.value && y1.value.ok;
+  const ok2 = y2.status === 'fulfilled' && y2.value && y2.value.ok;
+  state.users = ok1 ? (y1.value.users || []) : (ok2 ? (y2.value.users || []) : []);
+  state.records = [];
+  if (ok1) state.records = state.records.concat(y1.value.records || []);
+  if (ok2) state.records = state.records.concat(y2.value.records || []);
+  if (!ok1 && !ok2) state.errs.year = errMsg(ok1 ? y2 : y1);
+  if (staff.status === 'fulfilled' && staff.value && Array.isArray(staff.value.staff)) state.staff = staff.value.staff;
+  else { state.staff = []; state.errs.staff = errMsg(staff); }
+  buildDerived();
+  statusEl.textContent = '';
+  renderAll();
+}
+
+// ===== 共通計算（利用者ごとの行モデル） =====
+function buildDerived() {
+  const t = state.today;
+  const usageByName = {};
+  if (state.usage) (state.usage.users || []).forEach(u => { usageByName[u.name] = u; });
+  // 前回測定日 = records の該当利用者（name一致）の最新 sokutei_date
+  const lastByName = {};
+  (state.records || []).forEach(r => {
+    const d = normDate(r.sokutei_date);
+    if (!d) return;
+    if (!lastByName[r.name] || d > lastByName[r.name]) lastByName[r.name] = d;
+  });
+  const attCare = {};
+  if (state.att) ['am', 'pm'].forEach(k => (state.att.attendance[k] || []).forEach(a => { if (a.care) attCare[a.name] = a.care; }));
+  const monthKeys = prevMonthsList(3);
+  const rowByName = {};
+  (state.users || []).forEach(u => {
+    const care = u.category || attCare[u.name] || '';
+    const uu = usageByName[u.name];
+    const weekdays = (uu && uu.weekdaysRaw) || u.days || '';
+    const monthsArr = [];
+    if (uu && uu.monthly) monthKeys.forEach(mk => {
+      const mo = uu.monthly[mk];
+      if (mo) {
+        const sch = Number(mo.scheduled) || 0;
+        monthsArr.push({ scheduled: sch, attended: sch - (Number(mo.absences) || 0) });  // 出席 = 予定 − 欠席（推定）
+      }
+    });
+    const last = lastByName[u.name] || '';
+    const base = last || normDate(u.planStart) || '';
+    let due = '', remaining = -999;   // どちらも無ければ未測定 = 最優先扱い
+    if (base) { due = sokuteiDueDate_(base, care); remaining = sokuteiRemaining_(due, t); }
+    rowByName[u.name] = {
+      name: u.name, kana: u.furigana || '', care: care,
+      remaining: remaining, R: sokuteiRemainingVisits_(weekdays, t), U: sokuteiUsageRate_(monthsArr),
+      last: last, base: base, due: due, unmeasured: !base, weekdays: weekdays
+    };
+  });
+  derived = { rowByName: rowByName };
+}
+
+// ===== 描画共通 =====
+function errCard(label, msg) {
+  return '<div class="card b-red"><div class="meta">⚠ ' + esc(label) + ' の取得に失敗しました' + (msg ? '：' + esc(msg) : '') + '（↻再読込を試してください）</div></div>';
+}
+function lastLabel(r) {
+  if (r.last) return fmtMD(r.last);
+  if (r.base) return 'なし（開始日 ' + fmtMD(r.base) + ' 起点）';
+  return 'なし（記録なし）';
+}
+function rowCard(r, gray, tag, nextVisit) {
+  let remainHtml;
+  if (r.unmeasured) remainHtml = '<span class="over">⚠️未測定（最優先）</span>';
+  else if (r.remaining < 0) remainHtml = '<span class="over">⚠️超過 ' + (-r.remaining) + '日</span>';
+  else remainHtml = '期限まで残り ' + r.remaining + '日';
+  return '<div class="card b-' + r.badge + (gray ? ' gray' : '') + '">'
+    + '<div class="rowline">'
+    + '<span class="bdg">' + BADGE_EMOJI[r.badge] + '</span>'
+    + '<span class="nm">' + esc(r.name) + '</span>'
+    + '<span class="cr">' + esc(r.care || '介護度不明') + '</span>'
+    + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
+    + '</div>'
+    + '<div class="meta">前回測定 ' + esc(lastLabel(r)) + ' ／ ' + remainHtml
+    + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
+    + (nextVisit ? ' ／ 次回来館 ' + esc(nextVisit) : '')
+    + '</div></div>';
+}
+function showTab(n) {
+  currentTab = n;
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('tab' + i).style.display = (i === n) ? '' : 'none';
+    document.getElementById('tabbtn' + i).classList.toggle('active', i === n);
+  }
+}
+function renderAll() { renderTab1(); renderTab2(); renderTab3(); }
+
+// ===== タブ1: 今日の測定優先リスト =====
+function renderTab1() {
+  const el = document.getElementById('tab1');
+  if (!state.att) { el.innerHTML = errCard('今日の来館予定（attendance）', state.errs.att); return; }
+  if (!state.users.length) { el.innerHTML = errCard('個訓対象者（getKeikakushoYear）', state.errs.year); return; }
+  // am+pm を名前で一意化（どちらかで出席なら出席扱い）
+  const seen = {}; const list = [];
+  ['am', 'pm'].forEach(k => (state.att.attendance[k] || []).forEach(a => {
+    if (seen[a.name]) { if (a.status === '出席') seen[a.name].status = '出席'; return; }
+    const c = { name: a.name, status: a.status };
+    seen[a.name] = c; list.push(c);
+  }));
+  const rowsOf = arr => arr.map(a => derived.rowByName[a.name]).filter(Boolean);  // 個訓対象（users に居る人）のみ
+  const present = list.filter(a => a.status === '出席');
+  const presentRows = sokuteiSort_(rowsOf(present));
+  const main = presentRows.filter(r => !(r.tier === 3 && r.remaining > 30));
+  const doneRows = presentRows.filter(r => r.tier === 3 && r.remaining > 30);
+  const absentRows = sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')));
+  let html = '<div class="hdr">' + esc(fmtMD(state.today)) + '・来館予定' + present.length + '名中 対象' + presentRows.length + '名</div>';
+  if (state.errs.usage) html += '<div class="note">⚠ 利用率（usage_stats）取得失敗のため E は残り回数のみで計算しています</div>';
+  if (!main.length) html += '<div class="card"><div class="meta">今日の優先測定対象はいません</div></div>';
+  main.forEach(r => { html += rowCard(r, false, '', ''); });
+  if (doneRows.length) {
+    html += '<div class="section-label">✅ 当サイクル測定済み・余裕（' + doneRows.length + '名）</div>';
+    doneRows.forEach(r => { html += rowCard(r, true, '測定済', ''); });
+  }
+  if (absentRows.length) {
+    html += '<div class="section-label">🚫 本日欠席（' + absentRows.length + '名）</div>';
+    absentRows.forEach(r => { html += rowCard(r, true, '欠席', ''); });
+  }
+  el.innerHTML = html;
+}
+
+// ===== タブ2: 全利用者 期限順 =====
+function setCareFilter(v) { careFilter = v; renderTab2(); }
+function renderTab2() {
+  const el = document.getElementById('tab2');
+  if (!state.users.length) { el.innerHTML = errCard('個訓対象者（getKeikakushoYear）', state.errs.year); return; }
+  const all = [];
+  Object.keys(derived.rowByName).forEach(n => all.push(derived.rowByName[n]));
+  const rows = sokuteiSort_(all).filter(r => {
+    if (careFilter === 'kaigo') return String(r.care).indexOf('要介護') === 0;
+    if (careFilter === 'shien') return String(r.care).indexOf('要介護') !== 0;
+    return true;
+  });
+  const fb = (v, label) => '<button type="button" class="f-btn' + (careFilter === v ? ' active' : '') + '" onclick="setCareFilter(\'' + v + '\')">' + label + '</button>';
+  let html = '<div class="filter-row">' + fb('all', '全て') + fb('kaigo', '要介護のみ') + fb('shien', '要支援等') + '</div>';
+  html += '<div class="hdr">対象 ' + rows.length + '名（期限が近い順）</div>';
+  rows.forEach(r => { html += rowCard(r, false, '', nextVisitStr(r.weekdays, state.today)); });
+  html += '<div class="note">要支援・事業対象者は紙台帳データ化後に表示されます（Phase B）</div>';
+  el.innerHTML = html;
+}
+
+// ===== タブ3: スタッフ別実施バランス =====
+function setPeriod(n) { periodMonths = n; renderTab3(); }
+function renderTab3() {
+  const el = document.getElementById('tab3');
+  if (!state.records.length && state.errs.year) { el.innerHTML = errCard('測定記録（getKeikakushoYear）', state.errs.year); return; }
+  const t = state.today;
+  const cutoff = monthsAgoStr(periodMonths);
+  const counts = {}, lastBy = {};
+  let totalPeriod = 0;   // シェア%の分母 = 期間内総測定件数
+  (state.records || []).forEach(r => {
+    const d = normDate(r.sokutei_date);
+    if (!d) return;
+    const inPeriod = d >= cutoff && d <= t;
+    if (inPeriod) totalPeriod++;
+    const by = String(r.sokutei_by || '').trim();
+    if (!by) return;
+    if (!lastBy[by] || d > lastBy[by]) lastBy[by] = d;   // 最終測定日は期間外も含む全期間
+    if (inPeriod) counts[by] = (counts[by] || 0) + 1;
+  });
+  // 表示対象 = staff_list − 除外3名（0件も全員）＋ records にだけ現れる測定者
+  const names = (state.staff || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
+  Object.keys(counts).forEach(n => { if (names.indexOf(n) < 0 && MEASURER_EXCLUDE.indexOf(n) < 0) names.push(n); });
+  const rows = names.map(n => ({ name: n, count: counts[n] || 0, last: lastBy[n] || '' }));
+  rows.sort((a, b) => (b.count - a.count) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const max = rows.reduce((m, r) => Math.max(m, r.count), 0);
+  const pb = n => '<button type="button" class="f-btn' + (periodMonths === n ? ' active' : '') + '" onclick="setPeriod(' + n + ')">' + n + 'ヶ月</button>';
+  let html = '<div class="filter-row">' + pb(1) + pb(2) + pb(3) + '</div>';
+  html += '<div class="hdr">' + esc(fmtMD(cutoff)) + '〜' + esc(fmtMD(t)) + '・総測定 ' + totalPeriod + '件</div>';
+  if (state.errs.staff) html += '<div class="note">⚠ スタッフ一覧（staff_list）取得失敗のため records に現れる測定者のみ表示しています</div>';
+  html += '<div class="card">';
+  if (!rows.length) html += '<div class="meta">表示できるスタッフがいません</div>';
+  rows.forEach(r => {
+    const pct = totalPeriod > 0 ? Math.round(r.count / totalPeriod * 100) : 0;
+    const w = max > 0 ? Math.max(r.count / max * 100, r.count > 0 ? 2 : 0) : 0;
+    html += '<div class="sbar-row">'
+      + '<div class="sbar-name">' + esc(r.name) + '</div>'
+      + '<div class="sbar-track"><div class="sbar-fill" style="width:' + w + '%"></div></div>'
+      + '<div class="sbar-val">' + r.count + '件 (' + pct + '%)</div>'
+      + '<div class="sbar-last">' + (r.last ? '最終 ' + esc(fmtMD(r.last)) : '—') + '</div>'
+      + '</div>';
+  });
+  html += '</div><div class="note">※データ起点 2026/6/15（Phase1開始）</div>';
+  el.innerHTML = html;
+}
+
+load();
+</script>
+</body>
+</html>
