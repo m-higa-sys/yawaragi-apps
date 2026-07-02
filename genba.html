@@ -290,6 +290,19 @@
         .stats-table .count-high { background: #fed7d7; color: #c53030; font-weight: 700; border-radius: 6px; }
         .stats-table .count-zero { color: #cbd5e0; }
         .stats-table .total-col { background: #f7fafc; font-weight: 700; }
+        /* 配置登録タブに常設する集計パネル（折りたたみ可） */
+        .stats-panel {
+            background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            margin-bottom: 16px; overflow: hidden;
+        }
+        .stats-panel-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; cursor: pointer; background: #f0fff4; user-select: none;
+        }
+        .stats-panel-header h3 { font-size: 0.95rem; font-weight: 700; color: #2c7a7b; }
+        .stats-panel-caret { font-size: 0.8rem; color: #2c7a7b; }
+        .stats-panel-body { padding: 14px 16px; }
+        .stats-panel-body.collapsed { display: none; }
         .bias-warnings { margin-top: 16px; }
         .bias-item {
             padding: 10px 14px; background: #fffff0; border: 1px solid #fefcbf;
@@ -1442,11 +1455,9 @@
     <button class="tab-btn" data-tab="attendance">出席予定</button>
     <button class="tab-btn" data-tab="absence">欠席登録</button>
     <button class="tab-btn" data-tab="assign">配置登録</button>
-    <button class="tab-btn" data-tab="history">📋配置履歴</button>
     <button class="tab-btn" data-tab="kesseki-history">欠席履歴</button>
     <button class="tab-btn" data-tab="terminate" style="color:#c0392b;">中止管理</button>
     <button class="tab-btn" data-tab="remind" style="color:#d69e2e;">📋リマインド</button>
-    <button class="tab-btn" data-tab="stats">集計</button>
     <button class="tab-btn" data-tab="data">データ管理</button>
 </div>
 
@@ -1983,6 +1994,22 @@
         <div class="karuta-body" id="karuta-body"></div>
     </div>
 
+    <!-- ===== 集計パネル（配置カードの上に常設・折りたたみ可） ===== -->
+    <div class="stats-panel" id="stats-panel">
+        <div class="stats-panel-header" onclick="toggleStatsPanel()">
+            <h3>📊 集計（配置バランス・仕事完了率）</h3>
+            <span class="stats-panel-caret" id="stats-panel-caret">▲</span>
+        </div>
+        <div class="stats-panel-body" id="stats-panel-body">
+            <div class="stats-controls">
+                <label>期間:</label>
+                <input type="month" id="stats-month">
+                <button class="save-btn secondary" onclick="showStats()" style="padding:8px 16px; font-size:0.85rem;">集計する</button>
+            </div>
+            <div id="stats-result"></div>
+        </div>
+    </div>
+
     <div class="floor-map" id="floor-map"></div>
     <div class="memo-area">
         <h3>メモ（申し送り等）</h3>
@@ -1991,26 +2018,6 @@
     <div class="save-bar">
         <button class="save-btn secondary" onclick="clearAssignment()">この枠をクリア</button>
     </div>
-</div>
-
-<!-- ===== 集計タブ ===== -->
-<div id="tab-stats" class="tab-content">
-    <div class="stats-controls">
-        <label>期間:</label>
-        <input type="month" id="stats-month">
-        <button class="save-btn secondary" onclick="showStats()" style="padding:8px 16px; font-size:0.85rem;">集計する</button>
-    </div>
-    <div id="stats-result"></div>
-</div>
-
-<!-- ===== 履歴タブ ===== -->
-<div id="tab-history" class="tab-content">
-    <div class="stats-controls">
-        <label>月:</label>
-        <input type="month" id="history-month">
-        <button class="save-btn secondary" onclick="showHistory()" style="padding:8px 16px; font-size:0.85rem;">表示</button>
-    </div>
-    <div id="history-result"></div>
 </div>
 
 <!-- ===== データ管理タブ ===== -->
@@ -2240,6 +2247,10 @@ function getEffectiveJobs(posId) {
 const DEFAULT_STAFF = [
     '星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'
 ];
+
+// 配置対象外のスタッフ（配置選択肢・集計の表示から除外する。
+// スタッフ管理画面・クラウドの staff 配列・過去データは一切変更しない＝表示側で出さないだけ）
+const EXCLUDED_STAFF = ['比嘉'];
 
 const STAFF_COLORS = {};
 function assignStaffColors() {
@@ -2497,7 +2508,6 @@ function init() {
     currentDate = `${yyyy}-${mm}-${dd}`;
     document.getElementById('assign-date').value = currentDate;
     document.getElementById('stats-month').value = `${yyyy}-${mm}`;
-    document.getElementById('history-month').value = `${yyyy}-${mm}`;
     document.getElementById('jis-month').value = `${yyyy}-${mm}`;
     const d = getData();
     if (!d.staff) { d.staff = [...DEFAULT_STAFF]; saveData(d); }
@@ -2505,6 +2515,7 @@ function init() {
     setupTabs();
     setupUnitBtns();
     renderFloorMap();
+    applyStatsPanelState(); // 集計パネルの折りたたみ状態を復元（初期=開）
     loadAssignment();
     applyKarutaVisibility();
     renderStaffManage();
@@ -2536,8 +2547,6 @@ function setupTabs() {
             // タブ切替時に表示を更新
             // 配置系タブはクラウド（本番GAS）から最新を取得して描画（読み込みのみ）。
             if (btn.dataset.tab === 'assign') loadAssignment();
-            if (btn.dataset.tab === 'stats') haichiCloudLoad(function() { showStats(); });
-            if (btn.dataset.tab === 'history') haichiCloudLoad(function() { showHistory(); });
             if (btn.dataset.tab === 'attendance') {
                 attLoad();
                 // 長期休み一覧も再取得（再開予定日が更新されているかも）
@@ -2915,6 +2924,7 @@ function loadAssignment() {
         renderKarutaPile();
         document.getElementById('assign-memo').value = currentAssignment.memo || '';
         updateBusyNotice();
+        showStats(); // 集計パネルを当月で自動更新（描画先=常設パネルのstats-result）
     });
 }
 
@@ -2958,7 +2968,7 @@ function openStaffSelect(posId) {
     const grid = document.getElementById('staff-select-grid');
     const assigned = getAllAssignedStaff();
     const inThisPos = new Set(currentAssignment.positions[posId] || []);
-    const staff = getStaff();
+    const staff = getStaff().filter(s => !EXCLUDED_STAFF.includes(s)); // 配置対象外を選択肢から除外
     grid.innerHTML = staff.map(s => {
         const alreadyElsewhere = assigned.has(s) && !inThisPos.has(s);
         const inThis = inThisPos.has(s);
@@ -3273,11 +3283,29 @@ function getEffectiveJobsForAssignment(posId, assignment) {
     return jobs;
 }
 
+// 集計パネルの折りたたみ状態（localStorage 'genba_stats_open'・初期値=開）
+function applyStatsPanelState() {
+    const body = document.getElementById('stats-panel-body');
+    const caret = document.getElementById('stats-panel-caret');
+    if (!body) return;
+    let open = true;
+    try { open = localStorage.getItem('genba_stats_open') !== 'false'; } catch (e) {}
+    body.classList.toggle('collapsed', !open);
+    if (caret) caret.textContent = open ? '▲' : '▼';
+}
+function toggleStatsPanel() {
+    const body = document.getElementById('stats-panel-body');
+    if (!body) return;
+    const willOpen = body.classList.contains('collapsed'); // 現在collapsedなら開く
+    try { localStorage.setItem('genba_stats_open', willOpen ? 'true' : 'false'); } catch (e) {}
+    applyStatsPanelState();
+}
+
 function showStats() {
     const month = document.getElementById('stats-month').value;
     if (!month) return;
     const d = getData();
-    const staff = getStaff();
+    const staff = getStaff().filter(s => !EXCLUDED_STAFF.includes(s)); // 配置対象外を集計行から除外
     const counts = {};
     staff.forEach(s => { counts[s] = { total: 0 }; POSITIONS.forEach(p => { counts[s][p.id] = 0; }); });
 
@@ -3358,73 +3386,6 @@ function showStats() {
         html += '</div>';
     }
     document.getElementById('stats-result').innerHTML = html;
-}
-
-// ========== 履歴 ==========
-
-function showHistory() {
-    const month = document.getElementById('history-month').value;
-    if (!month) return;
-    const d = getData();
-    const entries = [];
-    Object.keys(d.assignments).forEach(key => {
-        if (key.startsWith(month)) {
-            const [date, unit] = key.split('_');
-            entries.push({ date, unit, data: d.assignments[key] });
-        }
-    });
-    entries.sort((a, b) => (a.date + a.unit).localeCompare(b.date + b.unit));
-
-    if (entries.length === 0) {
-        document.getElementById('history-result').innerHTML = '<p style="color:#a0aec0; text-align:center; padding:30px;">この月のデータはありません</p>';
-        return;
-    }
-
-    let html = '<div class="history-list">';
-    entries.forEach(e => {
-        const dateObj = new Date(e.date);
-        const dayNames = ['日','月','火','水','木','金','土'];
-        const dayName = dayNames[dateObj.getDay()];
-        const unitName = e.unit === 'am' ? '午前' : '午後';
-
-        let totalJ = 0, doneJ = 0;
-        const checks = e.data.jobChecks || {};
-        for (let pid = 1; pid <= POSITIONS.length; pid++) {
-            getEffectiveJobsForAssignment(pid, e.data).forEach(j => { totalJ++; if (checks[j.id]) doneJ++; });
-        }
-        const jobPct = totalJ > 0 ? Math.round(doneJ / totalJ * 100) : 0;
-        let pctColor = '#a0aec0';
-        if (jobPct === 100) pctColor = '#38a169';
-        else if (jobPct > 0) pctColor = '#dd6b20';
-
-        const moveCount = Object.keys(e.data.jobMoves || {}).length;
-        const customCount = Object.values(e.data.customJobs || {}).reduce((sum, arr) => sum + arr.length, 0);
-
-        html += `<div class="history-card">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div class="history-date">${e.date.replace(month + '-', '')}日（${dayName}） ${unitName}</div>
-                <span style="font-size:0.85rem; font-weight:700; color:${pctColor};">仕事 ${jobPct}%</span>
-            </div>
-            <div class="history-unit">${e.data.memo ? 'メモ: ' + e.data.memo : ''}
-                ${moveCount > 0 ? `<span style="margin-left:8px; font-size:0.75rem; color:#805ad5;">移動${moveCount}件</span>` : ''}
-                ${customCount > 0 ? `<span style="margin-left:8px; font-size:0.75rem; color:#2b6cb0;">追加${customCount}件</span>` : ''}
-            </div>
-            <div class="history-positions">`;
-        for (let pid = 1; pid <= POSITIONS.length; pid++) {
-            const staff = e.data.positions[pid] || [];
-            if (staff.length > 0) {
-                const pJobs = getEffectiveJobsForAssignment(pid, e.data);
-                const pDone = pJobs.filter(j => checks[j.id]).length;
-                const pPct = pJobs.length > 0 ? Math.round(pDone / pJobs.length * 100) : 0;
-                html += `<span class="history-pos-tag" style="background:${POS_COLORS[pid]}">
-                    ${pid} ${staff.join('・')} (${pPct}%)
-                </span>`;
-            }
-        }
-        html += '</div></div>';
-    });
-    html += '</div>';
-    document.getElementById('history-result').innerHTML = html;
 }
 
 // ========== スタッフ管理 ==========
