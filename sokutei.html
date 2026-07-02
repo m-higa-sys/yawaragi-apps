@@ -348,7 +348,7 @@ function renderTab1() {
   main.forEach(r => { html += rowCard(r, false, '', ''); });
   if (doneRows.length) {
     html += '<div class="section-label">✅ 当サイクル測定済み・余裕（' + doneRows.length + '名）</div>';
-    doneRows.forEach(r => { html += rowCard(r, true, '測定済', ''); });
+    doneRows.forEach(r => { html += rowCard(r, true, r.last ? '測定済' : '余裕', ''); });
   }
   if (absentRows.length) {
     html += '<div class="section-label">🚫 本日欠席（' + absentRows.length + '名）</div>';
@@ -364,7 +364,14 @@ function renderTab2() {
   if (!state.users.length) { el.innerHTML = errCard('個訓対象者（getKeikakushoYear）', state.errs.year); return; }
   const all = [];
   Object.keys(derived.rowByName).forEach(n => all.push(derived.rowByName[n]));
-  const rows = sokuteiSort_(all).filter(r => {
+  // sokuteiSort_ は badge/tier/E 付与に流用し、タブ2の並びは期限（remaining）昇順・同値はkana順（設計書§4-2）。未測定=-999 が自然に最上位
+  const decorated = sokuteiSort_(all);
+  decorated.sort((a, b) => {
+    if (a.remaining !== b.remaining) return a.remaining - b.remaining;
+    const ka = String(a.kana || a.name || ''), kb = String(b.kana || b.name || '');
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  const rows = decorated.filter(r => {
     if (careFilter === 'kaigo') return String(r.care).indexOf('要介護') === 0;
     if (careFilter === 'shien') return String(r.care).indexOf('要介護') !== 0;
     return true;
