@@ -144,7 +144,7 @@ safe('teirei', function () { return _digestTeirei_(ss, dateStr); });
 
 ## 10. 実装制約（クロ指示書＋既存ハードルール）
 
-- **Phase 0（必須前提）**: `clasp pull` で本番GASを取得し、本番↔リポジトリのズレを解消してから着手（朝報告残タスク `gas-source-git-sync` の消化を兼ねる）。clasp は 2.4.2 固定（3.x alpha は Node22 要求でハング）。clasp 認証切れは社長に `clasp login` 依頼。
+- **Phase 0（必須前提）**: `clasp pull` で本番GASを取得し、本番↔リポジトリのズレを解消してから着手（朝報告残タスク `gas-source-git-sync` の消化を兼ねる）。clasp は 3.3.0+Node v24 で動作確認済み（2026-07-02実測・旧「2.4.2へ落とせ」はNode24化で解消）。clasp 認証切れは社長に `clasp login` 依頼。
 - git worktree は `C:\tmp\` 配下。正本コピー禁止。
 - **GAS push（clasp push→`clasp deploy -i` 既存デプロイID指定）は社長の明示承認後のみ**。push だけでは exec URL に反映されない点に注意。
 - 純関数は `scripts/test-teirei-tasks.js` に二重持ちで TDD（既存 test-morning-digest.js / test-shift-digest.js と同じ流儀）。
