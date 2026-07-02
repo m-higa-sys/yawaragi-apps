@@ -213,7 +213,10 @@ async function fetchJson(url) {
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
-function errMsg(r) { return r.status === 'rejected' ? ((r.reason && r.reason.message) || String(r.reason)) : '応答形式エラー'; }
+function errMsg(r) {
+  if (r.status === 'rejected') return (r.reason && r.reason.message) || String(r.reason);
+  return (r.value && (r.value.error || r.value.message)) || '応答形式エラー';
+}
 
 async function load() {
   const statusEl = document.getElementById('status');
@@ -227,20 +230,23 @@ async function load() {
     fetchJson(GAS + '?action=usage_stats&from=' + months[0] + '&to=' + months[months.length - 1] + '&t=' + Date.now()),
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + fy + '&t=' + Date.now()),
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy + 1) + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy - 1) + '&t=' + Date.now()),
     fetchJson(GAS + '?action=staff_list&t=' + Date.now())
   ]);
-  const att = results[0], usage = results[1], y1 = results[2], y2 = results[3], staff = results[4];
+  // year は暦年のため、4月以降に前暦年の測定レコードが漏れないよう fy−1 も含めた3年分をマージ（GAS側 year 厳密一致・重複二重計上なし）
+  const att = results[0], usage = results[1], years = [results[2], results[3], results[4]], staff = results[5];
   if (att.status === 'fulfilled' && att.value && att.value.success && att.value.attendance) state.att = att.value;
   else { state.att = null; state.errs.att = errMsg(att); }
   if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) state.usage = usage.value.usageStats;
   else { state.usage = null; state.errs.usage = errMsg(usage); }
-  const ok1 = y1.status === 'fulfilled' && y1.value && y1.value.ok;
-  const ok2 = y2.status === 'fulfilled' && y2.value && y2.value.ok;
-  state.users = ok1 ? (y1.value.users || []) : (ok2 ? (y2.value.users || []) : []);
+  const okYears = years.filter(r => r.status === 'fulfilled' && r.value && r.value.ok);
+  state.users = [];
+  for (let i = 0; i < okYears.length; i++) {   // users は fy → fy+1 → fy−1 の優先順で最初に取れた年のもの
+    if ((okYears[i].value.users || []).length) { state.users = okYears[i].value.users; break; }
+  }
   state.records = [];
-  if (ok1) state.records = state.records.concat(y1.value.records || []);
-  if (ok2) state.records = state.records.concat(y2.value.records || []);
-  if (!ok1 && !ok2) state.errs.year = errMsg(ok1 ? y2 : y1);
+  okYears.forEach(r => { state.records = state.records.concat(r.value.records || []); });
+  if (!okYears.length) state.errs.year = errMsg(years[0]);
   if (staff.status === 'fulfilled' && staff.value && Array.isArray(staff.value.staff)) state.staff = staff.value.staff;
   else { state.staff = []; state.errs.staff = errMsg(staff); }
   buildDerived();
@@ -253,12 +259,12 @@ function buildDerived() {
   const t = state.today;
   const usageByName = {};
   if (state.usage) (state.usage.users || []).forEach(u => { usageByName[u.name] = u; });
-  // 前回測定日 = records の該当利用者（name一致）の最新 sokutei_date
-  const lastByName = {};
+  // 前回測定日 = records の該当利用者の最新 sokutei_date（userIdキー結合・台帳で氏名を直しても履歴が切れない）
+  const lastById = {};
   (state.records || []).forEach(r => {
     const d = normDate(r.sokutei_date);
-    if (!d) return;
-    if (!lastByName[r.name] || d > lastByName[r.name]) lastByName[r.name] = d;
+    if (!d || !r.userId) return;
+    if (!lastById[r.userId] || d > lastById[r.userId]) lastById[r.userId] = d;
   });
   const attCare = {};
   if (state.att) ['am', 'pm'].forEach(k => (state.att.attendance[k] || []).forEach(a => { if (a.care) attCare[a.name] = a.care; }));
@@ -276,7 +282,7 @@ function buildDerived() {
         monthsArr.push({ scheduled: sch, attended: sch - (Number(mo.absences) || 0) });  // 出席 = 予定 − 欠席（推定）
       }
     });
-    const last = lastByName[u.name] || '';
+    const last = lastById[u.userId] || '';
     const base = last || normDate(u.planStart) || '';
     let due = '', remaining = -999;   // どちらも無ければ未測定 = 最優先扱い
     if (base) { due = sokuteiDueDate_(base, care); remaining = sokuteiRemaining_(due, t); }
