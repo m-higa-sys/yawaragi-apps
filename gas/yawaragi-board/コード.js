@@ -5451,6 +5451,12 @@ function sendAbsenceEmail(userName, dates, unit, reason, supplement, cmEmail, cm
   }).join('、');
 
   var subject = '【yawaragi】' + dateLabel + ' ' + userName + '様 お休み連絡';
+  // 2026-07-03: わかばの丘地域包括からの要望で、この事業所宛のときだけ件名末尾に担当ケアマネ名を付与。
+  //   完全一致（居宅わかばの丘・他事業所は変更なし）／担当名が空のときは付けない。
+  if (cmOffice && cmOffice.trim() === 'わかばの丘地域包括支援センター'
+      && cmName && cmName.trim()) {
+    subject += ' ─ 担当:' + cmName.trim() + '様';
+  }
 
   var reporterLabel = reporter ? (' ' + reporter) : '';
 
