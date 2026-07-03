@@ -45,10 +45,14 @@ const TODAY = '2026-07-03';
 eqJson(gnbYmAdd('2026-07', 1), '2026-08', 'ymAdd: +1');
 eqJson(gnbYmAdd('2026-12', 1), '2027-01', 'ymAdd: 年跨ぎ');
 eqJson(gnbYmAdd('2026-08', -1), '2026-07', 'ymAdd: -1');
+eqJson(gnbYmAdd('2026-01', -1), '2025-12', 'ymAdd: 負の年跨ぎ');
 
 // --- gnbMonthCalendarDays ---
 const july = gnbMonthCalendarDays(pat, TODAY, '2026-07');
 eqJson(july.length, 31, 'month: 7月は31日');
+eqJson(gnbMonthCalendarDays([], TODAY, '2026-02').length, 28, 'month: 2026-02は28日');
+eqJson(gnbMonthCalendarDays([], TODAY, '2028-02').length, 29, 'month: 2028-02は閏年で29日');
+eqJson(gnbMonthCalendarDays([], TODAY, '2026-04').length, 30, 'month: 2026-04は30日');
 eqJson(july[0], { date: '2026-07-01', dow: 3, scheduled: true, past: true },
   'month: 7/1(水)=通所日・過去');
 eqJson(july[2], { date: '2026-07-03', dow: 5, scheduled: true, past: false },
