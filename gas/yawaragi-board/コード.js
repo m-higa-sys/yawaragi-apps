@@ -7212,6 +7212,10 @@ function getBoardTasks(ss, dateStr) {
     var d = fmtDate(data[i][1]);
     // 完了タスクは指定日のみ・未完了は全日（「完了するまでずっと残る」要件）
     if (status === '完了' && d !== dateStr) continue;
+    // 未来発火ゲート（2026/06/27追加）: 未完了でも「日付(=発火日)」が未来なら、その日まで出さない。
+    //   B(支給日)/G(雇用契約 満了1ヶ月前)等を「指定日になったら出し始める」終わるまで方式で運用するため。
+    //   既存の未完了タスクは全て過去日(=登録日)のため影響なし／通常登録は date=今日で従来どおり。
+    if (status !== '完了' && d && d > dateStr) continue;
     list.push({
       id: String(data[i][0] || ''),
       date: d,
