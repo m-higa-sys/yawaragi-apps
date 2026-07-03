@@ -128,12 +128,24 @@
 const BOARD_API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 const USERS_API = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
 
-// getStaffMaster 未実装時のフォールバック（8名＋社長）。GAS実装後は getStaffMaster が正。
+// getStaffMaster 未実装時のフォールバック（8名＋代表）。GAS実装後は getStaffMaster が正。
 const STAFF_FALLBACK = [
   { name: '勝又', role: 'staff' }, { name: '星野', role: 'staff' }, { name: '下浦', role: 'staff' },
   { name: '髙山', role: 'staff' }, { name: '春山', role: 'staff' }, { name: '石井', role: 'staff' },
-  { name: '工藤', role: 'staff' }, { name: '大久保', role: 'staff' }, { name: 'Gaku', role: 'owner' }
+  { name: '工藤', role: 'staff' }, { name: '大久保', role: 'staff' }, { name: '代表', role: 'owner' }
 ];
+
+// 権限マトリクス（唯一の定義箇所・if分岐を散らさない・2026-07-03クロ指示）
+// sorotta: そのroleが「揃った」を押せるdocType（'*'=全書類）／sent: 「送付済」を押せるdocType
+const PERM = {
+  sorotta: { staff: '*', owner: ['kokun_set'] },
+  sent:    { staff: [],  owner: '*' }
+};
+function canDo(act, role, docType) {
+  const p = PERM[act] && PERM[act][role];
+  if (!p) return false;
+  return p === '*' || p.indexOf(docType) >= 0;
+}
 
 const DOC = {
   kokun_set:     { label: '個訓セット（結果報告書＋計画書）', filter: 'kokun' },
@@ -148,7 +160,7 @@ const FILTER_CHIPS = [
   { key: 'kokun',  label: '個訓' },
   { key: 'oral',   label: '口腔' },
   { key: 'tsusho', label: '通所' },
-  { key: 'sokutei',label: '測定' }
+  { key: 'sokutei',label: '測定(要支援)' }  // 個訓の測定はkokun_setに内包（呼称の混乱防止）
 ];
 const LS_OP = 'yawaragi_teishutsu_operator';
 const LS_FILTER = 'yawaragi_teishutsu_filter';
@@ -300,13 +312,16 @@ function buildTasks(ym) {
     const planStart = monU.planStart || kUser.planStart || '';
     const tekiyoManryou = dueYM;
 
-    // 送付docType（当月ベース・jisseki/oral_moni非表示）
+    // 送付docType（jisseki/oral_moni非表示）
     if (care === 'shien' && !isManryou) pushTask(name, 'tsusho_moni', care, office, fg, ym);
     if (isManryou) pushTask(name, 'tsusho_keikaku', care, office, fg, tekiyoManryou);
     if (care === 'shien' && isManryou) pushTask(name, 'tsusho_hyouka', care, office, fg, tekiyoManryou);
-    if (care === 'kaigo' && (isPlanMonth(kUser.planStart, kUser.planMonths, yy, mm) || isHyoukaMonth(kUser.planStart, kUser.planMonths, yy, mm)))
-      pushTask(name, 'kokun_set', care, office, fg, '');
-    if (u.isTarget && isOralEvalMonth(u.startedAt, yy, mm)) pushTask(name, 'oral_plan', care, office, fg, '');
+    // 個訓セット: 作業月=isHyoukaMonth真の月（次期計画の前月＝前月準備の原則・v1.2 §1-3）。
+    // isPlanMonth真の月（計画開始月）にはタスクを立てない——その計画書は前月分として完了済みのはず。
+    // 表示例:「7月分: 個訓セット（8月〜）」。B1修正(2026-07-03・修正前は isPlan∪isHyouka で過剰表示)。
+    if (care === 'kaigo' && isHyoukaMonth(kUser.planStart, kUser.planMonths, yy, mm))
+      pushTask(name, 'kokun_set', care, office, fg, shiftYM(ym, 1));
+    if (u.isTarget && isOralEvalMonth(u.startedAt, yy, mm)) pushTask(name, 'oral_plan', care, office, fg, shiftYM(ym, 1));
     if (care === 'shien' && isMeasureMonth(planStart, ym, '', care)) pushTask(name, 'sokutei', care, office, fg, ym);
   });
 
@@ -433,16 +448,24 @@ function taskRow(t) {
   const ymLbl = Number(t.taishoTsuki.split('-')[1]) + '月分';
   const tekiyo = t.tekiyoTsuki ? '（' + Number(t.tekiyoTsuki.split('-')[1]) + '月〜）' : '';
 
+  // ボタンの出し分けは権限マトリクス PERM が唯一の判定箇所。
+  // 操作者未選択時は「揃った」だけ表示（押下でalert誘導・従来動線）。
+  const role = state.operatorRole;
+  const showSorotta = !state.operator || canDo('sorotta', role, t.docType);
+  const showSent = !!state.operator && canDo('sent', role, t.docType);
   let action = '';
   if (t.status === '送付済') {
-    const by = t.sorotta_by ? '（揃:' + esc(t.sorotta_by) + '）' : '';
     action = '<button class="btn btn-sent" disabled>✓ 送付済</button>';
-    if (state.operatorRole === 'owner') action += '<button class="btn btn-clear" data-act="clear" data-id="' + id + '">戻す</button>';
+    if (showSent) action += '<button class="btn btn-clear" data-act="clear" data-id="' + id + '">戻す</button>';
   } else if (t.status === '揃った') {
-    action = '<button class="btn btn-done-sorotta" data-act="clear" data-id="' + id + '">✓ 揃った<br><small>' + esc(t.sorotta_by || '') + '</small></button>';
-    if (state.operatorRole === 'owner') action += '<button class="btn btn-sent" data-act="sent" data-id="' + id + '">送付済にする</button>';
+    if (showSorotta) {
+      action = '<button class="btn btn-done-sorotta" data-act="clear" data-id="' + id + '">✓ 揃った<br><small>' + esc(t.sorotta_by || '') + '</small></button>';
+    } else {
+      action = '<button class="btn btn-done-sorotta" disabled>✓ 揃った<br><small>' + esc(t.sorotta_by || '') + '</small></button>';
+    }
+    if (showSent) action += '<button class="btn btn-sent" data-act="sent" data-id="' + id + '">送付済にする</button>';
   } else {
-    action = '<button class="btn btn-sorotta" data-act="sorotta" data-id="' + id + '">揃った</button>';
+    action = showSorotta ? '<button class="btn btn-sorotta" data-act="sorotta" data-id="' + id + '">揃った</button>' : '';
   }
 
   return '<div class="task ' + stateCls + '" data-taskid="' + id + '">'
@@ -481,9 +504,14 @@ function renderFilters() {
 // ---------- 操作者 ----------
 function renderOperatorSelect() {
   const sel = document.getElementById('operatorSel');
+  // 代表(owner)はスタッフと同列に混ぜず optgroup で視覚的に分離（2026-07-03クロ指示）
+  const staffOpts = state.staff.filter(s => s.role !== 'owner')
+    .map(s => '<option value="' + esc(s.name) + '"' + (s.name === state.operator ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
+  const ownerOpts = state.staff.filter(s => s.role === 'owner')
+    .map(s => '<option value="' + esc(s.name) + '"' + (s.name === state.operator ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
   sel.innerHTML = '<option value="">— 名前を選択 —</option>'
-    + state.staff.map(s => '<option value="' + esc(s.name) + '"' + (s.name === state.operator ? ' selected' : '') + '>'
-      + esc(s.name) + (s.role === 'owner' ? '（社長）' : '') + '</option>').join('');
+    + '<optgroup label="スタッフ">' + staffOpts + '</optgroup>'
+    + (ownerOpts ? '<optgroup label="代表">' + ownerOpts + '</optgroup>' : '');
   sel.onchange = () => {
     state.operator = sel.value;
     const found = state.staff.find(s => s.name === sel.value);
