@@ -2360,6 +2360,7 @@ function isHaichiClearMarkerFront(rec) {
     return true;
 }
 function _postHaichiToCloud() {
+    if (!gnbGuardProdWrite('配置保存')) return;   // 2026-07-04 別オリジン書込ブロック
     var d = getData();
     // ④ 送信値スナップショット（検証用）。当日キーが無ければ null 扱い（=削除）。
     var rec = (d.assignments && d.assignments[_verifyKey]) || null;
@@ -2506,8 +2507,59 @@ function checkProductionOrigin() {
     el.className = 'origin-warn show';
 }
 
+// ===== 2026-07-04 別オリジン書込ブロック =====
+// 警告バナー(⑤)は「見せる」だけで登録ボタンが生きており、検証用URLから本番GASへ
+// 登録できてしまった（2026-07-03 荒谷4件事故）。本番オリジン完全一致以外では
+// 書込POSTを構造的に遮断する。判定不能（例外等）は安全側=不可に倒す。
+// テスト: scripts/test-genba-origin-guard.js（純関数+全送信関数の構造証明）
+function gnbIsProdWriteAllowed(origin) {
+    try { return String(origin) === PROD_ORIGIN; } catch (e) { return false; }
+}
+
+// 書込POST共通ゲート。全送信関数の先頭で呼ぶ。falseなら呼び元は送信せず抜ける。
+// トーストは3秒デバウンス（配置自動保存・体重同期など高頻度発火での連発防止）。
+let _gnbGuardToastAt = 0;
+function gnbGuardProdWrite(label) {
+    let ok = false;
+    try { ok = gnbIsProdWriteAllowed(location.origin); } catch (e) { ok = false; }
+    if (!ok) {
+        try {
+            const now = Date.now();
+            if (now - _gnbGuardToastAt > 3000) {
+                _gnbGuardToastAt = now;
+                showToast('⚠ 検証用URLのため登録できません。正規URLから開き直してください', 6000, true);
+            }
+        } catch (e) {}
+        try { console.warn('[originガード] 書込ブロック: ' + (label || '')); } catch (e) {}
+    }
+    return ok;
+}
+
+// 別オリジン時: 静的な登録系ボタンを押せなくし、欠席登録ボタン脇に理由と正規URLを出す。
+// POST層ガードが最終防衛で、ここはUX層。失敗してもinit連鎖は止めない（f774228の教訓）。
+const GNB_WRITE_LOCK_BTN_IDS = ['abs-submit-btn', 'abs-resume-submit-btn', 'trm-submit-btn', 'js-create-btn', 'dengon-submit-btn'];
+function gnbApplyOriginWriteLock() {
+    try {
+        if (gnbIsProdWriteAllowed(location.origin)) return;
+        GNB_WRITE_LOCK_BTN_IDS.forEach(function (id) {
+            const b = document.getElementById(id);
+            if (!b) return;
+            b.disabled = true;
+            b.title = '検証用URLのため登録できません';
+        });
+        const absBtn = document.getElementById('abs-submit-btn');
+        if (absBtn) {
+            absBtn.textContent = '検証用URLのため登録できません';
+            absBtn.insertAdjacentHTML('afterend',
+                '<p style="font-size:0.85rem;color:#c53030;margin-top:8px;">検証用URLのため登録できません。' +
+                '正しいURLから開いてください: <a href="' + PROD_URL + '" style="color:#c53030;">' + PROD_URL + '</a></p>');
+        }
+    } catch (e) { /* UIロック失敗でも致命でない（POST層が遮断する） */ }
+}
+
 function init() {
     checkProductionOrigin(); // ⑤ 本番以外で開いていたら先頭で警告（入力前に気づけるよう最優先）
+    gnbApplyOriginWriteLock(); // 2026-07-04 別オリジンでは登録系ボタンを物理無効化（POST層ガードと二重防衛）
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -2681,6 +2733,7 @@ function onWorkReportInput(value) {
 }
 
 function sendWorkReport() {
+    if (!gnbGuardProdWrite('作業報告')) return;   // 2026-07-04 別オリジン書込ブロック
     const staff = currentAssignment.positions[4] || [];
     if (staff.length === 0) { showToast('④に配置された人がいません', 2500, true); return; }
     const reporter = staff[0];
@@ -3534,6 +3587,7 @@ function hideSaveStatus() {
 // ===== リトライ付きGAS POST送信 =====
 // 3回まで再試行。失敗時はスタッフに警告表示
 async function gasPost(data, label) {
+    if (!gnbGuardProdWrite(label)) return false;   // 2026-07-04 別オリジン書込ブロック
     const maxRetries = 3;
     for (let i = 1; i <= maxRetries; i++) {
         try {
@@ -3558,6 +3612,7 @@ async function gasPost(data, label) {
 // ===== 欠席登録の検証付きPOST =====
 // POST後にJSONPで実際に記録されたか確認。未記録なら再試行
 async function gasPostAbsenceWithVerify(data, label) {
+    if (!gnbGuardProdWrite(label)) return false;   // 2026-07-04 別オリジン書込ブロック
     const maxRetries = 3;
     for (let i = 1; i <= maxRetries; i++) {
         // POST送信
@@ -7805,6 +7860,7 @@ function jsRenderPreview() {
 }
 
 async function jsCreateDrafts() {
+    if (!gnbGuardProdWrite('実績メール下書き')) return;   // 2026-07-04 別オリジン書込ブロック
     if (!jsSelectedMonth) { showToast('先にフォルダ確認をしてください'); return; }
     const btn = document.getElementById('js-create-btn');
     btn.disabled = true;
@@ -8374,6 +8430,7 @@ function rmdSaveHeight(name, fy, monthKey, val) {
 const RMD_WEIGHT_SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
 
 function rmdSyncWeight(data) {
+    if (!gnbGuardProdWrite('体重同期')) return;   // 2026-07-04 別オリジン書込ブロック
     try {
         fetch(RMD_WEIGHT_SYNC_URL, {
             method: 'POST',
@@ -8386,6 +8443,7 @@ function rmdSyncWeight(data) {
 
 // 口腔チェックを保存
 function rmdToggleOral(name) {
+    if (!gnbGuardProdWrite('口腔チェック')) return;   // 2026-07-04 別オリジン書込ブロック
     const fy = rmdGetFiscalYear();
     const monthKey = rmdGetMonthKey();
     const oralKey = monthKey + '_1回目';
@@ -8625,6 +8683,7 @@ function dengonRenderHistory(items) {
 
 // 投稿（no-cors POST＝成否は拾えない→800ms後に再読込で反映確認）
 function dengonSubmit() {
+    if (!gnbGuardProdWrite('伝達投稿')) return;   // 2026-07-04 別オリジン書込ブロック
     const btn = document.getElementById('dengon-submit-btn');
     if (btn.disabled) return; // 連打ガード（レスポンス処理中は再押下不可）
     if (!dengonSelectedStaff) { alert('投稿者（あなた）を選んでください'); return; }
