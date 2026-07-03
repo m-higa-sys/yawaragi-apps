@@ -453,20 +453,42 @@
         }
         .abs-date-type-btn.active { background: #2c7a7b; color: white; border-color: #2c7a7b; }
         .abs-date-type-btn:hover:not(.active) { border-color: #2c7a7b; color: #2c7a7b; }
-        /* 2026-06-19 飛び石チップ＋今週まるごと */
-        .abs-week-all-btn {
-            padding: 10px 16px; border: 2px solid #2c7a7b; border-radius: 10px;
-            background: #2c7a7b; color: white; font-size: 0.9rem; font-weight: 700;
+        /* 2026-07-03 カレンダー式ピッカー（当月+翌月・タップ選択・曜日ヘッダ一括） */
+        .abs-cal { max-width: 420px; }
+        .abs-cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .abs-cal-nav-btn {
+            width: 44px; height: 44px; border: 2px solid #e2e8f0; border-radius: 10px;
+            background: white; font-size: 1.3rem; font-weight: 700; color: #2c7a7b;
             cursor: pointer; font-family: inherit;
         }
-        .abs-week-all-btn:hover { background: #236566; }
-        .abs-flat-chip {
-            padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 18px;
-            background: white; font-size: 0.85rem; font-weight: 600; cursor: pointer;
-            font-family: inherit; color: #2d3748; transition: all 0.15s;
+        .abs-cal-nav-btn:disabled { color: #cbd5e0; border-color: #edf2f7; cursor: default; }
+        .abs-cal-ym { font-size: 1rem; font-weight: 700; color: #2d3748; }
+        .abs-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .abs-cal-dowrow { margin-bottom: 4px; }
+        .abs-cal-dow {
+            text-align: center; font-size: 0.8rem; font-weight: 700; color: #a0aec0;
+            padding: 8px 0; border: none; background: none; font-family: inherit;
         }
-        .abs-flat-chip.selected { background: #2c7a7b; color: white; border-color: #2c7a7b; }
-        .abs-flat-chip:hover:not(.selected) { border-color: #2c7a7b; }
+        button.abs-cal-dow.active {
+            color: #2c7a7b; background: #e6fffa; border: 1px dashed #2c7a7b;
+            border-radius: 8px; cursor: pointer; min-height: 36px;
+        }
+        /* 一括対象ゼロの曜日（非利用曜日 or 今日以降の該当通所日ゼロ）はグレー非活性。押せないことを見た目で示す */
+        .abs-cal-dow.inactive { color: #cbd5e0; }
+        .abs-cal-cell {
+            min-height: 44px; border: 2px solid transparent; border-radius: 10px;
+            background: none; font-size: 0.95rem; font-weight: 600; color: #2d3748;
+            font-family: inherit; cursor: pointer; text-align: center; padding: 0;
+        }
+        .abs-cal-cell.empty { cursor: default; }
+        .abs-cal-cell.onday { background: white; border-color: #b2d8d8; }
+        .abs-cal-cell.offday { color: #a0aec0; background: #f7fafc; }
+        .abs-cal-cell.past { opacity: 0.45; }
+        .abs-cal-cell.today { box-shadow: inset 0 0 0 2px rgba(44,122,123,0.35); }
+        .abs-cal-cell.selected { background: #2c7a7b; border-color: #2c7a7b; color: white; opacity: 1; }
+        .abs-cal-cell.selected-off { background: #b7791f; border-color: #b7791f; color: white; opacity: 1; }
+        .abs-cal-count { margin-top: 8px; font-size: 0.9rem; font-weight: 700; color: #2c7a7b; min-height: 1.2em; }
+        .abs-cal-hint { font-size: 0.78rem; color: #718096; margin-top: 6px; line-height: 1.5; }
         /* 2026-06-21 ③主動線UX: 逃げ道トグル＋手動unit */
         .abs-escape { margin-top: 12px; border-top: 1px dashed #cbd5e0; padding-top: 8px; }
         .abs-escape-summary {
@@ -1556,16 +1578,15 @@
         <!-- STEP2: いつ休み？ -->
         <div class="abs-step" id="abs-step-date" style="display:none;">
             <label class="abs-label">2. いつ休み？</label>
-            <!-- ① かんたん: 利用区分に合った通所コマ(2週分)だけをチップ表示 -->
+            <!-- ① 主動線: 月カレンダー（当月+翌月）。通所日ハイライト・複数日タップ・曜日ヘッダ一括トグル -->
             <div class="abs-date-inputs" id="abs-date-inputs"></div>
-            <!-- ② 別の日を選ぶ: トップレベルCTA。単日／範囲の日付入力（区分内・区分外を問わず任意日）。
-                 ※コマは通常区分が既定。送信は従来どおり specific/range の slots 経路（ロジック無変更）。 -->
+            <!-- ② 期間で指定: 長い連続休み・3ヶ月以上先用（単日specificは2026-07-03カレンダー統合で廃止）。
+                 送信は従来どおり range の slots 経路（ロジック無変更）。 -->
             <details class="abs-otherday" id="abs-otherday">
-                <summary class="abs-otherday-summary">別の日を選ぶ 📅</summary>
+                <summary class="abs-otherday-summary">期間で指定（連続の休み）📅</summary>
                 <div class="abs-otherday-body">
-                    <p class="abs-otherday-hint">区分内・区分外を問わず、任意の日を選べます（コマは通常区分が既定。違うコマで出すときは下の「区分外コマで登録」から）。</p>
+                    <p class="abs-otherday-hint">「1ヶ月連続で休む」など長い連続休みや、3ヶ月以上先の日はこちら（コマは通常区分が既定。違うコマで出すときは下の「区分外コマで登録」から）。</p>
                     <div class="abs-date-type-btns" style="margin-bottom:8px;">
-                        <button class="abs-date-type-btn" data-type="specific" onclick="absSelectDateType('specific')">日付を指定（単日）</button>
                         <button class="abs-date-type-btn" data-type="range" onclick="absSelectDateType('range')">期間で指定</button>
                     </div>
                     <div class="abs-date-inputs" id="abs-escape-inputs"></div>
@@ -1588,7 +1609,7 @@
                         <label class="abs-sublabel">区分（午前 / 午後 / 終日）</label>
                         <div class="abs-unit-btns" id="abs-unit-btns"></div>
                     </div>
-                    <p class="abs-escape-note">※先に「別の日を選ぶ 📅」で日付を選んでから、ここでコマを変更してください。</p>
+                    <p class="abs-escape-note">※先に「期間で指定（連続の休み）📅」で日付を選んでから、ここでコマを変更してください。</p>
                 </div>
             </details>
             <div class="abs-date-warning" id="abs-date-warning" style="display:none;"></div>
@@ -4618,6 +4639,7 @@ function absClearName() {
     absState.contactDate = '';
     // 2026-06-19: 飛び石選択の残留防止（次の利用者に持ち越さない）
     absState.flatSlots = [];
+    absState.calMonth = '';
     absState.manualUnit = '';
     absState.dateType = 'today';
     absPreviewState = null;
@@ -4641,15 +4663,7 @@ function absSelectDateType(type) {
     const today = new Date();
     const todayStr = toLocalDateStr(today);
 
-    if (type === 'specific') {
-        absState.dateFrom = '';
-        absState.dateTo = '';
-        escContainer.innerHTML = `<input type="date" id="abs-date-specific" value="${todayStr}" onchange="absOnDateSpecific(this.value)">`;
-        // 逃げ道は自動推定をやめ、手動 午前/午後/終日 を明示選択させる
-        absBuildUnitSelector();
-        if (unitSelect) unitSelect.style.display = 'block';
-        absOnDateSpecific(todayStr);
-    } else if (type === 'range') {
+    if (type === 'range') {
         absState.dateFrom = '';
         absState.dateTo = '';
         escContainer.innerHTML = `
@@ -4663,11 +4677,12 @@ function absSelectDateType(type) {
         if (unitSelect) unitSelect.style.display = 'block';
         absOnDateRange();
     } else if (type === 'flatday') {
-        // 主動線: 利用区分に合った通所コマ(2週分)のチップから選択（今日以降・曜日ごとunit）
+        // 主動線: 月カレンダー（当月+翌月）から日単位でタップ選択
         absState.dateFrom = '';
         absState.dateTo = '';
         absState.flatSlots = [];
-        absRenderFlatChips();
+        absState.calMonth = todayStr.slice(0, 7);
+        absRenderCalendar();
     } else if (type === 'longterm') {
         absState.dateFrom = todayStr;
         absState.dateTo = '';
@@ -4682,80 +4697,127 @@ function absSelectDateType(type) {
     }
 }
 
-function absOnDateSpecific(val) {
-    absState.dateFrom = val;
-    absState.dateTo = val;
-    absCheckNotScheduledDay(val);
-    absShowReasonStep();
-}
+// ===== 2026-07-03: カレンダー式ピッカー（主動線） =====
+// 月グリッドは gnbMonthCalendarDays（純関数・テスト済）から生成。選択は absState.flatSlots に既存形式のまま保持。
+// 表示は当月+翌月のみ（3ヶ月以上先は「期間で指定」へ誘導）。月をまたいでも選択は集合で保持される。
+const ABS_CAL_DOW = ['日', '月', '火', '水', '木', '金', '土'];
 
-// ===== 2026-06-19: 飛び石（今週の通所日チップ）＋今週まるごと =====
-// チップは選択利用者の今週通所日（今日以降）を gnbWeekAbsenceSlots から生成。曜日ごとunitを保持。
-// 主動線で表示する週数（今週＋来週）。3週以降は逃げ道へ。
-const ABS_MAIN_WEEKS = 2;
-function absRenderFlatChips() {
+function absRenderCalendar() {
     const container = document.getElementById('abs-date-inputs');
-    if (!container) return;
+    if (!container) return;   // 真っ白事故(f774228)予防: 器が無くてもinit連鎖を止めない
     const user = absState.selectedUser;
     const pattern = (user && user.pattern) || [];
     const todayStr = toLocalDateStr(new Date());
-    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr, ABS_MAIN_WEEKS);
-    if (weekSlots.length === 0) {
-        container.innerHTML = '<p style="font-size:0.9rem;color:#718096;padding:8px 0;">' +
-            '今週・来週（今日以降）の通所予定がありません。<br>先の日付や区分外は下の「区分外・イレギュラーも登録」からどうぞ。</p>';
-        return;
-    }
-    const DOW = ['日', '月', '火', '水', '木', '金', '土'];
-    // 今週末（その週の日曜）で 今週/来週 にグループ分け
-    const tD = new Date(todayStr.split('-')[0], +todayStr.split('-')[1] - 1, +todayStr.split('-')[2]);
-    const sundayOffset = (tD.getDay() === 0 ? 0 : 7 - tD.getDay());
-    const thisSunday = new Date(tD); thisSunday.setDate(tD.getDate() + sundayOffset);
-    const thisSundayStr = toLocalDateStr(thisSunday);
-    const chip = function (s) {
-        const sel = absState.flatSlots.some(function (x) { return x.date === s.date && x.unit === s.unit; });
-        const d = new Date(s.date.split('-')[0], +s.date.split('-')[1] - 1, +s.date.split('-')[2]);
-        const label = (d.getMonth() + 1) + '/' + d.getDate() + '(' + DOW[d.getDay()] + ')' + s.unit;
-        return '<button type="button" class="abs-flat-chip' + (sel ? ' selected' : '') +
-            '" onclick="absToggleFlatSlot(\'' + s.date + '\',\'' + s.unit + '\')">' + label + '</button>';
-    };
-    const groupHtml = function (title, list) {
-        if (!list.length) return '';
-        return '<div style="font-size:0.78rem;color:#718096;font-weight:700;margin:6px 0 4px;">' + title + '</div>' +
-            '<div class="abs-flat-chips" style="display:flex;flex-wrap:wrap;gap:8px;">' + list.map(chip).join('') + '</div>';
-    };
-    const wkThis = weekSlots.filter(function (s) { return s.date <= thisSundayStr; });
-    const wkNext = weekSlots.filter(function (s) { return s.date > thisSundayStr; });
-    const allOn = absState.flatSlots.length === weekSlots.length && weekSlots.length > 0;
-    container.innerHTML =
-        '<div style="padding:6px 0;">' +
-        '<button type="button" class="abs-week-all-btn" onclick="absToggleAllWeek()">' +
-        (allOn ? '表示中をまとめて解除' : '2週分まとめてお休み') + '</button>' +
-        groupHtml('今週', wkThis) +
-        groupHtml('来週', wkNext) +
-        '<p style="font-size:0.8rem;color:#718096;margin-top:6px;">タップで選択／解除（利用区分に合う通所コマ・今日以降2週分）</p>' +
+    const curYm = todayStr.slice(0, 7);
+    if (!absState.calMonth) absState.calMonth = curYm;
+    const ym = absState.calMonth;
+    const nextYm = gnbYmAdd(curYm, 1);
+    const days = gnbMonthCalendarDays(pattern, todayStr, ym);
+
+    // ナビヘッダ（当月・翌月のみ）
+    const ymLabel = (+ym.slice(0, 4)) + '年' + (+ym.slice(5, 7)) + '月';
+    const prevOff = ym <= curYm, nextOff = ym >= nextYm;
+    let html = '<div class="abs-cal">' +
+        '<div class="abs-cal-nav">' +
+        '<button type="button" class="abs-cal-nav-btn" ' + (prevOff ? 'disabled' : 'onclick="absCalNav(-1)"') + '>&lsaquo;</button>' +
+        '<span class="abs-cal-ym">' + ymLabel + '</span>' +
+        '<button type="button" class="abs-cal-nav-btn" ' + (nextOff ? 'disabled' : 'onclick="absCalNav(1)"') + '>&rsaquo;</button>' +
         '</div>';
+
+    // 曜日ヘッダ。一括対象（今日以降の通所日）がある曜日のみボタン活性。
+    // 非利用曜日・および「過去のみで今日以降の該当通所日ゼロ」の利用曜日は inactive グレー表示（押せないことを見た目で示す）。
+    html += '<div class="abs-cal-grid abs-cal-dowrow">';
+    for (let dw = 0; dw < 7; dw++) {
+        if (gnbDowScheduledDates(pattern, todayStr, ym, dw).length > 0) {
+            html += '<button type="button" class="abs-cal-dow active" onclick="absCalToggleDow(' + dw + ')">' + ABS_CAL_DOW[dw] + '</button>';
+        } else {
+            html += '<span class="abs-cal-dow inactive">' + ABS_CAL_DOW[dw] + '</span>';
+        }
+    }
+    html += '</div>';
+
+    // 日グリッド（1日の曜日ぶん先頭を空セルで埋める）
+    html += '<div class="abs-cal-grid">';
+    for (let i = 0; i < days[0].dow; i++) html += '<span class="abs-cal-cell empty"></span>';
+    days.forEach(function (c) {
+        const sel = (absState.flatSlots || []).some(function (s) { return s.date === c.date; });
+        let cls = 'abs-cal-cell';
+        cls += c.scheduled ? ' onday' : ' offday';
+        if (c.past) cls += ' past';
+        if (sel) cls += c.scheduled ? ' selected' : ' selected-off';
+        if (c.date === todayStr) cls += ' today';
+        html += '<button type="button" class="' + cls + '" onclick="absCalToggleDay(\'' + c.date + '\')">' + (+c.date.slice(8, 10)) + '</button>';
+    });
+    html += '</div>';
+
+    // 選択数バッジ（表示外の月の分は内訳表示＝月またぎ選択の見落とし防止）
+    const seenD = {}, selDates = [];
+    (absState.flatSlots || []).forEach(function (s) { if (!seenD[s.date]) { seenD[s.date] = true; selDates.push(s.date); } });
+    const otherCnt = selDates.filter(function (d) { return d.slice(0, 7) !== ym; }).length;
+    html += '<div class="abs-cal-count">' +
+        (selDates.length === 0 ? '休む日をタップで選択（もう一度タップで解除）'
+            : selDates.length + '日選択中' + (otherCnt > 0 ? '（うち表示外の月 ' + otherCnt + '日）' : '')) +
+        '</div>';
+    html += '<p class="abs-cal-hint">枠あり＝通所日／薄い日＝通所日以外（振替などはタップ可）。' +
+        '曜日をタップするとその曜日の通所日をまとめて選択／解除。' +
+        '3ヶ月以上先や長い連続休みは下の「期間で指定」からどうぞ。</p>';
+    html += '</div>';
+    container.innerHTML = html;
+    absCalUpdateWarning();
 }
 
-function absToggleFlatSlot(date, unit) {
-    absState.dateType = 'flatday';   // チップ操作＝主動線に戻す（逃げ道を開いた後でも整合）
-    const idx = absState.flatSlots.findIndex(function (x) { return x.date === date && x.unit === unit; });
-    if (idx >= 0) absState.flatSlots.splice(idx, 1);
-    else absState.flatSlots.push({ date: date, unit: unit });
-    absState.flatSlots = gnbNormalizeSlots(absState.flatSlots);
-    absRenderFlatChips();
+// 月ナビ（当月〜翌月にクランプ）
+function absCalNav(delta) {
+    const curYm = toLocalDateStr(new Date()).slice(0, 7);
+    const target = gnbYmAdd(absState.calMonth || curYm, delta);
+    if (target < curYm || target > gnbYmAdd(curYm, 1)) return;
+    absState.calMonth = target;
+    absRenderCalendar();
+}
+
+// 日タップ: 選択/解除トグル（unit は純関数側で通所パターンから決定）
+function absCalToggleDay(date) {
+    absState.dateType = 'flatday';   // カレンダー操作＝主動線に戻す（逃げ道を開いた後でも整合）
+    const pattern = (absState.selectedUser && absState.selectedUser.pattern) || [];
+    absState.flatSlots = gnbToggleDaySlots(absState.flatSlots || [], date, pattern);
+    absRenderCalendar();
     if (absState.flatSlots.length > 0) absShowReasonStep();
 }
 
-function absToggleAllWeek() {
-    absState.dateType = 'flatday';   // 主動線に戻す
+// 曜日ヘッダタップ: その曜日の通所日（表示月・今日以降）を一括選択/解除
+function absCalToggleDow(dw) {
+    absState.dateType = 'flatday';
+    const pattern = (absState.selectedUser && absState.selectedUser.pattern) || [];
+    const todayStr = toLocalDateStr(new Date());
+    const dates = gnbDowScheduledDates(pattern, todayStr, absState.calMonth || todayStr.slice(0, 7), dw);
+    if (dates.length === 0) return;
+    absState.flatSlots = gnbToggleDowSlots(absState.flatSlots || [], dates, pattern);
+    absRenderCalendar();
+    if (absState.flatSlots.length > 0) absShowReasonStep();
+}
+
+// 通所日以外の日が選択に含まれる間だけ注意表示（登録は止めない・振替対応）
+function absCalUpdateWarning() {
+    const warning = document.getElementById('abs-date-warning');
+    if (!warning) return;
     const user = absState.selectedUser;
     const pattern = (user && user.pattern) || [];
-    const todayStr = toLocalDateStr(new Date());
-    const weekSlots = gnbWeekAbsenceSlots(pattern, todayStr, ABS_MAIN_WEEKS);
-    const allOn = absState.flatSlots.length === weekSlots.length && weekSlots.length > 0;
-    absState.flatSlots = allOn ? [] : weekSlots.slice();
-    absRenderFlatChips();
-    if (absState.flatSlots.length > 0) absShowReasonStep();
+    const seenW = {}, offDates = [];
+    (absState.flatSlots || []).forEach(function (s) {
+        if (seenW[s.date]) return;
+        seenW[s.date] = true;
+        const p = s.date.split('-');
+        const dw = new Date(+p[0], +p[1] - 1, +p[2]).getDay();
+        if (!pattern.some(function (q) { return q.day === dw; })) offDates.push(s.date);
+    });
+    if (offDates.length === 0) { warning.style.display = 'none'; return; }
+    const labels = offDates.map(function (d) {
+        const p = d.split('-');
+        return (+p[1]) + '/' + (+p[2]) + '(' + ABS_CAL_DOW[new Date(+p[0], +p[1] - 1, +p[2]).getDay()] + ')';
+    }).join('、');
+    warning.style.display = 'block';
+    warning.innerHTML = '通所日以外の日が選ばれています: <strong>' + labels + '</strong><br>' +
+        '<span style="color:#2d3748;">' + absGuideText(user) + ' 振替などで合っていればこのまま登録できます。</span>';
 }
 
 function absOnDateRange() {
@@ -4823,28 +4885,6 @@ function absRangeToLongTerm() {
     }
     const preview = document.getElementById('abs-range-preview');
     if (preview) preview.innerHTML = '';
-}
-
-function absCheckNotScheduledDay(dateStr) {
-    const warning = document.getElementById('abs-date-warning');
-    if (!absState.selectedUser || !absState.selectedUser.pattern) {
-        warning.style.display = 'none';
-        return true;
-    }
-    const d = new Date(dateStr);
-    const dow = d.getDay();
-    const isScheduled = absState.selectedUser.pattern.some(p => p.day === dow);
-    if (!isScheduled) {
-        const patternText = absState.selectedUser.pattern.map(p => {
-            return DAY_NAMES[p.day] + '（' + (p.unit === 'am' ? '午前' : '午後') + '）';
-        }).join('・');
-        warning.style.display = 'block';
-        warning.innerHTML = `${DAY_NAMES[dow]}曜日はこの利用者の通所日ではありません。<br><span style="color:#2d3748;font-weight:700;">通所日：${patternText || '未登録'}</span>`;
-        return false;
-    } else {
-        warning.style.display = 'none';
-        return true;
-    }
 }
 
 function absShowReasonStep() {
