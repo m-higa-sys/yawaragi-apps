@@ -44,11 +44,23 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 #status { text-align: center; color: #7f8c8d; padding: 20px; }
 .reload-row { text-align: center; margin: 14px 0 4px; }
 .reload-btn { border: none; border-radius: 8px; padding: 8px 18px; font-size: .85em; font-weight: 700; cursor: pointer; background: #eceff1; color: #546e7a; font-family: inherit; }
+.rec-btn { margin-left: auto; border: none; border-radius: 8px; padding: 5px 10px; font-size: .78em; font-weight: 700; cursor: pointer; background: #e8f0fe; color: #4272D8; font-family: inherit; white-space: nowrap; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+.modal-box { background: #fff; border-radius: 14px; padding: 20px; width: 100%; max-width: 340px; box-shadow: 0 6px 24px rgba(0,0,0,.2); }
+.modal-title { font-weight: 700; color: #2c3e50; font-size: 1.05em; margin-bottom: 6px; }
+.modal-name { font-weight: 700; color: #4272D8; font-size: 1.1em; margin-bottom: 14px; }
+.modal-label { display: block; font-size: .8em; color: #607d8b; margin: 10px 0 4px; }
+.modal-select, .modal-input { width: 100%; padding: 9px 10px; border: 1px solid #cfd8dc; border-radius: 8px; font-size: .95em; font-family: inherit; }
+.modal-actions { display: flex; gap: 8px; margin-top: 18px; }
+.modal-btn { flex: 1; border: none; border-radius: 8px; padding: 10px; font-size: .9em; font-weight: 700; cursor: pointer; font-family: inherit; }
+.modal-btn.cancel { background: #eceff1; color: #546e7a; }
+.modal-btn.confirm { background: #4272D8; color: #fff; }
+.modal-btn.confirm:disabled { opacity: .6; cursor: default; }
 </style>
 </head>
 <body>
 <h1>📏 測定管理</h1>
-<div class="subtitle">機能訓練 測定の優先度と実施バランス（要介護分・Phase A）</div>
+<div class="subtitle">機能訓練 測定の優先度と実施バランス（要介護・要支援等）</div>
 <div class="wrap">
   <div class="tabs">
     <button type="button" class="tab-btn active" id="tabbtn1" onclick="showTab(1)">📋 今日の優先</button>
@@ -60,6 +72,20 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
   <div id="tab2" style="display:none"></div>
   <div id="tab3" style="display:none"></div>
   <div class="reload-row"><button type="button" class="reload-btn" onclick="load()">↻ 再読込</button></div>
+</div>
+<div id="recordModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeRecordModal()">
+  <div class="modal-box">
+    <div class="modal-title">📝 今日測定した</div>
+    <div class="modal-name" id="recordModalName"></div>
+    <label class="modal-label">測定者</label>
+    <select id="recordStaffSelect" class="modal-select"></select>
+    <label class="modal-label">メモ（任意）</label>
+    <input type="text" id="recordNote" class="modal-input" placeholder="備考があれば">
+    <div class="modal-actions">
+      <button type="button" class="modal-btn cancel" onclick="closeRecordModal()">キャンセル</button>
+      <button type="button" class="modal-btn confirm" id="recordConfirmBtn" onclick="submitRecord()">記録する</button>
+    </div>
+  </div>
 </div>
 <script>
 const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -201,7 +227,8 @@ function nextVisitStr(daysStr, tStr) {
 }
 
 // ===== 状態 =====
-const state = { today: todayStr(), att: null, usage: null, users: [], records: [], staff: [], errs: {} };
+const state = { today: todayStr(), att: null, usage: null, users: [], records: [], staff: [], shien: [], userList: [], tsushoUsers: [], errs: {} };
+function isKaigoCare(care) { return String(care || '').indexOf('要介護') === 0; }
 let derived = { rowByName: {} };
 let careFilter = 'all';   // タブ2 介護度フィルタ
 let periodMonths = 1;     // タブ3 期間（1/2/3ヶ月）
@@ -231,10 +258,14 @@ async function load() {
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + fy + '&t=' + Date.now()),
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy + 1) + '&t=' + Date.now()),
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy - 1) + '&t=' + Date.now()),
-    fetchJson(GAS + '?action=staff_list&t=' + Date.now())
+    fetchJson(GAS + '?action=staff_list&t=' + Date.now()),
+    fetchJson(GAS + '?action=getShienSokutei&t=' + Date.now()),
+    fetchJson(GAS + '?action=user_list&t=' + Date.now()),
+    fetchJson(GAS + '?action=getTsushoPlansYearV2&year=' + fy + '&t=' + Date.now())
   ]);
   // year は暦年のため、4月以降に前暦年の測定レコードが漏れないよう fy−1 も含めた3年分をマージ（GAS側 year 厳密一致・重複二重計上なし）
   const att = results[0], usage = results[1], years = [results[2], results[3], results[4]], staff = results[5];
+  const shien = results[6], userList = results[7], tsushoUsers = results[8];
   if (att.status === 'fulfilled' && att.value && att.value.success && att.value.attendance) state.att = att.value;
   else { state.att = null; state.errs.att = errMsg(att); }
   if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) state.usage = usage.value.usageStats;
@@ -249,6 +280,12 @@ async function load() {
   if (!okYears.length) state.errs.year = errMsg(years[0]);
   if (staff.status === 'fulfilled' && staff.value && Array.isArray(staff.value.staff)) state.staff = staff.value.staff;
   else { state.staff = []; state.errs.staff = errMsg(staff); }
+  if (shien.status === 'fulfilled' && shien.value && shien.value.ok) state.shien = shien.value.records || [];
+  else { state.shien = []; state.errs.shien = errMsg(shien); }
+  if (userList.status === 'fulfilled' && userList.value && userList.value.success) state.userList = userList.value.user_list || [];
+  else { state.userList = []; state.errs.userList = errMsg(userList); }
+  if (tsushoUsers.status === 'fulfilled' && tsushoUsers.value && tsushoUsers.value.ok) state.tsushoUsers = tsushoUsers.value.users || [];
+  else { state.tsushoUsers = []; state.errs.tsushoUsers = errMsg(tsushoUsers); }
   buildDerived();
   statusEl.textContent = '';
   renderAll();
@@ -259,21 +296,31 @@ function buildDerived() {
   const t = state.today;
   const usageByName = {};
   if (state.usage) (state.usage.users || []).forEach(u => { usageByName[u.name] = u; });
-  // 前回測定日 = records の該当利用者の最新 sokutei_date（userIdキー結合・台帳で氏名を直しても履歴が切れない）
+  // 前回測定日（要介護）= 個別機能訓練計画書記録の最新 sokutei_date（userIdキー結合・台帳で氏名を直しても履歴が切れない）
   const lastById = {};
   (state.records || []).forEach(r => {
     const d = normDate(r.sokutei_date);
     if (!d || !r.userId) return;
     if (!lastById[r.userId] || d > lastById[r.userId]) lastById[r.userId] = d;
   });
+  // 前回測定日（要支援・事業対象者）= 要支援測定記録の最新 sokutei_date（nameキー結合・Phase B）
+  const lastShien = {};
+  (state.shien || []).forEach(r => {
+    const d = normDate(r.sokutei_date);
+    if (!d || !r.name) return;
+    if (!lastShien[r.name] || d > lastShien[r.name]) lastShien[r.name] = d;
+  });
+  const daysByName = {};
+  (state.userList || []).forEach(u => { if (u.userName) daysByName[u.userName] = u.days; });
   const attCare = {};
   if (state.att) ['am', 'pm'].forEach(k => (state.att.attendance[k] || []).forEach(a => { if (a.care) attCare[a.name] = a.care; }));
   const monthKeys = prevMonthsList(3);
   const rowByName = {};
-  (state.users || []).forEach(u => {
-    const care = u.category || attCare[u.name] || '';
-    const uu = usageByName[u.name];
-    const weekdays = (uu && uu.weekdaysRaw) || u.days || '';
+
+  // last = 実測定日（無ければ空）／ baseFallback = 実測定日が無い時だけ使う起点（要介護のplanStartのみ・要支援は無し）
+  function buildRow(name, care, kana, weekdaysRaw, last, baseFallback) {
+    const uu = usageByName[name];
+    const weekdays = (uu && uu.weekdaysRaw) || weekdaysRaw || '';
     const monthsArr = [];
     if (uu && uu.monthly) monthKeys.forEach(mk => {
       const mo = uu.monthly[mk];
@@ -282,15 +329,25 @@ function buildDerived() {
         monthsArr.push({ scheduled: sch, attended: sch - (Number(mo.absences) || 0) });  // 出席 = 予定 − 欠席（推定）
       }
     });
-    const last = lastById[u.userId] || '';
-    const base = last || normDate(u.planStart) || '';
+    const base = last || baseFallback || '';
     let due = '', remaining = -999;   // どちらも無ければ未測定 = 最優先扱い
     if (base) { due = sokuteiDueDate_(base, care); remaining = sokuteiRemaining_(due, t); }
-    rowByName[u.name] = {
-      name: u.name, kana: u.furigana || '', care: care,
+    rowByName[name] = {
+      name: name, kana: kana || '', care: care,
       remaining: remaining, R: sokuteiRemainingVisits_(weekdays, t), U: sokuteiUsageRate_(monthsArr),
       last: last, base: base, due: due, unmeasured: !base, weekdays: weekdays
     };
+  }
+
+  // 要介護（個別機能訓練計画書対象・getKeikakushoYear）
+  (state.users || []).forEach(u => {
+    const care = u.category || attCare[u.name] || '';
+    buildRow(u.name, care, u.furigana, u.days, lastById[u.userId] || '', normDate(u.planStart));
+  });
+  // 要支援・事業対象者（getTsushoPlansYearV2の対象者から要介護以外を抽出・Phase B）
+  (state.tsushoUsers || []).forEach(u => {
+    if (u.cancelled || isKaigoCare(u.category) || rowByName[u.name]) return;
+    buildRow(u.name, u.category || '', u.furigana, daysByName[u.name] || '', lastShien[u.name] || '', '');
   });
   derived = { rowByName: rowByName };
 }
@@ -309,12 +366,17 @@ function rowCard(r, gray, tag, nextVisit) {
   if (r.unmeasured) remainHtml = '<span class="over">⚠️未測定（最優先）</span>';
   else if (r.remaining < 0) remainHtml = '<span class="over">⚠️超過 ' + (-r.remaining) + '日</span>';
   else remainHtml = '期限まで残り ' + r.remaining + '日';
+  // 記録ボタンは要支援・事業対象者のみ（要介護は個訓アプリ側で記録するため出さない・Phase B）
+  const recBtn = !isKaigoCare(r.care)
+    ? '<button type="button" class="rec-btn" data-name="' + esc(r.name) + '" onclick="openRecordModal(this.dataset.name)">📝今日測定した</button>'
+    : '';
   return '<div class="card b-' + r.badge + (gray ? ' gray' : '') + '">'
     + '<div class="rowline">'
     + '<span class="bdg">' + BADGE_EMOJI[r.badge] + '</span>'
     + '<span class="nm">' + esc(r.name) + '</span>'
     + '<span class="cr">' + esc(r.care || '介護度不明') + '</span>'
     + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
+    + recBtn
     + '</div>'
     + '<div class="meta">前回測定 ' + esc(lastLabel(r)) + ' ／ ' + remainHtml
     + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
@@ -342,7 +404,7 @@ function renderTab1() {
     const c = { name: a.name, status: a.status };
     seen[a.name] = c; list.push(c);
   }));
-  const rowsOf = arr => arr.map(a => derived.rowByName[a.name]).filter(Boolean);  // 個訓対象（users に居る人）のみ
+  const rowsOf = arr => arr.map(a => derived.rowByName[a.name]).filter(Boolean);  // 測定対象（要介護個訓＋要支援等）に居る人のみ
   const present = list.filter(a => a.status === '出席');
   const presentRows = sokuteiSort_(rowsOf(present));
   const main = presentRows.filter(r => !(r.tier === 3 && r.remaining > 30));
@@ -386,7 +448,6 @@ function renderTab2() {
   let html = '<div class="filter-row">' + fb('all', '全て') + fb('kaigo', '要介護のみ') + fb('shien', '要支援等') + '</div>';
   html += '<div class="hdr">対象 ' + rows.length + '名（期限が近い順）</div>';
   rows.forEach(r => { html += rowCard(r, false, '', nextVisitStr(r.weekdays, state.today)); });
-  html += '<div class="note">要支援・事業対象者は紙台帳データ化後に表示されます（Phase B）</div>';
   el.innerHTML = html;
 }
 
@@ -399,7 +460,10 @@ function renderTab3() {
   const cutoff = monthsAgoStr(periodMonths);
   const counts = {}, lastBy = {};
   let totalPeriod = 0;   // シェア%の分母 = 期間内総測定件数
-  (state.records || []).forEach(r => {
+  // 要支援等は 'app'（実測定）のみ集計対象。'paper'（紙台帳投入・測定者不明・日付は月初仮置き）は
+  // 実施バランス分析の対象外＝件数に含めない（含めると誰にも属さない件数で総数だけ膨らむ）。
+  const allRecords = (state.records || []).concat((state.shien || []).filter(r => r.source !== 'paper'));
+  allRecords.forEach(r => {
     const d = normDate(r.sokutei_date);
     if (!d) return;
     const inPeriod = d >= cutoff && d <= t;
@@ -433,6 +497,45 @@ function renderTab3() {
   });
   html += '</div><div class="note">※データ起点 2026/6/15（Phase1開始）</div>';
   el.innerHTML = html;
+}
+
+// ===== 要支援等「今日測定した」ワンタップ記録（Phase B） =====
+let recordTargetName = '';
+function openRecordModal(name) {
+  recordTargetName = name;
+  document.getElementById('recordModalName').textContent = name;
+  const sel = document.getElementById('recordStaffSelect');
+  const names = (state.staff || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
+  sel.innerHTML = names.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+  document.getElementById('recordNote').value = '';
+  document.getElementById('recordModal').style.display = 'flex';
+}
+function closeRecordModal() {
+  document.getElementById('recordModal').style.display = 'none';
+  recordTargetName = '';
+}
+async function submitRecord() {
+  const name = recordTargetName;
+  const by = document.getElementById('recordStaffSelect').value;
+  const note = document.getElementById('recordNote').value.trim();
+  if (!name || !by) return;
+  const btn = document.getElementById('recordConfirmBtn');
+  btn.disabled = true; btn.textContent = '記録中…';
+  try {
+    const url = GAS + '?action=addShienSokutei&name=' + encodeURIComponent(name)
+      + '&date=' + todayStr() + '&by=' + encodeURIComponent(by)
+      + '&note=' + encodeURIComponent(note) + '&t=' + Date.now();
+    const res = await fetchJson(url);
+    if (!res.ok || !res.verified) throw new Error((res && res.error) || '書き込み検証に失敗しました');
+    state.shien.push(res.row);
+    closeRecordModal();
+    buildDerived();
+    renderAll();
+  } catch (err) {
+    alert('記録に失敗しました：' + ((err && err.message) || err));
+  } finally {
+    btn.disabled = false; btn.textContent = '記録する';
+  }
 }
 
 load();
