@@ -78,13 +78,28 @@ SENDERS.forEach(function (name) {
   ok(g >= 0 && f >= 0 && g < f, 'C: ' + name + ' はガードが fetch より前（g=' + g + ', f=' + f + '）');
 });
 
-// POST行の網羅性: genba.html全体の "method: 'POST'" 出現数と SENDERS 内の合計が一致
-const totalPosts = (html.match(/method: 'POST'/g) || []).length;
+// POST行の網羅性: genba.html全体の method:POST 出現数と SENDERS 内の合計が一致
+// （空白・クォート・大文字小文字の揺れに強い正規表現でカウント）
+const POST_RE = /method\s*:\s*['"]post['"]/gi;
+const totalPosts = (html.match(POST_RE) || []).length;
 const senderPosts = SENDERS.reduce(function (n, name) {
-  return n + (extractFn(name).match(/method: 'POST'/g) || []).length;
+  return n + (extractFn(name).match(POST_RE) || []).length;
 }, 0);
 ok(totalPosts === senderPosts,
   'C網羅: 全POST行(' + totalPosts + ')がガード済み8関数内(' + senderPosts + ')に収まる');
+ok(html.indexOf('sendBeacon') < 0 && html.indexOf('XMLHttpRequest') < 0,
+  'C裏口: sendBeacon/XHRによる書込経路が存在しない');
+
+// ===== E. 実定数の値ドリフト検知（テスト注入値と本物の一致） =====
+ok(html.indexOf("const PROD_ORIGIN = 'https://m-higa-sys.github.io';") >= 0,
+  'E1: 実PROD_ORIGINがテスト前提と一致');
+// 実GNB_WRITE_LOCK_BTN_IDSの5IDが静的HTMLに実在
+['abs-submit-btn', 'abs-resume-submit-btn', 'trm-submit-btn', 'js-create-btn', 'dengon-submit-btn']
+  .forEach(function (id) {
+    ok(html.indexOf('id="' + id + '"') >= 0, 'E2: 静的HTMLに ' + id + ' が実在');
+  });
+ok(html.indexOf("const GNB_WRITE_LOCK_BTN_IDS = ['abs-submit-btn', 'abs-resume-submit-btn', 'trm-submit-btn', 'js-create-btn', 'dengon-submit-btn'];") >= 0,
+  'E3: 実GNB_WRITE_LOCK_BTN_IDSがテスト前提と一致');
 
 // ===== D. UIロック gnbApplyOriginWriteLock（DOMモック） =====
 function makeLockRun(origin) {

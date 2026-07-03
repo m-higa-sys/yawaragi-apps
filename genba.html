@@ -2360,7 +2360,10 @@ function isHaichiClearMarkerFront(rec) {
     return true;
 }
 function _postHaichiToCloud() {
-    if (!gnbGuardProdWrite('配置保存')) return;   // 2026-07-04 別オリジン書込ブロック
+    if (!gnbGuardProdWrite('配置保存')) {   // 2026-07-04 別オリジン書込ブロック
+        try { showSaveStatus('error', '検証用URL：保存不可'); } catch (e) {}
+        return;
+    }
     var d = getData();
     // ④ 送信値スナップショット（検証用）。当日キーが無ければ null 扱い（=削除）。
     var rec = (d.assignments && d.assignments[_verifyKey]) || null;
@@ -7827,7 +7830,7 @@ function jsRenderPreview() {
     }
 
     list.innerHTML = html;
-    document.getElementById('js-create-btn').disabled = !canCreate;
+    document.getElementById('js-create-btn').disabled = !canCreate || !gnbIsProdWriteAllowed(location.origin);
 
     // 持参リスト
     const jisanSection = document.getElementById('js-jisan-section');
