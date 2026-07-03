@@ -187,6 +187,19 @@
             cursor: pointer; white-space: nowrap; color: #4a5568;
         }
         .add-custom-job button:hover { background: #edf2f7; border-color: #2c7a7b; color: #2c7a7b; }
+        /* 4番のみ：仕事を追加を主役化（変更2）。当日の臨時業務をその場で足す運用 */
+        .add-custom-job.emphasized {
+            margin: 0 0 10px; padding: 8px; gap: 6px;
+            background: #faf5ff; border: 2px solid #805ad5; border-radius: 10px;
+        }
+        .add-custom-job.emphasized input {
+            padding: 9px 11px; font-size: 0.95rem; border-color: #b794f4;
+        }
+        .add-custom-job.emphasized button {
+            padding: 9px 14px; font-size: 0.9rem; font-weight: 700;
+            background: #805ad5; color: #fff; border-color: #805ad5;
+        }
+        .add-custom-job.emphasized button:hover { background: #6b46c1; border-color: #6b46c1; color: #fff; }
         .custom-job-tag {
             font-size: 0.6rem; padding: 1px 4px; border-radius: 3px;
             background: #ebf8ff; color: #2b6cb0; font-weight: 600;
@@ -2164,47 +2177,31 @@ const POSITIONS = [
     {
         id: 1, name: '全体サポート', color: POS_COLORS[1], equipment: [],
         jobs: [
-            { category: 'カバー', items: ['②③⑤が休憩・退勤等の場合は①が入る', '①がいなければ④が入る'] },
-            { category: '測定', items: ['身体機能評価の実施'] },
-            { category: '連絡', items: ['送迎時間変更等の連絡'] },
-            { category: 'その他', items: ['進捗を見て横断的にサポート', '仕事が終わったらリマインダーを行う'] }
+            { category: '', items: ['名札準備（副）', '送迎時間変更連絡', '書類のサインをもらう（副）'] }
         ]
     },
     {
         id: 2, name: 'WB・足温器', color: POS_COLORS[2], equipment: ['WB×2', '足温器', '滑車・バイク'],
         jobs: [
-            { category: '定位置対応', items: ['WB・足温器・滑車・バイクの定位置対応'] },
-            { category: '周囲サポート', items: ['進捗を見て横断的にサポート'] },
-            { category: '機能訓練', items: ['PM月次チェック'] },
-            { category: '入力', items: ['送迎日誌の入力'] },
-            { category: '撮影', items: ['インスタ・誕生日の撮影'] }
+            { category: '', items: ['機能訓練月次未入力チェック', '送迎日誌の確認', 'インスタ写真', '誕生日の写真撮影'] }
         ]
     },
     {
         id: 3, name: '干渉波', color: POS_COLORS[3], equipment: ['干渉波'],
         jobs: [
-            { category: '対応・誘導', items: ['干渉波の対応・利用者の誘導'] },
-            { category: '他者支援', items: ['他スタッフの状況を見て支援'] },
-            { category: '準備', items: ['明日の午前の準備（名札等）'] },
-            { category: '測定', items: ['体重・身長の測定'] },
-            { category: '確認', items: ['利用者状態の確認（25日まで）'] }
+            { category: '', items: ['名札準備（主）', '体重・身長測定', '身体機能評価（測定）'] }
         ]
     },
     {
         id: 4, name: '事務・作業', color: POS_COLORS[4], equipment: [],
         jobs: [
-            { category: 'バックヤード', items: ['基本はバックヤード作業（籠って作業）'] },
-            { category: 'バックアップ', items: ['①が多忙・不在時は①業務へ'] },
-            { category: 'その他', items: ['④が利用者対応時は他スタッフが代わる'] }
+            { category: '', items: ['①が多忙・不在時は①の業務を行う'] }
         ]
     },
     {
         id: 5, name: 'マシン', color: POS_COLORS[5], equipment: ['マシン×4'],
         jobs: [
-            { category: '安全確認', items: ['マシンエリアの安全確認'] },
-            { category: '見守り', items: ['入力しながら見守り'] },
-            { category: '運動', items: ['時間があればyトレを提案・実施'] },
-            { category: '入力', items: ['介護記録（連絡帳）の入力'] }
+            { category: '', items: ['介護記録', '書類のサインをもらう（主）'] }
         ]
     },
     {
@@ -2733,7 +2730,8 @@ function renderJobChecklist(posId) {
     const checks = currentAssignment.jobChecks || {};
     const doneCount = jobs.filter(j => checks[j.id]).length;
     const totalCount = jobs.length;
-    const isOpen = openChecklists[posId] || false;
+    // 初期状態＝展開（変更3）。明示的に false が入っている時だけ閉じる。
+    const isOpen = openChecklists[posId] !== false;
 
     let progressCls = 'none';
     if (doneCount === totalCount && totalCount > 0) progressCls = 'done';
@@ -2742,7 +2740,18 @@ function renderJobChecklist(posId) {
     const pct = totalCount > 0 ? Math.round(doneCount / totalCount * 100) : 0;
     const posColor = POS_COLORS[posId];
 
-    let html = `
+    // 仕事を追加ブロック。4番のみ強調（emphasized）＋カード上部・常時表示（変更2）。
+    const addBlockHtml = `
+        <div class="add-custom-job${posId === 4 ? ' emphasized' : ''}">
+            <input type="text" id="custom-input-${posId}" placeholder="仕事を追加..." onkeydown="if(event.key==='Enter')addCustomJob(${posId})">
+            <button onclick="addCustomJob(${posId})">+追加</button>
+        </div>
+    `;
+
+    let html = '';
+    if (posId === 4) html += addBlockHtml; // 4番：仕事チェックより上に主役表示
+
+    html += `
         <button class="job-toggle-btn" onclick="toggleChecklist(${posId})">
             <span>${isOpen ? '閉じる' : '仕事チェック'}</span>
             <span class="progress-badge ${progressCls}">${doneCount}/${totalCount}</span>
@@ -2796,19 +2805,16 @@ function renderJobChecklist(posId) {
         }
     });
 
-    html += `
-        <div class="add-custom-job">
-            <input type="text" id="custom-input-${posId}" placeholder="仕事を追加..." onkeydown="if(event.key==='Enter')addCustomJob(${posId})">
-            <button onclick="addCustomJob(${posId})">+追加</button>
-        </div>
-    `;
+    if (posId !== 4) html += addBlockHtml; // 通常は最下部（チェックリスト内）
 
     html += '</div>';
     container.innerHTML = html;
 }
 
 function toggleChecklist(posId) {
-    openChecklists[posId] = !openChecklists[posId];
+    // 既定=展開のため undefined は「開いている」扱い。初回タップの空振りを防ぐ。
+    const currentlyOpen = openChecklists[posId] !== false;
+    openChecklists[posId] = !currentlyOpen;
     renderJobChecklist(posId);
 }
 
