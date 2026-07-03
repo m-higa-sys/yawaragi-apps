@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ケアマネ提出物 統合管理 — yawaragi</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; background: #f0f2f5; color: #333; padding-bottom: 60px; }
+
+  header { background: #2c6e49; color: #fff; padding: 12px 16px; position: sticky; top: 0; z-index: 50; }
+  header h1 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .header-sub { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  .month-nav { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: bold; }
+  .month-nav button { background: rgba(255,255,255,.2); border: none; color: #fff; border-radius: 6px; padding: 3px 12px; font-size: 16px; cursor: pointer; }
+  .sync-info { opacity: .9; font-size: 11px; text-align: right; line-height: 1.4; cursor: pointer; }
+
+  .operator-bar { background: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; }
+  .operator-bar .label { font-size: 13px; color: #666; }
+  .operator-bar select { font-size: 15px; padding: 6px 10px; border-radius: 8px; border: 2px solid #2c6e49; font-weight: bold; color: #2c6e49; background: #fff; }
+  .operator-hint { font-size: 11px; color: #c62828; }
+
+  .summary { display: flex; gap: 8px; padding: 10px 16px; overflow-x: auto; }
+  .stat { background: #fff; border-radius: 10px; padding: 8px 14px; text-align: center; min-width: 84px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .stat .num { font-size: 22px; font-weight: bold; }
+  .stat .cap { font-size: 11px; color: #666; }
+  .stat.red .num { color: #d32f2f; }
+  .stat.orange .num { color: #ef6c00; }
+  .stat.green .num { color: #2e7d32; }
+  .stat.blue .num { color: #1565c0; }
+
+  .filters { display: flex; gap: 6px; padding: 4px 16px 10px; overflow-x: auto; }
+  .fchip { background: #fff; border: 1px solid #ccc; border-radius: 14px; padding: 5px 13px; font-size: 13px; white-space: nowrap; color: #555; cursor: pointer; }
+  .fchip.on { background: #2c6e49; border-color: #2c6e49; color: #fff; font-weight: bold; }
+
+  .office { margin: 10px 12px; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .office-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #e8f0eb; font-size: 14px; font-weight: bold; gap: 8px; }
+  .office-head .cnt { font-weight: normal; font-size: 12px; color: #666; }
+  .office-head .method { font-size: 12px; background: #2c6e49; color: #fff; border-radius: 10px; padding: 2px 10px; font-weight: normal; white-space: nowrap; }
+  .office-head .method.fax { background: #7b1fa2; }
+  .office-head .method.careplan { background: #0277bd; }
+  .office-head .method.visit { background: #5d4037; }
+  .office-head .method.other { background: #757575; }
+
+  .task { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid #eee; }
+  .task .who { min-width: 78px; font-weight: bold; font-size: 15px; word-break: break-all; }
+  .task .body { flex: 1; min-width: 0; }
+  .task .doc { font-size: 14px; }
+  .task .doc .ym { font-weight: bold; }
+  .task .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .badge { font-size: 11px; border-radius: 9px; padding: 2px 8px; }
+  .b-carry { background: #fff3e0; color: #ef6c00; border: 1px solid #ffb74d; font-weight: bold; }
+  .b-reason { background: #f3e5f5; color: #7b1fa2; cursor: pointer; }
+  .b-reason.empty { background: #fce4ec; color: #c2185b; border: 1px dashed #c2185b; }
+  .b-kigen { background: #ffebee; color: #c62828; font-weight: bold; }
+  .b-out { background: #e3f2fd; color: #1565c0; }
+  .task .action { min-width: 92px; text-align: right; }
+  .btn { border: none; border-radius: 8px; padding: 9px 10px; font-size: 13px; font-weight: bold; width: 92px; cursor: pointer; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btn-sorotta { background: #fff; color: #2e7d32; border: 2px solid #2e7d32; }
+  .btn-done-sorotta { background: #e8f5e9; color: #2e7d32; border: 2px solid #a5d6a7; font-size: 11px; line-height: 1.3; }
+  .btn-sent { background: #e3f2fd; color: #1565c0; border: 2px solid #90caf9; font-size: 12px; }
+  .btn-clear { background: #fff; color: #999; border: 1px solid #ccc; font-size: 11px; width: 92px; margin-top: 4px; }
+  .task.state-red { border-left: 4px solid #d32f2f; }
+  .task.state-green { border-left: 4px solid #2e7d32; }
+  .task.state-blue { border-left: 4px solid #1565c0; opacity: .72; }
+  .task .pill { font-size: 10px; margin-top: 3px; }
+  .pill.ok { color: #2e7d32; }
+  .pill.ng { color: #d32f2f; }
+  .pill.saving { color: #999; }
+
+  .empty-msg { text-align: center; color: #999; padding: 40px 20px; font-size: 14px; }
+  .loading { text-align: center; color: #666; padding: 30px; font-size: 14px; }
+
+  .undo-toast { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; border-radius: 20px; padding: 10px 18px; font-size: 13px; display: flex; gap: 12px; align-items: center; box-shadow: 0 3px 10px rgba(0,0,0,.3); z-index: 200; max-width: 92vw; }
+  .undo-toast button { background: #ffb74d; border: none; border-radius: 12px; padding: 5px 14px; font-weight: bold; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 300; padding: 20px; }
+  .modal { background: #fff; border-radius: 14px; padding: 20px; max-width: 340px; width: 100%; }
+  .modal h3 { font-size: 16px; margin-bottom: 10px; }
+  .modal p { font-size: 14px; line-height: 1.6; margin-bottom: 18px; color: #444; }
+  .modal .modal-btns { display: flex; gap: 10px; }
+  .modal button { flex: 1; padding: 11px; border-radius: 8px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; }
+  .modal .cancel { background: #eee; color: #555; }
+  .modal .ok { background: #d32f2f; color: #fff; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📤 ケアマネ提出物 統合管理</h1>
+  <div class="header-sub">
+    <div class="month-nav"><button id="prevM">‹</button><span id="ymLabel">—</span><button id="nextM">›</button></div>
+    <div class="sync-info" id="syncInfo" title="タップで再読込">☁️ 同期中…</div>
+  </div>
+</header>
+
+<div class="operator-bar">
+  <span class="label">操作者:</span>
+  <select id="operatorSel"><option value="">— 名前を選択 —</option></select>
+  <span class="operator-hint" id="opHint">← 最初に自分の名前を選んでください</span>
+</div>
+
+<div class="summary">
+  <div class="stat red"><div class="num" id="cntTodo">0</div><div class="cap">今月あと</div></div>
+  <div class="stat orange"><div class="num" id="cntCarry">0</div><div class="cap">繰越</div></div>
+  <div class="stat green"><div class="num" id="cntSorotta">0</div><div class="cap">揃った</div></div>
+  <div class="stat blue"><div class="num" id="cntSent">0</div><div class="cap">今月送付済</div></div>
+</div>
+
+<div class="filters" id="filters"></div>
+
+<div id="taskList"><div class="loading">読み込み中…</div></div>
+
+<div class="undo-toast hidden" id="undoToast"><span id="undoMsg"></span><button id="undoBtn">元に戻す</button></div>
+
+<div id="modalHost"></div>
+
+<script src="shared.js?v=2026-07-03a"></script>
+<script>
+// ============================================================
+// ケアマネ提出物 統合管理 — スタッフビュー v1（Phase 2）
+// 真実はGoogleシート（提出送付台帳）。localStorageは操作者選択とフィルタのみ。
+// 変換層は当月ベース（前月先出しはPhase 2b）。送付docType 6種を表示、
+// jisseki（社長業務）と oral_moni（内部工程）はスタッフビュー非表示。
+// ============================================================
+const BOARD_API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const USERS_API = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+
+// getStaffMaster 未実装時のフォールバック（8名＋社長）。GAS実装後は getStaffMaster が正。
+const STAFF_FALLBACK = [
+  { name: '勝又', role: 'staff' }, { name: '星野', role: 'staff' }, { name: '下浦', role: 'staff' },
+  { name: '髙山', role: 'staff' }, { name: '春山', role: 'staff' }, { name: '石井', role: 'staff' },
+  { name: '工藤', role: 'staff' }, { name: '大久保', role: 'staff' }, { name: 'Gaku', role: 'owner' }
+];
+
+const DOC = {
+  kokun_set:     { label: '個訓セット（結果報告書＋計画書）', filter: 'kokun' },
+  oral_plan:     { label: '口腔 計画書＋評価',               filter: 'oral' },
+  tsusho_keikaku:{ label: '通所介護計画書',                 filter: 'tsusho' },
+  tsusho_hyouka: { label: '通所評価',                       filter: 'tsusho' },
+  tsusho_moni:   { label: '通所モニ',                       filter: 'tsusho' },
+  sokutei:       { label: '測定結果',                       filter: 'sokutei' }
+};
+const FILTER_CHIPS = [
+  { key: 'all',    label: 'すべて' },
+  { key: 'kokun',  label: '個訓' },
+  { key: 'oral',   label: '口腔' },
+  { key: 'tsusho', label: '通所' },
+  { key: 'sokutei',label: '測定' }
+];
+const LS_OP = 'yawaragi_teishutsu_operator';
+const LS_FILTER = 'yawaragi_teishutsu_filter';
+const LS_UNSENT = 'yawaragi_teishutsu_unsentonly';
+
+const careOf = cat => (String(cat).includes('支援') || String(cat).includes('事業対象')) ? 'shien' : 'kaigo';
+
+// ---- shared.js に無い純関数の移植（ケアマネ送付チェックリスト.html から完全同一・無回帰） ----
+// shared.js が供給するのは isPlanMonth / isHyoukaMonth / isOralEvalMonth。以下は当該HTMLのインライン定義。
+function isMeasureMonth(planStart, ym, startDate, care) {
+  if (!planStart) return false;
+  const cycle = (care === 'shien') ? 4 : 3;
+  const [pYear, pMonth] = planStart.split('-').map(Number);
+  if (isNaN(pYear) || isNaN(pMonth)) return false;
+  const [sYear, sMonth] = ym.split('-').map(Number);
+  const selected = sYear * 12 + (sMonth - 1);
+  if (startDate) {
+    const [stYear, stMonth] = startDate.split('-').map(Number);
+    if (!isNaN(stYear) && !isNaN(stMonth)) {
+      const startM = stYear * 12 + (stMonth - 1);
+      if (selected < startM) return false;
+      return (selected - startM) % cycle === 0;
+    }
+  }
+  const planM = pYear * 12 + (pMonth - 1);
+  const diff = selected - (planM - 1);
+  if (diff < 0) return false;
+  return diff % cycle === 0;
+}
+function normOffice(s) { return String(s || '').normalize('NFKC').replace(/[\s　]/g, ''); }
+function resolveSoufu(method) {
+  const m = String(method || '');
+  const isCarePlan = m.indexOf('ケアプランデータ連携') >= 0 || m.indexOf('ケアプー') >= 0;
+  return { isCarePlan: isCarePlan, docMethod: isCarePlan ? '持参' : m };
+}
+const METHOD_GROUPS = [
+  { key: 'visit', icon: '🚶', label: '持参' },
+  { key: 'careplan', icon: '📡', label: 'ケアプー' },
+  { key: 'mail', icon: '📧', label: 'メール' },
+  { key: 'fax', icon: '📠', label: 'FAX' },
+  { key: 'other', icon: '📦', label: 'その他' }
+];
+function methodGroupOf(office, contactMap) {
+  const contact = contactMap[office] || {};
+  const method = String(contact.method || '');
+  if (resolveSoufu(method).isCarePlan) return 'careplan';
+  if (method.indexOf('持参') >= 0) return 'visit';
+  if (method.indexOf('メール') >= 0) return 'mail';
+  if (method.indexOf('FAX') >= 0) return 'fax';
+  return 'other';
+}
+
+const state = {
+  ym: '', operator: '', operatorRole: '', staff: [],
+  docFilter: localStorage.getItem(LS_FILTER) || 'all',
+  unsentOnly: localStorage.getItem(LS_UNSENT) !== '0',
+  data: null, tasks: [], lastUndo: null, pollTimer: null
+};
+
+// ---------- JSONP ----------
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = '_tcb' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    const s = document.createElement('script');
+    let done = false;
+    window[cb] = (d) => { done = true; resolve(d); cleanup(); };
+    s.onerror = () => { if (!done) reject(new Error('network')); cleanup(); };
+    function cleanup() { delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+    s.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + cb + '&t=' + Date.now();
+    document.head.appendChild(s);
+    setTimeout(() => { if (!done) { reject(new Error('timeout')); cleanup(); } }, 20000);
+  });
+}
+
+// ---------- 現在の年月 ----------
+function nowYM() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function shiftYM(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function ymJp(ym) { const [y, m] = ym.split('-'); return y + '年' + Number(m) + '月'; }
+
+// ---------- データ取得 ----------
+async function loadStaff() {
+  try {
+    const r = await jsonp(BOARD_API + '?action=getStaffMaster');
+    if (r && r.ok && Array.isArray(r.staff) && r.staff.length) {
+      state.staff = r.staff.map(s => ({ name: s.name, role: s.role || 'staff' }));
+      return;
+    }
+  } catch (e) { /* フォールバックへ */ }
+  state.staff = STAFF_FALLBACK.slice();
+}
+
+async function loadData(ym) {
+  const fiscalYear = (() => { const [y, m] = ym.split('-').map(Number); return m >= 4 ? y : y - 1; })();
+  const [oral, due, mon, keik, contactsRes, ledger] = await Promise.all([
+    jsonp(BOARD_API + '?action=getOralPlansYear&year=' + fiscalYear).catch(() => ({ users: [] })),
+    jsonp(BOARD_API + '?action=getTsushoDueDates').catch(() => ({ dueDates: {} })),
+    jsonp(BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear).catch(() => ({ users: [] })),
+    jsonp(BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear).catch(() => ({ users: [] })),
+    jsonp(BOARD_API + '?action=contacts').catch(() => ({ cmContacts: [] })),
+    jsonp(BOARD_API + '?action=getSoufuLedger&ym=' + encodeURIComponent(ym)).catch(() => ({ rows: [] }))
+  ]);
+  const monMap = {}; (mon.users || []).forEach(u => { monMap[u.userId] = u; });
+  const keikMap = {}; (keik.users || []).forEach(u => { keikMap[u.userId] = u; });
+  const contactMap = {}; (contactsRes.cmContacts || []).forEach(c => { contactMap[normOffice(c.office)] = c; });
+  state.data = {
+    pop: (oral.users || []).filter(u => !u.cancelled),
+    dueMap: due.dueDates || {},
+    monMap, keikMap, contactMap,
+    ledgerRows: ledger.rows || []
+  };
+}
+
+// ---------- 変換層（当月ベース）＋台帳マージ ----------
+function buildTasks(ym) {
+  const d = state.data;
+  const [yy, mm] = ym.split('-').map(Number);
+  const ledgerKey = {};
+  d.ledgerRows.forEach(r => { ledgerKey[r.userId + '|' + r.docType + '|' + r.taishoTsuki] = r; });
+
+  const tasks = [];
+  const pushTask = (name, docType, care, office, furigana, tekiyo) => {
+    const key = name + '|' + docType + '|' + ym;
+    const led = ledgerKey[key] || null;
+    tasks.push({
+      userId: name, docType, care, office: office || '(事業所未登録)', furigana: furigana || '',
+      taishoTsuki: ym, tekiyoTsuki: (led && led.tekiyoTsuki) || tekiyo || '',
+      status: led ? led.status : '', sorotta_by: led ? led.sorotta_by : '',
+      sofu_at: led ? led.sofu_at : '', kurikoshiRiyu: led ? led.kurikoshiRiyu : '',
+      signKigen: led ? led.signKigen : '', isCarry: false
+    });
+  };
+
+  d.pop.forEach(u => {
+    const name = u.userId;
+    const care = careOf(u.category);
+    const office = u.cmOffice || '';
+    const fg = u.furigana || '';
+    const dueYM = d.dueMap[name] ? String(d.dueMap[name]).slice(0, 7) : '';
+    const isManryou = !!dueYM && dueYM === ym;
+    const monU = d.monMap[name] || {};
+    const kUser = d.keikMap[name] || {};
+    const planStart = monU.planStart || kUser.planStart || '';
+    const tekiyoManryou = dueYM;
+
+    // 送付docType（当月ベース・jisseki/oral_moni非表示）
+    if (care === 'shien' && !isManryou) pushTask(name, 'tsusho_moni', care, office, fg, ym);
+    if (isManryou) pushTask(name, 'tsusho_keikaku', care, office, fg, tekiyoManryou);
+    if (care === 'shien' && isManryou) pushTask(name, 'tsusho_hyouka', care, office, fg, tekiyoManryou);
+    if (care === 'kaigo' && (isPlanMonth(kUser.planStart, kUser.planMonths, yy, mm) || isHyoukaMonth(kUser.planStart, kUser.planMonths, yy, mm)))
+      pushTask(name, 'kokun_set', care, office, fg, '');
+    if (u.isTarget && isOralEvalMonth(u.startedAt, yy, mm)) pushTask(name, 'oral_plan', care, office, fg, '');
+    if (care === 'shien' && isMeasureMonth(planStart, ym, '', care)) pushTask(name, 'sokutei', care, office, fg, ym);
+  });
+
+  // 台帳の繰越行（対象月<当月 かつ 未送付）を追加。当月変換層と重複しないキーのみ。
+  const curKeys = new Set(tasks.map(t => t.userId + '|' + t.docType + '|' + t.taishoTsuki));
+  d.ledgerRows.forEach(r => {
+    if (r.taishoTsuki >= ym) return;
+    if (r.status === '送付済') return;
+    if (r.docType === 'jisseki' || r.docType === 'oral_moni') return;
+    const key = r.userId + '|' + r.docType + '|' + r.taishoTsuki;
+    if (curKeys.has(key)) return;
+    const uinfo = (d.pop.find(u => u.userId === r.userId)) || {};
+    tasks.push({
+      userId: r.userId, docType: r.docType, care: careOf(uinfo.category || ''),
+      office: uinfo.cmOffice || '(事業所未登録)', furigana: uinfo.furigana || '',
+      taishoTsuki: r.taishoTsuki, tekiyoTsuki: r.tekiyoTsuki || '',
+      status: r.status, sorotta_by: r.sorotta_by, sofu_at: r.sofu_at,
+      kurikoshiRiyu: r.kurikoshiRiyu, signKigen: r.signKigen, isCarry: true
+    });
+  });
+
+  return tasks;
+}
+
+// ---------- 危険順ソート ----------
+// (1)繰越（対象月が古い順）→上 (2)signKigen昇順（空は末尾） (3)五十音（furigana）
+function sortDanger(a, b) {
+  if (a.isCarry !== b.isCarry) return a.isCarry ? -1 : 1;
+  if (a.isCarry && b.isCarry && a.taishoTsuki !== b.taishoTsuki) return a.taishoTsuki < b.taishoTsuki ? -1 : 1;
+  const ak = a.signKigen || '9999-99-99', bk = b.signKigen || '9999-99-99';
+  if (ak !== bk) return ak < bk ? -1 : 1;
+  return (a.furigana || 'んんん').localeCompare(b.furigana || 'んんん', 'ja');
+}
+
+// ---------- 送付方法 → 出力形態ガイド ----------
+function outGuide(method) {
+  const m = String(method || '');
+  if (resolveSoufu(m).isCarePlan) return 'PDF添付';
+  if (m.indexOf('メール') >= 0 || m.indexOf('FAX') >= 0) return 'PDF化';
+  if (m.indexOf('持参') >= 0 || m.indexOf('郵送') >= 0) return '印刷';
+  return 'PDF化';
+}
+function methodBadge(gkey) {
+  const g = METHOD_GROUPS.find(x => x.key === gkey) || METHOD_GROUPS[METHOD_GROUPS.length - 1];
+  const info = { visit: 'visit', careplan: 'careplan', mail: '', fax: 'fax', other: 'other' }[gkey] || '';
+  const label = { visit: '持参=印刷', careplan: 'ケアプー=PDF添付', mail: 'メール=PDF化', fax: 'FAX=PDF化', other: 'その他' }[gkey] || 'その他';
+  return { cls: info, text: g.icon + ' ' + label };
+}
+
+// ---------- 描画 ----------
+function render() {
+  document.getElementById('ymLabel').textContent = ymJp(state.ym);
+  renderFilters();
+  renderOperatorState();
+
+  const filtered = state.tasks.filter(t => {
+    if (state.docFilter !== 'all' && DOC[t.docType].filter !== state.docFilter) return false;
+    if (state.unsentOnly && t.status === '送付済') return false;
+    return true;
+  });
+
+  // サマリ（当月基準・送付済は当月sofu_atのみ）
+  let cTodo = 0, cCarry = 0, cSorotta = 0, cSent = 0;
+  state.tasks.forEach(t => {
+    if (t.status === '揃った') cSorotta++;
+    else if (t.status === '送付済') { if (String(t.sofu_at).slice(0, 7) === state.ym) cSent++; }
+    else { cTodo++; if (t.isCarry) cCarry++; }
+  });
+  document.getElementById('cntTodo').textContent = cTodo;
+  document.getElementById('cntCarry').textContent = cCarry;
+  document.getElementById('cntSorotta').textContent = cSorotta;
+  document.getElementById('cntSent').textContent = cSent;
+
+  // 事業所グループ（送付方法順）
+  const groups = {}; // office -> tasks[]
+  filtered.forEach(t => { (groups[t.office] = groups[t.office] || []).push(t); });
+  const offices = Object.keys(groups);
+  offices.sort((o1, o2) => {
+    const g1 = methodGroupOf(normOffice(o1), state.data.contactMap);
+    const g2 = methodGroupOf(normOffice(o2), state.data.contactMap);
+    const i1 = METHOD_GROUPS.findIndex(x => x.key === g1);
+    const i2 = METHOD_GROUPS.findIndex(x => x.key === g2);
+    if (i1 !== i2) return i1 - i2;
+    return o1.localeCompare(o2, 'ja');
+  });
+
+  const host = document.getElementById('taskList');
+  if (!filtered.length) {
+    host.innerHTML = '<div class="empty-msg">' + (state.unsentOnly ? '未完了のタスクはありません 🎉' : '該当タスクはありません') + '</div>';
+    return;
+  }
+  let html = '';
+  offices.forEach(office => {
+    const list = groups[office].slice().sort(sortDanger);
+    const gkey = methodGroupOf(normOffice(office), state.data.contactMap);
+    const mb = methodBadge(gkey);
+    const remaining = list.filter(t => t.status !== '送付済').length;
+    html += '<div class="office"><div class="office-head"><span>' + esc(office)
+      + ' <span class="cnt">(あと' + remaining + '件)</span></span>'
+      + '<span class="method ' + mb.cls + '">' + esc(mb.text) + '</span></div>';
+    list.forEach(t => { html += taskRow(t); });
+    html += '</div>';
+  });
+  host.innerHTML = html;
+  bindTaskButtons();
+}
+
+function taskRow(t) {
+  const stateCls = t.status === '送付済' ? 'state-blue' : (t.status === '揃った' ? 'state-green' : 'state-red');
+  const method = (state.data.contactMap[normOffice(t.office)] || {}).method || '';
+  const id = btoa(unescape(encodeURIComponent(t.userId + '|' + t.docType + '|' + t.taishoTsuki))).replace(/=/g, '');
+  let badges = '';
+  if (t.isCarry) badges += '<span class="badge b-carry">↩ ' + Number(t.taishoTsuki.split('-')[1]) + '月から繰越</span>';
+  if (t.status !== '送付済') {
+    if (t.isCarry || t.kurikoshiRiyu) {
+      badges += t.kurikoshiRiyu
+        ? '<span class="badge b-reason" data-reason="' + id + '">' + esc(reasonIcon(t.kurikoshiRiyu)) + '</span>'
+        : '<span class="badge b-reason empty" data-reason="' + id + '">❓ 理由</span>';
+    }
+    if (t.signKigen) badges += '<span class="badge b-kigen">⚠ ' + esc(t.signKigen) + 'までにサイン</span>';
+  }
+  badges += '<span class="badge b-out">' + esc(outGuide(method)) + '</span>';
+
+  const ymLbl = Number(t.taishoTsuki.split('-')[1]) + '月分';
+  const tekiyo = t.tekiyoTsuki ? '（' + Number(t.tekiyoTsuki.split('-')[1]) + '月〜）' : '';
+
+  let action = '';
+  if (t.status === '送付済') {
+    const by = t.sorotta_by ? '（揃:' + esc(t.sorotta_by) + '）' : '';
+    action = '<button class="btn btn-sent" disabled>✓ 送付済</button>';
+    if (state.operatorRole === 'owner') action += '<button class="btn btn-clear" data-act="clear" data-id="' + id + '">戻す</button>';
+  } else if (t.status === '揃った') {
+    action = '<button class="btn btn-done-sorotta" data-act="clear" data-id="' + id + '">✓ 揃った<br><small>' + esc(t.sorotta_by || '') + '</small></button>';
+    if (state.operatorRole === 'owner') action += '<button class="btn btn-sent" data-act="sent" data-id="' + id + '">送付済にする</button>';
+  } else {
+    action = '<button class="btn btn-sorotta" data-act="sorotta" data-id="' + id + '">揃った</button>';
+  }
+
+  return '<div class="task ' + stateCls + '" data-taskid="' + id + '">'
+    + '<div class="who">' + esc(t.userId) + '</div>'
+    + '<div class="body"><div class="doc"><span class="ym">' + ymLbl + ':</span> ' + esc(DOC[t.docType].label) + ' ' + tekiyo + '</div>'
+    + '<div class="badges">' + badges + '</div><div class="pill" id="pill-' + id + '"></div></div>'
+    + '<div class="action">' + action + '</div></div>';
+}
+
+function reasonIcon(r) {
+  const map = { 'サイン待ち': '🖊 サイン待ち', 'ケアプラン待ち': '📋 ケアプラン待ち', '作成遅れ': '✏️ 作成遅れ', 'ケアマネ都合': '🏢 ケアマネ都合' };
+  return map[r] || ('📌 ' + r);
+}
+
+function taskById(id) {
+  return state.tasks.find(t => {
+    const tid = btoa(unescape(encodeURIComponent(t.userId + '|' + t.docType + '|' + t.taishoTsuki))).replace(/=/g, '');
+    return tid === id;
+  });
+}
+
+// ---------- フィルタチップ ----------
+function renderFilters() {
+  const host = document.getElementById('filters');
+  let html = FILTER_CHIPS.map(c => '<span class="fchip' + (state.docFilter === c.key ? ' on' : '') + '" data-filter="' + c.key + '">' + c.label + '</span>').join('');
+  html += '<span class="fchip' + (state.unsentOnly ? ' on' : '') + '" data-unsent="1">未完了のみ ' + (state.unsentOnly ? '✓' : '') + '</span>';
+  host.innerHTML = html;
+  host.querySelectorAll('[data-filter]').forEach(el => el.onclick = () => {
+    state.docFilter = el.dataset.filter; localStorage.setItem(LS_FILTER, state.docFilter); render();
+  });
+  host.querySelector('[data-unsent]').onclick = () => {
+    state.unsentOnly = !state.unsentOnly; localStorage.setItem(LS_UNSENT, state.unsentOnly ? '1' : '0'); render();
+  };
+}
+
+// ---------- 操作者 ----------
+function renderOperatorSelect() {
+  const sel = document.getElementById('operatorSel');
+  sel.innerHTML = '<option value="">— 名前を選択 —</option>'
+    + state.staff.map(s => '<option value="' + esc(s.name) + '"' + (s.name === state.operator ? ' selected' : '') + '>'
+      + esc(s.name) + (s.role === 'owner' ? '（社長）' : '') + '</option>').join('');
+  sel.onchange = () => {
+    state.operator = sel.value;
+    const found = state.staff.find(s => s.name === sel.value);
+    state.operatorRole = found ? found.role : '';
+    if (sel.value) localStorage.setItem(LS_OP, sel.value); else localStorage.removeItem(LS_OP);
+    render();
+  };
+}
+function renderOperatorState() {
+  document.getElementById('opHint').classList.toggle('hidden', !!state.operator);
+}
+
+// ---------- 操作（揃った/送付済/clear） ----------
+function bindTaskButtons() {
+  document.querySelectorAll('[data-act]').forEach(btn => {
+    btn.onclick = () => {
+      const t = taskById(btn.dataset.id);
+      if (!t) return;
+      if (!state.operator) { alert('先に操作者（自分の名前）を選んでください'); return; }
+      const act = btn.dataset.act;
+      if (act === 'sorotta') doUpsert(t, '揃った', btn);
+      else if (act === 'sent') doUpsert(t, '送付済', btn);
+      else if (act === 'clear') confirmClear(t, btn);
+    };
+  });
+  document.querySelectorAll('[data-reason]').forEach(el => {
+    el.onclick = () => { const t = taskById(el.dataset.reason); if (t) pickReason(t); };
+  });
+}
+
+async function doUpsert(t, status, btn, extra) {
+  // 二重タップ防止＋楽観更新
+  document.querySelectorAll('.btn').forEach(b => b.disabled = true);
+  const pill = document.getElementById('pill-' + btn.dataset.id);
+  if (pill) { pill.className = 'pill saving'; pill.textContent = '保存中…'; }
+  const params = ['action=upsertSoufuStatus',
+    'userId=' + encodeURIComponent(t.userId), 'docType=' + t.docType,
+    'taishoTsuki=' + t.taishoTsuki, 'status=' + encodeURIComponent(status),
+    'updatedBy=' + encodeURIComponent(state.operator)];
+  if (t.tekiyoTsuki) params.push('tekiyoTsuki=' + t.tekiyoTsuki);
+  if (extra && extra.kurikoshiRiyu !== undefined) params.push('kurikoshiRiyu=' + encodeURIComponent(extra.kurikoshiRiyu));
+  try {
+    const res = await jsonp(BOARD_API + '?' + params.join('&'));
+    if (!res || !res.ok) throw new Error('ng');
+    // 書き込み検証: 応答rowと突合
+    const okState = status === 'clear' ? true : (res.row && res.row.status === status);
+    if (pill) { pill.className = 'pill ok'; pill.textContent = '✓ 保存確認'; }
+    showUndo(t, status);
+    await reload(true);
+  } catch (e) {
+    if (pill) { pill.className = 'pill ng'; pill.textContent = '⚠ 失敗・再試行を'; }
+    document.querySelectorAll('.btn').forEach(b => b.disabled = false);
+  }
+}
+
+function confirmClear(t, btn) {
+  const label = DOC[t.docType].label;
+  const ymLbl = Number(t.taishoTsuki.split('-')[1]) + '月分';
+  showModal('確認', t.userId + 'さんの「' + label + '」' + ymLbl + 'を未作成に戻します。よろしいですか？',
+    () => clearTask(t, btn));
+}
+async function clearTask(t, btn) {
+  document.querySelectorAll('.btn').forEach(b => b.disabled = true);
+  const params = ['action=upsertSoufuStatus', 'userId=' + encodeURIComponent(t.userId),
+    'docType=' + t.docType, 'taishoTsuki=' + t.taishoTsuki, 'status=clear',
+    'updatedBy=' + encodeURIComponent(state.operator || 'staff')];
+  try { await jsonp(BOARD_API + '?' + params.join('&')); await reload(true); }
+  catch (e) { alert('戻す操作に失敗しました。再度お試しください'); document.querySelectorAll('.btn').forEach(b => b.disabled = false); }
+}
+
+// 繰越理由チップ
+function pickReason(t) {
+  const reasons = ['サイン待ち', 'ケアプラン待ち', '作成遅れ', 'ケアマネ都合', 'その他', '（クリア）'];
+  const choice = prompt('繰越理由を選択（番号）:\n' + reasons.map((r, i) => (i + 1) + '. ' + r).join('\n'), '');
+  if (!choice) return;
+  const idx = parseInt(choice, 10) - 1;
+  if (idx < 0 || idx >= reasons.length) return;
+  if (!state.operator) { alert('先に操作者を選んでください'); return; }
+  const val = idx === 5 ? '' : reasons[idx];
+  const params = ['action=upsertSoufuStatus', 'userId=' + encodeURIComponent(t.userId),
+    'docType=' + t.docType, 'taishoTsuki=' + t.taishoTsuki,
+    'status=' + encodeURIComponent(t.status || '揃った'),
+    'updatedBy=' + encodeURIComponent(state.operator), 'kurikoshiRiyu=' + encodeURIComponent(val)];
+  // status未設定（未作成）の理由付与は、行を作らずスキップ（未作成は行を持たない設計）
+  if (!t.status) { alert('「揃った」にしてから理由を付けられます'); return; }
+  jsonp(BOARD_API + '?' + params.join('&')).then(() => reload(true));
+}
+
+// ---------- Undo ----------
+function showUndo(t, status) {
+  state.lastUndo = { t, status };
+  const toast = document.getElementById('undoToast');
+  document.getElementById('undoMsg').textContent = '✓ ' + t.userId + ' ' + DOC[t.docType].label + 'を「' + status + '」にしました';
+  toast.classList.remove('hidden');
+  clearTimeout(state._undoTimer);
+  state._undoTimer = setTimeout(() => toast.classList.add('hidden'), 5000);
+}
+document.getElementById('undoBtn').onclick = () => {
+  if (!state.lastUndo) return;
+  const t = state.lastUndo.t;
+  document.getElementById('undoToast').classList.add('hidden');
+  // 「揃った」→戻す＝clear、「送付済」→戻す＝揃った
+  if (state.lastUndo.status === '揃った') clearTask(t, { dataset: {} });
+  else doUpsert(t, '揃った', { dataset: { id: '' } });
+  state.lastUndo = null;
+};
+
+// ---------- モーダル ----------
+function showModal(title, msg, onOk) {
+  const host = document.getElementById('modalHost');
+  host.innerHTML = '<div class="modal-bg"><div class="modal"><h3>' + esc(title) + '</h3><p>' + esc(msg)
+    + '</p><div class="modal-btns"><button class="cancel">キャンセル</button><button class="ok">実行</button></div></div></div>';
+  host.querySelector('.cancel').onclick = () => host.innerHTML = '';
+  host.querySelector('.ok').onclick = () => { host.innerHTML = ''; onOk(); };
+}
+
+// ---------- 同期 ----------
+async function reload(silent) {
+  if (!silent) document.getElementById('taskList').innerHTML = '<div class="loading">読み込み中…</div>';
+  try {
+    await loadData(state.ym);
+    state.tasks = buildTasks(state.ym);
+    render();
+    setSyncTime();
+  } catch (e) {
+    document.getElementById('taskList').innerHTML = '<div class="empty-msg">読み込みに失敗しました。同期表示をタップして再試行してください。</div>';
+  }
+}
+function setSyncTime() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0'), mi = String(d.getMinutes()).padStart(2, '0');
+  document.getElementById('syncInfo').innerHTML = '☁️ 最終同期 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hh + ':' + mi + '<br>タップで再読込';
+}
+
+// ---------- 初期化 ----------
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+async function init() {
+  state.ym = nowYM();
+  await loadStaff();
+  state.operator = localStorage.getItem(LS_OP) || '';
+  const found = state.staff.find(s => s.name === state.operator);
+  state.operatorRole = found ? found.role : '';
+  renderOperatorSelect();
+  await reload(false);
+
+  document.getElementById('prevM').onclick = () => { state.ym = shiftYM(state.ym, -1); reload(false); };
+  document.getElementById('nextM').onclick = () => { state.ym = shiftYM(state.ym, 1); reload(false); };
+  document.getElementById('syncInfo').onclick = () => reload(false);
+
+  // タブ復帰＋定期ポーリング
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) reload(true); });
+  if (state.pollTimer) clearInterval(state.pollTimer);
+  state.pollTimer = setInterval(() => { if (!document.hidden) reload(true); }, 5 * 60 * 1000);
+}
+init();
+</script>
+</body>
+</html>
