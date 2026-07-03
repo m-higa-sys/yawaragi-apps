@@ -4349,6 +4349,86 @@ function gnbWeekAbsenceSlots(pattern, todayStr, weeks) {
     return gnbNormalizeSlots(slots);
 }
 
+// ===== 2026-07-03 カレンダー式ピッカー 純関数 =====
+// 月グリッド生成・日/曜日トグル。scripts/test-genba-calendar-picker.js で実コード抽出テスト。
+// unitの決め方は absBuildSlotsFromDates と同一（通所日=その曜日のunit・非通所日=パターン推定）。
+
+// 'YYYY-MM' に nヶ月加算
+function gnbYmAdd(ym, n) {
+    const y = +String(ym).slice(0, 4), m = +String(ym).slice(5, 7) - 1 + n;
+    const d = new Date(y, m, 1);
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+}
+
+// 指定月(ym='YYYY-MM')の全日を [{date, dow, scheduled, past}] で返す
+function gnbMonthCalendarDays(pattern, todayStr, ym) {
+    const y = +String(ym).slice(0, 4), m = +String(ym).slice(5, 7);
+    const last = new Date(y, m, 0).getDate();
+    const out = [];
+    for (let day = 1; day <= last; day++) {
+        const date = ym + '-' + ('0' + day).slice(-2);
+        const dow = new Date(y, m - 1, day).getDay();
+        out.push({
+            date: date,
+            dow: dow,
+            scheduled: (pattern || []).some(function (p) { return p.day === dow; }),
+            past: date < todayStr
+        });
+    }
+    return out;
+}
+
+// 曜日一括トグルの対象日: その月・その曜日の「今日以降」の通所日のみ（過去日は一括で巻き込まない）
+function gnbDowScheduledDates(pattern, todayStr, ym, dow) {
+    return gnbMonthCalendarDays(pattern, todayStr, ym)
+        .filter(function (c) { return c.dow === dow && c.scheduled && !c.past; })
+        .map(function (c) { return c.date; });
+}
+
+// 1日分の(date,unit)集合。absBuildSlotsFromDates の1日分と同一ロジック（unit新規ロジックゼロ）。
+function gnbDaySlots(pattern, dateStr) {
+    const pat = pattern || [];
+    const parts = String(dateStr).split('-');
+    const dow = new Date(+parts[0], +parts[1] - 1, +parts[2]).getDay();
+    const dayUnits = [];
+    pat.forEach(function (p) { if (p.day === dow) dayUnits.push(p.unit === 'pm' ? '午後' : '午前'); });
+    let units = dayUnits;
+    if (units.length === 0) {
+        const hasAm = pat.some(function (p) { return p.unit === 'am'; });
+        const hasPm = pat.some(function (p) { return p.unit === 'pm'; });
+        if (hasAm && hasPm) units = ['午前', '午後'];
+        else if (hasPm && !hasAm) units = ['午後'];
+        else units = ['午前'];
+    }
+    return gnbNormalizeSlots(units.map(function (u) { return { date: dateStr, unit: u }; }));
+}
+
+// 日タップのトグル: その日のslotが1つでもあれば全除去、無ければ gnbDaySlots を追加
+function gnbToggleDaySlots(slots, dateStr, pattern) {
+    const cur = slots || [];
+    const has = cur.some(function (s) { return s.date === dateStr; });
+    if (has) return gnbNormalizeSlots(cur.filter(function (s) { return s.date !== dateStr; }));
+    return gnbNormalizeSlots(cur.concat(gnbDaySlots(pattern, dateStr)));
+}
+
+// 曜日一括トグル: 対象日が全選択済なら全解除、そうでなければ未選択日を埋めて全選択
+function gnbToggleDowSlots(slots, dowDates, pattern) {
+    const cur = slots || [];
+    const dates = dowDates || [];
+    if (dates.length === 0) return gnbNormalizeSlots(cur);
+    const allOn = dates.every(function (d) { return cur.some(function (s) { return s.date === d; }); });
+    if (allOn) {
+        const inDates = {};
+        dates.forEach(function (d) { inDates[d] = true; });
+        return gnbNormalizeSlots(cur.filter(function (s) { return !inDates[s.date]; }));
+    }
+    let out = cur.slice();
+    dates.forEach(function (d) {
+        if (!out.some(function (s) { return s.date === d; })) out = out.concat(gnbDaySlots(pattern, d));
+    });
+    return gnbNormalizeSlots(out);
+}
+
 // ----- 欠席データ -----
 function absGetRecords() {
     try {
