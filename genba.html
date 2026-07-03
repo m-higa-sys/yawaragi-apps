@@ -4859,7 +4859,7 @@ function absRenderRangePreview(slots) {
     };
     let html = '';
     if (!slots || slots.length === 0) {
-        html += '<div class="abs-range-empty">この期間にこの利用者の利用日がありません（土日・利用日以外は登録されません）。<br>単日で休む場合は「日付を指定（単日）」をお使いください。</div>';
+        html += '<div class="abs-range-empty">この期間にこの利用者の利用日がありません（土日・利用日以外は登録されません）。<br>単日で休む場合は上のカレンダーで日をタップしてください。</div>';
     } else {
         const label = slots.map(fmt).join('、');
         html += '<div class="abs-range-list"><b>登録される日（計' + slots.length + '日）:</b><br>' + label + '</div>';
@@ -5071,7 +5071,7 @@ function absSubmit() {
             : absRangePatternSlots(pat, absState.dateFrom, absState.dateTo);
         absState._rangeSlots = rangeSlots;
         if (rangeSlots.length === 0) {
-            alert('この期間にこの利用者の利用日がありません。\n（土日・利用日以外は登録できません。単日は「日付を指定（単日）」をお使いください）');
+            alert('この期間にこの利用者の利用日がありません。\n（土日・利用日以外は登録できません。単日は上のカレンダーで日をタップしてください）');
             return;
         }
         const seenR = {};
@@ -7169,7 +7169,7 @@ function absInitReceptionist() {
 
     const container = document.getElementById('abs-receptionist-btns');
     const selectedEl = document.getElementById('abs-receptionist-selected');
-    const staff = getStaff();
+    const staff = getStaff().filter(s => !EXCLUDED_STAFF.includes(s)); // 社長(比嘉)は受付者候補から除外（配置UIと同じ扱い）
 
     container.innerHTML = staff.map(s =>
         `<button class="abs-contact-btn${absReceptionist === s ? ' selected' : ''}" onclick="absSelectReceptionist('${s}', this)">${s}</button>`
