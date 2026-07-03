@@ -18,6 +18,26 @@
   function safeHref(u) { return (typeof u === 'string' && /^https?:\/\//i.test(u)) ? u : ''; }
   function ordNum(v) { var n = parseInt(v, 10); return isNaN(n) ? 999 : n; }
 
+  // ?v=<クリック時刻> を付けたURLを返す（キャッシュ回避）。既存の v= は除去して付け直す。#fragment 対応。
+  function bustHref(u) {
+    var hash = '', i = u.indexOf('#');
+    if (i >= 0) { hash = u.slice(i); u = u.slice(0, i); }
+    var q = '', j = u.indexOf('?');
+    if (j >= 0) { q = u.slice(j + 1); u = u.slice(0, j); }
+    var parts = q ? q.split('&').filter(function (p) { return p.slice(0, 2) !== 'v=' && p !== 'v'; }) : [];
+    parts.push('v=' + Date.now());
+    return u + '?' + parts.join('&') + hash;
+  }
+
+  // リンクを「押した瞬間」に ?v=Date.now() へ書き換える。
+  // ページを開きっぱなしでも、クリックのたびに新しい値になるので常に最新版が取れる。
+  function attachCacheBust(btn, href) {
+    function upd() { btn.setAttribute('href', bustHref(href)); }
+    btn.addEventListener('click', upd);       // タップ・左クリック・Enter
+    btn.addEventListener('auxclick', upd);    // 中クリック（新しいタブ）
+    btn.addEventListener('contextmenu', upd); // 右クリック→新しいタブで開く
+  }
+
   // apps: getAppRegistry の配列 / rootEl: 描画先 / opts.includeInternal: admin用(internalもバッジ表示)
   // 戻り値: 表示したアプリ件数
   function render(apps, rootEl, opts) {
@@ -60,6 +80,7 @@
         var btn = document.createElement('a');
         btn.className = 'app-btn' + (isMain ? ' app-main' : '');
         btn.setAttribute('href', href);
+        attachCacheBust(btn, href); // クリック時に ?v=Date.now() を付与（キャッシュ回避）
         var ic = document.createElement('span'); ic.className = 'icon'; ic.textContent = a['icon'] || '📄';
         var nm = document.createElement('span');
         nm.textContent = (a['アプリ名'] || '(名称未設定)') + (isMain ? '（現場のメイン画面）' : '');
@@ -75,5 +96,5 @@
     return total;
   }
 
-  global.LauncherRender = { CAT_ORDER: CAT_ORDER, CAT_META: CAT_META, safeHref: safeHref, render: render };
+  global.LauncherRender = { CAT_ORDER: CAT_ORDER, CAT_META: CAT_META, safeHref: safeHref, render: render, bustHref: bustHref, attachCacheBust: attachCacheBust };
 })(window);
