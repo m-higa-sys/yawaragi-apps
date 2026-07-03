@@ -923,6 +923,96 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // メンテナンス用: 2026-07-04 指示書②: 利用者台帳 N/W 列ヘッダ改名（現値検証付き・冪等）
+  // N「ケアマネメールアドレス」→「ケアマネ個人メアド」／ W(空欄)→「欠席連絡メアド」。dryRun=1でプレビュー。
+  if (e && e.parameter && e.parameter.action === 'maintenance_rename_cm_headers') {
+    var dryRunRen = e.parameter.dryRun === '1';
+    var resultRen = (function() {
+      var ssRen = SpreadsheetApp.openById(SS_ID);
+      var shRen = ssRen.getSheetByName('利用者台帳');
+      if (!shRen) return { success: false, error: '利用者台帳シートが見つかりません' };
+      var hRen = shRen.getRange(1, 1, 1, shRen.getLastColumn()).getValues()[0].map(function(v){ return String(v).trim(); });
+      var repRen = { success: true, dryRun: dryRunRen, actions: [] };
+      // N列: 旧名→新名（冪等: 既に新名ならskip・旧新どちらも不在なら中断）
+      var nIdxRen = hRen.indexOf('ケアマネメールアドレス');
+      if (nIdxRen >= 0) {
+        repRen.actions.push({ col: nIdxRen + 1, from: 'ケアマネメールアドレス', to: 'ケアマネ個人メアド' });
+        if (!dryRunRen) shRen.getRange(1, nIdxRen + 1).setValue('ケアマネ個人メアド');
+      } else if (hRen.indexOf('ケアマネ個人メアド') >= 0) {
+        repRen.actions.push({ col: hRen.indexOf('ケアマネ個人メアド') + 1, skip: 'N列は既に新名' });
+      } else {
+        return { success: false, error: 'N列想定ヘッダが旧名/新名とも見つかりません', headers: hRen };
+      }
+      // W列(23列目): 空欄→新名（空欄でも新名でもない値なら中断=誤爆防止）
+      var wValRen = hRen.length >= 23 ? hRen[22] : '';
+      if (wValRen === '') {
+        repRen.actions.push({ col: 23, from: '(空欄)', to: '欠席連絡メアド' });
+        if (!dryRunRen) shRen.getRange(1, 23).setValue('欠席連絡メアド');
+      } else if (wValRen === '欠席連絡メアド') {
+        repRen.actions.push({ col: 23, skip: 'W列は既に新名' });
+      } else {
+        return { success: false, error: 'W列(23列目)が空欄でも新名でもありません: "' + wValRen + '"' };
+      }
+      return repRen;
+    })();
+    return ContentService.createTextOutput(JSON.stringify(resultRen)).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // メンテナンス用: 2026-07-04 指示書②ステップ3: 台帳テスト行（クロコテスト）の追加/削除
+  // 改名後N列（ケアマネ個人メアド・新名のみで解決）読取→欠席メール実測用。検証後は必ずdeleteで消す。
+  if (e && e.parameter && e.parameter.action === 'maintenance_upsert_test_user_row') {
+    var resultTU = (function() {
+      var ssTU = SpreadsheetApp.openById(SS_ID);
+      var shTU = ssTU.getSheetByName('利用者台帳');
+      if (!shTU) return { success: false, error: '利用者台帳シートが見つかりません' };
+      var hTU = shTU.getRange(1, 1, 1, shTU.getLastColumn()).getValues()[0].map(function(v){ return String(v).trim(); });
+      // ★新名のみで解決（旧名フォールバックを意図的に外し、N列改名の実証を兼ねる）
+      var colsTU = {
+        '名前': 'クロコテスト', 'カナ': 'クロコテスト',
+        'ケアマネ担当者名': 'クロコテスト担当', 'ケアマネ事業所名': 'クロコテスト事業所',
+        'ケアマネ個人メアド': 'm-higa@keepfitlife.com',
+        '利用ステータス': 'テスト', 'ケアマネ連絡手段': 'メール'
+      };
+      var nameIdxTU = hTU.indexOf('名前');
+      if (nameIdxTU < 0) return { success: false, error: '名前列が見つかりません' };
+      var missTU = Object.keys(colsTU).filter(function(k){ return hTU.indexOf(k) < 0; });
+      if (missTU.length) return { success: false, error: '列が見つかりません: ' + missTU.join('、'), headers: hTU };
+      var lastTU = shTU.getLastRow();
+      var namesTU = shTU.getRange(2, nameIdxTU + 1, Math.max(lastTU - 1, 1), 1).getValues();
+      var rowTU = -1;
+      for (var iTU = 0; iTU < namesTU.length; iTU++) {
+        if (String(namesTU[iTU][0]).trim() === 'クロコテスト') { rowTU = iTU + 2; break; }
+      }
+      if (rowTU < 0) rowTU = lastTU + 1;
+      Object.keys(colsTU).forEach(function(k) {
+        shTU.getRange(rowTU, hTU.indexOf(k) + 1).setValue(colsTU[k]);
+      });
+      return { success: true, row: rowTU, upserted: colsTU };
+    })();
+    return ContentService.createTextOutput(JSON.stringify(resultTU)).setMimeType(ContentService.MimeType.JSON);
+  }
+  if (e && e.parameter && e.parameter.action === 'maintenance_delete_test_user_row') {
+    var resultTD = (function() {
+      var ssTD = SpreadsheetApp.openById(SS_ID);
+      var shTD = ssTD.getSheetByName('利用者台帳');
+      if (!shTD) return { success: false, error: '利用者台帳シートが見つかりません' };
+      var hTD = shTD.getRange(1, 1, 1, shTD.getLastColumn()).getValues()[0].map(function(v){ return String(v).trim(); });
+      var nameIdxTD = hTD.indexOf('名前');
+      if (nameIdxTD < 0) return { success: false, error: '名前列が見つかりません' };
+      var lastTD = shTD.getLastRow();
+      var namesTD = shTD.getRange(2, nameIdxTD + 1, Math.max(lastTD - 1, 1), 1).getValues();
+      var deletedTD = 0;
+      for (var iTD = namesTD.length - 1; iTD >= 0; iTD--) { // 下から消す（行ズレ防止）
+        if (String(namesTD[iTD][0]).trim() === 'クロコテスト') {
+          shTD.deleteRow(iTD + 2);
+          deletedTD++;
+        }
+      }
+      return { success: true, deleted: deletedTD };
+    })();
+    return ContentService.createTextOutput(JSON.stringify(resultTD)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // メンテナンス用: 地域包括のメアド誤記を修正（2026-05-21 バウンス事故対応）
   // 送付用居宅一覧の houkatsu@ 誤ドメインを houkatsu@smile-shakyo.jp に統一する。dryRun=1でプレビュー。
   if (e && e.parameter && e.parameter.action === 'maintenance_fix_houkatsu') {
@@ -3876,7 +3966,7 @@ function getUserList(ss) {
   var daysCol = findCol(h, ['利用曜日']);
   var ampmCol = findCol(h, ['午前/午後', '午前午後']);
   // 2026-06-19 休み連絡メールリニューアル: ケアマネメアドをプレビュー/分岐用に同梱（送信先はGASが台帳N列を再取得）
-  var cmEmailCol = findCol(h, ['ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
+  var cmEmailCol = findCol(h, ['ケアマネ個人メアド', 'ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
 
   var list = [];
   for (var i = 1; i < data.length; i++) {
@@ -4010,7 +4100,7 @@ function getCmMethodAudit(ss) {
   if (statusCol < 0) statusCol = findColP(h, '利用状況');
   var cmOfficeCol = findCol(h, ['ケアマネ事業所名', 'ケアマネ事業所']);
   var cmStaffCol = findCol(h, ['ケアマネ担当者名', 'ケアマネ担当', '担当ケアマネ']);
-  var cmEmailCol = findCol(h, ['ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
+  var cmEmailCol = findCol(h, ['ケアマネ個人メアド', 'ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
   var cmMethodCol = findCol(h, ['ケアマネ連絡手段', '連絡手段']);
   var cmPhoneCol = findCol(h, ['ケアマネ電話番号', 'ケアマネTEL']);
   var list = [];
@@ -4050,7 +4140,7 @@ function updateCmMethod(ss, data) {
   var allData = sheet.getDataRange().getValues();
   var h = allData[0].map(function (v) { return String(v).trim(); });
   var nameCol = findCol(h, ['名前', '氏名', '利用者名']);
-  var cmEmailCol = findCol(h, ['ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
+  var cmEmailCol = findCol(h, ['ケアマネ個人メアド', 'ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
   var cmMethodCol = findCol(h, ['ケアマネ連絡手段', '連絡手段']);
   var cmPhoneCol = findCol(h, ['ケアマネ電話番号', 'ケアマネTEL']);
   if (cmMethodCol < 0) {
@@ -5344,7 +5434,7 @@ function getUserCmContact(ss, userName) {
   var nameCol = findCol(h, ['名前', '氏名', '利用者名']);
   var cmNameCol = findCol(h, ['ケアマネ担当者名', 'ケアマネ担当', '担当ケアマネ']);
   var cmOfficeCol = findCol(h, ['ケアマネ事業所名', 'ケアマネ事業所']);
-  var cmEmailCol = findCol(h, ['ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
+  var cmEmailCol = findCol(h, ['ケアマネ個人メアド', 'ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
   var cmMethodCol = findCol(h, ['ケアマネ連絡手段', '連絡手段']);
   var cmPhoneCol = findCol(h, ['ケアマネ電話番号', 'ケアマネTEL']);
   var cmNoteCol = findCol(h, ['連絡時注意事項', '連絡注意', '連絡メモ']);
@@ -8086,7 +8176,7 @@ function importCmContacts() {
     var h = String(headerRow[c]).trim();
     if (h === 'ケアマネ担当') colCmName = c;
     if (h === 'ケアマネ事業所名') colCmOffice = c;
-    if (h === 'ケアマネメールアドレス') colCmEmail = c;
+    if (h === 'ケアマネ個人メアド' || h === 'ケアマネメールアドレス') colCmEmail = c; // 2026-07-04 指示書②: 台帳N列ヘッダ改名（旧名フォールバック付き）
   }
 
   if (colCmOffice < 0) return { success: false, error: '利用者台帳に「ケアマネ事業所名」列が見つかりません' };
@@ -9244,7 +9334,7 @@ function applyDueCaremanagerChanges_(ss, asOfDate, dryRun) {
   var nameCol     = findCol(uh, ['名前', '氏名', '利用者名']);
   var cmOfficeCol = findCol(uh, ['ケアマネ事業所名', 'ケアマネ事業所']);
   var cmStaffCol  = findCol(uh, ['ケアマネ担当者名', 'ケアマネ担当', '担当ケアマネ']);
-  var cmEmailCol  = findCol(uh, ['ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
+  var cmEmailCol  = findCol(uh, ['ケアマネ個人メアド', 'ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
   var cmPhoneCol  = findCol(uh, ['ケアマネ電話番号', 'ケアマネTEL']);
   var cmMethodCol = findCol(uh, ['ケアマネ連絡手段', '連絡手段']);
 
