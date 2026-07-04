@@ -1574,7 +1574,7 @@
         <div style="background:#fff; max-width:520px; margin:40px auto; padding:16px; border-radius:10px; max-height:85vh; overflow:auto;">
             <h3 id="kbox-pv-title" style="margin:0 0 8px;"></h3>
             <label style="display:block; font-size:.85rem; font-weight:600;">宛先メアド
-                <input id="kbox-pv-to" type="email" style="width:100%; padding:8px; box-sizing:border-box;">
+                <input id="kbox-pv-to" type="email" style="width:100%; padding:8px; box-sizing:border-box;" oninput="kbPvCheckTo()">
             </label>
             <div id="kbox-pv-to-warn" style="display:none; color:#c0392b; font-size:.8rem; margin:4px 0;">※宛先を変更した場合は利用者台帳のN列「ケアマネ個人メアド」も修正してください</div>
             <label style="display:block; font-size:.85rem; font-weight:600; margin-top:8px;">本文（空欄なら既定テンプレで送信）
@@ -7427,6 +7427,69 @@ function kbUpdateBadge() {
     badge.style.display = '';
     if (pending === 0) { badge.textContent = '✅ 全員対応済み'; badge.style.background = '#2c7a7b'; }
     else { badge.textContent = '未対応 ' + pending + '件'; badge.style.background = '#c0392b'; }
+}
+
+// ===== Task4: 内容確認・訂正モーダル =====
+// 本文の叩き台（未編集なら customBody='' でGAS既定テンプレを使わせる＝absBuildPreviewBodyと同趣旨）
+function kbBuildBody_(it) {
+    const office = it.cmOffice || '';
+    const dateLabel = kbFormatDate_(it.date) + '（' + (it.unit || '') + '）';
+    return (office ? office + '\n' : '') +
+        'ご担当者様\n\n' +
+        'いつもお世話になっております。\nリハビリデイサービス yawaragi です。\n\n' +
+        dateLabel + '、' + it.name + '様より「' + (it.reason || '体調不良') + '」とのご連絡があり、\n' +
+        'yawaragiをお休みされる旨伺いましたのでご報告いたします。\n\n' +
+        'ご確認のほどよろしくお願いいたします。\n\n' +
+        '━━━━━━━━━━━━━━━━━━\n' +
+        'リハビリデイサービス yawaragi\nTEL/FAX: 0493-81-5125\n' +
+        '━━━━━━━━━━━━━━━━━━';
+}
+function kbFormatDate_(ymd) {
+    const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (Number(m[2]) + '月' + Number(m[3]) + '日') : String(ymd || '');
+}
+
+let kbEditing = null;   // 編集中の利用者名
+
+function kbOpenPreview(name) {
+    const it = kbState.items.find(x => x.name === name);
+    if (!it) return;
+    kbEditing = name;
+    const title = document.getElementById('kbox-pv-title');
+    const toEl = document.getElementById('kbox-pv-to');
+    const bodyEl = document.getElementById('kbox-pv-body');
+    const warn = document.getElementById('kbox-pv-to-warn');
+    if (!title || !toEl || !bodyEl) return;
+    title.textContent = it.name + ' 様 → ' + (it.cmStaff || 'ケアマネ');
+    toEl.value = it.toOverride || it.email || '';
+    it._origEmail = it.email || '';
+    it._initialBody = kbBuildBody_(it);
+    bodyEl.value = (it.customBody && it.customBody.length) ? it.customBody : it._initialBody;
+    if (warn) warn.style.display = 'none';
+    document.getElementById('kbox-preview-modal').style.display = 'block';
+}
+
+function kbPvCheckTo() {
+    const it = kbState.items.find(x => x.name === kbEditing);
+    const toEl = document.getElementById('kbox-pv-to');
+    const warn = document.getElementById('kbox-pv-to-warn');
+    if (!it || !toEl || !warn) return;
+    warn.style.display = (toEl.value.trim() !== String(it._origEmail || '').trim()) ? 'block' : 'none';
+}
+
+function kbApplyEdit() {
+    const it = kbState.items.find(x => x.name === kbEditing);
+    if (!it) { document.getElementById('kbox-preview-modal').style.display = 'none'; return; }
+    const toEl = document.getElementById('kbox-pv-to');
+    const bodyEl = document.getElementById('kbox-pv-body');
+    const to = toEl ? toEl.value.trim() : '';
+    const body = bodyEl ? bodyEl.value : '';
+    // 宛先が元と違えばその1通だけ上書き（台帳は変えない）
+    it.toOverride = (to && to !== String(it._origEmail || '').trim()) ? to : '';
+    // 本文が叩き台と違えば編集本文を採用・同じなら空（GAS既定テンプレ）
+    it.customBody = (body && body !== it._initialBody) ? body : '';
+    document.getElementById('kbox-preview-modal').style.display = 'none';
+    if (it.toOverride) showToast('宛先を変更しました（この1通のみ・台帳は要修正）', 3500);
 }
 
 // ============================================================
