@@ -555,7 +555,7 @@
 <body>
 
 <div class="header">
-    <h1>🦷 口腔機能管理</h1>
+    <h1>🦷 口腔機能管理 <span id="ledgerFreshBar" style="font-size:12px;font-weight:normal;margin-left:8px;vertical-align:middle;white-space:nowrap;display:none"></span></h1>
     <div class="header-controls">
         <select id="yearSelect" class="year-select" onchange="changeYear()"></select>
         <button class="btn btn-white" onclick="loadFromSpreadsheet()">🔄 利用者台帳から取得</button>
@@ -691,6 +691,67 @@ const STORAGE_KEY = 'yawaragi_oral_check';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
 // 月次利用状況モーダル用（?action=monthly_usage 対応の新デプロイ）
 const YAWARAGI_BOARD_API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+
+// ============================================================
+// 台帳鮮度モジュール（2026-07-04）
+// 介護度など「利用者台帳が正」の属性の鮮度を見える化する。
+// - 鮮度の時刻は loadFromSpreadsheet（台帳直読）の成功時刻を保存して使う。
+//   ※ Drive の modifiedTime（getOral のスナップショット）は使わない
+//     （チェック保存の度に進むので「介護度がいつの値か」を表さないため）。
+// - ledgerFreshText は DOM 非依存の純関数（Node で実測可能）。将来 shared.js へ切り出しやすい形。
+// >>> TESTABLE-LEDGER-FRESHNESS-START （Node実測用マーカー・移動/削除しないこと）
+const LEDGER_FRESH_KEY = 'yawaragi_oral_ledger_fetched_at';
+
+// 絶対時刻 "HH:MM"（ローカル=JST）
+function ledgerFmtAbs(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+// 相対時刻 "たった今 / N分前 / N時間前 / N日前"
+function ledgerFmtRel(iso, nowMs) {
+  if (!iso) return '';
+  var t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  var sec = Math.floor((nowMs - t) / 1000);
+  if (sec < 0) sec = 0;
+  if (sec < 60) return 'たった今';
+  var min = Math.floor(sec / 60);
+  if (min < 60) return min + '分前';
+  var hr = Math.floor(min / 60);
+  if (hr < 24) return hr + '時間前';
+  return Math.floor(hr / 24) + '日前';
+}
+
+// 状態＋時刻から鮮度バーの {text, color} を返す純関数
+// state: 'loading' | 'ok' | 'error'
+function ledgerFreshText(state, fetchedIso, nowMs) {
+  if (state === 'loading') return { text: '⏳ 台帳確認中…', color: '#1976d2' };
+  if (state === 'error') {
+    var suffix = fetchedIso ? '（前回 ' + ledgerFmtAbs(fetchedIso) + '）' : '';
+    return { text: '⚠ 台帳未取得・前回値表示' + suffix, color: '#e65100' };
+  }
+  if (state === 'ok') {
+    return { text: '✅ 台帳最新 ' + ledgerFmtAbs(fetchedIso) + '（' + ledgerFmtRel(fetchedIso, nowMs) + '）', color: '#2e7d32' };
+  }
+  return { text: '', color: '#64748b' };
+}
+// <<< TESTABLE-LEDGER-FRESHNESS-END
+
+let _ledgerFreshState = 'loading';
+function saveLedgerFetchedAt(iso) { try { localStorage.setItem(LEDGER_FRESH_KEY, iso); } catch (e) {} }
+function getLedgerFetchedAt() { try { return localStorage.getItem(LEDGER_FRESH_KEY) || ''; } catch (e) { return ''; } }
+function setLedgerFreshState(state) { _ledgerFreshState = state; renderLedgerFreshBar(); }
+function renderLedgerFreshBar() {
+  var el = document.getElementById('ledgerFreshBar');
+  if (!el) return;
+  var r = ledgerFreshText(_ledgerFreshState, getLedgerFetchedAt(), Date.now());
+  el.textContent = r.text;
+  el.style.color = r.color;
+  el.style.display = r.text ? 'inline-block' : 'none';
+}
 
 const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
 const SUB_COLS = ['1回目', '2回目', 'ﾓﾆﾀﾘﾝｸﾞ'];
@@ -869,9 +930,9 @@ async function cloudLoad() {
             if (cloud && _hasAnyValue(cloud.checks)) {
                 appData.checks = cloud.checks;
             }
-            if (cloud && cloud.users && cloud.users.length > 0) {
-                appData.users = cloud.users;
-            }
+            // 2026-07-04 案A: users（介護度など台帳が正の属性）はクラウドスナップショットから採用しない。
+            // getOral のスナップショットは台帳→自動反映経路が無く古くなり得るため（本日の柳瀬さと件の二段目の穴）、
+            // users の権威は loadFromSpreadsheet（利用者台帳直読）に一本化する。ここでは checks のみ取り込む。
             localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, checks: appData.checks }));
             renderTable();
             showToast('☁️ クラウドから取得完了', '#2196F3');
@@ -950,16 +1011,25 @@ function sortUsers() {
 }
 
 // ============ 利用者台帳から取得（GAS JSONP方式 = サーバー不要） ============
-function loadFromSpreadsheet() {
-    showToast('📋 利用者台帳からデータ取得中...', '#2196F3');
+// silent=true（起動時の自動取得）ではトーストを抑制し、鮮度バーで状態を見せる。
+// 介護度など「台帳が正」の属性はこの経路（台帳直読→mergeUsers）を唯一の権威にする。
+function loadFromSpreadsheet(silent) {
+    setLedgerFreshState('loading');
+    if (!silent) showToast('📋 利用者台帳からデータ取得中...', '#2196F3');
 
     const callbackName = 'gasCallback_' + Date.now();
     const url = GAS_URL + '?callback=' + callbackName;
 
+    // 失敗時: 旧値は消さず、鮮度バーで「⚠台帳未取得・前回値表示」を明示（最新の顔で出さない）
+    const onFail = function(msg) {
+        setLedgerFreshState('error');
+        if (!silent) showToast(msg, '#f44');
+    };
+
     const timeout = setTimeout(() => {
         delete window[callbackName];
         if (script.parentNode) script.parentNode.removeChild(script);
-        showToast('⚠ 取得に時間がかかっています。ネット接続を確認してください', '#f44');
+        onFail('⚠ 取得に時間がかかっています。ネット接続を確認してください');
     }, 15000);
 
     window[callbackName] = function(data) {
@@ -977,15 +1047,17 @@ function loadFromSpreadsheet() {
             })).filter(u => u.name);
 
             if (users.length === 0) {
-                showToast('⚠ 利用者が見つかりません', '#f44');
+                onFail('⚠ 利用者が見つかりません');
                 return;
             }
-            mergeUsers(users);
+            mergeUsers(users);                                  // 介護度など台帳属性で users を上書き（checks は不介入＝保持）
+            saveLedgerFetchedAt(new Date().toISOString());      // ★鮮度の時刻＝台帳直読の成功時刻（modifiedTimeは使わない）
+            setLedgerFreshState('ok');
             saveData();
             renderTable();
-            showToast(`✅ ${appData.users.length}名の利用者を取得しました`, '#4CAF50');
+            if (!silent) showToast(`✅ ${appData.users.length}名の利用者を取得しました`, '#4CAF50');
         } catch(err) {
-            showToast('⚠ データの解析に失敗しました', '#f44');
+            onFail('⚠ データの解析に失敗しました');
             console.error(err);
         }
     };
@@ -995,7 +1067,7 @@ function loadFromSpreadsheet() {
     script.onerror = function() {
         clearTimeout(timeout);
         delete window[callbackName];
-        showToast('⚠ 取得失敗。ネット接続を確認してください', '#f44');
+        onFail('⚠ 取得失敗。ネット接続を確認してください');
     };
     document.head.appendChild(script);
 }
@@ -1539,10 +1611,15 @@ function handleJsonFile(file) {
 // ============ 初期化 ============
 loadData();
 initYearSelect();
-renderTable();
-cloudLoad();
+renderTable();                 // まずキャッシュを即描画（画面を空にしない）
+setLedgerFreshState('loading'); // 鮮度バー ⏳台帳確認中
+cloudLoad();                    // checks を取り込む（案A: users は上書きしない）
+loadFromSpreadsheet(true);      // ★起動時に台帳直読で介護度など属性を最新化（silent）。成功/失敗を鮮度バーに反映
+// 相対時刻（「N分前」）を1分ごとに更新
+setInterval(renderLedgerFreshBar, 60000);
 
 // タブが非表示→表示に戻った時に自動でクラウド再取得（マルチデバイス間の手動リロード不要化）
+// ※台帳直読は起動時のみ（GAS_URLアクセス増の実測前。重ければ復帰時にも拡張を相談）
 document.addEventListener('visibilitychange', function() {
     if (!document.hidden) {
         cloudLoad();
