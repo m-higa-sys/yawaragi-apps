@@ -7492,6 +7492,60 @@ function kbApplyEdit() {
     if (it.toOverride) showToast('宛先を変更しました（この1通のみ・台帳は要修正）', 3500);
 }
 
+// ===== Task5: 最終サマリー → まとめて送信（誤送信防止の最後の砦） =====
+// 送信対象＝チェックON かつ 未済 かつ メール派。0件なら開かない。
+function kbCollectSendTargets_() {
+    return kbState.items.filter(it =>
+        it.cls.kind === 'mail' && !it.cls.done && kbState.checked[it.name]);
+}
+
+function kbOpenSummary() {
+    const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
+    if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
+    const targets = kbCollectSendTargets_();
+    if (!targets.length) { showToast('送信対象（チェック済みのメール派）がいません', 3000); return; }
+    const cntEl = document.getElementById('kbox-sum-count');
+    const listEl = document.getElementById('kbox-sum-list');
+    if (!cntEl || !listEl) return;
+    cntEl.textContent = targets.length;
+    listEl.innerHTML = targets.map(it => {
+        const to = it.toOverride || it.email;
+        return '<li>' + kbEsc_(it.name) + ' → ' + kbEsc_(it.cmOffice || 'ケアマネ') +
+               '（メール: ' + kbEsc_(to) + '）</li>';
+    }).join('');
+    document.getElementById('kbox-summary-modal').style.display = 'block';
+}
+
+// 「送信する」でのみ実送信。POST=no-cors（genba既存流儀）＋送信後は再読込でサーバ値を正として反映。
+function kbExecuteSend() {
+    if (!gnbGuardProdWrite('欠席連絡の一括送信')) return;   // ★fetch前 originガード（9本目）
+    const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
+    if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
+    const targets = kbCollectSendTargets_();
+    if (!targets.length) { document.getElementById('kbox-summary-modal').style.display = 'none'; return; }
+    const items = targets.map(it => ({
+        name: it.name, date: it.date, unit: it.unit,
+        customBody: it.customBody || '', toOverride: it.toOverride || ''
+    }));
+    const btn = document.getElementById('kbox-sum-send');
+    if (btn) { btn.disabled = true; btn.textContent = '送信中…'; }   // 二度押し防止
+    fetch(ABS_BOARD_API_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send_box_cm_mails', operator: operator, items: items })
+    }).then(() => {
+        // no-corsは結果を読めない。送信済み反映はサーバ値の再読込で確認（gasPostAbsenceWithVerify同趣旨）
+        document.getElementById('kbox-summary-modal').style.display = 'none';
+        showToast('送信を実行しました。結果をボックスに反映します…', 3000);
+        setTimeout(() => kbLoad(), 3000);
+    }).catch(e => {
+        showToast('送信失敗: ' + (e && e.message || e), 5000);
+    }).finally(() => {
+        if (btn) { btn.disabled = false; btn.textContent = '送信する'; }
+    });
+}
+
 // ============================================================
 // ========== 中止管理タブ（2026/4/10追加）==========
 // ============================================================
