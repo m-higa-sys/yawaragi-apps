@@ -1,0 +1,97 @@
+// 本日の欠席連絡ボックス: コア判定 + genba構造証明
+// 実行: node scripts/test-genba-kesseki-box.js
+const path = require('path');
+const fs = require('fs');
+const core = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'kesseki-box-core.js'));
+
+let pass = 0, fail = 0;
+function ok(cond, label) { if (cond) pass++; else { fail++; console.error('  [FAIL] ' + label); } }
+
+// ===== A. kbIsAlreadyNotified_（済み判定＝二重送信ガードの心臓） =====
+ok(core.kbIsAlreadyNotified_('送信済') === true,  'A1: 送信済 → 済み');
+ok(core.kbIsAlreadyNotified_('電話連絡済') === true, 'A2: 電話連絡済 → 済み');
+ok(core.kbIsAlreadyNotified_('手動メール送信済') === true, 'A3: 手動メール送信済 → 済み');
+ok(core.kbIsAlreadyNotified_('ケアマネ把握済') === true, 'A4: ケアマネ把握済 → 済み');
+ok(core.kbIsAlreadyNotified_('下書き保存') === true, 'A5: 下書き保存 → 済み扱い(再送不可)');
+ok(core.kbIsAlreadyNotified_('メール未送信') === false, 'A6: メール未送信 → 未対応');
+ok(core.kbIsAlreadyNotified_('要電話連絡') === false, 'A7: 要電話連絡 → 未対応');
+ok(core.kbIsAlreadyNotified_('メールなし') === false, 'A8: メールなし → 未対応(電話派として扱う)');
+ok(core.kbIsAlreadyNotified_('') === false, 'A9: 空 → 未対応');
+ok(core.kbIsAlreadyNotified_(null) === false, 'A10: null → 未対応(落ちない)');
+
+// ===== B. kbFilterTodayTargets_（本日の通常欠席のみ） =====
+const abs = [
+  { date: '2026-07-06', name: '当日太郎', unit: '午前', isLongTerm: false, cmNotified: '' },
+  { date: '2026-07-07', name: '明日花子', unit: '午後', isLongTerm: false, cmNotified: '' },
+  { date: '2026-07-06', name: '長期次郎', unit: '終日', isLongTerm: true,  cmNotified: '' },
+];
+const targets = core.kbFilterTodayTargets_(abs, '2026-07-06');
+ok(targets.length === 1 && targets[0].name === '当日太郎', 'B1: 当日+通常欠席のみ（明日と長期休みは除外）');
+ok(core.kbFilterTodayTargets_(null, '2026-07-06').length === 0, 'B2: null入力で空配列(落ちない)');
+
+// ===== C. kbClassifyCard_（カード分類・初期チェック） =====
+const mail = core.kbClassifyCard_({ method: 'メール', email: 'a@b.jp', cmNotified: '' });
+ok(mail.kind === 'mail' && mail.done === false && mail.defaultChecked === true, 'C1: メール派未対応 → mail/チェックON');
+const mailDone = core.kbClassifyCard_({ method: 'メール', email: 'a@b.jp', cmNotified: '送信済' });
+ok(mailDone.kind === 'mail' && mailDone.done === true && mailDone.defaultChecked === false, 'C2: 送信済 → done/チェック不可');
+const tel = core.kbClassifyCard_({ method: '電話', email: '', cmNotified: '' });
+ok(tel.kind === 'phone' && tel.done === false, 'C3: 電話派 → phone(一括送信対象外)');
+const telDone = core.kbClassifyCard_({ method: '電話', email: '', cmNotified: '電話連絡済' });
+ok(telDone.done === true, 'C4: 電話連絡済 → done');
+const noAddr = core.kbClassifyCard_({ method: 'メール', email: '', cmNotified: '' });
+ok(noAddr.kind === 'phone', 'C5: メール派だがメアド無し → 電話フローに倒す(誤送信防止)');
+const empty = core.kbClassifyCard_({ method: '', email: 'a@b.jp', cmNotified: '' });
+ok(empty.kind === 'phone', 'C6: 連絡手段未設定 → 電話フローに倒す(勝手にメールしない)');
+
+console.log(`kesseki-box core: ${pass} PASS / ${fail} FAIL`);
+
+// ===== D/E. genba.html 構造証明（Task3/3.5で緑化。ファイル未変更なら赤） =====
+const html = fs.readFileSync(path.join(__dirname, '..', 'genba.html'), 'utf8');
+function extractFn(name) {
+  const sig = 'function ' + name;
+  const start = html.indexOf(sig);
+  if (start < 0) throw new Error('genba.html に ' + sig + ' が無い（未実装＝RED）');
+  let i = html.indexOf('{', start);
+  let depth = 0;
+  for (let j = i; j < html.length; j++) {
+    const c = html[j];
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return html.slice(start, j + 1); }
+  }
+  throw new Error(name + ' の閉じ括弧が見つからない');
+}
+function tryOk(fn, label) { try { fn(); } catch (e) { fail++; console.error('  [FAIL] ' + label + ' :: ' + e.message); } }
+
+let pass2 = 0, fail2 = 0;
+function ok2(cond, label) { if (cond) pass2++; else { fail2++; console.error('  [FAIL] ' + label); } }
+
+// D. ボックスUI + originガード構造
+tryOk(() => {
+  ok2(html.indexOf('id="kbox-section"') >= 0, 'D1: kboxセクションが存在');
+  const kbInitSrc = extractFn('kbInit');
+  ok2(/if\s*\(!\w+\)\s*return/.test(kbInitSrc), 'D2: kbInitに要素不在ガード（f774228型の回避）');
+  const kbSendSrc = extractFn('kbExecuteSend');
+  ok2(kbSendSrc.indexOf('gnbGuardProdWrite') >= 0 &&
+      kbSendSrc.indexOf('gnbGuardProdWrite') < kbSendSrc.indexOf('fetch'),
+      'D3: 一括送信はfetch前にoriginガード');
+  const kbTelSrc = extractFn('kbMarkPhoneDone');
+  ok2(kbTelSrc.indexOf('gnbGuardProdWrite') >= 0 &&
+      kbTelSrc.indexOf('gnbGuardProdWrite') < kbTelSrc.indexOf('fetch'),
+      'D4: 電話済みもfetch前にoriginガード');
+  ok2(html.indexOf('id="kbox-summary-modal"') >= 0, 'D5: 送信は最終サマリーモーダル経由');
+}, 'D群(ボックスUI)');
+
+// E. 登録折衷案（急ぎトグル）
+tryOk(() => {
+  ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
+  ok2(/id="abs-urgent-send"[^>]*type="checkbox"|type="checkbox"[^>]*id="abs-urgent-send"/.test(html.replace(/\n/g, ' ')), 'E2: チェックボックス型');
+  const submitSrc = extractFn('absSubmit');
+  ok2(submitSrc.indexOf('abs-urgent-send') >= 0, 'E3: absSubmitが急ぎトグルを参照');
+  const urgentIdx = submitSrc.indexOf('abs-urgent-send');
+  const previewIdx = submitSrc.indexOf('absOpenPreview');
+  ok2(urgentIdx >= 0 && previewIdx >= 0 && urgentIdx < previewIdx, 'E4: トグル判定がabsOpenPreviewより前');
+}, 'E群(急ぎトグル)');
+
+console.log(`genba構造証明: ${pass2} PASS / ${fail2} FAIL`);
+
+if (fail > 0 || fail2 > 0) process.exit(1);
