@@ -70,7 +70,8 @@ ok(gThrow.guard('t') === false, 'B4: location参照が例外 → fail-safeでfal
 
 // ===== C. 構造証明: 全書込POST関数でガードが fetch より前 =====
 const SENDERS = ['gasPost', 'gasPostAbsenceWithVerify', '_postHaichiToCloud', 'sendWorkReport',
-  'jsCreateDrafts', 'rmdSyncWeight', 'rmdToggleOral', 'dengonSubmit'];
+  'jsCreateDrafts', 'rmdSyncWeight', 'rmdToggleOral', 'dengonSubmit',
+  'kbExecuteSend', 'kbMarkPhoneDone'];   // 2026-07-04 指示書③: 欠席連絡ボックスの書込POST2本
 SENDERS.forEach(function (name) {
   const src = extractFn(name);
   const g = src.indexOf('gnbGuardProdWrite(');
