@@ -4135,6 +4135,9 @@ function getCmMethodAudit(ss) {
   var cmEmailCol = findCol(h, ['ケアマネ個人メアド', 'ケアマネメールアドレス', 'ケアマネメアド', 'メールアドレス']);
   var cmMethodCol = findCol(h, ['ケアマネ連絡手段', '連絡手段']);
   var cmPhoneCol = findCol(h, ['ケアマネ電話番号', 'ケアマネTEL']);
+  var careCol = findColP(h, '要介護度');
+  if (careCol < 0) careCol = findColP(h, '介護度');
+  if (careCol < 0) careCol = findColP(h, '要介護');
   var list = [];
   for (var i = 1; i < data.length; i++) {
     var name = String(data[i][nameCol] || '').trim();
@@ -4146,6 +4149,10 @@ function getCmMethodAudit(ss) {
     var method = cmMethodCol >= 0 ? String(data[i][cmMethodCol] || '').trim() : '';
     var hasEmail = cmEmailCol >= 0 && String(data[i][cmEmailCol] || '').trim() !== '';
     var hasPhone = cmPhoneCol >= 0 && String(data[i][cmPhoneCol] || '').trim() !== '';
+    // 2026-07-04 指示書③修正③: 区分（要支援/要介護）をカード表示用に付与。取れなければ空。
+    var careRaw = careCol >= 0 ? String(data[i][careCol] || '').trim() : '';
+    var careGroup = careRaw.indexOf('要支援') >= 0 ? '要支援'
+      : (careRaw.indexOf('要介護') >= 0 ? '要介護' : '');
     list.push({
       userName: name,
       kana: kanaCol >= 0 ? String(data[i][kanaCol] || '').trim() : '',
@@ -4154,6 +4161,8 @@ function getCmMethodAudit(ss) {
       method: method,
       hasEmail: hasEmail,
       hasPhone: hasPhone,
+      care: careGroup,
+      careRaw: careRaw,
       row: i + 1
     });
   }

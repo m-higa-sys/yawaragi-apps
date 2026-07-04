@@ -1551,15 +1551,8 @@
 
 <!-- ===== 欠席登録タブ ===== -->
 <div id="tab-absence" class="tab-content">
-    <!-- 受付者選択 -->
-    <div class="abs-form-card" id="abs-receptionist-card">
-        <label class="abs-label">受付者（あなたの名前）</label>
-        <div class="abs-contact-btns" id="abs-receptionist-btns"></div>
-        <div id="abs-receptionist-selected" style="display:none; margin-top:8px; font-weight:700; color:#2c7a7b; font-size:1rem;"></div>
-    </div>
-
-    <!-- 2026-07-04 指示書③: 本日の欠席連絡ボックス（欠席者だけの朝ルーティン画面） -->
-    <div id="kbox-section" style="margin:12px 0; border:2px solid #2c7a7b; border-radius:10px; padding:10px; background:#f0fdfa;">
+    <!-- 2026-07-04 指示書③修正①: このタブのメイン機能なので最上部に配置（スクロール不要） -->
+    <div id="kbox-section" style="margin:0 0 12px; border:2px solid #2c7a7b; border-radius:10px; padding:10px; background:#f0fdfa;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <strong style="font-size:1.05rem;">📮 本日の欠席連絡</strong>
             <span id="kbox-pending-badge" style="display:none; background:#c0392b; color:#fff; border-radius:12px; padding:2px 10px; font-weight:700;"></span>
@@ -1567,6 +1560,13 @@
         <div id="kbox-operator-note" style="font-size:.85rem; color:#666; margin:4px 0;"></div>
         <div id="kbox-list"></div>
         <button id="kbox-send-btn" class="abs-contact-btn" style="width:100%; margin-top:8px; background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbOpenSummary()">チェックした人にまとめて送信</button>
+    </div>
+
+    <!-- 受付者選択 -->
+    <div class="abs-form-card" id="abs-receptionist-card">
+        <label class="abs-label">受付者（あなたの名前）</label>
+        <div class="abs-contact-btns" id="abs-receptionist-btns"></div>
+        <div id="abs-receptionist-selected" style="display:none; margin-top:8px; font-weight:700; color:#2c7a7b; font-size:1rem;"></div>
     </div>
 
     <!-- kbox: 内容確認・訂正モーダル（独立要素・既存DOM非依存） -->
@@ -1704,7 +1704,7 @@
             <!-- 2026-07-04 指示書③ 折衷案: 既定は送らず朝ボックスへ集約。急ぎだけその場送信 -->
             <label style="display:flex; align-items:center; gap:8px; margin:8px 0; font-size:.9rem; color:#c0392b; font-weight:600;">
                 <input type="checkbox" id="abs-urgent-send" style="width:18px; height:18px;">
-                ⚡今すぐケアマネに送る（急ぎ）※通常はチェックせず、朝の「本日の欠席連絡」からまとめて送信
+                ⚡今すぐケアマネに欠席連絡メールを送信（通常はオフ→朝まとめて送信）
             </label>
             <button class="abs-submit-btn" id="abs-submit-btn" onclick="absSubmit()">この内容で登録する</button>
         </div>
@@ -7244,6 +7244,10 @@ function absSelectReceptionist(name, btn) {
     const selectedEl = document.getElementById('abs-receptionist-selected');
     selectedEl.textContent = '受付者: ' + name;
     selectedEl.style.display = 'block';
+
+    // 2026-07-04 指示書③修正①: ボックスは受付者選択より上にあるため、操作者確定を即反映
+    //（操作者ノート・送信/電話済みボタンの有効化を更新）。items再取得は不要なので描画のみ。
+    if (typeof kbRender === 'function' && kbState && kbState.items) { try { kbRender(); } catch (e) {} }
 }
 
 function absInit() {
@@ -7323,7 +7327,7 @@ async function kbLoad() {
             const m = kbState.methodMap[a.name] || {};
             const email = (absCmEmailMap && absCmEmailMap[a.name]) || '';
             const cls = kbClassifyCardInline_(m.method, email, a.cmNotified);
-            return Object.assign({}, a, { cmOffice: m.cmOffice || '', cmStaff: m.cmStaff || '', email, cls });
+            return Object.assign({}, a, { cmOffice: m.cmOffice || '', cmStaff: m.cmStaff || '', care: m.care || '', email, cls });
         });
         kbState.items.forEach(it => {
             if (!(it.name in kbState.checked)) kbState.checked[it.name] = it.cls.defaultChecked;
@@ -7380,7 +7384,11 @@ function kbRender() {
     let html = '';
     kbState.items.forEach(it => {
         const cm = kbEsc_(it.cmStaff || '') + (it.cmOffice ? ('／' + kbEsc_(it.cmOffice)) : '');
-        const head = `<div style="font-weight:700;">${kbEsc_(it.name)} <span style="font-weight:400; color:#666;">(${kbEsc_(it.unit || '')})</span></div>
+        // 区分バッジ（要支援=緑・要介護=橙・取れなければ非表示）
+        let careBadge = '';
+        if (it.care === '要支援') careBadge = '<span style="font-size:.72rem; font-weight:700; padding:1px 7px; border-radius:6px; background:#e5f4ec; color:#1f7a52; margin-left:6px;">要支援</span>';
+        else if (it.care === '要介護') careBadge = '<span style="font-size:.72rem; font-weight:700; padding:1px 7px; border-radius:6px; background:#fbf0dd; color:#a15c00; margin-left:6px;">要介護</span>';
+        const head = `<div style="font-weight:700;">${kbEsc_(it.name)}${careBadge} <span style="font-weight:400; color:#666;">(${kbEsc_(it.unit || '')})</span></div>
                       <div style="font-size:.82rem; color:#555;">ケアマネ: ${cm || '（台帳に情報なし）'}</div>`;
         let body = '';
         if (it.cls.done) {
