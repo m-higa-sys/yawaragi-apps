@@ -1616,6 +1616,35 @@ function doGet(e) {
       result.user_events = listUserEvents(ss);
       return respond(result, callback);
     }
+    // 2026-07-04 クロ依頼: N/W棚卸し用ダンプ（読み取り専用・getValuesのみ・setValueは一切無し）
+    if (action === 'debug_nw_audit_dump') {
+      var shNW = ss.getSheetByName('利用者台帳');
+      if (!shNW) { return respond({ success: false, error: '利用者台帳シートが見つかりません' }, callback); }
+      var hNW = shNW.getRange(1, 1, 1, shNW.getLastColumn()).getValues()[0].map(function (v) { return String(v).trim(); });
+      var idxNW = {
+        name: hNW.indexOf('名前'), cmStaff: hNW.indexOf('ケアマネ担当者名'),
+        cmOffice: hNW.indexOf('ケアマネ事業所名'), n: hNW.indexOf('ケアマネ個人メアド'),
+        w: hNW.indexOf('欠席連絡メアド'), method: hNW.indexOf('ケアマネ連絡手段')
+      };
+      var missNW = Object.keys(idxNW).filter(function (k) { return idxNW[k] < 0; });
+      if (missNW.length) { return respond({ success: false, error: '列が見つかりません: ' + missNW.join('、'), headers: hNW }, callback); }
+      var dataNW = shNW.getDataRange().getValues();
+      var rowsNW = [];
+      for (var iNW = 1; iNW < dataNW.length; iNW++) {
+        var rNW = dataNW[iNW];
+        var nameNW = String(rNW[idxNW.name] || '').trim();
+        if (!nameNW) continue;
+        rowsNW.push({
+          name: nameNW,
+          cmStaff: String(rNW[idxNW.cmStaff] || '').trim(),
+          cmOffice: String(rNW[idxNW.cmOffice] || '').trim(),
+          n: String(rNW[idxNW.n] || '').trim(),
+          w: String(rNW[idxNW.w] || '').trim(),
+          method: String(rNW[idxNW.method] || '').trim()
+        });
+      }
+      return respond({ success: true, rows: rowsNW }, callback);
+    }
     if (action === 'apply_due_usage_days') {
       // 利用曜日変更の適用日到来分を台帳反映。dryRun=1 で書き込まず対象だけ返す。asOf=YYYY-MM-DD で基準日上書き。
       var udSh = ss.getSheetByName('利用者台帳');
