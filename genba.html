@@ -1558,6 +1558,47 @@
         <div id="abs-receptionist-selected" style="display:none; margin-top:8px; font-weight:700; color:#2c7a7b; font-size:1rem;"></div>
     </div>
 
+    <!-- 2026-07-04 指示書③: 本日の欠席連絡ボックス（欠席者だけの朝ルーティン画面） -->
+    <div id="kbox-section" style="margin:12px 0; border:2px solid #2c7a7b; border-radius:10px; padding:10px; background:#f0fdfa;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:1.05rem;">📮 本日の欠席連絡</strong>
+            <span id="kbox-pending-badge" style="display:none; background:#c0392b; color:#fff; border-radius:12px; padding:2px 10px; font-weight:700;"></span>
+        </div>
+        <div id="kbox-operator-note" style="font-size:.85rem; color:#666; margin:4px 0;"></div>
+        <div id="kbox-list"></div>
+        <button id="kbox-send-btn" class="abs-contact-btn" style="width:100%; margin-top:8px; background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbOpenSummary()">チェックした人にまとめて送信</button>
+    </div>
+
+    <!-- kbox: 内容確認・訂正モーダル（独立要素・既存DOM非依存） -->
+    <div id="kbox-preview-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9000;">
+        <div style="background:#fff; max-width:520px; margin:40px auto; padding:16px; border-radius:10px; max-height:85vh; overflow:auto;">
+            <h3 id="kbox-pv-title" style="margin:0 0 8px;"></h3>
+            <label style="display:block; font-size:.85rem; font-weight:600;">宛先メアド
+                <input id="kbox-pv-to" type="email" style="width:100%; padding:8px; box-sizing:border-box;">
+            </label>
+            <div id="kbox-pv-to-warn" style="display:none; color:#c0392b; font-size:.8rem; margin:4px 0;">※宛先を変更した場合は利用者台帳のN列「ケアマネ個人メアド」も修正してください</div>
+            <label style="display:block; font-size:.85rem; font-weight:600; margin-top:8px;">本文（空欄なら既定テンプレで送信）
+                <textarea id="kbox-pv-body" rows="10" style="width:100%; padding:8px; box-sizing:border-box;"></textarea>
+            </label>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="abs-contact-btn" style="background:#2c7a7b; color:#fff;" onclick="kbApplyEdit()">この内容にする</button>
+                <button class="abs-contact-btn" onclick="document.getElementById('kbox-preview-modal').style.display='none'">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- kbox: 最終サマリーモーダル（誤送信防止の最後の砦） -->
+    <div id="kbox-summary-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9001;">
+        <div style="background:#fff; max-width:520px; margin:40px auto; padding:16px; border-radius:10px; max-height:85vh; overflow:auto;">
+            <h3 style="margin:0 0 8px;">以下の<span id="kbox-sum-count"></span>人のケアマネにお休みを連絡します</h3>
+            <ul id="kbox-sum-list" style="margin:8px 0; padding-left:20px;"></ul>
+            <div style="display:flex; gap:8px;">
+                <button id="kbox-sum-send" class="abs-contact-btn" style="background:#c0392b; color:#fff; font-weight:700;" onclick="kbExecuteSend()">送信する</button>
+                <button class="abs-contact-btn" onclick="document.getElementById('kbox-summary-modal').style.display='none'">やめる</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 欠席登録フォーム -->
     <div class="abs-form-card">
         <h3 class="abs-section-title">欠席登録</h3>
@@ -2637,7 +2678,7 @@ function setupTabs() {
             }
             if (btn.dataset.tab === 'remind') rmdLoad();
             if (btn.dataset.tab === 'task') tbRenderAll();
-            if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
+            if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); try { kbInit(); } catch (e) { console.warn('kbox init skip', e); } }
             if (btn.dataset.tab === 'jisseki' && absUserLoaded) jisLoad();
             if (btn.dataset.tab === 'data') absRenderUserManage();
             if (btn.dataset.tab === 'terminate') { trmInit(); trmLoadList(); }
@@ -7207,6 +7248,175 @@ function absInit() {
         console.error('利用者データ取得エラー:', err);
         absRenderUserManage();
     });
+
+    // 2026-07-04 指示書③: 本日の欠席連絡ボックス初期化（独立・失敗しても他を止めない）
+    try { kbInit(); } catch (e) { console.warn('kbox init skip', e); }
+}
+
+// ============================================================
+// ===== 2026-07-04 指示書③: 本日の欠席連絡ボックス =====
+// 独立init（f774228型回避: 要素不在なら黙ってreturn・既存init連鎖に新id依存を差し込まない）
+// GET=JSONP / POST=no-cors のgenba既存流儀を厳守（クロスオリジン制約）。
+// ============================================================
+let kbState = { items: [], checked: {}, methodMap: {}, methodLoaded: false };
+
+function kbInit() {
+    const sec = document.getElementById('kbox-section');
+    if (!sec) return;                      // 要素不在ガード（f774228型回避）
+    kbLoad();
+}
+
+// JSONP GET（absLoadCmEmailMap と同じ流儀・固まらせない8秒保険）
+function kbJsonp_(action, idSuffix) {
+    return new Promise((resolve) => {
+        let done = false;
+        const cbName = 'kbCb_' + idSuffix + '_' + Date.now();
+        const scriptId = 'kb-script-' + idSuffix;
+        const finish = (data) => {
+            if (done) return; done = true;
+            try { delete window[cbName]; } catch {}
+            const el = document.getElementById(scriptId); if (el) el.remove();
+            resolve(data || null);
+        };
+        window[cbName] = function (data) { finish(data); };
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.src = ABS_BOARD_API_URL + '?action=' + action + '&callback=' + cbName + '&t=' + Date.now();
+        script.onerror = function () { finish(null); };
+        document.body.appendChild(script);
+        setTimeout(function () { finish(null); }, 8000);
+    });
+}
+
+async function kbLoad() {
+    const listEl = document.getElementById('kbox-list');
+    if (!listEl) return;
+    listEl.innerHTML = '<div style="color:#888;">読み込み中…</div>';
+    try {
+        const today = jstTodayStr();
+        // ① 本日の欠席（cmNotified付き・既存GET/JSONP）
+        const aj = await kbJsonp_('absences', 'abs');
+        const flat = (aj && aj.absences && aj.absences.absences) || [];
+        // ② method/事業所/担当（既存GET/JSONP・1回だけ）
+        if (!kbState.methodLoaded) {
+            const mj = await kbJsonp_('cm_method_audit', 'method');
+            ((mj && mj.audit) || []).forEach(a => { kbState.methodMap[a.userName] = a; });
+            kbState.methodLoaded = true;
+        }
+        // ③ 表示用メアドは既存 absCmEmailMap を流用（空なら取得）
+        if (!absCmEmailMap || !Object.keys(absCmEmailMap).length) {
+            try { absCmEmailMap = await absLoadCmEmailMap(); } catch (e) {}
+        }
+        // ④ 当日の通常欠席だけに絞る（coreと同一判定＝genbaにインライン移植）
+        const targets = flat.filter(a => a && !a.isLongTerm && String(a.date) === String(today));
+        kbState.items = targets.map(a => {
+            const m = kbState.methodMap[a.name] || {};
+            const email = (absCmEmailMap && absCmEmailMap[a.name]) || '';
+            const cls = kbClassifyCardInline_(m.method, email, a.cmNotified);
+            return Object.assign({}, a, { cmOffice: m.cmOffice || '', cmStaff: m.cmStaff || '', email, cls });
+        });
+        kbState.items.forEach(it => {
+            if (!(it.name in kbState.checked)) kbState.checked[it.name] = it.cls.defaultChecked;
+        });
+        kbRender();
+    } catch (e) {
+        listEl.innerHTML = '<div style="color:#c0392b;">取得失敗: ' + kbEsc_(String(e && e.message || e)) + '</div>';
+    }
+}
+
+// coreのkbIsAlreadyNotified_/kbClassifyCard_と同一ロジックをブラウザにインライン移植
+// （core はnode require用。二重定義でなく「同一判定を両所で保証」＝テストがcoreを検証）
+function kbIsDoneInline_(cmNotified) {
+    const v = String(cmNotified || '').trim();
+    return v === '送信済' || v === '電話連絡済' || v === '手動メール送信済' ||
+           v === 'ケアマネ把握済' || v === '下書き保存';
+}
+function kbClassifyCardInline_(method, email, cmNotified) {
+    const m = String(method || '').trim();
+    const em = String(email || '').trim();
+    const done = kbIsDoneInline_(cmNotified);
+    const isMail = m.indexOf('メール') >= 0 && em.indexOf('@') >= 0;
+    return { kind: isMail ? 'mail' : 'phone', done, defaultChecked: isMail && !done };
+}
+
+function kbEsc_(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function kbRender() {
+    const listEl = document.getElementById('kbox-list');
+    if (!listEl) return;
+    const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
+    const noteEl = document.getElementById('kbox-operator-note');
+    const sendBtn = document.getElementById('kbox-send-btn');
+
+    if (!kbState.items.length) {
+        listEl.innerHTML = '<div style="color:#2c7a7b; font-weight:700;">本日の欠席はありません 🎉</div>';
+        kbUpdateBadge();
+        if (sendBtn) sendBtn.style.display = 'none';
+        if (noteEl) noteEl.textContent = '';
+        return;
+    }
+    if (sendBtn) sendBtn.style.display = '';
+    if (noteEl) {
+        noteEl.textContent = operator
+            ? ('操作者: ' + operator)
+            : '⚠️ 先に上の「受付者（あなたの名前）」を選んでください（送信・電話済みに必要）';
+        noteEl.style.color = operator ? '#2c7a7b' : '#c0392b';
+    }
+    const opDisabled = !operator;
+
+    let html = '';
+    kbState.items.forEach(it => {
+        const cm = kbEsc_(it.cmStaff || '') + (it.cmOffice ? ('／' + kbEsc_(it.cmOffice)) : '');
+        const head = `<div style="font-weight:700;">${kbEsc_(it.name)} <span style="font-weight:400; color:#666;">(${kbEsc_(it.unit || '')})</span></div>
+                      <div style="font-size:.82rem; color:#555;">ケアマネ: ${cm || '（台帳に情報なし）'}</div>`;
+        let body = '';
+        if (it.cls.done) {
+            const label = (String(it.cmNotified).indexOf('電話') >= 0) ? '電話済' : '送信済';
+            const who = it.lastOperator ? ('（担当: ' + kbEsc_(it.lastOperator) + '）') : '';
+            body = `<div style="color:#2c7a7b; font-weight:700; margin-top:4px;">✅ ${label}${who}</div>`;
+        } else if (it.cls.kind === 'mail') {
+            const chk = kbState.checked[it.name] ? 'checked' : '';
+            body = `<div style="font-size:.82rem; color:#555;">宛先: ${kbEsc_(it.email)}</div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
+                        <label style="display:flex; align-items:center; gap:6px;">
+                            <input type="checkbox" ${chk} onchange="kbToggleCheck('${kbEsc_(it.name)}', this.checked)" style="width:18px; height:18px;">送信対象
+                        </label>
+                        <button class="abs-contact-btn" style="padding:4px 10px; font-size:.85rem;" onclick="kbOpenPreview('${kbEsc_(it.name)}')">内容を見る</button>
+                    </div>`;
+        } else {
+            // 電話派 / メアド無し
+            body = `<div style="color:#d69e2e; font-weight:700; margin-top:4px;">☎ 電話してください</div>
+                    <button class="abs-contact-btn" style="margin-top:4px; padding:4px 10px; font-size:.85rem;${opDisabled ? ' opacity:.5;' : ''}" ${opDisabled ? 'disabled' : ''} onclick="kbMarkPhoneDone('${kbEsc_(it.name)}', '${kbEsc_(it.date)}')">電話済みにする</button>`;
+        }
+        html += `<div style="border:1px solid #cbd5e0; border-radius:8px; padding:8px; margin:6px 0; background:#fff;">${head}${body}</div>`;
+    });
+    listEl.innerHTML = html;
+
+    // 送信ボタンは「操作者あり かつ チェック済みメール派が1人以上」で有効
+    const anyChecked = kbState.items.some(it => it.cls.kind === 'mail' && !it.cls.done && kbState.checked[it.name]);
+    if (sendBtn) {
+        sendBtn.disabled = opDisabled || !anyChecked;
+        sendBtn.style.opacity = (opDisabled || !anyChecked) ? '.5' : '1';
+    }
+    kbUpdateBadge();
+}
+
+function kbToggleCheck(name, checked) {
+    kbState.checked[name] = checked;
+    kbRender();
+}
+
+function kbUpdateBadge() {
+    const badge = document.getElementById('kbox-pending-badge');
+    if (!badge) return;
+    const pending = kbState.items.filter(it => !it.cls.done).length;
+    if (!kbState.items.length) { badge.style.display = 'none'; return; }
+    badge.style.display = '';
+    if (pending === 0) { badge.textContent = '✅ 全員対応済み'; badge.style.background = '#2c7a7b'; }
+    else { badge.textContent = '未対応 ' + pending + '件'; badge.style.background = '#c0392b'; }
 }
 
 // ============================================================
