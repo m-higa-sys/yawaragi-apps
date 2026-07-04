@@ -151,5 +151,61 @@ try {
 } catch (e) { crashed = true; }
 ok(crashed === false, 'D4: DOM例外でもthrowしない（f774228対策）');
 
+// ===== G. 非本番オリジンlog_originビーコン gnbLogOriginOnce（実行して挙動証明） =====
+// 送信手段はImage GETビーコン（sendBeacon/XHR/POSTを増やさない＝C網羅/C裏口の不変条件を壊さない）
+function runLogOrigin(origin, opts) {
+  opts = opts || {};
+  const sb = { images: [], sessionStore: opts.preLogged ? { gnbOriginLogged: '1' } : {} };
+  const src =
+    "const PROD_ORIGIN = 'https://m-higa-sys.github.io';\n" +
+    "const ABS_BOARD_API_URL = 'https://script.google.com/macros/s/TESTID/exec';\n" +
+    extractFn('gnbIsProdWriteAllowed') + '\n' +
+    extractFn('gnbLogOriginOnce') + '\nsb.run = gnbLogOriginOnce;';
+  function ImageMock() { this._src = ''; sb.images.push(this);
+    Object.defineProperty(this, 'src', { set: function (v) { this._src = v; }, get: function () { return this._src; } }); }
+  const sessionStorage = {
+    getItem: function (k) { return Object.prototype.hasOwnProperty.call(sb.sessionStore, k) ? sb.sessionStore[k] : null; },
+    setItem: function (k, v) { sb.sessionStore[k] = String(v); }
+  };
+  new Function('sb', 'location', 'navigator', 'sessionStorage', 'Image', 'Date', 'encodeURIComponent', src)(
+    sb, { origin: origin, href: origin + '/yawaragi-apps/genba.html?v=1' },
+    { userAgent: 'TestUA/1.0' }, sessionStorage, ImageMock,
+    { now: function () { return 1234567890; } }, encodeURIComponent
+  );
+  sb.run();
+  return sb;
+}
+
+// G1: ★本番オリジンでは一切発火しない（現場に無駄な通信・ログを増やさない担保）
+const prodRun = runLogOrigin('https://m-higa-sys.github.io');
+ok(prodRun.images.length === 0, 'G1: 本番オリジン → ビーコンを1本も飛ばさない（発火なし）');
+ok(prodRun.sessionStore.gnbOriginLogged === undefined, 'G1b: 本番 → sessionStorageも汚さない');
+
+// G2: 非本番オリジンでは1回だけビーコンが飛ぶ
+const badRun = runLogOrigin('http://localhost:8080');
+ok(badRun.images.length === 1, 'G2: 非本番オリジン → ビーコン1本');
+const beacon = badRun.images[0] ? badRun.images[0].src : '';
+ok(beacon.indexOf('action=log_origin') >= 0, 'G2b: ビーコンURLに action=log_origin');
+ok(beacon.indexOf(encodeURIComponent('http://localhost:8080')) >= 0, 'G2c: originを送る');
+ok(beacon.indexOf('TestUA') >= 0 && beacon.indexOf('ua=') >= 0, 'G2d: userAgentを送る');
+ok(beacon.indexOf('t=') >= 0, 'G2e: 時刻を送る');
+
+// G3: セッション重複排除（既にログ済みなら飛ばさない）
+const dupRun = runLogOrigin('http://localhost:8080', { preLogged: true });
+ok(dupRun.images.length === 0, 'G3: 同一セッション2回目 → ビーコンを飛ばさない（dedup）');
+
+// G4: file:// (origin="null") でも飛ぶ（検証実態の把握対象）
+const fileRun = runLogOrigin('null');
+ok(fileRun.images.length === 1, 'G4: file://(origin=null) → ビーコン1本');
+
+// G5: テレメトリ限定＝利用者データを一切参照しない（個人情報を送らない構造）
+const logSrc = extractFn('gnbLogOriginOnce');
+ok(/sessionStorage/.test(logSrc), 'G5: sessionStorageで重複排除している');
+ok(logSrc.indexOf('usersData') < 0 && logSrc.indexOf('absState') < 0 &&
+   logSrc.indexOf('cmEmail') < 0 && logSrc.indexOf('.name') < 0,
+   'G5b: 利用者データ(usersData/absState/cmEmail/name)を参照しない');
+ok(logSrc.indexOf('sendBeacon') < 0 && logSrc.indexOf('XMLHttpRequest') < 0 && logSrc.indexOf('fetch') < 0,
+   'G5c: sendBeacon/XHR/fetchを使わない（Image GETビーコン限定・裏口不変条件を守る）');
+
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

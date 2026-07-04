@@ -2674,8 +2674,28 @@ function gnbApplyOriginWriteLock() {
     } catch (e) { /* UIロック失敗でも致命でない（POST層が遮断する） */ }
 }
 
+// ===== 2026-07-04 非本番オリジンのログ取得（第1段階・テレメトリのみ・転送はしない） =====
+// 目的: 古いブックマークが実在するかの事実確認。記録はURL/UA/時刻のみ＝個人情報・利用者データは一切含めない。
+// 送信は Image のGETビーコンのみ（他の書込経路やPOSTを増やさず、originガードのPOST網羅/裏口不変条件を壊さない）。
+// ★本番オリジンでは一切発火しない（正しいURLで使う現場に無駄な通信・ログを増やさない）。
+// fire-and-forget: 何が起きても現場操作を妨げない（全体try/catch・失敗は握りつぶす）。
+function gnbLogOriginOnce() {
+    try {
+        if (gnbIsProdWriteAllowed(location.origin)) return;      // 本番なら記録不要＝発火しない
+        if (sessionStorage.getItem('gnbOriginLogged')) return;   // 1セッション1回だけ（重複排除）
+        sessionStorage.setItem('gnbOriginLogged', '1');
+        var url = ABS_BOARD_API_URL + '?action=log_origin'
+            + '&origin=' + encodeURIComponent(location.origin)
+            + '&href=' + encodeURIComponent(location.href)
+            + '&ua=' + encodeURIComponent(navigator.userAgent)
+            + '&t=' + Date.now();
+        new Image().src = url;   // GETビーコン（レスポンスは使わない・onerrorも無視）
+    } catch (e) { /* テレメトリ失敗は通常動作に影響させない */ }
+}
+
 function init() {
     checkProductionOrigin(); // ⑤ 本番以外で開いていたら先頭で警告（入力前に気づけるよう最優先）
+    gnbLogOriginOnce();      // 2026-07-04 非本番オリジンのみ1回記録（テレメトリ・本番は発火せず）
     gnbApplyOriginWriteLock(); // 2026-07-04 別オリジンでは登録系ボタンを物理無効化（POST層ガードと二重防衛）
     const today = new Date();
     const yyyy = today.getFullYear();

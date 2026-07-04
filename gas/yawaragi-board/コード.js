@@ -802,6 +802,14 @@ function addMissingIntakeColumns() {
 // ===== Web API: GET（JSONP対応）=====
 function doGet(e) {
   try {
+  // 2026-07-04 非本番オリジンのログ取得（第1段階・テレメトリのみ）。
+  //   URL/UA/時刻だけを origin_log シートに追記。個人情報・利用者データは一切扱わない。
+  //   暴走防止: 上限1000行 + origin単位の重複排除（クライアントのセッションdedupと二重）。
+  //   失敗しても静かに ok を返す（Imageビーコンなので中身は使われない・現場を妨げない）。
+  if (e && e.parameter && e.parameter.action === 'log_origin') {
+    try { logNonProdOrigin_(e.parameter); } catch (logErr) { /* テレメトリ失敗は無視 */ }
+    return ContentService.createTextOutput(JSON.stringify({ ok: true })).setMimeType(ContentService.MimeType.JSON);
+  }
   // 振り分け: ?mode=summary は 利用者台帳の集計エンドポイント（コード.gs の handleSummary）へ
   if (e && e.parameter && e.parameter.mode === 'summary') {
     return handleSummary(e);
@@ -5321,6 +5329,42 @@ function _ensureCmLogSheet_(ss) {
     sh.setColumnWidth(7, 80);  sh.setColumnWidth(8, 80);  sh.setColumnWidth(9, 220);
   }
   return sh;
+}
+
+// 2026-07-04 非本番オリジンのテレメトリ記録（第1段階・転送はしない）。
+// origin_log シートに URL/UA/時刻のみ追記。個人情報・利用者データは扱わない。
+// 暴走防止: (1) 上限1000行で追記停止 (2) 同一originは1回だけ記録（origin単位dedup）。
+var ORIGIN_LOG_MAX_ROWS = 1000;
+function logNonProdOrigin_(params) {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sh = ss.getSheetByName('origin_log');
+  if (!sh) {
+    sh = ss.insertSheet('origin_log');
+    sh.appendRow(['サーバ受信時刻', 'origin', 'href', 'userAgent', 'クライアント時刻']);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, 5).setBackground('#2d3748').setFontColor('#ffffff').setFontWeight('bold');
+    sh.setColumnWidth(1, 150); sh.setColumnWidth(2, 220); sh.setColumnWidth(3, 320);
+    sh.setColumnWidth(4, 320); sh.setColumnWidth(5, 140);
+  }
+  // 暴走防止(1): 上限到達なら追記しない
+  if (sh.getLastRow() >= ORIGIN_LOG_MAX_ROWS) return;
+  var origin = String((params && params.origin) || '').slice(0, 300);
+  if (!origin) return;
+  // 暴走防止(2): 既に同一originが記録済みなら追記しない（origin列を突合）
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var seen = sh.getRange(2, 2, last - 1, 1).getValues();
+    for (var i = 0; i < seen.length; i++) {
+      if (String(seen[i][0]).trim() === origin) return; // 記録済み
+    }
+  }
+  sh.appendRow([
+    new Date(),
+    origin,
+    String((params && params.href) || '').slice(0, 500),
+    String((params && params.ua) || '').slice(0, 500),
+    String((params && params.t) || '')
+  ]);
 }
 
 // rec: { userName, date, action, method, contactedAddr, operator, result, note }
