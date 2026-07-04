@@ -3687,6 +3687,9 @@ function doPost(e) {
       // 2026-05-13: 既存欠席のケアマネ連絡状況を手動更新（電話連絡済マーク用）
       case 'updateAbsenceCmNotified':
         return jsonResp(updateAbsenceCmNotified(ss, data));
+      // 2026-07-04 指示書③: 本日の欠席連絡ボックス まとめて送信
+      case 'send_box_cm_mails':
+        return jsonResp(sendBoxCmMails(ss, data));
       case 'save_haichi':
         return jsonResp(saveHaichiMerged(ss, data));
       case 'intake_create':
@@ -5454,6 +5457,84 @@ function getUserCmContact(ss, userName) {
     };
   }
   return { found: false };
+}
+
+// ===== 2026-07-04 指示書③: 本日の欠席連絡ボックス まとめて送信 =====
+// data: { operator: '担当者名', items: [{ name, date, unit, customBody?, toOverride? }] }
+// 送信実体は sendAbsenceEmail 流用・宛先は getUserCmContact(N列)再取得＝単一マスター。
+// サーバ側二重送信ガード: H列 cmNotified を送信直前に再読して済みならスキップ。
+function sendBoxCmMails(ss, data) {
+  var operator = String(data.operator || '').trim();
+  if (!operator) return { success: false, error: '操作者(operator)が必要です' };
+  var items = data.items || [];
+  if (!items.length) return { success: false, error: '送信対象(items)が空です' };
+  if (items.length > 40) return { success: false, error: '一度に送れるのは40件までです' };
+
+  var sheet = ss.getSheetByName('出欠変更');
+  if (!sheet) return { success: false, error: '出欠変更シートがありません' };
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); }
+  catch (e) { return { success: false, error: '他の操作が実行中です。少し待って再試行してください' }; }
+
+  var sent = [], skipped = [], failed = [];
+  try {
+    var rows = sheet.getDataRange().getValues();
+    items.forEach(function (item) {
+      var name = String(item.name || '').trim();
+      var dateStr = String(item.date || '').trim();
+      if (!name || !dateStr) { skipped.push({ name: name, reason: 'name/date欠落' }); return; }
+
+      // 1) 該当欠席行を検索し cmNotified をサーバ側で再チェック（二重送信ガードの本体）
+      var foundRow = -1, curNotified = '';
+      var normName = _normalizeNameForMatch_(name);
+      for (var i = 1; i < rows.length; i++) {
+        if (_normalizeNameForMatch_(rows[i][1]) !== normName) continue;
+        if (String(rows[i][3] || '').trim() !== '欠席') continue;
+        if (fmtDate(rows[i][0]) !== dateStr) continue;
+        foundRow = i + 1;
+        curNotified = String(rows[i][7] || '').trim();
+        break;
+      }
+      if (foundRow < 0) { skipped.push({ name: name, reason: '欠席行が見つかりません' }); return; }
+      if (kbIsAlreadyNotified_(curNotified)) { skipped.push({ name: name, reason: '既に対応済（' + curNotified + '）' }); return; }
+
+      // 2) 宛先は台帳N列を再取得（クライアント値は信用しない）。toOverride は明示訂正時のみ・検証必須。
+      var cmInfo = getUserCmContact(ss, name);
+      if (!cmInfo.found) { skipped.push({ name: name, reason: '台帳に利用者がいません' }); return; }
+      if (String(cmInfo.method || '').indexOf('メール') < 0) { skipped.push({ name: name, reason: 'メール派ではありません（' + (cmInfo.method || '未設定') + '）' }); return; }
+      var to = String(item.toOverride || '').trim() || String(cmInfo.email || '').trim();
+      if (!isValidCmEmail_(to)) { skipped.push({ name: name, reason: '宛先メアド無効（' + to + '）' }); return; }
+      if (!ABSENCE_AUTO_EMAIL) { skipped.push({ name: name, reason: '送信マスターOFF(ABSENCE_AUTO_EMAIL)' }); return; }
+
+      // 3) 送信（既存テンプレ・既存差出人・当日1日）
+      try {
+        var rowUnit = String(rows[foundRow - 1][2] || '').trim() || String(item.unit || '').trim() || '終日';
+        var rowReason = String(rows[foundRow - 1][4] || '').trim();
+        sendAbsenceEmail(name, [dateStr], rowUnit, rowReason, '',
+          to, cmInfo.cmName || '', cmInfo.cmOffice || '', operator, String(item.customBody || ''));
+        // 4) H列更新 + ケアマネ連絡ログ（担当者記録）
+        sheet.getRange(foundRow, 8).setValue(DRAFT_MODE ? '下書き保存' : '送信済');
+        _appendCmLog_(ss, {
+          userName: name, date: dateStr, action: 'ボックス一括送信',
+          method: '自動メール', contactedAddr: to, operator: operator,
+          result: DRAFT_MODE ? '下書き' : '成功',
+          note: item.toOverride ? ('宛先上書き:' + to) : ''
+        });
+        sent.push({ name: name, to: to });
+      } catch (mailErr) {
+        _appendCmLog_(ss, {
+          userName: name, date: dateStr, action: 'ボックス一括送信',
+          method: '自動メール', contactedAddr: to, operator: operator,
+          result: 'エラー', note: String(mailErr && mailErr.message || mailErr)
+        });
+        failed.push({ name: name, error: String(mailErr && mailErr.message || mailErr) });
+      }
+    });
+  } finally {
+    lock.releaseLock();
+  }
+  return { success: true, sent: sent, skipped: skipped, failed: failed, operator: operator };
 }
 
 // 2026-05-13: 既存欠席の cmNotified 列（H列）を手動更新
