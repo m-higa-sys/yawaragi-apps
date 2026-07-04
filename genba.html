@@ -1701,6 +1701,11 @@
         <!-- 登録ボタン -->
         <div class="abs-step" id="abs-step-submit" style="display:none;">
             <div class="abs-confirm-card" id="abs-confirm-card"></div>
+            <!-- 2026-07-04 指示書③ 折衷案: 既定は送らず朝ボックスへ集約。急ぎだけその場送信 -->
+            <label style="display:flex; align-items:center; gap:8px; margin:8px 0; font-size:.9rem; color:#c0392b; font-weight:600;">
+                <input type="checkbox" id="abs-urgent-send" style="width:18px; height:18px;">
+                ⚡今すぐケアマネに送る（急ぎ）※通常はチェックせず、朝の「本日の欠席連絡」からまとめて送信
+            </label>
             <button class="abs-submit-btn" id="abs-submit-btn" onclick="absSubmit()">この内容で登録する</button>
         </div>
     </div>
@@ -4662,6 +4667,8 @@ function absGuideText(user) {
 
 function absClearName() {
     absState.selectedUser = null;
+    // 2026-07-04 指示書③ 折衷案: 次の登録に「急ぎ」状態を持ち越さない
+    const _u = document.getElementById('abs-urgent-send'); if (_u) _u.checked = false;
     const input = document.getElementById('abs-name-input');
     input.value = '';
     input.readOnly = false;
@@ -5225,18 +5232,21 @@ function absSubmit() {
         return;
     }
 
-    // ケアマネメアドで分岐（a: プレビュー送信 / b: 要電話連絡案内 / c: メールなし）
-    // 実送信先は送信時にGASが台帳N列を再取得＝ここの cmEmail は表示/分岐用のみ。
+    // 2026-07-04 指示書③ 折衷案: 既定は「送らず登録」→朝の欠席連絡ボックスへ集約。
+    //   「⚡今すぐ送る（急ぎ）」を明示ONにしたときだけ、その場送信フローに入る。
+    //   実送信先は送信時にGASが台帳N列を再取得＝ここの cmEmail は表示/分岐用のみ。
+    const urgentEl = document.getElementById('abs-urgent-send');
+    const urgent = !!(urgentEl && urgentEl.checked);
     const em = String((absState.selectedUser && absState.selectedUser.cmEmail) || '').trim();
-    if (em.indexOf('@') >= 0) {
-        // a) プレビュー編集モーダルを開く（「送信」で doSendEmail:true）
-        absOpenPreview(slots, reason, contact, em);
-    } else if (em === 'なし' || em !== '') {
-        // b) "なし" / 無効（@無し）→ 送らず案内ポップアップ＋登録のみ
-        alert('このケアマネはメール連絡できません（メアド未登録/無効）。\nお手数ですが電話で連絡してください。');
+    if (!urgent) {
+        // 既定＝送信しない。全員そのまま登録（cmNotifiedは未送信状態→朝ボックスに出る）
         absDoRegister(slots, reason, contact, { doSendEmail: false });
+    } else if (em.indexOf('@') >= 0) {
+        // 急ぎON＋メアド有り: プレビュー編集モーダルを開く（「送信」で doSendEmail:true）
+        absOpenPreview(slots, reason, contact, em);
     } else {
-        // c) 空欄＝メールなし扱い（案内なし・登録のみ）
+        // 急ぎON＋メアド無/なし: 送れないので案内＋登録のみ
+        alert('このケアマネはメール連絡できません（メアド未登録/無効）。\nお手数ですが電話で連絡してください。');
         absDoRegister(slots, reason, contact, { doSendEmail: false });
     }
 }
