@@ -7546,6 +7546,23 @@ function kbExecuteSend() {
     });
 }
 
+// ===== Task6: 電話派フロー（電話済みにする・既存updateAbsenceCmNotified流用） =====
+function kbMarkPhoneDone(name, date) {
+    if (!gnbGuardProdWrite('電話済みマーク')) return;          // ★fetch前 originガード（10本目）
+    const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
+    if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
+    if (!confirm(name + ' さんのケアマネに電話連絡済みにしますか？（担当: ' + operator + '）')) return;
+    fetch(ABS_BOARD_API_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updateAbsenceCmNotified', name: name, date: date, cmNotified: '電話連絡済', operator: operator })
+    }).then(() => {
+        showToast('電話済みにしました。反映します…', 2500);
+        setTimeout(() => kbLoad(), 2500);
+    }).catch(e => showToast('失敗: ' + (e && e.message || e), 5000));
+}
+
 // ============================================================
 // ========== 中止管理タブ（2026/4/10追加）==========
 // ============================================================
