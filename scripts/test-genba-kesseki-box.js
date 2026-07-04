@@ -92,6 +92,19 @@ tryOk(() => {
   ok2(urgentIdx >= 0 && previewIdx >= 0 && urgentIdx < previewIdx, 'E4: トグル判定がabsOpenPreviewより前');
 }, 'E群(急ぎトグル)');
 
+// F. 使い方ヘルプモーダル（指示書④・表示専用）
+tryOk(() => {
+  ok2(html.indexOf('id="kbox-help-modal"') >= 0, 'F1: 使い方ヘルプモーダルが存在');
+  ok2(html.indexOf('kbShowHelp()') >= 0, 'F2: ❓使い方ボタンがkbShowHelpを呼ぶ');
+  const helpSrc = extractFn('kbShowHelp');
+  ok2(/if\s*\(!\w+\)\s*return/.test(helpSrc), 'F3: kbShowHelpに要素不在ガード（f774228型回避）');
+  // 表示専用＝送信/POST/registerを一切呼ばない
+  ok2(helpSrc.indexOf('fetch') < 0 && helpSrc.indexOf('POST') < 0 && helpSrc.indexOf('absDoRegister') < 0,
+      'F4: kbShowHelpは表示専用（fetch/POST/登録を呼ばない）');
+  // 手順テキストの主要見出しが含まれる（静的テキスト埋め込み確認）
+  ok2(html.indexOf('本日の欠席連絡の使い方') >= 0, 'F5: 手順テキスト本文が埋め込まれている');
+}, 'F群(使い方ヘルプ)');
+
 console.log(`genba構造証明: ${pass2} PASS / ${fail2} FAIL`);
 
 if (fail > 0 || fail2 > 0) process.exit(1);

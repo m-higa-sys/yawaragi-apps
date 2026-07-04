@@ -1553,8 +1553,11 @@
 <div id="tab-absence" class="tab-content">
     <!-- 2026-07-04 指示書③修正①: このタブのメイン機能なので最上部に配置（スクロール不要） -->
     <div id="kbox-section" style="margin:0 0 12px; border:2px solid #2c7a7b; border-radius:10px; padding:10px; background:#f0fdfa;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong style="font-size:1.05rem;">📮 本日の欠席連絡</strong>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <strong style="font-size:1.05rem;">📮 本日の欠席連絡</strong>
+                <button type="button" onclick="kbShowHelp()" style="font-size:.8rem; padding:2px 10px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:600;">❓使い方</button>
+            </div>
             <span id="kbox-pending-badge" style="display:none; background:#c0392b; color:#fff; border-radius:12px; padding:2px 10px; font-weight:700;"></span>
         </div>
         <div id="kbox-operator-note" style="font-size:.85rem; color:#666; margin:4px 0;"></div>
@@ -1595,6 +1598,50 @@
             <div style="display:flex; gap:8px;">
                 <button id="kbox-sum-send" class="abs-contact-btn" style="background:#c0392b; color:#fff; font-weight:700;" onclick="kbExecuteSend()">送信する</button>
                 <button class="abs-contact-btn" onclick="document.getElementById('kbox-summary-modal').style.display='none'">やめる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- kbox: 使い方ヘルプモーダル（指示書④・表示専用・独立要素・データ非接触） -->
+    <div id="kbox-help-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9002;" onclick="if(event.target===this)this.style.display='none'">
+        <div style="background:#fff; max-width:560px; margin:32px auto; padding:20px; border-radius:12px; max-height:88vh; overflow:auto; color:#26241f; line-height:1.7;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0; font-size:1.15rem;">📮 本日の欠席連絡の使い方</h3>
+                <button class="abs-contact-btn" onclick="document.getElementById('kbox-help-modal').style.display='none'">閉じる</button>
+            </div>
+
+            <h4 style="margin:14px 0 4px; color:#2c7a7b;">■ まず自分の名前を選ぶ</h4>
+            <p style="margin:0;">「受付者（あなたの名前）」から自分を選びます。誰が連絡したかの記録になります。</p>
+
+            <h4 style="margin:16px 0 4px; color:#2c7a7b;">■ メールで連絡するケアマネさんの場合</h4>
+            <ol style="margin:0; padding-left:22px;">
+                <li>欠席者のカードの一覧をパッと確認します。</li>
+                <li>「内容を見る」でメール文面を確認できます。おかしければその場で直せます。</li>
+                <li>送らない人はチェックを外します（初めは全員チェック済み）。</li>
+                <li>「チェックした○人にまとめて送信」を押します。</li>
+                <li>「この○人のケアマネに連絡します。よろしいですか？」で宛先と人数を確認し、問題なければ「送信する」。<br>
+                    <span style="color:#a15c00;">※人数や宛先が「あれ？」と思ったら「やめる」で見直してください。</span></li>
+            </ol>
+
+            <h4 style="margin:16px 0 4px; color:#2c7a7b;">■ 電話で連絡するケアマネさんの場合</h4>
+            <ol style="margin:0; padding-left:22px;">
+                <li>カードに「☎電話してください」と出ます（メールでは送れません）。</li>
+                <li>電話をかけます。</li>
+                <li>かけ終わったら「電話済みにする」を押します。誰が電話したか記録されます。</li>
+            </ol>
+
+            <h4 style="margin:16px 0 4px; color:#2c7a7b;">■ 最後に</h4>
+            <p style="margin:0;">上の「未対応 ○件」が「0件（全員対応済み）」になればOK。9:30までにここを0にするのが朝の目標です。</p>
+
+            <h4 style="margin:16px 0 4px; color:#c0392b;">■ 気をつけること</h4>
+            <ul style="margin:0; padding-left:22px;">
+                <li>画面上に赤い帯で「本番URL以外で開いています」と出て登録ボタンが押せないときは、正しいURLではありません。赤帯のリンクから正しい画面を開いてください。</li>
+                <li>一度送信・電話済みにした人は、もう一度押しても二重には送られません。</li>
+                <li>このボックスには、その日休む人だけが表示されます。</li>
+            </ul>
+
+            <div style="margin-top:16px; text-align:right;">
+                <button class="abs-contact-btn" style="background:#2c7a7b; color:#fff;" onclick="document.getElementById('kbox-help-modal').style.display='none'">閉じる</button>
             </div>
         </div>
     </div>
@@ -7435,6 +7482,14 @@ function kbUpdateBadge() {
     badge.style.display = '';
     if (pending === 0) { badge.textContent = '✅ 全員対応済み'; badge.style.background = '#2c7a7b'; }
     else { badge.textContent = '未対応 ' + pending + '件'; badge.style.background = '#c0392b'; }
+}
+
+// ===== 指示書④: 使い方ヘルプ（表示専用・データ非接触） =====
+// 静的テキストのモーダルを開くだけ。送信・登録・fetch・状態変更は一切しない。
+function kbShowHelp() {
+    const modal = document.getElementById('kbox-help-modal');
+    if (!modal) return;   // 要素不在ガード（f774228型回避）
+    modal.style.display = 'block';
 }
 
 // ===== Task4: 内容確認・訂正モーダル =====
