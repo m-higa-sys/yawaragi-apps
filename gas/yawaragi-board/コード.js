@@ -1628,6 +1628,13 @@ function doGet(e) {
       };
       var missNW = Object.keys(idxNW).filter(function (k) { return idxNW[k] < 0; });
       if (missNW.length) { return respond({ success: false, error: '列が見つかりません: ' + missNW.join('、'), headers: hNW }, callback); }
+      // 2026-07-04 追加: 仕分け判断材料（Y列ケアマネ電話/要介護度/利用ステータス）。無ければ空でエラーにしない。
+      var cmPhoneIdxNW = hNW.indexOf('ケアマネ電話番号');
+      if (cmPhoneIdxNW < 0) cmPhoneIdxNW = hNW.indexOf('ケアマネTEL');
+      var careIdxNW = hNW.indexOf('要介護度');
+      if (careIdxNW < 0) careIdxNW = hNW.indexOf('介護度');
+      var statusIdxNW = hNW.indexOf('利用ステータス');
+      if (statusIdxNW < 0) statusIdxNW = hNW.indexOf('ステータス');
       var dataNW = shNW.getDataRange().getValues();
       var rowsNW = [];
       for (var iNW = 1; iNW < dataNW.length; iNW++) {
@@ -1640,7 +1647,10 @@ function doGet(e) {
           cmOffice: String(rNW[idxNW.cmOffice] || '').trim(),
           n: String(rNW[idxNW.n] || '').trim(),
           w: String(rNW[idxNW.w] || '').trim(),
-          method: String(rNW[idxNW.method] || '').trim()
+          method: String(rNW[idxNW.method] || '').trim(),
+          cmPhone: cmPhoneIdxNW >= 0 ? String(rNW[cmPhoneIdxNW] || '').trim() : '',
+          care: careIdxNW >= 0 ? String(rNW[careIdxNW] || '').trim() : '',
+          status: statusIdxNW >= 0 ? String(rNW[statusIdxNW] || '').trim() : ''
         });
       }
       return respond({ success: true, rows: rowsNW }, callback);
