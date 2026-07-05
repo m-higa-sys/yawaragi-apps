@@ -445,29 +445,31 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 
 <header>
     <h1>🦷 口腔②モニ・結果報告書・計画書</h1>
-    <p>口腔加算者（同意者）の 3 ヶ月サイクル。各サイクルで「モニ①・モニ②（内部）」と「節目＝結果報告書＋次計画書＋ケアマネ送付」を管理します。節目セルタップで結果報告書作成日・計画書作成日・送付を入力。名前タップで利用状況（直近3ヶ月）を表示します。①実施記録（口腔体操の実施日）とは別アプリです。</p>
+    <p>口腔加算者（同意者）の 3 ヶ月サイクル。各サイクルで「モニ①・モニ②（内部）」と「結果報告書・計画書（3ヶ月目のケアマネ提出物の作成）」を管理します。各チェックはタップで独立に済/未を記録。担当（看護師）はチェックした時に選びます。名前タップで利用状況・ケアマネ情報（直近3ヶ月）を表示。ケアマネ送付の管理は別アプリ（ケアマネ送付チェックリスト）です。①実施記録（口腔体操の実施日）とも別アプリです。</p>
 </header>
 
 <div id="offlineBanner">⚠ オフライン表示中(最新データの取得に失敗しています)</div>
 <div id="pendingBanner" style="display:none;" onclick="retryPending()"></div>
 
 <div class="toolbar">
+    <div id="viewToggle" style="display:inline-flex; border:1.5px solid #2c7a7b; border-radius:8px; overflow:hidden;">
+      <button id="btnFocus" onclick="setView('focus')" style="border:none; padding:8px 14px; cursor:pointer; font-weight:bold; font-family:inherit;">📌 今月やること</button>
+      <button id="btnGrid" onclick="setView('grid')" style="border:none; padding:8px 14px; cursor:pointer; font-weight:bold; font-family:inherit;">📅 全グリッド</button>
+    </div>
     <select id="fiscalYearSelect" onchange="onYearChange()"></select>
     <button class="primary" onclick="loadFiscalYearData()">🔄 再読込</button>
-    <button onclick="openUnsubmittedView()" style="background:#fff5f5; border:1.5px solid #c53030; color:#742a2a; font-weight:700;">📮 ケアマネ未提出 <span id="unsubmittedBadge" style="display:none; background:#c53030; color:#fff; border-radius:10px; padding:1px 7px; font-size:0.8rem; margin-left:2px;">0</span></button>
     <button class="secondary" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
     <button onclick="window.print()">🖨 印刷</button>
-    <button onclick="openOperatorDialog()" id="operatorBtn" style="background:#edf2f7;">👤 操作者: <span id="operatorLabel">未選択</span></button>
     <label style="display:flex; align-items:center; gap:6px; padding:6px 12px; border:1.5px solid #cbd5e0; border-radius:8px; background:#fff; font-size:0.9rem; cursor:pointer;">
         <input type="checkbox" id="includeCancelledChk" onchange="toggleIncludeCancelled(this.checked)" style="width:16px; height:16px;">
         <span style="font-weight:600; color:#c0392b;">🔴 中止者も表示</span>
     </label>
     <div class="stats">
-        対象者: <strong id="totalUsers">0</strong> 名 ／ ケアマネ未提出: <strong id="unsentCount">0</strong> 件
+        対象者: <strong id="totalUsers">0</strong> 名
     </div>
 </div>
 
-<div class="filter-bar" id="filterBar" style="display:flex;">
+<div class="filter-bar" id="filterBar" style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">
     <span class="label">行:</span>
     <div id="groupFilters" style="display:flex; gap:4px; flex-wrap:wrap;">
         <button class="filter-btn active" onclick="setGroupFilter('', event)">全て</button>
@@ -482,8 +484,28 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         <button class="filter-btn" onclick="setGroupFilter('ラ', event)">ら</button>
         <button class="filter-btn" onclick="setGroupFilter('ワ', event)">わ</button>
     </div>
+    <span class="label" style="margin-left:8px;">曜日:</span>
+    <div id="dayFilters" style="display:flex; gap:4px; flex-wrap:wrap;">
+        <button class="filter-btn active" onclick="setDayFilter('', event)">全員</button>
+        <button class="filter-btn" onclick="setDayFilter('月', event)">月</button>
+        <button class="filter-btn" onclick="setDayFilter('火', event)">火</button>
+        <button class="filter-btn" onclick="setDayFilter('水', event)">水</button>
+        <button class="filter-btn" onclick="setDayFilter('木', event)">木</button>
+        <button class="filter-btn" onclick="setDayFilter('金', event)">金</button>
+        <button class="filter-btn" onclick="setDayFilter('土', event)">土</button>
+    </div>
+    <span class="label" style="margin-left:8px;">時間:</span>
+    <div id="ampmFilters" style="display:flex; gap:4px; flex-wrap:wrap;">
+        <button class="filter-btn active" onclick="setAmpmFilter('', event)">全</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午前', event)">午前</button>
+        <button class="filter-btn" onclick="setAmpmFilter('午後', event)">午後</button>
+    </div>
+    <input id="nameSearchInput" type="search" placeholder="🔍 名前で検索" oninput="setNameFilter(this.value)"
+        style="margin-left:8px; padding:6px 10px; border:1.5px solid #cbd5e0; border-radius:8px; font-family:inherit; font-size:0.9rem; min-width:140px;">
     <span class="filter-count" id="filterCount"></span>
 </div>
+
+<div id="focusView" style="padding:16px 24px;"></div>
 
 <div class="table-container">
     <table id="matrixTable">
@@ -493,64 +515,29 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999;">読み込み中...</div>
 </div>
 
-<!-- 操作者選択モーダル -->
-<div class="modal-overlay" id="operatorDialog">
+<!-- 日付チェック ダイアログ（モニ①/②・結果報告書・計画書 共通／チェック時に担当を選ぶ） -->
+<div class="modal-overlay" id="dateDialog">
     <div class="modal">
-        <h3>操作者を選択してください</h3>
-        <div class="sub">操作ログに記録します。後でツールバーの「操作者」ボタンから変更できます。</div>
-        <div id="operatorList" style="display:flex; flex-wrap:wrap; gap:8px; margin:14px 0;"></div>
-    </div>
-</div>
-
-<!-- モニ実施日ダイアログ（内部・送付概念なし） -->
-<div class="modal-overlay" id="moniDialog">
-    <div class="modal">
-        <h3 id="moniTitle">モニ実施日</h3>
-        <div class="sub" id="moniSub"></div>
-        <input type="date" id="moniInput">
+        <h3 id="dateTitle">日付</h3>
+        <div class="sub" id="dateSub"></div>
+        <input type="date" id="dateInput">
+        <!-- 計画書のみ表示: 対象期間の器（開始月＋終了月）。今日は保存しない＝GAS列追加(11日)まで器のみ。 -->
+        <div id="planExtras" style="display:none; margin-top:10px; padding:9px 11px; background:#f7fafc; border:1px dashed #cbd5e0; border-radius:8px;">
+            <div style="font-size:0.8rem; color:#2c7a7b; font-weight:700; margin-bottom:6px;">📅 計画書の対象期間</div>
+            <label style="font-size:0.75rem; color:#718096; display:block;">開始月</label>
+            <input type="month" id="planStartInput" oninput="onPlanStartInput(this.value)" style="width:100%; margin-bottom:6px; min-height:34px;">
+            <label style="font-size:0.75rem; color:#718096; display:block;">終了月（空欄なら開始＋3ヶ月を自動表示・手入力で上書き可）</label>
+            <input type="month" id="planEndInput" oninput="onPlanEndInput()" style="width:100%; min-height:34px;">
+            <div style="font-size:0.72rem; color:#9c4221; margin-top:6px; line-height:1.4;">※ この対象期間は<strong>まだ保存されません</strong>（11日以降のGAS対応で保存が有効になります。今日は表示・自動計算の確認用です）</div>
+        </div>
+        <label style="font-size:0.8rem; color:#4a5568; display:block; margin-top:8px;">担当（この作業をした看護師）</label>
+        <select id="dateByInput" style="width:100%; margin-bottom:10px; min-height:38px;"></select>
         <div class="btn-row">
-            <button class="clear" onclick="clearMoniDate()">取消</button>
-            <button class="ok" onclick="saveMoniDate()">OK</button>
+            <button class="clear" onclick="clearDateCheck()">取消</button>
+            <button class="ok" onclick="saveDateCheck()">OK</button>
         </div>
         <div class="btn-row" style="margin-top:6px;">
-            <button class="cancel" onclick="closeMoniDialog()">キャンセル</button>
-        </div>
-    </div>
-</div>
-
-<!-- 節目ダイアログ（結果報告書＋次計画書＋ケアマネ送付） -->
-<div class="modal-overlay" id="setsumeDialog">
-    <div class="modal">
-        <h3 id="setsumeTitle">節目編集</h3>
-        <div class="sub" id="setsumeSub"></div>
-        <div style="margin:10px 0; padding:10px; background:#f0f9ff; border-left:3px solid #2c7a7b; border-radius:6px;">
-            <div style="font-weight:600; margin-bottom:6px;">📝 結果報告書 作成日（3ヶ月目・ケアマネ提出物）</div>
-            <input type="date" id="houkokuInput" style="width:100%;">
-            <div class="btn-row" style="margin-top:6px;">
-                <button class="clear" onclick="clearSetsumeField('houkoku_date')">クリア</button>
-                <button class="ok" onclick="saveSetsumeField('houkoku_date')">結果報告書を保存</button>
-            </div>
-        </div>
-        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
-            <div style="font-weight:600; margin-bottom:6px;">📄 次サイクル 計画書 作成日（ケアマネ提出物）</div>
-            <input type="date" id="planInput" style="width:100%;">
-            <div class="btn-row" style="margin-top:6px;">
-                <button class="clear" onclick="clearSetsumeField('plan_date')">クリア</button>
-                <button class="ok" onclick="saveSetsumeField('plan_date')">計画書を保存</button>
-            </div>
-        </div>
-        <div id="setsumeSentSection" style="margin-top:10px; padding:10px; background:#fff5f5; border-left:3px solid #c53030; border-radius:6px;">
-            <div style="font-size:0.85rem; color:#742a2a; font-weight:bold; margin-bottom:6px;">📮 ケアマネ送付（計画書＋結果報告書を1送付でまとめて記録）</div>
-            <div id="setsumeMethodHint" style="display:none; margin-bottom:6px; font-size:0.8rem;"></div>
-            <div id="setsumeSentStatus" style="font-size:0.9rem; margin-bottom:8px;"></div>
-            <label style="font-size:0.8rem; color:#4a5568;">担当（送付者）</label>
-            <select id="setsumeByInput" style="width:100%; margin-bottom:8px; min-height:38px;"></select>
-            <div class="btn-row">
-                <button id="setsumeSentToggleBtn" onclick="toggleSetsumeSent()" style="background:#c53030; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:bold;">📮 今日 送付済みにする</button>
-            </div>
-        </div>
-        <div class="btn-row" style="margin-top:10px;">
-            <button class="cancel" onclick="closeSetsumeDialog()">閉じる</button>
+            <button class="cancel" onclick="closeDateDialog()">キャンセル</button>
         </div>
     </div>
 </div>
@@ -566,6 +553,7 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
       <button type="button" class="mu-close-btn" onclick="closeUsageModal()">✕</button>
     </div>
     <div class="mu-care-line" id="mu-user-care" style="display:none;padding:6px 18px 0;font-weight:700;font-size:0.9rem;"></div>
+    <div class="mu-care-line" id="mu-user-cm" style="display:none;padding:2px 18px 0;font-size:0.85rem;color:#4a5568;"></div>
     <div class="mu-month-tabs" id="mu-month-tabs"></div>
     <div class="mu-summary" id="mu-summary"></div>
     <div class="mu-calendar" id="mu-calendar"></div>
@@ -574,17 +562,6 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
       <button type="button" style="width:100%; padding:10px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit; background:#edf2f7; color:#4a5568;" onclick="closeUsageModal()">閉じる</button>
     </div>
   </div>
-</div>
-
-<!-- ケアマネ未提出ビュー -->
-<div class="modal-overlay" id="unsubmittedDialog">
-    <div class="modal" style="max-width:560px; max-height:80vh; overflow:auto;">
-        <h3>📮 ケアマネ未提出 一覧</h3>
-        <div id="unsubmittedBody" style="margin-top:10px;"></div>
-        <div class="btn-row" style="margin-top:14px;">
-            <button class="cancel" onclick="closeUnsubmittedView()">閉じる</button>
-        </div>
-    </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -598,13 +575,17 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+// 利用曜日/コマ・ケアマネ名は board GAS(getOralPlansYear) に無いので、①実施記録と同じ利用者台帳直読GASから相乗り取得する（HTMLのみ・GAS非改修）。
+const LEDGER_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
 const CACHE_PREFIX = 'yawaragi_oralplan_v1_';
 const PENDING_PREFIX = 'yawaragi_oralplan_pending_';
 const OPERATOR_KEY = 'yawaragi_oralplan_operator';
-const OPERATOR_FIXED = ['代表'];
-// ケアマネ未提出 カットオフ日（稼働日スタート）。これ以降の作成だけ未提出判定の対象（過去バックログ除外）。
-// ※GAS側 ORAL_SOUFU_CUTOFF と同値で管理すること（デプロイ時に実稼働日で確定）。
-const ORAL_SOUFU_CUTOFF = '2026-07-05';
+const VIEW_KEY = 'yawaragi_oralplan_view';   // 'focus'（今月やること・既定） | 'grid'（全グリッド）
+const LASTBY_KEY = 'yawaragi_oralplan_lastby';  // 直前に選んだ担当（チェック時選択の既定・連続チェックを楽に）
+// 担当（計画書・モニ・結果報告書）の母集団＝看護師のみ（機能訓練指導員兼務の看護師）。
+// staff_list は名前のみで役職列が無いため、看護師名を明示リストで持つ。実行時に staff_list と突合し実在名だけ出す（表記ズレに強く）。
+// 出所: nurse-manual.html §看護師チーム／shift-april.html（髙山奈緒美・春山忍・石井祐子）。2026-07-05 社長確定。
+const NURSE_NAMES = ['髙山', '春山', '石井'];
 
 // 口腔は年内の節目が 3/6/9/12月固定（GAS isOralSendMonth_ と同一）。会計年度順に4サイクル。
 // 各節目の直前2ヶ月がモニ①/モニ②（同一record行に moni1_date/moni2_date で保持）。
@@ -614,8 +595,8 @@ const ANCHORS = [
     { m: 12, label: '12月', nextYear: false, moni: [{ m: 10, label: '10月' }, { m: 11, label: '11月' }] },
     { m: 3,  label: '3月',  nextYear: true,  moni: [{ m: 1,  label: '1月'  }, { m: 2,  label: '2月'  }] }
 ];
-// サブ列は各節目で3つ：モニ①・モニ②・節目（積み上げ）
-const SUB_LABELS = ['モニ①', 'モニ②', '節目'];
+// サブ列は各サイクルで3つ：モニ①・モニ②・3ヶ月目（結果報告書/計画書の2独立チェック・送付は別アプリ）
+const SUB_LABELS = ['モニ①', 'モニ②', '3ヶ月目'];
 
 // ============ 状態 ============
 let state = {
@@ -625,12 +606,15 @@ let state = {
     isLoading: false,
     operator: '',
     includeCancelled: false,
-    staffNames: []
+    staffNames: [],
+    view: 'focus'         // 既定＝今月フォーカス（起動時に localStorage で上書き）
 };
 
 let filterGroup = '';
-let moniDialogState = { userId: '', name: '', year: 0, month: 0, field: '', label: '', currentValue: '' };
-let setsumeDialogState = { userId: '', name: '', year: 0, month: 0, sendMethod: '' };
+let filterDay = '';      // 利用曜日フィルタ（'' = 全員 / '月'〜'土'）
+let filterAmpm = '';     // 午前/午後フィルタ（'' = 全 / '午前' / '午後'）
+let filterName = '';     // 名前部分一致フィルタ（氏名 or ふりがな）
+let dateCheckState = { userId: '', name: '', year: 0, month: 0, field: '', label: '' };
 
 // ============ 純関数（shared.js非依存でインライン化） ============
 // 当月提出セルの色: 非該当→''／送付済→'blue'／作成済未送付→'green'／該当未作成→'red'（shared.js §I 同一ロジック）
@@ -639,6 +623,36 @@ function submitCellColor(isApplicable, hasCreated, hasSent) {
     if (hasSent) return 'blue';
     if (hasCreated) return 'green';
     return 'red';
+}
+// 介護度バッジ（全員表示）: 要支援/事業対象/要介護すべて対応・全角半角数字を正規化。
+// 旧実装は /要介護(\d)/ で半角要介護のみ拾い数名しか出なかった（113名中4名）ので、カテゴリ全種を短縮表示に統一。
+function careBadge(category) {
+    const c = String(category || '').normalize('NFKC').trim();  // 全角数字→半角
+    if (!c) return '';
+    let txt;
+    if (/事業対象/.test(c)) txt = '事';
+    else {
+        const m = c.match(/要(支援|介護)\s*(\d)?/);
+        if (m) txt = (m[1] === '支援' ? '支' : '介') + (m[2] || '');
+        else txt = c.slice(0, 3);  // 想定外表記はそのまま短縮
+    }
+    return '<span class="care-badge">' + escapeHtml(txt) + '</span>';
+}
+// 利用曜日×コマの一致判定（①実施記録 oral-record.html と同一ロジック）。
+// user.days は文字列 '火木' 等 / user.ampm は '午前'|'午後'|複合 '月午前、木午後'。day/ampm 空はワイルドカード。
+function matchesSchedule(user, day, ampm) {
+    if (!day) return true;
+    const days = user && user.days ? String(user.days) : '';
+    if (days.indexOf(day) < 0) return false;
+    if (!ampm) return true;
+    const ap = user && user.ampm ? String(user.ampm) : '';
+    if (ap === '午前' || ap === '午後') return ap === ampm;
+    const parts = ap.split(/[、,]/);
+    for (const part of parts) {
+        const p = part.trim();
+        if (p.indexOf(day) >= 0) return p.indexOf(ampm) >= 0;
+    }
+    return false;
 }
 // 口腔の節目月判定（GAS isOralSendMonth_ と同一）: 月∈{3,6,9,12} かつ 開始月以降。startedAt空は全許可。
 function isOralSendMonth(startedAt, year, month) {
@@ -733,7 +747,7 @@ async function retryPending() {
                 + '&year=' + p.year + '&month=' + p.month
                 + '&field=' + p.field
                 + '&value=' + encodeURIComponent(p.value)
-                + '&operator=' + encodeURIComponent(getOperator())
+                + '&operator=' + encodeURIComponent(getLastBy())
                 + '&t=' + Date.now();
             const res = await fetch(url);
             const json = await res.json();
@@ -843,14 +857,17 @@ async function loadFiscalYearData() {
         state.users = (r1.users || []).map(u => ({
             userId: u.userId, name: u.name || u.userId, furigana: u.furigana || '',
             category: u.category || '', isTarget: !!u.isTarget, startedAt: u.startedAt || '',
-            cancelled: !!u.cancelled, sendMethod: u.sendMethod || ''
+            cancelled: !!u.cancelled, sendMethod: u.sendMethod || '', cmOffice: u.cmOffice || '',
+            days: '', ampm: ''
         }));
         // 中止者（getOralPlansYear.cancelledUsers・toggleで合流）
         state.cancelledUsers = (r1.cancelledUsers || []).map(u => ({
             userId: u.userId, name: u.name || u.userId, furigana: u.furigana || '',
             category: u.category || '', isTarget: !!u.isTarget, startedAt: u.startedAt || '',
-            cancelled: true, sendMethod: u.sendMethod || ''
+            cancelled: true, sendMethod: u.sendMethod || '', cmOffice: u.cmOffice || '',
+            days: '', ampm: ''
         }));
+        applyScheduleToUsers();  // 台帳直読で取得済みの利用曜日/コマを相乗り（曜日フィルタ用）
         const newRecords = {};
         [r1, r2].forEach(r => {
             (r.records || []).forEach(rec => {
@@ -916,15 +933,16 @@ function renderTable() {
     const nowYM = nowYear + '-' + String(nowMonth).padStart(2, '0');
     const gateNames = new Set();
 
-    // ヘッダ（節目4列 × サブ3列）
+    // ヘッダ（サイクル4 × サブ4列：モニ①｜モニ②｜報告｜計画 を左→右一直線）
     let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="background:#2c7a7b; left:30px; min-width:110px;">氏名</th>';
-    ANCHORS.forEach(a => { h1 += '<th class="month-header" colspan="3">' + a.label + 'サイクル</th>'; });
+    ANCHORS.forEach(a => { h1 += '<th class="month-header" colspan="4">' + a.label + 'サイクル</th>'; });
     h1 += '</tr>';
     let h2 = '<tr>';
     ANCHORS.forEach(a => {
         h2 += '<th class="sub-header month-start">' + a.moni[0].label + '<br>モニ①</th>';
         h2 += '<th class="sub-header">' + a.moni[1].label + '<br>モニ②</th>';
-        h2 += '<th class="sub-header">' + a.label + '<br>節目</th>';
+        h2 += '<th class="sub-header">' + a.label + '<br>報告</th>';
+        h2 += '<th class="sub-header">' + a.label + '<br>計画</th>';
     });
     h2 += '</tr>';
     thead.innerHTML = h1 + h2;
@@ -934,13 +952,14 @@ function renderTable() {
     const filtered = allUsers.filter(u => matchesFilter(u));
     filtered.sort((a, b) => (b.isTarget ? 1 : 0) - (a.isTarget ? 1 : 0));  // 対象を上（安定ソート後）
     const fcEl = document.getElementById('filterCount');
-    fcEl.textContent = filterGroup ? filtered.length + ' / ' + allUsers.length + '名 表示中' : '';
+    const anyFilter = filterGroup || filterDay || filterAmpm || filterName;
+    fcEl.textContent = anyFilter ? filtered.length + ' / ' + allUsers.length + '名 表示中' : '';
 
     let html = '';
     let currentSection = null;
     let currentGroup = '';
     let rowIndex = 0;
-    const totalCols = 1 + ANCHORS.length * 3;
+    const totalCols = 1 + ANCHORS.length * 4;
     filtered.forEach(u => {
         const section = u.isTarget ? 'target' : 'nontarget';
         if (section !== currentSection) {
@@ -956,8 +975,7 @@ function renderTable() {
             html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (totalCols - 1) + '" style="background:#e6fffa;"></td></tr>';
         }
         const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
-        const careMatch = (u.category || '').match(/要介護(\d)/);
-        const badge = careMatch ? '<span class="care-badge">介' + careMatch[1] + '</span>' : '';
+        const badge = careBadge(u.category);
         const cancelBadge = u.cancelled ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;background:#c0392b;color:white;font-size:0.7rem;font-weight:700;">中止</span>' : '';
         const rowStyle = (section === 'nontarget' ? ' style="opacity:0.5;"' : (u.cancelled ? ' style="opacity:0.7;background:#fef5f5;"' : ''));
         html += '<tr class="' + rowClass + '"' + rowStyle + '>';
@@ -973,71 +991,29 @@ function renderTable() {
             const hasAnyData = !!(rec.moni1_date || rec.moni2_date || rec.houkoku_date || rec.plan_date || rec.sent_to_cm);
             const active = applicable || hasAnyData;
 
-            // --- モニ①/モニ② セル（実施日・内部） ---
-            [['moni1_date', a.moni[0]], ['moni2_date', a.moni[1]]].forEach((pair, si) => {
-                const field = pair[0];
-                const moniInfo = pair[1];
-                let cls = 'check-cell' + (si === 0 ? ' month-start' : '');
+            // --- サブ4列（モニ①｜モニ②｜報告｜計画）を左→右一直線で。全セル均一（実施日 or 提出物作成日）---
+            // 報告=結果報告書 / 計画=計画書（送付は別アプリ）。計画セルのダイアログに開始月/終了月の器が出る。
+            const subCells = [
+                { field: 'moni1_date', label: a.moni[0].label + 'モニ', monthStart: true },
+                { field: 'moni2_date', label: a.moni[1].label + 'モニ', monthStart: false },
+                { field: 'houkoku_date', label: '結果報告書', monthStart: false },
+                { field: 'plan_date', label: '計画書', monthStart: false }
+            ];
+            subCells.forEach(sc => {
+                let cls = 'check-cell' + (sc.monthStart ? ' month-start' : '');
                 if (!active) { html += '<td class="' + cls + ' disabled">-</td>'; return; }
-                const v = rec[field] || '';
+                const v = rec[sc.field] || '';
                 if (v) cls += ' checked';
-                if (isPending(u.userId, cellYear, a.m, field)) cls += ' pending';
+                if (isPending(u.userId, cellYear, a.m, sc.field)) cls += ' pending';
                 const inner = v
                     ? '<div style="font-size:0.72rem;">' + formatMD(v) + '</div>'
                     : '<div style="color:#cbd5e0;">—</div>';
                 html += '<td class="' + cls + '"'
                       + ' data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '"'
                       + ' data-year="' + cellYear + '" data-month="' + a.m + '"'
-                      + ' data-field="' + field + '" data-label="' + escapeAttr(moniInfo.label + 'モニ') + '"'
-                      + ' onclick="onMoniTap(this)">' + inner + '</td>';
+                      + ' data-field="' + sc.field + '" data-label="' + escapeAttr(sc.label) + '"'
+                      + ' onclick="onDateCheck(this)">' + inner + '</td>';
             });
-
-            // --- 節目セル（積み上げ：結果報告書＋計画書＋送付） ---
-            let cls = 'check-cell';
-            if (!active) { html += '<td class="' + cls + ' disabled">-</td>'; return; }
-            const houkoku = rec.houkoku_date || '';
-            const plan = rec.plan_date || '';
-            const sent = !!rec.sent_to_cm;
-            const sentDate = rec.sent_date || '';
-            const hasCreated = !!(houkoku || plan);
-            const isPast = (cellYear < nowYear) || (cellYear === nowYear && a.m < nowMonth);
-            const isCurrent = (cellYear === nowYear && a.m === nowMonth);
-            if (sent) cls += ' all-done has-value';
-            else if (hasCreated) cls += ' checked';
-            else if (isPast) cls += ' highlight-undone';
-            if (isCurrent) cls += ' current';
-            // 節目セルは常に3色（未作成=赤/作成済未送付=緑/送付済=青）
-            const _cc = submitCellColor(true, hasCreated, sent);
-            if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
-            if (isPending(u.userId, cellYear, a.m, 'houkoku_date')
-                || isPending(u.userId, cellYear, a.m, 'plan_date')
-                || isPending(u.userId, cellYear, a.m, 'sent_to_cm')) cls += ' pending';
-
-            const sm = u.sendMethod || '';
-            const smBadge = sm === '印刷'
-                ? '<span style="font-size:0.62rem; color:#9c4221; font-weight:700;">🖨印刷</span>'
-                : sm === 'PDF'
-                    ? '<span style="font-size:0.62rem; color:#2b6cb0; font-weight:700;">📧PDF</span>'
-                    : '';
-            let inner = '';
-            if (smBadge) inner += '<div>' + smBadge + '</div>';
-            if (houkoku) inner += '<div style="font-size:0.68rem; color:#4a5568;">報告 ' + formatMD(houkoku) + '</div>';
-            if (plan) inner += '<div style="font-size:0.68rem; color:#4a5568;">計画 ' + formatMD(plan) + '</div>';
-            if (hasCreated) {
-                if (sent) {
-                    inner += '<div style="font-size:0.7rem; color:#0d47a1; font-weight:700;">提出済✓ ' + formatMD(sentDate) + '</div>';
-                } else {
-                    const _ym = cellYear + '-' + String(a.m).padStart(2, '0');
-                    if (_ym === nowYM) gateNames.add(u.name);
-                    inner += unsentLineHTML(u.name, cellYear, a.m);
-                }
-            }
-            if (!inner) inner = '<div style="color:#cbd5e0;">—</div>';
-            html += '<td class="' + cls + '"'
-                  + ' data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '"'
-                  + ' data-year="' + cellYear + '" data-month="' + a.m + '"'
-                  + ' data-sendmethod="' + escapeAttr(sm) + '"'
-                  + ' onclick="onSetsumeTap(this)">' + inner + '</td>';
         });
         html += '</tr>';
         rowIndex++;
@@ -1045,67 +1021,154 @@ function renderTable() {
     tbody.innerHTML = html;
     updateStats();
     ensureUsageGate([...gateNames]);
+    try { renderFocus(); } catch (e) { console.warn('renderFocus', e); }  // 今月フォーカスも同時更新（書込後の再描画で追従）
+}
+
+// ============ 今月フォーカスビュー（デフォルト・スタッフ向け「今月やること」） ============
+// 口腔サイクルは 3/6/9/12 固定（既存 isOralSendMonth と同一）。当月Mから役割と対象節目を決める。
+// モニ①=節目の2ヶ月前 / モニ②=節目の1ヶ月前 / 節目=3/6/9/12当月。新しい周期ロジックは作らない。
+const ANCHOR_SET = [3, 6, 9, 12];
+function getMonthFocus(d) {
+    const y = d.getFullYear(), M = d.getMonth() + 1;
+    let role, anchorMonth;
+    if (ANCHOR_SET.indexOf(M) >= 0) { role = 'setsume'; anchorMonth = M; }
+    else if (ANCHOR_SET.indexOf(M + 2) >= 0) { role = 'moni1'; anchorMonth = M + 2; }
+    else if (ANCHOR_SET.indexOf(M + 1) >= 0) { role = 'moni2'; anchorMonth = M + 1; }
+    else { role = 'none'; anchorMonth = 0; }
+    // 節目/モニ月は当月Mと同一暦年内に収まる（1,2月→3月／4→6／7→9／10,11→12）。
+    return { year: y, month: M, role: role, anchorMonth: anchorMonth, anchorYear: y };
+}
+
+function focusMoniItem(it, field, f) {
+    const u = it.u;
+    const office = u.cmOffice || '(事業所未登録)';
+    let right;
+    if (it.st === 'done') right = '<span style="color:#22543d; font-weight:700;">✅ 実施 ' + formatMD(it.v) + '</span>';
+    else if (it.st === 'todo') right = '<span style="color:#c53030; font-weight:700;">未 ▶ タップで実施日</span>';
+    else right = '<span style="color:#718096;" title="当月まだ来所していません（来所後にモニタリング）">🖊 来所待ち</span>';
+    const bg = it.st === 'todo' ? '#fff5f5' : (it.st === 'done' ? '#f0fff4' : '#f7fafc');
+    const label = (field === 'moni1_date') ? 'モニ①' : 'モニ②';
+    return '<div class="focus-item" style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid #eee; background:' + bg + '; cursor:pointer;"'
+        + ' data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '"'
+        + ' data-year="' + f.anchorYear + '" data-month="' + f.anchorMonth + '"'
+        + ' data-field="' + field + '" data-label="' + escapeAttr(label) + '"'
+        + ' onclick="onDateCheck(this)">'
+        + '<div><div style="font-weight:700;">' + escapeHtml(u.name) + '</div>'
+        + '<div style="font-size:0.78rem; color:#718096;">' + escapeHtml(office) + '</div></div>'
+        + '<div style="font-size:0.85rem; text-align:right; white-space:nowrap;">' + right + '</div>'
+        + '</div>';
+}
+function focusSetsumeItem(it, f) {
+    const u = it.u, rec = it.rec;
+    const office = u.cmOffice || '(事業所未登録)';
+    const bg = it.pri === 0 ? '#fff5f5' : '#f0fff4';   // 未作成=赤 / 作成済=緑
+    const dCommon = 'data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-year="' + f.anchorYear + '" data-month="' + f.anchorMonth + '"';
+    const chipH = checkChip('結果報告書', !!rec.houkoku_date, 'doc', dCommon + ' data-field="houkoku_date" data-label="結果報告書"', 'onDateCheck', rec.houkoku_date ? formatMD(rec.houkoku_date) : '', true);
+    const chipP = checkChip('計画書', !!rec.plan_date, 'doc', dCommon + ' data-field="plan_date" data-label="計画書"', 'onDateCheck', rec.plan_date ? formatMD(rec.plan_date) : '', true);
+    return '<div class="focus-item" style="padding:12px 16px; border-bottom:1px solid #eee; background:' + bg + ';">'
+        + '<div style="margin-bottom:8px;"><span style="font-weight:700;">' + escapeHtml(u.name) + '</span>'
+        + '<span style="font-size:0.78rem; color:#718096;"> ・ ' + escapeHtml(office) + '</span></div>'
+        + '<div style="display:flex; gap:6px;">' + chipH + chipP + '</div>'
+        + '</div>';
+}
+
+function renderFocus() {
+    const host = document.getElementById('focusView');
+    if (!host) return;
+    const now = new Date();
+    const f = getMonthFocus(now);
+    // 対象＝加算対象(is_target) かつ 非中止 かつ 当該節目が開始月以降（startedAtゲート・既存 isOralSendMonth）
+    const eligible = displayUsers().filter(u => u.isTarget && !u.cancelled && isOralSendMonth(u.startedAt, f.anchorYear, f.anchorMonth));
+    const roleLabel = f.role === 'setsume' ? '結果報告書・計画書（3ヶ月目のケアマネ提出物の作成）'
+        : f.role === 'moni1' ? 'モニ①（内部）'
+        : f.role === 'moni2' ? 'モニ②（内部）' : '—';
+    const header = f.year + '年' + f.month + '月 ・ ' + roleLabel
+        + (f.role !== 'setsume' && f.anchorMonth ? '（' + f.anchorMonth + '月ノード）' : '');
+
+    let bodyHtml = '', done = 0, todo = 0, waiting = 0;
+
+    if (f.role === 'moni1' || f.role === 'moni2') {
+        const field = (f.role === 'moni1') ? 'moni1_date' : 'moni2_date';
+        // 当月来所ゲート（B案流用）: 未来所は「来所待ち」中立で下、来所済の未は要対応で上。
+        ensureUsageGate(eligible.map(u => u.name));
+        const items = eligible.map(u => {
+            const rec = state.records[u.userId + '_' + f.anchorYear + '_' + f.anchorMonth] || {};
+            const v = rec[field] || '';
+            let st, pri;
+            if (v) { st = 'done'; pri = 1; done++; }
+            else {
+                const g = usageGate[u.name];
+                if (g && g.state === 'attended') { st = 'todo'; pri = 0; todo++; }
+                else { st = 'waiting'; pri = 2; waiting++; }
+            }
+            return { u, v, st, pri };
+        }).sort((a, b) => a.pri - b.pri || (a.u.furigana || '').normalize('NFKC').localeCompare((b.u.furigana || '').normalize('NFKC'), 'ja'));
+        bodyHtml = items.map(it => focusMoniItem(it, field, f)).join('');
+    } else if (f.role === 'setsume') {
+        const items = eligible.map(u => {
+            const rec = state.records[u.userId + '_' + f.anchorYear + '_' + f.anchorMonth] || {};
+            const bothCreated = !!(rec.houkoku_date && rec.plan_date);  // 結果報告書・計画書 両方作成で完了
+            let pri;
+            if (!bothCreated) { pri = 0; todo++; }         // 未作成 or 片方のみ（赤・要対応）
+            else { pri = 1; done++; }                      // 両方作成済（緑・完了）
+            return { u, rec, bothCreated, pri };
+        }).sort((a, b) => a.pri - b.pri || (a.u.furigana || '').normalize('NFKC').localeCompare((b.u.furigana || '').normalize('NFKC'), 'ja'));
+        bodyHtml = items.map(it => focusSetsumeItem(it, f)).join('');
+    } else {
+        bodyHtml = '<div style="padding:20px; color:#718096;">今月は口腔サイクル（3/6/9/12月とその前2ヶ月）の対象月ではありません。全グリッドで確認してください。</div>';
+    }
+
+    const summary = f.role === 'setsume'
+        ? '対象 ' + eligible.length + ' ／ 作成済 ' + done + ' ／ 未 ' + todo
+        : (f.role === 'none' ? '' : '対象 ' + eligible.length + ' ／ 済 ' + done + ' ／ 未 ' + todo + ' ／ 来所待ち ' + waiting);
+
+    host.innerHTML =
+        '<div style="background:#fff; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.05); overflow:hidden;">'
+        + '<div style="background:#2c7a7b; color:#fff; padding:12px 16px; font-weight:bold; font-size:1.05rem;">📌 ' + escapeHtml(header) + '</div>'
+        + (summary ? '<div style="padding:10px 16px; background:#e6fffa; color:#234e52; font-weight:600; font-size:0.9rem;">' + escapeHtml(summary) + '</div>' : '')
+        + ((f.role === 'none' || eligible.length) ? bodyHtml : '<div style="padding:20px; color:#718096;">今月の対象者はいません。</div>')
+        + '</div>';
+}
+
+// ビュー切替（today端末記憶）
+function applyViewVisibility() {
+    const focus = state.view === 'focus';
+    const fv = document.getElementById('focusView');
+    const tc = document.querySelector('.table-container');
+    const fb = document.getElementById('filterBar');
+    if (fv) fv.style.display = focus ? 'block' : 'none';
+    if (tc) tc.style.display = focus ? 'none' : 'block';
+    if (fb) fb.style.display = focus ? 'none' : 'flex';
+    const bF = document.getElementById('btnFocus'), bG = document.getElementById('btnGrid');
+    if (bF && bG) {
+        bF.style.background = focus ? '#2c7a7b' : '#fff';
+        bF.style.color = focus ? '#fff' : '#2c7a7b';
+        bG.style.background = focus ? '#fff' : '#2c7a7b';
+        bG.style.color = focus ? '#2c7a7b' : '#fff';
+    }
+}
+function setView(v) {
+    state.view = (v === 'grid') ? 'grid' : 'focus';
+    try { localStorage.setItem(VIEW_KEY, state.view); } catch (e) { }
+    applyViewVisibility();
+    if (state.view === 'focus') renderFocus(); else renderTable();
 }
 
 function matchesFilter(u) {
     if (filterGroup && getGroup(u.furigana) !== filterGroup) return false;
+    if ((filterDay || filterAmpm) && !matchesSchedule(u, filterDay, filterAmpm)) return false;
+    if (filterName) {
+        const q = filterName.normalize('NFKC').toLowerCase();
+        const hay = ((u.name || '') + ' ' + (u.furigana || '')).normalize('NFKC').toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+    }
     return true;
 }
 
 function updateStats() {
     const targets = state.users.filter(u => u.isTarget);
     document.getElementById('totalUsers').textContent = targets.length;
-    const r = judgeUnsubmittedLocal();
-    document.getElementById('unsentCount').textContent = r.length;
-    updateUnsubmittedBadge();
 }
-
-// ===== ケアマネ未提出（1送付＝計画書＋結果報告書まとめ・カットオフ以降のみ） =====
-function judgeUnsubmittedLocal() {
-    const has = v => !!(v && String(v).trim());
-    const onOrAfter = v => has(v) && String(v).trim().slice(0, 10) >= ORAL_SOUFU_CUTOFF;
-    const list = [];
-    Object.keys(state.records).forEach(key => {
-        const rec = state.records[key] || {};
-        const parts = key.split('_');
-        const month = parts.length >= 2 ? parts[parts.length - 1] : '';
-        const year = parts.length >= 3 ? parts[parts.length - 2] : '';
-        if ([3, 6, 9, 12].indexOf(parseInt(month, 10)) < 0) return;
-        const name = rec.name || (parts.length >= 3 ? parts.slice(0, parts.length - 2).join('_') : key);
-        // 計画書 or 結果報告書のどちらか作成済み かつ 未送付 → 1件（まとめ）
-        if ((onOrAfter(rec.plan_date) || onOrAfter(rec.houkoku_date)) && !rec.sent_to_cm) {
-            list.push({ name, year, month, date: rec.houkoku_date || rec.plan_date });
-        }
-    });
-    return list;
-}
-function updateUnsubmittedBadge() {
-    const total = judgeUnsubmittedLocal().length;
-    const badge = document.getElementById('unsubmittedBadge');
-    if (!badge) return;
-    badge.textContent = total;
-    badge.style.display = total > 0 ? 'inline-block' : 'none';
-}
-function openUnsubmittedView() {
-    const list = judgeUnsubmittedLocal().slice().sort((a, b) =>
-        (a.year + a.month).localeCompare(b.year + b.month) || a.name.localeCompare(b.name, 'ja'));
-    const rows = list.length
-        ? '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">' + list.map(x =>
-            '<tr style="border-bottom:1px solid #eee;">'
-            + '<td style="padding:6px 8px; font-weight:600;">' + escapeHtml(x.name) + '</td>'
-            + '<td style="padding:6px 8px; color:#c53030; white-space:nowrap;">計画書＋結果報告書</td>'
-            + '<td style="padding:6px 8px; white-space:nowrap;">' + escapeHtml(x.year) + '/' + escapeHtml(x.month) + '月</td>'
-            + '<td style="padding:6px 8px; color:#4a5568; white-space:nowrap;">' + escapeHtml(x.date) + '</td>'
-            + '</tr>').join('') + '</table>'
-        : '<div style="color:#718096; padding:8px;">なし</div>';
-    document.getElementById('unsubmittedBody').innerHTML =
-        '<div style="margin-bottom:10px; padding:6px 10px; background:#fffaf0; border-left:3px solid #dd6b20; font-size:0.82rem; color:#744210;">カットオフ(' + ORAL_SOUFU_CUTOFF + ')以降のみ表示中（稼働開始前の過去分は対象外）</div>'
-        + '<div style="margin-bottom:6px; font-weight:700; color:#742a2a;">📮 ケアマネ未提出（作成済み・未送付／計画書＋結果報告書を1送付でまとめ）：' + list.length + '件</div>'
-        + rows
-        + '<div style="margin-top:12px; font-size:0.8rem; color:#718096;">※ 節目月に計画書または結果報告書の作成日があり、ケアマネ送付済(sent_to_cm)が未の人。</div>';
-    document.getElementById('unsubmittedDialog').classList.add('show');
-}
-function closeUnsubmittedView() { document.getElementById('unsubmittedDialog').classList.remove('show'); }
 
 function setGroupFilter(g, ev) {
     filterGroup = g;
@@ -1113,114 +1176,128 @@ function setGroupFilter(g, ev) {
     ev.target.classList.add('active');
     renderTable();
 }
+function setDayFilter(day, ev) {
+    filterDay = day;
+    document.querySelectorAll('#dayFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    if (ev && ev.target) ev.target.classList.add('active');
+    renderTable();
+}
+function setAmpmFilter(ampm, ev) {
+    filterAmpm = ampm;
+    document.querySelectorAll('#ampmFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    if (ev && ev.target) ev.target.classList.add('active');
+    renderTable();
+}
+function setNameFilter(q) {
+    filterName = String(q || '').trim();
+    renderTable();
+}
 function toggleIncludeCancelled(checked) {
     state.includeCancelled = !!checked;
     renderTable();  // cancelledUsers は取得済み・再描画のみ
 }
 
-// ============ モニ実施日ダイアログ ============
-function onMoniTap(td) {
-    if (td.classList.contains('disabled')) return;
-    const userId = td.dataset.userid, name = td.dataset.name;
-    const year = parseInt(td.dataset.year, 10), month = parseInt(td.dataset.month, 10);
-    const field = td.dataset.field, label = td.dataset.label;
-    const rec = state.records[userId + '_' + year + '_' + month] || {};
-    moniDialogState = { userId, name, year, month, field, label, currentValue: rec[field] || '' };
-    document.getElementById('moniTitle').textContent = name + ' ' + label + '実施日';
-    document.getElementById('moniSub').textContent = '現在: ' + (rec[field] || '(未入力)') + '（内部モニタリング・ケアマネ送付なし）';
-    document.getElementById('moniInput').value = rec[field] || formatTodayISO();
-    document.getElementById('moniDialog').classList.add('show');
+// ============ 担当（チェック時に選ぶ）＋3独立チェックのチップ ============
+function getLastBy() { try { return localStorage.getItem(LASTBY_KEY) || ''; } catch (e) { return ''; } }
+function setLastBy(name) { try { if (name) localStorage.setItem(LASTBY_KEY, name); } catch (e) { } }
+// 担当プルダウンの母集団＝看護師のみ。NURSE_NAMES を staff_list（実在名）と突合し、実在する看護師だけ出す。
+// staff_list が空/取得失敗や突合0件のときは NURSE_NAMES をそのまま使う（担当が選べなくなる事故を防ぐフォールバック）。
+function nurseOptions() {
+    const staff = state.staffNames || [];
+    if (!staff.length) return NURSE_NAMES.slice();
+    const inStaff = NURSE_NAMES.filter(n => staff.indexOf(n) >= 0);
+    return inStaff.length ? inStaff : NURSE_NAMES.slice();
 }
-function closeMoniDialog() { document.getElementById('moniDialog').classList.remove('show'); }
-async function saveMoniDate() {
-    const v = document.getElementById('moniInput').value;
-    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
-    const ds = moniDialogState;
-    closeMoniDialog();
-    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.label, v);
+function fillByOptions(selectId, cur) {
+    const opts = nurseOptions();
+    let h = '<option value="">（未選択）</option>';
+    // 既存データに看護師以外の担当が入っていても消さない（過去記録の保持）
+    if (cur && opts.indexOf(cur) < 0) h += '<option value="' + escapeHtml(cur) + '" selected>' + escapeHtml(cur) + '</option>';
+    opts.forEach(s => { h += '<option value="' + escapeHtml(s) + '"' + (s === cur ? ' selected' : '') + '>' + escapeHtml(s) + '</option>'; });
+    const el = document.getElementById(selectId);
+    if (el) el.innerHTML = h;
 }
-async function clearMoniDate() {
-    const ds = moniDialogState;
-    if (!confirm(ds.name + ' ' + ds.label + 'をクリアしますか？')) return;
-    closeMoniDialog();
-    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.label, '');
+// 小チップ: doc(報告/計画)=緑・sent(送付)=青／未=赤。big=フォーカス用の大きめ。
+function checkChip(label, done, kind, dataAttrs, onclickFn, text, big) {
+    const bg = done ? (kind === 'sent' ? '#e3f2fd' : '#e8f5e9') : '#ffebee';
+    const col = done ? (kind === 'sent' ? '#0d47a1' : '#2e7d32') : '#c53030';
+    const mark = done ? ('✓' + (text ? ' ' + text : '')) : '未';
+    const pad = big ? '8px 8px' : '3px 5px';
+    const fs = big ? '0.82rem' : '0.6rem';
+    const layout = big ? 'flex:1; flex-direction:column; align-items:center; gap:2px; text-align:center;' : 'justify-content:space-between; align-items:center;';
+    return '<div ' + dataAttrs + ' onclick="' + onclickFn + '(this)" style="cursor:pointer; background:' + bg + '; color:' + col + '; border-radius:6px; padding:' + pad + '; font-size:' + fs + '; font-weight:700; white-space:nowrap; display:flex; ' + layout + '">'
+        + '<span>' + label + '</span><span>' + mark + '</span></div>';
 }
 
-// ============ 節目ダイアログ（結果報告書＋計画書＋送付） ============
-function onSetsumeTap(td) {
-    if (td.classList.contains('disabled')) return;
-    const userId = td.dataset.userid, name = td.dataset.name;
-    const year = parseInt(td.dataset.year, 10), month = parseInt(td.dataset.month, 10);
-    openSetsumeDialog(userId, name, year, month, td.dataset.sendmethod || '');
+// ============ 日付チェック ダイアログ（モニ①/②・結果報告書・計画書 共通・チェック時に担当を選ぶ） ============
+// 'YYYY-MM' に n ヶ月加算して 'YYYY-MM' を返す（純関数・器の終了月自動計算用）。不正入力は ''。
+function addMonths(ym, n) {
+    const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return '';
+    const total = parseInt(m[1], 10) * 12 + (parseInt(m[2], 10) - 1) + (parseInt(n, 10) || 0);
+    const y = Math.floor(total / 12);
+    const mo = (total % 12) + 1;
+    return y + '-' + String(mo).padStart(2, '0');
 }
-function openSetsumeDialog(userId, name, year, month, sendMethod) {
-    setsumeDialogState = { userId, name, year, month, sendMethod };
+// 計画書の対象期間の器: 開始月を入れると終了月を自動「開始＋3ヶ月」に（A案）。終了月を手入力したら優先し以後自動上書きしない（B案）。
+let planEndManual = false;
+function onPlanStartInput(v) {
+    if (planEndManual) return;
+    const endEl = document.getElementById('planEndInput');
+    if (endEl) endEl.value = addMonths(v || (document.getElementById('planStartInput') || {}).value || '', 3);
+}
+function onPlanEndInput() { planEndManual = true; }
+
+function onDateCheck(el) {
+    const d = el.dataset;
+    const userId = d.userid, name = d.name, year = parseInt(d.year, 10), month = parseInt(d.month, 10);
+    const field = d.field, label = d.label;
     const rec = state.records[userId + '_' + year + '_' + month] || {};
-    document.getElementById('setsumeTitle').textContent = name + '  ' + month + '月 節目（サイクル評価）';
-    document.getElementById('setsumeSub').textContent =
-        '結果報告書: ' + (rec.houkoku_date || '(未作成)') + ' ／ 計画書: ' + (rec.plan_date || '(未作成)');
-    document.getElementById('houkokuInput').value = rec.houkoku_date || '';
-    document.getElementById('planInput').value = rec.plan_date || '';
-    // 送付方法ヒント
-    const hint = document.getElementById('setsumeMethodHint');
-    if (sendMethod === 'PDF') {
-        hint.textContent = '📧 この利用者はメール/FAX事業所 → PDFで送付';
-        hint.style.cssText = 'margin-bottom:6px; padding:6px 10px; border-radius:6px; font-size:0.8rem; background:#ebf8ff; color:#2b6cb0; display:block;';
-    } else if (sendMethod === '印刷') {
-        hint.textContent = '🖨 この利用者は持参/郵送事業所 → 印刷で送付';
-        hint.style.cssText = 'margin-bottom:6px; padding:6px 10px; border-radius:6px; font-size:0.8rem; background:#fffaf0; color:#9c4221; display:block;';
-    } else { hint.style.display = 'none'; }
-    // 送付ステータス
-    const sent = !!rec.sent_to_cm;
-    document.getElementById('setsumeSentStatus').innerHTML = sent
-        ? '✅ 送付済み: ' + formatMD(rec.sent_date || '') + (rec.sent_by ? '（' + escapeHtml(rec.sent_by) + '）' : '')
-        : '⚪ 未送付';
-    const toggleBtn = document.getElementById('setsumeSentToggleBtn');
-    toggleBtn.textContent = sent ? '🗑 送付済みをクリア' : '📮 今日 送付済みにする';
-    toggleBtn.style.background = sent ? '#718096' : '#c53030';
-    // 担当select
-    const opts = state.staffNames || [];
-    let byH = '<option value="">（未選択）</option>';
-    const cur = rec.sent_by || '';
-    if (cur && opts.indexOf(cur) < 0) byH += '<option value="' + escapeHtml(cur) + '" selected>' + escapeHtml(cur) + '（名簿外）</option>';
-    opts.forEach(s => { byH += '<option value="' + escapeHtml(s) + '"' + (s === cur ? ' selected' : '') + '>' + escapeHtml(s) + '</option>'; });
-    document.getElementById('setsumeByInput').innerHTML = byH;
-    document.getElementById('setsumeDialog').classList.add('show');
-}
-function closeSetsumeDialog() { document.getElementById('setsumeDialog').classList.remove('show'); }
-async function saveSetsumeField(field) {
-    const inputId = (field === 'houkoku_date') ? 'houkokuInput' : 'planInput';
-    const v = document.getElementById(inputId).value;
-    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
-    const ds = setsumeDialogState;
-    const label = (field === 'houkoku_date') ? '結果報告書' : '計画書';
-    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, field, label, v);
-    openSetsumeDialog(ds.userId, ds.name, ds.year, ds.month, ds.sendMethod);
-}
-async function clearSetsumeField(field) {
-    const ds = setsumeDialogState;
-    const label = (field === 'houkoku_date') ? '結果報告書' : '計画書';
-    if (!confirm(ds.name + ' ' + ds.month + '月の' + label + 'をクリアしますか？')) return;
-    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, field, label, '');
-    openSetsumeDialog(ds.userId, ds.name, ds.year, ds.month, ds.sendMethod);
-}
-async function toggleSetsumeSent() {
-    const ds = setsumeDialogState;
-    const rec = state.records[ds.userId + '_' + ds.year + '_' + ds.month] || {};
-    const nowSent = !!rec.sent_to_cm;
-    const by = document.getElementById('setsumeByInput').value || '';
-    if (!nowSent && !document.getElementById('houkokuInput').value && !document.getElementById('planInput').value
-        && !rec.houkoku_date && !rec.plan_date) {
-        if (!confirm('結果報告書も計画書も未作成です。送付済みにしますか？')) return;
+    dateCheckState = { userId, name, year, month, field, label };
+    const isMoni = (field === 'moni1_date' || field === 'moni2_date');
+    document.getElementById('dateTitle').textContent = name + '  ' + label + '（' + month + '月ノード）';
+    document.getElementById('dateSub').textContent = '現在: ' + (rec[field] || '(未入力)') + (isMoni ? '（内部モニタリング・送付なし）' : '（ケアマネ提出物）');
+    document.getElementById('dateInput').value = rec[field] || formatTodayISO();
+    // 計画書のときだけ対象期間の器を出す。開始/終了は器のみ（rec.plan_start/plan_end は11日以降に入る想定・今は空）。
+    const pe = document.getElementById('planExtras');
+    if (pe) {
+        if (field === 'plan_date') {
+            planEndManual = false;
+            const psEl = document.getElementById('planStartInput');
+            const peEl = document.getElementById('planEndInput');
+            if (psEl) psEl.value = rec.plan_start || '';
+            if (peEl) {
+                peEl.value = rec.plan_end || '';
+                if (rec.plan_end) planEndManual = true;                 // 保存済みの手動終了月は優先
+                else if (psEl && psEl.value) peEl.value = addMonths(psEl.value, 3);  // 自動 +3ヶ月
+            }
+            pe.style.display = 'block';
+        } else {
+            pe.style.display = 'none';
+        }
     }
-    // 送付済に担当も同時保存（担当が選択されていれば）
-    if (!nowSent && by) await applyOralValue(ds.userId, ds.name, ds.year, ds.month, 'sent_by', '送付者', by);
-    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, 'sent_to_cm', 'ケアマネ送付', nowSent ? 'false' : 'true');
-    openSetsumeDialog(ds.userId, ds.name, ds.year, ds.month, ds.sendMethod);
+    fillByOptions('dateByInput', getLastBy());
+    document.getElementById('dateDialog').classList.add('show');
+}
+function closeDateDialog() { document.getElementById('dateDialog').classList.remove('show'); }
+async function saveDateCheck() {
+    const v = document.getElementById('dateInput').value;
+    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
+    const by = document.getElementById('dateByInput').value || '';
+    if (by) setLastBy(by);
+    const ds = dateCheckState; closeDateDialog();
+    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.label, v, by);
+}
+async function clearDateCheck() {
+    const ds = dateCheckState;
+    if (!confirm(ds.name + ' ' + ds.label + 'をクリアしますか？')) return;
+    const by = document.getElementById('dateByInput').value || '';
+    closeDateDialog();
+    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.label, '', by);
 }
 
 // ============ 書込（updateOralPlan・楽観更新＋pending） ============
-async function applyOralValue(userId, name, year, month, field, label, value) {
+async function applyOralValue(userId, name, year, month, field, label, value, by) {
     const key = userId + '_' + year + '_' + month;
     const rec = state.records[key] || { name };
     if (field === 'sent_to_cm') {
@@ -1243,7 +1320,7 @@ async function applyOralValue(userId, name, year, month, field, label, value) {
             + '&year=' + year + '&month=' + month
             + '&field=' + field
             + '&value=' + encodeURIComponent(value)
-            + '&operator=' + encodeURIComponent(getOperator())
+            + '&operator=' + encodeURIComponent(by || getLastBy())
             + '&t=' + Date.now();
         const res = await fetch(url);
         const json = await res.json();
@@ -1298,17 +1375,6 @@ function ensureUsageGate(names) {
         });
     });
 }
-function unsentLineHTML(name, applyYear, applyMonth) {
-    const nowYM = formatTodayISO().slice(0, 7);
-    const ym = applyYear + '-' + String(applyMonth).padStart(2, '0');
-    const WARN = '<div style="font-size:0.7rem; color:#c53030; font-weight:700;">⚠未提出</div>';
-    const NEU = function (t) { return '<div style="font-size:0.7rem; color:#718096; font-weight:600;" title="サインは当月来所後に取得するため、来所実績が出るまで督促しません">' + t + '</div>'; };
-    if (ym < nowYM) return WARN;
-    if (ym > nowYM) return NEU('🖊 翌月提出予定');
-    const g = usageGate[name];
-    if (!g || g.state === 'pending') return NEU('⏳ 来所確認中');
-    return g.state === 'attended' ? WARN : NEU('🖊 サイン待ち（当月提出予定）');
-}
 
 // ============ 利用状況モーダル（monthly_usage・お手本流用・読み取りのみ） ============
 let usageModalState = { userId: '', name: '' };
@@ -1325,10 +1391,40 @@ function openUsageModal(td) {
         careEl.style.color = (careTxt.indexOf('要介護') !== -1) ? '#842029' : '#1e40af';
         careEl.style.display = '';
     } else { careEl.textContent = ''; careEl.style.display = 'none'; }
+    // ケアマネ情報: 事業所は user 済み（getOralPlansYear.cmOffice）／ケアマネ名は debug_user_cm で追って取る。
+    const cmEl = document.getElementById('mu-user-cm');
+    const office = (u.cmOffice || '').trim();
+    cmEl.textContent = office ? 'ケアマネ：' + office : 'ケアマネ：(事業所未登録)';
+    cmEl.style.display = '';
+    fetchUserCm(u.name, function (info) {
+        if (usageModalState.name !== u.name) return;  // 別の人を開き直していたら反映しない
+        const nm = info && info.cmName ? String(info.cmName).trim() : '';
+        const off = (info && info.cmOffice ? String(info.cmOffice).trim() : '') || office;
+        cmEl.textContent = 'ケアマネ：' + (off || '(事業所未登録)') + (nm ? '／' + nm : '');
+    });
     document.getElementById('mu-modal').style.display = 'flex';
     const ym = formatTodayISO().substring(0, 7);
     muRenderMonthTabs(u.name, ym);
     muLoadMonth(u.name, ym);
+}
+// ケアマネ名を利用者台帳から取得（debug_user_cm・JSONP・読み取りのみ・GAS非改修）。
+let _cmSeq = 0;
+function fetchUserCm(name, cb) {
+    const cbName = 'cmCb_' + Date.now() + '_' + (_cmSeq++);
+    let done = false;
+    function cleanup() {
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        const s = document.getElementById(cbName);
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+    }
+    function settle(data) { if (done) return; done = true; clearTimeout(timer); cleanup(); cb(data && data.info ? data.info : null); }
+    const timer = setTimeout(function () { settle(null); }, 12000);
+    window[cbName] = function (data) { settle(data); };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.onerror = function () { settle(null); };
+    script.src = API_BASE + '?action=debug_user_cm&name=' + encodeURIComponent(name) + '&callback=' + cbName + '&t=' + Date.now();
+    document.body.appendChild(script);
 }
 function closeUsageModal() { document.getElementById('mu-modal').style.display = 'none'; }
 function muRenderMonthTabs(name, selectedYm) {
@@ -1453,15 +1549,7 @@ function muCalcUtilization(data) {
     return Math.round((s.attended || 0) / s.scheduledTotal * 100);
 }
 
-// ============ 操作者管理（お手本流用） ============
-function getOperator() { return state.operator || localStorage.getItem(OPERATOR_KEY) || ''; }
-function setOperator(name) {
-    state.operator = name;
-    if (name) localStorage.setItem(OPERATOR_KEY, name);
-    else localStorage.removeItem(OPERATOR_KEY);
-    document.getElementById('operatorLabel').textContent = name || '未選択';
-    document.getElementById('operatorBtn').style.background = name ? '#e6fffa' : '#fff5f0';
-}
+// ============ スタッフ名簿（担当プルダウンの母集団・既存 staff_list 流用・二重管理しない） ============
 async function fetchStaffList() {
     try {
         const res = await fetch(API_BASE + '?action=staff_list&t=' + Date.now());
@@ -1469,38 +1557,59 @@ async function fetchStaffList() {
         return (json && json.staff) || [];
     } catch (e) { console.warn('staff_list fetch failed', e); return []; }
 }
-async function openOperatorDialog() {
-    const list = document.getElementById('operatorList');
-    list.innerHTML = '<div style="padding:8px; color:#718096;">読み込み中...</div>';
-    document.getElementById('operatorDialog').classList.add('show');
-    const staff = await fetchStaffList();
-    const all = OPERATOR_FIXED.concat(staff);
-    list.innerHTML = all.map(s =>
-        '<button onclick="selectOperator(\'' + s.replace(/'/g, "\\'") + '\')" '
-        + 'style="padding:10px 16px; min-height:40px; border:2px solid #2c7a7b; background:#fff; color:#2c3e50; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit;">'
-        + s + (state.operator === s ? ' ✓' : '') + '</button>'
-    ).join('');
+
+// ============ 利用曜日/コマ（①実施記録と同じ利用者台帳直読GAS・JSONP・曜日フィルタ用） ============
+// board GAS(getOralPlansYear) に days/ampm が無いので、名前をキーに台帳から相乗り。取得失敗時は曜日フィルタが空振りするだけ（他機能に影響なし）。
+let scheduleMap = {};   // name -> { days, ampm }
+function fetchLedgerSchedule() {
+    const cbName = 'ledgerCb_' + Date.now();
+    const timer = setTimeout(function () { cleanup(); }, 15000);
+    function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        const s = document.getElementById(cbName);
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+    }
+    window[cbName] = function (data) {
+        cleanup();
+        const map = {};
+        ((data && data.users) || []).forEach(function (u) {
+            const nm = (u.name || '').trim();
+            if (nm) map[nm] = { days: u.days || '', ampm: u.ampm || '' };
+        });
+        scheduleMap = map;
+        applyScheduleToUsers();
+        renderTable();
+    };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.onerror = cleanup;
+    script.src = LEDGER_URL + '?callback=' + cbName + '&t=' + Date.now();
+    document.head.appendChild(script);
 }
-function selectOperator(name) {
-    setOperator(name);
-    document.getElementById('operatorDialog').classList.remove('show');
-    showToast('✅ 操作者: ' + name);
+function applyScheduleToUsers() {
+    const apply = function (u) {
+        const sc = scheduleMap[(u.name || '').trim()];
+        if (sc) { u.days = sc.days; u.ampm = sc.ampm; }
+    };
+    (state.users || []).forEach(apply);
+    (state.cancelledUsers || []).forEach(apply);
 }
 
-// ============ 起動 ============
+// ============ 起動（開く時は名前を求めない・担当はチェック時に選ぶ） ============
 window.addEventListener('load', async () => {
-    setOperator(getOperator());
+    state.view = (localStorage.getItem(VIEW_KEY) === 'grid') ? 'grid' : 'focus';  // 既定＝今月フォーカス
     populateFiscalYearSelect();
     loadCache();
+    applyViewVisibility();
     updatePendingBanner();
-    if (!getOperator()) openOperatorDialog();
     fetchStaffList().then(staff => { state.staffNames = staff || []; });
+    fetchLedgerSchedule();   // 利用曜日/コマ（曜日フィルタ用）を台帳直読で相乗り
     await loadFiscalYearData();
 });
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible'
-        && !document.getElementById('moniDialog').classList.contains('show')
-        && !document.getElementById('setsumeDialog').classList.contains('show')) {
+        && !document.getElementById('dateDialog').classList.contains('show')) {
         loadFiscalYearData();
     }
 });
