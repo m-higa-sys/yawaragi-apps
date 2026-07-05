@@ -2434,7 +2434,11 @@ function doGet(e) {
           sent_by: String(orow[10] || ''),
           moni1_date: opFmtDate_(orow[11]),
           moni2_date: opFmtDate_(orow[12]),
-          houkoku_date: opFmtDate_(orow[13])
+          houkoku_date: opFmtDate_(orow[13]),
+          houkoku_by: String(orow[14] || ''),
+          plan_by: String(orow[15] || ''),
+          moni1_by: String(orow[16] || ''),
+          moni2_by: String(orow[17] || '')
         });
       }
       return respond({ ok: true, year: opYear, users: opUsers, records: opRecords, cancelledUsers: opCancelledUsers }, callback);
@@ -2992,7 +2996,7 @@ function doGet(e) {
       var uoField = String((e && e.parameter && e.parameter.field) || '').trim();
       var uoValue = String((e && e.parameter && e.parameter.value) || '');
       var uoOperator = String((e && e.parameter && e.parameter.operator) || '').trim();
-      var uoFieldAllowed = { plan_date: 4, sent_to_cm: 5, sent_date: 6, memo: 7, eval_result: 10, sent_by: 11, moni1_date: 12, moni2_date: 13, houkoku_date: 14 };  // 1-indexed column
+      var uoFieldAllowed = { plan_date: 4, sent_to_cm: 5, sent_date: 6, memo: 7, eval_result: 10, sent_by: 11, moni1_date: 12, moni2_date: 13, houkoku_date: 14, houkoku_by: 15, plan_by: 16, moni1_by: 17, moni2_by: 18 };  // 1-indexed column
       if (!uoUserId || !uoYear || uoYear < 2020 || uoYear > 2100
           || !uoMonth || uoMonth < 1 || uoMonth > 12
           || !uoFieldAllowed.hasOwnProperty(uoField)) {
@@ -3020,7 +3024,7 @@ function doGet(e) {
         var uoToday = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
         if (uoRowIdx < 0) {
           if (!uoValue && uoField !== 'sent_to_cm') return respond({ ok: true }, callback);
-          var uoNewRow = [uoUserId, uoYear, uoMonth, '', false, '', '', uoOperator || '', uoNow, '', '', '', '', ''];
+          var uoNewRow = [uoUserId, uoYear, uoMonth, '', false, '', '', uoOperator || '', uoNow, '', '', '', '', '', '', '', '', ''];
           if (uoField === 'sent_to_cm') {
             var uoBoolNew = (uoValue === 'true' || uoValue === '1');
             uoNewRow[4] = uoBoolNew;
@@ -3127,17 +3131,26 @@ function doGet(e) {
       var ocIsTargetRaw = (e && e.parameter && e.parameter.isTarget !== undefined) ? String(e.parameter.isTarget) : null;
       var ocStartedAt = String((e && e.parameter && e.parameter.startedAt) || '').trim();
       var ocEvalAnchor = (e && e.parameter && e.parameter.evalAnchor !== undefined) ? String(e.parameter.evalAnchor).trim() : null;
+      // 口腔②個人サイクル: plan_start（計画作成/節目アンカー YYYY-MM）・plan_end（イレギュラー終了 YYYY-MM）。空文字はクリア許可。
+      var ocPlanStart = (e && e.parameter && e.parameter.planStart !== undefined) ? String(e.parameter.planStart).trim() : null;
+      var ocPlanEnd = (e && e.parameter && e.parameter.planEnd !== undefined) ? String(e.parameter.planEnd).trim() : null;
       if (!ocUserId) {
         return respond({ ok: false, error: 'invalid params (userId required)' }, callback);
       }
-      if (ocIsTargetRaw === null && !ocStartedAt && ocEvalAnchor === null) {
-        return respond({ ok: false, error: 'invalid params (isTarget/startedAt/evalAnchor required)' }, callback);
+      if (ocIsTargetRaw === null && !ocStartedAt && ocEvalAnchor === null && ocPlanStart === null && ocPlanEnd === null) {
+        return respond({ ok: false, error: 'invalid params (isTarget/startedAt/evalAnchor/planStart/planEnd required)' }, callback);
       }
       if (ocStartedAt && !/^\d{4}-\d{2}-\d{2}$/.test(ocStartedAt)) {
         return respond({ ok: false, error: 'invalid startedAt (YYYY-MM-DD)' }, callback);
       }
       if (ocEvalAnchor !== null && ocEvalAnchor !== '' && !/^\d{4}-\d{2}$/.test(ocEvalAnchor)) {
         return respond({ ok: false, error: 'invalid evalAnchor (YYYY-MM)' }, callback);
+      }
+      if (ocPlanStart !== null && ocPlanStart !== '' && !/^\d{4}-\d{2}$/.test(ocPlanStart)) {
+        return respond({ ok: false, error: 'invalid planStart (YYYY-MM)' }, callback);
+      }
+      if (ocPlanEnd !== null && ocPlanEnd !== '' && !/^\d{4}-\d{2}$/.test(ocPlanEnd)) {
+        return respond({ ok: false, error: 'invalid planEnd (YYYY-MM)' }, callback);
       }
       var ocLock = LockService.getScriptLock();
       try { ocLock.waitLock(10000); } catch (ocLockErr) {
@@ -3160,7 +3173,9 @@ function doGet(e) {
           var ocNewIsTarget = ocIsTargetRaw === null ? false : (ocIsTargetRaw === 'true' || ocIsTargetRaw === '1');
           var ocNewStartedAt = ocStartedAt || '2026-06-01';
           var ocNewAnchor = (ocEvalAnchor === null) ? '' : ocEvalAnchor;
-          ocSheet.appendRow([ocUserId, ocNewIsTarget, ocNewStartedAt, ocNow, ocNewAnchor]);
+          ocSheet.appendRow([ocUserId, ocNewIsTarget, ocNewStartedAt, ocNow, ocNewAnchor,
+            (ocPlanStart === null) ? '' : ocPlanStart,
+            (ocPlanEnd === null) ? '' : ocPlanEnd]);
         } else {
           if (ocIsTargetRaw !== null) {
             var ocBool = (ocIsTargetRaw === 'true' || ocIsTargetRaw === '1');
@@ -3171,6 +3186,12 @@ function doGet(e) {
           }
           if (ocEvalAnchor !== null) {
             ocSheet.getRange(ocRowIdx, 5).setValue(ocEvalAnchor);
+          }
+          if (ocPlanStart !== null) {
+            ocSheet.getRange(ocRowIdx, 6).setValue(ocPlanStart);
+          }
+          if (ocPlanEnd !== null) {
+            ocSheet.getRange(ocRowIdx, 7).setValue(ocPlanEnd);
           }
           ocSheet.getRange(ocRowIdx, 4).setValue(ocNow);
         }
@@ -12712,16 +12733,17 @@ function ensureOralPlansSheets_() {
   var recordSheet = ss.getSheetByName('口腔機能向上記録');
   if (!recordSheet) {
     recordSheet = ss.insertSheet('口腔機能向上記録');
-    recordSheet.getRange(1, 1, 1, 14).setValues([[
+    recordSheet.getRange(1, 1, 1, 18).setValues([[
       'userId', 'year', 'month', 'plan_date',
       'sent_to_cm', 'sent_date', 'memo', 'createdBy', 'updatedAt', 'eval_result', 'sent_by',
-      'moni1_date', 'moni2_date', 'houkoku_date'
+      'moni1_date', 'moni2_date', 'houkoku_date',
+      'houkoku_by', 'plan_by', 'moni1_by', 'moni2_by'
     ]]);
     recordSheet.setFrozenRows(1);
-    recordSheet.getRange(1, 1, 1, 14).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    recordSheet.getRange(1, 1, 1, 18).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
   } else {
     // マイグレーション: eval_result 列（10列目）が無ければ追加（2026-05-30・評価結果のケアマネ情報提供 証跡）
-    var oralHdr = recordSheet.getRange(1, 1, 1, Math.max(recordSheet.getLastColumn(), 14)).getValues()[0];
+    var oralHdr = recordSheet.getRange(1, 1, 1, Math.max(recordSheet.getLastColumn(), 18)).getValues()[0];
     if (oralHdr.indexOf('eval_result') === -1) {
       recordSheet.getRange(1, 10).setValue('eval_result');
       recordSheet.getRange(1, 10).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
@@ -12744,19 +12766,45 @@ function ensureOralPlansSheets_() {
       recordSheet.getRange(1, 14).setValue('houkoku_date');
       recordSheet.getRange(1, 14).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
     }
+    // マイグレーション: 口腔② by列（各提出物の担当看護師名）を additive 追加（2026-07・15-18列）
+    if (oralHdr.indexOf('houkoku_by') === -1) {
+      recordSheet.getRange(1, 15).setValue('houkoku_by');
+      recordSheet.getRange(1, 15).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    if (oralHdr.indexOf('plan_by') === -1) {
+      recordSheet.getRange(1, 16).setValue('plan_by');
+      recordSheet.getRange(1, 16).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    if (oralHdr.indexOf('moni1_by') === -1) {
+      recordSheet.getRange(1, 17).setValue('moni1_by');
+      recordSheet.getRange(1, 17).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    if (oralHdr.indexOf('moni2_by') === -1) {
+      recordSheet.getRange(1, 18).setValue('moni2_by');
+      recordSheet.getRange(1, 18).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
   }
   var configSheet = ss.getSheetByName('口腔機能向上設定');
   if (!configSheet) {
     configSheet = ss.insertSheet('口腔機能向上設定');
-    configSheet.getRange(1, 1, 1, 5).setValues([['userId', 'is_target', 'started_at', 'updatedAt', 'eval_anchor']]);
+    configSheet.getRange(1, 1, 1, 7).setValues([['userId', 'is_target', 'started_at', 'updatedAt', 'eval_anchor', 'plan_start', 'plan_end']]);
     configSheet.setFrozenRows(1);
-    configSheet.getRange(1, 1, 1, 5).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    configSheet.getRange(1, 1, 1, 7).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
   } else {
     // マイグレーション: eval_anchor 列（5列目・基準評価月 YYYY-MM）が無ければ追加（2026-05-31 v2）
-    var cfgHdr = configSheet.getRange(1, 1, 1, Math.max(configSheet.getLastColumn(), 4)).getValues()[0];
+    var cfgHdr = configSheet.getRange(1, 1, 1, Math.max(configSheet.getLastColumn(), 7)).getValues()[0];
     if (cfgHdr.indexOf('eval_anchor') === -1) {
       configSheet.getRange(1, 5).setValue('eval_anchor');
       configSheet.getRange(1, 5).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    // マイグレーション: 口腔②個人サイクル列（plan_start=計画作成/節目アンカー YYYY-MM / plan_end=イレギュラー終了 YYYY-MM）2026-07・器のみ／初回投入は別
+    if (cfgHdr.indexOf('plan_start') === -1) {
+      configSheet.getRange(1, 6).setValue('plan_start');
+      configSheet.getRange(1, 6).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    if (cfgHdr.indexOf('plan_end') === -1) {
+      configSheet.getRange(1, 7).setValue('plan_end');
+      configSheet.getRange(1, 7).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
     }
   }
   return { recordSheet: recordSheet, configSheet: configSheet };
@@ -12843,7 +12891,18 @@ function getOralTargetUsers_(includeCancelled) {
           if (!v) return '';
           if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM');
           return String(v);
-        })(configValues[ci][4])
+        })(configValues[ci][4]),
+        // 口腔②個人サイクル: plan_start(6列)=計画作成/節目アンカー・plan_end(7列)=イレギュラー終了（YYYY-MM）
+        planStart: (function (v) {
+          if (!v) return '';
+          if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM');
+          return String(v);
+        })(configValues[ci][5]),
+        planEnd: (function (v) {
+          if (!v) return '';
+          if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM');
+          return String(v);
+        })(configValues[ci][6])
       };
     }
   }
@@ -12870,7 +12929,7 @@ function getOralTargetUsers_(includeCancelled) {
     // 従来は「行なし」と「明示false」を同じ default {isTarget:false} に潰しており、新規が必ず【非対象】へ落ちていた不具合の是正。
     var _oralNormName = _normalizeUserName(name);
     var _oralHasCfg = Object.prototype.hasOwnProperty.call(configMap, _oralNormName);
-    var cfg = configMap[_oralNormName] || { isTarget: false, startedAt: '', evalAnchor: '' };  // P-4: 正規化キーで照合
+    var cfg = configMap[_oralNormName] || { isTarget: false, startedAt: '', evalAnchor: '', planStart: '', planEnd: '' };  // P-4: 正規化キーで照合
     list.push({
       userId: name,
       name: name,
@@ -12880,6 +12939,8 @@ function getOralTargetUsers_(includeCancelled) {
       isTarget: _oralHasCfg ? cfg.isTarget : true,
       startedAt: cfg.startedAt || '2026-06-01',  // 未設定はデフォルト 2026-06-01
       evalAnchor: cfg.evalAnchor || '',
+      planStart: cfg.planStart || '',  // 口腔②個人サイクルアンカー（YYYY-MM・器のみ・初回投入は別GO）
+      planEnd: cfg.planEnd || '',
       cancelled: isCancelled,
       // 台帳の利用開始日（YYYY-MM-DD 正規化・未設定や'-'は空文字）。フロントで利用開始前ユーザーの非表示判定に使用
       riyouStart: (function (v) {
