@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>🦷 口腔②モニ・結果報告書・計画書 | yawaragi</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
+    background: #f0f4f8;
+    color: #2d3748;
+    min-height: 100vh;
+}
+header {
+    padding: 16px 24px;
+    border-bottom: 2px solid #2c7a7b;
+    background: #f7fafc;
+}
+header h1 { font-size: 1.4rem; }
+header p { margin-top: 4px; font-size: 0.85rem; color: #718096; }
+
+.toolbar {
+    padding: 12px 24px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.toolbar select, .toolbar button {
+    font-family: inherit;
+    font-size: 0.9rem;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e0;
+    background: #fff;
+    cursor: pointer;
+    color: #2d3748;
+    min-height: 40px;
+}
+.toolbar button.primary {
+    background: #2c7a7b;
+    color: #fff;
+    border-color: #2c7a7b;
+    font-weight: bold;
+}
+.toolbar button.secondary {
+    background: #2b6cb0;
+    color: #fff;
+    border-color: #2b6cb0;
+}
+.toolbar .stats {
+    margin-left: auto;
+    font-size: 0.9rem;
+    color: #4a5568;
+}
+.toolbar .stats strong { color: #2c7a7b; }
+
+.filter-bar {
+    padding: 10px 24px;
+    background: #f7fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 0.85rem;
+}
+.filter-bar .label { font-weight: bold; color: #4a5568; }
+.filter-btn {
+    padding: 5px 12px;
+    border: 1px solid #cbd5e0;
+    border-radius: 16px;
+    background: #fff;
+    color: #4a5568;
+    font-size: 0.85rem;
+    cursor: pointer;
+    min-height: 32px;
+}
+.filter-btn.active {
+    background: #2c7a7b;
+    color: #fff;
+    border-color: #2c7a7b;
+    font-weight: bold;
+}
+.filter-btn.active-ampm {
+    background: #2b6cb0;
+    color: #fff;
+    border-color: #2b6cb0;
+    font-weight: bold;
+}
+.filter-count { color: #718096; }
+
+.table-container { overflow-x: auto; padding: 16px 24px; }
+table {
+    border-collapse: collapse;
+    width: 100%;
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+th, td {
+    border: 1px solid #e2e8f0;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 0.85rem;
+}
+th {
+    background: #2c7a7b;
+    color: #fff;
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+th.month-header {
+    background: #285e61;
+    border-left: 3px solid #234e52;
+}
+th.sub-header {
+    background: #2c7a7b;
+    font-size: 0.75rem;
+    min-width: 48px;
+}
+th.sub-header.month-start { border-left: 3px solid #234e52; }
+
+.name-cell {
+    text-align: left;
+    padding-left: 10px;
+    font-weight: bold;
+    min-width: 110px;
+    white-space: nowrap;
+    cursor: pointer;
+    background: #fff;
+    position: sticky;
+    left: 30px;
+    z-index: 5;
+}
+.name-cell:hover { background: #f0fff4; }
+
+/* ケアマネ送付済み 印鑑風マーク */
+.cell-relative { position: relative; }
+.shipped-stamp {
+    position: absolute;
+    bottom: 1px;
+    right: 2px;
+    display: inline-block;
+    border: 2px solid #c53030;
+    color: #c53030;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    font: bold 0.65rem/18px 'Yu Mincho', '游明朝', serif;
+    text-align: center;
+    transform: rotate(-12deg);
+    opacity: 0.9;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.4);
+}
+.group-cell {
+    font-weight: bold;
+    color: #2c7a7b;
+    background: #e6fffa;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    min-width: 30px;
+}
+.care-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 4px;
+    font-weight: normal;
+    background: #fef5e7;
+    color: #9c4221;
+}
+.row-even { background: #f7fafc; }
+.row-even .name-cell { background: #f7fafc; }
+
+.check-cell {
+    cursor: pointer;
+    min-width: 48px;
+    min-height: 36px;
+    font-size: 0.8rem;
+    transition: background 0.15s;
+}
+.check-cell:hover { background: #edf2f7; }
+.check-cell.checked { background: #b2f5ea; color: #234e52; font-weight: bold; }
+.check-cell.all-done { background: #e6fffa; color: #234e52; font-weight: bold; }
+/* 送付済(作成済+送付済)は設計の3色＝青に統一（旧深緑を廃し当月cell-doneと整合） */
+.check-cell.all-done.has-value { background: #e3f2fd; color: #0d47a1; }
+.check-cell.highlight-undone {
+    background: #fff5f0;
+    box-shadow: inset 0 0 0 2px #9c4221;
+}
+.check-cell.current { box-shadow: inset 0 0 0 3px #2b6cb0; }
+.check-cell.current.highlight-undone { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #9c4221; }
+.check-cell.disabled {
+    background: #edf2f7;
+    color: #a0aec0;
+    cursor: default;
+}
+.check-cell.disabled:hover { background: #edf2f7; }
+
+/* 保存未確認セル（API送信失敗で楽観値だけ残っているセル） */
+.check-cell.pending {
+    background: #fff3e0 !important;
+    box-shadow: inset 0 0 0 2px #ff6f00 !important;
+    position: relative;
+}
+.check-cell.pending.current {
+    box-shadow: inset 0 0 0 2px #ff6f00, inset 0 0 0 4px #2b6cb0 !important;
+}
+.check-cell.pending::after {
+    content: '⚠';
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 11px;
+    color: #ff6f00;
+}
+
+#pendingBanner {
+    background: #fff3e0;
+    color: #e65100;
+    padding: 10px 24px;
+    border-left: 4px solid #ff6f00;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+}
+#pendingBanner:hover { background: #ffe0b2; }
+
+/* 評価セル: PDF/印刷の独立フィールド */
+.check-cell.hyouka-one {
+    background: #b2f5ea;
+    color: #1a5759;
+    font-weight: 600;
+    font-size: 0.74rem;
+}
+/* 評価の送付済(両方提出)は設計の3色＝青に統一（旧深緑を廃し当月cell-doneと整合） */
+.check-cell.hyouka-both {
+    background: #e3f2fd;
+    color: #0d47a1;
+    font-weight: 700;
+    font-size: 0.74rem;
+}
+
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 360px;
+    width: 90%;
+}
+.modal h3 { margin-bottom: 8px; font-size: 1.1rem; }
+.modal .sub { color: #718096; font-size: 0.85rem; margin-bottom: 14px; }
+.modal input[type="date"], .modal input[type="month"], .modal input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    font-size: 1rem;
+    border: 2px solid #2c7a7b;
+    border-radius: 8px;
+    margin-bottom: 14px;
+}
+.modal .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.modal .btn-row button {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: inherit;
+}
+.modal .btn-row .ok { background: #2c7a7b; color: #fff; }
+.modal .btn-row .clear { background: #9c4221; color: #fff; }
+.modal .btn-row .cancel { background: #edf2f7; color: #4a5568; }
+.modal .btn-row .block { background: #b7791f; color: #fff; }
+.modal .btn-row .block-mitei { background: #4a5568; color: #fff; }
+.modal .btn-row .unblock { background: #718096; color: #fff; }
+
+/* 保留中バナー（ダイアログ最上部・最大の目立ち度） */
+#blockedBanner {
+    font-size: 1.25rem;
+    font-weight: bold;
+    padding: 16px 18px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+#blockedBanner.banner-hoken {
+    background: #fef3c7;
+    color: #78350f;
+    border: 3px solid #b7791f;
+    box-shadow: 0 0 0 2px #fef3c7, 0 4px 12px rgba(183,121,31,0.25);
+}
+#blockedBanner.banner-mitei {
+    background: #e2e8f0;
+    color: #2d3748;
+    border: 3px solid #4a5568;
+    box-shadow: 0 0 0 2px #e2e8f0, 0 4px 12px rgba(74,85,104,0.25);
+}
+
+/* 保留セル: 保険未登録（オレンジ・⚠） */
+.check-cell.blocked-hoken {
+    background: #fef3c7 !important;
+    box-shadow: inset 0 0 0 2px #b7791f !important;
+    color: #78350f !important;
+    font-weight: bold;
+}
+.check-cell.blocked-hoken::before { content: '⚠ '; }
+.check-cell.blocked-hoken.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #b7791f !important; }
+
+/* 保留セル: 利用継続未確定（グレー・⏸） */
+.check-cell.blocked-mitei {
+    background: #e2e8f0 !important;
+    box-shadow: inset 0 0 0 2px #4a5568 !important;
+    color: #2d3748 !important;
+    font-weight: bold;
+}
+.check-cell.blocked-mitei::before { content: '⏸ '; }
+.check-cell.blocked-mitei.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #4a5568 !important; }
+
+.toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(120px);
+    background: #2d3748;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #9c4221; }
+.toast.warn { background: #b7791f; }
+
+#offlineBanner {
+    background: #fff5f0;
+    color: #9c4221;
+    padding: 8px 24px;
+    border-left: 4px solid #9c4221;
+    font-size: 0.85rem;
+    display: none;
+}
+
+/* ===== 月次利用状況モーダル（genba/board から移植・2026-06-24） ===== */
+.mu-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 10000; display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+}
+.mu-modal-box {
+    background: #fff; border-radius: 12px; width: 100%; max-width: 480px;
+    max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+.mu-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
+}
+.mu-title { font-size: 1.05rem; font-weight: 700; color: #2d3748; }
+.mu-title-sub { font-weight: 500; color: #4a5568; font-size: 0.95rem; margin-left: 4px; }
+.mu-close-btn { background: none; border: none; font-size: 1.4rem; color: #718096; cursor: pointer; padding: 4px 8px; line-height: 1; }
+.mu-month-tabs { display: flex; gap: 8px; padding: 12px 18px; border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
+.mu-month-tab {
+    flex: 1; padding: 8px 4px; border: 1px solid #cbd5e0; border-radius: 8px;
+    background: #fff; color: #4a5568; font-size: 0.95rem; font-weight: 600;
+    cursor: pointer; text-align: center; font-family: inherit;
+}
+.mu-month-tab.active { background: #2c5282; color: #fff; border-color: #2c5282; }
+.mu-summary { padding: 12px 18px; border-bottom: 1px solid #f1f5f9; font-size: 0.95rem; color: #2d3748; }
+.mu-summary .mu-summary-main { font-weight: 600; margin-bottom: 6px; }
+.mu-summary .mu-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.mu-badge { display: inline-block; padding: 4px 10px; border-radius: 14px; font-size: 0.82rem; font-weight: 600; }
+.mu-badge.danger  { background: #fed7d7; color: #c53030; }
+.mu-badge.info    { background: #bee3f8; color: #2c5282; }
+.mu-badge.success { background: #c6f6d5; color: #22543d; }
+.mu-calendar { padding: 14px 18px; flex: 1; overflow-y: auto; }
+.mu-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mu-cal-head { text-align: center; font-size: 0.78rem; font-weight: 700; color: #718096; padding: 4px 0; }
+.mu-cal-cell {
+    aspect-ratio: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; border-radius: 8px;
+    font-size: 0.88rem; color: #2d3748; background: #f7fafc;
+}
+.mu-cal-cell.empty     { background: transparent; }
+.mu-cal-cell.scheduled { background: #edf2f7; }
+.mu-cal-cell.attended  { background: #c6f6d5; color: #22543d; font-weight: 700; }
+.mu-cal-cell.absent    { background: #fed7d7; color: #c53030; font-weight: 700; }
+.mu-cal-cell.attended.absent { background: linear-gradient(135deg, #c6f6d5 50%, #fed7d7 50%); color: #2d3748; }
+.mu-cal-cell.attended.nopickup::after { content: '🔵'; font-size: 0.6rem; line-height: 1; }
+.mu-cal-cell.today { box-shadow: inset 0 0 0 2px #3182ce; }
+.mu-legend { padding: 10px 18px; font-size: 0.78rem; color: #718096; border-top: 1px solid #f1f5f9; text-align: center; }
+
+/* 当月の提出セル 3色（赤=未作成/緑=作成済未送付/青=送付済）。当月セルのみに付与 */
+.cell-todo  { background:#ffebee !important; box-shadow: inset 0 0 0 2px #e53935 !important; }
+.cell-ready { background:#e8f5e9 !important; box-shadow: inset 0 0 0 2px #43a047 !important; }
+.cell-done  { background:#e3f2fd !important; box-shadow: inset 0 0 0 2px #1e88e5 !important; }
+
+@media print {
+    body { background: #fff; }
+    header { background: #fff; border-bottom: 1px solid #000; }
+    .toolbar, .filter-bar, #offlineBanner, .no-print { display: none !important; }
+    .table-container { padding: 0; overflow: visible; }
+    table { box-shadow: none; }
+    th, td { padding: 2px 1px; font-size: 9px; }
+    .name-cell, .group-cell { position: static; }
+    .check-cell.disabled { background: #f0f0f0; }
+    @page { size: A4 landscape; margin: 8mm; }
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h1>🦷 口腔②モニ・結果報告書・計画書</h1>
+    <p>口腔加算者（同意者）の 3 ヶ月サイクル。各サイクルで「モニ①・モニ②（内部）」と「節目＝結果報告書＋次計画書＋ケアマネ送付」を管理します。節目セルタップで結果報告書作成日・計画書作成日・送付を入力。名前タップで利用状況（直近3ヶ月）を表示します。①実施記録（口腔体操の実施日）とは別アプリです。</p>
+</header>
+
+<div id="offlineBanner">⚠ オフライン表示中(最新データの取得に失敗しています)</div>
+<div id="pendingBanner" style="display:none;" onclick="retryPending()"></div>
+
+<div class="toolbar">
+    <select id="fiscalYearSelect" onchange="onYearChange()"></select>
+    <button class="primary" onclick="loadFiscalYearData()">🔄 再読込</button>
+    <button onclick="openUnsubmittedView()" style="background:#fff5f5; border:1.5px solid #c53030; color:#742a2a; font-weight:700;">📮 ケアマネ未提出 <span id="unsubmittedBadge" style="display:none; background:#c53030; color:#fff; border-radius:10px; padding:1px 7px; font-size:0.8rem; margin-left:2px;">0</span></button>
+    <button class="secondary" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
+    <button onclick="window.print()">🖨 印刷</button>
+    <button onclick="openOperatorDialog()" id="operatorBtn" style="background:#edf2f7;">👤 操作者: <span id="operatorLabel">未選択</span></button>
+    <label style="display:flex; align-items:center; gap:6px; padding:6px 12px; border:1.5px solid #cbd5e0; border-radius:8px; background:#fff; font-size:0.9rem; cursor:pointer;">
+        <input type="checkbox" id="includeCancelledChk" onchange="toggleIncludeCancelled(this.checked)" style="width:16px; height:16px;">
+        <span style="font-weight:600; color:#c0392b;">🔴 中止者も表示</span>
+    </label>
+    <div class="stats">
+        対象者: <strong id="totalUsers">0</strong> 名 ／ ケアマネ未提出: <strong id="unsentCount">0</strong> 件
+    </div>
+</div>
+
+<div class="filter-bar" id="filterBar" style="display:flex;">
+    <span class="label">行:</span>
+    <div id="groupFilters" style="display:flex; gap:4px; flex-wrap:wrap;">
+        <button class="filter-btn active" onclick="setGroupFilter('', event)">全て</button>
+        <button class="filter-btn" onclick="setGroupFilter('ア', event)">あ</button>
+        <button class="filter-btn" onclick="setGroupFilter('カ', event)">か</button>
+        <button class="filter-btn" onclick="setGroupFilter('サ', event)">さ</button>
+        <button class="filter-btn" onclick="setGroupFilter('タ', event)">た</button>
+        <button class="filter-btn" onclick="setGroupFilter('ナ', event)">な</button>
+        <button class="filter-btn" onclick="setGroupFilter('ハ', event)">は</button>
+        <button class="filter-btn" onclick="setGroupFilter('マ', event)">ま</button>
+        <button class="filter-btn" onclick="setGroupFilter('ヤ', event)">や</button>
+        <button class="filter-btn" onclick="setGroupFilter('ラ', event)">ら</button>
+        <button class="filter-btn" onclick="setGroupFilter('ワ', event)">わ</button>
+    </div>
+    <span class="filter-count" id="filterCount"></span>
+</div>
+
+<div class="table-container">
+    <table id="matrixTable">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+    <div id="emptyMessage" style="text-align:center; padding:60px 20px; color:#999;">読み込み中...</div>
+</div>
+
+<!-- 操作者選択モーダル -->
+<div class="modal-overlay" id="operatorDialog">
+    <div class="modal">
+        <h3>操作者を選択してください</h3>
+        <div class="sub">操作ログに記録します。後でツールバーの「操作者」ボタンから変更できます。</div>
+        <div id="operatorList" style="display:flex; flex-wrap:wrap; gap:8px; margin:14px 0;"></div>
+    </div>
+</div>
+
+<!-- モニ実施日ダイアログ（内部・送付概念なし） -->
+<div class="modal-overlay" id="moniDialog">
+    <div class="modal">
+        <h3 id="moniTitle">モニ実施日</h3>
+        <div class="sub" id="moniSub"></div>
+        <input type="date" id="moniInput">
+        <div class="btn-row">
+            <button class="clear" onclick="clearMoniDate()">取消</button>
+            <button class="ok" onclick="saveMoniDate()">OK</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px;">
+            <button class="cancel" onclick="closeMoniDialog()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<!-- 節目ダイアログ（結果報告書＋次計画書＋ケアマネ送付） -->
+<div class="modal-overlay" id="setsumeDialog">
+    <div class="modal">
+        <h3 id="setsumeTitle">節目編集</h3>
+        <div class="sub" id="setsumeSub"></div>
+        <div style="margin:10px 0; padding:10px; background:#f0f9ff; border-left:3px solid #2c7a7b; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">📝 結果報告書 作成日（3ヶ月目・ケアマネ提出物）</div>
+            <input type="date" id="houkokuInput" style="width:100%;">
+            <div class="btn-row" style="margin-top:6px;">
+                <button class="clear" onclick="clearSetsumeField('houkoku_date')">クリア</button>
+                <button class="ok" onclick="saveSetsumeField('houkoku_date')">結果報告書を保存</button>
+            </div>
+        </div>
+        <div style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
+            <div style="font-weight:600; margin-bottom:6px;">📄 次サイクル 計画書 作成日（ケアマネ提出物）</div>
+            <input type="date" id="planInput" style="width:100%;">
+            <div class="btn-row" style="margin-top:6px;">
+                <button class="clear" onclick="clearSetsumeField('plan_date')">クリア</button>
+                <button class="ok" onclick="saveSetsumeField('plan_date')">計画書を保存</button>
+            </div>
+        </div>
+        <div id="setsumeSentSection" style="margin-top:10px; padding:10px; background:#fff5f5; border-left:3px solid #c53030; border-radius:6px;">
+            <div style="font-size:0.85rem; color:#742a2a; font-weight:bold; margin-bottom:6px;">📮 ケアマネ送付（計画書＋結果報告書を1送付でまとめて記録）</div>
+            <div id="setsumeMethodHint" style="display:none; margin-bottom:6px; font-size:0.8rem;"></div>
+            <div id="setsumeSentStatus" style="font-size:0.9rem; margin-bottom:8px;"></div>
+            <label style="font-size:0.8rem; color:#4a5568;">担当（送付者）</label>
+            <select id="setsumeByInput" style="width:100%; margin-bottom:8px; min-height:38px;"></select>
+            <div class="btn-row">
+                <button id="setsumeSentToggleBtn" onclick="toggleSetsumeSent()" style="background:#c53030; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:bold;">📮 今日 送付済みにする</button>
+            </div>
+        </div>
+        <div class="btn-row" style="margin-top:10px;">
+            <button class="cancel" onclick="closeSetsumeDialog()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<!-- 利用状況モーダル（monthly_usage 日ごとカレンダー版・genba移植・読み取りのみ） -->
+<div id="mu-modal" class="mu-modal-overlay" style="display:none;" onclick="if(event.target===this)closeUsageModal()">
+  <div class="mu-modal-box">
+    <div class="mu-modal-header">
+      <div class="mu-title">
+        <span id="mu-user-name"></span>
+        <span class="mu-title-sub">さん 月次利用状況</span>
+      </div>
+      <button type="button" class="mu-close-btn" onclick="closeUsageModal()">✕</button>
+    </div>
+    <div class="mu-care-line" id="mu-user-care" style="display:none;padding:6px 18px 0;font-weight:700;font-size:0.9rem;"></div>
+    <div class="mu-month-tabs" id="mu-month-tabs"></div>
+    <div class="mu-summary" id="mu-summary"></div>
+    <div class="mu-calendar" id="mu-calendar"></div>
+    <div class="mu-legend">🟢=来館　🔴=欠席　🔵=送迎なし　灰=予定なし　※来館は出勤送迎表ベースの実績</div>
+    <div style="padding:12px 18px; border-top:1px solid #f1f5f9;">
+      <button type="button" style="width:100%; padding:10px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit; background:#edf2f7; color:#4a5568;" onclick="closeUsageModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ケアマネ未提出ビュー -->
+<div class="modal-overlay" id="unsubmittedDialog">
+    <div class="modal" style="max-width:560px; max-height:80vh; overflow:auto;">
+        <h3>📮 ケアマネ未提出 一覧</h3>
+        <div id="unsubmittedBody" style="margin-top:10px;"></div>
+        <div class="btn-row" style="margin-top:14px;">
+            <button class="cancel" onclick="closeUnsubmittedView()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ============================================================
+// 口腔②モニ・結果報告書・計画書アプリ（お手本＝個別機能訓練計画書チェック.html の口腔版）
+// データ正本＝口腔機能向上記録シート（getOralPlansYear / updateOralPlan）。①実施記録(別GAS)とは別物。
+// 送付状態＝sent_to_cm のみ（提出送付台帳には書かない＝3箇所目を作らない）。
+// ============================================================
+
+// ============ 定数 ============
+const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+const CACHE_PREFIX = 'yawaragi_oralplan_v1_';
+const PENDING_PREFIX = 'yawaragi_oralplan_pending_';
+const OPERATOR_KEY = 'yawaragi_oralplan_operator';
+const OPERATOR_FIXED = ['代表'];
+// ケアマネ未提出 カットオフ日（稼働日スタート）。これ以降の作成だけ未提出判定の対象（過去バックログ除外）。
+// ※GAS側 ORAL_SOUFU_CUTOFF と同値で管理すること（デプロイ時に実稼働日で確定）。
+const ORAL_SOUFU_CUTOFF = '2026-07-05';
+
+// 口腔は年内の節目が 3/6/9/12月固定（GAS isOralSendMonth_ と同一）。会計年度順に4サイクル。
+// 各節目の直前2ヶ月がモニ①/モニ②（同一record行に moni1_date/moni2_date で保持）。
+const ANCHORS = [
+    { m: 6,  label: '6月',  nextYear: false, moni: [{ m: 4,  label: '4月'  }, { m: 5,  label: '5月'  }] },
+    { m: 9,  label: '9月',  nextYear: false, moni: [{ m: 7,  label: '7月'  }, { m: 8,  label: '8月'  }] },
+    { m: 12, label: '12月', nextYear: false, moni: [{ m: 10, label: '10月' }, { m: 11, label: '11月' }] },
+    { m: 3,  label: '3月',  nextYear: true,  moni: [{ m: 1,  label: '1月'  }, { m: 2,  label: '2月'  }] }
+];
+// サブ列は各節目で3つ：モニ①・モニ②・節目（積み上げ）
+const SUB_LABELS = ['モニ①', 'モニ②', '節目'];
+
+// ============ 状態 ============
+let state = {
+    fiscalYear: getCurrentFiscalYear(),
+    users: [],            // [{ userId, name, furigana, category, isTarget, startedAt, cancelled, sendMethod }]
+    records: {},          // key: "userId_year_month" → { moni1_date, moni2_date, houkoku_date, plan_date, sent_to_cm, sent_date, sent_by, name }
+    isLoading: false,
+    operator: '',
+    includeCancelled: false,
+    staffNames: []
+};
+
+let filterGroup = '';
+let moniDialogState = { userId: '', name: '', year: 0, month: 0, field: '', label: '', currentValue: '' };
+let setsumeDialogState = { userId: '', name: '', year: 0, month: 0, sendMethod: '' };
+
+// ============ 純関数（shared.js非依存でインライン化） ============
+// 当月提出セルの色: 非該当→''／送付済→'blue'／作成済未送付→'green'／該当未作成→'red'（shared.js §I 同一ロジック）
+function submitCellColor(isApplicable, hasCreated, hasSent) {
+    if (!isApplicable) return '';
+    if (hasSent) return 'blue';
+    if (hasCreated) return 'green';
+    return 'red';
+}
+// 口腔の節目月判定（GAS isOralSendMonth_ と同一）: 月∈{3,6,9,12} かつ 開始月以降。startedAt空は全許可。
+function isOralSendMonth(startedAt, year, month) {
+    if ([3, 6, 9, 12].indexOf(month) < 0) return false;
+    if (!startedAt) return true;
+    const m = String(startedAt).match(/^(\d{4})-(\d{2})/);
+    if (!m) return true;
+    const sTotal = parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
+    return (year * 12 + month) >= sTotal;
+}
+
+// ============ ユーティリティ ============
+function getCurrentFiscalYear() {
+    const now = new Date();
+    return (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+}
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+}
+function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+function formatTodayISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function formatMD(yyyymmdd) {
+    if (!yyyymmdd) return '';
+    const parts = String(yyyymmdd).split('-');
+    if (parts.length < 3) return yyyymmdd;
+    return parseInt(parts[1], 10) + '/' + parseInt(parts[2], 10);
+}
+function showToast(msg, kind) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (kind ? ' ' + kind : '');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+function showOffline() { document.getElementById('offlineBanner').style.display = 'block'; }
+function hideOffline() { document.getElementById('offlineBanner').style.display = 'none'; }
+
+// ============ 保存未確認（pending）管理（お手本流用・action=updateOralPlan） ============
+let _pendingCache = null;
+let _pendingCacheYear = null;
+function pendingKey(userId, year, month, field) { return userId + '_' + year + '_' + month + '_' + field; }
+function getPendingMap() {
+    const fy = state.fiscalYear;
+    if (_pendingCache !== null && _pendingCacheYear === fy) return _pendingCache;
+    try {
+        const raw = localStorage.getItem(PENDING_PREFIX + fy);
+        _pendingCache = raw ? JSON.parse(raw) : {};
+    } catch (e) { _pendingCache = {}; }
+    _pendingCacheYear = fy;
+    return _pendingCache;
+}
+function setPendingMap(map) {
+    const fy = state.fiscalYear;
+    _pendingCache = map;
+    _pendingCacheYear = fy;
+    try { localStorage.setItem(PENDING_PREFIX + fy, JSON.stringify(map)); } catch (e) { console.warn('pending save failed', e); }
+}
+function markPending(userId, year, month, field, value) {
+    const map = getPendingMap();
+    map[pendingKey(userId, year, month, field)] = { userId, year, month, field, value, ts: new Date().toISOString() };
+    setPendingMap(map);
+}
+function unmarkPending(userId, year, month, field) {
+    const map = getPendingMap();
+    const k = pendingKey(userId, year, month, field);
+    if (map[k]) { delete map[k]; setPendingMap(map); }
+}
+function isPending(userId, year, month, field) { return !!getPendingMap()[pendingKey(userId, year, month, field)]; }
+function updatePendingBanner() {
+    const banner = document.getElementById('pendingBanner');
+    if (!banner) return;
+    const count = Object.keys(getPendingMap()).length;
+    if (count === 0) { banner.style.display = 'none'; return; }
+    banner.textContent = '⚠ 保存未確認のデータが ' + count + ' 件あります（タップで再送信）';
+    banner.style.display = 'block';
+}
+async function retryPending() {
+    const map = getPendingMap();
+    const keys = Object.keys(map);
+    if (keys.length === 0) return;
+    showToast('🔄 ' + keys.length + ' 件を再送信中...');
+    let success = 0, failed = 0;
+    for (const k of keys) {
+        const p = map[k];
+        try {
+            const url = API_BASE + '?action=updateOralPlan'
+                + '&userId=' + encodeURIComponent(p.userId)
+                + '&year=' + p.year + '&month=' + p.month
+                + '&field=' + p.field
+                + '&value=' + encodeURIComponent(p.value)
+                + '&operator=' + encodeURIComponent(getOperator())
+                + '&t=' + Date.now();
+            const res = await fetch(url);
+            const json = await res.json();
+            if (json.ok) { unmarkPending(p.userId, p.year, p.month, p.field); success++; }
+            else { failed++; }
+        } catch (e) { failed++; }
+    }
+    updatePendingBanner();
+    renderTable();
+    if (failed === 0) { showToast('✅ 再送信完了: ' + success + ' 件すべて成功'); hideOffline(); }
+    else { showToast('再送信: 成功 ' + success + ' / 失敗 ' + failed + '（ネット接続を確認）', 'error'); }
+}
+
+// ============ ふりがなグループ（お手本流用） ============
+function getGroup(kana) {
+    if (!kana) return '他';
+    const c = kana.charAt(0);
+    if ('あいうえおアイウエオ'.indexOf(c) >= 0) return 'ア';
+    if ('かきくけこがぎぐげごカキクケコガギグゲゴ'.indexOf(c) >= 0) return 'カ';
+    if ('さしすせそざじずぜぞサシスセソザジズゼゾ'.indexOf(c) >= 0) return 'サ';
+    if ('たちつてとだぢづでどタチツテトダヂヅデド'.indexOf(c) >= 0) return 'タ';
+    if ('なにぬねのナニヌネノ'.indexOf(c) >= 0) return 'ナ';
+    if ('はひふへほばびぶべぼぱぴぷぺぽハヒフヘホバビブベボパピプペポ'.indexOf(c) >= 0) return 'ハ';
+    if ('まみむめもマミムメモ'.indexOf(c) >= 0) return 'マ';
+    if ('やゆよヤユヨ'.indexOf(c) >= 0) return 'ヤ';
+    if ('らりるれろラリルレロ'.indexOf(c) >= 0) return 'ラ';
+    if ('わをんワヲン'.indexOf(c) >= 0) return 'ワ';
+    return '他';
+}
+function sortUsers() {
+    state.users.sort((a, b) =>
+        (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja'));
+}
+
+// ============ 年度セレクタ（お手本流用） ============
+function populateFiscalYearSelect() {
+    const sel = document.getElementById('fiscalYearSelect');
+    const current = getCurrentFiscalYear();
+    sel.innerHTML = '';
+    for (let y = current + 1; y >= 2024; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y + '年度（' + y + '/4〜' + (y + 1) + '/3）';
+        if (y === current) opt.selected = true;
+        sel.appendChild(opt);
+    }
+    state.fiscalYear = current;
+}
+function onYearChange() {
+    state.fiscalYear = parseInt(document.getElementById('fiscalYearSelect').value, 10);
+    _pendingCache = null;
+    _pendingCacheYear = null;
+    loadCache();
+    loadFiscalYearData();
+    updatePendingBanner();
+}
+
+// ============ キャッシュ（お手本流用） ============
+function saveCache() {
+    try {
+        localStorage.setItem(CACHE_PREFIX + state.fiscalYear, JSON.stringify({
+            fetchedAt: new Date().toISOString(),
+            users: state.users,
+            records: state.records,
+            cancelledUsers: state.cancelledUsers || []
+        }));
+    } catch (e) { console.warn('cache save failed', e); }
+}
+function loadCache() {
+    try {
+        const raw = localStorage.getItem(CACHE_PREFIX + state.fiscalYear);
+        if (!raw) { state.users = []; state.records = {}; state.cancelledUsers = []; renderTable(); return; }
+        const c = JSON.parse(raw);
+        state.users = c.users || [];
+        state.records = c.records || {};
+        state.cancelledUsers = c.cancelledUsers || [];
+        renderTable();
+    } catch (e) { console.warn('cache load failed', e); }
+}
+
+// ============ API（getOralPlansYear） ============
+async function fetchYear(year) {
+    const res = await fetch(API_BASE + '?action=getOralPlansYear&year=' + year + '&t=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+}
+function mapRecord(rec) {
+    return {
+        name: rec.userId || '',
+        moni1_date: rec.moni1_date || '',
+        moni2_date: rec.moni2_date || '',
+        houkoku_date: rec.houkoku_date || '',
+        plan_date: rec.plan_date || '',
+        sent_to_cm: !!rec.sent_to_cm,
+        sent_date: rec.sent_date || '',
+        sent_by: rec.sent_by || ''
+    };
+}
+async function loadFiscalYearData() {
+    if (state.isLoading) return;
+    state.isLoading = true;
+    const fy = state.fiscalYear;
+    try {
+        const [r1, r2] = await Promise.all([fetchYear(fy), fetchYear(fy + 1)]);
+        if (!r1 || !r1.ok || !r2 || !r2.ok) { showOffline(); return; }
+        if (!(r1.users || []).length) { showToast('⚠ 利用者データが空でした。キャッシュを維持します', 'warn'); return; }
+        state.users = (r1.users || []).map(u => ({
+            userId: u.userId, name: u.name || u.userId, furigana: u.furigana || '',
+            category: u.category || '', isTarget: !!u.isTarget, startedAt: u.startedAt || '',
+            cancelled: !!u.cancelled, sendMethod: u.sendMethod || ''
+        }));
+        // 中止者（getOralPlansYear.cancelledUsers・toggleで合流）
+        state.cancelledUsers = (r1.cancelledUsers || []).map(u => ({
+            userId: u.userId, name: u.name || u.userId, furigana: u.furigana || '',
+            category: u.category || '', isTarget: !!u.isTarget, startedAt: u.startedAt || '',
+            cancelled: true, sendMethod: u.sendMethod || ''
+        }));
+        const newRecords = {};
+        [r1, r2].forEach(r => {
+            (r.records || []).forEach(rec => {
+                newRecords[rec.userId + '_' + rec.year + '_' + rec.month] = mapRecord(rec);
+            });
+        });
+        // pending 突合（サーバ反映済なら解除／未反映は楽観値を残す）
+        const pmap = getPendingMap();
+        let pendingChanged = false;
+        Object.keys(pmap).forEach(k => {
+            const p = pmap[k];
+            const recKey = p.userId + '_' + p.year + '_' + p.month;
+            const serverRec = newRecords[recKey];
+            let serverVal = serverRec ? serverRec[p.field] : '';
+            if (p.field === 'sent_to_cm') serverVal = serverRec ? (serverRec.sent_to_cm ? 'true' : 'false') : 'false';
+            if (String(serverVal) === String(p.value)) { delete pmap[k]; pendingChanged = true; }
+            else {
+                if (!newRecords[recKey]) newRecords[recKey] = mapRecord({ userId: p.userId });
+                if (p.field === 'sent_to_cm') newRecords[recKey].sent_to_cm = (p.value === 'true' || p.value === '1');
+                else newRecords[recKey][p.field] = p.value;
+            }
+        });
+        if (pendingChanged) setPendingMap(pmap);
+        state.records = newRecords;
+        saveCache();
+        hideOffline();
+        renderTable();
+        updatePendingBanner();
+    } catch (e) {
+        console.error('loadFiscalYearData error:', e);
+        showOffline();
+        showToast('⚠ データ取得失敗（オフライン表示）', 'error');
+    } finally {
+        state.isLoading = false;
+    }
+}
+
+// ============ テーブル描画 ============
+function displayUsers() {
+    // 対象者を上・非対象を下。includeCancelled 時は中止者を合流。
+    let list = state.users.slice();
+    if (state.includeCancelled) list = list.concat(state.cancelledUsers || []);
+    return list;
+}
+function renderTable() {
+    const fy = state.fiscalYear;
+    const thead = document.querySelector('#matrixTable thead');
+    const tbody = document.querySelector('#matrixTable tbody');
+    const emptyEl = document.getElementById('emptyMessage');
+
+    const allUsers = displayUsers();
+    if (!allUsers.length) {
+        thead.innerHTML = ''; tbody.innerHTML = '';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = state.isLoading ? '読み込み中...' : '対象者がいません';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    const now = new Date();
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth() + 1;
+    const nowYM = nowYear + '-' + String(nowMonth).padStart(2, '0');
+    const gateNames = new Set();
+
+    // ヘッダ（節目4列 × サブ3列）
+    let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="background:#2c7a7b; left:30px; min-width:110px;">氏名</th>';
+    ANCHORS.forEach(a => { h1 += '<th class="month-header" colspan="3">' + a.label + 'サイクル</th>'; });
+    h1 += '</tr>';
+    let h2 = '<tr>';
+    ANCHORS.forEach(a => {
+        h2 += '<th class="sub-header month-start">' + a.moni[0].label + '<br>モニ①</th>';
+        h2 += '<th class="sub-header">' + a.moni[1].label + '<br>モニ②</th>';
+        h2 += '<th class="sub-header">' + a.label + '<br>節目</th>';
+    });
+    h2 += '</tr>';
+    thead.innerHTML = h1 + h2;
+
+    // ソート＆フィルタ＋対象/非対象セクション
+    sortUsers();
+    const filtered = allUsers.filter(u => matchesFilter(u));
+    filtered.sort((a, b) => (b.isTarget ? 1 : 0) - (a.isTarget ? 1 : 0));  // 対象を上（安定ソート後）
+    const fcEl = document.getElementById('filterCount');
+    fcEl.textContent = filterGroup ? filtered.length + ' / ' + allUsers.length + '名 表示中' : '';
+
+    let html = '';
+    let currentSection = null;
+    let currentGroup = '';
+    let rowIndex = 0;
+    const totalCols = 1 + ANCHORS.length * 3;
+    filtered.forEach(u => {
+        const section = u.isTarget ? 'target' : 'nontarget';
+        if (section !== currentSection) {
+            currentSection = section;
+            currentGroup = '';
+            const secLabel = section === 'target' ? '【対象者】口腔加算（同意者）' : '【非対象】';
+            const secBg = section === 'target' ? '#2c7a7b' : '#9e9e9e';
+            html += '<tr><td colspan="' + totalCols + '" style="background:' + secBg + '; color:#fff; font-weight:bold; padding:6px 10px;">' + secLabel + '</td></tr>';
+        }
+        const group = getGroup(u.furigana);
+        if (group !== currentGroup) {
+            currentGroup = group;
+            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (totalCols - 1) + '" style="background:#e6fffa;"></td></tr>';
+        }
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+        const careMatch = (u.category || '').match(/要介護(\d)/);
+        const badge = careMatch ? '<span class="care-badge">介' + careMatch[1] + '</span>' : '';
+        const cancelBadge = u.cancelled ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;background:#c0392b;color:white;font-size:0.7rem;font-weight:700;">中止</span>' : '';
+        const rowStyle = (section === 'nontarget' ? ' style="opacity:0.5;"' : (u.cancelled ? ' style="opacity:0.7;background:#fef5f5;"' : ''));
+        html += '<tr class="' + rowClass + '"' + rowStyle + '>';
+        html += '<td class="group-cell"></td>';
+        html += '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" onclick="openUsageModal(this)">'
+              + escapeHtml(u.name) + badge + cancelBadge + '</td>';
+
+        ANCHORS.forEach(a => {
+            const cellYear = a.nextYear ? fy + 1 : fy;
+            const key = u.userId + '_' + cellYear + '_' + a.m;
+            const rec = state.records[key] || {};
+            const applicable = u.isTarget && isOralSendMonth(u.startedAt, cellYear, a.m);
+            const hasAnyData = !!(rec.moni1_date || rec.moni2_date || rec.houkoku_date || rec.plan_date || rec.sent_to_cm);
+            const active = applicable || hasAnyData;
+
+            // --- モニ①/モニ② セル（実施日・内部） ---
+            [['moni1_date', a.moni[0]], ['moni2_date', a.moni[1]]].forEach((pair, si) => {
+                const field = pair[0];
+                const moniInfo = pair[1];
+                let cls = 'check-cell' + (si === 0 ? ' month-start' : '');
+                if (!active) { html += '<td class="' + cls + ' disabled">-</td>'; return; }
+                const v = rec[field] || '';
+                if (v) cls += ' checked';
+                if (isPending(u.userId, cellYear, a.m, field)) cls += ' pending';
+                const inner = v
+                    ? '<div style="font-size:0.72rem;">' + formatMD(v) + '</div>'
+                    : '<div style="color:#cbd5e0;">—</div>';
+                html += '<td class="' + cls + '"'
+                      + ' data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '"'
+                      + ' data-year="' + cellYear + '" data-month="' + a.m + '"'
+                      + ' data-field="' + field + '" data-label="' + escapeAttr(moniInfo.label + 'モニ') + '"'
+                      + ' onclick="onMoniTap(this)">' + inner + '</td>';
+            });
+
+            // --- 節目セル（積み上げ：結果報告書＋計画書＋送付） ---
+            let cls = 'check-cell';
+            if (!active) { html += '<td class="' + cls + ' disabled">-</td>'; return; }
+            const houkoku = rec.houkoku_date || '';
+            const plan = rec.plan_date || '';
+            const sent = !!rec.sent_to_cm;
+            const sentDate = rec.sent_date || '';
+            const hasCreated = !!(houkoku || plan);
+            const isPast = (cellYear < nowYear) || (cellYear === nowYear && a.m < nowMonth);
+            const isCurrent = (cellYear === nowYear && a.m === nowMonth);
+            if (sent) cls += ' all-done has-value';
+            else if (hasCreated) cls += ' checked';
+            else if (isPast) cls += ' highlight-undone';
+            if (isCurrent) cls += ' current';
+            // 節目セルは常に3色（未作成=赤/作成済未送付=緑/送付済=青）
+            const _cc = submitCellColor(true, hasCreated, sent);
+            if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
+            if (isPending(u.userId, cellYear, a.m, 'houkoku_date')
+                || isPending(u.userId, cellYear, a.m, 'plan_date')
+                || isPending(u.userId, cellYear, a.m, 'sent_to_cm')) cls += ' pending';
+
+            const sm = u.sendMethod || '';
+            const smBadge = sm === '印刷'
+                ? '<span style="font-size:0.62rem; color:#9c4221; font-weight:700;">🖨印刷</span>'
+                : sm === 'PDF'
+                    ? '<span style="font-size:0.62rem; color:#2b6cb0; font-weight:700;">📧PDF</span>'
+                    : '';
+            let inner = '';
+            if (smBadge) inner += '<div>' + smBadge + '</div>';
+            if (houkoku) inner += '<div style="font-size:0.68rem; color:#4a5568;">報告 ' + formatMD(houkoku) + '</div>';
+            if (plan) inner += '<div style="font-size:0.68rem; color:#4a5568;">計画 ' + formatMD(plan) + '</div>';
+            if (hasCreated) {
+                if (sent) {
+                    inner += '<div style="font-size:0.7rem; color:#0d47a1; font-weight:700;">提出済✓ ' + formatMD(sentDate) + '</div>';
+                } else {
+                    const _ym = cellYear + '-' + String(a.m).padStart(2, '0');
+                    if (_ym === nowYM) gateNames.add(u.name);
+                    inner += unsentLineHTML(u.name, cellYear, a.m);
+                }
+            }
+            if (!inner) inner = '<div style="color:#cbd5e0;">—</div>';
+            html += '<td class="' + cls + '"'
+                  + ' data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '"'
+                  + ' data-year="' + cellYear + '" data-month="' + a.m + '"'
+                  + ' data-sendmethod="' + escapeAttr(sm) + '"'
+                  + ' onclick="onSetsumeTap(this)">' + inner + '</td>';
+        });
+        html += '</tr>';
+        rowIndex++;
+    });
+    tbody.innerHTML = html;
+    updateStats();
+    ensureUsageGate([...gateNames]);
+}
+
+function matchesFilter(u) {
+    if (filterGroup && getGroup(u.furigana) !== filterGroup) return false;
+    return true;
+}
+
+function updateStats() {
+    const targets = state.users.filter(u => u.isTarget);
+    document.getElementById('totalUsers').textContent = targets.length;
+    const r = judgeUnsubmittedLocal();
+    document.getElementById('unsentCount').textContent = r.length;
+    updateUnsubmittedBadge();
+}
+
+// ===== ケアマネ未提出（1送付＝計画書＋結果報告書まとめ・カットオフ以降のみ） =====
+function judgeUnsubmittedLocal() {
+    const has = v => !!(v && String(v).trim());
+    const onOrAfter = v => has(v) && String(v).trim().slice(0, 10) >= ORAL_SOUFU_CUTOFF;
+    const list = [];
+    Object.keys(state.records).forEach(key => {
+        const rec = state.records[key] || {};
+        const parts = key.split('_');
+        const month = parts.length >= 2 ? parts[parts.length - 1] : '';
+        const year = parts.length >= 3 ? parts[parts.length - 2] : '';
+        if ([3, 6, 9, 12].indexOf(parseInt(month, 10)) < 0) return;
+        const name = rec.name || (parts.length >= 3 ? parts.slice(0, parts.length - 2).join('_') : key);
+        // 計画書 or 結果報告書のどちらか作成済み かつ 未送付 → 1件（まとめ）
+        if ((onOrAfter(rec.plan_date) || onOrAfter(rec.houkoku_date)) && !rec.sent_to_cm) {
+            list.push({ name, year, month, date: rec.houkoku_date || rec.plan_date });
+        }
+    });
+    return list;
+}
+function updateUnsubmittedBadge() {
+    const total = judgeUnsubmittedLocal().length;
+    const badge = document.getElementById('unsubmittedBadge');
+    if (!badge) return;
+    badge.textContent = total;
+    badge.style.display = total > 0 ? 'inline-block' : 'none';
+}
+function openUnsubmittedView() {
+    const list = judgeUnsubmittedLocal().slice().sort((a, b) =>
+        (a.year + a.month).localeCompare(b.year + b.month) || a.name.localeCompare(b.name, 'ja'));
+    const rows = list.length
+        ? '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">' + list.map(x =>
+            '<tr style="border-bottom:1px solid #eee;">'
+            + '<td style="padding:6px 8px; font-weight:600;">' + escapeHtml(x.name) + '</td>'
+            + '<td style="padding:6px 8px; color:#c53030; white-space:nowrap;">計画書＋結果報告書</td>'
+            + '<td style="padding:6px 8px; white-space:nowrap;">' + escapeHtml(x.year) + '/' + escapeHtml(x.month) + '月</td>'
+            + '<td style="padding:6px 8px; color:#4a5568; white-space:nowrap;">' + escapeHtml(x.date) + '</td>'
+            + '</tr>').join('') + '</table>'
+        : '<div style="color:#718096; padding:8px;">なし</div>';
+    document.getElementById('unsubmittedBody').innerHTML =
+        '<div style="margin-bottom:10px; padding:6px 10px; background:#fffaf0; border-left:3px solid #dd6b20; font-size:0.82rem; color:#744210;">カットオフ(' + ORAL_SOUFU_CUTOFF + ')以降のみ表示中（稼働開始前の過去分は対象外）</div>'
+        + '<div style="margin-bottom:6px; font-weight:700; color:#742a2a;">📮 ケアマネ未提出（作成済み・未送付／計画書＋結果報告書を1送付でまとめ）：' + list.length + '件</div>'
+        + rows
+        + '<div style="margin-top:12px; font-size:0.8rem; color:#718096;">※ 節目月に計画書または結果報告書の作成日があり、ケアマネ送付済(sent_to_cm)が未の人。</div>';
+    document.getElementById('unsubmittedDialog').classList.add('show');
+}
+function closeUnsubmittedView() { document.getElementById('unsubmittedDialog').classList.remove('show'); }
+
+function setGroupFilter(g, ev) {
+    filterGroup = g;
+    document.querySelectorAll('#groupFilters .filter-btn').forEach(b => b.classList.remove('active'));
+    ev.target.classList.add('active');
+    renderTable();
+}
+function toggleIncludeCancelled(checked) {
+    state.includeCancelled = !!checked;
+    renderTable();  // cancelledUsers は取得済み・再描画のみ
+}
+
+// ============ モニ実施日ダイアログ ============
+function onMoniTap(td) {
+    if (td.classList.contains('disabled')) return;
+    const userId = td.dataset.userid, name = td.dataset.name;
+    const year = parseInt(td.dataset.year, 10), month = parseInt(td.dataset.month, 10);
+    const field = td.dataset.field, label = td.dataset.label;
+    const rec = state.records[userId + '_' + year + '_' + month] || {};
+    moniDialogState = { userId, name, year, month, field, label, currentValue: rec[field] || '' };
+    document.getElementById('moniTitle').textContent = name + ' ' + label + '実施日';
+    document.getElementById('moniSub').textContent = '現在: ' + (rec[field] || '(未入力)') + '（内部モニタリング・ケアマネ送付なし）';
+    document.getElementById('moniInput').value = rec[field] || formatTodayISO();
+    document.getElementById('moniDialog').classList.add('show');
+}
+function closeMoniDialog() { document.getElementById('moniDialog').classList.remove('show'); }
+async function saveMoniDate() {
+    const v = document.getElementById('moniInput').value;
+    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
+    const ds = moniDialogState;
+    closeMoniDialog();
+    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.label, v);
+}
+async function clearMoniDate() {
+    const ds = moniDialogState;
+    if (!confirm(ds.name + ' ' + ds.label + 'をクリアしますか？')) return;
+    closeMoniDialog();
+    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.label, '');
+}
+
+// ============ 節目ダイアログ（結果報告書＋計画書＋送付） ============
+function onSetsumeTap(td) {
+    if (td.classList.contains('disabled')) return;
+    const userId = td.dataset.userid, name = td.dataset.name;
+    const year = parseInt(td.dataset.year, 10), month = parseInt(td.dataset.month, 10);
+    openSetsumeDialog(userId, name, year, month, td.dataset.sendmethod || '');
+}
+function openSetsumeDialog(userId, name, year, month, sendMethod) {
+    setsumeDialogState = { userId, name, year, month, sendMethod };
+    const rec = state.records[userId + '_' + year + '_' + month] || {};
+    document.getElementById('setsumeTitle').textContent = name + '  ' + month + '月 節目（サイクル評価）';
+    document.getElementById('setsumeSub').textContent =
+        '結果報告書: ' + (rec.houkoku_date || '(未作成)') + ' ／ 計画書: ' + (rec.plan_date || '(未作成)');
+    document.getElementById('houkokuInput').value = rec.houkoku_date || '';
+    document.getElementById('planInput').value = rec.plan_date || '';
+    // 送付方法ヒント
+    const hint = document.getElementById('setsumeMethodHint');
+    if (sendMethod === 'PDF') {
+        hint.textContent = '📧 この利用者はメール/FAX事業所 → PDFで送付';
+        hint.style.cssText = 'margin-bottom:6px; padding:6px 10px; border-radius:6px; font-size:0.8rem; background:#ebf8ff; color:#2b6cb0; display:block;';
+    } else if (sendMethod === '印刷') {
+        hint.textContent = '🖨 この利用者は持参/郵送事業所 → 印刷で送付';
+        hint.style.cssText = 'margin-bottom:6px; padding:6px 10px; border-radius:6px; font-size:0.8rem; background:#fffaf0; color:#9c4221; display:block;';
+    } else { hint.style.display = 'none'; }
+    // 送付ステータス
+    const sent = !!rec.sent_to_cm;
+    document.getElementById('setsumeSentStatus').innerHTML = sent
+        ? '✅ 送付済み: ' + formatMD(rec.sent_date || '') + (rec.sent_by ? '（' + escapeHtml(rec.sent_by) + '）' : '')
+        : '⚪ 未送付';
+    const toggleBtn = document.getElementById('setsumeSentToggleBtn');
+    toggleBtn.textContent = sent ? '🗑 送付済みをクリア' : '📮 今日 送付済みにする';
+    toggleBtn.style.background = sent ? '#718096' : '#c53030';
+    // 担当select
+    const opts = state.staffNames || [];
+    let byH = '<option value="">（未選択）</option>';
+    const cur = rec.sent_by || '';
+    if (cur && opts.indexOf(cur) < 0) byH += '<option value="' + escapeHtml(cur) + '" selected>' + escapeHtml(cur) + '（名簿外）</option>';
+    opts.forEach(s => { byH += '<option value="' + escapeHtml(s) + '"' + (s === cur ? ' selected' : '') + '>' + escapeHtml(s) + '</option>'; });
+    document.getElementById('setsumeByInput').innerHTML = byH;
+    document.getElementById('setsumeDialog').classList.add('show');
+}
+function closeSetsumeDialog() { document.getElementById('setsumeDialog').classList.remove('show'); }
+async function saveSetsumeField(field) {
+    const inputId = (field === 'houkoku_date') ? 'houkokuInput' : 'planInput';
+    const v = document.getElementById(inputId).value;
+    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
+    const ds = setsumeDialogState;
+    const label = (field === 'houkoku_date') ? '結果報告書' : '計画書';
+    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, field, label, v);
+    openSetsumeDialog(ds.userId, ds.name, ds.year, ds.month, ds.sendMethod);
+}
+async function clearSetsumeField(field) {
+    const ds = setsumeDialogState;
+    const label = (field === 'houkoku_date') ? '結果報告書' : '計画書';
+    if (!confirm(ds.name + ' ' + ds.month + '月の' + label + 'をクリアしますか？')) return;
+    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, field, label, '');
+    openSetsumeDialog(ds.userId, ds.name, ds.year, ds.month, ds.sendMethod);
+}
+async function toggleSetsumeSent() {
+    const ds = setsumeDialogState;
+    const rec = state.records[ds.userId + '_' + ds.year + '_' + ds.month] || {};
+    const nowSent = !!rec.sent_to_cm;
+    const by = document.getElementById('setsumeByInput').value || '';
+    if (!nowSent && !document.getElementById('houkokuInput').value && !document.getElementById('planInput').value
+        && !rec.houkoku_date && !rec.plan_date) {
+        if (!confirm('結果報告書も計画書も未作成です。送付済みにしますか？')) return;
+    }
+    // 送付済に担当も同時保存（担当が選択されていれば）
+    if (!nowSent && by) await applyOralValue(ds.userId, ds.name, ds.year, ds.month, 'sent_by', '送付者', by);
+    await applyOralValue(ds.userId, ds.name, ds.year, ds.month, 'sent_to_cm', 'ケアマネ送付', nowSent ? 'false' : 'true');
+    openSetsumeDialog(ds.userId, ds.name, ds.year, ds.month, ds.sendMethod);
+}
+
+// ============ 書込（updateOralPlan・楽観更新＋pending） ============
+async function applyOralValue(userId, name, year, month, field, label, value) {
+    const key = userId + '_' + year + '_' + month;
+    const rec = state.records[key] || { name };
+    if (field === 'sent_to_cm') {
+        const b = (value === 'true' || value === '1');
+        rec.sent_to_cm = b;
+        rec.sent_date = b ? formatTodayISO() : '';   // GAS が sent_date を自動設定するのに合わせ楽観反映
+    } else {
+        rec[field] = value;
+    }
+    rec.name = rec.name || name;
+    state.records[key] = rec;
+    saveCache();
+    renderTable();
+
+    markPending(userId, year, month, field, value);
+    updatePendingBanner();
+    try {
+        const url = API_BASE + '?action=updateOralPlan'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&year=' + year + '&month=' + month
+            + '&field=' + field
+            + '&value=' + encodeURIComponent(value)
+            + '&operator=' + encodeURIComponent(getOperator())
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        unmarkPending(userId, year, month, field);
+        showToast(value && value !== 'false'
+            ? '✅ ' + name + ' ' + month + '月 ' + label + '=' + (field === 'sent_to_cm' ? '送付済' : formatMD(value))
+            : '🗑 ' + name + ' ' + month + '月 ' + label + ' クリア',
+            (value && value !== 'false') ? '' : 'warn');
+        hideOffline();
+    } catch (e) {
+        console.error('updateOralPlan error:', e);
+        showToast('⚠ ' + name + ' ' + month + '月 ' + label + ' 保存失敗（再送信待ち）', 'error');
+        showOffline();
+    }
+    updatePendingBanner();
+    renderTable();
+}
+
+// ============ 未提出⚠ 来所ゲート（B案・お手本流用） ============
+const usageGate = {};
+let _muGateSeq = 0;
+function muFetchMonthlyGate(name, ym, cb) {
+    const cbName = 'muGateCb_' + Date.now() + '_' + (_muGateSeq++);
+    let done = false;
+    function cleanup() {
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        const s = document.getElementById(cbName);
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+    }
+    function settle(data) { if (done) return; done = true; clearTimeout(timer); cleanup(); cb(data); }
+    const timer = setTimeout(function () { settle(null); }, 12000);
+    window[cbName] = function (data) { settle(data); };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.onerror = function () { settle(null); };
+    script.src = API_BASE + '?action=monthly_usage&name=' + encodeURIComponent(name)
+        + '&yearMonth=' + encodeURIComponent(ym) + '&callback=' + cbName + '&t=' + Date.now();
+    document.body.appendChild(script);
+}
+function ensureUsageGate(names) {
+    const ym = formatTodayISO().slice(0, 7);
+    const todo = names.filter(function (n) { return !(usageGate[n] && usageGate[n].tried); });
+    if (!todo.length) return;
+    let remaining = todo.length;
+    todo.forEach(function (name) {
+        usageGate[name] = { state: 'pending', tried: true };
+        muFetchMonthlyGate(name, ym, function (data) {
+            if (data && data.success) usageGate[name].state = (muCalcLastVisit(data) !== null) ? 'attended' : 'none';
+            else usageGate[name].state = 'pending';
+            if (--remaining === 0) renderTable();
+        });
+    });
+}
+function unsentLineHTML(name, applyYear, applyMonth) {
+    const nowYM = formatTodayISO().slice(0, 7);
+    const ym = applyYear + '-' + String(applyMonth).padStart(2, '0');
+    const WARN = '<div style="font-size:0.7rem; color:#c53030; font-weight:700;">⚠未提出</div>';
+    const NEU = function (t) { return '<div style="font-size:0.7rem; color:#718096; font-weight:600;" title="サインは当月来所後に取得するため、来所実績が出るまで督促しません">' + t + '</div>'; };
+    if (ym < nowYM) return WARN;
+    if (ym > nowYM) return NEU('🖊 翌月提出予定');
+    const g = usageGate[name];
+    if (!g || g.state === 'pending') return NEU('⏳ 来所確認中');
+    return g.state === 'attended' ? WARN : NEU('🖊 サイン待ち（当月提出予定）');
+}
+
+// ============ 利用状況モーダル（monthly_usage・お手本流用・読み取りのみ） ============
+let usageModalState = { userId: '', name: '' };
+function openUsageModal(td) {
+    const userId = td.dataset.userid;
+    const u = displayUsers().find(x => x.userId === userId);
+    if (!u) return;
+    usageModalState = { userId, name: u.name };
+    document.getElementById('mu-user-name').textContent = u.name;
+    const careEl = document.getElementById('mu-user-care');
+    const careTxt = (u.category || '').trim();
+    if (careTxt) {
+        careEl.textContent = '介護度：' + careTxt;
+        careEl.style.color = (careTxt.indexOf('要介護') !== -1) ? '#842029' : '#1e40af';
+        careEl.style.display = '';
+    } else { careEl.textContent = ''; careEl.style.display = 'none'; }
+    document.getElementById('mu-modal').style.display = 'flex';
+    const ym = formatTodayISO().substring(0, 7);
+    muRenderMonthTabs(u.name, ym);
+    muLoadMonth(u.name, ym);
+}
+function closeUsageModal() { document.getElementById('mu-modal').style.display = 'none'; }
+function muRenderMonthTabs(name, selectedYm) {
+    const box = document.getElementById('mu-month-tabs');
+    const today = new Date();
+    const tabs = [];
+    for (let i = 2; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const ym = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+        tabs.push({ ym: ym, label: (d.getMonth() + 1) + '月' });
+    }
+    const nameEsc = name.replace(/'/g, "\\'");
+    box.innerHTML = tabs.map(function (t) {
+        const active = (t.ym === selectedYm) ? ' active' : '';
+        return '<button type="button" class="mu-month-tab' + active + '" '
+            + 'onclick="muLoadMonth(\'' + nameEsc + '\',\'' + t.ym + '\');muRenderMonthTabs(\'' + nameEsc + '\',\'' + t.ym + '\')">'
+            + t.label + '</button>';
+    }).join('');
+}
+function muFetchMonthly(name, ym, callback) {
+    const cbName = 'muCb_' + Date.now();
+    window[cbName] = function (data) {
+        delete window[cbName];
+        const s = document.getElementById(cbName);
+        if (s && s.parentNode) s.parentNode.removeChild(s);
+        callback(data);
+    };
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.src = API_BASE + '?action=monthly_usage&name=' + encodeURIComponent(name)
+        + '&yearMonth=' + encodeURIComponent(ym) + '&callback=' + cbName + '&t=' + Date.now();
+    document.body.appendChild(script);
+}
+function muLoadMonth(name, ym) {
+    document.getElementById('mu-summary').innerHTML = '<div style="color:#718096;">読込中…</div>';
+    document.getElementById('mu-calendar').innerHTML = '';
+    muFetchMonthly(name, ym, function (data) {
+        if (!data || !data.success) {
+            document.getElementById('mu-summary').innerHTML =
+                '<div style="color:#c53030;">' + (data && data.error ? escapeHtml(data.error) : 'データ取得に失敗しました。もう一度開いてください。') + '</div>';
+            return;
+        }
+        muRenderSummary(data);
+        muRenderCalendar(data);
+    });
+}
+function muRenderSummary(data) {
+    const s = data.summary || {};
+    const ym = data.yearMonth || '';
+    const monthLabel = ym ? (parseInt(ym.split('-')[1], 10) + '月') : '';
+    const main = monthLabel + '：利用 ' + (s.attended || 0) + '回 / 欠席 ' + (s.absent || 0) + '回 / 送迎なし ' + (s.noPickup || 0) + '回';
+    let badges = '';
+    const consec = muCalcConsecutiveAbsence(data);
+    if (consec) badges += '<span class="mu-badge danger">🔴 連続欠席' + consec + '日</span>';
+    const lastVisit = muCalcLastVisit(data);
+    if (lastVisit) { const lv = lastVisit.split('-'); badges += '<span class="mu-badge info">📅 直近来館 ' + parseInt(lv[1], 10) + '/' + parseInt(lv[2], 10) + '</span>'; }
+    const util = muCalcUtilization(data);
+    if (util !== null) badges += '<span class="mu-badge success">📈 利用率 ' + util + '%</span>';
+    document.getElementById('mu-summary').innerHTML =
+        '<div class="mu-summary-main">' + escapeHtml(main) + '</div><div class="mu-badges">' + badges + '</div>';
+}
+function muRenderCalendar(data) {
+    const ym = data.yearMonth;
+    const parts = ym.split('-');
+    const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    const firstDow = new Date(y, m - 1, 1).getDay();
+    const lastDay = new Date(y, m, 0).getDate();
+    const dayByDate = {};
+    (data.days || []).forEach(function (d) { dayByDate[d.date] = d; });
+    const todayStr = formatTodayISO();
+    let html = '<div class="mu-cal-grid">';
+    ['日', '月', '火', '水', '木', '金', '土'].forEach(function (label, i) {
+        const color = i === 0 ? 'color:#e53e3e;' : (i === 6 ? 'color:#3182ce;' : '');
+        html += '<div class="mu-cal-head" style="' + color + '">' + label + '</div>';
+    });
+    for (let i = 0; i < firstDow; i++) html += '<div class="mu-cal-cell empty"></div>';
+    for (let day = 1; day <= lastDay; day++) {
+        const dateStr = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + day).slice(-2);
+        const info = dayByDate[dateStr];
+        let cls = 'mu-cal-cell';
+        if (info) {
+            if (info.attended) cls += ' attended';
+            if (info.absent) cls += ' absent';
+            if (!info.attended && !info.absent) cls += ' scheduled';
+            if (info.noPickup) cls += ' nopickup';
+        }
+        if (dateStr === todayStr) cls += ' today';
+        html += '<div class="' + cls + '"><span>' + day + '</span></div>';
+    }
+    html += '</div>';
+    document.getElementById('mu-calendar').innerHTML = html;
+}
+function muBasisStr(ym) {
+    const todayStr = formatTodayISO();
+    if (todayStr.indexOf(ym) === 0) return todayStr;
+    const parts = ym.split('-');
+    const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10), 0);
+    return dt.getFullYear() + '-' + ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+}
+function muCalcConsecutiveAbsence(data) {
+    const basisStr = muBasisStr(data.yearMonth);
+    const dayByDate = {};
+    (data.days || []).forEach(function (d) { dayByDate[d.date] = d; });
+    const dates = Object.keys(dayByDate).filter(function (date) { return date <= basisStr; }).sort().reverse();
+    let count = 0;
+    for (let i = 0; i < dates.length; i++) {
+        const info = dayByDate[dates[i]];
+        if (info.attended) break;
+        if (info.absent) count++;
+        else break;
+    }
+    return count > 0 ? count : null;
+}
+function muCalcLastVisit(data) {
+    const basisStr = muBasisStr(data.yearMonth);
+    const visited = (data.days || []).filter(function (d) { return d.attended && d.date <= basisStr; }).map(function (d) { return d.date; }).sort();
+    return visited.length ? visited[visited.length - 1] : null;
+}
+function muCalcUtilization(data) {
+    const s = data.summary || {};
+    if (!s.scheduledTotal) return null;
+    return Math.round((s.attended || 0) / s.scheduledTotal * 100);
+}
+
+// ============ 操作者管理（お手本流用） ============
+function getOperator() { return state.operator || localStorage.getItem(OPERATOR_KEY) || ''; }
+function setOperator(name) {
+    state.operator = name;
+    if (name) localStorage.setItem(OPERATOR_KEY, name);
+    else localStorage.removeItem(OPERATOR_KEY);
+    document.getElementById('operatorLabel').textContent = name || '未選択';
+    document.getElementById('operatorBtn').style.background = name ? '#e6fffa' : '#fff5f0';
+}
+async function fetchStaffList() {
+    try {
+        const res = await fetch(API_BASE + '?action=staff_list&t=' + Date.now());
+        const json = await res.json();
+        return (json && json.staff) || [];
+    } catch (e) { console.warn('staff_list fetch failed', e); return []; }
+}
+async function openOperatorDialog() {
+    const list = document.getElementById('operatorList');
+    list.innerHTML = '<div style="padding:8px; color:#718096;">読み込み中...</div>';
+    document.getElementById('operatorDialog').classList.add('show');
+    const staff = await fetchStaffList();
+    const all = OPERATOR_FIXED.concat(staff);
+    list.innerHTML = all.map(s =>
+        '<button onclick="selectOperator(\'' + s.replace(/'/g, "\\'") + '\')" '
+        + 'style="padding:10px 16px; min-height:40px; border:2px solid #2c7a7b; background:#fff; color:#2c3e50; border-radius:8px; font-weight:bold; cursor:pointer; font-family:inherit;">'
+        + s + (state.operator === s ? ' ✓' : '') + '</button>'
+    ).join('');
+}
+function selectOperator(name) {
+    setOperator(name);
+    document.getElementById('operatorDialog').classList.remove('show');
+    showToast('✅ 操作者: ' + name);
+}
+
+// ============ 起動 ============
+window.addEventListener('load', async () => {
+    setOperator(getOperator());
+    populateFiscalYearSelect();
+    loadCache();
+    updatePendingBanner();
+    if (!getOperator()) openOperatorDialog();
+    fetchStaffList().then(staff => { state.staffNames = staff || []; });
+    await loadFiscalYearData();
+});
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible'
+        && !document.getElementById('moniDialog').classList.contains('show')
+        && !document.getElementById('setsumeDialog').classList.contains('show')) {
+        loadFiscalYearData();
+    }
+});
+</script>
+</body>
+</html>
