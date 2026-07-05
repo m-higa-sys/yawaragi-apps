@@ -2431,7 +2431,10 @@ function doGet(e) {
           createdBy: String(orow[7] || ''),
           updatedAt: String(orow[8] || ''),
           eval_result: String(orow[9] || ''),
-          sent_by: String(orow[10] || '')
+          sent_by: String(orow[10] || ''),
+          moni1_date: opFmtDate_(orow[11]),
+          moni2_date: opFmtDate_(orow[12]),
+          houkoku_date: opFmtDate_(orow[13])
         });
       }
       return respond({ ok: true, year: opYear, users: opUsers, records: opRecords, cancelledUsers: opCancelledUsers }, callback);
@@ -2989,7 +2992,7 @@ function doGet(e) {
       var uoField = String((e && e.parameter && e.parameter.field) || '').trim();
       var uoValue = String((e && e.parameter && e.parameter.value) || '');
       var uoOperator = String((e && e.parameter && e.parameter.operator) || '').trim();
-      var uoFieldAllowed = { plan_date: 4, sent_to_cm: 5, sent_date: 6, memo: 7, eval_result: 10, sent_by: 11 };  // 1-indexed column
+      var uoFieldAllowed = { plan_date: 4, sent_to_cm: 5, sent_date: 6, memo: 7, eval_result: 10, sent_by: 11, moni1_date: 12, moni2_date: 13, houkoku_date: 14 };  // 1-indexed column
       if (!uoUserId || !uoYear || uoYear < 2020 || uoYear > 2100
           || !uoMonth || uoMonth < 1 || uoMonth > 12
           || !uoFieldAllowed.hasOwnProperty(uoField)) {
@@ -3017,7 +3020,7 @@ function doGet(e) {
         var uoToday = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
         if (uoRowIdx < 0) {
           if (!uoValue && uoField !== 'sent_to_cm') return respond({ ok: true }, callback);
-          var uoNewRow = [uoUserId, uoYear, uoMonth, '', false, '', '', uoOperator || '', uoNow, '', ''];
+          var uoNewRow = [uoUserId, uoYear, uoMonth, '', false, '', '', uoOperator || '', uoNow, '', '', '', '', ''];
           if (uoField === 'sent_to_cm') {
             var uoBoolNew = (uoValue === 'true' || uoValue === '1');
             uoNewRow[4] = uoBoolNew;
@@ -12709,15 +12712,16 @@ function ensureOralPlansSheets_() {
   var recordSheet = ss.getSheetByName('口腔機能向上記録');
   if (!recordSheet) {
     recordSheet = ss.insertSheet('口腔機能向上記録');
-    recordSheet.getRange(1, 1, 1, 11).setValues([[
+    recordSheet.getRange(1, 1, 1, 14).setValues([[
       'userId', 'year', 'month', 'plan_date',
-      'sent_to_cm', 'sent_date', 'memo', 'createdBy', 'updatedAt', 'eval_result', 'sent_by'
+      'sent_to_cm', 'sent_date', 'memo', 'createdBy', 'updatedAt', 'eval_result', 'sent_by',
+      'moni1_date', 'moni2_date', 'houkoku_date'
     ]]);
     recordSheet.setFrozenRows(1);
-    recordSheet.getRange(1, 1, 1, 11).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    recordSheet.getRange(1, 1, 1, 14).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
   } else {
     // マイグレーション: eval_result 列（10列目）が無ければ追加（2026-05-30・評価結果のケアマネ情報提供 証跡）
-    var oralHdr = recordSheet.getRange(1, 1, 1, Math.max(recordSheet.getLastColumn(), 11)).getValues()[0];
+    var oralHdr = recordSheet.getRange(1, 1, 1, Math.max(recordSheet.getLastColumn(), 14)).getValues()[0];
     if (oralHdr.indexOf('eval_result') === -1) {
       recordSheet.getRange(1, 10).setValue('eval_result');
       recordSheet.getRange(1, 10).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
@@ -12726,6 +12730,19 @@ function ensureOralPlansSheets_() {
     if (oralHdr.indexOf('sent_by') === -1) {
       recordSheet.getRange(1, 11).setValue('sent_by');
       recordSheet.getRange(1, 11).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    // マイグレーション: 口腔②列（moni1_date/moni2_date/houkoku_date）を additive 追加（2026-07・口腔②）
+    if (oralHdr.indexOf('moni1_date') === -1) {
+      recordSheet.getRange(1, 12).setValue('moni1_date');
+      recordSheet.getRange(1, 12).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    if (oralHdr.indexOf('moni2_date') === -1) {
+      recordSheet.getRange(1, 13).setValue('moni2_date');
+      recordSheet.getRange(1, 13).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+    if (oralHdr.indexOf('houkoku_date') === -1) {
+      recordSheet.getRange(1, 14).setValue('houkoku_date');
+      recordSheet.getRange(1, 14).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
     }
   }
   var configSheet = ss.getSheetByName('口腔機能向上設定');
