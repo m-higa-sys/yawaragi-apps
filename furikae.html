@@ -178,6 +178,9 @@
   <a href="yawaragiボード.html" class="back-link-btn">← yawaragiボードに戻る</a>
 </div>
 
+<!-- 本番オリジン警告バナー（別オリジンで開くと書込が保存されないため警告・2026-07-05）-->
+<div id="origin-warn" class="no-print" style="display:none;background:#fff3cd;border:2px solid #c53030;color:#c53030;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-weight:bold;line-height:1.6;"></div>
+
 <div class="header" style="position:relative;">
   <h1>💰 振替不能管理ツール</h1>
   <p>口座振替不能の管理・対応状況を追跡します</p>
@@ -553,7 +556,57 @@ let _syncTimer = null;
 let _isSyncing = false;
 let _initialLoadDone = false;
 
+// ===== 本番オリジン書込ブロック（2026-07-05・genba 2026-07-03 荒谷4件対策の移植）=====
+// localStorage も GAS 同期もオリジン単位。検証用URL(file://・localhost・別host)から本番GASへ
+// 書き込めてしまう事故（genba で発生）を furikae でも構造的に断つ。furikae の書込POSTは
+// cloudSync 1本に集約されるため、その先頭でガードすれば全書込（取込・消込・更新）を遮断できる。
+// 本番オリジン完全一致以外は書込不可（判定不能＝例外時も安全側=不可）。
+// テスト: scripts/test-furikae-origin-guard.js（純関数+単一ファネルの構造証明）
+const PROD_ORIGIN = 'https://m-higa-sys.github.io';
+const PROD_URL = 'https://m-higa-sys.github.io/yawaragi-apps/furikae.html';
+
+function fnkIsProdWriteAllowed(origin) {
+  try { return String(origin) === PROD_ORIGIN; } catch (e) { return false; }
+}
+
+// 別オリジンで開いている事実を常設バナーで知らせる（入力・操作前に気づけるよう）
+function fnkCheckProductionOrigin() {
+  try {
+    const el = document.getElementById('origin-warn');
+    if (!el) return;
+    if (fnkIsProdWriteAllowed(location.origin)) { el.style.display = 'none'; return; }
+    el.innerHTML = '⚠ 本番URL以外で開いています。取込・消込は保存されません。<br>'
+      + '正しいURL: <a href="' + PROD_URL + '" style="color:#c53030;">' + PROD_URL + '</a>';
+    el.style.display = 'block';
+  } catch (e) { /* バナー表示失敗は致命でない（POST層ガードが最終防衛）*/ }
+}
+
+// 書込ブロック時の利用者向け通知（バナー表示に集約）。テストでは差し替えて発火回数を検証。
+function fnkOriginNotice() {
+  fnkCheckProductionOrigin();
+}
+
+// 書込POST共通ゲート。書込ファネル cloudSync の先頭で呼ぶ。false なら送信せず抜ける。
+// 通知は3秒デバウンス（自動同期の連発でバナー再描画を暴発させない）。
+let _fnkGuardNoticeAt = 0;
+function fnkGuardProdWrite(label) {
+  let ok = false;
+  try { ok = fnkIsProdWriteAllowed(location.origin); } catch (e) { ok = false; }
+  if (!ok) {
+    try {
+      const now = Date.now();
+      if (now - _fnkGuardNoticeAt > 3000) {
+        _fnkGuardNoticeAt = now;
+        fnkOriginNotice();
+      }
+    } catch (e) {}
+    try { console.warn('[originガード] 書込ブロック: ' + (label || '')); } catch (e) {}
+  }
+  return ok;
+}
+
 function cloudSync() {
+  if (!fnkGuardProdWrite('クラウド同期')) return; // 別オリジンからの本番書込を構造的に遮断
   if (!SYNC_URL || SYNC_URL.indexOf('__') === 0) return; // URL未設定
   if (_syncTimer) clearTimeout(_syncTimer);
   _syncTimer = setTimeout(function() {
@@ -1595,6 +1648,7 @@ async function fetchFurikaeFubi() {
 }
 
 // ============ 初期化 ============
+fnkCheckProductionOrigin(); // 別オリジンで開いていたら先頭で警告（操作前に気づけるよう最優先）
 setupDropZone();
 initMonthSelect();
 // 担当者をlocalStorageから復元
