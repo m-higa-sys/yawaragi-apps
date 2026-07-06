@@ -1506,6 +1506,31 @@
 
 <!-- ===== 出席予定タブ ===== -->
 <div id="tab-attendance" class="tab-content">
+    <!-- 2026-07-07 移設: 欠席box（出席予定タブ最上部・自己完結・欠席登録タブ非依存） -->
+    <div id="kbox-section" style="margin:0 0 12px; border:2px solid #2c7a7b; border-radius:10px; padding:10px; background:#f0fdfa;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <strong style="font-size:1.05rem;">📮 欠席box</strong>
+                <button type="button" onclick="kbShowHelp()" style="font-size:.8rem; padding:2px 10px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:600;">❓使い方</button>
+            </div>
+            <span id="kbox-pending-badge" style="display:none; background:#c0392b; color:#fff; border-radius:12px; padding:2px 10px; font-weight:700;"></span>
+        </div>
+        <!-- 2026-07-07 移設: box内 操作者行（自己完結・既存absSelectReceptionist再利用・欠席登録タブと同期） -->
+        <div id="kbox-operator-select" style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center;"></div>
+        <!-- 2026-07-06 過去+未来ビュー: 日付送り帯（#kbox-section内・init非依存・月グリッド無し） -->
+        <div id="kbox-datenav" style="display:flex; align-items:center; justify-content:center; gap:12px; margin:6px 0;">
+            <button type="button" id="kbox-prev" onclick="kbGoDate(-1)" style="padding:4px 14px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:1rem;">◀</button>
+            <span id="kbox-datelabel" style="font-weight:700; min-width:8em; text-align:center; font-size:1.35rem;"></span>
+            <button type="button" id="kbox-next" onclick="kbGoDate(1)" style="padding:4px 14px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:1rem;">▶</button>
+            <input type="date" id="kbox-datepicker" onchange="kbJumpTo(this.value)" style="margin-left:8px; padding:3px 6px; border:1px solid #2c7a7b; border-radius:8px; font-size:.95rem;">
+        </div>
+        <div id="kbox-viewonly-banner" style="display:none; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; border-radius:8px; padding:5px 10px; font-size:.85rem; font-weight:700; margin:6px 0;">👀 閲覧のみ（送信・電話記録は当日のみ）</div>
+        <div id="kbox-jumpchips" style="margin:6px 0; font-size:.85rem;"></div>
+        <div id="kbox-operator-note" style="font-size:.85rem; color:#666; margin:4px 0;"></div>
+        <div id="kbox-list"></div>
+        <button id="kbox-send-btn" class="abs-contact-btn" style="width:100%; margin-top:8px; background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbOpenSummary()">チェックした人にまとめて送信</button>
+    </div>
+
     <div class="att-date-bar">
         <button class="att-nav-btn" onclick="attChangeDate(-1)">&lt;</button>
         <span class="att-today-label" id="att-date-label"></span>
@@ -1551,31 +1576,6 @@
 
 <!-- ===== 欠席登録タブ ===== -->
 <div id="tab-absence" class="tab-content">
-    <!-- 2026-07-04 指示書③修正①: このタブのメイン機能なので最上部に配置（スクロール不要） -->
-    <div id="kbox-section" style="margin:0 0 12px; border:2px solid #2c7a7b; border-radius:10px; padding:10px; background:#f0fdfa;">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <strong style="font-size:1.05rem;">📮 欠席box</strong>
-                <button type="button" onclick="kbShowHelp()" style="font-size:.8rem; padding:2px 10px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:600;">❓使い方</button>
-            </div>
-            <span id="kbox-pending-badge" style="display:none; background:#c0392b; color:#fff; border-radius:12px; padding:2px 10px; font-weight:700;"></span>
-        </div>
-        <!-- 2026-07-07 移設: box内 操作者行（自己完結・既存absSelectReceptionist再利用・欠席登録タブと同期） -->
-        <div id="kbox-operator-select" style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center;"></div>
-        <!-- 2026-07-06 過去+未来ビュー: 日付送り帯（#kbox-section内・init非依存・月グリッド無し） -->
-        <div id="kbox-datenav" style="display:flex; align-items:center; justify-content:center; gap:12px; margin:6px 0;">
-            <button type="button" id="kbox-prev" onclick="kbGoDate(-1)" style="padding:4px 14px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:1rem;">◀</button>
-            <span id="kbox-datelabel" style="font-weight:700; min-width:8em; text-align:center; font-size:1.35rem;"></span>
-            <button type="button" id="kbox-next" onclick="kbGoDate(1)" style="padding:4px 14px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:1rem;">▶</button>
-            <input type="date" id="kbox-datepicker" onchange="kbJumpTo(this.value)" style="margin-left:8px; padding:3px 6px; border:1px solid #2c7a7b; border-radius:8px; font-size:.95rem;">
-        </div>
-        <div id="kbox-viewonly-banner" style="display:none; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; border-radius:8px; padding:5px 10px; font-size:.85rem; font-weight:700; margin:6px 0;">👀 閲覧のみ（送信・電話記録は当日のみ）</div>
-        <div id="kbox-jumpchips" style="margin:6px 0; font-size:.85rem;"></div>
-        <div id="kbox-operator-note" style="font-size:.85rem; color:#666; margin:4px 0;"></div>
-        <div id="kbox-list"></div>
-        <button id="kbox-send-btn" class="abs-contact-btn" style="width:100%; margin-top:8px; background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbOpenSummary()">チェックした人にまとめて送信</button>
-    </div>
-
     <!-- 受付者選択 -->
     <div class="abs-form-card" id="abs-receptionist-card">
         <label class="abs-label">受付者（あなたの名前）</label>
@@ -2758,10 +2758,11 @@ function setupTabs() {
                 attLoad();
                 // 長期休み一覧も再取得（再開予定日が更新されているかも）
                 if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
+                try { kbInit(); } catch (e) { console.warn('kbox init skip', e); }   // 移設: box初期化を独立に後付け(attLoad連鎖に混ぜない)
             }
             if (btn.dataset.tab === 'remind') rmdLoad();
             if (btn.dataset.tab === 'task') tbRenderAll();
-            if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); try { kbInit(); } catch (e) { console.warn('kbox init skip', e); } }
+            if (btn.dataset.tab === 'absence') { absRenderTodayList(); absRenderUpcomingList(); }
             if (btn.dataset.tab === 'jisseki' && absUserLoaded) jisLoad();
             if (btn.dataset.tab === 'data') absRenderUserManage();
             if (btn.dataset.tab === 'terminate') { trmInit(); trmLoadList(); }

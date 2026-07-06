@@ -264,6 +264,26 @@ tryOk(() => {
   ok2(rsrc.indexOf('kbRenderOperatorRow_') >= 0, 'T5: kbRenderが操作者行を再描画(選択ハイライト同期)');
 }, 'T群(box内操作者行)');
 
+// U. 移設（出席予定タブ単独・欠席登録タブ非依存・二重fetchなし）
+tryOk(() => {
+  const iAtt = html.indexOf('id="tab-attendance"');
+  const iRemind = html.indexOf('id="tab-remind"');   // attendanceの次タブ
+  const iAbs = html.indexOf('id="tab-absence"');
+  const iBox = html.indexOf('id="kbox-section"');
+  ok2(iBox > iAtt && iBox < iRemind, 'U1: kbox-sectionは出席予定タブ内(tab-attendance〜tab-remindの間)');
+  ok2(!(iBox > iAbs), 'U2: kbox-sectionは欠席登録タブ(tab-absence)より前=欠席登録タブ内に無い');
+  // 配線: attendance分岐にkbInit・absence分岐にkbInit無し
+  const attBranch = html.slice(html.indexOf("dataset.tab === 'attendance'"), html.indexOf("dataset.tab === 'remind'"));
+  ok2(attBranch.indexOf('kbInit(') >= 0, 'U3: attendance分岐にkbInit()を独立追記');
+  const absBranch = html.slice(html.indexOf("dataset.tab === 'absence'"), html.indexOf("dataset.tab === 'jisseki'"));
+  ok2(absBranch.indexOf('kbInit(') < 0, 'U4: absence分岐からkbInit()撤去');
+  // f774228回避: kbInitは要素不在ガードを保持（既存D2の再確認）
+  ok2(/if\s*\(!\w+\)\s*return/.test(extractFn('kbInit')), 'U5: kbInitの要素不在ガード維持');
+  // 二重fetchなし: 冪等early-return と _ensuringYm ガード両方が生存
+  ok2(html.indexOf('if (attMonthAbsCache[ym]) { cb(); return; }') >= 0, 'U6: attEnsureMonthAbsencesの月命中early-return生存(冪等)');
+  ok2(html.indexOf('kbState._ensuringYm !== ym') >= 0, 'U7: kbox側_ensuringYm二重ensureガード生存');
+}, 'U群(移設)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
