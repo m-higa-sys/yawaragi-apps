@@ -491,16 +491,21 @@ function processExcelFile(file) {
         });
       });
 
-      if (funou.length === 0) {
-        showImportResult(`✅ 振替不能は0件でした！（全${dataRows.length}件が正常振替）`, false);
-        return;
-      }
-
-      // 月を決定（ファイル名から取れない場合はプロンプト）
+      // 月を決定（ファイル名優先・不能0件でも先に確定してマーカーへ使う）
       let month = hikiotoshiMonth;
       if (!month) {
         month = prompt('引落月を入力してください（例: 2026-03）');
         if (!month) return;
+      }
+
+      if (funou.length === 0) {
+        // 成功のみの月も「取込済み」痕跡を残す（morningDigest の未取込リマインドを消すため・案B）
+        if (fnkApplyImportMarker(data, month, new Date().toISOString().slice(0, 10))) {
+          saveData(data);
+        }
+        initMonthSelect();
+        showImportResult(`✅ 振替不能は0件でした！（全${dataRows.length}件が正常振替）`, false);
+        return;
       }
 
       // 重複チェック（同月・同顧客番号）
@@ -918,6 +923,13 @@ function fnkMarkerRecord(month, id, today) {
     name: '(取込済マーカー)', reason: '取込済み・不能0件', amount: 0,
     customerId: '', hikiotoshiDate: '', createdAt: today
   };
+}
+
+// 対象月が未取込ならマーカーを1件追加して data を変更（副作用は data のみ）。追加したら true。
+function fnkApplyImportMarker(data, month, today) {
+  if (!fnkNeedsImportMarker(data.records, month)) return false;
+  data.records.push(fnkMarkerRecord(month, data.nextId++, today));
+  return true;
 }
 
 // ============ 描画 ============

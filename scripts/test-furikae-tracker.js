@@ -32,11 +32,13 @@ new Function('sb',
   extractFn('fnkIsImportMarker') + '\n' +
   extractFn('fnkNeedsImportMarker') + '\n' +
   extractFn('fnkMarkerRecord') + '\n' +
+  extractFn('fnkApplyImportMarker') + '\n' +
   extractFn('fnkMonthsOf') + '\n' +
   extractFn('fnkNoticeBody') + '\n' +
   'sb.extract = fnkExtractResultCode; sb.badge = fnkBadgeFor; sb.unpaid = fnkIsUnpaid;' +
   'sb.summary = fnkMonthSummary; sb.cand = fnkGoushanCandidates; sb.act = fnkActionableCount;' +
   'sb.isMarker = fnkIsImportMarker; sb.needsMarker = fnkNeedsImportMarker; sb.markerRec = fnkMarkerRecord;' +
+  'sb.applyMarker = fnkApplyImportMarker;' +
   'sb.monthsOf = fnkMonthsOf; sb.noticeBody = fnkNoticeBody;'
 )(sb);
 
@@ -161,6 +163,17 @@ ok(sb.act(REC_ADV, '2026-06') === 0,
   'N5b(actionable・ピン留め): status未対応でも isImportMarker はガードで除外（ガード外すと赤）');
 ok(sb.noticeBody(sb.act(REC_ADV, '2026-06')) === '',
   'N4b(伝達ボード件数・ピン留め): 敵対的マーカーのみの月 → 通知本文は空');
+
+// ===== O. マーカー付与（不能0件パス・冪等）=====
+const d1 = { records: [], nextId: 5 };
+ok(sb.applyMarker(d1, '2026-06', '2026-07-06') === true, 'O1: 空→付与true');
+ok(d1.records.length === 1 && d1.records[0].isImportMarker === true && d1.records[0].month === '2026-06', 'O2: マーカー1件追加(2026-06)');
+ok(d1.records[0].id === 5 && d1.nextId === 6, 'O3: idにnextId消費・nextId進む');
+ok(sb.applyMarker(d1, '2026-06', '2026-07-06') === false, 'O4: 同月再実行→付与false（冪等）');
+ok(d1.records.length === 1, 'O5: 二重追加されない');
+const d2 = { records: [{ id: 1, month: '2026-06', status: '未対応' }], nextId: 2 };
+ok(sb.applyMarker(d2, '2026-06', '2026-07-06') === false, 'O6: 実レコード有の月→付与false');
+ok(d2.records.length === 1, 'O7: 実レコードの月にマーカー足さない');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
