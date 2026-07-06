@@ -105,6 +105,15 @@ const _i5 = core.kbMergeDedupAbs_([
 ], []);
 ok(_i5.length === 2, 'I5: 太郎/07-06/午前 と 太郎/07-06/午後 は畳まれず2件(unitを鍵に含む)');
 
+// ===== J. kbIsViewToday_（機能Cガード判定・両者JST yyyy-mm-dd前提） =====
+ok(core.kbIsViewToday_('2026-07-06', '2026-07-06') === true,  'J1: 一致 → true');
+ok(core.kbIsViewToday_('2026-07-08', '2026-07-06') === false, 'J2: 未来 → false');
+ok(core.kbIsViewToday_('2026-07-04', '2026-07-06') === false, 'J3: 過去 → false');
+ok(core.kbIsViewToday_('', '2026-07-06') === false, 'J4: 空 → false(落ちない)');
+// 型頑健性（例外を投げずfalse・jstTodayStr()が想定外を返した時の保険）
+ok(core.kbIsViewToday_(null, '2026-07-06') === false, 'J5: null片方 → false');
+ok(core.kbIsViewToday_('2026-07-06', undefined) === false, 'J6: undefined片方 → false');
+
 console.log(`kesseki-box core: ${pass} PASS / ${fail} FAIL`);
 
 // ===== D/E. genba.html 構造証明（Task3/3.5で緑化。ファイル未変更なら赤） =====

@@ -85,6 +85,11 @@ function kbMergeDedupAbs_(primaryList, secondaryList) {
   return out;
 }
 
+// 表示対象日が当日か（両引数ともJST基準の yyyy-mm-dd を渡す前提）。null/undefinedでも例外を投げずfalse。
+function kbIsViewToday_(viewYMD, todayYMD) {
+  return String(viewYMD || '') === String(todayYMD || '');
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     kbIsAlreadyNotified_: kbIsAlreadyNotified_,
@@ -93,6 +98,7 @@ if (typeof module !== 'undefined' && module.exports) {
     kbAddDaysYMD_: kbAddDaysYMD_,
     kbJstYmdFromEpoch_: kbJstYmdFromEpoch_,
     kbUpcomingAbsenceDates_: kbUpcomingAbsenceDates_,
-    kbMergeDedupAbs_: kbMergeDedupAbs_
+    kbMergeDedupAbs_: kbMergeDedupAbs_,
+    kbIsViewToday_: kbIsViewToday_
   };
 }
