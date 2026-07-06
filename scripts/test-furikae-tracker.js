@@ -146,6 +146,21 @@ ok(sb.summary(REC_WITH_MARKER, '2026-06').count === 0 && sb.summary(REC_WITH_MAR
 ok(sb.noticeBody(sb.act(REC_WITH_MARKER, '2026-06')) === '', 'N4(伝達ボード件数): マーカーのみの月 → 通知本文は空（締め）');
 // 経路5 actionable判定: fnkActionableCount がマーカーを数えない
 ok(sb.act(REC_WITH_MARKER, '2026-06') === 0, 'N5(actionable): マーカーのみの月 → 0件');
+// 経路3(fold)は板GAS側 Task 5 ＋ M11(resolvedMonth無しで回収済フッタに出ない)で別途カバー → ここは N3 欠番。
+
+// N2b/N5b/N4b: status上は未回収(未対応)だが isImportMarker:true の敵対的マーカー。
+// これは fnkIsUnpaid では落ちない＝ !fnkIsImportMarker ガードだけが除外要因になる（ガード外すと赤＝RED保証）。
+const ADV_MARKER = { id: 2, month: '2026-06', isImportMarker: true, status: '未対応', resultCode: '2', amount: 500, customerId: '20' };
+const REC_ADV = [
+  { id: 1, month: '2026-05', status: '未対応', resultCode: '2', amount: 1000, customerId: '10' },
+  ADV_MARKER
+];
+ok(sb.summary(REC_ADV, '2026-06').count === 0 && sb.summary(REC_ADV, '2026-06').total === 0,
+  'N2b(件数集計・ピン留め): status未対応でも isImportMarker はガードで除外（ガード外すと赤）');
+ok(sb.act(REC_ADV, '2026-06') === 0,
+  'N5b(actionable・ピン留め): status未対応でも isImportMarker はガードで除外（ガード外すと赤）');
+ok(sb.noticeBody(sb.act(REC_ADV, '2026-06')) === '',
+  'N4b(伝達ボード件数・ピン留め): 敵対的マーカーのみの月 → 通知本文は空');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
