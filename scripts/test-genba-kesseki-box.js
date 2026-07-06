@@ -210,6 +210,13 @@ tryOk(() => {
       'N9: 送信対象はviewDate当日のkbState.itemsのみ(forward/月キャッシュ非参照)');
 }, 'N群(関数レベル当日ガード)');
 
+// P. リネーム（本日→欠席box）
+tryOk(() => {
+  ok2(html.indexOf('📮 欠席box') >= 0, 'P1: タイトルが「欠席box」');
+  ok2(html.indexOf('📮 本日の欠席連絡</strong>') < 0, 'P2: 旧タイトル「本日の欠席連絡」見出しが消えている');
+  ok2(html.indexOf('📮 欠席box の使い方') >= 0, 'P3: ヘルプ見出しも「欠席box の使い方」');
+}, 'P群(リネーム)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
@@ -231,7 +238,7 @@ tryOk(() => {
   ok2(helpSrc.indexOf('fetch') < 0 && helpSrc.indexOf('POST') < 0 && helpSrc.indexOf('absDoRegister') < 0,
       'F4: kbShowHelpは表示専用（fetch/POST/登録を呼ばない）');
   // 手順テキストの主要見出しが含まれる（静的テキスト埋め込み確認）
-  ok2(html.indexOf('本日の欠席連絡の使い方') >= 0, 'F5: 手順テキスト本文が埋め込まれている');
+  ok2(html.indexOf('欠席box の使い方') >= 0, 'F5: 手順テキスト本文（ヘルプ見出し）が埋め込まれている');
 }, 'F群(使い方ヘルプ)');
 
 console.log(`genba構造証明: ${pass2} PASS / ${fail2} FAIL`);
