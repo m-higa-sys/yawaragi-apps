@@ -240,6 +240,9 @@ tryOk(() => {
   ok2(/kb-ampm-badge/.test(src), 'R2: AM/PM四角バッジのマーカー(kb-ampm-badge)がある');
   ok2(src.indexOf("'AM'") >= 0 && src.indexOf("'PM'") >= 0, 'R3: AM/PMラベルを描画');
   ok2(/groups\.am|groups\['am'\]/.test(src) && /groups\.pm|groups\['pm'\]/.test(src), 'R4: am/pmバケットに振り分け');
+  // #2: 空群は"消す"のでなく"欠席者なし"を明示（午前/午後ラベルは群配列・文言はテンプレで合成）
+  ok2(src.indexOf('欠席者なし') >= 0 && /'午前'/.test(src) && /'午後'/.test(src), 'R5: 空群は「午前/午後 欠席者なし」を明示（消さない）');
+  ok2(/if\s*\(!groups\[key\]\.length\)/.test(src), 'R6: 群0件でも見出しを描き欠席者なしを表示（早期returnで消さない）');
 }, 'R群(AM/PM群描画)');
 
 // S. 日付ピッカー（type=date・kbJumpTo経路・chromeで値同期）

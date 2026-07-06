@@ -7602,10 +7602,14 @@ function kbRender() {
     kbState.items.forEach(it => { (kbUnitGroup_(it.unit) === 'am' ? groups.am : groups.pm).push(it); });
 
     let html = '';
-    [['am', 'AM'], ['pm', 'PM']].forEach(g => {
-        const key = g[0], label = g[1];
-        if (!groups[key].length) return;
+    [['am', 'AM', '午前'], ['pm', 'PM', '午後']].forEach(g => {
+        const key = g[0], label = g[1], jp = g[2];
         html += `<div style="margin:10px 0 4px;"><span class="kb-ampm-badge" style="display:inline-block; border:2px solid #2c7a7b; color:#2c7a7b; font-weight:800; padding:1px 12px; border-radius:4px; letter-spacing:2px; font-size:.9rem;">${label}</span></div>`;
+        if (!groups[key].length) {
+            // #2: 空群は消さず「欠席者なし」を明示（確認済みでゼロと分かるように）
+            html += `<div style="color:#888; font-size:.85rem; margin:2px 0 6px;">${jp} 欠席者なし</div>`;
+            return;
+        }
         groups[key].forEach(it => { html += kbCardHtml_(it); });
     });
     listEl.innerHTML = html;
