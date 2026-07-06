@@ -118,14 +118,15 @@ Expected: FAIL（`kbJstYmdFromEpoch_ is not a function`）
 - [ ] **Step 3: 最小実装**（core、Task1関数の下に追記）
 
 ```js
-// epoch(ms) の JST(UTC+9) カレンダー日を yyyy-mm-dd で返す。時刻を引数化して境界テスト可能に。
-// genba の jstTodayStr()(Intl+Asia/Tokyo) と同一結果。kbox の当日判定はJST固定を厳守。
+// epoch(ms) の JST カレンダー日を yyyy-mm-dd で返す。時刻を引数化して境界テスト可能に。
+// ★方式: Intl.DateTimeFormat(timeZone:'Asia/Tokyo') 系で取得（既存 jstTodayStr() と同系統）。
+//   +9h手計算にしない（DST/うるう秒等の将来の穴を避け、TZ権威に委ねる）。
 function kbJstYmdFromEpoch_(epochMs) {
-  var d = new Date(epochMs + 9 * 3600 * 1000);   // +9h した瞬間のUTC日 = JST日
-  var y = d.getUTCFullYear();
-  var m = ('0' + (d.getUTCMonth() + 1)).slice(-2);
-  var da = ('0' + d.getUTCDate()).slice(-2);
-  return y + '-' + m + '-' + da;
+  var parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date(epochMs));
+  var g = function (t) { var x = parts.find(function (e) { return e.type === t; }); return x ? x.value : ''; };
+  return g('year') + '-' + g('month') + '-' + g('day');
 }
 ```
 
