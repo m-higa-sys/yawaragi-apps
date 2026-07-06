@@ -3202,6 +3202,54 @@ function doGet(e) {
     }
 
     // ============================================================
+    // 口腔②「今月の締め担当」（月 YYYY-MM × 看護師1人）additive・2026-07-06追加
+    // morningDigest/朝報・請求まわりには一切触れない。専用シート「口腔締め担当」に月×担当を持つ。
+    // ============================================================
+    if (action === 'getOralCloseAssignees') {
+      var gcaSheet = ensureOralCloseSheet_();
+      var gcaValues = gcaSheet.getDataRange().getValues();
+      var gcaMap = {};
+      for (var gcaI = 1; gcaI < gcaValues.length; gcaI++) {
+        var gcaYm = String(gcaValues[gcaI][0] || '').trim();
+        var gcaName = String(gcaValues[gcaI][1] || '').trim();
+        if (/^\d{4}-\d{2}$/.test(gcaYm) && gcaName) gcaMap[gcaYm] = gcaName;
+      }
+      return respond({ ok: true, map: gcaMap }, callback);
+    }
+
+    if (action === 'setOralCloseAssignee') {
+      var scaMonth = String((e && e.parameter && e.parameter.month) || '').trim();
+      var scaAssignee = String((e && e.parameter && e.parameter.assignee) || '').trim();
+      var scaBy = String((e && e.parameter && e.parameter.updatedBy) || '').trim();
+      if (!/^\d{4}-\d{2}$/.test(scaMonth)) {
+        return respond({ ok: false, error: 'invalid month (YYYY-MM)' }, callback);
+      }
+      if (!scaAssignee) {
+        return respond({ ok: false, error: 'assignee required' }, callback);
+      }
+      var scaLock = LockService.getScriptLock();
+      try { scaLock.waitLock(10000); } catch (scaLockErr) {
+        return respond({ ok: false, error: 'lock timeout' }, callback);
+      }
+      try {
+        var scaSheet = ensureOralCloseSheet_();
+        var scaValues = scaSheet.getDataRange().getValues();
+        var scaRowIdx = -1;
+        for (var scaI = 1; scaI < scaValues.length; scaI++) {
+          if (String(scaValues[scaI][0] || '').trim() === scaMonth) { scaRowIdx = scaI + 1; break; }
+        }
+        var scaNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+        var scaRow = [scaMonth, scaAssignee, scaNow, scaBy];
+        var scaTarget = (scaRowIdx < 0) ? (scaSheet.getLastRow() + 1) : scaRowIdx;
+        scaSheet.getRange(scaTarget, 1, 1, 4).setNumberFormat('@');  // YYYY-MM の日付誤変換を防止
+        scaSheet.getRange(scaTarget, 1, 1, 4).setValues([scaRow]);
+        return respond({ ok: true, month: scaMonth, assignee: scaAssignee }, callback);
+      } finally {
+        scaLock.releaseLock();
+      }
+    }
+
+    // ============================================================
     // 通所介護計画書 サイクル設定更新
     // ============================================================
     if (action === 'updateTsushoConfig') {
@@ -12724,6 +12772,20 @@ function ensureTsushoPlansSheets_() {
     configSheet.getRange(1, 1, 1, 3).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
   }
   return { recordSheet: recordSheet, configSheet: configSheet };
+}
+
+// 口腔②「今月の締め担当」保存シート（月 YYYY-MM × 担当者）。無ければ作る（冪等）。
+// 全列テキスト書式で 'YYYY-MM' の日付誤変換を防ぐ。既存シート・請求・morningDigestには非接触。
+function ensureOralCloseSheet_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sh = ss.getSheetByName('口腔締め担当');
+  if (!sh) {
+    sh = ss.insertSheet('口腔締め担当');
+    sh.getRange('A:D').setNumberFormat('@');
+    sh.getRange(1, 1, 1, 4).setValues([['月', '担当者', '更新日時', '更新者']]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
 }
 
 // シート初期化: 「口腔機能向上記録」「口腔機能向上設定」が無ければ作る（冪等）

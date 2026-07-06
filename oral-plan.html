@@ -484,6 +484,8 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     <div class="stats">
         対象者: <strong id="totalUsers">0</strong> 名
     </div>
+    <div id="closeAssigneeSlot" onclick="openCloseAssigneeDialog()" title="今月の締め担当（看護師1人・月替わり）。タップで変更。"
+         style="margin-left:auto; cursor:pointer; display:flex; align-items:center; gap:9px; background:linear-gradient(90deg,#fefcbf,#faf089); border:2px solid #d69e2e; border-radius:10px; padding:6px 14px; box-shadow:0 1px 4px rgba(214,158,46,0.3);"></div>
 </div>
 
 <div class="filter-bar" id="filterBar" style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">
@@ -624,6 +626,7 @@ let state = {
     operator: '',
     includeCancelled: false,
     staffNames: [],
+    closeAssignees: {},   // { 'YYYY-MM': 看護師名 } 今月の締め担当（手動上書き分・GAS getOralCloseAssignees）
     view: 'focus'         // 既定＝今月フォーカス（起動時に localStorage で上書き）
 };
 
@@ -875,7 +878,8 @@ function saveCache() {
             fetchedAt: new Date().toISOString(),
             users: state.users,
             records: state.records,
-            cancelledUsers: state.cancelledUsers || []
+            cancelledUsers: state.cancelledUsers || [],
+            closeAssignees: state.closeAssignees || {}
         }));
     } catch (e) { console.warn('cache save failed', e); }
 }
@@ -887,6 +891,7 @@ function loadCache() {
         state.users = c.users || [];
         state.records = c.records || {};
         state.cancelledUsers = c.cancelledUsers || [];
+        if (c.closeAssignees && typeof c.closeAssignees === 'object') state.closeAssignees = c.closeAssignees;
         renderTable();
     } catch (e) { console.warn('cache load failed', e); }
 }
@@ -1136,6 +1141,102 @@ function getMonthFocus(d) {
     else { role = 'none'; anchorMonth = 0; }
     // 報告計画月/モニ月は当月Mと同一暦年内に収まる（1,2月→3月／4→6／7→9／10,11→12）。
     return { year: y, month: M, role: role, anchorMonth: anchorMonth, anchorYear: y };
+}
+
+// ============ 今月の締め担当（看護師1人・月替わりローテ＋手動上書き） ============
+// 締め担当＝実施（みんなで作る）とは別。最後に実績フォルダへ入れ「今月揃ったか」を責任もって確認するまとめ役。
+// ローテ: 髙山→春山→石井 の順、2026-07=髙山 起点。手動設定（state.closeAssignees[ym]）があればローテより優先。
+// 各チェックの担当（作った人＝getLastBy/dateByInput）とは独立（繋げない）。
+const CLOSE_ANCHOR_TOTAL = 2026 * 12 + (7 - 1);  // 2026-07 = NURSE_NAMES[0]（髙山）
+function closeAssigneeAuto(ym) {
+    const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return NURSE_NAMES[0];
+    const t = parseInt(m[1], 10) * 12 + (parseInt(m[2], 10) - 1);
+    const n = NURSE_NAMES.length;
+    const idx = (((t - CLOSE_ANCHOR_TOTAL) % n) + n) % n;
+    return NURSE_NAMES[idx];
+}
+function closeAssigneeIsManual(ym) {
+    const v = (state.closeAssignees || {})[ym];
+    return !!(v && NURSE_NAMES.indexOf(v) >= 0);
+}
+function closeAssigneeFor(ym) {
+    return closeAssigneeIsManual(ym) ? state.closeAssignees[ym] : closeAssigneeAuto(ym);
+}
+function nowYMStr() {
+    const now = new Date();
+    return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
+// 締め担当バー更新（ツールバー右のスロットに描画＝今月やること/全グリッド どちらでも常時表示）
+function updateCloseAssigneeBar() {
+    const slot = document.getElementById('closeAssigneeSlot');
+    if (!slot) return;
+    const ym = nowYMStr();
+    const name = closeAssigneeFor(ym);
+    const manual = closeAssigneeIsManual(ym);
+    slot.innerHTML = '<span style="font-size:1.2rem;">🎯</span>'
+        + '<span style="font-size:0.72rem; color:#744210; line-height:1.12;">今月の締め担当<br>'
+        + '<b style="font-size:1.02rem; color:#5f370e;">' + escapeHtml(name) + '</b> '
+        + '<span style="font-size:0.66rem; color:' + (manual ? '#975a16' : '#a0aec0') + ';">' + (manual ? '手動' : '自動') + '</span></span>'
+        + '<span style="font-size:0.72rem; color:#b7791f; font-weight:700; white-space:nowrap;">変更 ▶</span>';
+}
+// 締め担当の選び直しダイアログ（看護師3名のみ・動的オーバーレイ）
+function openCloseAssigneeDialog() {
+    const ym = nowYMStr();
+    const cur = closeAssigneeFor(ym);
+    const old = document.getElementById('closeAsgOverlay'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'closeAsgOverlay';
+    ov.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; z-index:9999;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff; border-radius:12px; padding:18px; width:min(90%,320px); box-shadow:0 8px 24px rgba(0,0,0,0.2);';
+    box.innerHTML = '<div style="font-weight:700; font-size:1rem; margin-bottom:4px;">今月の締め担当を選ぶ</div>'
+        + '<div style="font-size:0.8rem; color:#718096; margin-bottom:12px;">' + escapeHtml(ym) + '（実施担当とは別・最後に「揃ったか」を確認するまとめ役）</div>';
+    nurseOptions().forEach(function (n) {
+        const b = document.createElement('button');
+        b.textContent = n + (n === cur ? '（現在）' : '');
+        b.style.cssText = 'display:block; width:100%; margin:6px 0; padding:12px; border-radius:8px; border:1px solid ' + (n === cur ? '#2c7a7b' : '#cbd5e0') + '; background:' + (n === cur ? '#e6fffa' : '#fff') + '; font-size:1rem; font-weight:700; cursor:pointer;';
+        b.onclick = function () { ov.remove(); saveCloseAssignee(ym, n); };
+        box.appendChild(b);
+    });
+    const cancel = document.createElement('button');
+    cancel.textContent = 'キャンセル';
+    cancel.style.cssText = 'display:block; width:100%; margin-top:10px; padding:10px; border-radius:8px; border:none; background:#edf2f7; color:#4a5568; font-weight:700; cursor:pointer;';
+    cancel.onclick = function () { ov.remove(); };
+    box.appendChild(cancel);
+    ov.appendChild(box);
+    ov.onclick = function (e) { if (e.target === ov) ov.remove(); };
+    document.body.appendChild(ov);
+}
+// 締め担当の保存（楽観更新→即再描画→GAS setOralCloseAssignee）。GAS未デプロイ時は表示のみ反映。
+async function saveCloseAssignee(ym, name) {
+    if (NURSE_NAMES.indexOf(name) < 0) { showToast('⚠ 締め担当は看護師3名から選んでください', 'error'); return; }
+    if (!state.closeAssignees) state.closeAssignees = {};
+    state.closeAssignees[ym] = name;
+    saveCache();
+    try { updateCloseAssigneeBar(); } catch (e) { }
+    try {
+        const url = API_BASE + '?action=setOralCloseAssignee'
+            + '&month=' + encodeURIComponent(ym)
+            + '&assignee=' + encodeURIComponent(name)
+            + '&updatedBy=' + encodeURIComponent(getLastBy() || name)
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '締め担当の保存失敗');
+        showToast('✅ ' + ym + ' の締め担当＝' + name);
+    } catch (e) {
+        console.error('setOralCloseAssignee error:', e);
+        showToast('⚠ 締め担当の保存に失敗（GAS未デプロイ/ネット時は表示のみ反映）', 'warn');
+    }
+}
+// 締め担当マップの取得（GAS getOralCloseAssignees）。失敗時は自動ローテ表示にフォールバック。
+async function fetchCloseAssignees() {
+    try {
+        const res = await fetch(API_BASE + '?action=getOralCloseAssignees&t=' + Date.now());
+        const json = await res.json();
+        if (json && json.ok && json.map && typeof json.map === 'object') { state.closeAssignees = json.map; }
+    } catch (e) { console.warn('getOralCloseAssignees fetch failed', e); }
 }
 
 function focusMoniItem(it, field) {
@@ -1765,7 +1866,9 @@ window.addEventListener('load', async () => {
     loadCache();
     applyViewVisibility();
     updatePendingBanner();
+    updateCloseAssigneeBar();  // 起動時は自動ローテ即表示（fetch前でも見える）
     fetchStaffList().then(staff => { state.staffNames = staff || []; });
+    fetchCloseAssignees().then(() => { try { updateCloseAssigneeBar(); } catch (e) { } });  // 今月の締め担当マップ（手動上書き分）反映
     fetchLedgerSchedule();   // 利用曜日/コマ（曜日フィルタ用）を台帳直読で相乗り
     await loadFiscalYearData();
 });
