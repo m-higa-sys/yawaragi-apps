@@ -43,6 +43,13 @@ ok(noAddr.kind === 'phone', 'C5: メール派だがメアド無し → 電話フ
 const empty = core.kbClassifyCard_({ method: '', email: 'a@b.jp', cmNotified: '' });
 ok(empty.kind === 'phone', 'C6: 連絡手段未設定 → 電話フローに倒す(勝手にメールしない)');
 
+// ===== F. kbAddDaysYMD_（JST安全±日・月/年境界） =====
+ok(core.kbAddDaysYMD_('2026-07-31', 1) === '2026-08-01', 'F1: +1 月跨ぎ');
+ok(core.kbAddDaysYMD_('2026-07-01', -1) === '2026-06-30', 'F2: -1 月跨ぎ');
+ok(core.kbAddDaysYMD_('2026-07-06', 0) === '2026-07-06', 'F3: 0 同日');
+ok(core.kbAddDaysYMD_('2025-12-31', 1) === '2026-01-01', 'F4: +1 年跨ぎ');
+ok(core.kbAddDaysYMD_('2026-01-01', -1) === '2025-12-31', 'F5: -1 年跨ぎ');
+
 console.log(`kesseki-box core: ${pass} PASS / ${fail} FAIL`);
 
 // ===== D/E. genba.html 構造証明（Task3/3.5で緑化。ファイル未変更なら赤） =====

@@ -29,10 +29,22 @@ function kbClassifyCard_(info) {
   };
 }
 
+// yyyy-mm-dd を delta 日ずらす。ローカル構成子方式（put/readとも局所成分）でUTCずれなし。
+function kbAddDaysYMD_(ymd, delta) {
+  var p = String(ymd || '').split('-');
+  if (p.length !== 3) return String(ymd || '');
+  var d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10) + (delta || 0));
+  var y = d.getFullYear();
+  var m = ('0' + (d.getMonth() + 1)).slice(-2);
+  var da = ('0' + d.getDate()).slice(-2);
+  return y + '-' + m + '-' + da;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     kbIsAlreadyNotified_: kbIsAlreadyNotified_,
     kbFilterTodayTargets_: kbFilterTodayTargets_,
-    kbClassifyCard_: kbClassifyCard_
+    kbClassifyCard_: kbClassifyCard_,
+    kbAddDaysYMD_: kbAddDaysYMD_
   };
 }
