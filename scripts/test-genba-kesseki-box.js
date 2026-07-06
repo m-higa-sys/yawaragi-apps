@@ -152,6 +152,16 @@ tryOk(() => {
   ok2(html.indexOf('id="kbox-summary-modal"') >= 0, 'D5: 送信は最終サマリーモーダル経由');
 }, 'D群(ボックスUI)');
 
+// K. 過去+未来ビュー DOM（月グリッド無し・3要素のみ）
+tryOk(() => {
+  ok2(html.indexOf('id="kbox-datenav"') >= 0, 'K1: 日付送り帯が存在');
+  ok2(html.indexOf('id="kbox-prev"') >= 0 && html.indexOf('kbGoDate(-1)') >= 0, 'K2: ◀=kbGoDate(-1)');
+  ok2(html.indexOf('id="kbox-next"') >= 0 && html.indexOf('kbGoDate(1)') >= 0, 'K3: ▶=kbGoDate(1)');
+  ok2(html.indexOf('id="kbox-datelabel"') >= 0, 'K4: 中央日付ラベルが存在');
+  ok2(html.indexOf('id="kbox-viewonly-banner"') >= 0, 'K5: 閲覧のみ帯が存在');
+  ok2(html.indexOf('id="kbox-jumpchips"') >= 0, 'K6: ジャンプチップ行が存在');
+}, 'K群(日付ビューDOM)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
