@@ -1560,6 +1560,8 @@
             </div>
             <span id="kbox-pending-badge" style="display:none; background:#c0392b; color:#fff; border-radius:12px; padding:2px 10px; font-weight:700;"></span>
         </div>
+        <!-- 2026-07-07 移設: box内 操作者行（自己完結・既存absSelectReceptionist再利用・欠席登録タブと同期） -->
+        <div id="kbox-operator-select" style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center;"></div>
         <!-- 2026-07-06 過去+未来ビュー: 日付送り帯（#kbox-section内・init非依存・月グリッド無し） -->
         <div id="kbox-datenav" style="display:flex; align-items:center; justify-content:center; gap:12px; margin:6px 0;">
             <button type="button" id="kbox-prev" onclick="kbGoDate(-1)" style="padding:4px 14px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:1rem;">◀</button>
@@ -7401,9 +7403,21 @@ function kbFmtChip_(ymd) {
     return parseInt(p[1], 10) + '/' + parseInt(p[2], 10) + '(' + dow + ')';
 }
 
+// box内 操作者行: 名簿=既存getStaff−EXCLUDED_STAFF、タップ=既存absSelectReceptionist（global+localStorage共有で欠席登録タブと同期）
+function kbRenderOperatorRow_() {
+    const box = document.getElementById('kbox-operator-select');
+    if (!box) return;
+    const cur = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
+    const staff = (typeof getStaff === 'function' ? getStaff() : []).filter(s => !(typeof EXCLUDED_STAFF !== 'undefined' && EXCLUDED_STAFF.includes(s)));
+    box.innerHTML = '<span style="font-size:.82rem; color:#555;">操作者:</span>' + staff.map(s =>
+        `<button type="button" class="abs-contact-btn${cur === s ? ' selected' : ''}" style="padding:3px 10px; font-size:.85rem;" onclick="absSelectReceptionist('${kbEsc_(s)}', this)">${kbEsc_(s)}</button>`
+    ).join('');
+}
+
 function kbInit() {
     const sec = document.getElementById('kbox-section');
     if (!sec) return;                      // 要素不在ガード（f774228型回避）
+    kbRenderOperatorRow_();                // box内操作者行（自己完結・既存関数再利用）
     kbLoad();
 }
 
@@ -7524,6 +7538,7 @@ function kbEsc_(s) {
 function kbRender() {
     const listEl = document.getElementById('kbox-list');
     if (!listEl) return;
+    kbRenderOperatorRow_();                // 操作者行を再描画（選択後 absSelectReceptionist→kbRender でハイライト同期）
     const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
     const noteEl = document.getElementById('kbox-operator-note');
     const sendBtn = document.getElementById('kbox-send-btn');

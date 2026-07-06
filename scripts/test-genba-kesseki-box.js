@@ -253,6 +253,17 @@ tryOk(() => {
   ok2(chrome.indexOf('kbox-datepicker') >= 0, 'S4: chromeがpicker値を現在viewDateへ同期');
 }, 'S群(日付ピッカー)');
 
+// T. box内操作者行（自己完結・既存absSelectReceptionist再利用）
+tryOk(() => {
+  ok2(html.indexOf('id="kbox-operator-select"') >= 0, 'T1: box内に操作者コンテナ');
+  ok2(html.indexOf('function kbRenderOperatorRow_') >= 0, 'T2: kbRenderOperatorRow_定義');
+  const src = extractFn('kbRenderOperatorRow_');
+  ok2(src.indexOf('getStaff') >= 0 && src.indexOf('EXCLUDED_STAFF') >= 0, 'T3: 名簿はgetStaff−EXCLUDED_STAFF流用');
+  ok2(src.indexOf('absSelectReceptionist') >= 0, 'T4: タップは既存absSelectReceptionistを呼ぶ');
+  const rsrc = extractFn('kbRender()');
+  ok2(rsrc.indexOf('kbRenderOperatorRow_') >= 0, 'T5: kbRenderが操作者行を再描画(選択ハイライト同期)');
+}, 'T群(box内操作者行)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
