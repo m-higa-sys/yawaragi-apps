@@ -96,6 +96,19 @@ function kbUnitGroup_(unit) {
   return 'pm';   // 午後・終日・空・不明はPM群へ（害なき防御: カードを消さない。同一日AM/PM併用者は存在しない前提）
 }
 
+function kbIsOkResponse_(resp) {
+  return !!(resp && resp.absences && Array.isArray(resp.absences.absences));
+}
+// kbLoad の描画判断（純関数）。resp=absences応答(失敗時null)、todayYMD=本日、firstLoad=まだ成功表示していないか。
+// preserve: 失敗/空 かつ 既存表示あり→触らない ／ errored: 失敗 かつ 初回 ／ empty: 成功0件（"欠席なし"OK唯一） ／ list: 成功N件
+function kbDecideLoad_(resp, todayYMD, firstLoad) {
+  if (!kbIsOkResponse_(resp)) {
+    return { outcome: firstLoad ? 'errored' : 'preserve', targets: [] };
+  }
+  var targets = kbFilterTodayTargets_(resp.absences.absences, todayYMD);
+  return { outcome: targets.length ? 'list' : 'empty', targets: targets };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     kbIsAlreadyNotified_: kbIsAlreadyNotified_,
@@ -106,6 +119,8 @@ if (typeof module !== 'undefined' && module.exports) {
     kbUpcomingAbsenceDates_: kbUpcomingAbsenceDates_,
     kbMergeDedupAbs_: kbMergeDedupAbs_,
     kbIsViewToday_: kbIsViewToday_,
-    kbUnitGroup_: kbUnitGroup_
+    kbUnitGroup_: kbUnitGroup_,
+    kbIsOkResponse_: kbIsOkResponse_,
+    kbDecideLoad_: kbDecideLoad_
   };
 }
