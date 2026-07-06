@@ -173,6 +173,18 @@ tryOk(() => {
   ok2(html.indexOf('function kbFilterTodayTargets_') >= 0, 'L6: インラインkbFilterTodayTargets_(日付引数版)');
 }, 'L群(状態+インライン純関数)');
 
+// M. kbRender の chrome描画（datelabel/banner/chips）とUIガード
+tryOk(() => {
+  const kbRenderSrc = extractFn('kbRender()');   // 'kbRender'だとkbRenderForDate等に前置衝突するため厳密化
+  ok2(kbRenderSrc.indexOf('kbRenderChrome_') >= 0, 'M1: kbRenderがchrome描画を呼ぶ');
+  ok2(kbRenderSrc.indexOf('kbIsViewToday_') >= 0, 'M2: kbRenderが当日判定を持つ');
+  ok2(/viewIsToday/.test(kbRenderSrc), 'M3: viewIsTodayでUI活性を分岐');
+  ok2(html.indexOf('function kbRenderChrome_') >= 0, 'M4: kbRenderChrome_定義');
+  const chromeSrc = extractFn('kbRenderChrome_');
+  ok2(chromeSrc.indexOf('kbUpcomingAbsenceDates_') >= 0, 'M5: chromeがジャンプ一覧を描く');
+  ok2(chromeSrc.indexOf('kbox-viewonly-banner') >= 0, 'M6: chromeが閲覧のみ帯を制御');
+}, 'M群(chrome+UIガード)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');

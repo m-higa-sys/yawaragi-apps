@@ -7522,8 +7522,14 @@ function kbRender() {
     const noteEl = document.getElementById('kbox-operator-note');
     const sendBtn = document.getElementById('kbox-send-btn');
 
+    // 表示対象日・当日判定（機能C）。chrome（日付帯・閲覧のみ帯・チップ）を先に描く。
+    const _today = jstTodayStr();
+    const _viewDate = kbState.viewDate || _today;
+    const _viewIsToday = kbIsViewToday_(_viewDate, _today);
+    kbRenderChrome_(_viewDate, _today, _viewIsToday);
+
     if (!kbState.items.length) {
-        listEl.innerHTML = '<div style="color:#2c7a7b; font-weight:700;">本日の欠席はありません 🎉</div>';
+        listEl.innerHTML = '<div style="color:#2c7a7b; font-weight:700;">' + (_viewIsToday ? '本日' : kbFmtChip_(_viewDate)) + 'の欠席はありません 🎉</div>';
         kbUpdateBadge();
         if (sendBtn) sendBtn.style.display = 'none';
         if (noteEl) noteEl.textContent = '';
@@ -7557,14 +7563,14 @@ function kbRender() {
             body = `<div style="font-size:.82rem; color:#555;">宛先: ${kbEsc_(it.email)}</div>
                     <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
                         <label style="display:flex; align-items:center; gap:6px;">
-                            <input type="checkbox" ${chk} onchange="kbToggleCheck('${kbEsc_(it.name)}', this.checked)" style="width:18px; height:18px;">送信対象
+                            <input type="checkbox" ${chk} ${_viewIsToday ? '' : 'disabled'} onchange="kbToggleCheck('${kbEsc_(it.name)}', this.checked)" style="width:18px; height:18px;">送信対象
                         </label>
                         <button class="abs-contact-btn" style="padding:4px 10px; font-size:.85rem;" onclick="kbOpenPreview('${kbEsc_(it.name)}')">内容を見る</button>
                     </div>`;
         } else {
             // 電話派 / メアド無し
             body = `<div style="color:#d69e2e; font-weight:700; margin-top:4px;">☎ 電話してください</div>
-                    <button class="abs-contact-btn" style="margin-top:4px; padding:4px 10px; font-size:.85rem;${opDisabled ? ' opacity:.5;' : ''}" ${opDisabled ? 'disabled' : ''} onclick="kbMarkPhoneDone('${kbEsc_(it.name)}', '${kbEsc_(it.date)}')">電話済みにする</button>`;
+                    <button class="abs-contact-btn" style="margin-top:4px; padding:4px 10px; font-size:.85rem;${(opDisabled || !_viewIsToday) ? ' opacity:.5;' : ''}" ${(opDisabled || !_viewIsToday) ? 'disabled' : ''} onclick="kbMarkPhoneDone('${kbEsc_(it.name)}', '${kbEsc_(it.date)}')">電話済みにする</button>`;
         }
         html += `<div style="border:1px solid #cbd5e0; border-radius:8px; padding:8px; margin:6px 0; background:#fff;">${head}${body}</div>`;
     });
@@ -7573,10 +7579,29 @@ function kbRender() {
     // 送信ボタンは「操作者あり かつ チェック済みメール派が1人以上」で有効
     const anyChecked = kbState.items.some(it => it.cls.kind === 'mail' && !it.cls.done && kbState.checked[it.name]);
     if (sendBtn) {
-        sendBtn.disabled = opDisabled || !anyChecked;
-        sendBtn.style.opacity = (opDisabled || !anyChecked) ? '.5' : '1';
+        sendBtn.disabled = opDisabled || !anyChecked || !_viewIsToday;
+        sendBtn.style.opacity = (opDisabled || !anyChecked || !_viewIsToday) ? '.5' : '1';
     }
     kbUpdateBadge();
+}
+
+// 日付帯ラベル・閲覧のみ帯・ジャンプチップ（機能A表示/B/C帯）。データ非変更・表示のみ。
+function kbRenderChrome_(viewDate, today, viewIsToday) {
+    const label = document.getElementById('kbox-datelabel');
+    if (label) label.textContent = kbFmtChip_(viewDate) + (viewIsToday ? '（今日）' : '');
+    const banner = document.getElementById('kbox-viewonly-banner');
+    if (banner) banner.style.display = viewIsToday ? 'none' : 'block';
+    const chips = document.getElementById('kbox-jumpchips');
+    if (chips) {
+        const dates = kbUpcomingAbsenceDates_(kbState.forward || [], today).filter(function (d) { return d !== viewDate; });
+        if (!dates.length) {
+            chips.innerHTML = '';
+        } else {
+            chips.innerHTML = '<span style="color:#555;">この先お休み: </span>' + dates.map(function (d) {
+                return '<button type="button" onclick="kbJumpTo(\'' + d + '\')" style="margin:2px 3px; padding:2px 9px; border:1px solid #cbd5e0; background:#fff; border-radius:12px; cursor:pointer; font-size:.82rem;">' + kbFmtChip_(d) + '</button>';
+            }).join('');
+        }
+    }
 }
 
 function kbToggleCheck(name, checked) {
