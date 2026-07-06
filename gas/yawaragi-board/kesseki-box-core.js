@@ -40,11 +40,23 @@ function kbAddDaysYMD_(ymd, delta) {
   return y + '-' + m + '-' + da;
 }
 
+// epoch(ms) の JST カレンダー日を yyyy-mm-dd で返す。時刻を引数化して境界テスト可能に。
+// ★方式: Intl.DateTimeFormat(timeZone:'Asia/Tokyo') 系で取得（既存 jstTodayStr() と同系統）。
+//   +9h手計算にしない（DST/うるう秒等の将来の穴を避け、TZ権威に委ねる）。
+function kbJstYmdFromEpoch_(epochMs) {
+  var parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date(epochMs));
+  var g = function (t) { var x = parts.find(function (e) { return e.type === t; }); return x ? x.value : ''; };
+  return g('year') + '-' + g('month') + '-' + g('day');
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     kbIsAlreadyNotified_: kbIsAlreadyNotified_,
     kbFilterTodayTargets_: kbFilterTodayTargets_,
     kbClassifyCard_: kbClassifyCard_,
-    kbAddDaysYMD_: kbAddDaysYMD_
+    kbAddDaysYMD_: kbAddDaysYMD_,
+    kbJstYmdFromEpoch_: kbJstYmdFromEpoch_
   };
 }
