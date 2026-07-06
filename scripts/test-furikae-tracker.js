@@ -33,12 +33,13 @@ new Function('sb',
   extractFn('fnkNeedsImportMarker') + '\n' +
   extractFn('fnkMarkerRecord') + '\n' +
   extractFn('fnkApplyImportMarker') + '\n' +
+  extractFn('fnkExistingCustomerIds') + '\n' +
   extractFn('fnkMonthsOf') + '\n' +
   extractFn('fnkNoticeBody') + '\n' +
   'sb.extract = fnkExtractResultCode; sb.badge = fnkBadgeFor; sb.unpaid = fnkIsUnpaid;' +
   'sb.summary = fnkMonthSummary; sb.cand = fnkGoushanCandidates; sb.act = fnkActionableCount;' +
   'sb.isMarker = fnkIsImportMarker; sb.needsMarker = fnkNeedsImportMarker; sb.markerRec = fnkMarkerRecord;' +
-  'sb.applyMarker = fnkApplyImportMarker;' +
+  'sb.applyMarker = fnkApplyImportMarker; sb.existingIds = fnkExistingCustomerIds;' +
   'sb.monthsOf = fnkMonthsOf; sb.noticeBody = fnkNoticeBody;'
 )(sb);
 
@@ -174,6 +175,17 @@ ok(d1.records.length === 1, 'O5: 二重追加されない');
 const d2 = { records: [{ id: 1, month: '2026-06', status: '未対応' }], nextId: 2 };
 ok(sb.applyMarker(d2, '2026-06', '2026-07-06') === false, 'O6: 実レコード有の月→付与false');
 ok(d2.records.length === 1, 'O7: 実レコードの月にマーカー足さない');
+
+// ===== P. dedup用 既存顧客番号（マーカー除外＝実不能の取りこぼし防止）=====
+const pRecs = [
+  { id: 1, month: '2026-06', isImportMarker: true, status: '回収済', customerId: '' }, // マーカー(空customerId)
+  { id: 2, month: '2026-06', status: '未対応', customerId: '30' },                      // 同月の実不能
+  { id: 3, month: '2026-05', status: '未対応', customerId: '40' }                       // 別月
+];
+const pIds = sb.existingIds(pRecs, '2026-06');
+ok(pIds.indexOf('') === -1, 'P1: マーカーの空customerIdは含めない（空customerIdの実不能を誤スキップしない）');
+ok(pIds.indexOf('30') >= 0, 'P2: 同月の実不能の顧客番号は含む');
+ok(pIds.indexOf('40') === -1, 'P3: 別月は含まない');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

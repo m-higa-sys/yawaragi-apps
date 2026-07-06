@@ -508,10 +508,8 @@ function processExcelFile(file) {
         return;
       }
 
-      // 重複チェック（同月・同顧客番号）
-      const existingIds = data.records
-        .filter(r => r.month === month)
-        .map(r => r.customerId);
+      // 重複チェック（同月・同顧客番号）※マーカー除外は fnkExistingCustomerIds に集約
+      const existingIds = fnkExistingCustomerIds(data.records, month);
 
       const newRecords = [];
       let skipCount = 0;
@@ -923,6 +921,13 @@ function fnkMarkerRecord(month, id, today) {
     name: '(取込済マーカー)', reason: '取込済み・不能0件', amount: 0,
     customerId: '', hikiotoshiDate: '', createdAt: today
   };
+}
+
+// 同月の重複判定に使う既存顧客番号一覧。マーカー(customerId:'')は除外（実不能の取りこぼし防止）。
+function fnkExistingCustomerIds(records, month) {
+  return (records || [])
+    .filter(function (r) { return r.month === month && !fnkIsImportMarker(r); })
+    .map(function (r) { return r.customerId; });
 }
 
 // 対象月が未取込ならマーカーを1件追加して data を変更（副作用は data のみ）。追加したら true。
