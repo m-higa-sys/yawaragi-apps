@@ -84,6 +84,27 @@ const _h4 = core.kbUpcomingAbsenceDates_([
 ], '2026-07-06');
 ok(_h4.length === 0, 'H4: isLongTerm のみ入力 → 空配列(長期除外)');
 
+// ===== I. kbMergeDedupAbs_（④継ぎ目: primary=前進窓GET正本, secondary=月キャッシュ補完） =====
+const _iPrimary = [
+  { name: '太郎', date: '2026-07-06', unit: '午前', cmNotified: '送信済' },   // 正本(最新)
+];
+const _iSecondary = [
+  { name: '太郎', date: '2026-07-06', unit: '午前', cmNotified: '' },          // 同一key → 捨てる(primary優先)
+  { name: '花子', date: '2026-07-04', unit: '午後', cmNotified: '電話連絡済' }, // primaryに無い → 補完
+];
+const _iOut = core.kbMergeDedupAbs_(_iPrimary, _iSecondary);
+ok(_iOut.length === 2, 'I1: overlapは1つ・非重複は補完で計2件');
+const _iTaro = _iOut.filter(function (x) { return x.name === '太郎'; });
+ok(_iTaro.length === 1 && _iTaro[0].cmNotified === '送信済', 'I2: overlap日はprimary(前進窓GET)が正本');
+ok(_iOut.some(function (x) { return x.name === '花子'; }), 'I3: primaryに無いsecondaryは補完される');
+ok(core.kbMergeDedupAbs_(null, null).length === 0, 'I4: 両方null/空で落ちない');
+// I5: dedupキーが(name,date,unit)三点である証明。同一人・同一日でも午前/午後は別スロット→畳まない
+const _i5 = core.kbMergeDedupAbs_([
+  { name: '太郎', date: '2026-07-06', unit: '午前', cmNotified: '送信済' },
+  { name: '太郎', date: '2026-07-06', unit: '午後', cmNotified: '' },
+], []);
+ok(_i5.length === 2, 'I5: 太郎/07-06/午前 と 太郎/07-06/午後 は畳まれず2件(unitを鍵に含む)');
+
 console.log(`kesseki-box core: ${pass} PASS / ${fail} FAIL`);
 
 // ===== D/E. genba.html 構造証明（Task3/3.5で緑化。ファイル未変更なら赤） =====

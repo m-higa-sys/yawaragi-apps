@@ -66,6 +66,25 @@ function kbUpcomingAbsenceDates_(absList, todayYMD) {
   return out;
 }
 
+// 2ソースをマージ・dedup。key=name|date|unit。primary(前進窓GET)を正本、secondaryは未登録キーのみ補完。
+function kbMergeDedupAbs_(primaryList, secondaryList) {
+  var out = [], seen = {};
+  function key(a) { return String(a.name || '') + '|' + String(a.date || '') + '|' + String(a.unit || ''); }
+  (primaryList || []).forEach(function (a) {
+    if (!a) return;
+    var k = key(a);
+    if (seen[k]) return;
+    seen[k] = true; out.push(a);
+  });
+  (secondaryList || []).forEach(function (a) {
+    if (!a) return;
+    var k = key(a);
+    if (seen[k]) return;
+    seen[k] = true; out.push(a);
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     kbIsAlreadyNotified_: kbIsAlreadyNotified_,
@@ -73,6 +92,7 @@ if (typeof module !== 'undefined' && module.exports) {
     kbClassifyCard_: kbClassifyCard_,
     kbAddDaysYMD_: kbAddDaysYMD_,
     kbJstYmdFromEpoch_: kbJstYmdFromEpoch_,
-    kbUpcomingAbsenceDates_: kbUpcomingAbsenceDates_
+    kbUpcomingAbsenceDates_: kbUpcomingAbsenceDates_,
+    kbMergeDedupAbs_: kbMergeDedupAbs_
   };
 }
