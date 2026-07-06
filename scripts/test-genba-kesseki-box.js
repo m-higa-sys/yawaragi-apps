@@ -242,6 +242,17 @@ tryOk(() => {
   ok2(/groups\.am|groups\['am'\]/.test(src) && /groups\.pm|groups\['pm'\]/.test(src), 'R4: am/pmバケットに振り分け');
 }, 'R群(AM/PM群描画)');
 
+// S. 日付ピッカー（type=date・kbJumpTo経路・chromeで値同期）
+tryOk(() => {
+  const idx = html.indexOf('id="kbox-datepicker"');
+  ok2(idx >= 0, 'S1: #kbox-datepickerが存在');
+  const line = html.slice(html.lastIndexOf('<', idx), html.indexOf('>', idx) + 1);
+  ok2(/type="date"/.test(line), 'S2: type=date');
+  ok2(/onchange="kbJumpTo\(this\.value\)"/.test(line), 'S3: onchangeがkbJumpTo(this.value)');
+  const chrome = extractFn('kbRenderChrome_');
+  ok2(chrome.indexOf('kbox-datepicker') >= 0, 'S4: chromeがpicker値を現在viewDateへ同期');
+}, 'S群(日付ピッカー)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
