@@ -7719,6 +7719,8 @@ function kbOpenSummary() {
 // 「送信する」でのみ実送信。POST=no-cors（genba既存流儀）＋送信後は再読込でサーバ値を正として反映。
 function kbExecuteSend() {
     if (!gnbGuardProdWrite('欠席連絡の一括送信')) return;   // ★fetch前 originガード（9本目）
+    // ★当日ガード（構造的封じ）: 未来日/過去日は閲覧のみ。UI無効化をすり抜けても、あらゆる副作用の前で即return。
+    if (!kbIsViewToday_(kbState.viewDate || jstTodayStr(), jstTodayStr())) { showToast('未来日/過去日は閲覧のみです（送信・電話記録は当日のみ）', 3000); return; }
     const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
     if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
     const targets = kbCollectSendTargets_();
@@ -7749,6 +7751,8 @@ function kbExecuteSend() {
 // ===== Task6: 電話派フロー（電話済みにする・既存updateAbsenceCmNotified流用） =====
 function kbMarkPhoneDone(name, date) {
     if (!gnbGuardProdWrite('電話済みマーク')) return;          // ★fetch前 originガード（10本目）
+    // ★当日ガード（構造的封じ）: 未来日/過去日は閲覧のみ。confirm/fetchの前で即return。
+    if (!kbIsViewToday_(kbState.viewDate || jstTodayStr(), jstTodayStr())) { showToast('未来日/過去日は閲覧のみです（送信・電話記録は当日のみ）', 3000); return; }
     const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
     if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
     if (!confirm(name + ' さんのケアマネに電話連絡済みにしますか？（担当: ' + operator + '）')) return;

@@ -185,6 +185,31 @@ tryOk(() => {
   ok2(chromeSrc.indexOf('kbox-viewonly-banner') >= 0, 'M6: chromeが閲覧のみ帯を制御');
 }, 'M群(chrome+UIガード)');
 
+// N. 関数レベル当日ガード（UIすり抜け不能・前倒し送信の構造的封じ）
+tryOk(() => {
+  const sendSrc = extractFn('kbExecuteSend');
+  ok2(sendSrc.indexOf('kbIsViewToday_') >= 0, 'N1: kbExecuteSendに当日ガード');
+  // 実際の fetch( 呼び出しで判定（コメント中の「fetch前」等の単語に誤マッチしないため）
+  ok2(sendSrc.indexOf('kbIsViewToday_') < sendSrc.indexOf('fetch('), 'N2: 当日ガードはfetch(呼び出しより前');
+  ok2(sendSrc.indexOf('gnbGuardProdWrite') >= 0, 'N3: 既存originガードも維持');
+  const telSrc = extractFn('kbMarkPhoneDone');
+  ok2(telSrc.indexOf('kbIsViewToday_') >= 0, 'N4: kbMarkPhoneDoneに当日ガード');
+  ok2(telSrc.indexOf('kbIsViewToday_') < telSrc.indexOf('fetch('), 'N5: 当日ガードはfetch(呼び出しより前');
+  ok2(telSrc.indexOf('gnbGuardProdWrite') >= 0, 'N6: 既存originガードも維持');
+  // N7/N8: ガードは「あらゆる状態変更より前」。ガードより前に副作用(UI送信済化/チェック書換/二重送信フラグ/確認ダイアログ/fetch)が一切無い。
+  // 実コード構文(.disabled= / .checked= / fetch( / confirm( )でマッチ＝コメント語に誤反応しない。
+  const sendBefore = sendSrc.slice(0, sendSrc.indexOf('kbIsViewToday_'));
+  ok2(sendSrc.indexOf('kbIsViewToday_') > 0 && !/\.disabled\s*=|送信中|\.textContent\s*=|\.checked\s*=|fetch\(/.test(sendBefore),
+      'N7: kbExecuteSendのガードより前に副作用ゼロ(全状態変更に先行)');
+  const telBefore = telSrc.slice(0, telSrc.indexOf('kbIsViewToday_'));
+  ok2(telSrc.indexOf('kbIsViewToday_') > 0 && !/\.disabled\s*=|\.checked\s*=|confirm\(|fetch\(/.test(telBefore),
+      'N8: kbMarkPhoneDoneのガードより前に副作用ゼロ(confirm/fetchに先行)');
+  // N9: 送信対象集合は viewDate当日のkbState.itemsのみ(前進窓forward/月キャッシュを混ぜない)＝"何を送るか"の別防御線。
+  const collectSrc = extractFn('kbCollectSendTargets_');
+  ok2(collectSrc.indexOf('kbState.items') >= 0 && collectSrc.indexOf('kbState.forward') < 0 && collectSrc.indexOf('attMonthAbsCache') < 0,
+      'N9: 送信対象はviewDate当日のkbState.itemsのみ(forward/月キャッシュ非参照)');
+}, 'N群(関数レベル当日ガード)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
