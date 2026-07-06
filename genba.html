@@ -7392,6 +7392,23 @@ function kbUnitGroup_(unit) {
     if (u.indexOf('午前') >= 0) return 'am';
     return 'pm';   // 午後・終日・空・不明はPM群へ（害なき防御: カードを消さない）
 }
+// 2026-07-07 ちらつき封じ: 構造の整った成功(0件含む)か vs null/欠落(失敗/timeout/空応答) を区別＝3状態の心臓
+function kbIsOkResponseInline_(resp) { return !!(resp && resp.absences && Array.isArray(resp.absences.absences)); }
+// 表示日のデータがロード成功確定か: 当日=forwardOk（forward GET成功）／非当日=monthLoaded（月GET完了）
+function kbViewLoadedInline_(viewDate, todayYMD, forwardOk, monthLoaded) {
+    return String(viewDate) === String(todayYMD) ? !!forwardOk : !!monthLoaded;
+}
+// absences GETのみ retry+backoff（ok応答で確定・失敗/空はリトライ）。非absencesは従来どおり素通し。
+async function kbJsonpRetry_(action, idSuffix, tries) {
+    tries = tries || 3;
+    for (let i = 0; i < tries; i++) {
+        const r = await kbJsonp_(action, idSuffix + (i ? '_r' + i : ''));
+        if (kbIsOkResponseInline_(r)) return r;
+        if (r && action !== 'absences') return r;
+        if (i < tries - 1) await new Promise(res => setTimeout(res, 800 * (i + 1)));
+    }
+    return null;
+}
 function kbFilterTodayTargets_(absList, ymd) {
     return (absList || []).filter(function (a) { return a && !a.isLongTerm && String(a.date) === String(ymd); });
 }

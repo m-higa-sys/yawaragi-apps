@@ -300,6 +300,19 @@ tryOk(() => {
   ok2(html.indexOf('kbState._ensuringYm !== ym') >= 0, 'U7: kbox側_ensuringYm二重ensureガード生存');
 }, 'U群(移設)');
 
+// W. 3状態ちらつき封じ インライン関数
+tryOk(() => {
+  ok2(html.indexOf('function kbIsOkResponseInline_') >= 0, 'W1: kbIsOkResponseInline_ 定義');
+  ok2(html.indexOf('function kbViewLoadedInline_') >= 0, 'W2: kbViewLoadedInline_ 定義');
+  ok2(html.indexOf('function kbJsonpRetry_') >= 0, 'W3: kbJsonpRetry_ 定義');
+  const okSrc = extractFn('kbIsOkResponseInline_');
+  ok2(/Array\.isArray/.test(okSrc) && okSrc.indexOf('absences') >= 0, 'W4: okは absences.absences の配列判定');
+  const vlSrc = extractFn('kbViewLoadedInline_');
+  ok2(vlSrc.indexOf('forwardOk') >= 0 && vlSrc.indexOf('monthLoaded') >= 0, 'W5: 当日=forwardOk/非当日=monthLoaded で分岐');
+  const rtSrc = extractFn('kbJsonpRetry_');
+  ok2(rtSrc.indexOf('kbIsOkResponseInline_') >= 0 && rtSrc.indexOf('setTimeout') >= 0, 'W6: retryはok判定+バックオフ');
+}, 'W群(3状態インライン)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
