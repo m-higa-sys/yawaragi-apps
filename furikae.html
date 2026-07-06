@@ -822,12 +822,14 @@ function saveData(data) {
 let data = loadData();
 
 // ============ 月選択 ============
-function getMonths() {
-  const months = [...new Set(data.records.map(r => r.month))];
+// 月一覧（新しい順）。マーカーのみの月はタブに出さない（幽霊タブ防止・経路1）。
+function fnkMonthsOf(records) {
+  const months = [...new Set((records || []).filter(r => !fnkIsImportMarker(r)).map(r => r.month))];
   months.sort().reverse();
   if (months.length === 0) months.push('2026-02');
   return months;
 }
+function getMonths() { return fnkMonthsOf(data.records); }
 
 function initMonthSelect() {
   const sel = document.getElementById('monthSelect');
@@ -876,7 +878,7 @@ function fnkIsUnpaid(rec) {
 
 // 月別サマリー（未回収のみ・件数/合計）
 function fnkMonthSummary(records, month) {
-  const list = (records || []).filter(function (r) { return r.month === month && fnkIsUnpaid(r); });
+  const list = (records || []).filter(function (r) { return r.month === month && !fnkIsImportMarker(r) && fnkIsUnpaid(r); });
   return { count: list.length, total: list.reduce(function (s, r) { return s + (r.amount || 0); }, 0) };
 }
 
@@ -891,7 +893,7 @@ function fnkGoushanCandidates(records, month, okCustomerIds) {
 // 伝達ボード通知に出す「要対応」件数：当月の未回収のうち 🔴🟠 のみ（⚪翌月合算予定は放置可＝数えない）
 function fnkActionableCount(records, month) {
   return (records || []).filter(function (r) {
-    return r.month === month && fnkIsUnpaid(r) && fnkBadgeFor(r).key !== 'white';
+    return r.month === month && !fnkIsImportMarker(r) && fnkIsUnpaid(r) && fnkBadgeFor(r).key !== 'white';
   }).length;
 }
 
@@ -921,7 +923,7 @@ function fnkMarkerRecord(month, id, today) {
 // ============ 描画 ============
 function renderMonth() {
   const month = document.getElementById('monthSelect').value;
-  const monthRecords = data.records.filter(r => r.month === month);
+  const monthRecords = data.records.filter(r => r.month === month && !fnkIsImportMarker(r));
   const unpaid = monthRecords.filter(fnkIsUnpaid);
   const summary = fnkMonthSummary(data.records, month);
   const mmLabel = month ? parseInt(month.split('-')[1]) + '月分' : '';

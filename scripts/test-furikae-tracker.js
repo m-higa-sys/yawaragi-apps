@@ -32,9 +32,12 @@ new Function('sb',
   extractFn('fnkIsImportMarker') + '\n' +
   extractFn('fnkNeedsImportMarker') + '\n' +
   extractFn('fnkMarkerRecord') + '\n' +
+  extractFn('fnkMonthsOf') + '\n' +
+  extractFn('fnkNoticeBody') + '\n' +
   'sb.extract = fnkExtractResultCode; sb.badge = fnkBadgeFor; sb.unpaid = fnkIsUnpaid;' +
   'sb.summary = fnkMonthSummary; sb.cand = fnkGoushanCandidates; sb.act = fnkActionableCount;' +
-  'sb.isMarker = fnkIsImportMarker; sb.needsMarker = fnkNeedsImportMarker; sb.markerRec = fnkMarkerRecord;'
+  'sb.isMarker = fnkIsImportMarker; sb.needsMarker = fnkNeedsImportMarker; sb.markerRec = fnkMarkerRecord;' +
+  'sb.monthsOf = fnkMonthsOf; sb.noticeBody = fnkNoticeBody;'
 )(sb);
 
 let pass = 0, fail = 0;
@@ -126,6 +129,23 @@ ok(mk.isImportMarker === true, 'M8: 生成物は isImportMarker:true');
 ok(mk.status === '回収済', 'M9: status=回収済（fold/unpaid が既存ロジックで落とす二重安全）');
 ok(mk.month === '2026-06' && mk.id === 42 && mk.createdAt === '2026-07-06', 'M10: month/id/createdAt が引数どおり');
 ok(mk.amount === 0 && mk.customerId === '' && !mk.resolvedMonth, 'M11: 金額0・顧客番号空・resolvedMonth無し（回収済フッタにも出ない）');
+
+// ===== N. マーカー隠蔽 5経路（トラッカー側4経路・社長指示の番人）=====
+const MK = sb.markerRec('2026-06', 99, '2026-07-06'); // 2026-06はマーカーだけの月
+const REC_WITH_MARKER = [
+  { id: 1, month: '2026-05', status: '未対応', resultCode: '2', amount: 1000, customerId: '10' }, // 別月の実不能
+  MK
+];
+// 経路1 表示: getMonths相当(fnkMonthsOf)にマーカー月が出ない（幽霊タブ防止）
+ok(sb.monthsOf(REC_WITH_MARKER).indexOf('2026-06') === -1, 'N1(表示): マーカーのみの月2026-06はタブに出ない');
+ok(sb.monthsOf(REC_WITH_MARKER).indexOf('2026-05') >= 0, 'N1b(表示): 実レコードの月2026-05は出る');
+// 経路2 件数集計: fnkMonthSummary がマーカーを数えない
+ok(sb.summary(REC_WITH_MARKER, '2026-06').count === 0 && sb.summary(REC_WITH_MARKER, '2026-06').total === 0,
+  'N2(件数集計): マーカーのみの月 → count0/total0');
+// 経路4 伝達ボード件数: actionable→noticeBody が締め（空文字）
+ok(sb.noticeBody(sb.act(REC_WITH_MARKER, '2026-06')) === '', 'N4(伝達ボード件数): マーカーのみの月 → 通知本文は空（締め）');
+// 経路5 actionable判定: fnkActionableCount がマーカーを数えない
+ok(sb.act(REC_WITH_MARKER, '2026-06') === 0, 'N5(actionable): マーカーのみの月 → 0件');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
