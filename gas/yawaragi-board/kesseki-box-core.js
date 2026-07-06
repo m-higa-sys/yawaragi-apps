@@ -51,12 +51,28 @@ function kbJstYmdFromEpoch_(epochMs) {
   return g('year') + '-' + g('month') + '-' + g('day');
 }
 
+// 今日以降の通常欠席の date を distinct・昇順で返す（機能Bジャンプ一覧）。
+function kbUpcomingAbsenceDates_(absList, todayYMD) {
+  var seen = {}, out = [];
+  (absList || []).forEach(function (a) {
+    if (!a || a.isLongTerm) return;
+    var d = String(a.date || '');
+    if (!d || d < String(todayYMD)) return;
+    if (seen[d]) return;
+    seen[d] = true;
+    out.push(d);
+  });
+  out.sort();
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     kbIsAlreadyNotified_: kbIsAlreadyNotified_,
     kbFilterTodayTargets_: kbFilterTodayTargets_,
     kbClassifyCard_: kbClassifyCard_,
     kbAddDaysYMD_: kbAddDaysYMD_,
-    kbJstYmdFromEpoch_: kbJstYmdFromEpoch_
+    kbJstYmdFromEpoch_: kbJstYmdFromEpoch_,
+    kbUpcomingAbsenceDates_: kbUpcomingAbsenceDates_
   };
 }

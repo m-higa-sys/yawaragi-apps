@@ -59,6 +59,31 @@ ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 15,  0)) === '2026-07-07', 'G4: 
 ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 14, 59, 59)) === '2026-07-06', 'G5: JST23:59:59 → 07-06');
 ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 15,  0,  0)) === '2026-07-07', 'G6: JST00:00:00 → 07-07');
 
+// ===== H. kbUpcomingAbsenceDates_（機能B: 今日以降の欠席日distinct昇順） =====
+const _hAbs = [
+  { date: '2026-07-08', name: 'a', isLongTerm: false },
+  { date: '2026-07-06', name: 'b', isLongTerm: false },   // 当日は含む
+  { date: '2026-07-05', name: 'c', isLongTerm: false },   // 過去は除外
+  { date: '2026-07-08', name: 'd', isLongTerm: false },   // 同日重複 → 1つに
+  { date: '2026-07-15', name: 'e', isLongTerm: true  },   // 長期休みは除外
+  { date: '2026-07-10', name: 'f', isLongTerm: false },
+];
+const _hOut = core.kbUpcomingAbsenceDates_(_hAbs, '2026-07-06');
+ok(JSON.stringify(_hOut) === JSON.stringify(['2026-07-06','2026-07-08','2026-07-10']), 'H1: distinct昇順・過去/長期除外・当日含む');
+ok(core.kbUpcomingAbsenceDates_(null, '2026-07-06').length === 0, 'H2: null入力で空配列(落ちない)');
+// H3: spec要件「未来方向のみ」を単独で明示（H1の間接証明に頼らない）
+const _h3 = core.kbUpcomingAbsenceDates_([
+  { date: '2026-07-01', name: 'p', isLongTerm: false },
+  { date: '2026-07-05', name: 'q', isLongTerm: false },
+], '2026-07-06');
+ok(_h3.length === 0, 'H3: 基準日より前の日付は結果に含まれない(未来方向のみ)');
+// H4: 長期除外を単独で明示（H1依存にしない）
+const _h4 = core.kbUpcomingAbsenceDates_([
+  { date: '2026-07-08', name: 'r', isLongTerm: true },
+  { date: '2026-07-10', name: 's', isLongTerm: true },
+], '2026-07-06');
+ok(_h4.length === 0, 'H4: isLongTerm のみ入力 → 空配列(長期除外)');
+
 console.log(`kesseki-box core: ${pass} PASS / ${fail} FAIL`);
 
 // ===== D/E. genba.html 構造証明（Task3/3.5で緑化。ファイル未変更なら赤） =====
