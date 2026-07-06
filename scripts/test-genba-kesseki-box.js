@@ -332,6 +332,17 @@ tryOk(() => {
   ok2(failReturn >= 0 && failReturn < okIdx, 'Y5: 失敗時preserve分岐がforward上書きより前');
 }, 'Y群(kbLoad3状態)');
 
+// Z. kbRender "欠席なし" ゲート（描画出口一箇所での封じ）
+tryOk(() => {
+  const src = extractFn('kbRender()');
+  ok2(src.indexOf('kbViewLoadedInline_') >= 0, 'Z1: 空分岐がkbViewLoadedInline_でゲート');
+  const emptyIdx = src.indexOf('if (!kbState.items.length)');
+  const seg = src.slice(emptyIdx, emptyIdx + 600);
+  ok2(seg.indexOf('kbViewLoadedInline_') >= 0, 'Z2: 空分岐内でロード確定を判定');
+  ok2(seg.indexOf('読み込み中') >= 0, 'Z3: 未確定は「読み込み中」（欠席なしを出さない）');
+  ok2(seg.indexOf('の欠席はありません') >= 0, 'Z4: 確定0件のときは従来文言');
+}, 'Z群(欠席なしゲート)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
