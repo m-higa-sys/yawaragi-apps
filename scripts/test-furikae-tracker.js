@@ -29,8 +29,12 @@ new Function('sb',
   extractFn('fnkMonthSummary') + '\n' +
   extractFn('fnkGoushanCandidates') + '\n' +
   extractFn('fnkActionableCount') + '\n' +
+  extractFn('fnkIsImportMarker') + '\n' +
+  extractFn('fnkNeedsImportMarker') + '\n' +
+  extractFn('fnkMarkerRecord') + '\n' +
   'sb.extract = fnkExtractResultCode; sb.badge = fnkBadgeFor; sb.unpaid = fnkIsUnpaid;' +
-  'sb.summary = fnkMonthSummary; sb.cand = fnkGoushanCandidates; sb.act = fnkActionableCount;'
+  'sb.summary = fnkMonthSummary; sb.cand = fnkGoushanCandidates; sb.act = fnkActionableCount;' +
+  'sb.isMarker = fnkIsImportMarker; sb.needsMarker = fnkNeedsImportMarker; sb.markerRec = fnkMarkerRecord;'
 )(sb);
 
 let pass = 0, fail = 0;
@@ -108,6 +112,20 @@ ok(sb.act(recsF, '2026-05') === 3, 'F1: 要対応=🔴🟠の3件（⚪残高不
 ok(sb.act([{ month: '2026-05', amount: 1, status: '未対応', reason: '残高不足' }], '2026-05') === 0,
   'F2: ⚪翌月合算予定だけ → 要対応0（放置可）');
 ok(sb.act([], '2026-05') === 0, 'F3: 空 → 0');
+
+// ===== M. 取込済マーカー 純関数（案B・センチネル）=====
+ok(sb.isMarker({ isImportMarker: true }) === true, 'M1: isImportMarker:true → マーカー');
+ok(sb.isMarker({ status: '回収済' }) === false, 'M2: フラグ無し → 非マーカー（status依存にしない）');
+ok(sb.isMarker(null) === false, 'M3: null → 非マーカー（fail-safe）');
+ok(sb.needsMarker([], '2026-06') === true, 'M4: 該当月レコード皆無 → マーカー要');
+ok(sb.needsMarker([{ month: '2026-06', status: '未対応' }], '2026-06') === false, 'M5: 該当月に実レコード有 → マーカー不要');
+ok(sb.needsMarker([{ month: '2026-05' }], '2026-06') === true, 'M6: 別月レコードのみ → 対象月2026-06はマーカー要');
+ok(sb.needsMarker([{ month: '2026-06', isImportMarker: true }], '2026-06') === false, 'M7: 既にマーカー有 → 二重に作らない（冪等）');
+const mk = sb.markerRec('2026-06', 42, '2026-07-06');
+ok(mk.isImportMarker === true, 'M8: 生成物は isImportMarker:true');
+ok(mk.status === '回収済', 'M9: status=回収済（fold/unpaid が既存ロジックで落とす二重安全）');
+ok(mk.month === '2026-06' && mk.id === 42 && mk.createdAt === '2026-07-06', 'M10: month/id/createdAt が引数どおり');
+ok(mk.amount === 0 && mk.customerId === '' && !mk.resolvedMonth, 'M11: 金額0・顧客番号空・resolvedMonth無し（回収済フッタにも出ない）');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

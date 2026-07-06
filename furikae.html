@@ -895,6 +895,29 @@ function fnkActionableCount(records, month) {
   }).length;
 }
 
+// ===== 取込済マーカー（案B・センチネル）2026-07-06 =====
+// 不能0件の月にも「取り込んだ痕跡」を1件だけ records に残す隠しデータ。
+// morningDigest の未取込リマインド判定のためだけに読む。表示/件数/fold/伝達ボード件数/actionable の
+// 全経路から除外する（fnkIsImportMarker が唯一の正体判定・status依存にしない）。
+function fnkIsImportMarker(rec) {
+  return !!(rec && rec.isImportMarker === true);
+}
+
+// 対象月にマーカーを追加すべきか。該当月のレコード（実/マーカー問わず）が1件でもあれば不要（冪等）。
+function fnkNeedsImportMarker(records, month) {
+  if (!month) return false;
+  return !(records || []).some(function (r) { return r.month === month; });
+}
+
+// マーカー行を生成（純関数）。status:'回収済'＋resolvedMonth無し＝既存の未回収/回収済フッタ双方に出ない。
+function fnkMarkerRecord(month, id, today) {
+  return {
+    id: id, month: month, isImportMarker: true, status: '回収済',
+    name: '(取込済マーカー)', reason: '取込済み・不能0件', amount: 0,
+    customerId: '', hikiotoshiDate: '', createdAt: today
+  };
+}
+
 // ============ 描画 ============
 function renderMonth() {
   const month = document.getElementById('monthSelect').value;
