@@ -600,6 +600,9 @@
 // グローバル: 口腔送付データのキャッシュ（renderTableより先に初期化されるよう最上部で宣言）
 let oralPlansCache = null;
 let oralPlansYear = null;
+// グローバル: 区変データのキャッシュ（区変中要支援を月2回扱いにするため・2026-07-06）
+//   { activeSet: {氏名:true},  reservedMap: {氏名:予約介護度文字列} }
+let kubunCache = null;
 
 // ============ 定数 ============
 const STORAGE_KEY = 'yawaragi_oral_check';
@@ -670,6 +673,57 @@ function renderLedgerFreshBar() {
 
 const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
 const SUB_COLS = ['1回目', '2回目', 'ﾓﾆﾀﾘﾝｸﾞ'];
+
+// 口腔実施記録の「月2回扱い」判定（2026-07-06 区変中要支援対応）。
+// 要介護は常に月2回。要支援でも「区変申請中(結果待ち)」または「予約介護度が要介護1〜5(適用月待ち)」なら月2回扱い。
+//   care         : 現介護度 'kaigo'|'shien'（利用者台帳直読）
+//   isKubunActive: 区変中フラグ==TRUE（ボードGAS kubunList 由来）
+//   reservedCare : 予約介護度の文字列（ボードGAS kubunScheduledList 由来・無ければ ''）
+function isOralTwiceMonthly(care, isKubunActive, reservedCare) {
+    if (care === 'kaigo') return true;
+    if (care !== 'shien') return false;
+    if (isKubunActive) return true;
+    if (/要介護\s*[1-5１-５]/.test(String(reservedCare || ''))) return true;
+    return false;
+}
+
+// 区変索引の構築。ボードGASの kubunList / kubunScheduledList 応答から
+//   activeSet: {氏名:true}（区変中=結果待ち）, reservedMap: {氏名:予約介護度}（適用月待ち）
+// を作る。本番デプロイの応答不整合（例: kubunScheduledList が予約リストでない応答を返す drift）や
+// フェッチ失敗(null)でもクラッシュせず空索引に劣化する（＝従来のcare判定のみに戻る）。
+function buildKubunIndex(klResp, ksResp) {
+    const activeSet = {};
+    if (klResp && Array.isArray(klResp.active)) {
+        klResp.active.forEach(function (a) { if (a && a.name) activeSet[String(a.name).trim()] = true; });
+    }
+    const reservedMap = {};
+    if (ksResp && Array.isArray(ksResp.scheduled)) {
+        ksResp.scheduled.forEach(function (s) { if (s && s.name) reservedMap[String(s.name).trim()] = String(s.reservedCare || ''); });
+    }
+    return { activeSet: activeSet, reservedMap: reservedMap };
+}
+
+// 実施記録セル1個分のHTMLを生成（月2回扱い判定を反映）。テスト可能な純関数。
+//   opts: { userName, key, si(0=1回目/1=2回目/2=ﾓﾆﾀﾘﾝｸﾞ), checked, twiceMonthly, isCurrentMonth }
+function oralCellHtml(opts) {
+    const is2nd = opts.si === 1;
+    const disabled = !opts.twiceMonthly && is2nd;  // 月2回扱いでない人は「2回目」が対象外（要支援の通常＝月1回）
+    let cls = 'check-cell';
+    if (opts.si === 0) cls += ' month-border';
+    if (disabled) {
+        cls += ' disabled';
+    } else if (opts.checked) {
+        cls += ' checked';
+    } else if (opts.isCurrentMonth && (opts.si === 0 || (opts.twiceMonthly && opts.si === 1))) {
+        // 未実施ハイライト: 1回目は常に、2回目は月2回扱いの人だけ（期待回数=2で評価）
+        cls += ' highlight-undone';
+    }
+    if (disabled) {
+        return `<td class="${cls}">-</td>`;
+    }
+    const displayVal = opts.checked ? (opts.checked === true ? '✓' : opts.checked) : '';
+    return `<td class="${cls}" onclick="toggleCheck('${escapeAttr(opts.userName)}','${opts.key}')">${displayVal}</td>`;
+}
 
 let appData = {
     users: [],       // [{name, furigana, care:'kaigo'|'shien', days:'', ampm:''}]
@@ -1161,6 +1215,19 @@ function renderTable() {
         .then(r => r.json()).then(j => { if (j.ok) { oralPlansCache = j; oralPlansYear = _ey; } })
         .catch(() => {}).finally(() => { window._oralEvalLoading = false; renderTable(); });
     }
+    // 区変データ先読み（区変中要支援を月2回扱いにするため・未取得時のみ1回）。
+    // kubunList=区変中(結果待ち)の氏名 / kubunScheduledList=予約介護度(適用月待ち)の氏名。どちらもGAS無改修の既存アクション。
+    if (!kubunCache && !window._kubunLoading) {
+      window._kubunLoading = true;
+      Promise.all([
+        fetch(YAWARAGI_BOARD_API + '?action=kubunList').then(r => r.json()).catch(() => null),
+        fetch(YAWARAGI_BOARD_API + '?action=kubunScheduledList').then(r => r.json()).catch(() => null)
+      ]).then(function (res) {
+        kubunCache = buildKubunIndex(res[0], res[1]);
+      }).catch(function () {
+        kubunCache = buildKubunIndex(null, null);
+      }).finally(function () { window._kubunLoading = false; renderTable(); });
+    }
     const oralEvalIdx = buildOralEvalIndex();
 
     // ヘッダー
@@ -1261,6 +1328,15 @@ function renderTable() {
             ? '<span class="care-badge care-kaigo">介護</span>'
             : '<span class="care-badge care-shien">支援</span>';
 
+        // 月2回扱い判定: 要介護は常に月2回。要支援でも区変中(結果待ち)or予約介護度=要介護(適用月待ち)なら月2回。
+        // kubunCache 未取得時は care のみで判定（＝従来挙動）し、取得後に再描画で反映される。
+        const _kInfo = kubunCache || { activeSet: {}, reservedMap: {} };
+        const twiceMonthly = isOralTwiceMonthly(
+            user.care,
+            !!_kInfo.activeSet[user.name],
+            _kInfo.reservedMap[user.name] || ''
+        );
+
         const _rowStyle = section === 'nontarget' ? ' style="opacity:0.5;"' : '';
         html += `<tr class="${rowClass}"${_rowStyle}>`;
         html += `<td class="group-cell"></td>`;
@@ -1274,27 +1350,14 @@ function renderTable() {
                 const sub = SUB_COLS[si];
                 const key = `${m}_${sub}`;
                 const checked = yearData[user.name][key];
-
-                // 要支援は「2回目」が対象外
-                const is2nd = si === 1;
-                const disabled = !isKaigo && is2nd;
-
-                let cls = 'check-cell';
-                if (si === 0) cls += ' month-border';
-                if (disabled) {
-                    cls += ' disabled';
-                } else if (checked) {
-                    cls += ' checked';
-                } else if (m === currentMonthLabel && isCurrentYear && si === 0) {
-                    cls += ' highlight-undone';
-                }
-
-                if (disabled) {
-                    html += `<td class="${cls}">-</td>`;
-                } else {
-                    const displayVal = checked ? (checked === true ? '✓' : checked) : '';
-                    html += `<td class="${cls}" onclick="toggleCheck('${escapeAttr(user.name)}','${key}')">${displayVal}</td>`;
-                }
+                html += oralCellHtml({
+                    userName: user.name,
+                    key: key,
+                    si: si,
+                    checked: checked,
+                    twiceMonthly: twiceMonthly,
+                    isCurrentMonth: (m === currentMonthLabel && isCurrentYear)
+                });
             }
         }
         html += '</tr>';
