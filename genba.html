@@ -4272,6 +4272,8 @@ let absUserLoaded = false;
 // yawaragiボードGAS getUserList(action=user_list) を併読して表示/分岐用にマージする。
 // 実送信先は GAS が台帳N列を再取得（client値は信用しない）。
 let absCmEmailMap = {};
+// name→ケアマネ担当名(currentCmStaff)。プレビュー本文をGAS既定テンプレ（cmName様）に一致させる用（表示のみ・分岐/送信先には使わない）。
+let absCmNameMap = {};
 
 // getUserList(action=user_list) を JSONP 取得して name→cmEmail マップを作る。
 // 失敗時は空マップで resolve（プレビュー表示が出ないだけ＝branch c 扱いに倒れる・固まらせない）。
@@ -4285,7 +4287,10 @@ function absLoadCmEmailMap() {
             const list = (data && data.user_list) || [];
             list.forEach(function(u) {
                 const nm = String(u.userName || '').trim();
-                if (nm) map[nm] = String(u.cmEmail || '').trim();
+                if (nm) {
+                    map[nm] = String(u.cmEmail || '').trim();
+                    absCmNameMap[nm] = String(u.currentCmStaff || '').trim();  // プレビュー本文の cmName様 用（GASと同じ台帳ケアマネ担当者名）
+                }
             });
             finish(map);
         };
@@ -4381,7 +4386,7 @@ function absLoadUsersFromAPI() {
             // 2026-06-19: ケアマネメアドを getUserList から併読してマージ（表示/分岐用）
             absLoadCmEmailMap().then(function(map) {
                 absCmEmailMap = map;
-                absUserCache.forEach(function(u) { u.cmEmail = map[u.name] || ''; });
+                absUserCache.forEach(function(u) { u.cmEmail = map[u.name] || ''; u.cmName = absCmNameMap[u.name] || ''; });
                 // キャッシュにも保存（次回のオフライン起動用・cmEmail込み）
                 // 空配列では保存しない＝取得失敗時に既存の良いキャッシュを潰さない
                 if (absUserCache.length > 0) {
@@ -5526,8 +5531,10 @@ function absBuildDateLabel(slots) {
 // プレビュー本文を生成（未編集ならGAS既定テンプレ＝cmName入りを使うので、これは確認/編集の叩き台）
 function absBuildPreviewBody(dateLabel, name, reason) {
     const office = (absState.selectedUser && absState.selectedUser.cmOffice) || '';
+    const cmName = (absState.selectedUser && absState.selectedUser.cmName) || '';
+    // GAS既定テンプレ（本番稼働）と一致させる: 冒頭は「事業所名＋担当者名様」。cmName無しは空フォールバック（'ご担当者様'ハードコードは廃止）。
     return (office ? office + '\n' : '') +
-        'ご担当者様\n\n' +
+        (cmName ? cmName + '様\n\n' : '') +
         'いつもお世話になっております。\nリハビリデイサービス yawaragi です。\n\n' +
         dateLabel + '、' + name + '様より「' + (reason || '体調不良') + '」とのご連絡があり、\n' +
         'yawaragiをお休みされる旨伺いましたのでご報告いたします。\n\n' +
@@ -7516,9 +7523,11 @@ function kbShowHelp() {
 // 本文の叩き台（未編集なら customBody='' でGAS既定テンプレを使わせる＝absBuildPreviewBodyと同趣旨）
 function kbBuildBody_(it) {
     const office = it.cmOffice || '';
+    const cmName = it.cmStaff || '';   // cm_method_audit 由来の担当名（GAS既定テンプレと同じ台帳ケアマネ担当者名）
     const dateLabel = kbFormatDate_(it.date) + '（' + (it.unit || '') + '）';
+    // GAS既定テンプレ（本番稼働）と一致: 冒頭「事業所名＋担当者名様」。cmName無しは空フォールバック（'ご担当者様'廃止）。
     return (office ? office + '\n' : '') +
-        'ご担当者様\n\n' +
+        (cmName ? cmName + '様\n\n' : '') +
         'いつもお世話になっております。\nリハビリデイサービス yawaragi です。\n\n' +
         dateLabel + '、' + it.name + '様より「' + (it.reason || '体調不良') + '」とのご連絡があり、\n' +
         'yawaragiをお休みされる旨伺いましたのでご報告いたします。\n\n' +
