@@ -90,6 +90,12 @@ function kbIsViewToday_(viewYMD, todayYMD) {
   return String(viewYMD || '') === String(todayYMD || '');
 }
 
+function kbUnitGroup_(unit) {
+  var u = String(unit == null ? '' : unit);
+  if (u.indexOf('午前') >= 0) return 'am';
+  return 'pm';   // 午後・終日・空・不明はPM群へ（害なき防御: カードを消さない。同一日AM/PM併用者は存在しない前提）
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     kbIsAlreadyNotified_: kbIsAlreadyNotified_,
@@ -99,6 +105,7 @@ if (typeof module !== 'undefined' && module.exports) {
     kbJstYmdFromEpoch_: kbJstYmdFromEpoch_,
     kbUpcomingAbsenceDates_: kbUpcomingAbsenceDates_,
     kbMergeDedupAbs_: kbMergeDedupAbs_,
-    kbIsViewToday_: kbIsViewToday_
+    kbIsViewToday_: kbIsViewToday_,
+    kbUnitGroup_: kbUnitGroup_
   };
 }

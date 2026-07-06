@@ -114,6 +114,13 @@ ok(core.kbIsViewToday_('', '2026-07-06') === false, 'J4: 空 → false(落ちな
 ok(core.kbIsViewToday_(null, '2026-07-06') === false, 'J5: null片方 → false');
 ok(core.kbIsViewToday_('2026-07-06', undefined) === false, 'J6: undefined片方 → false');
 
+// O. kbUnitGroup_（AM/PM分類・終日/空はPMへ害なきフォールバック）
+ok(core.kbUnitGroup_('午前') === 'am', 'O1: 午前 → am');
+ok(core.kbUnitGroup_('午後') === 'pm', 'O2: 午後 → pm');
+ok(core.kbUnitGroup_('終日') === 'pm', 'O3: 終日 → pm(害なきフォールバック・実運用では発生しない)');
+ok(core.kbUnitGroup_('') === 'pm', 'O4: 空 → pm(消さない)');
+ok(core.kbUnitGroup_(null) === 'pm', 'O5: null → pm(落ちない)');
+
 console.log(`kesseki-box core: ${pass} PASS / ${fail} FAIL`);
 
 // ===== D/E. genba.html 構造証明（Task3/3.5で緑化。ファイル未変更なら赤） =====
@@ -171,6 +178,7 @@ tryOk(() => {
   ok2(html.indexOf('function kbMergeDedupAbs_') >= 0, 'L4: インラインkbMergeDedupAbs_');
   ok2(html.indexOf('function kbIsViewToday_') >= 0, 'L5: インラインkbIsViewToday_');
   ok2(html.indexOf('function kbFilterTodayTargets_') >= 0, 'L6: インラインkbFilterTodayTargets_(日付引数版)');
+  ok2(html.indexOf('function kbUnitGroup_') >= 0, 'L7: インラインkbUnitGroup_');
 }, 'L群(状態+インライン純関数)');
 
 // M. kbRender の chrome描画（datelabel/banner/chips）とUIガード
