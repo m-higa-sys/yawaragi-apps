@@ -188,6 +188,7 @@
         }
         .care-kaigo { background: #FFD0D0; color: #900; }
         .care-shien { background: #D0E8FF; color: #036; }
+        .care-kubun { background: #FFE0B2; color: #7a4a00; }
 
         .check-cell {
             cursor: pointer;
@@ -501,7 +502,7 @@
     </div>
 </div>
 
-<div id="panel-monitoring">id="panel-monitoring">
+<div id="panel-monitoring">
 
 <div class="toolbar">
     <div class="toolbar-left">
@@ -679,12 +680,37 @@ const SUB_COLS = ['1回目', '2回目', 'ﾓﾆﾀﾘﾝｸﾞ'];
 //   care         : 現介護度 'kaigo'|'shien'（利用者台帳直読）
 //   isKubunActive: 区変中フラグ==TRUE（ボードGAS kubunList 由来）
 //   reservedCare : 予約介護度の文字列（ボードGAS kubunScheduledList 由来・無ければ ''）
-function isOralTwiceMonthly(care, isKubunActive, reservedCare) {
-    if (care === 'kaigo') return true;
+// 月ラベル('4月'等)＋会計年度(4月始まり)→ 年月 'YYYY-MM'。
+// 4〜12月は年度と同年、1〜3月は年度+1（会計年度またぎ）。年月比較(YYYY-MM文字列)で月番号比較の事故を防ぐ。
+function monthLabelToYm(fiscalYear, label) {
+    const mm = parseInt(String(label).replace('月', ''), 10);
+    const y = mm >= 4 ? fiscalYear : fiscalYear + 1;
+    return y + '-' + String(mm).padStart(2, '0');
+}
+
+// 指定「月(monthYm)」に月2回扱いかを判定（区変日ゲート付き・2026-07-06更新）。
+//   care    : 現介護度 'kaigo'|'shien'（利用者台帳直読）
+//   monthYm : 対象月 'YYYY-MM'
+//   info    : { active(区変中), kubunHiYm(区変日=applyDateの月), reservedCare(予約介護度), reservedApplyYm(予約適用月) }
+function isOralTwiceMonthly(care, monthYm, info) {
+    if (care === 'kaigo') return true;      // 要介護は全月2回（区変判定不要）
     if (care !== 'shien') return false;
-    if (isKubunActive) return true;
-    if (/要介護\s*[1-5１-５]/.test(String(reservedCare || ''))) return true;
+    info = info || {};
+    const isYm = function (s) { return /^\d{4}-\d{2}$/.test(String(s || '')); };
+    // 区変中(結果待ち): 区変日の属する月「以降」のみ月2回。区変日不明(空)はゲート不能→保守的に1回。
+    if (info.active && isYm(info.kubunHiYm) && monthYm >= info.kubunHiYm) return true;
+    // 予約=要介護(適用月待ち・本番現状inert/forward-compat): 適用月「以降」のみ月2回。
+    if (/要介護\s*[1-5１-５]/.test(String(info.reservedCare || '')) && isYm(info.reservedApplyYm) && monthYm >= info.reservedApplyYm) return true;
     return false;
+}
+
+// 区変中バッジ（Phase3・状態を持たない派生表示）。要支援かつ区変中のときだけ「区変中」を返す。
+// 区変中フラグがFALSEになれば active=false となり自動で消える。
+function oralKubunBadge(care, isKubunActive) {
+    if (care === 'shien' && isKubunActive) {
+        return '<span class="care-badge care-kubun">区変中</span>';
+    }
+    return '';
 }
 
 // 区変索引の構築。ボードGASの kubunList / kubunScheduledList 応答から
@@ -692,15 +718,31 @@ function isOralTwiceMonthly(care, isKubunActive, reservedCare) {
 // を作る。本番デプロイの応答不整合（例: kubunScheduledList が予約リストでない応答を返す drift）や
 // フェッチ失敗(null)でもクラッシュせず空索引に劣化する（＝従来のcare判定のみに戻る）。
 function buildKubunIndex(klResp, ksResp) {
-    const activeSet = {};
+    const activeSet = {};   // 氏名→true（区変中=結果待ち）
+    const kubunHiMap = {};  // 氏名→区変日 'YYYY-MM'（applyDate の月・ゲート基準日）
     if (klResp && Array.isArray(klResp.active)) {
-        klResp.active.forEach(function (a) { if (a && a.name) activeSet[String(a.name).trim()] = true; });
+        klResp.active.forEach(function (a) {
+            if (a && a.name) {
+                const nm = String(a.name).trim();
+                activeSet[nm] = true;
+                const ad = String(a.applyDate || '').trim();  // 例 '2026-07-01'
+                if (/^\d{4}-\d{2}/.test(ad)) kubunHiMap[nm] = ad.slice(0, 7);
+            }
+        });
     }
-    const reservedMap = {};
+    const reservedMap = {};       // 氏名→予約介護度文字列
+    const reservedApplyMap = {};  // 氏名→予約適用月 'YYYY-MM'
     if (ksResp && Array.isArray(ksResp.scheduled)) {
-        ksResp.scheduled.forEach(function (s) { if (s && s.name) reservedMap[String(s.name).trim()] = String(s.reservedCare || ''); });
+        ksResp.scheduled.forEach(function (s) {
+            if (s && s.name) {
+                const nm = String(s.name).trim();
+                reservedMap[nm] = String(s.reservedCare || '');
+                const am = String(s.applyMonth || '').trim();
+                if (/^\d{4}-\d{2}/.test(am)) reservedApplyMap[nm] = am.slice(0, 7);
+            }
+        });
     }
-    return { activeSet: activeSet, reservedMap: reservedMap };
+    return { activeSet: activeSet, kubunHiMap: kubunHiMap, reservedMap: reservedMap, reservedApplyMap: reservedApplyMap };
 }
 
 // 実施記録セル1個分のHTMLを生成（月2回扱い判定を反映）。テスト可能な純関数。
@@ -1328,24 +1370,30 @@ function renderTable() {
             ? '<span class="care-badge care-kaigo">介護</span>'
             : '<span class="care-badge care-shien">支援</span>';
 
-        // 月2回扱い判定: 要介護は常に月2回。要支援でも区変中(結果待ち)or予約介護度=要介護(適用月待ち)なら月2回。
-        // kubunCache 未取得時は care のみで判定（＝従来挙動）し、取得後に再描画で反映される。
-        const _kInfo = kubunCache || { activeSet: {}, reservedMap: {} };
-        const twiceMonthly = isOralTwiceMonthly(
-            user.care,
-            !!_kInfo.activeSet[user.name],
-            _kInfo.reservedMap[user.name] || ''
-        );
+        // 区変情報（利用者単位・kubunCache未取得時は空＝従来のcare判定のみに劣化、取得後に再描画で反映）
+        const _kInfo = kubunCache || { activeSet: {}, kubunHiMap: {}, reservedMap: {}, reservedApplyMap: {} };
+        const _kActive = !!_kInfo.activeSet[user.name];
+        const _kInfoUser = {
+            active: _kActive,
+            kubunHiYm: _kInfo.kubunHiMap[user.name] || '',
+            reservedCare: _kInfo.reservedMap[user.name] || '',
+            reservedApplyYm: (_kInfo.reservedApplyMap && _kInfo.reservedApplyMap[user.name]) || ''
+        };
+        // 区変中バッジ（要支援かつ区変中のみ・状態を持たずkubunから毎回導出）
+        const kubunBadge = oralKubunBadge(user.care, _kActive);
 
         const _rowStyle = section === 'nontarget' ? ' style="opacity:0.5;"' : '';
         html += `<tr class="${rowClass}"${_rowStyle}>`;
         html += `<td class="group-cell"></td>`;
-        html += `<td class="name-cell"><span class="oral-user-name" data-user-name="${escapeAttr(user.name)}">${escapeHtml(user.name)}</span>${careBadge}</td>`;
+        html += `<td class="name-cell"><span class="oral-user-name" data-user-name="${escapeAttr(user.name)}">${escapeHtml(user.name)}</span>${careBadge}${kubunBadge}</td>`;
 
         // 今月の完了判定
         let userDoneThisMonth = false;
 
         for (const m of MONTHS) {
+            // 月2回扱いは「その月」で判定（区変日ゲート）。区変日の月以降だけ2回目を開く。
+            const _monthYm = monthLabelToYm(year, m);
+            const twiceMonthly = isOralTwiceMonthly(user.care, _monthYm, _kInfoUser);
             for (let si = 0; si < SUB_COLS.length; si++) {
                 const sub = SUB_COLS[si];
                 const key = `${m}_${sub}`;
