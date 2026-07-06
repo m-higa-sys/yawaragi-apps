@@ -7428,10 +7428,10 @@ async function kbLoad() {
     if (!listEl) return;
     listEl.innerHTML = '<div style="color:#888;">読み込み中…</div>';
     try {
-        const today = jstTodayStr();
-        // ① 本日の欠席（cmNotified付き・既存GET/JSONP）
+        if (!kbState.viewDate) kbState.viewDate = jstTodayStr();
+        // ① 前進窓（today〜+30）: 従来どおり自前GET。当日カード＋ジャンプ一覧の源（回帰ゼロ）。
         const aj = await kbJsonp_('absences', 'abs');
-        const flat = (aj && aj.absences && aj.absences.absences) || [];
+        kbState.forward = (aj && aj.absences && aj.absences.absences) || [];
         // ② method/事業所/担当（既存GET/JSONP・1回だけ）
         if (!kbState.methodLoaded) {
             const mj = await kbJsonp_('cm_method_audit', 'method');
@@ -7442,21 +7442,57 @@ async function kbLoad() {
         if (!absCmEmailMap || !Object.keys(absCmEmailMap).length) {
             try { absCmEmailMap = await absLoadCmEmailMap(); } catch (e) {}
         }
-        // ④ 当日の通常欠席だけに絞る（coreと同一判定＝genbaにインライン移植）
-        const targets = flat.filter(a => a && !a.isLongTerm && String(a.date) === String(today));
-        kbState.items = targets.map(a => {
-            const m = kbState.methodMap[a.name] || {};
-            const email = (absCmEmailMap && absCmEmailMap[a.name]) || '';
-            const cls = kbClassifyCardInline_(m.method, email, a.cmNotified);
-            return Object.assign({}, a, { cmOffice: m.cmOffice || '', cmStaff: m.cmStaff || '', care: m.care || '', email, cls });
-        });
-        kbState.items.forEach(it => {
-            if (!(it.name in kbState.checked)) kbState.checked[it.name] = it.cls.defaultChecked;
-        });
-        kbRender();
+        kbRenderForDate(kbState.viewDate);
     } catch (e) {
         listEl.innerHTML = '<div style="color:#c0392b;">取得失敗: ' + kbEsc_(String(e && e.message || e)) + '</div>';
     }
+}
+
+// 表示対象日ぶんの描画エントリ。表示月が未ロードなら kbox自身が一度だけロード保証（依存方向をkbox起点に・f774228型回避）。
+// ★ensureゲートと描画を分離: 失敗時 attEnsureMonthAbsences は attMonthAbsCache[ym] を埋めないため、
+//   コールバック後は再ゲートせず kbRenderDayNow_ で直接描画する（＝GAS障害での無限フェッチループを防ぐ）。
+function kbRenderForDate(viewDate) {
+    const listEl = document.getElementById('kbox-list');
+    if (!listEl) return;
+    const ym = String(viewDate).slice(0, 7);
+    if (!attMonthAbsCache[ym] && kbState._ensuringYm !== ym && typeof attEnsureMonthAbsences === 'function') {
+        kbState._ensuringYm = ym;                       // 同一月の多重ensure/ループ防止
+        listEl.innerHTML = '<div style="color:#888;">読み込み中…</div>';
+        attEnsureMonthAbsences(viewDate, function () {
+            kbState._ensuringYm = '';
+            kbRenderDayNow_(kbState.viewDate || viewDate);   // 再ゲートせず描画（失敗時もcache空扱いで前進）
+        });
+        return;
+    }
+    kbRenderDayNow_(viewDate);
+}
+
+// 実描画: 前進窓GET(正本) ∪ 月キャッシュ(補完) を dedup → 表示日で絞って items 化 → kbRender。
+function kbRenderDayNow_(viewDate) {
+    const ym = String(viewDate).slice(0, 7);
+    const pool = kbMergeDedupAbs_(kbState.forward || [], attMonthAbsCache[ym] || []);
+    const targets = kbFilterTodayTargets_(pool, viewDate);
+    kbState.items = targets.map(a => {
+        const m = kbState.methodMap[a.name] || {};
+        const email = (absCmEmailMap && absCmEmailMap[a.name]) || '';
+        const cls = kbClassifyCardInline_(m.method, email, a.cmNotified);
+        return Object.assign({}, a, { cmOffice: m.cmOffice || '', cmStaff: m.cmStaff || '', care: m.care || '', email, cls });
+    });
+    kbState.items.forEach(it => {
+        if (!(it.name in kbState.checked)) kbState.checked[it.name] = it.cls.defaultChecked;
+    });
+    kbRender();
+}
+
+// 日付送り（機能A）／ジャンプ（機能B）
+function kbGoDate(delta) {
+    kbState.viewDate = kbAddDaysYMD_(kbState.viewDate || jstTodayStr(), delta);
+    kbRenderForDate(kbState.viewDate);
+}
+function kbJumpTo(ymd) {
+    if (!ymd) return;
+    kbState.viewDate = String(ymd);
+    kbRenderForDate(kbState.viewDate);
 }
 
 // coreのkbIsAlreadyNotified_/kbClassifyCard_と同一ロジックをブラウザにインライン移植
