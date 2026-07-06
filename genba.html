@@ -7464,26 +7464,35 @@ function kbJsonp_(action, idSuffix) {
 async function kbLoad() {
     const listEl = document.getElementById('kbox-list');
     if (!listEl) return;
-    listEl.innerHTML = '<div style="color:#888;">読み込み中…</div>';
-    try {
-        if (!kbState.viewDate) kbState.viewDate = jstTodayStr();
-        // ① 前進窓（today〜+30）: 従来どおり自前GET。当日カード＋ジャンプ一覧の源（回帰ゼロ）。
-        const aj = await kbJsonp_('absences', 'abs');
-        kbState.forward = (aj && aj.absences && aj.absences.absences) || [];
-        // ② method/事業所/担当（既存GET/JSONP・1回だけ）
-        if (!kbState.methodLoaded) {
-            const mj = await kbJsonp_('cm_method_audit', 'method');
-            ((mj && mj.audit) || []).forEach(a => { kbState.methodMap[a.userName] = a; });
-            kbState.methodLoaded = true;
-        }
-        // ③ 表示用メアドは既存 absCmEmailMap を流用（空なら取得）
-        if (!absCmEmailMap || !Object.keys(absCmEmailMap).length) {
-            try { absCmEmailMap = await absLoadCmEmailMap(); } catch (e) {}
-        }
-        kbRenderForDate(kbState.viewDate);
-    } catch (e) {
-        listEl.innerHTML = '<div style="color:#c0392b;">取得失敗: ' + kbEsc_(String(e && e.message || e)) + '</div>';
+    if (!kbState.loadedOnce) listEl.innerHTML = '<div style="color:#888;">読み込み中…</div>';  // 初回のみ（再取得でリストを一瞬消さない）
+    if (!kbState.viewDate) kbState.viewDate = jstTodayStr();
+
+    // ① 前進窓（today〜+30）: retry+backoff。失敗/timeout/空応答は !ok（＝forwardを潰さない）。
+    const aj = await kbJsonpRetry_('absences', 'abs', 3);
+    if (!kbIsOkResponseInline_(aj)) {
+        kbState.forwardOk = false;                                        // forwardは触らない（0件に潰さない）
+        // 既存表示ありor既にカードが出ている→preserve（"欠席なし"で上書きしない・ちらつかせない）
+        if (kbState.loadedOnce || kbState.items.length) { kbRenderForDate(kbState.viewDate); return; }
+        // 月キャッシュが当月ぶんを持つなら月源で描ける→委ねる（kbRenderのゲートが欠席なし誤出を封じる）
+        if (attMonthAbsCache[String(kbState.viewDate).slice(0, 7)]) { kbRenderForDate(kbState.viewDate); return; }
+        // 完全な初回失敗（どこにも出せない）→ ローディング固着でなく明示エラー
+        listEl.innerHTML = '<div style="color:#c0392b;">サーバーから取得できませんでした。通信環境を確認して開き直してください。</div>';
+        return;
     }
+    kbState.forward = aj.absences.absences || [];                          // 成功時のみ上書き
+    kbState.forwardOk = true;
+    // ② method/事業所/担当（成功時のみ・取れたら確定・失敗は次回再取得）
+    if (!kbState.methodLoaded) {
+        const mj = await kbJsonp_('cm_method_audit', 'method');
+        const audit = (mj && mj.audit) || null;
+        if (audit) { audit.forEach(a => { kbState.methodMap[a.userName] = a; }); kbState.methodLoaded = true; }
+    }
+    // ③ 表示用メアドは既存 absCmEmailMap を流用（空なら取得）
+    if (!absCmEmailMap || !Object.keys(absCmEmailMap).length) {
+        try { absCmEmailMap = await absLoadCmEmailMap(); } catch (e) {}
+    }
+    kbState.loadedOnce = true;
+    kbRenderForDate(kbState.viewDate);
 }
 
 // 表示対象日ぶんの描画エントリ。表示月が未ロードなら kbox自身が一度だけロード保証（依存方向をkbox起点に・f774228型回避）。

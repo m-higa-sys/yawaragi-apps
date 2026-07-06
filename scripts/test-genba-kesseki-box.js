@@ -320,6 +320,18 @@ tryOk(() => {
   ok2(/forwardOk\s*:/.test(s), 'X2: kbStateにforwardOk');
 }, 'X群(ロード状態)');
 
+// Y. kbLoad 3状態化
+tryOk(() => {
+  const src = extractFn('kbLoad');
+  ok2(src.indexOf('kbJsonpRetry_') >= 0, 'Y1: forward取得はretry版');
+  ok2(src.indexOf('kbIsOkResponseInline_') >= 0, 'Y2: ok判定を持つ');
+  ok2(/if\s*\(!kbState\.loadedOnce\)/.test(src), 'Y3: 「読み込み中」は初回のみ');
+  ok2(src.indexOf('forwardOk = true') >= 0 && src.indexOf('forwardOk = false') >= 0, 'Y4: forwardOkを成功/失敗で更新');
+  const okIdx = src.indexOf('kbState.forward = aj');
+  const failReturn = src.indexOf('loadedOnce || kbState.items.length');
+  ok2(failReturn >= 0 && failReturn < okIdx, 'Y5: 失敗時preserve分岐がforward上書きより前');
+}, 'Y群(kbLoad3状態)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
