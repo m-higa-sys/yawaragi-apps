@@ -103,6 +103,9 @@ ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 14, 30)) === '2026-07-06', 'G1: 
 ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 19, 30)) === '2026-07-07', 'G2: 4:30 JST → 当日(07-07)・前日化しない');
 ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6,  3,  0)) === '2026-07-06', 'G3: 12:00 JST → 07-06');
 ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 15,  0)) === '2026-07-07', 'G4: 0:00 JST翌日 → 07-07');
+// クロ追加: JST日付繰り上がりの1秒境界（オフバイワンの丸め方向を殺す）
+ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 14, 59, 59)) === '2026-07-06', 'G5: JST23:59:59 → 07-06');
+ok(core.kbJstYmdFromEpoch_(Date.UTC(2026, 6, 6, 15,  0,  0)) === '2026-07-07', 'G6: JST00:00:00 → 07-07');
 ```
 
 （注: `Date.UTC(2026, 6, 6, 19, 30)` は2026-07-06 19:30 UTC = 2026-07-07 04:30 JST。UTC素朴判定なら07-06に化ける＝始業4:30に当日なのに送れない事故。G2がその回帰テスト。）
@@ -163,6 +166,18 @@ const _hAbs = [
 const _hOut = core.kbUpcomingAbsenceDates_(_hAbs, '2026-07-06');
 ok(JSON.stringify(_hOut) === JSON.stringify(['2026-07-06','2026-07-08','2026-07-10']), 'H1: distinct昇順・過去/長期除外・当日含む');
 ok(core.kbUpcomingAbsenceDates_(null, '2026-07-06').length === 0, 'H2: null入力で空配列(落ちない)');
+// クロ追加H3: spec要件「未来方向のみ」を単独で明示（H1の間接証明に頼らない）
+const _h3 = core.kbUpcomingAbsenceDates_([
+  { date: '2026-07-01', name: 'p', isLongTerm: false },
+  { date: '2026-07-05', name: 'q', isLongTerm: false },
+], '2026-07-06');
+ok(_h3.length === 0, 'H3: 基準日より前の日付は結果に含まれない(未来方向のみ)');
+// クロ追加H4: 長期除外を単独で明示（H1依存にしない）
+const _h4 = core.kbUpcomingAbsenceDates_([
+  { date: '2026-07-08', name: 'r', isLongTerm: true },
+  { date: '2026-07-10', name: 's', isLongTerm: true },
+], '2026-07-06');
+ok(_h4.length === 0, 'H4: isLongTrue のみ入力 → 空配列(長期除外)');
 ```
 
 - [ ] **Step 2: テスト失敗を確認**
@@ -228,6 +243,12 @@ const _iTaro = _iOut.filter(function (x) { return x.name === '太郎'; });
 ok(_iTaro.length === 1 && _iTaro[0].cmNotified === '送信済', 'I2: overlap日はprimary(前進窓GET)が正本');
 ok(_iOut.some(function (x) { return x.name === '花子'; }), 'I3: primaryに無いsecondaryは補完される');
 ok(core.kbMergeDedupAbs_(null, null).length === 0, 'I4: 両方null/空で落ちない');
+// クロ追加I5: dedupキーが(name,date,unit)三点である証明。同一人・同一日でも午前/午後は別スロット→畳まない
+const _i5 = core.kbMergeDedupAbs_([
+  { name: '太郎', date: '2026-07-06', unit: '午前', cmNotified: '送信済' },
+  { name: '太郎', date: '2026-07-06', unit: '午後', cmNotified: '' },
+], []);
+ok(_i5.length === 2, 'I5: 太郎/07-06/午前 と 太郎/07-06/午後 は畳まれず2件(unitを鍵に含む)');
 ```
 
 - [ ] **Step 2: テスト失敗を確認**
@@ -288,6 +309,9 @@ ok(core.kbIsViewToday_('2026-07-06', '2026-07-06') === true,  'J1: 一致 → tr
 ok(core.kbIsViewToday_('2026-07-08', '2026-07-06') === false, 'J2: 未来 → false');
 ok(core.kbIsViewToday_('2026-07-04', '2026-07-06') === false, 'J3: 過去 → false');
 ok(core.kbIsViewToday_('', '2026-07-06') === false, 'J4: 空 → false(落ちない)');
+// クロ追加: 型頑健性（例外を投げずfalse・jstTodayStr()が想定外を返した時の保険）
+ok(core.kbIsViewToday_(null, '2026-07-06') === false, 'J5: null片方 → false');
+ok(core.kbIsViewToday_('2026-07-06', undefined) === false, 'J6: undefined片方 → false');
 ```
 
 - [ ] **Step 2: テスト失敗を確認**
