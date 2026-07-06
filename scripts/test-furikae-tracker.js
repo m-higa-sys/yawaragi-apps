@@ -28,8 +28,9 @@ new Function('sb',
   extractFn('fnkIsUnpaid') + '\n' +
   extractFn('fnkMonthSummary') + '\n' +
   extractFn('fnkGoushanCandidates') + '\n' +
+  extractFn('fnkActionableCount') + '\n' +
   'sb.extract = fnkExtractResultCode; sb.badge = fnkBadgeFor; sb.unpaid = fnkIsUnpaid;' +
-  'sb.summary = fnkMonthSummary; sb.cand = fnkGoushanCandidates;'
+  'sb.summary = fnkMonthSummary; sb.cand = fnkGoushanCandidates; sb.act = fnkActionableCount;'
 )(sb);
 
 let pass = 0, fail = 0;
@@ -94,6 +95,19 @@ ok(sb.cand(recs, '2026-05', []).length === 0, 'E2: 成功者ゼロ → 候補ゼ
 // 回収済は候補にしない（既に消えている）
 const recs2 = [{ month: '2026-04', amount: 500, status: '回収済', customerId: '151' }];
 ok(sb.cand(recs2, '2026-05', ['151']).length === 0, 'E3: 既に回収済は候補にしない');
+
+// ===== F. 要対応件数（伝達ボード通知用・🔴🟠のみ・⚪翌月合算は放置可で数えない）=====
+const recsF = [
+  { month: '2026-05', amount: 9030, status: '未対応', reason: '預金取引なし' },           // 🔴
+  { month: '2026-05', amount: 6655, status: '未対応', reason: '預金口座振替依頼書なし' }, // 🟠
+  { month: '2026-05', amount: 4753, status: '未対応', reason: '預金口座振替依頼書なし' }, // 🟠
+  { month: '2026-05', amount: 1000, status: '未対応', reason: '残高不足' },               // ⚪放置可
+  { month: '2026-05', amount: 500, status: '回収済', reason: '預金取引なし' }             // 回収済
+];
+ok(sb.act(recsF, '2026-05') === 3, 'F1: 要対応=🔴🟠の3件（⚪残高不足と回収済は数えない）');
+ok(sb.act([{ month: '2026-05', amount: 1, status: '未対応', reason: '残高不足' }], '2026-05') === 0,
+  'F2: ⚪翌月合算予定だけ → 要対応0（放置可）');
+ok(sb.act([], '2026-05') === 0, 'F3: 空 → 0');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

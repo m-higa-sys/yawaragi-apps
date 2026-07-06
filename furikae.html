@@ -530,6 +530,7 @@ function processExcelFile(file) {
       initMonthSelect();
       document.getElementById('monthSelect').value = month;
       renderMonth();
+      fnkScheduleNotify(month); // 取込後の要対応件数を伝達ボードへ
 
       let msg;
       if (newRecords.length === 0) {
@@ -638,6 +639,39 @@ function cloudSync() {
         .catch(function() { _isSyncing = false; });
     } catch(e) { _isSyncing = false; }
   }, 2000);
+}
+
+// ===== 伝達ボード通知（件数のみ・冪等更新＋締め）2026-07-06 =====
+// 当月1メッセージを upsert（キー furikae-funou-YYYY-MM）。件数変化のたびに本文を置換し、
+// 0件（全件回収）で締め＝削除。氏名・金額・理由は一切出さない（件数のみ）。
+// ★これは書込POST（第2の送信経路）。fnkGuardProdWrite を必ず通す（tripwire維持・SENDERSに追加済）。
+const DENGON_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+let _fnkNotifyTimer = null;
+
+// 通知本文（件数のみ）。0件は空文字＝締め（削除）のシグナル。
+function fnkNoticeBody(count) {
+  return count > 0 ? ('振替不能・要対応あり（' + count + '件）') : '';
+}
+
+function fnkNotifyBoard(month) {
+  if (!fnkGuardProdWrite('伝達ボード通知')) return; // 別オリジンからの本番書込を遮断
+  if (!month) return;
+  const count = fnkActionableCount(data.records, month);
+  const payload = { action: 'upsert_furikae_notice', key: 'furikae-funou-' + month, body: fnkNoticeBody(count) };
+  try {
+    fetch(DENGON_API_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(function() {});
+  } catch (e) {}
+}
+
+// 連続操作（取込直後の複数消込など）でボード通知を暴発させない 1.5秒デバウンス
+function fnkScheduleNotify(month) {
+  if (_fnkNotifyTimer) clearTimeout(_fnkNotifyTimer);
+  _fnkNotifyTimer = setTimeout(function() { fnkNotifyBoard(month); }, 1500);
 }
 
 function cloudLoad() {
@@ -834,6 +868,13 @@ function fnkGoushanCandidates(records, month, okCustomerIds) {
   });
 }
 
+// 伝達ボード通知に出す「要対応」件数：当月の未回収のうち 🔴🟠 のみ（⚪翌月合算予定は放置可＝数えない）
+function fnkActionableCount(records, month) {
+  return (records || []).filter(function (r) {
+    return r.month === month && fnkIsUnpaid(r) && fnkBadgeFor(r).key !== 'white';
+  }).length;
+}
+
 // ============ 描画 ============
 function renderMonth() {
   const month = document.getElementById('monthSelect').value;
@@ -937,6 +978,7 @@ function fnkConfirmCollected(id, method) {
   r.resolvedNote = `${month} 回収済（${method}）`;
   saveData(data);
   renderMonth();
+  fnkScheduleNotify(month); // 伝達ボードの要対応件数を更新
 }
 
 // 消込の取消（1操作）
@@ -949,6 +991,7 @@ function fnkUndoCollected(id) {
   delete r.resolvedNote;
   saveData(data);
   renderMonth();
+  fnkScheduleNotify(document.getElementById('monthSelect').value); // 取消で件数が戻る→通知更新
 }
 
 // ③ 翌月合算の回収済候補（自動確定せず一括承認・§4-4）
@@ -982,6 +1025,7 @@ function fnkApproveCandidate(id) {
   _fnkCandidates = _fnkCandidates.filter(x => x.id !== id);
   saveData(data);
   renderMonth();
+  fnkScheduleNotify(month);
 }
 
 function fnkApproveAllCandidates() {
@@ -995,6 +1039,7 @@ function fnkApproveAllCandidates() {
   _fnkCandidates = [];
   saveData(data);
   renderMonth();
+  fnkScheduleNotify(month);
 }
 
 // ④ 今月回収済フッタ（既定は畳む・展開で取消できる）

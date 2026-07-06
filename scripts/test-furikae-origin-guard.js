@@ -72,8 +72,9 @@ const gThrow = makeGuard('__throw__');
 ok(gThrow.guard('t') === false, 'B4: location参照が例外 → fail-safeでfalse');
 
 // ===== C. 構造証明: 全書込POSTでガードが fetch より前 =====
-// furikae の書込POSTは cloudSync 1本のみ（saveData→cloudSync に集約）
-const SENDERS = ['cloudSync'];
+// furikae の書込POST：cloudSync（データ同期・saveData→cloudSync）と fnkNotifyBoard（伝達ボード件数通知）の2本。
+// どちらも先頭で fnkGuardProdWrite を通す。新POSTを足したら必ずここに追加すること（tripwire）。
+const SENDERS = ['cloudSync', 'fnkNotifyBoard'];
 SENDERS.forEach(function (name) {
   const src = extractFn(name);
   const g = src.indexOf('fnkGuardProdWrite(');
