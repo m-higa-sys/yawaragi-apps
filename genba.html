@@ -7549,8 +7549,8 @@ function kbRender() {
     }
     const opDisabled = !operator;
 
-    let html = '';
-    kbState.items.forEach(it => {
+    // カード1枚のHTML（既存カード生成を関数化＝DRY・マークアップは不変）
+    function kbCardHtml_(it) {
         const cm = kbEsc_(it.cmStaff || '') + (it.cmOffice ? ('／' + kbEsc_(it.cmOffice)) : '');
         // 区分バッジ（要支援=緑・要介護=橙・取れなければ非表示）
         let careBadge = '';
@@ -7577,7 +7577,19 @@ function kbRender() {
             body = `<div style="color:#d69e2e; font-weight:700; margin-top:4px;">☎ 電話してください</div>
                     <button class="abs-contact-btn" style="margin-top:4px; padding:4px 10px; font-size:.85rem;${(opDisabled || !_viewIsToday) ? ' opacity:.5;' : ''}" ${(opDisabled || !_viewIsToday) ? 'disabled' : ''} onclick="kbMarkPhoneDone('${kbEsc_(it.name)}', '${kbEsc_(it.date)}')">電話済みにする</button>`;
         }
-        html += `<div style="border:1px solid #cbd5e0; border-radius:8px; padding:8px; margin:6px 0; background:#fff;">${head}${body}</div>`;
+        return `<div style="border:1px solid #cbd5e0; border-radius:8px; padding:8px; margin:6px 0; background:#fff;">${head}${body}</div>`;
+    }
+
+    // AM群/PM群に振り分け（表示のみ・kbState.itemsは非重複のまま＝各カード1群に1回）
+    const groups = { am: [], pm: [] };
+    kbState.items.forEach(it => { (kbUnitGroup_(it.unit) === 'am' ? groups.am : groups.pm).push(it); });
+
+    let html = '';
+    [['am', 'AM'], ['pm', 'PM']].forEach(g => {
+        const key = g[0], label = g[1];
+        if (!groups[key].length) return;
+        html += `<div style="margin:10px 0 4px;"><span class="kb-ampm-badge" style="display:inline-block; border:2px solid #2c7a7b; color:#2c7a7b; font-weight:800; padding:1px 12px; border-radius:4px; letter-spacing:2px; font-size:.9rem;">${label}</span></div>`;
+        groups[key].forEach(it => { html += kbCardHtml_(it); });
     });
     listEl.innerHTML = html;
 

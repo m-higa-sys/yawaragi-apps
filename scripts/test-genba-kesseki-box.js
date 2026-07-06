@@ -233,6 +233,15 @@ tryOk(() => {
   ok2(/font-size\s*:\s*1\.35rem/.test(tag), 'Q1: datelabelに font-size:1.35rem');
 }, 'Q群(日付ラベル拡大)');
 
+// R. AM/PM群描画（四角バッジ・各カード1群に1回）
+tryOk(() => {
+  const src = extractFn('kbRender()');
+  ok2(src.indexOf('kbUnitGroup_') >= 0, 'R1: kbRenderがkbUnitGroup_で群分け');
+  ok2(/kb-ampm-badge/.test(src), 'R2: AM/PM四角バッジのマーカー(kb-ampm-badge)がある');
+  ok2(src.indexOf("'AM'") >= 0 && src.indexOf("'PM'") >= 0, 'R3: AM/PMラベルを描画');
+  ok2(/groups\.am|groups\['am'\]/.test(src) && /groups\.pm|groups\['pm'\]/.test(src), 'R4: am/pmバケットに振り分け');
+}, 'R群(AM/PM群描画)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
