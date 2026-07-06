@@ -217,6 +217,14 @@ tryOk(() => {
   ok2(html.indexOf('📮 欠席box の使い方') >= 0, 'P3: ヘルプ見出しも「欠席box の使い方」');
 }, 'P群(リネーム)');
 
+// Q. 日付ラベル拡大
+tryOk(() => {
+  const idx = html.indexOf('id="kbox-datelabel"');
+  ok2(idx >= 0, 'Q0: datelabel存在');
+  const tag = html.slice(idx, html.indexOf('>', idx));
+  ok2(/font-size\s*:\s*1\.35rem/.test(tag), 'Q1: datelabelに font-size:1.35rem');
+}, 'Q群(日付ラベル拡大)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
