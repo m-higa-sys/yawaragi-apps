@@ -313,6 +313,13 @@ tryOk(() => {
   ok2(rtSrc.indexOf('kbIsOkResponseInline_') >= 0 && rtSrc.indexOf('setTimeout') >= 0, 'W6: retryはok判定+バックオフ');
 }, 'W群(3状態インライン)');
 
+// X. kbStateのロード状態フラグ
+tryOk(() => {
+  const s = html.slice(html.indexOf('let kbState ='), html.indexOf('let kbState =') + 260);
+  ok2(/loadedOnce\s*:/.test(s), 'X1: kbStateにloadedOnce');
+  ok2(/forwardOk\s*:/.test(s), 'X2: kbStateにforwardOk');
+}, 'X群(ロード状態)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
