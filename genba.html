@@ -7354,7 +7354,46 @@ function absInit() {
 // 独立init（f774228型回避: 要素不在なら黙ってreturn・既存init連鎖に新id依存を差し込まない）
 // GET=JSONP / POST=no-cors のgenba既存流儀を厳守（クロスオリジン制約）。
 // ============================================================
-let kbState = { items: [], checked: {}, methodMap: {}, methodLoaded: false };
+let kbState = { items: [], checked: {}, methodMap: {}, methodLoaded: false, viewDate: '', forward: [], _ensuringYm: '' };
+
+// ===== 2026-07-06 過去+未来ビュー: 純関数インライン移植（core=kesseki-box-core.js と同一ロジック・両所保証） =====
+function kbAddDaysYMD_(ymd, delta) {
+    var p = String(ymd || '').split('-');
+    if (p.length !== 3) return String(ymd || '');
+    var d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10) + (delta || 0));
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function kbUpcomingAbsenceDates_(absList, todayYMD) {
+    var seen = {}, out = [];
+    (absList || []).forEach(function (a) {
+        if (!a || a.isLongTerm) return;
+        var d = String(a.date || '');
+        if (!d || d < String(todayYMD)) return;
+        if (seen[d]) return;
+        seen[d] = true; out.push(d);
+    });
+    out.sort();
+    return out;
+}
+function kbMergeDedupAbs_(primaryList, secondaryList) {
+    var out = [], seen = {};
+    function key(a) { return String(a.name || '') + '|' + String(a.date || '') + '|' + String(a.unit || ''); }
+    (primaryList || []).forEach(function (a) { if (!a) return; var k = key(a); if (seen[k]) return; seen[k] = true; out.push(a); });
+    (secondaryList || []).forEach(function (a) { if (!a) return; var k = key(a); if (seen[k]) return; seen[k] = true; out.push(a); });
+    return out;
+}
+function kbIsViewToday_(viewYMD, todayYMD) { return String(viewYMD || '') === String(todayYMD || ''); }
+function kbFilterTodayTargets_(absList, ymd) {
+    return (absList || []).filter(function (a) { return a && !a.isLongTerm && String(a.date) === String(ymd); });
+}
+// 表示用: yyyy-mm-dd → "M/D(曜)"
+function kbFmtChip_(ymd) {
+    var p = String(ymd || '').split('-');
+    if (p.length !== 3) return String(ymd || '');
+    var dt = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    var dow = ['日', '月', '火', '水', '木', '金', '土'][dt.getDay()];
+    return parseInt(p[1], 10) + '/' + parseInt(p[2], 10) + '(' + dow + ')';
+}
 
 function kbInit() {
     const sec = document.getElementById('kbox-section');

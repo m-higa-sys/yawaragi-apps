@@ -162,6 +162,17 @@ tryOk(() => {
   ok2(html.indexOf('id="kbox-jumpchips"') >= 0, 'K6: ジャンプチップ行が存在');
 }, 'K群(日付ビューDOM)');
 
+// L. kbState.viewDate と インライン純関数の存在
+tryOk(() => {
+  const kbStateSrc = html.slice(html.indexOf('let kbState ='), html.indexOf('let kbState =') + 200);
+  ok2(/viewDate\s*:/.test(kbStateSrc), 'L1: kbStateにviewDate');
+  ok2(html.indexOf('function kbAddDaysYMD_') >= 0, 'L2: インラインkbAddDaysYMD_');
+  ok2(html.indexOf('function kbUpcomingAbsenceDates_') >= 0, 'L3: インラインkbUpcomingAbsenceDates_');
+  ok2(html.indexOf('function kbMergeDedupAbs_') >= 0, 'L4: インラインkbMergeDedupAbs_');
+  ok2(html.indexOf('function kbIsViewToday_') >= 0, 'L5: インラインkbIsViewToday_');
+  ok2(html.indexOf('function kbFilterTodayTargets_') >= 0, 'L6: インラインkbFilterTodayTargets_(日付引数版)');
+}, 'L群(状態+インライン純関数)');
+
 // E. 登録折衷案（急ぎトグル）
 tryOk(() => {
   ok2(html.indexOf('id="abs-urgent-send"') >= 0, 'E1: 急ぎトグルが存在');
