@@ -5,7 +5,8 @@
 function kbIsAlreadyNotified_(cmNotified) {
   var v = String(cmNotified || '').trim();
   return v === '送信済' || v === '電話連絡済' || v === '手動メール送信済' ||
-         v === 'ケアマネ把握済' || v === '下書き保存';
+         v === 'ケアマネ把握済' || v === '下書き保存' ||
+         v.indexOf('連絡済み') === 0;   // 過去日記録: 連絡済み（手段）・Phase4二重送信guard・client kbIsDoneInline_ と同期
 }
 
 // absences 配列から「本日の通常欠席」だけを返す（長期休み・他日は除外）

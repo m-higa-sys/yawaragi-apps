@@ -3806,6 +3806,9 @@ function doPost(e) {
       // 2026-05-13: 既存欠席のケアマネ連絡状況を手動更新（電話連絡済マーク用）
       case 'updateAbsenceCmNotified':
         return jsonResp(updateAbsenceCmNotified(ss, data));
+      // 2026-07-08 Phase2: 過去日連絡「記録のみ」（updateAbsenceCmNotified を呼ぶだけ＋連絡ログ・メール送信なし）
+      case 'recordPastContact':
+        return jsonResp(recordPastContact(ss, data));
       // 2026-07-04 指示書③: 本日の欠席連絡ボックス まとめて送信
       case 'send_box_cm_mails':
         return jsonResp(sendBoxCmMails(ss, data));
@@ -5439,6 +5442,24 @@ function logNonProdOrigin_(params) {
   ]);
 }
 
+// 2026-07-08 Phase2: 過去日連絡「記録のみ（送信ゼロ）」。当日送れなかった過去日の欠席を、別手段
+// (Gmail手動/電話/その他)で連絡した記録を残す。★メールは一切送信しない（記録だけ）。
+// 既存 updateAbsenceCmNotified（本体不変・呼ぶだけ）で cmNotified を更新し、既存 _appendCmLog_ で
+// 担当/手段/日付を連絡ログへ追記（表示の lastOperator/lastMethod 源）。additive・既存action不変。
+function recordPastContact(ss, data) {
+  var r = updateAbsenceCmNotified(ss, {
+    name: data.name, date: data.date,
+    cmNotified: String(data.cmNotified || ''), operator: String(data.operator || '')
+  });
+  if (!r || !r.success) return r || { success: false, error: '更新に失敗しました' };
+  _appendCmLog_(ss, {
+    userName: data.name, date: data.date, action: '過去日連絡記録',
+    method: String(data.method || ''), operator: String(data.operator || ''),
+    result: '記録', note: String(data.note || '')
+  });
+  return { success: true, recorded: true };   // ★メール送信なし（記録のみ）
+}
+
 // rec: { userName, date, action, method, contactedAddr, operator, result, note }
 function _appendCmLog_(ss, rec) {
   try {
@@ -6372,6 +6393,73 @@ function getTerminations(ss, period) {
   return list;
 }
 
+// =============================================================
+// 中止・未完 digest（2026-07-07）
+//   getTerminations の各中止レコードで「その人に該当するリハブ作業項目」が
+//   1つでも未チェックなら未完として朝のダイジェストに出す。「終わるまで方式」＝
+//   全該当項目が埋まった時だけ消える（時間経過では消さない）。
+//   基準日=連絡日の翌月10日（国保連請求締め）を境に、締め前=通常／締め後=期限超過へ格上げ。
+//   判定はフロント leave-terminate.html の trmRenderCard.allDone と同一（利用中止操作 rihab_chushi を含む）。
+//   純関数4つは scripts/test-chushi-digest.js と同一実装（二重持ち・あちらが正本）。
+// =============================================================
+// --- 純関数（scripts/test-chushi-digest.js と同一実装・二重持ち）---
+function chushiApplicableKeys_(careLevel) {
+  var isShien = String(careLevel || '').indexOf('要支援') !== -1;
+  return isShien
+    ? ['tsusho', 'koukou', 'rihab_chushi', 'kagakuteki']
+    : ['tsusho', 'kotraining', 'koukou', 'rihab_chushi', 'kagakuteki', 'adl'];
+}
+var CHUSHI_LABELS = {
+  tsusho: '通所計画書',
+  kotraining: '個別機能訓練計画書',
+  koukou: '口腔機能向上計画書',
+  rihab_chushi: '利用中止操作',
+  kagakuteki: '科学的介護推進体制',
+  adl: 'ADL維持等加算'
+};
+function chushiMissing_(careLevel, tasks) {
+  var keys = chushiApplicableKeys_(careLevel);
+  var t = tasks || {};
+  var out = [];
+  for (var i = 0; i < keys.length; i++) {
+    if (!t[keys[i]]) out.push(CHUSHI_LABELS[keys[i]]);
+  }
+  return out;
+}
+function chushiBaseDate_(contactDate) {
+  var m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(contactDate || ''));
+  if (!m) return '';
+  var y = parseInt(m[1], 10), mo = parseInt(m[2], 10);
+  mo += 1; if (mo > 12) { mo = 1; y += 1; }
+  return y + '-' + (mo < 10 ? '0' + mo : '' + mo) + '-10';
+}
+function chushiDecision_(records, dateStr) {
+  var today = String(dateStr).slice(0, 10);
+  var pending = [], overdue = [];
+  (records || []).forEach(function (r) {
+    var missing = chushiMissing_(r.careLevel, r.tasks);
+    if (missing.length === 0) return; // 全該当項目チェック済み → 消える
+    var care = String(r.careLevel || '').indexOf('要支援') !== -1 ? '要支援' : '要介護';
+    var base = chushiBaseDate_(r.contactDate);
+    var isOver = base !== '' && today > base;
+    var mm = /^\d{4}-(\d{2})-\d{2}$/.exec(String(r.terminateDate || ''));
+    var cancelMonth = mm ? parseInt(mm[1], 10) : 0;
+    var item = {
+      name: r.name, care: care, missing: missing,
+      cancelMonth: cancelMonth, terminateDate: String(r.terminateDate || '')
+    };
+    if (isOver) overdue.push(item); else pending.push(item);
+  });
+  overdue.sort(function (a, b) {
+    return a.terminateDate < b.terminateDate ? -1 : a.terminateDate > b.terminateDate ? 1 : 0;
+  });
+  return { pending: pending, overdue: overdue, pendingCount: pending.length, overdueCount: overdue.length };
+}
+// --- morningDigest 用セクション（既存 getTerminations をそのまま流用）---
+function _digestChushi_(ss, dateStr) {
+  return chushiDecision_(getTerminations(ss, 'all'), dateStr);
+}
+
 // 利用者台帳から「名前→介護度」のマップを作成
 function buildCareLevelMap(ss) {
   var map = {};
@@ -6792,6 +6880,11 @@ function morningDigest(e) {
   // 設計書: docs/superpowers/specs/2026-07-02-月次定例タスク-morningDigest統合-design.md (yawaragi-apps)
   safe('teirei', function () {
     return _digestTeirei_(ss, dateStr);
+  });
+  // 中止・未完（終わるまで方式・全該当項目チェックで消える・締め後は期限超過へ格上げ・2026-07-07）
+  // 設計書: docs/superpowers/specs/2026-06-22 系（leave-terminate.html trmRenderCard.allDone と同一判定）
+  safe('chushi', function () {
+    return _digestChushi_(ss, dateStr);
   });
 
   return respond({
