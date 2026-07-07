@@ -71,6 +71,23 @@ function fireTimeout(env) {
   if (t) t.fn();
 }
 
+// ---- 構造不変条件（全JSONP経路の統一を固定）----
+// 「一箇所直しても別経路が同じ穴」を終わらせるため、genba.html 全体で
+//  ・生の delete window[...] は kbReleaseCb_ helper の2行だけ（他JSONP経路は全て kbReleaseCb_ 経由）
+//  ・JSONPの短い保険 8000ms は全廃（20000ms 以上）
+// を静的に固定する。新規JSONP経路が生の delete / 8000ms を持ち込むと即FAIL。
+console.log('■ 構造不変条件（全JSONP経路 統一）');
+(function () {
+  const delMatches = html.match(/delete window\[/g) || [];
+  ok(delMatches.length === 2, 'S1(★): 生の delete window[ は kbReleaseCb_ helper の2行のみ（現数=' + delMatches.length + '）');
+  const eightK = html.match(/,\s*8000\s*\)/g) || [];
+  ok(eightK.length === 0, 'S2(★): JSONP短タイムアウト 8000ms は全廃（現数=' + eightK.length + '）');
+  // kbReleaseCb_ が定義済みで、各JSONP経路から参照されている（使用が十分数ある）
+  ok(/function kbReleaseCb_\(/.test(html), 'S3: kbReleaseCb_ helper が定義済み');
+  const relUse = (html.match(/kbReleaseCb_\(/g) || []).length;
+  ok(relUse >= 20, 'S4(★): kbReleaseCb_ が全経路から参照（定義1+使用多数・現数=' + relUse + '）');
+})();
+
 console.log('■ kbJsonp_（前進窓GET）');
 (function () {
   const env = makeEnv();

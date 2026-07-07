@@ -2415,10 +2415,10 @@ const HAICHI_SYNC_URL = (typeof YAWARAGIBOARD_API_URL !== 'undefined')
 function haichiCloudLoad(callback) {
     const cbName = '_haichiCb_' + Date.now();
     const script = document.createElement('script');
-    let timeout = setTimeout(function() { cleanup(); if(callback) callback(null); }, 8000);
+    let timeout = setTimeout(function() { cleanup(); if(callback) callback(null); }, 20000);   // GAS遅延に負けない保険
     function cleanup() {
         clearTimeout(timeout);
-        try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+        try { kbReleaseCb_(cbName); } catch(e) { window[cbName] = undefined; }
         if (script.parentNode) script.parentNode.removeChild(script);
     }
     window[cbName] = function(data) {
@@ -2532,10 +2532,10 @@ function stableStringify(value) {
 function haichiCloudVerify(key, expectedJson, cb) {
     const cbName = '_haichiVerifyCb_' + Date.now();
     const script = document.createElement('script');
-    let timeout = setTimeout(function() { cleanup(); if (cb) cb('error'); }, 8000);
+    let timeout = setTimeout(function() { cleanup(); if (cb) cb('error'); }, 20000);   // GAS遅延に負けない保険
     function cleanup() {
         clearTimeout(timeout);
-        try { delete window[cbName]; } catch(e) { window[cbName] = undefined; }
+        try { kbReleaseCb_(cbName); } catch(e) { window[cbName] = undefined; }
         if (script.parentNode) script.parentNode.removeChild(script);
     }
     window[cbName] = function(data) {
@@ -3803,14 +3803,14 @@ function verifyAbsenceInGAS(name, date) {
         script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
 
         const timeout = setTimeout(() => {
-            delete window[cbName];
+            kbReleaseCb_(cbName);
             if (script.parentNode) script.remove();
             resolve(false);
-        }, 8000);
+        }, 20000);   // GAS遅延に負けない保険
 
         window[cbName] = function(data) {
             clearTimeout(timeout);
-            delete window[cbName];
+            kbReleaseCb_(cbName);
             if (script.parentNode) script.remove();
 
             // 応答は {absences:{absences:[...]}} のネスト形。shared.js のグローバル
@@ -3824,7 +3824,7 @@ function verifyAbsenceInGAS(name, date) {
 
         script.onerror = () => {
             clearTimeout(timeout);
-            delete window[cbName];
+            kbReleaseCb_(cbName);
             resolve(false);
         };
         document.body.appendChild(script);
@@ -4293,7 +4293,7 @@ function absLoadCmEmailMap() {
     const cbName = 'absCmEmailCb_' + Date.now();
     return new Promise((resolve) => {
         let done = false;
-        const finish = (map) => { if (done) return; done = true; try { delete window[cbName]; } catch {} const el = document.getElementById('abs-cmemail-script'); if (el) el.remove(); resolve(map || {}); };
+        const finish = (map) => { if (done) return; done = true; try { kbReleaseCb_(cbName); } catch {} const el = document.getElementById('abs-cmemail-script'); if (el) el.remove(); resolve(map || {}); };
         window[cbName] = function(data) {
             const map = {};
             const list = (data && data.user_list) || [];
@@ -4312,7 +4312,7 @@ function absLoadCmEmailMap() {
         script.onerror = function() { finish({}); };
         document.body.appendChild(script);
         // 保険: 8秒で諦めて空マップ（固まらせない）
-        setTimeout(function() { finish({}); }, 8000);
+        setTimeout(function() { finish({}); }, 20000);   // GAS遅延に負けない保険
     });
 }
 
@@ -4353,7 +4353,7 @@ function absLoadUsersFromAPI() {
     const callbackName = 'absUserCallback_' + Date.now();
     return new Promise((resolve, reject) => {
         window[callbackName] = function(data) {
-            delete window[callbackName];
+            kbReleaseCb_(callbackName);
             const scriptEl = document.getElementById('abs-user-script');
             if (scriptEl) scriptEl.remove();
 
@@ -4414,7 +4414,7 @@ function absLoadUsersFromAPI() {
         script.id = 'abs-user-script';
         script.src = ABS_USER_API_URL + '?callback=' + callbackName;
         script.onerror = function() {
-            delete window[callbackName];
+            kbReleaseCb_(callbackName);
             // API取得失敗時はキャッシュから読む
             try {
                 const cached = localStorage.getItem(ABS_USERS_KEY);
@@ -5626,7 +5626,7 @@ function absRenderUpcomingList(attempt) {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         cleanupScript();
         if (attempt < 1) {
             absRenderUpcomingList(attempt + 1);  // 1回だけリトライ
@@ -5636,13 +5636,13 @@ function absRenderUpcomingList(attempt) {
         }
     };
 
-    const timeout = setTimeout(onFail, 8000);
+    const timeout = setTimeout(onFail, 20000);   // GAS遅延に負けない保険
 
     window[cbName] = function(data) {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         cleanupScript();
         // GAS側が新しい形式（{absences, longTerm}）か旧形式（配列）か対応
         let gasAbsences = [];
@@ -5964,7 +5964,7 @@ function khLoad() {
     const script = document.createElement('script');
     script.src = ABS_BOARD_API_URL + '?action=absences&month=' + month + '&callback=' + cbName + '&t=' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         let list = [];
         if (data && data.absences) {
             if (Array.isArray(data.absences)) list = data.absences;
@@ -5973,7 +5973,7 @@ function khLoad() {
         khRender(list, month);
     };
     script.onerror = function() {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         if (wrap) wrap.innerHTML = '<p style="text-align:center; color:#e53e3e; padding:30px;">取得に失敗しました。もう一度お試しください。</p>';
     };
     document.body.appendChild(script);
@@ -6059,7 +6059,7 @@ function absLoadLongTermList() {
     const script = document.createElement('script');
     script.src = ABS_BOARD_API_URL + '?action=absences&callback=' + cbName + '&t=' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         let longTermData = [];
         if (data && data.absences) {
             if (data.absences.longTerm) longTermData = data.absences.longTerm;
@@ -6213,19 +6213,19 @@ function jisLoad() {
     // 1. 口腔チェックデータ取得（JSONP）
     const cbOral = '_jisOralCb_' + Date.now();
     window[cbOral] = function(data) {
-        delete window[cbOral];
+        kbReleaseCb_(cbOral);
         if (data && data.checks) jisOralData = data.checks;
         checkDone();
     };
     const scriptOral = document.createElement('script');
     scriptOral.src = JIS_ORAL_SYNC_URL + '?action=getOral&callback=' + cbOral + '&t=' + Date.now();
-    scriptOral.onerror = () => { delete window[cbOral]; checkDone(); };
+    scriptOral.onerror = () => { kbReleaseCb_(cbOral); checkDone(); };
     document.body.appendChild(scriptOral);
 
     // 2. 欠席データ取得（yawaragiボードGAS JSONP）
     const cbAbs = '_jisAbsCb_' + Date.now();
     window[cbAbs] = function(data) {
-        delete window[cbAbs];
+        kbReleaseCb_(cbAbs);
         if (data && data.absences) jisAbsenceData = data.absences;
         checkDone();
     };
@@ -6233,7 +6233,7 @@ function jisLoad() {
     // 月の1日を指定して14日分ではなく、全月分取得したいので、直接出欠変更を見る
     // yawaragiボードGASは今日起点で14日先までなので、localStorageの欠席データも併用
     scriptAbs.src = ABS_BOARD_API_URL + '?action=absences&date=' + month + '-01&callback=' + cbAbs + '&t=' + Date.now();
-    scriptAbs.onerror = () => { delete window[cbAbs]; checkDone(); };
+    scriptAbs.onerror = () => { kbReleaseCb_(cbAbs); checkDone(); };
     document.body.appendChild(scriptAbs);
 }
 
@@ -6467,7 +6467,7 @@ function attLoad() {
     // GASから最新データを取得（裏で更新）
     const cbName = 'attCallback_' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         const scriptEl = document.getElementById('att-script');
         if (scriptEl) scriptEl.remove();
 
@@ -6492,7 +6492,7 @@ function attLoad() {
     script.id = 'att-script';
     script.src = ABS_BOARD_API_URL + '?action=attendance&date=' + dateStr + '&callback=' + cbName + '&t=' + Date.now();
     script.onerror = function() {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         if (!cacheShown) content.innerHTML = '<div class="att-loading">通信エラー。再読み込みしてください。</div>';
     };
     document.body.appendChild(script);
@@ -6901,7 +6901,7 @@ function loadUsageAlerts() {
     var p = usagePeriod();
     var cbName = 'genbaUsageAlertCb_' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         var sEl = document.getElementById(cbName);
         if (sEl && sEl.parentNode) sEl.parentNode.removeChild(sEl);
         try {
@@ -6917,7 +6917,7 @@ function loadUsageAlerts() {
     var sEl = document.createElement('script');
     sEl.id = cbName;
     sEl.src = ABS_BOARD_API_URL + '?action=usage_alerts&from=' + p.from + '&to=' + p.to + '&callback=' + cbName + '&t=' + Date.now();
-    sEl.onerror = function() { delete window[cbName]; };
+    sEl.onerror = function() { kbReleaseCb_(cbName); };
     document.body.appendChild(sEl);
 }
 
@@ -6932,7 +6932,7 @@ function showUsageDetail(name) {
     var p = usagePeriod();
     var cbName = 'genbaUdCb_' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         var sEl = document.getElementById(cbName);
         if (sEl && sEl.parentNode) sEl.parentNode.removeChild(sEl);
         var ua = null;
@@ -6946,7 +6946,7 @@ function showUsageDetail(name) {
     sEl.id = cbName;
     sEl.src = ABS_BOARD_API_URL + '?action=usage_alerts&from=' + p.from + '&to=' + p.to + '&callback=' + cbName + '&t=' + Date.now();
     sEl.onerror = function() {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         body.innerHTML = '<div style="color:#c53030;padding:12px;">通信エラー。再度タップしてください。</div>';
     };
     document.body.appendChild(sEl);
@@ -7092,7 +7092,7 @@ function muRenderMonthTabs(name, selectedYm) {
 function muFetchMonthly(name, ym, callback) {
     var cbName = 'muCb_' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         var s = document.getElementById(cbName);
         if (s && s.parentNode) s.parentNode.removeChild(s);
         callback(data);
@@ -7243,7 +7243,7 @@ function attInit() {
 function attLoadAllUsers() {
     const cbName = 'attAllUsersCallback_' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         const scriptEl = document.getElementById('att-allusers-script');
         if (scriptEl) scriptEl.remove();
 
@@ -7290,7 +7290,7 @@ function attLoadAllUsers() {
     const script = document.createElement('script');
     script.id = 'att-allusers-script';
     script.src = ABS_BOARD_API_URL + '?action=all&callback=' + cbName + '&t=' + Date.now();
-    script.onerror = function() { delete window[cbName]; };
+    script.onerror = function() { kbReleaseCb_(cbName); };
     document.body.appendChild(script);
 }
 
@@ -8138,7 +8138,7 @@ function trmLoadList() {
 
     const callbackName = 'trmListCallback_' + Date.now();
     window[callbackName] = function(data) {
-        delete window[callbackName];
+        kbReleaseCb_(callbackName);
         const scriptEl = document.getElementById('trm-list-script');
         if (scriptEl) scriptEl.remove();
 
@@ -8156,7 +8156,7 @@ function trmLoadList() {
     script.id = 'trm-list-script';
     script.src = ABS_BOARD_API_URL + '?action=terminations&period=' + trmState.period + '&callback=' + callbackName;
     script.onerror = function() {
-        delete window[callbackName];
+        kbReleaseCb_(callbackName);
         listEl.innerHTML = '<p style="color:#c0392b;padding:20px;">通信エラーが発生しました</p>';
     };
     document.body.appendChild(script);
@@ -8845,7 +8845,7 @@ function rmdLoadMemberData(callback) {
 
     const cbName = 'rmdMemberCallback_' + Date.now();
     window[cbName] = function(data) {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         const s = document.getElementById('rmd-member-script');
         if (s) s.remove();
         if (data && Array.isArray(data)) {
@@ -8861,7 +8861,7 @@ function rmdLoadMemberData(callback) {
     script.id = 'rmd-member-script';
     script.src = RMD_MEASURE_GAS_URL + '?callback=' + cbName + '&t=' + Date.now();
     script.onerror = function() {
-        delete window[cbName];
+        kbReleaseCb_(cbName);
         if (!rmdMemberLoaded) callback();
     };
     document.body.appendChild(script);
@@ -9303,7 +9303,7 @@ function dengonLoad() {
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=dengonBoard"]').forEach(s => s.remove());
         dengonRender(resp && resp.items ? resp.items : []);
-        try { delete window[cb]; } catch (e) {}
+        try { kbReleaseCb_(cb); } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=dengonBoard&today=' + toLocalDateStr() + '&callback=' + cb;
@@ -9317,7 +9317,7 @@ function dengonLoadHistory() {
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=dengonHistory"]').forEach(s => s.remove());
         dengonRenderHistory(resp && resp.items ? resp.items : []);
-        try { delete window[cb]; } catch (e) {}
+        try { kbReleaseCb_(cb); } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=dengonHistory&callback=' + cb;
@@ -9479,7 +9479,7 @@ function dengonComplete(id, btn) {
             alert('完了に失敗しました: ' + (resp && resp.error || '不明'));
             dengonCancelConfirm(id); // カードを通常状態へ戻す
         }
-        try { delete window[cb]; } catch (e) {}
+        try { kbReleaseCb_(cb); } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=completeDengonMessage&id=' + encodeURIComponent(id) + '&doneBy=' + encodeURIComponent(doneBy) + '&callback=' + cb;
@@ -9500,7 +9500,7 @@ function dengonReopen(id, btn) {
             alert('未完了に戻すのに失敗しました: ' + (resp && resp.error || '不明'));
             if (btn) { btn.disabled = false; btn.textContent = '未完了に戻す'; }
         }
-        try { delete window[cb]; } catch (e) {}
+        try { kbReleaseCb_(cb); } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=reopenDengonMessage&id=' + encodeURIComponent(id) + '&callback=' + cb;
