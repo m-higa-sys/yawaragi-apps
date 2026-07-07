@@ -1619,17 +1619,18 @@
         <div style="background:#fff; max-width:460px; margin:40px auto; padding:16px; border-radius:10px;">
             <h3 id="kbox-pc-title" style="margin:0 0 4px;"></h3>
             <div style="font-size:.82rem; color:#c0392b; font-weight:700; margin-bottom:10px;">※ここでの記録ではメールは送信しません（連絡した記録を残すだけ）</div>
-            <div style="font-size:.9rem; font-weight:700; margin-bottom:6px;">どの方法で連絡しましたか？</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-                <button class="abs-contact-btn" onclick="kbSubmitPastContact_('Gmail手動', document.getElementById('kbox-pc-note').value)">📧 Gmail手動</button>
-                <button class="abs-contact-btn" onclick="kbSubmitPastContact_('電話', document.getElementById('kbox-pc-note').value)">☎ 電話</button>
-                <button class="abs-contact-btn" onclick="kbSubmitPastContact_('その他', document.getElementById('kbox-pc-note').value)">その他</button>
+            <div style="font-size:.9rem; font-weight:700; margin-bottom:6px;">① どの方法で連絡しましたか？（選ぶだけ・まだ記録されません）</div>
+            <div id="kbox-pc-methods" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                <button class="abs-contact-btn" onclick="kbSelectPastMethod_('Gmail手動', this)">📧 Gmail手動</button>
+                <button class="abs-contact-btn" onclick="kbSelectPastMethod_('電話', this)">☎ 電話</button>
+                <button class="abs-contact-btn" onclick="kbSelectPastMethod_('その他', this)">その他</button>
             </div>
-            <label style="display:block; font-size:.82rem; font-weight:600;">メモ（任意・「その他」の内容や補足など）
+            <label style="display:block; font-size:.82rem; font-weight:600;">② メモ（任意・「その他」の内容や補足など）
                 <textarea id="kbox-pc-note" rows="2" style="width:100%; padding:8px; box-sizing:border-box;"></textarea>
             </label>
-            <div style="text-align:right; margin-top:10px;">
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
                 <button class="abs-contact-btn" onclick="document.getElementById('kbox-pastcontact-modal').style.display='none'">閉じる</button>
+                <button class="abs-contact-btn" style="background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbConfirmPastContact_()">③ 記録する</button>
             </div>
         </div>
     </div>
@@ -7604,16 +7605,36 @@ function kbPastContactEligible_(viewYMD, todayYMD) {
 }
 
 let kbPastContactEditing = null;   // 過去日連絡記録の対象 {name, date}
+let kbPastContactMethod = '';      // 選択中の連絡手段（未選択=''）。手段は「選択」だけ→「記録する」で確定
 
 // 過去日カードの「連絡済みにする（送らず記録）」入口: 手段選択モーダルを body直下ポータルで開く。
 // ★当日ガード(kbIsViewToday_/N群)は非接触・これは新規の別関数。
 function kbMarkContactedPast_(name, date) {
     kbPastContactEditing = { name: name, date: date };
+    kbPastContactMethod = '';                                  // 前回の選択を持ち越さない
     const t = document.getElementById('kbox-pc-title');
     if (t) t.textContent = name + ' 様（' + date + '）の連絡を記録';
     const note = document.getElementById('kbox-pc-note');
     if (note) note.value = '';
+    const wrap = document.getElementById('kbox-pc-methods');   // 手段ボタンのハイライト解除
+    if (wrap && wrap.querySelectorAll) wrap.querySelectorAll('button').forEach(function (b) { b.classList.remove('selected'); });
     kbShowModal_('kbox-pastcontact-modal');   // display:none 祖先での不可視を封じる（body直下退避）
+}
+
+// 手段を「選択」だけする（まだ記録しない・押したらハイライト）。メモを書いてから「記録する」で確定。
+// ★即記録しない＝メモを書く時間を確保（手段ボタン即確定バグの修正）。
+function kbSelectPastMethod_(method, btnEl) {
+    kbPastContactMethod = method;
+    const wrap = document.getElementById('kbox-pc-methods');
+    if (wrap && wrap.querySelectorAll) wrap.querySelectorAll('button').forEach(function (b) { b.classList.remove('selected'); });
+    if (btnEl && btnEl.classList) btnEl.classList.add('selected');   // 選んだ手段が見て分かる
+}
+
+// 「記録する」で確定＝ここで初めて recordPastContact POST（選択手段＋メモを一緒に）。
+function kbConfirmPastContact_() {
+    if (!kbPastContactMethod) { showToast('連絡方法を選んでください', 3000); return; }   // 未選択記録を防ぐ
+    const note = document.getElementById('kbox-pc-note');
+    kbSubmitPastContact_(kbPastContactMethod, note ? note.value : '');
 }
 
 // 手段選択→記録POST（recordPastContact）。★メール送信は一切しない（送信action非呼び＝記録のみ）。
@@ -7633,6 +7654,7 @@ function kbSubmitPastContact_(method, note) {
         setTimeout(() => kbLoad(), 2000);
     }).catch(e => showToast('記録失敗: ' + (e && e.message || e), 5000));
     kbPastContactEditing = null;
+    kbPastContactMethod = '';
 }
 function kbClassifyCardInline_(method, email, cmNotified) {
     const m = String(method || '').trim();

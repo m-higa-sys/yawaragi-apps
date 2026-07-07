@@ -33,7 +33,7 @@ function okSafe(thunk, label) { try { ok(!!thunk(), label); } catch (e) { fail++
 function bindFns(names, env) {
   const src = names.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
   const gkeys = Object.keys(env);
-  const prelude = 'let kbPastContactEditing = null;\n';
+  const prelude = 'let kbPastContactEditing = null;\nlet kbPastContactMethod = "";\n';
   const body = prelude + src + '\n\nreturn {' + names.map(n => n + ': (typeof ' + n + '!=="undefined")?' + n + ':undefined').join(', ') + '};';
   const factory = new Function(...gkeys, body);
   return factory(...gkeys.map(k => env[k]));
@@ -150,6 +150,67 @@ okSafe(() => {
   const h = listEl.innerHTML;
   return h.indexOf('連絡済み（その他）') >= 0 && h.indexOf('下浦') >= 0 && h.indexOf('&lt;b&gt;FAX&lt;/b&gt;済') >= 0 && h.indexOf('<b>FAX</b>済') < 0;
 }, 'V1(★): 連絡済み（その他）・担当:下浦・note を表示、noteの<b>はエスケープ（生タグ出さない）');
+
+// ---- 選択→確定フロー用スタブ（メモを書ける・即確定バグ修正） ----
+function selectEnv() {
+  const calls = [];
+  const noteEl = { value: '', style: {} };
+  const els = { 'kbox-pc-note': noteEl, 'kbox-pastcontact-modal': { style: {} }, 'kbox-pc-title': { textContent: '' } };
+  const env = {
+    fetch: function (url, opts) { let body = {}; try { body = JSON.parse(opts && opts.body || '{}'); } catch (e) {} calls.push({ action: body.action, body }); return Promise.resolve({}); },
+    gnbGuardProdWrite: function () { return true; },
+    absReceptionist: '下浦',
+    ABS_BOARD_API_URL: 'https://example.test/exec',
+    showToast: function (m) { calls.push({ toast: String(m || '') }); },
+    kbShowModal_: function () { return { style: {} }; },
+    kbLoad: function () {},
+    setTimeout: function () {},
+    document: { getElementById: id => els[id] || null },
+    kbState: { viewDate: '2026-07-07' },
+    jstTodayStr: function () { return '2026-07-08'; },
+  };
+  env.__calls = calls; env.__noteEl = noteEl;
+  env.__mkBtn = () => ({ classList: { add: function () {}, remove: function () {} } });
+  return env;
+}
+const FLOW_FNS = ['kbMarkContactedPast_', 'kbSelectPastMethod_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
+
+console.log('■ 4b) 手段は選択のみ→「記録する」で確定（即確定バグ修正・メモを書ける）');
+okSafe(() => {
+  const env = selectEnv();
+  const api = bindFns(FLOW_FNS, env);
+  api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastMethod_('Gmail手動', env.__mkBtn());
+  return env.__calls.every(c => c.action !== 'recordPastContact');
+}, 'U1(★): 手段ボタン押下では記録POSTが発火しない（選択のみ）');
+okSafe(() => {
+  const env = selectEnv();
+  const api = bindFns(FLOW_FNS, env);
+  api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastMethod_('Gmail手動', env.__mkBtn());
+  env.__noteEl.value = '休み連絡票をFAX';
+  api.kbConfirmPastContact_();
+  const rec = env.__calls.filter(c => c.action === 'recordPastContact');
+  return rec.length === 1 && rec[0].body.cmNotified === '連絡済み（Gmail手動）' && rec[0].body.note === '休み連絡票をFAX';
+}, 'U2(★): 選択→メモ入力→「記録する」で初めてPOST（メモがbodyに乗る）');
+okSafe(() => {
+  const env = selectEnv();
+  const api = bindFns(FLOW_FNS, env);
+  api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbConfirmPastContact_();
+  const rec = env.__calls.filter(c => c.action === 'recordPastContact');
+  const warned = env.__calls.some(c => c.toast && c.toast.indexOf('連絡方法') >= 0);
+  return rec.length === 0 && warned;
+}, 'U3(★): 手段未選択で「記録する」→ POSTせず警告');
+okSafe(() => {
+  const s = html.indexOf('id="kbox-pastcontact-modal"');
+  const e = html.indexOf('id="kbox-help-modal"');
+  const modal = html.slice(s, e);
+  const methodUsesSelect = /kbSelectPastMethod_\('Gmail手動'/.test(modal);
+  const noDirectSubmit = !/onclick="kbSubmitPastContact_\('Gmail手動'/.test(modal);
+  const hasConfirm = /kbConfirmPastContact_\(\)/.test(modal);
+  return methodUsesSelect && noDirectSubmit && hasConfirm;
+}, 'U4(★構造): 手段ボタン=kbSelectPastMethod_・記録する=kbConfirmPastContact_（method即確定でない）');
 
 console.log('\n実測ハーネス(past-contact): ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
