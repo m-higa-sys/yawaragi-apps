@@ -6531,13 +6531,13 @@ function attEnsureMonthAbsences(dateStr, cb) {
     const cleanup = function() { try { if (script.parentNode) script.parentNode.removeChild(script); } catch (e) {} };
     const timeout = setTimeout(function() {
         if (settled) return; settled = true;
-        delete window[cbName]; cleanup();
+        kbReleaseCb_(cbName); cleanup();
         cb();  // 失敗時も続行（連絡状況は従来どおり＝壊さない・次回再取得可）
-    }, 8000);
+    }, 20000);   // GAS実測8秒台に負けない保険（旧8000msは境界競合でReferenceError・point c配慮でtimeout時はcache空埋めしない）
     window[cbName] = function(data) {
         if (settled) return; settled = true;
         clearTimeout(timeout);
-        delete window[cbName]; cleanup();
+        kbReleaseCb_(cbName); cleanup();
         let arr = [];
         if (data && data.absences) {
             if (Array.isArray(data.absences)) arr = data.absences;
@@ -6549,7 +6549,7 @@ function attEnsureMonthAbsences(dateStr, cb) {
     script.onerror = function() {
         if (settled) return; settled = true;
         clearTimeout(timeout);
-        delete window[cbName]; cleanup();
+        kbReleaseCb_(cbName); cleanup();
         cb();
     };
     script.src = ABS_BOARD_API_URL + '?action=absences&month=' + ym + '&callback=' + cbName + '&t=' + Date.now();
@@ -7439,7 +7439,15 @@ function kbInit() {
     kbLoad();
 }
 
-// JSONP GET（absLoadCmEmailMap と同じ流儀・固まらせない8秒保険）
+// settle後の受け皿コールバック解放: delete でなく no-op スタブ化して、
+// タイムアウト後に遅れて届いた JSONP 応答（GAS実測8秒台）を無害吸収する（ReferenceError封じ・2026-07-07）。
+// スタブは呼ばれたら自分を掃除し、呼ばれなくても猶予後に確実に消す（windowの汚染防止）。
+function kbReleaseCb_(name) {
+    window[name] = function () { try { delete window[name]; } catch (e) { window[name] = undefined; } };
+    setTimeout(function () { try { delete window[name]; } catch (e) { window[name] = undefined; } }, 30000);
+}
+
+// JSONP GET（absLoadCmEmailMap と同じ流儀・固まらせない保険。GAS遅延に負けないタイムアウト）
 function kbJsonp_(action, idSuffix) {
     return new Promise((resolve) => {
         let done = false;
@@ -7447,7 +7455,7 @@ function kbJsonp_(action, idSuffix) {
         const scriptId = 'kb-script-' + idSuffix;
         const finish = (data) => {
             if (done) return; done = true;
-            try { delete window[cbName]; } catch {}
+            kbReleaseCb_(cbName);   // delete でなく no-op スタブ化（遅延応答のReferenceError封じ）
             const el = document.getElementById(scriptId); if (el) el.remove();
             resolve(data || null);
         };
@@ -7457,7 +7465,7 @@ function kbJsonp_(action, idSuffix) {
         script.src = ABS_BOARD_API_URL + '?action=' + action + '&callback=' + cbName + '&t=' + Date.now();
         script.onerror = function () { finish(null); };
         document.body.appendChild(script);
-        setTimeout(function () { finish(null); }, 8000);
+        setTimeout(function () { finish(null); }, 20000);   // GAS実測8秒台に負けない保険（旧8000msは境界競合でReferenceError）
     });
 }
 
