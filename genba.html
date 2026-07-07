@@ -7700,10 +7700,19 @@ function kbUpdateBadge() {
 
 // ===== 指示書④: 使い方ヘルプ（表示専用・データ非接触） =====
 // 静的テキストのモーダルを開くだけ。送信・登録・fetch・状態変更は一切しない。
+// モーダルを body 直下へ退避してから表示する。box改修-25の移設で #tab-absence(display:none) に
+// 取り残されると、子に display:block を立てても祖先が非表示で不可視になる問題の恒久対策（2026-07-07）。
+// 既に body 直下なら appendChild しない（冪等・二重移動やイベント喪失なし。inline onclick はノード移動で保持）。
+function kbShowModal_(id) {
+    const m = document.getElementById(id);
+    if (!m) return null;                                   // 要素不在ガード（f774228型回避）
+    if (m.parentNode !== document.body) document.body.appendChild(m);
+    m.style.display = 'block';
+    return m;
+}
+
 function kbShowHelp() {
-    const modal = document.getElementById('kbox-help-modal');
-    if (!modal) return;   // 要素不在ガード（f774228型回避）
-    modal.style.display = 'block';
+    kbShowModal_('kbox-help-modal');   // body直下へ退避して表示（不在ガードはヘルパ内）
 }
 
 // ===== Task4: 内容確認・訂正モーダル =====
@@ -7745,7 +7754,7 @@ function kbOpenPreview(name) {
     it._initialBody = kbBuildBody_(it);
     bodyEl.value = (it.customBody && it.customBody.length) ? it.customBody : it._initialBody;
     if (warn) warn.style.display = 'none';
-    document.getElementById('kbox-preview-modal').style.display = 'block';
+    kbShowModal_('kbox-preview-modal');   // body直下へ退避して表示（display:none祖先タブ配下での不可視を封じる）
 }
 
 function kbPvCheckTo() {
@@ -7792,7 +7801,7 @@ function kbOpenSummary() {
         return '<li>' + kbEsc_(it.name) + ' → ' + kbEsc_(it.cmOffice || 'ケアマネ') +
                '（メール: ' + kbEsc_(to) + '）</li>';
     }).join('');
-    document.getElementById('kbox-summary-modal').style.display = 'block';
+    kbShowModal_('kbox-summary-modal');   // body直下へ退避して表示（display:none祖先タブ配下での不可視を封じる）
 }
 
 // 「送信する」でのみ実送信。POST=no-cors（genba既存流儀）＋送信後は再読込でサーバ値を正として反映。

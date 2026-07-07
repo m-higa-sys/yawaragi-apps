@@ -359,7 +359,10 @@ tryOk(() => {
   ok2(html.indexOf('id="kbox-help-modal"') >= 0, 'F1: 使い方ヘルプモーダルが存在');
   ok2(html.indexOf('kbShowHelp()') >= 0, 'F2: ❓使い方ボタンがkbShowHelpを呼ぶ');
   const helpSrc = extractFn('kbShowHelp');
-  ok2(/if\s*\(!\w+\)\s*return/.test(helpSrc), 'F3: kbShowHelpに要素不在ガード（f774228型回避）');
+  // 要素不在ガードは kbShowModal_ に集約（モーダルをbody直下へ退避してから表示・display:none祖先での不可視封じ）。
+  // kbShowHelp はそれ経由で表示するため、ガードは kbShowModal_ 側で担保される（f774228型回避は維持）。
+  const showModalSrc = extractFn('kbShowModal_');
+  ok2(/kbShowModal_\s*\(/.test(helpSrc) && /if\s*\(!\w+\)\s*return/.test(showModalSrc), 'F3: 使い方の表示経路に要素不在ガード（kbShowModal_に集約・f774228型回避）');
   // 表示専用＝送信/POST/registerを一切呼ばない
   ok2(helpSrc.indexOf('fetch') < 0 && helpSrc.indexOf('POST') < 0 && helpSrc.indexOf('absDoRegister') < 0,
       'F4: kbShowHelpは表示専用（fetch/POST/登録を呼ばない）');
