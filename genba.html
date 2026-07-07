@@ -1621,9 +1621,9 @@
             <div style="font-size:.82rem; color:#c0392b; font-weight:700; margin-bottom:10px;">※ここでの記録ではメールは送信しません（連絡した記録を残すだけ）</div>
             <div style="font-size:.9rem; font-weight:700; margin-bottom:6px;">① どの方法で連絡しましたか？（選ぶだけ・まだ記録されません）</div>
             <div id="kbox-pc-methods" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-                <button class="abs-contact-btn" onclick="kbSelectPastMethod_('Gmail手動', this)">📧 Gmail手動</button>
-                <button class="abs-contact-btn" onclick="kbSelectPastMethod_('電話', this)">☎ 電話</button>
-                <button class="abs-contact-btn" onclick="kbSelectPastMethod_('その他', this)">その他</button>
+                <button class="abs-contact-btn" data-method="Gmail手動" onclick="kbSelectPastMethod_('Gmail手動', this)">📧 Gmail手動</button>
+                <button class="abs-contact-btn" data-method="電話" onclick="kbSelectPastMethod_('電話', this)">☎ 電話</button>
+                <button class="abs-contact-btn" data-method="その他" onclick="kbSelectPastMethod_('その他', this)">その他</button>
             </div>
             <label style="display:block; font-size:.82rem; font-weight:600;">② メモ（任意・「その他」の内容や補足など）
                 <textarea id="kbox-pc-note" rows="2" style="width:100%; padding:8px; box-sizing:border-box;"></textarea>
@@ -7637,6 +7637,28 @@ function kbConfirmPastContact_() {
     kbSubmitPastContact_(kbPastContactMethod, note ? note.value : '');
 }
 
+// 記録の編集: 手動記録（cmNotified が '連絡済み（…）'）のカードだけに出る「編集」入口。
+// 既存の手段選択モーダルを現在値セットで開き、「記録する」で recordPastContact 再POST＝上書き
+// （updateAbsenceCmNotified が name+date一致で更新so上書き・二重ガード非対象で編集を妨げない）。
+// ★正規送信（'送信済'/system）は書き換え禁止＝そもそも編集ボタンを出さない側で担保。
+function kbEditContactedPast_(name, date) {
+    const it = kbState.items.find(x => x.name === name && String(x.date) === String(date));
+    if (!it) return;
+    kbPastContactEditing = { name: name, date: date };
+    const m = String(it.cmNotified || '').match(/連絡済み（(.+)）/);   // 手段を復元
+    kbPastContactMethod = m ? m[1] : '';
+    const t = document.getElementById('kbox-pc-title');
+    if (t) t.textContent = name + ' 様（' + date + '）の連絡を編集';
+    const note = document.getElementById('kbox-pc-note');
+    if (note) note.value = String(it.note || '');                       // メモ復元
+    const wrap = document.getElementById('kbox-pc-methods');            // 現在手段をハイライト
+    if (wrap && wrap.querySelectorAll) wrap.querySelectorAll('button').forEach(function (b) {
+        if (b.getAttribute && b.getAttribute('data-method') === kbPastContactMethod) b.classList.add('selected');
+        else b.classList.remove('selected');
+    });
+    kbShowModal_('kbox-pastcontact-modal');
+}
+
 // 手段選択→記録POST（recordPastContact）。★メール送信は一切しない（送信action非呼び＝記録のみ）。
 function kbSubmitPastContact_(method, note) {
     if (!gnbGuardProdWrite('過去日の連絡記録')) return;      // ★書込前 originガード
@@ -7721,7 +7743,9 @@ function kbRender() {
             const who = it.lastOperator ? ('（担当: ' + kbEsc_(it.lastOperator) + '）') : '';
             const dateInfo = (isPastRec && it.date) ? ('・' + kbEsc_(it.date)) : '';
             const noteLine = (isPastRec && it.note) ? `<div style="font-size:.8rem; color:#666; margin-top:2px;">${kbEsc_(it.note)}</div>` : '';
-            body = `<div style="color:#2c7a7b; font-weight:700; margin-top:4px;">✅ ${label}${who}${dateInfo}</div>${noteLine}`;
+            // 編集ボタンは手動記録('連絡済み（…）')にのみ。正規送信('送信済'/system)は書き換え禁止so出さない。
+            const editBtn = isPastRec ? `<div style="margin-top:6px;"><button class="abs-contact-btn" style="padding:3px 9px; font-size:.8rem;" onclick="kbEditContactedPast_('${kbEsc_(it.name)}', '${kbEsc_(it.date)}')">✏️ 編集</button></div>` : '';
+            body = `<div style="color:#2c7a7b; font-weight:700; margin-top:4px;">✅ ${label}${who}${dateInfo}</div>${noteLine}${editBtn}`;
         } else {
             if (it.cls.kind === 'mail') {
                 const chk = kbState.checked[it.name] ? 'checked' : '';

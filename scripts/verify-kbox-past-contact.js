@@ -212,5 +212,62 @@ okSafe(() => {
   return methodUsesSelect && noDirectSubmit && hasConfirm;
 }, 'U4(★構造): 手段ボタン=kbSelectPastMethod_・記録する=kbConfirmPastContact_（method即確定でない）');
 
+// ---- 記録の編集（既存モーダル再利用・上書き） ----
+function renderDoneCard(cmNotified, extra) {
+  const listEl = { innerHTML: '' };
+  const els = { 'kbox-list': listEl };
+  const kbState = { viewDate: '2026-07-07', checked: {}, items: [Object.assign({ name: '根岸君男', unit: '午後', cmStaff: '大野', cmOffice: '梨花', care: '要介護', cmNotified: cmNotified, lastOperator: '工藤', date: '2026-07-07', cls: { kind: 'mail', done: true } }, extra || {})] };
+  const stub = 'function kbUpdateBadge(){} function kbRenderChrome_(){} function kbRenderOperatorRow_(){} function kbUnitGroup_(u){return "pm";} function kbIsViewToday_(v,t){return String(v)===String(t);} function kbFmtChip_(d){return String(d);} function kbUpcomingAbsenceDates_(){return[];} function kbPastContactEligible_(){return false;}';
+  const src = stub + '\n' + extractFn('kbEsc_', true) + '\n' + extractFn('kbRender', true);
+  const factory = new Function('document', 'absReceptionist', 'jstTodayStr', 'kbState', src + '\nreturn {kbRender: (typeof kbRender!=="undefined")?kbRender:undefined};');
+  const api = factory({ getElementById: id => els[id] || { style: {}, textContent: '', value: '', innerHTML: '' } }, '下浦', () => '2026-07-08', kbState);
+  api.kbRender();
+  return listEl.innerHTML;
+}
+function editEnv() {
+  const calls = [];
+  const noteEl = { value: '' };
+  const els = { 'kbox-pc-note': noteEl, 'kbox-pastcontact-modal': { style: {} }, 'kbox-pc-title': { textContent: '' }, 'kbox-pc-methods': { querySelectorAll: () => [] } };
+  const env = {
+    fetch: function (url, opts) { let b = {}; try { b = JSON.parse(opts && opts.body || '{}'); } catch (e) {} calls.push({ action: b.action, body: b }); return Promise.resolve({}); },
+    gnbGuardProdWrite: () => true, absReceptionist: '下浦', ABS_BOARD_API_URL: 'https://example.test/exec',
+    showToast: m => calls.push({ toast: String(m || '') }), kbShowModal_: id => { calls.push({ modal: id }); return { style: {} }; }, kbLoad: () => {}, setTimeout: () => {},
+    document: { getElementById: id => els[id] || null, querySelectorAll: () => [] },
+    kbState: { viewDate: '2026-07-07', items: [{ name: '根岸君男', date: '2026-07-07', cmNotified: '連絡済み（Gmail手動）', note: 'FAXした', lastOperator: '工藤', cls: { kind: 'mail', done: true } }] },
+    jstTodayStr: () => '2026-07-08',
+  };
+  env.__calls = calls; env.__noteEl = noteEl;
+  return env;
+}
+const EDIT_FNS = ['kbEditContactedPast_', 'kbSelectPastMethod_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
+
+console.log('■ 4c) 記録の編集（手動記録のみ・現在値セット・上書き・送信ゼロ）');
+okSafe(() => renderDoneCard('連絡済み（Gmail手動）').indexOf('kbEditContactedPast_') >= 0, 'EB1(★): 連絡済み（手動記録）カードに「編集」ボタンが出る');
+okSafe(() => renderDoneCard('送信済').indexOf('kbEditContactedPast_') < 0, 'EB2(★): 正規送信記録「送信済」には編集ボタンを出さない');
+okSafe(() => renderDoneCard('電話連絡済').indexOf('kbEditContactedPast_') < 0, 'EB3(★): 「電話連絡済」にも編集ボタンを出さない');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  return env.__noteEl.value === 'FAXした' && env.__calls.some(c => c.modal === 'kbox-pastcontact-modal');
+}, 'ED1(★): 編集で現在のメモが復元されモーダルが開く');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');   // 手段=Gmail手動が選択済みで開く
+  api.kbConfirmPastContact_();                          // 受付者=下浦で記録する=上書き
+  const rec = env.__calls.filter(c => c.action === 'recordPastContact');
+  return rec.length === 1 && rec[0].body.name === '根岸君男' && rec[0].body.date === '2026-07-07' &&
+         rec[0].body.cmNotified === '連絡済み（Gmail手動）' && rec[0].body.operator === '下浦';
+}, 'ED2(★): 編集→記録するで上書きPOST（同name/date・担当が工藤→下浦に更新）');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbConfirmPastContact_();
+  return env.__calls.every(c => c.action !== 'send_box_cm_mails');
+}, 'ED3(★送信ゼロ): 編集の上書きでも send_box_cm_mails を呼ばない');
+okSafe(() => renderDoneCard('連絡済み（下浦手動）', { lastOperator: '下浦' }).indexOf('担当: 下浦') >= 0, 'ED4: 上書き後カードは新しい担当（下浦）を表示');
+
 console.log('\n実測ハーネス(past-contact): ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
