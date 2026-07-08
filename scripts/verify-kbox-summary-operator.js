@@ -107,10 +107,11 @@ okSafe(() => {
   const api = bind(env);
   api.kbOpenSummary();
   const h = env.__els['kbox-sum-operators'].innerHTML;
+  // A3反転(2026-07-08): 受付者バー削除so初期選択なし＝毎回選ぶ（前の人の名前が残る事故を封じる）
   return h.indexOf('data-operator="工藤"') >= 0 && h.indexOf('data-operator="下浦"') >= 0
       && h.indexOf('比嘉') < 0                       // 社長は候補から除外
-      && h.indexOf('selected') >= 0;                 // 受付者バーの値が初期選択
-}, 'A3(★): 名簿=getStaff−EXCLUDED_STAFF・受付者バーの値(工藤)が初期選択でハイライト');
+      && h.indexOf('selected') < 0;                  // ★初期選択なし
+}, 'A3(★反転): 名簿=getStaff−EXCLUDED_STAFF・初期選択なし（毎回選ぶ）');
 okSafe(() => {
   const env = buildEnv({ absReceptionist: '' });      // 受付者バー未選択
   const api = bind(env);
@@ -136,14 +137,16 @@ okSafe(() => {
   const rec = env.__calls.filter(c => c.action === 'send_box_cm_mails');
   return rec.length === 1 && rec[0].body.operator === '下浦';
 }, 'B2(★★): サマリーで選んだ操作者(下浦)が POST body の operator に乗る（受付者バー直読でない）');
+// B3反転(2026-07-08): 受付者バー削除so「初期値として使う」も廃止。未選択なら送らない＝誤記録を構造的に封じる。
 okSafe(() => {
-  const env = buildEnv({ absReceptionist: '工藤' });
+  const env = buildEnv({ absReceptionist: '工藤' });   // 受付者バーに値があっても
   const api = bind(env);
-  api.kbOpenSummary();                                // 選び直さない
+  api.kbOpenSummary();                                // 操作者を選ばない
   api.kbExecuteSend();
   const rec = env.__calls.filter(c => c.action === 'send_box_cm_mails');
-  return rec.length === 1 && rec[0].body.operator === '工藤';
-}, 'B3: 受付者バーの値は初期値としてのみ使う（選び直さなければ工藤のまま送信）');
+  return rec.length === 0;                            // ★受付者バーの値を勝手に使って送らない
+}, 'B3(★反転・誤記録防止): 操作者未選択なら送信しない（受付者バーの値を勝手に使わない）');
+okSafe(() => extractFn('kbOpenSummary').indexOf('absReceptionist') < 0, 'B3b(★): kbOpenSummary が absReceptionist を読まない');
 
 // ================= C) ★未選択では送信しない（誤記録の防止） =================
 console.log('■ C) ★操作者未選択では送信しない');
@@ -195,7 +198,8 @@ okSafe(() => /items:\s*items/.test(sendSrc) && /name:\s*it\.name/.test(sendSrc) 
   'D6(★非接触): items 構造（name/date/unit/customBody/toOverride）が不変');
 okSafe(() => html.indexOf('function kbBuildBody_') >= 0, 'D7(★非接触): 本文生成 kbBuildBody_ は無変更で存在');
 okSafe(() => (html.match(/send_box_cm_mails/g) || []).length === 1, 'D8(★非接触): send_box_cm_mails の出現は1箇所のまま');
-okSafe(() => (html.match(/gnbGuardProdWrite/g) || []).length === 12, 'D9(★非接触): gnbGuardProdWrite は12本のまま');
+// D9更新(2026-07-08): kbConfirmPhoneDone_ にガードを再掲so 12→13。減っていないこと（弱体化していないこと）を固定する。
+okSafe(() => (html.match(/gnbGuardProdWrite/g) || []).length >= 13, 'D9(★非接触): gnbGuardProdWrite は13本以上（確定側に再掲・弱体化なし）');
 okSafe(() => {
   // 二重送信ガードはサーバ側 kbIsAlreadyNotified_。クライアントは呼び出し経路を変えていない＝送信POSTは1本のみ。
   return (sendSrc.match(/fetch\(/g) || []).length === 1;

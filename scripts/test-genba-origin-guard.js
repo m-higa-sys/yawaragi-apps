@@ -69,15 +69,26 @@ const gThrow = makeGuard('__throw__');
 ok(gThrow.guard('t') === false, 'B4: location参照が例外 → fail-safeでfalse');
 
 // ===== C. 構造証明: 全書込POST関数でガードが fetch より前 =====
+// 2026-07-08: 電話済みが confirm→担当者選択モーダルへ置換so二段構えに。実POSTは kbConfirmPhoneDone_ へ移動。
+// kbMarkPhoneDone は「開くだけ（fetch不在）」soここ(実POST関数の一覧)からは外し、下の C2 で別途ガードを固定する。
 const SENDERS = ['gasPost', 'gasPostAbsenceWithVerify', '_postHaichiToCloud', 'sendWorkReport',
   'jsCreateDrafts', 'rmdSyncWeight', 'rmdToggleOral', 'dengonSubmit',
-  'kbExecuteSend', 'kbMarkPhoneDone'];   // 2026-07-04 指示書③: 欠席連絡ボックスの書込POST2本
+  'kbExecuteSend', 'kbConfirmPhoneDone_'];   // 欠席連絡ボックスの書込POST2本
 SENDERS.forEach(function (name) {
   const src = extractFn(name);
   const g = src.indexOf('gnbGuardProdWrite(');
   const f = src.indexOf('fetch(');
   ok(g >= 0 && f >= 0 && g < f, 'C: ' + name + ' はガードが fetch より前（g=' + g + ', f=' + f + '）');
 });
+
+// C2: POSTしない「開く側」も、モーダル表示より前に originガードを通す（別オリジンで開かせない）。
+(function () {
+  const src = extractFn('kbMarkPhoneDone');
+  const g = src.indexOf('gnbGuardProdWrite(');
+  const m = src.indexOf('kbShowModal_');
+  ok(src.indexOf('fetch(') < 0, 'C2a: kbMarkPhoneDone は fetch を持たない（実POSTは kbConfirmPhoneDone_）');
+  ok(g >= 0 && m >= 0 && g < m, 'C2b: kbMarkPhoneDone はガードがモーダル表示より前（g=' + g + ', m=' + m + '）');
+})();
 
 // POST行の網羅性: genba.html全体の method:POST 出現数と SENDERS 内の合計が一致
 // （空白・クォート・大文字小文字の揺れに強い正規表現でカウント）

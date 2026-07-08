@@ -165,10 +165,15 @@ tryOk(() => {
   ok2(kbSendSrc.indexOf('gnbGuardProdWrite') >= 0 &&
       kbSendSrc.indexOf('gnbGuardProdWrite') < kbSendSrc.indexOf('fetch'),
       'D3: 一括送信はfetch前にoriginガード');
+  // D4更新(2026-07-08): confirm→担当者選択モーダルへ置換so二段構え。fetchは kbConfirmPhoneDone_ 側へ移動。
+  // 「開く側」はPOSTしない＝fetch不在が正。originガードは両関数の先頭に存在すること。
   const kbTelSrc = extractFn('kbMarkPhoneDone');
-  ok2(kbTelSrc.indexOf('gnbGuardProdWrite') >= 0 &&
-      kbTelSrc.indexOf('gnbGuardProdWrite') < kbTelSrc.indexOf('fetch'),
-      'D4: 電話済みもfetch前にoriginガード');
+  ok2(kbTelSrc.indexOf('gnbGuardProdWrite') >= 0 && kbTelSrc.indexOf('fetch(') < 0,
+      'D4(★更新): 電話済みは開くだけ(fetch不在)・先頭にoriginガード');
+  const kbTelConfirmSrc = extractFn('kbConfirmPhoneDone_');
+  ok2(kbTelConfirmSrc.indexOf('gnbGuardProdWrite') >= 0 &&
+      kbTelConfirmSrc.indexOf('gnbGuardProdWrite') < kbTelConfirmSrc.indexOf('fetch('),
+      'D4b(★): 確定 kbConfirmPhoneDone_ はfetch前にoriginガード（ガード再掲）');
   ok2(html.indexOf('id="kbox-summary-modal"') >= 0, 'D5: 送信は最終サマリーモーダル経由');
 }, 'D群(ボックスUI)');
 
@@ -225,16 +230,28 @@ tryOk(() => {
   ok2(sendSrc.indexOf('gnbGuardProdWrite') >= 0, 'N3: 既存originガードも維持');
   const telSrc = extractFn('kbMarkPhoneDone');
   ok2(telSrc.indexOf('kbIsViewToday_') >= 0, 'N4: kbMarkPhoneDoneに当日ガード');
-  ok2(telSrc.indexOf('kbIsViewToday_') < telSrc.indexOf('fetch('), 'N5: 当日ガードはfetch(呼び出しより前');
+  // N5更新(2026-07-08): 二段構え化でfetchは確定側へ。開く側は「fetch不在＋モーダル表示より前にガード」が正。
+  ok2(telSrc.indexOf('fetch(') < 0 && telSrc.indexOf('kbIsViewToday_') < telSrc.indexOf('kbShowModal_'),
+      'N5(★更新): kbMarkPhoneDoneはfetch不在・当日ガードはモーダル表示より前');
   ok2(telSrc.indexOf('gnbGuardProdWrite') >= 0, 'N6: 既存originガードも維持');
+  // N5b/N5c: 確定側（実POST）にもガードを再掲＝モーダル表示中に日付が変わる極端ケースを封じる。
+  const telConfSrc = extractFn('kbConfirmPhoneDone_');
+  ok2(telConfSrc.indexOf('kbIsViewToday_') >= 0 && telConfSrc.indexOf('kbIsViewToday_') < telConfSrc.indexOf('fetch('),
+      'N5b(★): kbConfirmPhoneDone_の当日ガードはfetch(より前');
+  ok2(telConfSrc.indexOf('gnbGuardProdWrite') >= 0, 'N5c(★): kbConfirmPhoneDone_にもoriginガード');
   // N7/N8: ガードは「あらゆる状態変更より前」。ガードより前に副作用(UI送信済化/チェック書換/二重送信フラグ/確認ダイアログ/fetch)が一切無い。
   // 実コード構文(.disabled= / .checked= / fetch( / confirm( )でマッチ＝コメント語に誤反応しない。
   const sendBefore = sendSrc.slice(0, sendSrc.indexOf('kbIsViewToday_'));
   ok2(sendSrc.indexOf('kbIsViewToday_') > 0 && !/\.disabled\s*=|送信中|\.textContent\s*=|\.checked\s*=|fetch\(/.test(sendBefore),
       'N7: kbExecuteSendのガードより前に副作用ゼロ(全状態変更に先行)');
+  // N8更新(2026-07-08): モーダル表示(kbShowModal_)・対象保持も副作用soガードより後であること。
   const telBefore = telSrc.slice(0, telSrc.indexOf('kbIsViewToday_'));
-  ok2(telSrc.indexOf('kbIsViewToday_') > 0 && !/\.disabled\s*=|\.checked\s*=|confirm\(|fetch\(/.test(telBefore),
-      'N8: kbMarkPhoneDoneのガードより前に副作用ゼロ(confirm/fetchに先行)');
+  ok2(telSrc.indexOf('kbIsViewToday_') > 0 && !/\.disabled\s*=|\.checked\s*=|confirm\(|fetch\(|kbShowModal_|kbPhoneTarget\s*=|innerHTML\s*=/.test(telBefore),
+      'N8(★更新): kbMarkPhoneDoneのガードより前に副作用ゼロ(モーダル表示/対象保持/fetchに先行)');
+  // N8b: 確定側もガードより前に副作用ゼロ（二度押し防止のUI変更はガードの後）
+  const telConfBefore = telConfSrc.slice(0, telConfSrc.indexOf('kbIsViewToday_'));
+  ok2(telConfSrc.indexOf('kbIsViewToday_') > 0 && !/\.disabled\s*=|\.textContent\s*=|fetch\(/.test(telConfBefore),
+      'N8b(★): kbConfirmPhoneDone_のガードより前に副作用ゼロ');
   // N9: 送信対象集合は viewDate当日のkbState.itemsのみ(前進窓forward/月キャッシュを混ぜない)＝"何を送るか"の別防御線。
   const collectSrc = extractFn('kbCollectSendTargets_');
   ok2(collectSrc.indexOf('kbState.items') >= 0 && collectSrc.indexOf('kbState.forward') < 0 && collectSrc.indexOf('attMonthAbsCache') < 0,
@@ -279,16 +296,37 @@ tryOk(() => {
   ok2(chrome.indexOf('kbox-datepicker') >= 0, 'S4: chromeがpicker値を現在viewDateへ同期');
 }, 'S群(日付ピッカー)');
 
-// T. box内操作者行（自己完結・既存absSelectReceptionist再利用）
+// T. box内操作者行 → 2026-07-08 削除（全ての記録操作がモーダル内で担当者を選ぶso不要）。
+// 「前の人の名前が残ったまま記録される」経路を構造的にゼロにする。存在テスト→削除保証テストへ反転。
 tryOk(() => {
-  ok2(html.indexOf('id="kbox-operator-select"') >= 0, 'T1: box内に操作者コンテナ');
-  ok2(html.indexOf('function kbRenderOperatorRow_') >= 0, 'T2: kbRenderOperatorRow_定義');
-  const src = extractFn('kbRenderOperatorRow_');
-  ok2(src.indexOf('getStaff') >= 0 && src.indexOf('EXCLUDED_STAFF') >= 0, 'T3: 名簿はgetStaff−EXCLUDED_STAFF流用');
-  ok2(src.indexOf('absSelectReceptionist') >= 0, 'T4: タップは既存absSelectReceptionistを呼ぶ');
+  ok2(html.indexOf('id="kbox-operator-select"') < 0, 'T1(★削除保証): box内 操作者コンテナが存在しない');
+  ok2(html.indexOf('id="kbox-operator-note"') < 0, 'T2(★削除保証): box内 操作者ノートが存在しない');
+  ok2(html.indexOf('function kbRenderOperatorRow_') < 0, 'T3(★削除保証): kbRenderOperatorRow_が存在しない');
   const rsrc = extractFn('kbRender()');
-  ok2(rsrc.indexOf('kbRenderOperatorRow_') >= 0, 'T5: kbRenderが操作者行を再描画(選択ハイライト同期)');
-}, 'T群(box内操作者行)');
+  ok2(rsrc.indexOf('kbRenderOperatorRow_') < 0, 'T4(★削除保証): kbRenderが操作者行を描かない');
+  // コメント文中の語に誤反応しないよう、実コード構文（宣言/参照）で判定する
+  ok2(!/const\s+opDisabled|opDisabled\s*\|\||\$\{\s*\(?opDisabled/.test(rsrc), 'T5(★削除保証): opDisabled(受付者未選択で無効化)が消えている');
+  // ★★誤削除防止: 欠席登録タブの受付者セレクタ・登録フォームは別物so絶対に壊さない。
+  //   absReceptionist は欠席登録の実データ(canceller/reporter/registeredBy)に使われている。
+  ok2(html.indexOf('id="abs-receptionist-card"') >= 0, 'T6(★★誤削除防止): 欠席登録タブの受付者カードが生存');
+  ok2(html.indexOf('id="abs-receptionist-btns"') >= 0, 'T7(★★誤削除防止): 欠席登録タブの受付者ボタン行が生存');
+  ok2(html.indexOf('function absInitReceptionist') >= 0, 'T8(★★誤削除防止): absInitReceptionistが生存');
+  ok2(html.indexOf('function absSelectReceptionist') >= 0, 'T9(★★誤削除防止): absSelectReceptionistが生存');
+  ok2(html.indexOf('let absReceptionist') >= 0, 'T10(★★誤削除防止): グローバルabsReceptionistが生存');
+  ok2(/reporter:\s*absReceptionist/.test(html), 'T11(★★誤削除防止): 欠席登録のreporterがabsReceptionistを使い続ける');
+  ok2(/registeredBy:\s*absReceptionist/.test(html), 'T12(★★誤削除防止): 欠席登録のregisteredByが生存');
+  ok2(/canceller:\s*absReceptionist/.test(html), 'T13(★★誤削除防止): 欠席取消のcancellerが生存');
+  // ★box側の記録/送信経路は absReceptionist を読まない（全経路が各モーダルの選択値）
+  ok2(extractFn('kbMarkPhoneDone').indexOf('absReceptionist') < 0, 'T14(★): 電話済みがabsReceptionistを読まない');
+  ok2(extractFn('kbExecuteSend').indexOf('absReceptionist') < 0, 'T15(★): 一括送信がabsReceptionistを読まない');
+  ok2(extractFn('kbSubmitPastContact_').indexOf('absReceptionist') < 0, 'T16(★): 過去日記録がabsReceptionistを読まない');
+  ok2(extractFn('kbOpenSummary').indexOf('absReceptionist') < 0, 'T17(★初期値なし): サマリーがabsReceptionistを初期値にしない');
+  ok2(extractFn('kbMarkContactedPast_').indexOf('absReceptionist') < 0, 'T18(★初期値なし): 記録モーダルがabsReceptionistを初期値にしない');
+  ok2(extractFn('kbRender()').indexOf('absReceptionist') < 0, 'T19(★): kbRenderがabsReceptionistを読まない');
+  // ★absSelectReceptionist は欠席登録側の関数so残すが、box再描画(kbRender)の呼び出しは切る
+  // 実際の呼び出し構文（typeof kbRender === 'function' ... kbRender()）で判定＝コメント語に誤反応しない
+  ok2(!/try\s*\{\s*kbRender\(\)|typeof\s+kbRender\s*===/.test(extractFn('absSelectReceptionist')), 'T20(★分離): absSelectReceptionistがkbRenderを呼ばない(box非依存)');
+}, 'T群(受付者バー削除＋欠席登録の誤削除防止)');
 
 // U. 移設（出席予定タブ単独・欠席登録タブ非依存・二重fetchなし）
 tryOk(() => {

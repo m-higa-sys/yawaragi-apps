@@ -91,21 +91,22 @@ function recordEnv() {
 console.log('■ 4) 記録フロー（recordPastContact をPOST・★send_box_cm_mails 非呼び）');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   return env.__calls.some(c => c.modal === 'kbox-pastcontact-modal');
 }, 'R1(★): 連絡済みボタン→ 手段モーダルを kbShowModal_ 経由で開く');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('下浦', mkBtn());   // 2026-07-08: 受付者バー廃止so担当者を明示選択（初期値なし）
   api.kbSubmitPastContact_('Gmail手動', '');
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
   return rec.length === 1 && rec[0].body.cmNotified === '連絡済み（Gmail手動）' && rec[0].body.operator === '下浦' && rec[0].body.date === '2026-07-07';
-}, 'R2(★): 手段選択→ recordPastContact を1回POST(cmNotified/operator/date 正)');
+}, 'R2(★): 担当者選択→手段選択→ recordPastContact を1回POST(cmNotified/operator/date 正)');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   api.kbSubmitPastContact_('Gmail手動', 'テスト');
   return env.__calls.every(c => c.action !== 'send_box_cm_mails');
@@ -114,16 +115,18 @@ okSafe(() => {
 console.log('■ 5) note 異常系（空OK / 入れたら値に乗る / 特殊文字も壊さず送る）');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('下浦', mkBtn());   // 2026-07-08: 初期値なしso担当者を明示選択
   api.kbSubmitPastContact_('その他', '');   // note空
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
   return rec.length === 1 && rec[0].body.cmNotified === '連絡済み（その他）';
 }, 'N1: note空でも記録が通る（エラーにならず 連絡済み（その他））');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('下浦', mkBtn());   // 2026-07-08: 初期値なしso担当者を明示選択
   api.kbSubmitPastContact_('その他', '休み連絡票をFAX');
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
   return rec.length === 1 && rec[0].body.note === '休み連絡票をFAX';
@@ -196,6 +199,7 @@ okSafe(() => {
   const api = bindFns(FLOW_FNS, env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   api.kbSelectPastMethod_('Gmail手動', env.__mkBtn());
+  api.kbSelectPastOperator_('下浦', env.__mkBtn());   // 2026-07-08: 初期値なしso担当者を明示選択
   env.__noteEl.value = '休み連絡票をFAX';
   api.kbConfirmPastContact_();
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
@@ -337,15 +341,31 @@ okSafe(() => {
   api.kbConfirmPastContact_();
   return env.__calls.every(c => c.action !== 'send_box_cm_mails');
 }, 'OP6(★送信ゼロ): 担当者を変えた上書きでも send_box_cm_mails を呼ばない');
+// OP7反転(2026-07-08): 受付者バー削除so「初期値=受付者バー」は廃止。初期値なし＝毎回選ぶ。
+// 未選択のまま記録できてしまうと「担当が空/前の人」の誤記録になるso必ず止まることを固定する。
 okSafe(() => {
-  const env = selectEnv();                              // 新規記録フロー（受付者バー=下浦）
+  const env = selectEnv();                              // 受付者バーは存在しない（env.absReceptionist は無視される）
   const api = bindFns(FLOW_FNS, env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   api.kbSelectPastMethod_('電話', env.__mkBtn());
+  api.kbConfirmPastContact_();                          // 担当者を選ばずに記録
+  const rec = env.__calls.filter(c => c.action === 'recordPastContact');
+  return rec.length === 0;                              // ★POSTさせない
+}, 'OP7(★反転・誤記録防止): 担当者未選択なら記録POSTが発火しない（受付者バーの値を勝手に使わない）');
+okSafe(() => {
+  const env = selectEnv();
+  const api = bindFns(FLOW_FNS, env);
+  api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastMethod_('電話', env.__mkBtn());
+  api.kbSelectPastOperator_('星野', env.__mkBtn());     // モーダル内で選んだ人だけが記録される
   api.kbConfirmPastContact_();
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
-  return rec.length === 1 && rec[0].body.operator === '下浦';
-}, 'OP7: 新規記録は受付者バー(下浦)が担当者の初期値になる');
+  return rec.length === 1 && rec[0].body.operator === '星野';
+}, 'OP7b(★): モーダルで選んだ担当者(星野)が記録される（受付者バー直読でない）');
+okSafe(() => {
+  const src = extractFn('kbMarkContactedPast_');
+  return src.indexOf('absReceptionist') < 0;
+}, 'OP7c(★初期値なし): kbMarkContactedPast_ が absReceptionist を初期値にしない');
 okSafe(() => {
   // 過去日カードは attMonthAbsCache[月] 由来。書込後に無効化しないと kbLoad しても
   // 古い lastOperator(工藤) を描き続ける（本番で「担当:工藤のまま」になった実害）。

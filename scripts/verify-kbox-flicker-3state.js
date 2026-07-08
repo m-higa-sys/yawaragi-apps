@@ -35,7 +35,7 @@ const realSources = [
   extractFn('kbFmtChip_'), extractFn('kbInit'), extractFn('kbLoad'),
   extractFn('kbRenderForDate'), extractFn('kbRenderDayNow_'),
   extractFn('kbIsDoneInline_'), extractFn('kbClassifyCardInline_'), extractFn('kbEsc_'),
-  extractFn('kbRenderOperatorRow_'), extractFn('kbRender'), extractFn('kbRenderChrome_'), extractFn('kbUpdateBadge'),
+  extractFn('kbRender'), extractFn('kbRenderChrome_'), extractFn('kbUpdateBadge'),   // kbRenderOperatorRow_ は削除(2026-07-08)
   extractFn('kbGoDate'), extractFn('kbJumpTo'),
 ].join('\n\n');
 
@@ -72,8 +72,9 @@ const factory = new Function('document', 'window', 'setTimeout', factoryBody);
 function makeEl() { return { innerHTML: '', textContent: '', style: {}, disabled: false, value: '' }; }
 function newContext() {
   const els = {};
-  ['kbox-list', 'kbox-operator-note', 'kbox-pending-badge', 'kbox-send-btn', 'kbox-section',
-   'kbox-datelabel', 'kbox-viewonly-banner', 'kbox-datepicker', 'kbox-operator-select'   // kbox-jumpchips は削除(2026-07-08)
+  // kbox-jumpchips / kbox-operator-note / kbox-operator-select は削除(2026-07-08)
+  ['kbox-list', 'kbox-pending-badge', 'kbox-send-btn', 'kbox-section',
+   'kbox-datelabel', 'kbox-viewonly-banner', 'kbox-datepicker'
   ].forEach(id => els[id] = makeEl());
   const document = { getElementById: id => els[id] || null, createElement: () => makeEl(), body: { appendChild() {} } };
   const immediate = (fn) => { if (typeof fn === 'function') fn(); return 0; };
