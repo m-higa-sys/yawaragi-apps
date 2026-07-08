@@ -1526,6 +1526,10 @@
             <input type="date" id="kbox-datepicker" onchange="kbJumpTo(this.value)" style="margin-left:8px; padding:3px 6px; border:1px solid #2c7a7b; border-radius:8px; font-size:.95rem;">
         </div>
         <div id="kbox-viewonly-banner" style="display:none; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; border-radius:8px; padding:5px 10px; font-size:.85rem; font-weight:700; margin:6px 0;">👀 閲覧のみ（送信・電話記録は当日のみ）</div>
+        <!-- Phase3 未連絡アラート（2026-07-08）: 第3営業日以内の未連絡を集約表示・タップでその日へジャンプ。
+             ★kbRenderChrome_ が描く（kbRenderは「今日0人」で早期returnするsoここに置かないと肝心な日に出ない）。
+             ★データ未取得/失敗を「0件」と断定しない（誤陰性ゼロ）。集計と表示のみ・書込ゼロ。 -->
+        <div id="kbox-unnotified-alert" style="margin:6px 0;"></div>
         <div id="kbox-list"></div>
         <button id="kbox-send-btn" class="abs-contact-btn" style="width:100%; margin-top:8px; background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbOpenSummary()">チェックした人にまとめて送信</button>
     </div>
@@ -7524,6 +7528,9 @@ async function kbLoad() {
         try { absCmEmailMap = await absLoadCmEmailMap(); } catch (e) {}
     }
     kbState.loadedOnce = true;
+    // Phase3: 未連絡アラートに必要な月（月跨ぎ時は前月も）を裏で充填要求。読み取り専用・書込ゼロ。
+    // 揃うまでアラートは「確認中…」を出し、0件と断定しない（誤陰性ゼロ）。
+    if (typeof kbEnsureUnnotifiedMonths_ === 'function') kbEnsureUnnotifiedMonths_(jstTodayStr());
     kbRenderForDate(kbState.viewDate);
 }
 
@@ -7607,6 +7614,88 @@ function kbPastContactEligible_(viewYMD, todayYMD) {
     if (String(viewYMD) >= String(todayYMD)) return false;   // 過去日のみ（当日/未来は対象外）
     const n = kbBizDaysAgo_(viewYMD, todayYMD);
     return n >= 1 && n <= 3;
+}
+
+// ===== Phase3: 未連絡アラート（集計と表示のみ・書込ゼロ） =====
+// ★attEnsureMonthAbsences は失敗時に attMonthAbsCache[ym] を埋めず、cb() は成否問わず呼ばれる
+//   ＝「未取得」と「失敗」が区別できない。so薄いラッパ(kbEnsureUnnotifiedMonths_)で
+//   「ensureを要求した月が cb 後もキャッシュに現れなかった＝失敗」と判定し、このフラグに立てる。
+//   （attEnsureMonthAbsences 本体は非接触）
+let kbUnnotifiedFailed_ = false;
+let kbUnnotifiedEnsuring_ = {};   // 進行中の月（アラート専用・kbState._ensuringYm とは別＝既存の多重防止に触れない）
+
+// 必要月（月跨ぎ対応）を月キャッシュへ充填要求する薄いラッパ。既存 attEnsureMonthAbsences を呼ぶだけ。
+// ★失敗検知: attEnsureMonthAbsences は失敗時に cache を埋めず cb() は成否問わず呼ばれるso、
+//   「要求した月が cb 後もキャッシュに現れない＝失敗」と判定してフラグを立てる（0件と見なさない）。
+function kbEnsureUnnotifiedMonths_(todayYMD) {
+    if (typeof attEnsureMonthAbsences !== 'function') return;
+    kbUnnotifiedMonths_(todayYMD).forEach(function (ym) {
+        if (attMonthAbsCache[ym]) return;            // 取得済み（空配列[]含む）は再取得しない
+        if (kbUnnotifiedEnsuring_[ym]) return;       // 同一月の多重要求を防ぐ（アラート専用の進行中セット）
+        kbUnnotifiedEnsuring_[ym] = true;
+        attEnsureMonthAbsences(ym + '-01', function () {
+            delete kbUnnotifiedEnsuring_[ym];
+            // ★cb後もキャッシュに現れない＝失敗（timeout/onerror）。0件と断定させない。
+            if (!attMonthAbsCache[ym]) {
+                kbUnnotifiedFailed_ = true;
+            } else if (kbUnnotifiedRangeLoaded_(todayYMD, attMonthAbsCache)) {
+                // ★成功しても安易に false へ戻さない。月跨ぎで「前月=失敗・当月=成功」だと
+                //   後勝ちで失敗が消え、誤陰性（0件と見せる）になる。全必要月が揃ったときだけクリアする。
+                kbUnnotifiedFailed_ = false;
+            }
+            if (typeof kbRenderUnnotifiedAlert_ === 'function') {
+                kbRenderUnnotifiedAlert_(todayYMD, true);   // 充填後に再描画（当日ビュー前提で呼ぶ）
+            }
+        });
+    });
+}
+// 「連絡手段に関わらず、連絡していない人」を第3営業日以内で集計し、box上部に警告を出す。
+// ★誤陰性ゼロ: 未連絡があるのに0件と見せない。データ未取得/失敗を0件と断定しない。
+// ★範囲判定は kbPastContactEligible_、done判定は kbIsDoneInline_ を流用（独自計算を作らない）。
+//   →Phase2の記録ボタンの範囲と完全一致する（アラートに出たのに記録ボタンが無い、というズレを防ぐ）。
+//   ※副作用として土日も対象日に入るが、土日に欠席データは無いso実害なし（意図的・テストC10で固定）。
+
+// 集計に必要な月（'YYYY-MM'）の昇順リスト。★月跨ぎ（年36日/9.9%）と
+// 「今日の月が必要月に入らない」ケース（例 9/1→8月のみ）に対応する。
+function kbUnnotifiedMonths_(todayYMD) {
+    const out = {}, list = [];
+    for (let i = 1; i <= 10; i++) {                       // 第3営業日は最大でも過去10日以内に収まる
+        const d = kbAddDaysYMD_(todayYMD, -i);
+        if (!kbPastContactEligible_(d, todayYMD)) continue;
+        const ym = String(d).slice(0, 7);
+        if (!out[ym]) { out[ym] = true; list.push(ym); }
+    }
+    return list.sort();
+}
+
+// 必要月がすべて月キャッシュに載っているか。
+// ★attMonthAbsCache[ym] は「取得成功」でのみ設定される（失敗時は埋めない実装）。
+//   空配列[] は「取得成功・その月は欠席0件」の正当な値so true 側に倒す。
+//   未取得/失敗（undefined）は false ＝「まだ分からない」。0件と断定しない。
+function kbUnnotifiedRangeLoaded_(todayYMD, monthCache) {
+    const need = kbUnnotifiedMonths_(todayYMD);
+    const mc = monthCache || {};
+    for (let i = 0; i < need.length; i++) {
+        if (!mc[need[i]]) return false;                   // undefined/null は未取得扱い
+    }
+    return true;
+}
+
+// 第3営業日以内の未連絡を集計。手段では除外しない（メール派未送信・電話派未押下ともカウント）。
+// 返り値 { count: 件数(行数), dates: 未連絡が存在する日のdistinct昇順 }
+function kbUnnotifiedInRange_(pool, todayYMD) {
+    const seen = {}, dates = [];
+    let count = 0;
+    (pool || []).forEach(function (a) {
+        if (!a || a.isLongTerm) return;                   // 長期休みは対象外
+        const d = String(a.date || '');
+        if (!kbPastContactEligible_(d, todayYMD)) return; // 過去日かつ第3営業日以内（境界含む）
+        if (kbIsDoneInline_(a.cmNotified)) return;        // 連絡済み（手段不問）は除外
+        count++;
+        if (!seen[d]) { seen[d] = true; dates.push(d); }
+    });
+    dates.sort();
+    return { count: count, dates: dates };
 }
 
 let kbPastContactEditing = null;   // 過去日連絡記録の対象 {name, date}
@@ -7915,6 +8004,43 @@ function kbRenderChrome_(viewDate, today, viewIsToday) {
     if (label) label.textContent = kbFmtChip_(viewDate) + (viewIsToday ? '（今日）' : '');
     const banner = document.getElementById('kbox-viewonly-banner');
     if (banner) banner.style.display = viewIsToday ? 'none' : 'block';
+    // ★kbRender は「今日の欠席0人」で早期returnするso、アラートはここ（return前）で描く。
+    //   そうしないと「今日0人・過去に未連絡あり」の日に一切出ない＝誤陰性になる。
+    kbRenderUnnotifiedAlert_(today, viewIsToday);
+}
+
+// 未連絡アラートの描画（集計と表示のみ・書込ゼロ）。当日ビューのときだけ出す。
+// ★4状態を厳密に区別する。とくに「未取得/失敗」を「0件」と断定しないこと（誤陰性が最悪の失敗）:
+//   ①失敗            → 「確認できませんでした」（★0件と見なさない）
+//   ②未確定(未充填)  → 「確認中…」          （★0件と断定しない）
+//   ③確定・1件以上   → 「⚠️ 連絡未 N件（日付…）」 各日タップで kbJumpTo（既存経路）
+//   ④確定・0件       → 非表示
+function kbRenderUnnotifiedAlert_(today, viewIsToday) {
+    const box = document.getElementById('kbox-unnotified-alert');
+    if (!box) return;                                   // 要素不在ガード（f774228型の回避）
+    if (!viewIsToday) { box.innerHTML = ''; return; }   // 過去日/未来日を見ているときは出さない
+
+    if (typeof kbUnnotifiedFailed_ !== 'undefined' && kbUnnotifiedFailed_) {
+        box.innerHTML = '<div style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; border-radius:8px; padding:6px 10px; font-size:.88rem; font-weight:700;">⚠️ 未連絡を確認できませんでした（再読込してください）</div>';
+        return;
+    }
+    if (!kbUnnotifiedRangeLoaded_(today, attMonthAbsCache)) {
+        box.innerHTML = '<div style="color:#888; font-size:.85rem;">未連絡を確認中…</div>';
+        return;
+    }
+    // 必要月がすべて揃った＝ここで初めて「0件」と断定してよい
+    const pool = [];
+    kbUnnotifiedMonths_(today).forEach(function (ym) {
+        (attMonthAbsCache[ym] || []).forEach(function (a) { pool.push(a); });
+    });
+    const r = kbUnnotifiedInRange_(pool, today);
+    if (!r.count) { box.innerHTML = ''; return; }       // ④確定・0件 → 非表示
+
+    const links = r.dates.map(function (d) {
+        return '<button type="button" onclick="kbJumpTo(\'' + kbEsc_(d) + '\')" style="background:none; border:none; color:#991b1b; font-weight:700; text-decoration:underline; cursor:pointer; padding:0 2px; font-size:.88rem;">' + kbEsc_(kbFmtChip_(d)) + '</button>';
+    }).join('<span style="color:#991b1b;"> ・ </span>');
+    box.innerHTML = '<div style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; border-radius:8px; padding:6px 10px; font-size:.88rem; font-weight:700;">'
+        + '⚠️ 連絡未 ' + r.count + '件（' + links + '）</div>';
 }
 
 function kbToggleCheck(name, checked) {
