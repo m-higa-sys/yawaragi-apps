@@ -1525,7 +1525,6 @@
             <input type="date" id="kbox-datepicker" onchange="kbJumpTo(this.value)" style="margin-left:8px; padding:3px 6px; border:1px solid #2c7a7b; border-radius:8px; font-size:.95rem;">
         </div>
         <div id="kbox-viewonly-banner" style="display:none; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; border-radius:8px; padding:5px 10px; font-size:.85rem; font-weight:700; margin:6px 0;">👀 閲覧のみ（送信・電話記録は当日のみ）</div>
-        <div id="kbox-jumpchips" style="margin:6px 0; font-size:.85rem;"></div>
         <div id="kbox-operator-note" style="font-size:.85rem; color:#666; margin:4px 0;"></div>
         <div id="kbox-list"></div>
         <button id="kbox-send-btn" class="abs-contact-btn" style="width:100%; margin-top:8px; background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbOpenSummary()">チェックした人にまとめて送信</button>
@@ -1606,6 +1605,8 @@
         <div style="background:#fff; max-width:520px; margin:40px auto; padding:16px; border-radius:10px; max-height:85vh; overflow:auto;">
             <h3 style="margin:0 0 8px;">以下の<span id="kbox-sum-count"></span>人のケアマネにお休みを連絡します</h3>
             <ul id="kbox-sum-list" style="margin:8px 0; padding-left:20px;"></ul>
+            <div style="font-size:.9rem; font-weight:700; margin:10px 0 6px;">だれが送りますか？（操作者）</div>
+            <div id="kbox-sum-operators" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;"></div>
             <div style="display:flex; gap:8px;">
                 <button id="kbox-sum-send" class="abs-contact-btn" style="background:#c0392b; color:#fff; font-weight:700;" onclick="kbExecuteSend()">送信する</button>
                 <button class="abs-contact-btn" onclick="document.getElementById('kbox-summary-modal').style.display='none'">やめる</button>
@@ -7390,18 +7391,9 @@ function kbAddDaysYMD_(ymd, delta) {
     var d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10) + (delta || 0));
     return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
 }
-function kbUpcomingAbsenceDates_(absList, todayYMD) {
-    var seen = {}, out = [];
-    (absList || []).forEach(function (a) {
-        if (!a || a.isLongTerm) return;
-        var d = String(a.date || '');
-        if (!d || d < String(todayYMD)) return;
-        if (seen[d]) return;
-        seen[d] = true; out.push(d);
-    });
-    out.sort();
-    return out;
-}
+// kbUpcomingAbsenceDates_（この先お休みチップの日付一覧）は 2026-07-08 に削除。
+// 呼び出しはチップ描画1箇所のみだった。日付移動は #kbox-datepicker で任意日へ直接跳べる。
+// ※ gas/yawaragi-board/kesseki-box-core.js の同名関数は非接触（テスト用ミラー・GASは無変更）。
 function kbMergeDedupAbs_(primaryList, secondaryList) {
     var out = [], seen = {};
     function key(a) { return String(a.name || '') + '|' + String(a.date || '') + '|' + String(a.unit || ''); }
@@ -7913,25 +7905,16 @@ function kbRender() {
     kbUpdateBadge();
 }
 
-// 日付帯ラベル・閲覧のみ帯・ジャンプチップ（機能A表示/B/C帯）。データ非変更・表示のみ。
+// 日付帯ラベル・閲覧のみ帯（機能A表示/C帯）。データ非変更・表示のみ。
+// 2026-07-08: 「この先お休み」ジャンプチップを削除。日付ピッカー(#kbox-datepicker)で任意日へ直接跳べるso
+// チップは役目を終えた（boxの圧迫を解消）。日付移動手段=ピッカー/◀▶は維持。kbJumpTo はピッカーが使い続ける。
 function kbRenderChrome_(viewDate, today, viewIsToday) {
     const picker = document.getElementById('kbox-datepicker');
-    if (picker && picker.value !== viewDate) picker.value = viewDate;   // ◀▶/チップ移動時もpicker表示を一致
+    if (picker && picker.value !== viewDate) picker.value = viewDate;   // ◀▶移動時もpicker表示を一致
     const label = document.getElementById('kbox-datelabel');
     if (label) label.textContent = kbFmtChip_(viewDate) + (viewIsToday ? '（今日）' : '');
     const banner = document.getElementById('kbox-viewonly-banner');
     if (banner) banner.style.display = viewIsToday ? 'none' : 'block';
-    const chips = document.getElementById('kbox-jumpchips');
-    if (chips) {
-        const dates = kbUpcomingAbsenceDates_(kbState.forward || [], today).filter(function (d) { return d !== viewDate; });
-        if (!dates.length) {
-            chips.innerHTML = '';
-        } else {
-            chips.innerHTML = '<span style="color:#555;">この先お休み: </span>' + dates.map(function (d) {
-                return '<button type="button" onclick="kbJumpTo(\'' + d + '\')" style="margin:2px 3px; padding:2px 9px; border:1px solid #cbd5e0; background:#fff; border-radius:12px; cursor:pointer; font-size:.82rem;">' + kbFmtChip_(d) + '</button>';
-            }).join('');
-        }
-    }
 }
 
 function kbToggleCheck(name, checked) {
@@ -8038,9 +8021,9 @@ function kbCollectSendTargets_() {
         it.cls.kind === 'mail' && !it.cls.done && kbState.checked[it.name]);
 }
 
+// 2026-07-08: 操作者選択をサマリー内に移設（B案）。受付者バー未選択でもサマリーは開く＝確認と操作者選択を1画面で完結。
+// 安全性は「送信する」側のガード（kbExecuteSend の operator 空チェック）で担保する。
 function kbOpenSummary() {
-    const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
-    if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
     const targets = kbCollectSendTargets_();
     if (!targets.length) { showToast('送信対象（チェック済みのメール派）がいません', 3000); return; }
     const cntEl = document.getElementById('kbox-sum-count');
@@ -8052,7 +8035,33 @@ function kbOpenSummary() {
         return '<li>' + kbEsc_(it.name) + ' → ' + kbEsc_(it.cmOffice || 'ケアマネ') +
                '（メール: ' + kbEsc_(to) + '）</li>';
     }).join('');
+    // 操作者は受付者バーの値を初期値に描画（サマリー内で選び直せる＝誰が送ったかの記録を正確に）
+    kbRenderSumOperators_((typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '');
+    const sb = document.getElementById('kbox-sum-send');   // 前回の「送信中…」固着を解除
+    if (sb) { sb.disabled = false; sb.textContent = '送信する'; }
     kbShowModal_('kbox-summary-modal');   // body直下へ退避して表示（display:none祖先タブ配下での不可視を封じる）
+}
+
+// ===== 送信サマリー内 操作者選択（2026-07-08） =====
+// 名簿は受付者行と同一源（getStaff − EXCLUDED_STAFF）＝異体字ズレを構造的に防ぎ、社長(比嘉)を除外。
+// ★Phase2の kbRenderPastOperators_ はコンテナIDとPhase2グローバルに結合しているso流用せず、同型の別実装にする（Phase2非接触）。
+let kbSumOperator = '';                        // サマリーで選択中の操作者（未選択='' → 送信不可）
+function kbRenderSumOperators_(selected) {
+    kbSumOperator = selected || '';            // 要素不在でも選択値は確定させる
+    const box = document.getElementById('kbox-sum-operators');
+    if (!box) return;
+    const staff = (typeof getStaff === 'function' ? getStaff() : []).filter(s => !(typeof EXCLUDED_STAFF !== 'undefined' && EXCLUDED_STAFF.includes(s)));
+    box.innerHTML = staff.map(s =>
+        `<button type="button" class="abs-contact-btn${kbSumOperator === s ? ' selected' : ''}" data-operator="${kbEsc_(s)}" onclick="kbSelectSumOperator_('${kbEsc_(s)}', this)">${kbEsc_(s)}</button>`
+    ).join('');
+}
+
+// 操作者を「選択」だけする（まだ送らない）。受付者バーは触らない（サマリー内で完結）。
+function kbSelectSumOperator_(operator, btnEl) {
+    kbSumOperator = operator;
+    const box = document.getElementById('kbox-sum-operators');
+    if (box && box.querySelectorAll) box.querySelectorAll('button').forEach(function (b) { b.classList.remove('selected'); });
+    if (btnEl && btnEl.classList) btnEl.classList.add('selected');
 }
 
 // 「送信する」でのみ実送信。POST=no-cors（genba既存流儀）＋送信後は再読込でサーバ値を正として反映。
@@ -8060,8 +8069,10 @@ function kbExecuteSend() {
     if (!gnbGuardProdWrite('欠席連絡の一括送信')) return;   // ★fetch前 originガード（9本目）
     // ★当日ガード（構造的封じ）: 未来日/過去日は閲覧のみ。UI無効化をすり抜けても、あらゆる副作用の前で即return。
     if (!kbIsViewToday_(kbState.viewDate || jstTodayStr(), jstTodayStr())) { showToast('未来日/過去日は閲覧のみです（送信・電話記録は当日のみ）', 3000); return; }
-    const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
-    if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
+    // 操作者はサマリー内の選択が正（受付者バー直読をやめる＝誰が送ったかの記録を正確に）。
+    // ★空のまま送ると記録がsystem/空になるso必ずここで止める（当日ガードより後・副作用ゼロ＝N7維持）。
+    const operator = kbSumOperator || '';
+    if (!operator) { showToast('操作者を選んでください', 3000); return; }
     const targets = kbCollectSendTargets_();
     if (!targets.length) { document.getElementById('kbox-summary-modal').style.display = 'none'; return; }
     const items = targets.map(it => ({

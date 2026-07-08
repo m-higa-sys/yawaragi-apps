@@ -179,7 +179,11 @@ tryOk(() => {
   ok2(html.indexOf('id="kbox-next"') >= 0 && html.indexOf('kbGoDate(1)') >= 0, 'K3: ▶=kbGoDate(1)');
   ok2(html.indexOf('id="kbox-datelabel"') >= 0, 'K4: 中央日付ラベルが存在');
   ok2(html.indexOf('id="kbox-viewonly-banner"') >= 0, 'K5: 閲覧のみ帯が存在');
-  ok2(html.indexOf('id="kbox-jumpchips"') >= 0, 'K6: ジャンプチップ行が存在');
+  // K6反転(2026-07-08): 日付ピッカー導入でチップは役目を終えたso削除。消し忘れをテストで固定する。
+  ok2(html.indexOf('id="kbox-jumpchips"') < 0, 'K6(★削除保証): ジャンプチップ行が存在しない');
+  // ★日付移動手段(ピッカー/◀▶)は残る＝kbJumpToはピッカーが使うso削除不可
+  ok2(html.indexOf('id="kbox-datepicker"') >= 0 && html.indexOf('kbJumpTo(this.value)') >= 0, 'K7(★): 日付ピッカーがkbJumpToを使い続ける');
+  ok2(html.indexOf('function kbJumpTo') >= 0, 'K8(★誤削除防止): kbJumpTo本体は残っている');
 }, 'K群(日付ビューDOM)');
 
 // L. kbState.viewDate と インライン純関数の存在
@@ -187,7 +191,11 @@ tryOk(() => {
   const kbStateSrc = html.slice(html.indexOf('let kbState ='), html.indexOf('let kbState =') + 200);
   ok2(/viewDate\s*:/.test(kbStateSrc), 'L1: kbStateにviewDate');
   ok2(html.indexOf('function kbAddDaysYMD_') >= 0, 'L2: インラインkbAddDaysYMD_');
-  ok2(html.indexOf('function kbUpcomingAbsenceDates_') >= 0, 'L3: インラインkbUpcomingAbsenceDates_');
+  // L3反転(2026-07-08): チップ削除に伴いgenba.htmlのインライン版も撤去（呼び出しはチップ1箇所のみだった）。
+  // ★gas/yawaragi-board/kesseki-box-core.js 側は非接触so H群は引き続きPASSする。
+  ok2(html.indexOf('function kbUpcomingAbsenceDates_') < 0, 'L3(★削除保証): インラインkbUpcomingAbsenceDates_が存在しない');
+  // ★kbFmtChip_ は欠席なし表示(7829)・日付ラベル(7921)が使う共通関数so削除不可
+  ok2(html.indexOf('function kbFmtChip_') >= 0, 'L3b(★誤削除防止): kbFmtChip_は共通関数so残っている');
   ok2(html.indexOf('function kbMergeDedupAbs_') >= 0, 'L4: インラインkbMergeDedupAbs_');
   ok2(html.indexOf('function kbIsViewToday_') >= 0, 'L5: インラインkbIsViewToday_');
   ok2(html.indexOf('function kbFilterTodayTargets_') >= 0, 'L6: インラインkbFilterTodayTargets_(日付引数版)');
@@ -202,7 +210,9 @@ tryOk(() => {
   ok2(/viewIsToday/.test(kbRenderSrc), 'M3: viewIsTodayでUI活性を分岐');
   ok2(html.indexOf('function kbRenderChrome_') >= 0, 'M4: kbRenderChrome_定義');
   const chromeSrc = extractFn('kbRenderChrome_');
-  ok2(chromeSrc.indexOf('kbUpcomingAbsenceDates_') >= 0, 'M5: chromeがジャンプ一覧を描く');
+  // M5反転(2026-07-08): chromeはチップを描かない。日付帯ラベル/閲覧のみ帯/ピッカー同期は維持。
+  ok2(chromeSrc.indexOf('kbUpcomingAbsenceDates_') < 0 && chromeSrc.indexOf('kbox-jumpchips') < 0, 'M5(★削除保証): chromeがチップを描かない');
+  ok2(chromeSrc.indexOf('kbox-datepicker') >= 0, 'M5b(★): chromeは日付ピッカーの表示同期を維持');
   ok2(chromeSrc.indexOf('kbox-viewonly-banner') >= 0, 'M6: chromeが閲覧のみ帯を制御');
 }, 'M群(chrome+UIガード)');
 

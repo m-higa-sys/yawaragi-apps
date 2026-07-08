@@ -29,7 +29,7 @@ function extractLet(name) {
 
 const realSources = [
   extractLet('kbState'),
-  extractFn('kbAddDaysYMD_'), extractFn('kbUpcomingAbsenceDates_'), extractFn('kbMergeDedupAbs_'),
+  extractFn('kbAddDaysYMD_'), extractFn('kbMergeDedupAbs_'),   // kbUpcomingAbsenceDates_ は削除(2026-07-08)
   extractFn('kbIsViewToday_'), extractFn('kbUnitGroup_'), extractFn('kbFilterTodayTargets_'),
   extractFn('kbIsOkResponseInline_'), extractFn('kbViewLoadedInline_'), extractFn('kbJsonpRetry_'),
   extractFn('kbFmtChip_'), extractFn('kbInit'), extractFn('kbLoad'),
@@ -73,7 +73,7 @@ function makeEl() { return { innerHTML: '', textContent: '', style: {}, disabled
 function newContext() {
   const els = {};
   ['kbox-list', 'kbox-operator-note', 'kbox-pending-badge', 'kbox-send-btn', 'kbox-section',
-   'kbox-datelabel', 'kbox-viewonly-banner', 'kbox-jumpchips', 'kbox-datepicker', 'kbox-operator-select'
+   'kbox-datelabel', 'kbox-viewonly-banner', 'kbox-datepicker', 'kbox-operator-select'   // kbox-jumpchips は削除(2026-07-08)
   ].forEach(id => els[id] = makeEl());
   const document = { getElementById: id => els[id] || null, createElement: () => makeEl(), body: { appendChild() {} } };
   const immediate = (fn) => { if (typeof fn === 'function') fn(); return 0; };

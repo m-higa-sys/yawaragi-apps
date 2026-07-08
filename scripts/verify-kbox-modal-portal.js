@@ -59,13 +59,16 @@ function bind(env, extraGlobals) {
     extractFn('kbShowModal_', true),   // 修正後に存在（RED時は空）
     extractFn('kbFormatDate_'), extractFn('kbBuildBody_'), extractFn('kbEsc_'),
     extractFn('kbCollectSendTargets_'), extractFn('kbOpenPreview'), extractFn('kbOpenSummary'), extractFn('kbShowHelp'),
+    extractFn('kbRenderSumOperators_', true), extractFn('kbSelectSumOperator_', true),   // 2026-07-08: サマリー内 操作者選択
   ].filter(Boolean).join('\n\n');
   const argNames = ['document', 'kbState', 'absReceptionist', 'showToast'].concat(Object.keys(extraGlobals || {}));
   const argVals = [env.document, extraGlobals.kbState, extraGlobals.absReceptionist, function () {}].concat();
   // kbEditing はモジュール内 let。ここでは src 内で宣言される想定でなく、関数外変数なので prelude で用意
-  const body = 'let kbEditing = null;\n' + src + '\n\nreturn { kbOpenPreview, kbOpenSummary, kbShowHelp };';
-  const factory = new Function('document', 'kbState', 'absReceptionist', 'showToast', body);
-  return factory(env.document, extraGlobals.kbState, extraGlobals.absReceptionist, function () {});
+  // 2026-07-08: サマリー内 操作者選択の追加に伴い kbSumOperator / getStaff / EXCLUDED_STAFF を用意
+  const body = 'let kbEditing = null;\nlet kbSumOperator = "";\n' + src + '\n\nreturn { kbOpenPreview, kbOpenSummary, kbShowHelp };';
+  const factory = new Function('document', 'kbState', 'absReceptionist', 'showToast', 'getStaff', 'EXCLUDED_STAFF', body);
+  return factory(env.document, extraGlobals.kbState, extraGlobals.absReceptionist, function () {},
+    () => ['比嘉', '星野', '勝又', '下浦', '工藤'], ['比嘉']);
 }
 
 const kbState = {
