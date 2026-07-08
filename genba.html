@@ -1625,12 +1625,14 @@
                 <button class="abs-contact-btn" data-method="電話" onclick="kbSelectPastMethod_('電話', this)">☎ 電話</button>
                 <button class="abs-contact-btn" data-method="その他" onclick="kbSelectPastMethod_('その他', this)">その他</button>
             </div>
-            <label style="display:block; font-size:.82rem; font-weight:600;">② メモ（任意・「その他」の内容や補足など）
+            <div style="font-size:.9rem; font-weight:700; margin-bottom:6px;">② だれが連絡しましたか？（担当者）</div>
+            <div id="kbox-pc-operators" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;"></div>
+            <label style="display:block; font-size:.82rem; font-weight:600;">③ メモ（任意・「その他」の内容や補足など）
                 <textarea id="kbox-pc-note" rows="2" style="width:100%; padding:8px; box-sizing:border-box;"></textarea>
             </label>
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
                 <button class="abs-contact-btn" onclick="document.getElementById('kbox-pastcontact-modal').style.display='none'">閉じる</button>
-                <button class="abs-contact-btn" style="background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbConfirmPastContact_()">③ 記録する</button>
+                <button class="abs-contact-btn" style="background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbConfirmPastContact_()">記録する</button>
             </div>
         </div>
     </div>
@@ -7606,6 +7608,27 @@ function kbPastContactEligible_(viewYMD, todayYMD) {
 
 let kbPastContactEditing = null;   // 過去日連絡記録の対象 {name, date}
 let kbPastContactMethod = '';      // 選択中の連絡手段（未選択=''）。手段は「選択」だけ→「記録する」で確定
+let kbPastContactOperator = '';    // 選択中の担当者（未選択=''→受付者バーへフォールバック）。モーダル内で選び直せる
+
+// モーダル内の担当者ボタンを描画。名簿は受付者行と同一源（getStaff − EXCLUDED_STAFF）＝異体字ズレを防ぐ。
+// selected（新規=受付者バー / 編集=現在の担当者）を選択済みハイライトで開く。
+function kbRenderPastOperators_(selected) {
+    kbPastContactOperator = selected || '';               // 要素不在でも選択値は確定させる
+    const box = document.getElementById('kbox-pc-operators');
+    if (!box) return;
+    const staff = (typeof getStaff === 'function' ? getStaff() : []).filter(s => !(typeof EXCLUDED_STAFF !== 'undefined' && EXCLUDED_STAFF.includes(s)));
+    box.innerHTML = staff.map(s =>
+        `<button type="button" class="abs-contact-btn${kbPastContactOperator === s ? ' selected' : ''}" data-operator="${kbEsc_(s)}" onclick="kbSelectPastOperator_('${kbEsc_(s)}', this)">${kbEsc_(s)}</button>`
+    ).join('');
+}
+
+// 担当者を「選択」だけする（手段と同型・まだ記録しない）。受付者バーは触らない（box内で完結）。
+function kbSelectPastOperator_(operator, btnEl) {
+    kbPastContactOperator = operator;
+    const box = document.getElementById('kbox-pc-operators');
+    if (box && box.querySelectorAll) box.querySelectorAll('button').forEach(function (b) { b.classList.remove('selected'); });
+    if (btnEl && btnEl.classList) btnEl.classList.add('selected');
+}
 
 // 過去日カードの「連絡済みにする（送らず記録）」入口: 手段選択モーダルを body直下ポータルで開く。
 // ★当日ガード(kbIsViewToday_/N群)は非接触・これは新規の別関数。
@@ -7618,6 +7641,8 @@ function kbMarkContactedPast_(name, date) {
     if (note) note.value = '';
     const wrap = document.getElementById('kbox-pc-methods');   // 手段ボタンのハイライト解除
     if (wrap && wrap.querySelectorAll) wrap.querySelectorAll('button').forEach(function (b) { b.classList.remove('selected'); });
+    // 担当者は受付者バーの選択を初期値にする（モーダル内で選び直せる）
+    if (typeof kbRenderPastOperators_ === 'function') kbRenderPastOperators_((typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '');
     kbShowModal_('kbox-pastcontact-modal');   // display:none 祖先での不可視を封じる（body直下退避）
 }
 
@@ -7651,6 +7676,8 @@ function kbEditContactedPast_(name, date) {
     if (t) t.textContent = name + ' 様（' + date + '）の連絡を編集';
     const note = document.getElementById('kbox-pc-note');
     if (note) note.value = String(it.note || '');                       // メモ復元
+    // 現在の担当者を初期選択で開く（受付者バーで勝手に上書きしない・別の人に選び直せる）
+    if (typeof kbRenderPastOperators_ === 'function') kbRenderPastOperators_(String(it.lastOperator || ''));
     const wrap = document.getElementById('kbox-pc-methods');            // 現在手段をハイライト
     if (wrap && wrap.querySelectorAll) wrap.querySelectorAll('button').forEach(function (b) {
         if (b.getAttribute && b.getAttribute('data-method') === kbPastContactMethod) b.classList.add('selected');
@@ -7664,8 +7691,9 @@ function kbSubmitPastContact_(method, note) {
     if (!gnbGuardProdWrite('過去日の連絡記録')) return;      // ★書込前 originガード
     const ed = kbPastContactEditing;
     if (!ed || !ed.name || !ed.date) return;
-    const operator = (typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '';
-    if (!operator) { showToast('先に受付者（操作者）を選んでください', 3000); return; }
+    // 担当者はモーダル内の選択が正（未選択時のみ受付者バーへフォールバック）
+    const operator = kbPastContactOperator || ((typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '');
+    if (!operator) { showToast('担当者を選んでください', 3000); return; }
     const cmNotified = '連絡済み（' + method + '）';
     fetch(ABS_BOARD_API_URL, {
         method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
@@ -7677,6 +7705,7 @@ function kbSubmitPastContact_(method, note) {
     }).catch(e => showToast('記録失敗: ' + (e && e.message || e), 5000));
     kbPastContactEditing = null;
     kbPastContactMethod = '';
+    kbPastContactOperator = '';
 }
 function kbClassifyCardInline_(method, email, cmNotified) {
     const m = String(method || '').trim();

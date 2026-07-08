@@ -33,7 +33,7 @@ function okSafe(thunk, label) { try { ok(!!thunk(), label); } catch (e) { fail++
 function bindFns(names, env) {
   const src = names.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
   const gkeys = Object.keys(env);
-  const prelude = 'let kbPastContactEditing = null;\nlet kbPastContactMethod = "";\n';
+  const prelude = 'let kbPastContactEditing = null;\nlet kbPastContactMethod = "";\nlet kbPastContactOperator = "";\n';
   const body = prelude + src + '\n\nreturn {' + names.map(n => n + ': (typeof ' + n + '!=="undefined")?' + n + ':undefined').join(', ') + '};';
   const factory = new Function(...gkeys, body);
   return factory(...gkeys.map(k => env[k]));
@@ -173,7 +173,7 @@ function selectEnv() {
   env.__mkBtn = () => ({ classList: { add: function () {}, remove: function () {} } });
   return env;
 }
-const FLOW_FNS = ['kbMarkContactedPast_', 'kbSelectPastMethod_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
+const FLOW_FNS = ['kbMarkContactedPast_', 'kbSelectPastMethod_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
 
 console.log('■ 4b) 手段は選択のみ→「記録する」で確定（即確定バグ修正・メモを書ける）');
 okSafe(() => {
@@ -239,7 +239,8 @@ function editEnv() {
   env.__calls = calls; env.__noteEl = noteEl;
   return env;
 }
-const EDIT_FNS = ['kbEditContactedPast_', 'kbSelectPastMethod_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
+const EDIT_FNS = ['kbEditContactedPast_', 'kbSelectPastMethod_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
+function mkBtn() { return { classList: { add: function () {}, remove: function () {} } }; }
 
 console.log('■ 4c) 記録の編集（手動記録のみ・現在値セット・上書き・送信ゼロ）');
 okSafe(() => renderDoneCard('連絡済み（Gmail手動）').indexOf('kbEditContactedPast_') >= 0, 'EB1(★): 連絡済み（手動記録）カードに「編集」ボタンが出る');
@@ -254,12 +255,13 @@ okSafe(() => {
 okSafe(() => {
   const env = editEnv();
   const api = bindFns(EDIT_FNS, env);
-  api.kbEditContactedPast_('根岸君男', '2026-07-07');   // 手段=Gmail手動が選択済みで開く
-  api.kbConfirmPastContact_();                          // 受付者=下浦で記録する=上書き
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');   // 手段=Gmail手動・担当=工藤が選択済みで開く
+  api.kbSelectPastOperator_('下浦', mkBtn());           // ★モーダル内で担当者を工藤→下浦に選び直す
+  api.kbConfirmPastContact_();                          // 記録する=上書き
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
   return rec.length === 1 && rec[0].body.name === '根岸君男' && rec[0].body.date === '2026-07-07' &&
          rec[0].body.cmNotified === '連絡済み（Gmail手動）' && rec[0].body.operator === '下浦';
-}, 'ED2(★): 編集→記録するで上書きPOST（同name/date・担当が工藤→下浦に更新）');
+}, 'ED2(★): 編集→担当者を選び直す→記録するで上書きPOST（同name/date・担当が工藤→下浦に更新）');
 okSafe(() => {
   const env = editEnv();
   const api = bindFns(EDIT_FNS, env);
@@ -268,6 +270,68 @@ okSafe(() => {
   return env.__calls.every(c => c.action !== 'send_box_cm_mails');
 }, 'ED3(★送信ゼロ): 編集の上書きでも send_box_cm_mails を呼ばない');
 okSafe(() => renderDoneCard('連絡済み（下浦手動）', { lastOperator: '下浦' }).indexOf('担当: 下浦') >= 0, 'ED4: 上書き後カードは新しい担当（下浦）を表示');
+
+// ---- 担当者をモーダル内で選べる（受付者バー依存の解消） ----
+console.log('■ 4d) 担当者選択（モーダル内・現在担当を初期選択・選び直して上書き）');
+okSafe(() => html.indexOf('id="kbox-pc-operators"') >= 0, 'OP1(★構造): モーダル内に担当者コンテナ kbox-pc-operators がある');
+okSafe(() => {
+  const s = html.indexOf('id="kbox-pastcontact-modal"');
+  const e = html.indexOf('id="kbox-help-modal"');
+  const modal = html.slice(s, e);
+  // 並び: ①連絡方法(kbox-pc-methods) ②担当者(kbox-pc-operators) ③メモ(kbox-pc-note)
+  return modal.indexOf('kbox-pc-methods') < modal.indexOf('kbox-pc-operators')
+      && modal.indexOf('kbox-pc-operators') < modal.indexOf('kbox-pc-note');
+}, 'OP2(★構造): モーダル項目の並びが ①連絡方法 →②担当者 →③メモ');
+okSafe(() => {
+  // 担当者ボタン描画: 名簿=getStaff−EXCLUDED_STAFF、選択済みは selected、data-operator付与
+  const box = { innerHTML: '' };
+  const env = {
+    document: { getElementById: id => (id === 'kbox-pc-operators' ? box : null) },
+    getStaff: () => ['比嘉', '星野', '下浦', '工藤'],
+    EXCLUDED_STAFF: ['比嘉'],
+  };
+  const api = bindFns(['kbEsc_', 'kbRenderPastOperators_'], env);
+  api.kbRenderPastOperators_('工藤');
+  const h = box.innerHTML;
+  return h.indexOf('data-operator="工藤"') >= 0 && h.indexOf('data-operator="下浦"') >= 0
+      && h.indexOf('比嘉') < 0                                   // 社長は候補から除外
+      && /data-operator="工藤"[^>]*>|selected[^>]*data-operator="工藤"/.test(h)
+      && h.indexOf('selected') >= 0;                             // 現在担当がハイライト
+}, 'OP3(★): 担当者ボタン=getStaff−EXCLUDED_STAFF・data-operator付与・現在担当をハイライト');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');   // 現在担当=工藤 が初期選択
+  api.kbConfirmPastContact_();                          // 選び直さずそのまま記録
+  const rec = env.__calls.filter(c => c.action === 'recordPastContact');
+  return rec.length === 1 && rec[0].body.operator === '工藤';
+}, 'OP4(★): 編集で現在担当(工藤)が初期選択され、触らなければ工藤のまま上書き（受付者バーで勝手に変わらない）');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('星野', mkBtn());           // 別の担当者に選び直す
+  api.kbConfirmPastContact_();
+  const rec = env.__calls.filter(c => c.action === 'recordPastContact');
+  return rec.length === 1 && rec[0].body.operator === '星野';
+}, 'OP5(★): 編集で担当者を選び直すと operator が上書きされる');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('星野', mkBtn());
+  api.kbConfirmPastContact_();
+  return env.__calls.every(c => c.action !== 'send_box_cm_mails');
+}, 'OP6(★送信ゼロ): 担当者を変えた上書きでも send_box_cm_mails を呼ばない');
+okSafe(() => {
+  const env = selectEnv();                              // 新規記録フロー（受付者バー=下浦）
+  const api = bindFns(FLOW_FNS, env);
+  api.kbMarkContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastMethod_('電話', env.__mkBtn());
+  api.kbConfirmPastContact_();
+  const rec = env.__calls.filter(c => c.action === 'recordPastContact');
+  return rec.length === 1 && rec[0].body.operator === '下浦';
+}, 'OP7: 新規記録は受付者バー(下浦)が担当者の初期値になる');
 
 console.log('\n実測ハーネス(past-contact): ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
