@@ -478,13 +478,11 @@ okSafe(() => {
   return failed >= 0 && loaded >= 0 && failed < loaded;
 }, 'J4(★): 失敗判定は充填判定より先（失敗を「確認中」で覆い隠さない）');
 okSafe(() => {
-  // ★「不変」の基準値は親コミット815dd3e(本番版-34)の実測: 総出現4（うちコメント3・実POST1）。
-  //   旧テストの期待値2は根拠のない誤りだった（実装は1件も増やしていない）。2026-07-08 実測で訂正。
-  // ★総数だけでなく「実POST本数」も固定する＝コメントが増減しても記録POSTの新設は必ず落ちる（強化）。
-  const total = (html.match(/recordPastContact/g) || []).length;
+  // ★「不変」は実POST本数で固定する（総出現数はコメント増減で脆い＝Step Aの範囲拡大で説明コメントが増え6になった）。
+  //   記録POSTの新設だけを厳密に落とす本質基準。旧テストの総出現数固定は 2026-07-09 に実POST基準へ是正。
   const posts = (html.match(/action:\s*'recordPastContact'/g) || []).length;
-  return total === 4 && posts === 1;
-}, 'J5(★非接触): recordPastContact は総出現4・実POSTは1本のまま（Phase3は記録POSTを1件も増やさない）');
+  return posts === 1;
+}, 'J5(★非接触): recordPastContact の実POSTは1本のまま（Phase3は記録POSTを1件も増やさない）');
 okSafe(() => {
   const chrome = extractFn('kbRenderChrome_');
   return !/fetch\(|attEnsureMonthAbsences/.test(chrome);

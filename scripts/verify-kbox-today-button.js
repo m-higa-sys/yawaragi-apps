@@ -191,7 +191,8 @@ okSafe(() => {
 console.log('■ O) 非接触（本数不変・親815dd3e/版-35と同値）');
 okSafe(() => (html.match(/send_box_cm_mails/g) || []).length === 1, 'O1(★): send_box_cm_mails は1箇所のまま');
 okSafe(() => (html.match(/gnbGuardProdWrite/g) || []).length === 13, 'O2(★): gnbGuardProdWrite は13本のまま');
-okSafe(() => (html.match(/recordPastContact/g) || []).length === 4, 'O3(★): recordPastContact は総出現4のまま');
+// ★実POST本数で固定（総出現数はコメント増減で脆い＝範囲拡大でコメントが増え6になった）。記録POST新設だけを落とす。
+okSafe(() => (html.match(/action:\s*'recordPastContact'/g) || []).length === 1, 'O3(★): recordPastContact の実POSTは1本のまま');
 okSafe(() => (html.match(/updateAbsenceCmNotified/g) || []).length === 3, 'O4(★): updateAbsenceCmNotified は3のまま');
 okSafe(() => (html.match(/attGoToday/g) || []).length === 2, 'O5(★非接触): 出席予定タブの attGoToday は無改変（定義1+呼出1）');
 
