@@ -455,8 +455,15 @@ okSafe(() => {
 okSafe(() => {
   // ★成功で安易に false へ戻さない（月跨ぎで前月失敗→当月成功の後勝ちを防ぐ）
   const src = extractFn('kbEnsureUnnotifiedMonths_');
-  return /kbUnnotifiedRangeLoaded_\([^)]*\)\s*\)\s*\{[\s\S]{0,80}kbUnnotifiedFailed_\s*=\s*false/.test(src);
-}, 'J2(★★誤陰性): 失敗フラグのクリアは「全必要月が揃ったとき」だけ（後勝ちで失敗を消さない）');
+  // 行コメントを除去してから構造判定する。実コードでは条件と代入の間に「なぜ後勝ちを防ぐか」の
+  // 説明コメントが146文字入っており、実行文はゼロなのに窓80文字の正規表現が届かず偽FAILしていた（2026-07-08）。
+  // ★判定は緩めていない: コメントを除いた実行文の窓は80文字のまま＝間に実行文が1つでも入れば落ちる。
+  const code = src.replace(/\/\/[^\n]*/g, '');
+  const guarded = /kbUnnotifiedRangeLoaded_\([^)]*\)\s*\)\s*\{[\s\S]{0,80}kbUnnotifiedFailed_\s*=\s*false/.test(code);
+  // ★さらに強化: false 代入は「揃ったときの1箇所」だけ（無条件クリアが別の場所に生えたら落とす）
+  const clears = (code.match(/kbUnnotifiedFailed_\s*=\s*false/g) || []).length;
+  return guarded && clears === 1;
+}, 'J2(★★誤陰性): 失敗フラグのクリアは「全必要月が揃ったとき」だけ1箇所（後勝ちで失敗を消さない）');
 okSafe(() => {
   const src = extractFn('kbRenderUnnotifiedAlert_');
   // 「0件で非表示」は kbUnnotifiedRangeLoaded_ を通過した後にしか到達しない
@@ -470,7 +477,14 @@ okSafe(() => {
   const loaded = src.indexOf('kbUnnotifiedRangeLoaded_');
   return failed >= 0 && loaded >= 0 && failed < loaded;
 }, 'J4(★): 失敗判定は充填判定より先（失敗を「確認中」で覆い隠さない）');
-okSafe(() => (html.match(/recordPastContact/g) || []).length === 2, 'J5(★非接触): recordPastContact の出現数は不変(2)');
+okSafe(() => {
+  // ★「不変」の基準値は親コミット815dd3e(本番版-34)の実測: 総出現4（うちコメント3・実POST1）。
+  //   旧テストの期待値2は根拠のない誤りだった（実装は1件も増やしていない）。2026-07-08 実測で訂正。
+  // ★総数だけでなく「実POST本数」も固定する＝コメントが増減しても記録POSTの新設は必ず落ちる（強化）。
+  const total = (html.match(/recordPastContact/g) || []).length;
+  const posts = (html.match(/action:\s*'recordPastContact'/g) || []).length;
+  return total === 4 && posts === 1;
+}, 'J5(★非接触): recordPastContact は総出現4・実POSTは1本のまま（Phase3は記録POSTを1件も増やさない）');
 okSafe(() => {
   const chrome = extractFn('kbRenderChrome_');
   return !/fetch\(|attEnsureMonthAbsences/.test(chrome);

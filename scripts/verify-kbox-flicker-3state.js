@@ -37,6 +37,14 @@ const realSources = [
   extractFn('kbIsDoneInline_'), extractFn('kbClassifyCardInline_'), extractFn('kbEsc_'),
   extractFn('kbRender'), extractFn('kbRenderChrome_'), extractFn('kbUpdateBadge'),   // kbRenderOperatorRow_ は削除(2026-07-08)
   extractFn('kbGoDate'), extractFn('kbJumpTo'),
+  // Phase3(2026-07-08): kbRenderChrome_ が kbRenderUnnotifiedAlert_ を「無ガードで」呼ぶようになった。
+  // 実コードでは両方とも同一 <script>(2285〜9959) のトップレベル関数宣言＝巻き上げで必ず解決するsoガードは不要。
+  // ここ（抽出ホワイトリスト方式のハーネス）に載せ忘れると未定義参照で即死する。実装ではなく抽出漏れ。
+  // アラート本体が本当に描かれるかを 3state でも実駆動させる（typeofスタブで握り潰さない）。
+  extractLet('kbUnnotifiedFailed_'),
+  extractFn('kbBizDaysAgo_'), extractFn('kbPastContactEligible_'),
+  extractFn('kbUnnotifiedMonths_'), extractFn('kbUnnotifiedRangeLoaded_'), extractFn('kbUnnotifiedInRange_'),
+  extractFn('kbRenderUnnotifiedAlert_'),
 ].join('\n\n');
 
 const stubs = `
@@ -74,7 +82,8 @@ function newContext() {
   const els = {};
   // kbox-jumpchips / kbox-operator-note / kbox-operator-select は削除(2026-07-08)
   ['kbox-list', 'kbox-pending-badge', 'kbox-send-btn', 'kbox-section',
-   'kbox-datelabel', 'kbox-viewonly-banner', 'kbox-datepicker'
+   'kbox-datelabel', 'kbox-viewonly-banner', 'kbox-datepicker',
+   'kbox-unnotified-alert'   // Phase3(2026-07-08): 要素を用意し、アラート描画を要素不在ガードで素通りさせない
   ].forEach(id => els[id] = makeEl());
   const document = { getElementById: id => els[id] || null, createElement: () => makeEl(), body: { appendChild() {} } };
   const immediate = (fn) => { if (typeof fn === 'function') fn(); return 0; };
