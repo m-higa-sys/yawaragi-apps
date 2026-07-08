@@ -7703,6 +7703,11 @@ function kbSubmitPastContact_(method, note) {
         showToast('連絡済みを記録しました（メールは送信していません）', 3000);
         setTimeout(() => kbLoad(), 2000);
     }).catch(e => showToast('記録失敗: ' + (e && e.message || e), 5000));
+    // ★過去日カードは attMonthAbsCache[月] 由来。無効化しないと kbLoad しても古い担当/手段を描き続ける
+    //   （kbLoad が取り直す absences は今日以降のみで過去日を含まないため）。次の描画で月ぶんを再取得させる。
+    try {
+        if (typeof attMonthAbsCache !== 'undefined') delete attMonthAbsCache[String(ed.date).slice(0, 7)];
+    } catch (e) {}
     kbPastContactEditing = null;
     kbPastContactMethod = '';
     kbPastContactOperator = '';

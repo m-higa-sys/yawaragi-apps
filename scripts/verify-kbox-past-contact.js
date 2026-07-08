@@ -235,6 +235,8 @@ function editEnv() {
     document: { getElementById: id => els[id] || null, querySelectorAll: () => [] },
     kbState: { viewDate: '2026-07-07', items: [{ name: '根岸君男', date: '2026-07-07', cmNotified: '連絡済み（Gmail手動）', note: 'FAXした', lastOperator: '工藤', cls: { kind: 'mail', done: true } }] },
     jstTodayStr: () => '2026-07-08',
+    // 過去日カードの実データ源。書込後に無効化しないと古い担当を描き続ける（版-30の実害）
+    attMonthAbsCache: { '2026-07': [{ name: '根岸君男', date: '2026-07-07', lastOperator: '工藤' }] },
   };
   env.__calls = calls; env.__noteEl = noteEl;
   return env;
@@ -332,6 +334,16 @@ okSafe(() => {
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
   return rec.length === 1 && rec[0].body.operator === '下浦';
 }, 'OP7: 新規記録は受付者バー(下浦)が担当者の初期値になる');
+okSafe(() => {
+  // 過去日カードは attMonthAbsCache[月] 由来。書込後に無効化しないと kbLoad しても
+  // 古い lastOperator(工藤) を描き続ける（本番で「担当:工藤のまま」になった実害）。
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('星野', mkBtn());
+  api.kbConfirmPastContact_();
+  return !('2026-07' in env.attMonthAbsCache);   // 対象日の月キャッシュが無効化される
+}, 'OP8(★実害): 記録/編集の書込後、対象日の月キャッシュ attMonthAbsCache[YYYY-MM] を無効化する');
 
 console.log('\n実測ハーネス(past-contact): ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
