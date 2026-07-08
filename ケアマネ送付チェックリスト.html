@@ -443,6 +443,11 @@ main { padding: 16px 24px 48px; }
     <input type="checkbox" id="filterReadyOfficesOnly" style="margin-right:6px;">
     <span style="color:#1a365d; font-weight:700;">📬 今すぐ送れる事業所だけ表示</span>
   </label>
+  <label style="background:#fed7d7; padding:4px 10px; border-radius:6px; cursor:pointer; border:2px solid #c53030;"
+         title="最終利用日が対象月より前の中止者も表示します（対象月に利用実績が残る中止者は、OFFでも常に表示されます）">
+    <input type="checkbox" id="filterShowChushi" style="margin-right:6px;">
+    <span style="color:#742a2a; font-weight:700;">🚫 中止者を表示</span>
+  </label>
   <input type="text" id="searchInput" placeholder="🔍 氏名・フリガナ"
     style="padding:6px 10px; border:2px solid #cbd5e0; border-radius:6px; font-size:14px; width:180px;">
   <div class="progress-wrap">
@@ -907,7 +912,8 @@ async function fetchAll() {
   const fiscalYear = (_fyM >= 4) ? _fyY : _fyY - 1;
 
   const [usersRes, measureRes, contactsRes, kubunRes, kubunDelayedRes, tsushoPlansRes, oralPlansRes, keikakushoRes, monitoringRes] = await Promise.all([
-    jsonp(USERS_API),
+    // includeEnded=1: 中止者も status / lastUseDate 付きで受け取る（他アプリは付けないので既定挙動のまま）
+    jsonp(USERS_API + '?includeEnded=1'),
     jsonp(MEASURE_API),
     jsonp(YAWARAGI_BOARD_API + '?action=contacts'),
     jsonp(YAWARAGI_BOARD_API + '?action=kubunList').catch(() => ({ active: [] })),
@@ -927,6 +933,13 @@ async function fetchAll() {
       .catch(() => ({ ok: false, users: [], records: [] }))
   ]);
   allData.users = usersRes.users || [];
+  // 中止履歴の突合診断（未マッチ行・同名重複・status分布）。黙って落とさず console に出す。
+  allData.chushi = usersRes.chushi || null;
+  if (allData.chushi) {
+    if (!allData.chushi.headerOk) console.warn('[中止履歴] ヘッダ（最終利用日/利用者名）が見つかりません。中止者は全員表示されます。');
+    if (allData.chushi.unmatched && allData.chushi.unmatched.length) console.warn('[中止履歴] 台帳に居ない利用者名:', allData.chushi.unmatched);
+    if (allData.chushi.duplicates && allData.chushi.duplicates.length) console.warn('[中止履歴] 同名複数行（最新の最終利用日を採用）:', allData.chushi.duplicates);
+  }
   allData.measure = (measureRes.data) || [];
   allData.contacts = contactsRes.cmContacts || [];
   allData.kubunActive = (kubunRes && kubunRes.active) ? kubunRes.active : [];
@@ -938,6 +951,44 @@ async function fetchAll() {
   allData.keikakushoUsers = (keikakushoRes && keikakushoRes.users) ? keikakushoRes.users : [];
   // 通所モニタリング年度データ（users: planStart/finalEvalMonth/caremaneOffice, records: 送付日）
   allData.monitoring = (monitoringRes && monitoringRes.ok) ? monitoringRes : { users: [], records: [] };
+}
+
+// ===== 利用中止者の対象月判定（2026-07-08） =====
+// 中止しても、最終利用日が属する月までは実績送付義務が残るので一覧から消さない。
+// 判定キーは 中止履歴シートA列「最終利用日」。中止日・登録日時は使わない
+// （登録が翌月にずれると、稼働していた月から消えてしまうため）。
+// テスト: scripts/test-cmsoufu-chushi-filter.js（この関数を実コード抽出して検証）
+
+// 最終利用日を 'YYYY-MM-DD' に正規化する。空・不明は '' を返す。
+function soufuNormLastUseDate(v) {
+  if (v === null || v === undefined) return '';
+  var s = String(v).trim();
+  if (!s) return '';
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);        // 2026-06-30 / 2026-06-30T...
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);      // 2026/6/30
+  if (m) return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+  var d = new Date(s);                                // GAS の Date 文字列など
+  if (!isNaN(d.getTime())) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  return '';                                          // 解釈不能 → 空扱い（出す側に倒す）
+}
+
+// 対象月 ym('YYYY-MM') でこの利用者を「利用中止により隠す」べきか。true=隠す。
+function soufuIsChushiHiddenInMonth(user, ym) {
+  var status = String((user && user.status) || '').trim();
+  if (!status) return false;                          // 稼働中は常に出す（再開者も隠さない）
+  var last = soufuNormLastUseDate(user && user.lastUseDate);
+  if (!last) return false;                            // 空欄/行なし → 出す（フェイルセーフ）
+  return last < ym + '-01';                           // 最終利用日 < 対象月初日 → 隠す
+}
+
+// トグル状態を見て「対象月 ym にこの利用者を出すか」を返すグルー（純関数 + DOM読取）。
+// ★allData.users は includeEnded=1 で中止者も含むため、users を舐める経路は必ずこれを通すこと。
+function soufuIsUserVisibleInMonth(u, ym) {
+  const showChushi = document.getElementById('filterShowChushi')?.checked || false;
+  return showChushi || !soufuIsChushiHiddenInMonth(u, ym);
 }
 
 // ===== 対象者抽出 =====
@@ -981,6 +1032,9 @@ function buildTargets(ym) {
   const _ymMonths = (!isNaN(_ymY) && !isNaN(_ymM)) ? (_ymY * 12 + (_ymM - 1)) : null;
 
   allData.users.forEach(u => {
+    // 中止者の対象月判定（2026-07-08）: 最終利用日が対象月に届いていれば実績送付義務が残るので出す。
+    if (!soufuIsUserVisibleInMonth(u, ym)) return;
+
     const m = measureMap[u.name] || {};
     const planStart = m.planStart || '';
     const startDate = m.startDate || '';
@@ -1105,7 +1159,8 @@ function render() {
     let t = targets.find(x => x.name === name);
     if (!t) {
       const u = allData.users.find(uu => uu.name === name);
-      if (u) {
+      // 隠すべき中止者を繰越経路から復活させない（allData.users に中止者が居るため必須）
+      if (u && soufuIsUserVisibleInMonth(u, ym)) {
         t = { name: name, care: u.care, office: u.cmOffice || '(事業所未登録)', hasNewPlan: false };
         targets.push(t);
       }
@@ -2276,7 +2331,8 @@ document.getElementById('printWorklistBtn').onclick = function() {
     let t = targets.find(x => x.name === name);
     if (!t) {
       const u = allData.users.find(uu => uu.name === name);
-      if (u) {
+      // 隠すべき中止者を繰越経路から復活させない（allData.users に中止者が居るため必須）
+      if (u && soufuIsUserVisibleInMonth(u, ym)) {
         t = { name: name, care: u.care, office: u.cmOffice || '(事業所未登録)', hasNewPlan: false };
         targets.push(t);
       }
@@ -2463,6 +2519,11 @@ document.getElementById('filterFinalizableOnly').onchange = function() {
 
 // 🔴 「今すぐ送れる事業所だけ表示」フィルター連動（2026/4/27 追加）
 document.getElementById('filterReadyOfficesOnly').onchange = function() {
+  render();
+};
+
+// 🚫 「中止者を表示」トグル連動（2026-07-08 追加・既定OFF）
+document.getElementById('filterShowChushi').onchange = function() {
   render();
 };
 

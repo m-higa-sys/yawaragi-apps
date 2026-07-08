@@ -16,6 +16,8 @@ var SHEET_NAME = '利用者台帳';
 
 function doGet(e) {
   var callback = (e && e.parameter) ? e.parameter.callback : null;
+  // 2026-07-08: 中止者も返すオプトイン。既定（未指定）は従来応答から1バイトも変えない。
+  var includeEnded = !!(e && e.parameter && e.parameter.includeEnded === '1');
 
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -49,15 +51,30 @@ function doGet(e) {
 
     if (nameCol < 0) return respond({ error: '「氏名」列が見つかりません' }, callback);
 
+    // includeEnded のときだけ中止履歴（同一スプレッドシート）を直読して索引を作る。
+    var chushi = null;
+    if (includeEnded) {
+      var chushiSheet = ss.getSheetByName('中止履歴');
+      chushi = chushiSheet
+        ? buildChushiIndex(chushiSheet.getDataRange().getValues())
+        : { map: {}, counts: {}, duplicates: [], totalRows: 0, headerOk: false };
+    }
+
     var users = [];
+    var ledgerNames = [];   // 診断用（中止・終了・卒業も含む台帳の全氏名）
+    var statusCounts = {};  // 診断用（利用ステータスの値分布）
     for (var i = 1; i < data.length; i++) {
       var name = String(data[i][nameCol] || '').trim();
       if (!name) continue;
+      ledgerNames.push(name);
 
-      // 終了・中止・卒業はスキップ
+      // 終了・中止・卒業はスキップ（includeEnded のときだけ返す）
+      var status = statusCol >= 0 ? String(data[i][statusCol] || '').trim() : '';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
       if (statusCol >= 0) {
-        var status = String(data[i][statusCol] || '').trim();
-        if (status.indexOf('終了') >= 0 || status.indexOf('中止') >= 0 || status.indexOf('卒業') >= 0) continue;
+        if (status.indexOf('終了') >= 0 || status.indexOf('中止') >= 0 || status.indexOf('卒業') >= 0) {
+          if (!includeEnded) continue;
+        }
       }
 
       var kana = kanaCol >= 0 ? String(data[i][kanaCol] || '').trim() : '';
@@ -94,7 +111,7 @@ function doGet(e) {
       var cmOffice = cmOfficeCol >= 0 ? String(data[i][cmOfficeCol] || '').trim() : '';
       var cmName = cmNameCol >= 0 ? String(data[i][cmNameCol] || '').trim() : '';
 
-      users.push({
+      var u = {
         name: name,
         kana: kana,
         care: care,
@@ -104,7 +121,14 @@ function doGet(e) {
         startDate: startDate,
         cmOffice: cmOffice,
         cmName: cmName
-      });
+      };
+      // 既定応答にはキーを1つも足さない。includeEnded のときだけ付与する。
+      if (includeEnded) {
+        u.status = status;
+        u.hasChushiRow = Object.prototype.hasOwnProperty.call(chushi.map, name);
+        u.lastUseDate = u.hasChushiRow ? chushi.map[name] : '';   // 行なし・空欄はどちらも ''
+      }
+      users.push(u);
     }
 
     // カナ順ソート
@@ -114,7 +138,21 @@ function doGet(e) {
       return sa.localeCompare(sb, 'ja');
     });
 
-    return respond({ users: users }, callback);
+    // 既定はここで従来どおり { users: [...] } のみを返す（キー追加なし）。
+    if (!includeEnded) return respond({ users: users }, callback);
+
+    // includeEnded のときだけ診断を添える（未マッチ行・重複行を黙って落とさないため）。
+    var dg = diagnoseChushi(chushi, ledgerNames);
+    return respond({
+      users: users,
+      chushi: {
+        headerOk: chushi.headerOk,
+        totalRows: chushi.totalRows,
+        unmatched: dg.unmatched,
+        duplicates: dg.duplicates,
+        statusCounts: statusCounts
+      }
+    }, callback);
 
   } catch (err) {
     return respond({ error: err.message }, callback);
@@ -145,4 +183,77 @@ function findColPartial(headers, keyword) {
     if (headers[i].indexOf(keyword) >= 0) return i;
   }
   return -1;
+}
+
+// =====================================================================
+// 中止履歴の突合（2026-07-08 追加）
+//   ?includeEnded=1 のときだけ使う。既定の応答には一切影響しない。
+//   突合キーは「利用者名」の完全一致（台帳に「伊藤フミ子」「伊藤ふみ子」等の
+//   別人が実在するため、部分一致・あいまい正規化は使わない）。
+//   テスト: scripts/test-users-api-chushi.js（この3関数を実コード抽出して検証）
+// =====================================================================
+
+// 最終利用日を 'YYYY-MM-DD' に正規化。空欄・解釈不能は '' を返す（捨てない）。
+function normLastUseDate(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return '';
+    return v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + String(v.getDate()).padStart(2, '0');
+  }
+  var s = String(v).trim();
+  if (!s) return '';
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (m) return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  return '';
+}
+
+// 中止履歴シートの getValues() から「利用者名 → 最終利用日」索引を作る。
+// 最終利用日が空欄の行も key として保持する（'' で返す）。同名複数行は最新日を採用。
+function buildChushiIndex(values) {
+  var result = { map: {}, counts: {}, duplicates: [], totalRows: 0, headerOk: false };
+  if (!values || values.length < 1) return result;
+
+  var headers = values[0].map(function (h) { return String(h).trim(); });
+  var dateCol = -1, nameCol = -1;
+  for (var c = 0; c < headers.length; c++) {
+    if (headers[c] === '最終利用日') dateCol = c;
+    if (headers[c] === '利用者名') nameCol = c;
+  }
+  if (dateCol < 0 || nameCol < 0) return result;   // headerOk=false のまま返す（黙って空にしない）
+  result.headerOk = true;
+
+  for (var i = 1; i < values.length; i++) {
+    var name = String(values[i][nameCol] || '').trim();
+    if (!name) continue;
+    result.totalRows++;
+    result.counts[name] = (result.counts[name] || 0) + 1;
+
+    var d = normLastUseDate(values[i][dateCol]);
+    var prev = result.map[name];
+    if (prev === undefined || (d && d > prev)) result.map[name] = d;   // 最新日を採用（空欄には負けない）
+  }
+
+  for (var n in result.counts) {
+    if (result.counts[n] > 1) result.duplicates.push({ name: n, count: result.counts[n] });
+  }
+  return result;
+}
+
+// 台帳に存在しない中止履歴行・同名複数行を診断として返す（黙って落とさないため）。
+function diagnoseChushi(index, ledgerNames) {
+  var set = {};
+  var names = ledgerNames || [];
+  for (var i = 0; i < names.length; i++) set[String(names[i]).trim()] = true;
+
+  var unmatched = [];
+  for (var n in index.map) {
+    if (!set[n]) unmatched.push(n);
+  }
+  return { unmatched: unmatched, duplicates: index.duplicates.slice() };
 }
