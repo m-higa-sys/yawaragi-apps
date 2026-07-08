@@ -1632,7 +1632,7 @@
             </label>
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
                 <button class="abs-contact-btn" onclick="document.getElementById('kbox-pastcontact-modal').style.display='none'">閉じる</button>
-                <button class="abs-contact-btn" style="background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbConfirmPastContact_()">記録する</button>
+                <button id="kbox-pc-submit" class="abs-contact-btn" style="background:#2c7a7b; color:#fff; font-weight:700;" onclick="kbConfirmPastContact_()">記録する</button>
             </div>
         </div>
     </div>
@@ -7548,7 +7548,9 @@ function kbRenderForDate(viewDate) {
 // 実描画: 前進窓GET(正本) ∪ 月キャッシュ(補完) を dedup → 表示日で絞って items 化 → kbRender。
 function kbRenderDayNow_(viewDate) {
     const ym = String(viewDate).slice(0, 7);
-    const pool = kbMergeDedupAbs_(kbState.forward || [], attMonthAbsCache[ym] || []);
+    // ★保留オーバーレイを pool 段階で適用: 遅れて返る月キャッシュ再取得が楽観表示を崩さない（ちらつき防止）
+    const merged = kbMergeDedupAbs_(kbState.forward || [], attMonthAbsCache[ym] || []);
+    const pool = (typeof kbApplyPendingPast_ === 'function') ? kbApplyPendingPast_(merged, kbPendingPast) : merged;
     const targets = kbFilterTodayTargets_(pool, viewDate);
     kbState.items = targets.map(a => {
         const m = kbState.methodMap[a.name] || {};
@@ -7610,6 +7612,52 @@ let kbPastContactEditing = null;   // 過去日連絡記録の対象 {name, date
 let kbPastContactMethod = '';      // 選択中の連絡手段（未選択=''）。手段は「選択」だけ→「記録する」で確定
 let kbPastContactOperator = '';    // 選択中の担当者（未選択=''→受付者バーへフォールバック）。モーダル内で選び直せる
 
+// ===== 楽観的更新＋ライトバック検証（過去日連絡） =====
+// POSTは mode:'no-cors' でサーバ成否を読めない（.then/.catchは信頼できない＝既存コメント参照）。
+// よって「成功したことにする」のではなく、配置ライトバック検証④と同型で:
+//   ①押下と同時に保留オーバーレイへ楽観値を積み即描画（体感即時）
+//   ②裏でサーバ値を読み直し（kbLoad）、③突合して一致なら保留解除・不一致なら破棄して巻き戻す。
+// ★「画面は星野・サーバは下浦」の嘘表示を絶対に残さない。prev に更新前の値を保持する。
+let kbPendingPast = {};                       // key 'name|date' -> {cmNotified,lastOperator,lastMethod,note,prev}
+const KB_PAST_VERIFY_DELAY_MS = 2500;         // POST送出→サーバ読み直しの待ち（GAS書込確定の安全側）
+function kbPendingKey_(name, date) { return String(name || '') + '|' + String(date || ''); }
+
+// pool（前進窓 ∪ 月キャッシュ）へ保留オーバーレイを適用する純関数。
+// kbRenderDayNow_ が items を pool から再構築しても楽観値が消えないための層。非破壊（新配列を返す）。
+function kbApplyPendingPast_(pool, pending) {
+    const p = pending || {};
+    if (!Object.keys(p).length) return (pool || []).slice();
+    return (pool || []).map(function (a) {
+        if (!a) return a;
+        const ov = p[kbPendingKey_(a.name, a.date)];
+        if (!ov) return a;
+        const patch = {};
+        if ('cmNotified' in ov) patch.cmNotified = ov.cmNotified;
+        if ('lastOperator' in ov) patch.lastOperator = ov.lastOperator;
+        if ('lastMethod' in ov) patch.lastMethod = ov.lastMethod;
+        if ('note' in ov) patch.note = ov.note;
+        return Object.assign({}, a, patch);
+    });
+}
+
+// ライトバック検証: サーバ値(serverPool)と保留の楽観値を突合。
+// 一致→保留解除（表示は楽観値のまま＝サーバ値と同じ）。不一致→保留破棄し、サーバ値が描かれる＝巻き戻し。
+// どちらでも保留は必ず消す（残すと永久に嘘表示が固定される）。
+function kbVerifyPendingPast_(pending, serverPool, key) {
+    const p = pending || {};
+    const ov = p[key];
+    if (!ov) return { ok: true, missing: true };
+    const parts = String(key).split('|');
+    const row = (serverPool || []).find(function (a) {
+        return a && String(a.name) === parts[0] && String(a.date) === parts[1];
+    });
+    const ok = !!row
+        && String(row.cmNotified || '') === String(ov.cmNotified || '')
+        && String(row.lastOperator || '') === String(ov.lastOperator || '');
+    delete p[key];                            // 一致でも不一致でも保留は解除（サーバ値が正になる）
+    return { ok: ok, row: row || null };
+}
+
 // モーダル内の担当者ボタンを描画。名簿は受付者行と同一源（getStaff − EXCLUDED_STAFF）＝異体字ズレを防ぐ。
 // selected（新規=受付者バー / 編集=現在の担当者）を選択済みハイライトで開く。
 function kbRenderPastOperators_(selected) {
@@ -7643,6 +7691,8 @@ function kbMarkContactedPast_(name, date) {
     if (wrap && wrap.querySelectorAll) wrap.querySelectorAll('button').forEach(function (b) { b.classList.remove('selected'); });
     // 担当者は受付者バーの選択を初期値にする（モーダル内で選び直せる）
     if (typeof kbRenderPastOperators_ === 'function') kbRenderPastOperators_((typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '');
+    const sb = document.getElementById('kbox-pc-submit');   // 前回の「保存中…」固着を解除
+    if (sb) { sb.disabled = false; sb.textContent = '記録する'; }
     kbShowModal_('kbox-pastcontact-modal');   // display:none 祖先での不可視を封じる（body直下退避）
 }
 
@@ -7683,6 +7733,8 @@ function kbEditContactedPast_(name, date) {
         if (b.getAttribute && b.getAttribute('data-method') === kbPastContactMethod) b.classList.add('selected');
         else b.classList.remove('selected');
     });
+    const sb = document.getElementById('kbox-pc-submit');   // 前回の「保存中…」固着を解除
+    if (sb) { sb.disabled = false; sb.textContent = '記録する'; }
     kbShowModal_('kbox-pastcontact-modal');
 }
 
@@ -7695,19 +7747,51 @@ function kbSubmitPastContact_(method, note) {
     const operator = kbPastContactOperator || ((typeof absReceptionist !== 'undefined' && absReceptionist) ? absReceptionist : '');
     if (!operator) { showToast('担当者を選んでください', 3000); return; }
     const cmNotified = '連絡済み（' + method + '）';
+    const key = kbPendingKey_(ed.name, ed.date);
+
+    // ① 押下フィードバック（無反応で不安になるのを防ぐ・二度押し防止）
+    const sbtn = document.getElementById('kbox-pc-submit');
+    if (sbtn) { sbtn.disabled = true; sbtn.textContent = '保存中…'; }
+
+    // ② 楽観的更新: サーバ応答を待たず表示を先に進める。巻き戻し用に prev を保持する。
+    const cur = (kbState.items || []).find(x => x && x.name === ed.name && String(x.date) === String(ed.date)) || {};
+    kbPendingPast[key] = {
+        cmNotified: cmNotified, lastOperator: operator, lastMethod: method, note: String(note || ''),
+        prev: { cmNotified: cur.cmNotified || '', lastOperator: cur.lastOperator || '', lastMethod: cur.lastMethod || '', note: cur.note || '' }
+    };
+    const m0 = document.getElementById('kbox-pastcontact-modal'); if (m0) m0.style.display = 'none';
+    if (typeof kbRenderDayNow_ === 'function') kbRenderDayNow_(kbState.viewDate);   // 即描画（保留が乗る）
+    showToast('保存中…（メールは送信していません）', 2000);
+
     fetch(ABS_BOARD_API_URL, {
         method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'recordPastContact', name: ed.name, date: ed.date, cmNotified: cmNotified, method: method, operator: operator, note: String(note || '') })
-    }).then(() => {
-        const m = document.getElementById('kbox-pastcontact-modal'); if (m) m.style.display = 'none';
-        showToast('連絡済みを記録しました（メールは送信していません）', 3000);
-        setTimeout(() => kbLoad(), 2000);
-    }).catch(e => showToast('記録失敗: ' + (e && e.message || e), 5000));
+    }).catch(() => { /* no-corsのthen/catchは信頼度が低い。成否はライトバック検証で判定する */ });
+
     // ★過去日カードは attMonthAbsCache[月] 由来。無効化しないと kbLoad しても古い担当/手段を描き続ける
     //   （kbLoad が取り直す absences は今日以降のみで過去日を含まないため）。次の描画で月ぶんを再取得させる。
     try {
         if (typeof attMonthAbsCache !== 'undefined') delete attMonthAbsCache[String(ed.date).slice(0, 7)];
     } catch (e) {}
+
+    // ③ ライトバック検証: 裏でサーバ値を読み直し、楽観値と突合。不一致なら保留を破棄＝元の担当に戻す。
+    //    no-cors では成否を読めないため、これが唯一「嘘表示を残さない」確実な手段。
+    const vDate = ed.date, vYm = String(ed.date).slice(0, 7);
+    setTimeout(function () {
+        Promise.resolve(typeof kbLoad === 'function' ? kbLoad() : null).then(function () {
+            const serverPool = kbMergeDedupAbs_(kbState.forward || [], (attMonthAbsCache[vYm] || []));
+            const r = kbVerifyPendingPast_(kbPendingPast, serverPool, key);
+            if (typeof kbRenderDayNow_ === 'function') kbRenderDayNow_(kbState.viewDate);
+            if (r.ok) showToast('連絡済みを記録しました（メールは送信していません）', 3000);
+            else showToast('記録できませんでした。もう一度お試しください', 6000, true);
+        }).catch(function () {
+            kbVerifyPendingPast_(kbPendingPast, [], key);      // 読み直せない＝確認不能→保留破棄で安全側
+            if (typeof kbRenderDayNow_ === 'function') kbRenderDayNow_(kbState.viewDate);
+            showToast('記録を確認できませんでした。画面を更新して確認してください', 6000, true);
+        });
+        if (sbtn) { sbtn.disabled = false; sbtn.textContent = '記録する'; }
+    }, KB_PAST_VERIFY_DELAY_MS);
+
     kbPastContactEditing = null;
     kbPastContactMethod = '';
     kbPastContactOperator = '';

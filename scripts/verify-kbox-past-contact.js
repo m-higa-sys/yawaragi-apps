@@ -33,7 +33,9 @@ function okSafe(thunk, label) { try { ok(!!thunk(), label); } catch (e) { fail++
 function bindFns(names, env) {
   const src = names.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
   const gkeys = Object.keys(env);
-  const prelude = 'let kbPastContactEditing = null;\nlet kbPastContactMethod = "";\nlet kbPastContactOperator = "";\n';
+  const prelude = 'let kbPastContactEditing = null;\nlet kbPastContactMethod = "";\nlet kbPastContactOperator = "";\n'
+    + 'const KB_PAST_VERIFY_DELAY_MS = 2500;\n'
+    + (('kbPendingPast' in env) ? '' : 'let kbPendingPast = {};\n');
   const body = prelude + src + '\n\nreturn {' + names.map(n => n + ': (typeof ' + n + '!=="undefined")?' + n + ':undefined').join(', ') + '};';
   const factory = new Function(...gkeys, body);
   return factory(...gkeys.map(k => env[k]));
@@ -76,8 +78,11 @@ function recordEnv() {
     kbLoad: function () {},
     setTimeout: function (fn) { return 0; },
     document: { getElementById: () => ({ style: {}, value: '', textContent: '', innerHTML: '' }) },
-    kbState: { viewDate: '2026-07-07', items: [{ name: '根岸君男', date: '2026-07-07' }] },
+    kbState: { viewDate: '2026-07-07', forward: [], items: [{ name: '根岸君男', date: '2026-07-07' }] },
     jstTodayStr: function () { return '2026-07-08'; },
+    attMonthAbsCache: {},
+    kbPendingPast: {},
+    kbRenderDayNow_: () => {},
   };
   env.__calls = calls;
   return env;
@@ -86,13 +91,13 @@ function recordEnv() {
 console.log('■ 4) 記録フロー（recordPastContact をPOST・★send_box_cm_mails 非呼び）');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   return env.__calls.some(c => c.modal === 'kbox-pastcontact-modal');
 }, 'R1(★): 連絡済みボタン→ 手段モーダルを kbShowModal_ 経由で開く');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   api.kbSubmitPastContact_('Gmail手動', '');
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
@@ -100,7 +105,7 @@ okSafe(() => {
 }, 'R2(★): 手段選択→ recordPastContact を1回POST(cmNotified/operator/date 正)');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   api.kbSubmitPastContact_('Gmail手動', 'テスト');
   return env.__calls.every(c => c.action !== 'send_box_cm_mails');
@@ -109,7 +114,7 @@ okSafe(() => {
 console.log('■ 5) note 異常系（空OK / 入れたら値に乗る / 特殊文字も壊さず送る）');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   api.kbSubmitPastContact_('その他', '');   // note空
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
@@ -117,7 +122,7 @@ okSafe(() => {
 }, 'N1: note空でも記録が通る（エラーにならず 連絡済み（その他））');
 okSafe(() => {
   const env = recordEnv();
-  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_'], env);
+  const api = bindFns(['kbMarkContactedPast_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'], env);
   api.kbMarkContactedPast_('根岸君男', '2026-07-07');
   api.kbSubmitPastContact_('その他', '休み連絡票をFAX');
   const rec = env.__calls.filter(c => c.action === 'recordPastContact');
@@ -166,14 +171,17 @@ function selectEnv() {
     kbLoad: function () {},
     setTimeout: function () {},
     document: { getElementById: id => els[id] || null },
-    kbState: { viewDate: '2026-07-07' },
+    kbState: { viewDate: '2026-07-07', items: [], forward: [] },
     jstTodayStr: function () { return '2026-07-08'; },
+    attMonthAbsCache: {},
+    kbPendingPast: {},
+    kbRenderDayNow_: () => {},
   };
   env.__calls = calls; env.__noteEl = noteEl;
   env.__mkBtn = () => ({ classList: { add: function () {}, remove: function () {} } });
   return env;
 }
-const FLOW_FNS = ['kbMarkContactedPast_', 'kbSelectPastMethod_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
+const FLOW_FNS = ['kbMarkContactedPast_', 'kbSelectPastMethod_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbConfirmPastContact_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'];
 
 console.log('■ 4b) 手段は選択のみ→「記録する」で確定（即確定バグ修正・メモを書ける）');
 okSafe(() => {
@@ -227,21 +235,25 @@ function renderDoneCard(cmNotified, extra) {
 function editEnv() {
   const calls = [];
   const noteEl = { value: '' };
-  const els = { 'kbox-pc-note': noteEl, 'kbox-pastcontact-modal': { style: {} }, 'kbox-pc-title': { textContent: '' }, 'kbox-pc-methods': { querySelectorAll: () => [] } };
+  const btnEl = { disabled: false, textContent: '記録する' };
+  const els = { 'kbox-pc-note': noteEl, 'kbox-pastcontact-modal': { style: {} }, 'kbox-pc-title': { textContent: '' }, 'kbox-pc-methods': { querySelectorAll: () => [] }, 'kbox-pc-submit': btnEl };
   const env = {
     fetch: function (url, opts) { let b = {}; try { b = JSON.parse(opts && opts.body || '{}'); } catch (e) {} calls.push({ action: b.action, body: b }); return Promise.resolve({}); },
     gnbGuardProdWrite: () => true, absReceptionist: '下浦', ABS_BOARD_API_URL: 'https://example.test/exec',
     showToast: m => calls.push({ toast: String(m || '') }), kbShowModal_: id => { calls.push({ modal: id }); return { style: {} }; }, kbLoad: () => {}, setTimeout: () => {},
     document: { getElementById: id => els[id] || null, querySelectorAll: () => [] },
-    kbState: { viewDate: '2026-07-07', items: [{ name: '根岸君男', date: '2026-07-07', cmNotified: '連絡済み（Gmail手動）', note: 'FAXした', lastOperator: '工藤', cls: { kind: 'mail', done: true } }] },
+    kbState: { viewDate: '2026-07-07', forward: [], items: [{ name: '根岸君男', date: '2026-07-07', cmNotified: '連絡済み（Gmail手動）', note: 'FAXした', lastOperator: '工藤', lastMethod: 'Gmail手動', cls: { kind: 'mail', done: true } }] },
     jstTodayStr: () => '2026-07-08',
     // 過去日カードの実データ源。書込後に無効化しないと古い担当を描き続ける（版-30の実害）
     attMonthAbsCache: { '2026-07': [{ name: '根岸君男', date: '2026-07-07', lastOperator: '工藤' }] },
+    kbPendingPast: {},          // 楽観的更新の保留オーバーレイ
+    kbRenderForDate: () => {},
+    kbRenderDayNow_: () => {},
   };
-  env.__calls = calls; env.__noteEl = noteEl;
+  env.__calls = calls; env.__noteEl = noteEl; env.__btn = btnEl;
   return env;
 }
-const EDIT_FNS = ['kbEditContactedPast_', 'kbSelectPastMethod_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbConfirmPastContact_', 'kbSubmitPastContact_'];
+const EDIT_FNS = ['kbEditContactedPast_', 'kbSelectPastMethod_', 'kbSelectPastOperator_', 'kbRenderPastOperators_', 'kbConfirmPastContact_', 'kbSubmitPastContact_', 'kbApplyPendingPast_', 'kbVerifyPendingPast_', 'kbPendingKey_', 'kbMergeDedupAbs_'];
 function mkBtn() { return { classList: { add: function () {}, remove: function () {} } }; }
 
 console.log('■ 4c) 記録の編集（手動記録のみ・現在値セット・上書き・送信ゼロ）');
@@ -344,6 +356,96 @@ okSafe(() => {
   api.kbConfirmPastContact_();
   return !('2026-07' in env.attMonthAbsCache);   // 対象日の月キャッシュが無効化される
 }, 'OP8(★実害): 記録/編集の書込後、対象日の月キャッシュ attMonthAbsCache[YYYY-MM] を無効化する');
+
+// ---- 楽観的更新＋ライトバック検証（no-corsは成否を読めない＝嘘表示を残さない設計） ----
+// ★POSTの .then/.catch はサーバエラーを拾えない（コード内明記）。よって「成功したことにする」のでなく
+//   楽観的に描く→裏でサーバ値を読み直す→一致しなければ巻き戻す（既存の配置ライトバック検証④と同型）。
+console.log('■ 4e) 楽観的更新＋ライトバック検証（体感即時・嘘表示を残さない）');
+
+// 純関数: pool へ保留オーバーレイを適用する（kbRenderDayNow_ が items を再構築しても消えない層）
+okSafe(() => {
+  const { kbApplyPendingPast_ } = bindFns(['kbApplyPendingPast_', 'kbPendingKey_'], {});
+  const pool = [{ name: '根岸君男', date: '2026-07-07', unit: '午後', cmNotified: '連絡済み（Gmail手動）', lastOperator: '工藤', lastMethod: 'Gmail手動' }];
+  const pending = { '根岸君男|2026-07-07': { cmNotified: '連絡済み（電話）', lastOperator: '星野', lastMethod: '電話', note: 'かけ直した' } };
+  const out = kbApplyPendingPast_(pool, pending);
+  const h = out[0];
+  return h.lastOperator === '星野' && h.lastMethod === '電話' && h.cmNotified === '連絡済み（電話）' && h.note === 'かけ直した';
+}, 'OU1(★): 保留オーバーレイが pool の該当行を新しい担当/手段/メモで上書きする');
+okSafe(() => {
+  const { kbApplyPendingPast_ } = bindFns(['kbApplyPendingPast_', 'kbPendingKey_'], {});
+  const pool = [{ name: '別人', date: '2026-07-07', lastOperator: '工藤' }];
+  const pending = { '根岸君男|2026-07-07': { lastOperator: '星野' } };
+  const out = kbApplyPendingPast_(pool, pending);
+  return out[0].lastOperator === '工藤';     // 無関係な行は触らない
+}, 'OU2: 保留オーバーレイは対象(name|date)以外の行を書き換えない');
+okSafe(() => {
+  const { kbApplyPendingPast_ } = bindFns(['kbApplyPendingPast_', 'kbPendingKey_'], {});
+  const pool = [{ name: '根岸君男', date: '2026-07-07', lastOperator: '工藤' }];
+  const out = kbApplyPendingPast_(pool, {});   // 保留なし＝素通し
+  return out[0].lastOperator === '工藤' && out.length === 1;
+}, 'OU3: 保留が無ければ pool を素通しする（既存描画に影響しない）');
+
+// 押下フィードバック＋楽観的更新: サーバ応答前にオーバーレイが積まれる
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('星野', mkBtn());
+  api.kbConfirmPastContact_();
+  const p = env.kbPendingPast['根岸君男|2026-07-07'];
+  return !!p && p.lastOperator === '星野';    // POST直後(応答前)に既に反映されている
+}, 'OU4(★体感即時): 「記録する」押下と同時に保留オーバーレイへ新しい担当が積まれる（サーバ応答を待たない）');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('星野', mkBtn());
+  api.kbConfirmPastContact_();
+  const p = env.kbPendingPast['根岸君男|2026-07-07'];
+  return !!p && p.prev && p.prev.lastOperator === '工藤';   // 巻き戻し用の更新前の値
+}, 'OU5(★巻き戻し準備): 保留に更新前の値(prev)を保持する（失敗時に元へ戻せる）');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('星野', mkBtn());
+  api.kbConfirmPastContact_();
+  return env.__btn.disabled === true && String(env.__btn.textContent).indexOf('保存中') >= 0;
+}, 'OU6(★押下フィードバック): 押下で「記録する」ボタンが無効化され「保存中…」になる（二度押し防止）');
+
+// ライトバック検証: サーバ値と突合して確定 or 巻き戻し
+okSafe(() => {
+  const { kbVerifyPendingPast_ } = bindFns(['kbVerifyPendingPast_', 'kbPendingKey_'], {});
+  const pending = { '根岸君男|2026-07-07': { lastOperator: '星野', cmNotified: '連絡済み（電話）', prev: { lastOperator: '工藤' } } };
+  const server = [{ name: '根岸君男', date: '2026-07-07', lastOperator: '星野', cmNotified: '連絡済み（電話）' }];
+  const r = kbVerifyPendingPast_(pending, server, '根岸君男|2026-07-07');
+  return r.ok === true && !('根岸君男|2026-07-07' in pending);   // 一致→保留を解除（表示は維持）
+}, 'OU7(★確定): サーバ値が楽観値と一致したら保留を解除する（二重描画で古い値に戻らない）');
+okSafe(() => {
+  const { kbVerifyPendingPast_ } = bindFns(['kbVerifyPendingPast_', 'kbPendingKey_'], {});
+  const pending = { '根岸君男|2026-07-07': { lastOperator: '星野', cmNotified: '連絡済み（電話）', prev: { lastOperator: '工藤' } } };
+  const server = [{ name: '根岸君男', date: '2026-07-07', lastOperator: '工藤', cmNotified: '連絡済み（Gmail手動）' }];  // 書込が通っていない
+  const r = kbVerifyPendingPast_(pending, server, '根岸君男|2026-07-07');
+  return r.ok === false && !('根岸君男|2026-07-07' in pending);   // 不一致→保留破棄＝サーバ値(工藤)が出る
+}, 'OU8(★★嘘表示を残さない): サーバ値が楽観値と違えば保留を破棄し、元(サーバ)の担当に戻す');
+okSafe(() => {
+  const src = extractFn('kbVerifyPendingPast_', true) + extractFn('kbSubmitPastContact_', true);
+  return /記録できませんでした|記録を確認できませんでした/.test(src);
+}, 'OU9(★): 巻き戻し時に明示エラーを出す（黙って戻さない）');
+
+// ちらつき/整合
+okSafe(() => {
+  const src = extractFn('kbRenderDayNow_', true);
+  return /kbApplyPendingPast_/.test(src);
+}, 'OU10(★ちらつき防止): kbRenderDayNow_ が pool に保留オーバーレイを適用してから items を作る（遅れて返る再取得が楽観表示を崩さない）');
+okSafe(() => {
+  const env = editEnv();
+  const api = bindFns(EDIT_FNS, env);
+  api.kbEditContactedPast_('根岸君男', '2026-07-07');
+  api.kbSelectPastOperator_('星野', mkBtn());
+  api.kbConfirmPastContact_();
+  return env.__calls.every(c => c.action !== 'send_box_cm_mails');
+}, 'OU11(★送信ゼロ): 楽観的更新を入れても send_box_cm_mails を呼ばない');
 
 console.log('\n実測ハーネス(past-contact): ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
