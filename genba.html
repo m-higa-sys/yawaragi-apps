@@ -1519,11 +1519,14 @@
              各モーダル内で担当者を選ぶso不要。「前の人の名前が残ったまま記録される」経路を構造的にゼロにした。
              ※欠席登録タブの受付者セレクタ(#abs-receptionist-card)は別物・非接触（reporter等の実データに使用）。 -->
         <!-- 2026-07-06 過去+未来ビュー: 日付送り帯（#kbox-section内・init非依存・月グリッド無し） -->
-        <div id="kbox-datenav" style="display:flex; align-items:center; justify-content:center; gap:12px; margin:6px 0;">
+        <div id="kbox-datenav" style="display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:8px; margin:6px 0;">
             <button type="button" id="kbox-prev" onclick="kbGoDate(-1)" style="padding:4px 14px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:1rem;">◀</button>
             <span id="kbox-datelabel" style="font-weight:700; min-width:8em; text-align:center; font-size:1.35rem;"></span>
             <button type="button" id="kbox-next" onclick="kbGoDate(1)" style="padding:4px 14px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:1rem;">▶</button>
-            <input type="date" id="kbox-datepicker" onchange="kbJumpTo(this.value)" style="margin-left:8px; padding:3px 6px; border:1px solid #2c7a7b; border-radius:8px; font-size:.95rem;">
+            <!-- 2026-07-08: 「今日」ボタン。未連絡アラートの日付タップで過去日へ飛べるのに、戻る手段が
+                 ◀▶連打かピッカーしか無く片道切符だった。今日ビューでは kbRenderChrome_ が無効化する。 -->
+            <button type="button" id="kbox-today" onclick="kbGoToday()" style="padding:4px 12px; border:1px solid #2c7a7b; background:#fff; color:#2c7a7b; border-radius:8px; cursor:pointer; font-weight:700; font-size:.9rem;">今日</button>
+            <input type="date" id="kbox-datepicker" onchange="kbJumpTo(this.value)" style="margin-left:4px; padding:3px 6px; border:1px solid #2c7a7b; border-radius:8px; font-size:.95rem;">
         </div>
         <div id="kbox-viewonly-banner" style="display:none; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; border-radius:8px; padding:5px 10px; font-size:.85rem; font-weight:700; margin:6px 0;">👀 閲覧のみ（送信・電話記録は当日のみ）</div>
         <!-- Phase3 未連絡アラート（2026-07-08）: 第3営業日以内の未連絡を集約表示・タップでその日へジャンプ。
@@ -7582,6 +7585,11 @@ function kbJumpTo(ymd) {
     kbState.viewDate = String(ymd);
     kbRenderForDate(kbState.viewDate);
 }
+// 「今日」ボタン（2026-07-08）。未連絡アラートから過去日へ飛んだあと今日へ戻る導線。
+// ★既存 kbJumpTo に一本化する（viewDate 直書き・独自再描画を新設しない＝経路の二重化を避ける）。
+function kbGoToday() {
+    kbJumpTo(jstTodayStr());
+}
 
 // coreのkbIsAlreadyNotified_/kbClassifyCard_と同一ロジックをブラウザにインライン移植
 // （core はnode require用。二重定義でなく「同一判定を両所で保証」＝テストがcoreを検証）
@@ -8004,6 +8012,13 @@ function kbRenderChrome_(viewDate, today, viewIsToday) {
     if (label) label.textContent = kbFmtChip_(viewDate) + (viewIsToday ? '（今日）' : '');
     const banner = document.getElementById('kbox-viewonly-banner');
     if (banner) banner.style.display = viewIsToday ? 'none' : 'block';
+    // 今日を表示中は「今日」ボタンを無効化（押しても意味がない）。要素不在でも落ちない。
+    const todayBtn = document.getElementById('kbox-today');
+    if (todayBtn) {
+        todayBtn.disabled = !!viewIsToday;
+        todayBtn.style.opacity = viewIsToday ? '0.4' : '1';
+        todayBtn.style.cursor = viewIsToday ? 'default' : 'pointer';
+    }
     // ★kbRender は「今日の欠席0人」で早期returnするso、アラートはここ（return前）で描く。
     //   そうしないと「今日0人・過去に未連絡あり」の日に一切出ない＝誤陰性になる。
     kbRenderUnnotifiedAlert_(today, viewIsToday);
