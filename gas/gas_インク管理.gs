@@ -28,7 +28,7 @@
 // LINE通知用（yawaragiボードと共通）
 var LINE_TOKEN = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
 var OWNER_USER_ID = PropertiesService.getScriptProperties().getProperty('OWNER_USER_ID');
-var OWNER_EMAIL = 'm-higa@keepfitlife.com';
+var OWNER_EMAIL = 'yawaragi.notify@gmail.com';
 
 // シート名
 var SHEET_STOCK   = 'インク在庫';
