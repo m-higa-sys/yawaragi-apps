@@ -224,6 +224,11 @@ function saveSchedTimes(jsonStr) {
       return 'OK(empty-guard: ' + mergeDay + ' skipped, existing preserved)';
     }
 
+    // 送迎連絡: 上書き前の値を退避（旧時間A1引き当て用）。この後 routes[mergeDay] は delete/置換される。
+    var _ovPrev = _readSchedOverrides();                    // 上書き前の overrides 全体（同 date の直前値を含む）
+    var _existingRoutesBefore = (existing.routes && existing.routes[mergeDay])
+      ? JSON.parse(JSON.stringify(existing.routes[mergeDay])) : null; // 上書き前の曜日ベース routes[mergeDay]
+
     // 曜日単位のマージ: その曜日の既存データをクリアしてから新データを入れる
     // まず既存の全ユーザーからこの曜日のデータを削除
     for (var name in existing.schedTime) {
@@ -288,6 +293,63 @@ function saveSchedTimes(jsonStr) {
       _ovStore[parsed.overrideDate] = _ovEntry;
       _pruneSchedOverrides(_ovStore); // 過去日付・不正キーを間引き（A1肥大防止）
       _writeSchedOverrides(_ovStore);
+
+      // === 新規: 変更色ON の迎え(pick)を台帳へ「要連絡」で追記（②自動トリガー）===
+      // 実データ形: newData.routes[mergeDay].{am,pm}.pick[*].stops[*] = {user, time, timeChanged}
+      // AM/PM ロスレス（社長要件・先勝ち禁止）: timeChanged のある pick を AM/PM 全部拾い、
+      //   利用者ごとに changes=[{slot,old,new}] を束ねて (適用日,利用者) の1行に追記。
+      // 旧時間源: 上書き前の同キー override（_ovPrev）→ 無ければ上書き前の曜日ベース（_existingRoutesBefore）。
+      (function _appendNeedContactRows() {
+        var _latest = _readSchedContactLatest();
+        var _ovPrevRoutes = (_ovPrev && _ovPrev[parsed.overrideDate] && _ovPrev[parsed.overrideDate].routes) || null;
+
+        // 指定スロット(am/pm)の pick stops を {user: time} に畳む小ヘルパ（旧時間の引き当て用）
+        function pickTimesOfSlot(routesForDay, ap) {
+          var m = {};
+          var lanes = routesForDay && routesForDay[ap] && routesForDay[ap].pick;
+          if (!Array.isArray(lanes)) return m;
+          lanes.forEach(function(lane) {
+            var stops = lane && lane.stops;
+            if (!Array.isArray(stops)) return;
+            stops.forEach(function(st) {
+              if (st && st.user && m[st.user] == null && st.time) m[st.user] = String(st.time);
+            });
+          });
+          return m;
+        }
+
+        // 今回保存した override の pick stops を走査し、timeChanged の迎えを利用者ごとに集約
+        var savedRoutes = _ovRoutes;                          // = newData.routes[mergeDay]
+        var byUser = {};                                      // user -> [{slot,old,new}]
+        ['am', 'pm'].forEach(function(ap) {
+          var slotLabel = (ap === 'am') ? '午前' : '午後';
+          var prevOvSlot = pickTimesOfSlot(_ovPrevRoutes, ap);
+          var baseSlot = pickTimesOfSlot(_existingRoutesBefore, ap);
+          var lanes = savedRoutes && savedRoutes[ap] && savedRoutes[ap].pick;
+          if (!Array.isArray(lanes)) return;
+          lanes.forEach(function(lane) {
+            var stops = lane && lane.stops;
+            if (!Array.isArray(stops)) return;
+            stops.forEach(function(st) {
+              if (!st || !st.user || !st.timeChanged) return;
+              var oldTime = resolveOldTime(prevOvSlot[st.user] || '', baseSlot[st.user] || '');
+              if (!byUser[st.user]) byUser[st.user] = [];
+              byUser[st.user].push({ slot: slotLabel, old: oldTime, new: String(st.time || '') });
+            });
+          });
+        });
+
+        // 利用者ごとに1行 追記（重複ガード＝同キー最新が要連絡かつ changes 完全一致なら skip）
+        Object.keys(byUser).forEach(function(user) {
+          var changes = byUser[user];
+          var key = parsed.overrideDate + '|' + user;
+          var cur = _latest[key];
+          if (cur && cur.status === '要連絡' && JSON.stringify(cur.changes || []) === JSON.stringify(changes)) return;
+          _appendSchedContactRow({
+            date: parsed.overrideDate, user: user, status: '要連絡', source: '出勤送迎表', changes: changes
+          });
+        });
+      })();
     }
   } else {
     // 全データ上書き（一括同期用）
@@ -1133,4 +1195,29 @@ function _test_schedContactSheet() {
   var latest1 = _readSchedContactLatest();
   Logger.log('追記後 テスト太郎: ' + JSON.stringify(latest1['2099-01-01|テスト太郎']));
   // 後始末: 台帳末尾のテスト行(2099-01-01)を手動削除すること
+}
+
+// 実 overrides を走査し、同一日・同一 user が am/pm 両方の pick に出るケースを数える（読み取り専用）。
+// 0 件なら AM/PM 畳み（changes 集約）は落ちる情報ゼロで完全に安全と確定できる（社長要件の確認）。
+function _count_amPmPickOverlap() {
+  var ov = _readSchedOverrides();
+  var overlaps = [];
+  Object.keys(ov || {}).forEach(function(date) {
+    var routes = ov[date] && ov[date].routes;
+    if (!routes) return;
+    function usersOf(ap) {
+      var set = {};
+      var lanes = routes[ap] && routes[ap].pick;
+      if (Array.isArray(lanes)) lanes.forEach(function(lane) {
+        var stops = lane && lane.stops;
+        if (Array.isArray(stops)) stops.forEach(function(st) { if (st && st.user) set[st.user] = true; });
+      });
+      return set;
+    }
+    var am = usersOf('am'), pm = usersOf('pm');
+    Object.keys(am).forEach(function(u) { if (pm[u]) overlaps.push(date + ' / ' + u); });
+  });
+  Logger.log('AM/PM 両pick 掛け持ち: ' + overlaps.length + ' 件');
+  overlaps.forEach(function(s) { Logger.log('  ' + s); });
+  return overlaps;
 }
