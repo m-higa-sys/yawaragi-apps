@@ -183,7 +183,16 @@ tryOk(() => {
   ok2(html.indexOf('id="kbox-prev"') >= 0 && html.indexOf('kbGoDate(-1)') >= 0, 'K2: ◀=kbGoDate(-1)');
   ok2(html.indexOf('id="kbox-next"') >= 0 && html.indexOf('kbGoDate(1)') >= 0, 'K3: ▶=kbGoDate(1)');
   ok2(html.indexOf('id="kbox-datelabel"') >= 0, 'K4: 中央日付ラベルが存在');
-  ok2(html.indexOf('id="kbox-viewonly-banner"') >= 0, 'K5: 閲覧のみ帯が存在');
+  ok2(html.indexOf('id="kbox-viewonly-banner"') >= 0, 'K5: 過去日帯が存在');
+  // K5b(2026-07-09 範囲拡大-38後): 過去日でも「連絡済みの記録」はできるので「閲覧のみ」は誤解を生む。
+  //   帯の表示文言だけを実態に合わせる（当日ガードのロジック/トースト「閲覧のみです」は非接触）。
+  {
+    const bs = html.indexOf('id="kbox-viewonly-banner"');
+    const be = html.indexOf('</div>', bs);
+    const banner = html.slice(bs, be);
+    ok2(banner.indexOf('連絡済みの記録はできます') >= 0, 'K5b(★実態一致): 帯に「連絡済みの記録はできます」を明記（過去日=何もできない、の誤解を解く）');
+    ok2(banner.indexOf('👀 閲覧のみ（') < 0, 'K5c(★誤解排除): 帯の旧文言「👀 閲覧のみ（」を残さない（トースト「閲覧のみです」は別物で非接触）');
+  }
   // K6反転(2026-07-08): 日付ピッカー導入でチップは役目を終えたso削除。消し忘れをテストで固定する。
   ok2(html.indexOf('id="kbox-jumpchips"') < 0, 'K6(★削除保証): ジャンプチップ行が存在しない');
   // ★日付移動手段(ピッカー/◀▶)は残る＝kbJumpToはピッカーが使うso削除不可
