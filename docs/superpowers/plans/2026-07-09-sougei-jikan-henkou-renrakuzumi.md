@@ -12,6 +12,21 @@
 
 ---
 
+## 実装状況（2026-07-09 時点）／再開ゲート
+
+- **ブランチ**: `feat/sougei-renrakuzumi`（worktree `C:/tmp/wt-sougei-renrakuzumi`・origin/master 基点・**未push**）。
+- **完了（コミット済・ローカル）**: Task 0（名簿=ボードGAS staff_list 確定）／Task 1-4（純関数4本・Node **18 PASS**）／Task 5-8（GAS配線）。
+- **Task 5-8 の検証状況**: 構文OK・純追加・回帰維持まで。**GASランタイムでは未実行**（＝「動く」証拠はまだ無い）。
+- **⚠️ 再開ゲート（次の clasp 窓で Task 9 より前に必ず実施・サーバー再読で確認）**:
+  1. `_test_schedContactSheet` … 台帳 ensure/append/read が動くか。
+  2. `_count_amPmPickOverlap` … 実 overrides の AM/PM 掛け持ち件数。**0 件なら畳み完全安全と確定・社長へ報告**。
+  3. 擬似 `saveSchedTimes`（未来日・pick に timeChanged=true。可能なら am/pm 両方）→ **台帳を再読**し「要連絡」行が入る・列11 changes に AM/PM 両方入る・重複追記されないことを確認。
+  4. `doPost markSchedContacted` → **getSchedTimesResponse を再読**し `contactStatus[date|user]` が 要連絡→連絡済み へ遷移するか確認（no-cors 成功レスで判定しない）。
+  - 上記4つがサーバー再読で確認できて初めて **Task 9-A/9-B へ進む**。
+- **確定事項**: 連絡者に比嘉（社長）は**含めない**（2026-07-09 社長確定）。
+
+---
+
 ## 前提・厳守事項
 
 - **Q1 ゲート（§8）**: 連絡者セレクタの候補ソース（スタッフ名簿）が未確定。**Task 0 の調査が完了して名簿ソースが確定するまで、Task 9-B（連絡者セレクタ）のコーディングに入らない。** Task 1〜8・9-A は名簿に依存しないので先行可。
@@ -769,8 +784,8 @@ function sgLoadOperators() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var list = (data && data.staff) ? data.staff.slice() : [];
-      // 比嘉（社長）は staff_list に含まれない前例（yawaragi-board.html:5311）。送迎連絡者に社長を含めるならここで先頭固定で足す。
-      // → 送迎連絡者に社長を含めるか否かは実装時に社長へ一言確認（既定: staff_list のまま・社長は足さない）。
+      // 比嘉（社長）は含めない（2026-07-09 社長確定）＝staff_list のまま。将来必要になれば
+      // yawaragi-board.html:5311 前例に倣い先頭固定で足す（今は足さない）。
       return list;
     })
     .catch(function() { return []; });   // 取得失敗時は空（モーダルで「名簿を取得できません」表示）
@@ -779,7 +794,9 @@ function sgLoadOperators() {
 
 取得した配列をモーダル内 `<select id="sg-operator-select">` に `<option>` で流す（受付者バー直読はしない・欠席box/kbox の「モーダル内選択」パターン）。名簿が空なら連絡済みボタンを押させず「名簿を取得できません」を表示。
 
-*⚠️ 社長への一言確認事項（実装時）: 送迎の連絡者に**比嘉（社長）を含めるか**。既定は staff_list のまま（含めない）。含めるなら上記コメント位置で先頭固定。*
+**モーダルの変更内容表示（AM/PMロスレス）**: モーダル上部に、対象 (適用日,利用者) の `contactStatus[date|user].changes`（`[{slot,old,new}]`）を**全スロット並べて**表示する（例「午前 09:10→09:30 ／ 午後 13:00→13:20」）。先頭1件だけにしない（社長要件＝連絡漏れ防止）。changes が空なら旧時間→新時間（列5-6由来）でフォールバック。
+
+*連絡者に比嘉（社長）を含めるかは **2026-07-09 社長確定＝含めない**（staff_list のまま）。将来必要になれば先頭固定で追加。*
 
 - [ ] **Step 3: 連絡済みボタン → モーダル → POST（no-cors）→ ライトバック検証**
 
