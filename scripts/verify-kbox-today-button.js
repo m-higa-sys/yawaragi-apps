@@ -124,16 +124,21 @@ function chromeEnv(opts) {
   const calls = [];
   const env = {
     document: { getElementById: id => els[id] || null },
-    kbState: { viewDate: o.viewDate || '2026-07-08', forward: [] },
+    kbState: { viewDate: o.viewDate || '2026-07-08', forward: [], oldUnnotifiedOpen: false },
     attMonthAbsCache: ('cache' in o) ? o.cache : { '2026-07': (o.month || []) },
     kbUnnotifiedFailed_: false,
+    KB_RECORD_MONTHS: 12,                               // Step B: 古いゾーン(kbRenderChrome_相乗り)が参照
+    jstTodayStr: () => o.today || (o.viewDate || '2026-07-08'),
     fetch: () => { calls.push(['fetch']); },
   };
   env.__els = els; env.__calls = calls;
   return env;
 }
-const CHROME_FNS = ['kbAddDaysYMD_', 'kbBizDaysAgo_', 'kbPastContactEligible_', 'kbIsDoneInline_', 'kbEsc_', 'kbFmtChip_',
-  'kbUnnotifiedMonths_', 'kbUnnotifiedRangeLoaded_', 'kbUnnotifiedInRange_', 'kbRenderUnnotifiedAlert_', 'kbRenderChrome_'];
+// ★kbRenderChrome_ が相乗りで呼ぶ Step B の古いゾーン関数もbindする（未定義参照で偽FAILしないよう関数リストを揃える）。
+const CHROME_FNS = ['kbAddDaysYMD_', 'kbBizDaysAgo_', 'kbPastContactEligible_', 'kbPastContactRecordable_', 'kbIsDoneInline_', 'kbEsc_', 'kbFmtChip_',
+  'kbUnnotifiedMonths_', 'kbUnnotifiedRangeLoaded_', 'kbUnnotifiedInRange_',
+  'kbUnnotifiedOldMonths_', 'kbUnnotifiedOldLoaded_', 'kbUnnotifiedOldInRange_', 'kbToggleOldUnnotified_',
+  'kbRenderUnnotifiedAlert_', 'kbRenderChrome_'];
 function bindChrome(env) {
   const src = CHROME_FNS.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
   const keys = Object.keys(env).filter(k => k.indexOf('__') !== 0);

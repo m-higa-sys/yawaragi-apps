@@ -42,8 +42,12 @@ const realSources = [
   // ここ（抽出ホワイトリスト方式のハーネス）に載せ忘れると未定義参照で即死する。実装ではなく抽出漏れ。
   // アラート本体が本当に描かれるかを 3state でも実駆動させる（typeofスタブで握り潰さない）。
   extractLet('kbUnnotifiedFailed_'),
-  extractFn('kbBizDaysAgo_'), extractFn('kbPastContactEligible_'),
+  extractFn('kbBizDaysAgo_'), extractFn('kbPastContactEligible_'), extractFn('kbPastContactRecordable_'),
   extractFn('kbUnnotifiedMonths_'), extractFn('kbUnnotifiedRangeLoaded_'), extractFn('kbUnnotifiedInRange_'),
+  // Step B(2026-07-09): kbRenderUnnotifiedAlert_ が二段化し、古いゾーン関数を無ガードで呼ぶ。
+  //   ここに載せ忘れると未定義参照で即死する（実装ではなく抽出漏れ）。typeofスタブで握り潰さず実駆動させる。
+  extractFn('kbUnnotifiedOldMonths_'), extractFn('kbUnnotifiedOldLoaded_'), extractFn('kbUnnotifiedOldInRange_'),
+  extractFn('kbToggleOldUnnotified_'),
   extractFn('kbRenderUnnotifiedAlert_'),
 ].join('\n\n');
 
@@ -52,6 +56,7 @@ let __scriptedAbs = [];   // kbJsonp_('absences') が順に返す応答列（尽
 let __absIdx = 0;
 let attMonthAbsCache = {};
 let __scriptedMonth = null;   // attEnsureMonthAbsences が cb 前に cache へ入れる配列（null=失敗で埋めない）
+const KB_RECORD_MONTHS = 12;   // Step B: kbPastContactRecordable_ / 古いゾーンが参照（実コードのconstと同値）
 async function kbJsonp_(action, idSuffix) {
   if (action === 'absences') { const v = __scriptedAbs[Math.min(__absIdx, __scriptedAbs.length - 1)]; __absIdx++; return v; }
   if (action === 'cm_method_audit') return { audit: [] };

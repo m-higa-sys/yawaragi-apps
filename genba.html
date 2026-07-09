@@ -7403,7 +7403,7 @@ function absInit() {
 // 独立init（f774228型回避: 要素不在なら黙ってreturn・既存init連鎖に新id依存を差し込まない）
 // GET=JSONP / POST=no-cors のgenba既存流儀を厳守（クロスオリジン制約）。
 // ============================================================
-let kbState = { items: [], checked: {}, methodMap: {}, methodLoaded: false, viewDate: '', forward: [], _ensuringYm: '', loadedOnce: false, forwardOk: false };
+let kbState = { items: [], checked: {}, methodMap: {}, methodLoaded: false, viewDate: '', forward: [], _ensuringYm: '', loadedOnce: false, forwardOk: false, oldUnnotifiedOpen: false };
 
 // ===== 2026-07-06 過去+未来ビュー: 純関数インライン移植（core=kesseki-box-core.js と同一ロジック・両所保証） =====
 function kbAddDaysYMD_(ymd, delta) {
@@ -7721,6 +7721,62 @@ function kbUnnotifiedInRange_(pool, todayYMD) {
     });
     dates.sort();
     return { count: count, dates: dates };
+}
+
+// ===== Step B: 古いゾーン（第3営業日超〜12ヶ月）の未連絡 =====
+// 記録は12ヶ月まで可能（Step A）にしたので、直近(赤)より古い未対応も「折りたたみ」で気づけるようにする。
+// ★誤陰性ゼロ: 古い必要月は範囲が広く遅延取得(Step C)なので、未取得を0と断定しない。
+//   0と断定してよいのは kbUnnotifiedOldLoaded_ が true（全古い月を取得済み）のときだけ。
+
+// 古いゾーンの必要月＝下限月(12ヶ月前の同日を含む月)〜当月。月跨ぎで前月の未連絡を見落とさない。
+function kbUnnotifiedOldMonths_(todayYMD) {
+    const t = String(todayYMD).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!t) return [];
+    const lower = new Date(+t[1], +t[2] - 1 - KB_RECORD_MONTHS, +t[3]);   // 12ヶ月前の同日（境界含む）
+    const list = [];
+    let y = lower.getFullYear(), m = lower.getMonth();                    // m は 0-based
+    const ty = +t[1], tm = +t[2] - 1;
+    while (y < ty || (y === ty && m <= tm)) {
+        list.push(y + '-' + String(m + 1).padStart(2, '0'));
+        m++; if (m > 11) { m = 0; y++; }
+    }
+    return list;
+}
+
+// 古いゾーンの必要月がすべて揃ったか（空配列[]も取得成功の正当な値）。未取得は false＝0と断定しない。
+function kbUnnotifiedOldLoaded_(todayYMD, monthCache) {
+    const need = kbUnnotifiedOldMonths_(todayYMD);
+    const mc = monthCache || {};
+    for (let i = 0; i < need.length; i++) {
+        if (!mc[need[i]]) return false;                   // undefined/null は未取得扱い
+    }
+    return true;
+}
+
+// 古いゾーンの未連絡集計。直近(第3営業日以内=赤)は除外し、赤と二重計上しない。
+function kbUnnotifiedOldInRange_(pool, todayYMD) {
+    const seen = {}, dates = [];
+    let count = 0;
+    (pool || []).forEach(function (a) {
+        if (!a || a.isLongTerm) return;                   // 長期休みは対象外
+        const d = String(a.date || '');
+        if (!kbPastContactRecordable_(d, todayYMD)) return; // 12ヶ月以内の過去日（境界含む）
+        if (kbPastContactEligible_(d, todayYMD)) return;    // 直近(第3営業日以内=赤)は古いゾーンから除外
+        if (kbIsDoneInline_(a.cmNotified)) return;          // 連絡済み（手段不問）は除外
+        count++;
+        if (!seen[d]) { seen[d] = true; dates.push(d); }
+    });
+    dates.sort();
+    return { count: count, dates: dates };
+}
+
+// 折りたたみ（古い未連絡）の展開/収納トグル。展開すると古い日付一覧が現れる。書込ゼロ（再描画のみ）。
+function kbToggleOldUnnotified_() {
+    kbState.oldUnnotifiedOpen = !kbState.oldUnnotifiedOpen;
+    const today = (typeof jstTodayStr === 'function') ? jstTodayStr() : kbState.viewDate;
+    if (typeof kbRenderUnnotifiedAlert_ === 'function') {
+        kbRenderUnnotifiedAlert_(today, kbState.viewDate === today);
+    }
 }
 
 let kbPastContactEditing = null;   // 過去日連絡記録の対象 {name, date}
@@ -8062,19 +8118,54 @@ function kbRenderUnnotifiedAlert_(today, viewIsToday) {
         box.innerHTML = '<div style="color:#888; font-size:.85rem;">未連絡を確認中…</div>';
         return;
     }
-    // 必要月がすべて揃った＝ここで初めて「0件」と断定してよい
+    // 必要月がすべて揃った＝ここで初めて「0件」と断定してよい（直近＝赤）
     const pool = [];
     kbUnnotifiedMonths_(today).forEach(function (ym) {
         (attMonthAbsCache[ym] || []).forEach(function (a) { pool.push(a); });
     });
     const r = kbUnnotifiedInRange_(pool, today);
-    if (!r.count) { box.innerHTML = ''; return; }       // ④確定・0件 → 非表示
+    let redHtml = '';
+    if (r.count) {
+        const links = r.dates.map(function (d) {
+            return '<button type="button" onclick="kbJumpTo(\'' + kbEsc_(d) + '\')" style="background:none; border:none; color:#991b1b; font-weight:700; text-decoration:underline; cursor:pointer; padding:0 2px; font-size:.88rem;">' + kbEsc_(kbFmtChip_(d)) + '</button>';
+        }).join('<span style="color:#991b1b;"> ・ </span>');
+        redHtml = '<div style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; border-radius:8px; padding:6px 10px; font-size:.88rem; font-weight:700;">'
+            + '⚠️ 連絡未 ' + r.count + '件（' + links + '）</div>';
+    }
 
-    const links = r.dates.map(function (d) {
-        return '<button type="button" onclick="kbJumpTo(\'' + kbEsc_(d) + '\')" style="background:none; border:none; color:#991b1b; font-weight:700; text-decoration:underline; cursor:pointer; padding:0 2px; font-size:.88rem;">' + kbEsc_(kbFmtChip_(d)) + '</button>';
-    }).join('<span style="color:#991b1b;"> ・ </span>');
-    box.innerHTML = '<div style="background:#fef2f2; color:#991b1b; border:1px solid #ef4444; border-radius:8px; padding:6px 10px; font-size:.88rem; font-weight:700;">'
-        + '⚠️ 連絡未 ' + r.count + '件（' + links + '）</div>';
+    // ★Step B: 古いゾーン（第3営業日超〜12ヶ月）は控えめな折りたたみ。
+    //   ★誤陰性ゼロ: old月が未取得のときは件数を断定せず「確認する」導線のみ（「0件」「なし」と言わない）。
+    //   取得済みで確実に0のときだけ折りたたみ行を出さない（＝未取得と明確に区別する）。
+    let oldHtml = '';
+    const oldBtnStyle = 'background:none; border:none; color:#6b7280; text-decoration:underline; cursor:pointer; padding:0; font-size:.82rem;';
+    const oldWrapStyle = 'margin-top:4px; color:#6b7280; font-size:.82rem;';
+    if (kbUnnotifiedOldLoaded_(today, attMonthAbsCache)) {
+        const oldPool = [];
+        kbUnnotifiedOldMonths_(today).forEach(function (ym) {
+            (attMonthAbsCache[ym] || []).forEach(function (a) { oldPool.push(a); });
+        });
+        const ro = kbUnnotifiedOldInRange_(oldPool, today);
+        if (ro.count) {
+            if (kbState.oldUnnotifiedOpen) {
+                const oldLinks = ro.dates.map(function (d) {
+                    return '<button type="button" onclick="kbJumpTo(\'' + kbEsc_(d) + '\')" style="background:none; border:none; color:#374151; font-weight:700; text-decoration:underline; cursor:pointer; padding:0 2px; font-size:.82rem;">' + kbEsc_(kbFmtChip_(d)) + '</button>';
+                }).join('<span style="color:#9ca3af;"> ・ </span>');
+                oldHtml = '<div style="' + oldWrapStyle + '">'
+                    + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">△ 他に古い未連絡 ' + ro.count + '件</button>'
+                    + '<div style="margin-top:2px;">' + oldLinks + '</div></div>';
+            } else {
+                oldHtml = '<div style="' + oldWrapStyle + '">'
+                    + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">他に古い未連絡 ' + ro.count + '件 ▽</button></div>';
+            }
+        }
+        // ro.count === 0 → 取得済みで確実に0 → 折りたたみ行を出さない（未取得と区別）
+    } else {
+        // ★old月未取得 → 件数を断定しない（Step C で ▽ 展開時に取得する）
+        oldHtml = '<div style="' + oldWrapStyle + '">'
+            + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">▽ 古い未連絡も確認する</button></div>';
+    }
+
+    box.innerHTML = redHtml + oldHtml;
 }
 
 function kbToggleCheck(name, checked) {

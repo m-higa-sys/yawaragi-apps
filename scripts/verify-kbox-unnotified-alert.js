@@ -207,16 +207,20 @@ function chromeEnv(opts) {
   const calls = [];
   const env = {
     document: { getElementById: id => els[id] || null },
-    kbState: { viewDate: o.viewDate || '2026-07-08', forward: o.forward || [] },
+    kbState: { viewDate: o.viewDate || '2026-07-08', forward: o.forward || [], oldUnnotifiedOpen: ('oldOpen' in o) ? o.oldOpen : false },
     attMonthAbsCache: ('cache' in o) ? o.cache : { '2026-07': (o.month || []) },
     kbUnnotifiedFailed_: ('failed' in o) ? o.failed : false,
+    KB_RECORD_MONTHS: 12,                               // Step B: 古いゾーンは記録範囲(12ヶ月)に一致
+    jstTodayStr: () => o.today || (o.viewDate || '2026-07-08'),
     fetch: () => { calls.push({ fetch: true }); },
   };
   env.__els = els; env.__calls = calls;
   return env;
 }
-const CHROME_FNS = ['kbAddDaysYMD_', 'kbBizDaysAgo_', 'kbPastContactEligible_', 'kbIsDoneInline_', 'kbEsc_', 'kbFmtChip_',
-  'kbUnnotifiedMonths_', 'kbUnnotifiedRangeLoaded_', 'kbUnnotifiedInRange_', 'kbRenderUnnotifiedAlert_', 'kbRenderChrome_'];
+const CHROME_FNS = ['kbAddDaysYMD_', 'kbBizDaysAgo_', 'kbPastContactEligible_', 'kbPastContactRecordable_', 'kbIsDoneInline_', 'kbEsc_', 'kbFmtChip_',
+  'kbUnnotifiedMonths_', 'kbUnnotifiedRangeLoaded_', 'kbUnnotifiedInRange_',
+  'kbUnnotifiedOldMonths_', 'kbUnnotifiedOldLoaded_', 'kbUnnotifiedOldInRange_', 'kbToggleOldUnnotified_',
+  'kbRenderUnnotifiedAlert_', 'kbRenderChrome_'];
 function bindChrome(env) {
   const src = CHROME_FNS.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
   const keys = Object.keys(env).filter(k => k.indexOf('__') !== 0);
@@ -466,10 +470,14 @@ okSafe(() => {
 }, 'J2(★★誤陰性): 失敗フラグのクリアは「全必要月が揃ったとき」だけ1箇所（後勝ちで失敗を消さない）');
 okSafe(() => {
   const src = extractFn('kbRenderUnnotifiedAlert_');
-  // 「0件で非表示」は kbUnnotifiedRangeLoaded_ を通過した後にしか到達しない
+  // 「0件→赤非表示」は kbUnnotifiedRangeLoaded_ の早期returnを通過した後にしか到達しない。
+  // ★Step Bで「直近0件でも古い折りたたみを出す」ため early-return(if(!r.count)return)を廃止し
+  //   if(r.count){redHtml=…} 方式へ変更。それでも順序の本質は不変so、緩めずに強化して固定する：
+  //   充填判定(kbUnnotifiedRangeLoaded_) → 直近集計(kbUnnotifiedInRange_) → 0件判定(if(r.count)) の順。
   const loaded = src.indexOf('kbUnnotifiedRangeLoaded_');
-  const zero = src.indexOf('if (!r.count)');
-  return loaded >= 0 && zero >= 0 && loaded < zero;
+  const agg = src.indexOf('kbUnnotifiedInRange_');
+  const zero = src.indexOf('if (r.count)');
+  return loaded >= 0 && agg >= 0 && zero >= 0 && loaded < agg && agg < zero;
 }, 'J3(★★): 「0件→非表示」は充填判定を通過した後にしか到達しない（構造で誤陰性を封じる）');
 okSafe(() => {
   const src = extractFn('kbRenderUnnotifiedAlert_');
@@ -487,6 +495,212 @@ okSafe(() => {
   const chrome = extractFn('kbRenderChrome_');
   return !/fetch\(|attEnsureMonthAbsences/.test(chrome);
 }, 'J6(★★書込ゼロ/描画純粋): kbRenderChrome_ は fetch も ensure も呼ばない（描画は取得を誘発しない）');
+
+// ================= K) ★★Step B 二段アラート（直近=赤／古い=折りたたみ・遅延展開） =================
+// 記録の3営業日制限を撤廃し「未対応が残る限りいつでも記録できる」にした（Step A）のに合わせ、
+// アラートも二段構えにする。直近(第3営業日以内)=赤・古い(第3営業日超〜12ヶ月)=控えめな折りたたみ。
+//
+// ★★誤陰性ゼロの核心（Step B）: old月が未取得のとき、折りたたみの件数を断定しない。
+//   「古い未連絡 0件」「なし」と確定表示してよいのは、old月を取得して確実に0のときだけ。
+//   未取得を0と誤らない＝Phase3の直近(赤)の誤陰性ゼロと同じ思想を古いゾーンにも適用する。
+console.log('■ K) ★★Step B 二段アラート（直近=赤／古い=折りたたみ）');
+
+// 古いゾーン込みの純関数バインダ（KB_RECORD_MONTHS を prelude で供給）
+const PURE_B = ['kbAddDaysYMD_', 'kbBizDaysAgo_', 'kbPastContactEligible_', 'kbPastContactRecordable_', 'kbIsDoneInline_',
+  'kbUnnotifiedMonths_', 'kbUnnotifiedOldMonths_', 'kbUnnotifiedOldLoaded_', 'kbUnnotifiedOldInRange_'];
+function pureB() {
+  const src = PURE_B.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
+  const body = 'const KB_RECORD_MONTHS = 12;\n' + src + '\n\nreturn {' +
+    PURE_B.map(n => n + ': (typeof ' + n + '!=="undefined")?' + n + ':undefined').join(', ') + '};';
+  return new Function(body)();
+}
+// 直近＋古いの全必要月を[]で埋め、absList を日付から該当月へ配る（＝全取得済みの状態）
+function fullCache(today, absList) {
+  const p = pureB();
+  const months = {};
+  (p.kbUnnotifiedMonths_(today) || []).forEach(m => months[m] = []);
+  (p.kbUnnotifiedOldMonths_(today) || []).forEach(m => months[m] = []);
+  (absList || []).forEach(a => { const ym = String(a.date).slice(0, 7); if (!months[ym]) months[ym] = []; months[ym].push(a); });
+  return months;
+}
+// 直近月だけ[]で埋める（古い月は未取得のまま＝old未取得の状態）
+function nearOnlyCache(today, absList) {
+  const p = pureB();
+  const months = {};
+  (p.kbUnnotifiedMonths_(today) || []).forEach(m => months[m] = []);
+  (absList || []).forEach(a => { const ym = String(a.date).slice(0, 7); if (!months[ym]) months[ym] = []; months[ym].push(a); });
+  return months;
+}
+
+// --- K純関数: 古いゾーンの集計・必要月・充填判定 ---
+okSafe(() => {
+  const p = pureB();
+  // 7/8基準: 古い=第3営業日超〜12ヶ月。2026-06-15 は old（recordable かつ !eligible）
+  const pool = [abs('A', '2026-06-15'), abs('B', '2026-01-20')];
+  const r = p.kbUnnotifiedOldInRange_(pool, '2026-07-08');
+  return r.count === 2 && JSON.stringify(r.dates) === JSON.stringify(['2026-01-20', '2026-06-15']);
+}, 'K1(★純): kbUnnotifiedOldInRange_ は古いゾーンの未連絡を人数合計＋distinct昇順日付で返す');
+okSafe(() => {
+  const p = pureB();
+  // 直近(第3営業日以内)は古いゾーンに含めない（赤側の二重計上を防ぐ）
+  const pool = [abs('A', '2026-07-07')];   // eligible
+  return p.kbUnnotifiedOldInRange_(pool, '2026-07-08').count === 0;
+}, 'K2(★純): 直近(第3営業日以内)は古いゾーンに含めない（赤と重複させない）');
+okSafe(() => {
+  const p = pureB();
+  const pool = [abs('A', '2025-07-08')];   // ちょうど12ヶ月前＝境界（含む）
+  return p.kbUnnotifiedOldInRange_(pool, '2026-07-08').count === 1;
+}, 'K3(★境界): 12ヶ月前ちょうど(2025-07-08)は古いゾーンに含む');
+okSafe(() => {
+  const p = pureB();
+  const pool = [abs('A', '2025-07-07')];   // 12ヶ月+1日前＝範囲外
+  return p.kbUnnotifiedOldInRange_(pool, '2026-07-08').count === 0;
+}, 'K4(★境界): 12ヶ月を超える(2025-07-07)は古いゾーンに含まない（上限12ヶ月）');
+okSafe(() => {
+  const p = pureB();
+  const pool = [abs('A', '2026-06-15', '送信済'), abs('B', '2026-06-15', '電話連絡済')];
+  return p.kbUnnotifiedOldInRange_(pool, '2026-07-08').count === 0;
+}, 'K5(★done除外): 連絡済み(手段不問)は古いゾーンでも除外');
+okSafe(() => {
+  const p = pureB();
+  // 下限月(2025-07)〜当月(2026-07)を返す（月跨ぎで前月未連絡を見落とさない）
+  const ms = p.kbUnnotifiedOldMonths_('2026-07-08');
+  return ms[0] === '2025-07' && ms[ms.length - 1] === '2026-07' && ms.length === 13;
+}, 'K6(★純): kbUnnotifiedOldMonths_ は下限月(12ヶ月前)〜当月を返す');
+okSafe(() => {
+  const p = pureB();
+  return p.kbUnnotifiedOldLoaded_('2026-07-08', fullCache('2026-07-08', [])) === true
+    && p.kbUnnotifiedOldLoaded_('2026-07-08', nearOnlyCache('2026-07-08', [])) === false;
+}, 'K7(★★純): 古い必要月が全部揃えばtrue／直近月だけ揃っていてもold月未取得ならfalse（0と断定しない）');
+okSafe(() => {
+  const src = extractFn('kbUnnotifiedOldInRange_', true) + extractFn('kbUnnotifiedOldMonths_', true) + extractFn('kbUnnotifiedOldLoaded_', true);
+  return src.length > 0 && !/fetch\(|send_box_cm_mails|recordPastContact|updateAbsenceCmNotified/.test(src);
+}, 'K8(★★書込ゼロ): 古いゾーン純関数は fetch も 送信/記録action も呼ばない');
+
+// --- K描画: 二段アラートの4象限 × old取得状態 ---
+okSafe(() => {
+  // 直近1件(赤) ＋ 古い1件(取得済) → 赤と折りたたみが両方出る
+  const env = chromeEnv({ viewDate: '2026-07-08', cache: fullCache('2026-07-08', [abs('A', '2026-07-07'), abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('連絡未 ') >= 0 && h.indexOf('古い未連絡') >= 0;
+}, 'K9(★): 直近あり＋古いあり → 赤(連絡未)と折りたたみ(古い未連絡)が両方出る');
+okSafe(() => {
+  // 直近0件 ＋ 古い1件(取得済) → 赤は出さず折りたたみのみ
+  const env = chromeEnv({ viewDate: '2026-07-08', cache: fullCache('2026-07-08', [abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('連絡未 ') < 0 && h.indexOf('古い未連絡') >= 0;
+}, 'K10(★): 直近0＋古いあり → 赤なし・折りたたみのみ');
+okSafe(() => {
+  // 直近1件(赤) ＋ 古い0件(取得済で確実に0) → 赤のみ・折りたたみ行なし
+  const env = chromeEnv({ viewDate: '2026-07-08', cache: fullCache('2026-07-08', [abs('A', '2026-07-07')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('連絡未 ') >= 0 && h.indexOf('古い未連絡') < 0;
+}, 'K11(★): 直近あり＋古い0(取得済) → 赤のみ・折りたたみ行なし');
+okSafe(() => {
+  // 全0件(取得済) → アラート全体非表示
+  const env = chromeEnv({ viewDate: '2026-07-08', cache: fullCache('2026-07-08', []) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h === '' || (h.indexOf('連絡未') < 0 && h.indexOf('古い未連絡') < 0);
+}, 'K12(★): 全0件(取得済) → アラート全体非表示');
+okSafe(() => {
+  // 当日ビュー以外 → 二段とも非表示
+  const env = chromeEnv({ viewDate: '2026-07-07', cache: fullCache('2026-07-08', [abs('A', '2026-07-07'), abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-07', '2026-07-08', false);
+  const h = alertHtml(env);
+  return h === '' || (h.indexOf('連絡未') < 0 && h.indexOf('古い未連絡') < 0);
+}, 'K13(★): 当日ビュー以外 → 二段とも非表示');
+
+// --- K★★誤陰性ゼロの核心: old月未取得を「0件」と断定しない ---
+okSafe(() => {
+  // 直近0 ＋ old月未取得 → 「▽ 古い未連絡も確認する」（件数を断定しない）
+  const env = chromeEnv({ viewDate: '2026-07-08', cache: nearOnlyCache('2026-07-08', []) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  // 誤陰性ゼロ: 「0件」「なし」を出さない・確認導線を出す
+  return h.indexOf('確認する') >= 0 && h.indexOf('古い未連絡 0件') < 0 && h.indexOf('古い未連絡なし') < 0 && h.indexOf('なし') < 0;
+}, 'K14(★★★誤陰性ゼロ): old月未取得 → 「確認する」を出す・「0件/なし」と断定しない');
+okSafe(() => {
+  // ★区別: old月を取得して確実に0のときだけ「確定0(折りたたみ行なし)」にできる
+  //   ＝未取得(K14=確認する)と、取得済み0(折りたたみ行なし)を明確に区別する
+  const envLoaded = chromeEnv({ viewDate: '2026-07-08', cache: fullCache('2026-07-08', [abs('A', '2026-07-07')]) });
+  const apiL = bindChrome(envLoaded);
+  apiL.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const hL = alertHtml(envLoaded);
+  const envUnloaded = chromeEnv({ viewDate: '2026-07-08', cache: nearOnlyCache('2026-07-08', [abs('A', '2026-07-07')]) });
+  const apiU = bindChrome(envUnloaded);
+  apiU.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const hU = alertHtml(envUnloaded);
+  // 取得済み0＝折りたたみ行なし（確認する も出さない）／未取得＝確認する を出す
+  return hL.indexOf('確認する') < 0 && hL.indexOf('古い未連絡') < 0 && hU.indexOf('確認する') >= 0;
+}, 'K15(★★区別): 取得済み0(折りたたみ行なし)と未取得(確認する)を明確に区別する');
+
+// --- K★直近(赤)の誤陰性ゼロは Phase3 のまま維持（old未取得でも赤側は独立して機能）---
+okSafe(() => {
+  // 直近月が未取得 → 赤側は「確認中」（old未取得に引きずられず Phase3 の判定が生きている）
+  const env = chromeEnv({ viewDate: '2026-07-08', cache: {} });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('確認中') >= 0;
+}, 'K16(★誤陰性ゼロ維持): 直近月未取得 → 赤側は「確認中」（Phase3の判定を壊さない）');
+okSafe(() => {
+  // 直近取得失敗 → 赤側は「確認できませんでした」
+  const env = chromeEnv({ viewDate: '2026-07-08', cache: {}, failed: true });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('確認できませんでした') >= 0;
+}, 'K17(★誤陰性ゼロ維持): 直近取得失敗 → 赤側は「確認できませんでした」（Phase3のまま）');
+
+// --- K★折りたたみ展開: onclick が実データ経路で発火（DOM無しモックで済ませない）---
+okSafe(() => {
+  // 未展開: 折りたたみ行に kbToggleOldUnnotified_ の onclick があり、古い日付ボタンはまだ出ていない
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: false, cache: fullCache('2026-07-08', [abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('kbToggleOldUnnotified_()') >= 0 && /onclick="kbJumpTo\('2026-06-15'\)"/.test(h) === false;
+}, 'K18(★): 未展開 → 折りたたみ行に kbToggleOldUnnotified_() の onclick・古い日付ボタンは未表示');
+okSafe(() => {
+  // ★実クリック: kbToggleOldUnnotified_ を実行 → 展開状態になり、古い日付ボタン(kbJumpTo)が現れる
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: false, cache: fullCache('2026-07-08', [abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  api.kbToggleOldUnnotified_();                          // ← 実クリック相当（実データ経路で再描画）
+  const h = alertHtml(env);
+  return env.kbState.oldUnnotifiedOpen === true && /onclick="kbJumpTo\('2026-06-15'\)"/.test(h);
+}, 'K19(★★実クリック): kbToggleOldUnnotified_ 実行で展開→古い日付タップ(kbJumpTo)が現れる');
+okSafe(() => {
+  // 再クリックで畳む（トグル）
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: true, cache: fullCache('2026-07-08', [abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbToggleOldUnnotified_();
+  return env.kbState.oldUnnotifiedOpen === false;
+}, 'K20(★): 再クリックで畳む（oldUnnotifiedOpen をトグル）');
+okSafe(() => {
+  // 展開・トグルは書込ゼロ（fetch を呼ばない）
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: false, cache: fullCache('2026-07-08', [abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  api.kbToggleOldUnnotified_();
+  return env.__calls.length === 0;
+}, 'K21(★★書込ゼロ): 折りたたみ描画・トグルで fetch を一度も呼ばない');
+
+// --- K★非接触（Step B は送信/記録を1件も増やさない）---
+okSafe(() => (html.match(/send_box_cm_mails/g) || []).length === 1,
+  'K22(★非接触): send_box_cm_mails は1箇所のまま');
+okSafe(() => (html.match(/action:\s*'recordPastContact'/g) || []).length === 1,
+  'K23(★非接触): recordPastContact の実POSTは1本のまま（Step Bは記録POSTを増やさない）');
 
 console.log('\n実測ハーネス(unnotified-alert): ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
