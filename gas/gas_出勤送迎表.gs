@@ -1065,3 +1065,72 @@ function resolveOldTime(prevOverrideTime, weekdayBaseTime) {
   if (weekdayBaseTime) return String(weekdayBaseTime);
   return '';
 }
+
+// ===== 送迎連絡台帳（append-only・prune対象外の正本）=====
+// 列11「変更詳細」= AM/PM ロスレスの [{slot,old,new}] JSON（社長要件・先勝ち禁止）
+var SCHED_CONTACT_SS_ID = '1-CryIbGLFERANKWeHul1zPfFEHfuE6WfGXsZNiD6TGw'; // データSS（送迎時間と同一）
+var SCHED_CONTACT_SHEET = '送迎連絡台帳';
+var SCHED_CONTACT_HEADERS = ['記録日時','適用日','利用者','時間帯','旧時間','新時間','status','連絡者','連絡日時','source','変更詳細'];
+
+function _ensureSchedContactSheet() {
+  var ss = SpreadsheetApp.openById(SCHED_CONTACT_SS_ID);
+  var sheet = ss.getSheetByName(SCHED_CONTACT_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(SCHED_CONTACT_SHEET);
+    sheet.getRange(1, 1, 1, SCHED_CONTACT_HEADERS.length).setValues([SCHED_CONTACT_HEADERS]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, SCHED_CONTACT_HEADERS.length).setFontWeight('bold');
+    // TZ罠回避: 日時列は文字列で書くため書式は既定(テキスト表示)のままでよい
+  }
+  return sheet;
+}
+
+// 台帳の現在状態（キー→最新行）を返す。getSchedTimesResponse と markSchedContacted から使う。
+function _readSchedContactLatest() {
+  var sheet = _ensureSchedContactSheet();
+  if (sheet.getLastRow() < 2) return {};
+  var values = sheet.getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < values.length; i++) {
+    var v = values[i];
+    var changes = [];
+    try { changes = v[10] ? JSON.parse(String(v[10])) : []; } catch (e) { changes = []; }
+    rows.push({
+      recordedAt: String(v[0] || ''), date: String(v[1] || ''), user: String(v[2] || ''),
+      unit: String(v[3] || ''), oldTime: String(v[4] || ''), newTime: String(v[5] || ''),
+      status: String(v[6] || ''), operator: String(v[7] || ''), contactedAt: String(v[8] || ''),
+      source: String(v[9] || ''), changes: changes
+    });
+  }
+  return schedContactLatest(rows);
+}
+
+// 台帳へ1行 append（TZ罠回避のため時刻は Asia/Tokyo 文字列）。
+// row.changes = [{slot,old,new}] があれば列11へ JSON 保存。旧時間/新時間/時間帯は先頭スロットで補完。
+function _appendSchedContactRow(row) {
+  var sheet = _ensureSchedContactSheet();
+  var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  var changes = Array.isArray(row.changes) ? row.changes : [];
+  var head = changes[0] || null;
+  var unit = row.unit || (head ? head.slot : '') || '';
+  var oldTime = (row.oldTime != null && row.oldTime !== '') ? row.oldTime : (head ? head.old : '') || '';
+  var newTime = (row.newTime != null && row.newTime !== '') ? row.newTime : (head ? head.new : '') || '';
+  sheet.appendRow([
+    now, row.date, row.user, unit,
+    oldTime, newTime, row.status,
+    row.operator || '', row.contactedAt || '', row.source || '',
+    changes.length ? JSON.stringify(changes) : ''
+  ]);
+  return now;
+}
+
+// GAS エディタ手動確認用（clasp窓）。
+function _test_schedContactSheet() {
+  var latest0 = _readSchedContactLatest();
+  Logger.log('現在キー数: ' + Object.keys(latest0).length);
+  _appendSchedContactRow({ date: '2099-01-01', user: 'テスト太郎', status: '要連絡', source: '出勤送迎表',
+    changes: [{ slot: '午前', old: '09:00', new: '09:30' }] });
+  var latest1 = _readSchedContactLatest();
+  Logger.log('追記後 テスト太郎: ' + JSON.stringify(latest1['2099-01-01|テスト太郎']));
+  // 後始末: 台帳末尾のテスト行(2099-01-01)を手動削除すること
+}
