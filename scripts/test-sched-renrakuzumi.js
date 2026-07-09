@@ -31,10 +31,10 @@ function extractFn(name) {
 }
 
 const sandbox = {};
-const code = extractFn('schedContactLatest') + '\n' + extractFn('schedContactColor') + '\n' + extractFn('schedContactShouldSkip')
-  + '\nsandbox.schedContactLatest = schedContactLatest; sandbox.schedContactColor = schedContactColor; sandbox.schedContactShouldSkip = schedContactShouldSkip;';
+const code = extractFn('schedContactLatest') + '\n' + extractFn('schedContactColor') + '\n' + extractFn('schedContactShouldSkip') + '\n' + extractFn('resolveOldTime')
+  + '\nsandbox.schedContactLatest = schedContactLatest; sandbox.schedContactColor = schedContactColor; sandbox.schedContactShouldSkip = schedContactShouldSkip; sandbox.resolveOldTime = resolveOldTime;';
 (function () { eval(code); })();
-const { schedContactLatest, schedContactColor, schedContactShouldSkip } = sandbox;
+const { schedContactLatest, schedContactColor, schedContactShouldSkip, resolveOldTime } = sandbox;
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {
@@ -71,6 +71,12 @@ eq(schedContactShouldSkip('連絡済み'), true, '最新が連絡済み→追記
 eq(schedContactShouldSkip('要連絡'), false, '要連絡→追記する');
 eq(schedContactShouldSkip('通常化'), false, '通常化→追記する');
 eq(schedContactShouldSkip(null), false, '台帳なし→追記する');
+
+console.log('\n# resolveOldTime');
+eq(resolveOldTime('09:10', '09:00'), '09:10', '直前override優先');
+eq(resolveOldTime('', '09:00'), '09:00', 'overrideなし→曜日ベース');
+eq(resolveOldTime(null, null), '', '両方なし→空欄');
+eq(resolveOldTime(undefined, '09:00'), '09:00', 'undefinedは曜日ベースへ');
 
 console.log('\n結果: ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail === 0 ? 0 : 1);

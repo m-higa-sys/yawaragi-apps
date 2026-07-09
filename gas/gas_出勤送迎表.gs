@@ -1058,3 +1058,10 @@ function schedContactColor(timeChanged, latestStatus) {
 function schedContactShouldSkip(latestStatus) {
   return latestStatus === '連絡済み';
 }
+
+// A1: 旧時間 = 直前override時刻 ?? 曜日ベース時刻 ?? ''（引けなければ空欄。事実＝新時間・要連絡は残す）。
+function resolveOldTime(prevOverrideTime, weekdayBaseTime) {
+  if (prevOverrideTime) return String(prevOverrideTime);
+  if (weekdayBaseTime) return String(weekdayBaseTime);
+  return '';
+}
