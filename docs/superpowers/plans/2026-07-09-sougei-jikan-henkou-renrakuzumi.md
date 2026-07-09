@@ -427,58 +427,88 @@ git commit -m "feat(sched): 送迎連絡台帳 ensure/read/append ヘルパ（GA
 ## Task 6: saveSchedTimes に「要連絡」行追記（②の自動トリガー）
 
 **Files:**
-- Modify: `gas/gas_出勤送迎表.gs`（`saveSchedTimes`:167、override保存 278-289 の直後）
+- Modify: `gas/gas_出勤送迎表.gs`（`saveSchedTimes`:167、override保存ブロック `if (parsed.overrideDate && _hasRoutes) {...}`:280-291 の**中／直後**）
 
-*注: override の内部形（stops 配列・timeChanged・overrideDate・迎え時刻キー）は実コードに合わせる。Step 1 でまず現形を確認する。*
+- [x] **Step 1: override の stop 形を確認（2026-07-09 確認済み・実コード裏取り）**
 
-- [ ] **Step 1: override の stop 形を確認**
-
-Run: `sed -n '167,300p' "gas/gas_出勤送迎表.gs"`（GAS の saveSchedTimes と override 保存部）
-確認事項: 1件の override が持つフィールド名（例 `overrideDate`, `stops[].user`, `stops[].time`, `stops[].timeChanged`, 迎え/送りの区別）。**「迎えのみ」なので送り側は無い前提**（設計 F）。実形がキー名違いなら以降のコードをそのキー名へ置換。
+**確認結果（`gas_出勤送迎表.gs` / `sougei.html` / `sched-grid.html` の最新本番コード）**:
+- override は**入れ子**。保存単位は `_ovStore[parsed.overrideDate] = { routes: newData.routes[mergeDay], weekday, savedAt, members }`（`gas:285-288`）。`parsed.overrideDate`=ISO日付、`parsed.day`(=mergeDay)=曜日文字。
+- `routes[曜日]` の形（`sougei.html:891-892` コメントが正）:
+  - `pick:[ {driver, vehicle, stops:[{user, time, timeChanged, ...}]} ]` ＝**迎え**（`time` あり）
+  - `drop:[ {no, driver, vehicle, stops:[{user}]} ]` ＝**送り**（`time` 無し）
+  - さらに `am` / `pm` の2レイヤ: `routes[曜日].am.pick[*].stops[*]` / `routes[曜日].pm.pick[*].stops[*]`。
+  - → **設計 F「迎えのみ」がデータ構造で裏取り**: 時刻を持つのは `pick` の stop だけ。`drop` は時刻を持たないので対象外。
+- **色フラグ `timeChanged`** は **pick stop 単位の boolean**。`sougei.html:2832` で `stop.timeChanged=true`（手動ON）、`:2836` で `delete stop.timeChanged`（OFF）、保存時 `sougei.html:4970` で stop に載る。`sched-grid.html:791` は既に `s.timeChanged` で「変更」バッジを描画済み。
+- **旧時間の引き当て源**: ①直前override＝上書き前の `_readSchedOverrides()[overrideDate]` の同 user の pick stop `time`。②曜日ベース＝A1 `existing.routes[mergeDay]`（上書き前）の同 user の pick stop `time`。両方 pick stops を歩いて引く。
+- **⚠️ 計画修正点**: 旧版 Step2 の「フラット `stops.forEach`」は誤り。実際は `routes[曜日].{am,pm}.pick[*].stops[*]` の**3重ループ**で走査する。
 
 - [ ] **Step 2: 要連絡追記ロジックを実装**
 
-override を保存する箇所（`_pruneSchedOverrides` 呼び出し前後、override が確定した後）に追加。`resolveOldTime` と `schedContactLatest`（既存台帳）を使う:
+override 保存ブロック（`if (parsed.overrideDate && _hasRoutes) {`:280）の中、`_writeSchedOverrides(_ovStore);`（:290）の**直後**に追加。上書き前の値を先に読むため、`_ovStore` 書込前に「直前override」と「曜日ベース」を退避しておく:
 
 ```js
-// === 新規: 変更色ON の迎えを台帳へ「要連絡」で追記（②自動トリガー）===
-// overrideDate 指定があり、stop.timeChanged が true の迎えだけを対象にする。
-if (overrideDate) {                                   // ← Step1で確認した変数名に合わせる
+// === 新規: 変更色ON の迎え(pick)を台帳へ「要連絡」で追記（②自動トリガー）===
+// 実データ形: newData.routes[mergeDay].{am,pm}.pick[*].stops[*] = {user, time, timeChanged}
+// 旧時間源: 上書き前の同キー override（_ovPrev）→ 無ければ上書き前の曜日ベース（existing.routes[mergeDay]）。
+(function _appendNeedContactRows() {
   var _latest = _readSchedContactLatest();
-  (stops || []).forEach(function(st) {                // ← 実際の stops 参照に合わせる
-    if (!st || !st.timeChanged) return;
-    var key = overrideDate + '|' + st.user;
-    var cur = _latest[key];
-    // 既に同キーが「要連絡」かつ新時間が同じなら重複追記しない（キー最新勝ちで色は既にA）
-    if (cur && cur.status === '要連絡' && String(cur.newTime) === String(st.time)) return;
-    // 旧時間: 直前override（今回の上書き前の値）→ 無ければ曜日ベース。引けなければ空欄。
-    var prevOverrideTime = (cur && cur.newTime) ? cur.newTime : '';  // 直近台帳の新時間＝直前の到達値
-    var weekdayBaseTime = _lookupWeekdayBaseTime(st.user, overrideDate); // §下に定義
-    var oldTime = resolveOldTime(prevOverrideTime, weekdayBaseTime);
-    _appendSchedContactRow({
-      date: overrideDate, user: st.user, unit: st.unit || '',
-      oldTime: oldTime, newTime: st.time, status: '要連絡', source: '出勤送迎表'
+  var _ovPrevRoutes = (_ovPrev && _ovPrev[parsed.overrideDate] && _ovPrev[parsed.overrideDate].routes) || null; // 上書き前override
+  var _baseRoutes = _existingRoutesBefore || null;    // 上書き前の曜日ベース routes[mergeDay]
+
+  // pick stops を (am,pm) 横断で {user: time} に畳む小ヘルパ
+  function pickTimes(routesForDay) {
+    var m = {};
+    if (!routesForDay) return m;
+    ['am', 'pm'].forEach(function(ap) {
+      var lanes = routesForDay[ap] && routesForDay[ap].pick;
+      if (!Array.isArray(lanes)) return;
+      lanes.forEach(function(lane) {
+        var stops = lane && lane.stops;
+        if (!Array.isArray(stops)) return;
+        stops.forEach(function(st) {
+          if (st && st.user && m[st.user] == null && st.time) m[st.user] = String(st.time);
+        });
+      });
+    });
+    return m;
+  }
+  var prevOvTimes = pickTimes(_ovPrevRoutes);
+  var baseTimes = pickTimes(_baseRoutes);
+
+  // 今回保存した override の pick stops を走査し、timeChanged の迎えを要連絡追記
+  var savedRoutes = _ovRoutes;                          // = newData.routes[mergeDay]（:282で確定済み）
+  ['am', 'pm'].forEach(function(ap) {
+    var lanes = savedRoutes && savedRoutes[ap] && savedRoutes[ap].pick;
+    if (!Array.isArray(lanes)) return;
+    lanes.forEach(function(lane) {
+      var stops = lane && lane.stops;
+      if (!Array.isArray(stops)) return;
+      stops.forEach(function(st) {
+        if (!st || !st.user || !st.timeChanged) return;
+        var key = parsed.overrideDate + '|' + st.user;
+        var cur = _latest[key];
+        // 既に同キーが「要連絡」かつ新時間が同じなら重複追記しない（キー最新勝ちで色は既にA）
+        if (cur && cur.status === '要連絡' && String(cur.newTime) === String(st.time || '')) return;
+        // 旧時間: 上書き前override → 曜日ベース → 空欄
+        var oldTime = resolveOldTime(prevOvTimes[st.user] || '', baseTimes[st.user] || '');
+        _appendSchedContactRow({
+          date: parsed.overrideDate, user: st.user, unit: (ap === 'am' ? '午前' : '午後'),
+          oldTime: oldTime, newTime: String(st.time || ''), status: '要連絡', source: '出勤送迎表'
+        });
+      });
     });
   });
-}
+})();
 ```
 
-併せて曜日ベース時刻の引き当てヘルパを追加（既存の「送迎時間」A1 曜日ベース読取を再利用。実関数名は Step1 で確認）:
+**上書き前値の退避**（override 保存ブロックの**前**、`_readSchedOverrides()` を呼ぶ:281 の直前あたりに1行ずつ足す）:
 
 ```js
-// 曜日ベース（シート「送迎時間」A1）から user の overrideDate の迎え時刻を引く。無ければ ''。
-function _lookupWeekdayBaseTime(user, dateStr) {
-  try {
-    var base = _readSchedBaseTimes();          // ← 既存の曜日ベース読取関数に置換（getSchedTimesResponse 内実装を関数化）
-    var dow = new Date(parseInt(dateStr.slice(0,4)), parseInt(dateStr.slice(5,7))-1, parseInt(dateStr.slice(8,10))).getDay();
-    var dc = ['日','月','火','水','木','金','土'][dow];
-    var rec = base && base[dc] && base[dc][user];
-    return rec ? String(rec.time || '') : '';
-  } catch (e) { return ''; }
-}
+var _ovPrev = _readSchedOverrides();                    // 上書き前の overrides 全体（同 date の直前値を含む）
+var _existingRoutesBefore = existing.routes && existing.routes[mergeDay] ? JSON.parse(JSON.stringify(existing.routes[mergeDay])) : null; // 上書き前の曜日ベース
 ```
 
-*Step1 で `_readSchedBaseTimes` 相当が無ければ、getSchedTimesResponse:141 内の曜日ベース読取を private 関数に切り出してから使う（sougei は無改修のまま）。*
+*注: `existing.routes[mergeDay]` は :247-249 でこの mergeDay ぶんが delete され、:269-271 で newData に置換される。よって「上書き前の曜日ベース」は**その delete より前**（:227 の直前）で退避する必要がある。実装時は退避行を `for (var name in existing.schedTime)` ループ（:229）より前に置く。*
 
 - [ ] **Step 3: GAS 手動確認**
 
