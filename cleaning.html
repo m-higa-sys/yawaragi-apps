@@ -989,6 +989,8 @@ async function loadAllData() {
 
 // インターバル系タスクの最新実施日を過去ログから算出
 async function loadIntervalLastDates() {
+  // 編集モード中はバックグラウンド取得と再描画を止める（編集UIの消失防止・無駄fetch抑止）。
+  if (STATE.editMode) return;
   // 「N日インターバル」形式の dayLimit を持つタスクがあるか確認
   const intervalTasks = (STATE.tasks || []).filter(function(t) {
     return /^\d+日インターバル$/.test(t.dayLimit || '');
@@ -1049,6 +1051,8 @@ async function loadIntervalLastDates() {
 
 // チェックログだけ更新（軽量）
 async function refreshLog() {
+  // 編集モード中はログ更新由来の再描画を止める（編集UIの消失防止）。
+  if (STATE.editMode) return;
   try {
     const logRes = await gasGet({ action: 'getLog' });
     if (logRes.error) return;
@@ -1116,6 +1120,11 @@ function isLastDayOfMonth_(d) {
 
 // --- タスク描画 ---
 function renderTasks() {
+  // 編集モード中は #taskContainer に編集UI(renderEditTasks)が乗っているため、
+  // 通常一覧の描画で上書きしない（入力中の新規行・未保存テキストの消失を防ぐ）。
+  // 最新実施日等のデータは STATE に格納済みなので、exitEditMode/saveEditMode の
+  // renderTasks で追いつく。
+  if (STATE.editMode) return;
   const container = document.getElementById('taskContainer');
   const today = new Date();
   const days = ['日','月','火','水','木','金','土'];
