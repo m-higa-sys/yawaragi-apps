@@ -3798,6 +3798,9 @@ function doPost(e) {
         return jsonResp(updateBoardTaskStaff(ss, data));
       case 'add_dengon_message':
         return jsonResp(addDengonMessage(ss, data));
+      // 2026-07-06 振替不能トラッカー：伝達ボードの月次通知を件数のみで冪等 upsert／0件で締め
+      case 'upsert_furikae_notice':
+        return jsonResp(upsertFurikaeNotice(ss, data));
       case 'create_drafts':
         return jsonResp(createJissekiDrafts(data.yearMonth));
       // 2026-05-10: ケアマネ欠席連絡 即時方式 Phase 1
@@ -14770,6 +14773,47 @@ function getDengonForOwner_(ss) {
 }
 
 // 投稿：バリデーション→append→書込後に読み直してid存在を検証（成功したフリをしない）。
+// 振替不能トラッカー 伝達ボード通知の upsert／締め（2026-07-06）
+// 当月1メッセージを id列=キー(furikae-funou-YYYY-MM)で冪等に更新し、0件（本文空）で削除＝締め。
+// キー厳格化(furikae-notice-core.js)で他メッセージ(db_*・移行シード)には絶対に触れない。
+// ※通知の状態管理（更新/削除OK）。振替レコード台帳の破壊ではない。
+// 判定は純関数 furikaeNoticeDecide_（テスト: scripts/test-furikae-notice.js）に集約。
+function upsertFurikaeNotice(ss, data) {
+  data = data || {};
+  var key = String(data.key || '').trim();
+  var body = String(data.body == null ? '' : data.body).trim();
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return { ok: false, error: 'lock_timeout' }; }
+  try {
+    var sheet = ss.getSheetByName(DENGON_SHEET);
+    if (!sheet) { setupDengonBoard(ss); sheet = ss.getSheetByName(DENGON_SHEET); }
+    var values = sheet.getDataRange().getValues();
+    var decision = furikaeNoticeDecide_(values, key, body);
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    if (decision.op === 'reject') return { ok: false, error: 'bad_key', key: key };
+    if (decision.op === 'noop') return { ok: true, key: key, closed: true, noop: true };
+    if (decision.op === 'delete') {
+      sheet.deleteRow(decision.rowIndex + 1);
+      SpreadsheetApp.flush();
+      return { ok: true, key: key, closed: true };
+    }
+    if (decision.op === 'update') {
+      var rowNum = decision.rowIndex + 1;
+      sheet.getRange(rowNum, DB_COL.BODY + 1).setValue(body);
+      sheet.getRange(rowNum, DB_COL.CREATED + 1).setValue(now);
+      sheet.getRange(rowNum, DB_COL.DONE + 1).setValue(false); // 締め後の再発でも未完了で復活
+      SpreadsheetApp.flush();
+      return { ok: true, key: key, updated: true };
+    }
+    // add
+    sheet.appendRow([key, '振替不能', '全員', body, '', now, false, '', '']);
+    SpreadsheetApp.flush();
+    return { ok: true, key: key, added: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function addDengonMessage(ss, data) {
   data = data || {};
   var v = dbValidateNew_(data);

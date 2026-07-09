@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <!-- キャッシュ自動更新バージョンゲート（genba.html を正本に verbatim 移植・<head>最先頭） -->
+    <!-- version.txt を取得し現URLの ?v= と違えば1回だけ最新版へ location.replace -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) {
+                        location.replace(buildVersionedUrl(location.href, latest));
+                    }
+                })
+                .catch(function () { /* オフライン等は no-op で固まらせない */ });
+        } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
+    })();
+    </script>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -170,6 +190,79 @@
   .note-desc { font-size: 13px; color: #444; line-height: 1.6; white-space: pre-wrap; margin-top: 4px; }
   .note-actions { display: flex; gap: 6px; }
   .note-empty { text-align: center; color: #999; padding: 20px; font-size: 14px; }
+
+  /* ===== 振替不能トラッカー 新UI（2026-07-06 ゲートB引き算） ===== */
+  #summaryCards { display: block; margin: 6px 0 14px; }
+  .fnk-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    background: #fff5f5; border: 2px solid #e53e3e; border-radius: 10px; padding: 14px 18px; }
+  .fnk-head-count { font-size: 20px; font-weight: 800; color: #c53030; }
+  .fnk-head-count b { font-size: 26px; }
+  .fnk-head-amt { font-size: 22px; font-weight: 800; color: #c53030; }
+  .fnk-head-mon { margin-left: auto; font-size: 14px; color: #718096; }
+  .fnk-head-zero { background: #f0fff4; border: 2px solid #38a169; color: #276749;
+    border-radius: 10px; padding: 16px 18px; font-size: 18px; font-weight: 700; }
+  .fnk-empty, .fnk-done { padding: 26px; text-align: center; color: #718096; font-size: 15px;
+    background: #f7fafc; border-radius: 10px; }
+  .fnk-done { color: #276749; background: #f0fff4; font-weight: 700; }
+
+  .fnk-card { border: 1px solid #e2e8f0; border-left-width: 6px; border-radius: 10px;
+    margin-bottom: 10px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
+  .fnk-b-red    { border-left-color: #e53e3e; }
+  .fnk-b-orange { border-left-color: #ed8936; }
+  .fnk-b-white  { border-left-color: #a0aec0; }
+  .fnk-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
+  .fnk-row:hover { background: #f7fafc; }
+  .fnk-badge { font-size: 20px; }
+  .fnk-name { font-weight: 700; font-size: 16px; min-width: 8em; }
+  .fnk-mon { color: #718096; font-size: 13px; }
+  .fnk-amt { font-weight: 800; font-size: 17px; color: #2d3748; }
+  .fnk-reason { color: #4a5568; font-size: 13px; }
+  .fnk-act { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .fnk-collect-btn { background: #38a169; color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .fnk-collect-btn:hover { background: #2f855a; }
+  .fnk-method-label { font-size: 12px; color: #718096; }
+  .fnk-method-btn { background: #ebf8ff; color: #2b6cb0; border: 1px solid #90cdf4;
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .fnk-method-btn:hover { background: #bee3f8; }
+  .fnk-method-cancel { background: #f7fafc; color: #718096; border: 1px solid #cbd5e0;
+    border-radius: 6px; padding: 6px 9px; cursor: pointer; }
+  .fnk-sub { padding: 0 14px 10px 46px; color: #718096; font-size: 12.5px; margin-top: -4px; }
+  .fnk-detail { padding: 12px 16px; background: #f7fafc; border-top: 1px dashed #cbd5e0;
+    display: grid; gap: 10px; }
+  .fnk-f { display: flex; flex-direction: column; font-size: 12px; color: #4a5568; gap: 4px; font-weight: 600; }
+  .fnk-f input, .fnk-f textarea, .fnk-f select { font-size: 14px; padding: 7px 9px;
+    border: 1px solid #cbd5e0; border-radius: 6px; font-weight: 400; }
+  .fnk-f textarea { min-height: 54px; resize: vertical; }
+  .fnk-meta { font-size: 12px; color: #718096; }
+
+  #candidatePanel { background: linear-gradient(135deg,#eafaf1,#d4f5e9);
+    border-left: 8px solid #27ae60; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
+  .fnk-cand-head { font-weight: 700; color: #1e7e34; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .fnk-cand-all { margin-left: auto; background: #27ae60; color: #fff; border: none;
+    border-radius: 8px; padding: 7px 14px; font-weight: 700; cursor: pointer; }
+  .fnk-cand-row { display: flex; align-items: center; gap: 12px; background: #fff;
+    border-radius: 8px; padding: 9px 12px; margin-bottom: 7px; font-size: 14px; }
+  .fnk-cand-name { font-weight: 700; min-width: 7em; }
+  .fnk-cand-badge { color: #856404; font-size: 12px; }
+  .fnk-cand-btn { margin-left: auto; background: #ebf8ff; color: #2b6cb0;
+    border: 1px solid #90cdf4; border-radius: 6px; padding: 6px 12px; font-weight: 600; cursor: pointer; }
+
+  #collectedFooter { margin-top: 14px; }
+  .fnk-cf-head { color: #718096; font-size: 13px; cursor: pointer; padding: 8px 4px;
+    border-top: 1px solid #edf2f7; }
+  .fnk-cf-body { padding: 4px 0; }
+  .fnk-cf-row { display: flex; align-items: center; gap: 10px; font-size: 13px;
+    color: #4a5568; padding: 6px 8px; }
+  .fnk-cf-meta { color: #a0aec0; font-size: 12px; }
+  .fnk-cf-undo { margin-left: auto; background: #fff5f5; color: #c53030;
+    border: 1px solid #feb2b2; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+
+  .fnk-more { margin-top: 18px; color: #718096; }
+  .fnk-more summary { cursor: pointer; font-size: 13px; color: #a0aec0; }
+  .fnk-more-body { padding: 12px 4px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .fnk-more-note { font-size: 12px; color: #a0aec0; width: 100%; margin: 0; }
 </style>
 </head>
 <body>
@@ -177,6 +270,9 @@
 <div class="no-print" style="margin-bottom:12px;">
   <a href="yawaragiボード.html" class="back-link-btn">← yawaragiボードに戻る</a>
 </div>
+
+<!-- 本番オリジン警告バナー（別オリジンで開くと書込が保存されないため警告・2026-07-05）-->
+<div id="origin-warn" class="no-print" style="display:none;background:#fff3cd;border:2px solid #c53030;color:#c53030;padding:12px 16px;border-radius:8px;margin-bottom:12px;font-weight:bold;line-height:1.6;"></div>
 
 <div class="header" style="position:relative;">
   <h1>💰 振替不能管理ツール</h1>
@@ -198,103 +294,29 @@
 <div class="controls no-print">
   <label>表示月：</label>
   <select id="monthSelect" onchange="renderMonth()"></select>
-  <button class="btn btn-primary" onclick="openAddModal()">＋ 不能データ追加</button>
-  <button class="btn btn-secondary" onclick="exportCSV()">📥 CSV出力</button>
-  <button class="btn btn-secondary" onclick="window.print()">🖨 印刷</button>
 </div>
 
+<!-- ① 集計ヘッダ（未回収のみ・件数/¥合計） -->
 <div class="summary-cards" id="summaryCards"></div>
 
-<!-- 🎉 今月解決セクション（resolvedMonth === 表示中の月のレコード） -->
-<div id="resolvedSection" style="display:none; background:linear-gradient(135deg,#eafaf1,#d4f5e9); border-left:8px solid #27ae60; border-radius:10px; padding:16px 20px; margin-bottom:20px; box-shadow:0 2px 8px rgba(39,174,96,0.15);">
-  <h3 style="font-size:17px; color:#1e7e34; margin-bottom:10px;">🎉 今月引落できました（先月までの不能から回復）</h3>
-  <div id="resolvedList"></div>
-</div>
+<!-- ③ 翌月合算の回収済候補（承認パネル・§4-4） -->
+<div id="candidatePanel" style="display:none;"></div>
 
-<table id="mainTable">
-  <thead>
-    <tr>
-      <th>No.</th>
-      <th>利用者名</th>
-      <th>金融機関</th>
-      <th>支店</th>
-      <th>口座番号</th>
-      <th>金額</th>
-      <th>顧客番号</th>
-      <th>不能理由</th>
-      <th>詳細理由・経緯</th>
-      <th>対応状況</th>
-      <th>依頼書郵送日</th>
-      <th>引落開始予定日</th>
-      <th>メモ</th>
-    </tr>
-  </thead>
-  <tbody id="tableBody"></tbody>
-</table>
+<!-- ② 未回収カード（既定はこれだけ） -->
+<div id="cardList"></div>
 
-<!-- 引落予定日別 請求合計セクション（事前連絡用） -->
-<div id="upcomingPanel" style="display:none; background:white; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.08); margin-bottom:20px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
-    <h3 style="font-size:18px; color:#c0392b;">📅 事前連絡が必要な利用者</h3>
-    <button class="print-meeting-btn no-print" onclick="window.print()">🖨 印刷</button>
+<!-- ④ 今月回収済（既定は畳む・展開で取消） -->
+<div id="collectedFooter" data-open="0" style="display:none;"></div>
+
+<!-- ⋯その他（普段は使わない：手動追加・CSV出力を奥に隠す） -->
+<details class="fnk-more no-print">
+  <summary>⋯ その他（手動追加・CSV出力）</summary>
+  <div class="fnk-more-body">
+    <button class="btn btn-primary" onclick="openAddModal()">＋ 手動で不能データを追加</button>
+    <button class="btn btn-secondary" onclick="exportCSV()">📥 CSV出力</button>
+    <p class="fnk-more-note">通常は上の「📂 結果Excelを取込」で自動追加されます。手入力はイレギュラー時のみ。</p>
   </div>
-
-  <div class="no-print" style="background:#f8f9fa; border-radius:8px; padding:12px 16px; margin-bottom:14px; display:flex; flex-wrap:wrap; gap:14px; align-items:center;">
-    <div>
-      <label style="font-size:12px; color:#666; font-weight:bold; margin-right:6px;">連絡担当:</label>
-      <select id="contactStaffSelect" onchange="saveContactStaff()" style="padding:6px 10px; border-radius:6px; border:1px solid #bdc3c7; font-size:13px;">
-        <option value="勝又">勝又</option>
-        <option value="比嘉">比嘉</option>
-        <option value="星野">星野</option>
-        <option value="下浦">下浦</option>
-        <option value="工藤">工藤</option>
-        <option value="髙山">髙山</option>
-        <option value="春山">春山</option>
-        <option value="大久保">大久保</option>
-        <option value="石井">石井</option>
-        <option value="田村">田村</option>
-      </select>
-    </div>
-    <div>
-      <label style="font-size:12px; color:#666; font-weight:bold; margin-right:6px;">表示:</label>
-      <button class="view-mode-btn active" id="filterAllBtn" onclick="setFilterMode('all')">全て</button>
-      <button class="view-mode-btn" id="filterPendingBtn" onclick="setFilterMode('pending')">未連絡のみ</button>
-    </div>
-    <div>
-      <label style="font-size:12px; color:#666; font-weight:bold; margin-right:6px;">表示モード:</label>
-      <button class="view-mode-btn active" id="viewModeABtn" onclick="setViewMode('A')">利用者ごと合算</button>
-      <button class="view-mode-btn" id="viewModeBBtn" onclick="setViewMode('B')">月ごとに表示</button>
-    </div>
-  </div>
-
-  <div style="font-size:12px; color:#888; margin-bottom:12px;">
-    💡 過去の未納分を含めた合計金額です。引落しは「予定」のため、口座情報や手続き状況により変動する場合があります。
-  </div>
-  <div id="upcomingList"></div>
-</div>
-
-<!-- 新規手続き進捗パネル -->
-<div id="pendingPanel" style="display:none; background:white; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.08); margin-bottom:20px;">
-  <h3 style="font-size:16px; margin-bottom:12px; color:#2471a3;">📋 口座振替手続き中の一覧（全月横断）</h3>
-  <div id="pendingList"></div>
-</div>
-
-<div class="history-section">
-  <h2>📊 月別サマリー</h2>
-  <table id="historyTable">
-    <thead>
-      <tr>
-        <th>引落月</th>
-        <th>振替不能件数</th>
-        <th>不能金額合計</th>
-        <th>回収済</th>
-        <th>未回収</th>
-        <th>対応完了率</th>
-      </tr>
-    </thead>
-    <tbody id="historyBody"></tbody>
-  </table>
-</div>
+</details>
 
 <!-- 追加モーダル -->
 <div class="modal-overlay" id="addModal">
@@ -397,6 +419,9 @@ const ERROR_CODE_MAP = {
   '9': 'その他'
 };
 
+// 直近の取込で検知した「翌月合算の回収済候補」（過去の未回収×今月成功）。承認パネルに表示。
+let _fnkCandidates = [];
+
 function setupDropZone() {
   const dz = document.getElementById('dropZone');
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
@@ -442,13 +467,15 @@ function processExcelFile(file) {
       // 1行目はヘッダー、2行目以降がデータ
       const dataRows = rows.slice(1);
       const funou = [];
+      const okCustomerIds = []; // 今月正常に振替できた顧客番号（過去不能の翌月合算・回収済候補の検知に使う）
 
       dataRows.forEach(row => {
         if (!row || row.length < 10) return;
-        // 振替結果コードが「0:振替済」「4:預金口座振替依頼書なし」等の形式に対応
+        // 振替結果コードは「0-振替済み」等の連結形式・素の「2」両対応。split('-')[0]で先頭数字を取る
         const rawCode = String(row[9] || '0').trim();
-        const resultCode = rawCode.match(/\d/) ? rawCode.match(/\d/)[0] : '0';
-        if (resultCode === '0') return;
+        const resultCode = fnkExtractResultCode(rawCode) || '0';
+        const okId = String(parseInt(row[7]) || row[7] || '').trim();
+        if (resultCode === '0') { if (okId) okCustomerIds.push(okId); return; } // 成功＝不能台帳に載せない（成功分は管理しない）
 
         const reason = ERROR_CODE_MAP[resultCode] || 'その他（コード:' + rawCode + '）';
         funou.push({
@@ -464,22 +491,25 @@ function processExcelFile(file) {
         });
       });
 
-      if (funou.length === 0) {
-        showImportResult(`✅ 振替不能は0件でした！（全${dataRows.length}件が正常振替）`, false);
-        return;
-      }
-
-      // 月を決定（ファイル名から取れない場合はプロンプト）
+      // 月を決定（ファイル名優先・不能0件でも先に確定してマーカーへ使う）
       let month = hikiotoshiMonth;
       if (!month) {
         month = prompt('引落月を入力してください（例: 2026-03）');
         if (!month) return;
       }
 
-      // 重複チェック（同月・同顧客番号）
-      const existingIds = data.records
-        .filter(r => r.month === month)
-        .map(r => r.customerId);
+      if (funou.length === 0) {
+        // 成功のみの月も「取込済み」痕跡を残す（morningDigest の未取込リマインドを消すため・案B）
+        if (fnkApplyImportMarker(data, month, new Date().toISOString().slice(0, 10))) {
+          saveData(data);
+        }
+        initMonthSelect();
+        showImportResult(`✅ 振替不能は0件でした！（全${dataRows.length}件が正常振替）`, false);
+        return;
+      }
+
+      // 重複チェック（同月・同顧客番号）※マーカー除外は fnkExistingCustomerIds に集約
+      const existingIds = fnkExistingCustomerIds(data.records, month);
 
       const newRecords = [];
       let skipCount = 0;
@@ -510,24 +540,33 @@ function processExcelFile(file) {
         });
       });
 
-      if (newRecords.length === 0) {
-        showImportResult(`この月のデータは既に登録済みです（${skipCount}件スキップ）`, false);
-        return;
+      // 翌月合算の回収済候補：過去の未回収レコードのうち、今月正常振替できた顧客番号に一致する行
+      // （自動確定はしない・§4-4。承認パネルで社長が一括承認して回収済にする）
+      _fnkCandidates = fnkGoushanCandidates(data.records, month, okCustomerIds);
+
+      if (newRecords.length > 0) {
+        data.records.push(...newRecords);
+        saveData(data);
       }
 
-      data.records.push(...newRecords);
-      saveData(data);
-
-      // 表示を更新
+      // 表示を更新（取込月に切替）
       initMonthSelect();
       document.getElementById('monthSelect').value = month;
       renderMonth();
+      fnkScheduleNotify(month); // 取込後の要対応件数を伝達ボードへ
 
-      let msg = `📥 ${newRecords.length}件の振替不能を取り込みました（${month}）`;
-      if (skipCount > 0) msg += `\n（${skipCount}件は登録済みのためスキップ）`;
-      newRecords.forEach(r => {
-        msg += `\n　・顧客${r.customerId}: ${r.name} ${r.amount.toLocaleString()}円（${r.reason}）`;
-      });
+      let msg;
+      if (newRecords.length === 0) {
+        msg = skipCount > 0
+          ? `この月のデータは既に登録済みです（${skipCount}件スキップ）`
+          : `✅ 新規の振替不能はありませんでした（${month}）`;
+      } else {
+        msg = `📥 ${newRecords.length}件の振替不能を取り込みました（${month}）`;
+        if (skipCount > 0) msg += `\n（${skipCount}件は登録済みのためスキップ）`;
+      }
+      if (_fnkCandidates.length > 0) {
+        msg += `\n🎉 過去の不能から今月引落成功が ${_fnkCandidates.length}件 見つかりました（下の承認パネルで確認）`;
+      }
       showImportResult(msg, false);
 
     } catch (err) {
@@ -553,7 +592,57 @@ let _syncTimer = null;
 let _isSyncing = false;
 let _initialLoadDone = false;
 
+// ===== 本番オリジン書込ブロック（2026-07-05・genba 2026-07-03 荒谷4件対策の移植）=====
+// localStorage も GAS 同期もオリジン単位。検証用URL(file://・localhost・別host)から本番GASへ
+// 書き込めてしまう事故（genba で発生）を furikae でも構造的に断つ。furikae の書込POSTは
+// cloudSync 1本に集約されるため、その先頭でガードすれば全書込（取込・消込・更新）を遮断できる。
+// 本番オリジン完全一致以外は書込不可（判定不能＝例外時も安全側=不可）。
+// テスト: scripts/test-furikae-origin-guard.js（純関数+単一ファネルの構造証明）
+const PROD_ORIGIN = 'https://m-higa-sys.github.io';
+const PROD_URL = 'https://m-higa-sys.github.io/yawaragi-apps/furikae.html';
+
+function fnkIsProdWriteAllowed(origin) {
+  try { return String(origin) === PROD_ORIGIN; } catch (e) { return false; }
+}
+
+// 別オリジンで開いている事実を常設バナーで知らせる（入力・操作前に気づけるよう）
+function fnkCheckProductionOrigin() {
+  try {
+    const el = document.getElementById('origin-warn');
+    if (!el) return;
+    if (fnkIsProdWriteAllowed(location.origin)) { el.style.display = 'none'; return; }
+    el.innerHTML = '⚠ 本番URL以外で開いています。取込・消込は保存されません。<br>'
+      + '正しいURL: <a href="' + PROD_URL + '" style="color:#c53030;">' + PROD_URL + '</a>';
+    el.style.display = 'block';
+  } catch (e) { /* バナー表示失敗は致命でない（POST層ガードが最終防衛）*/ }
+}
+
+// 書込ブロック時の利用者向け通知（バナー表示に集約）。テストでは差し替えて発火回数を検証。
+function fnkOriginNotice() {
+  fnkCheckProductionOrigin();
+}
+
+// 書込POST共通ゲート。書込ファネル cloudSync の先頭で呼ぶ。false なら送信せず抜ける。
+// 通知は3秒デバウンス（自動同期の連発でバナー再描画を暴発させない）。
+let _fnkGuardNoticeAt = 0;
+function fnkGuardProdWrite(label) {
+  let ok = false;
+  try { ok = fnkIsProdWriteAllowed(location.origin); } catch (e) { ok = false; }
+  if (!ok) {
+    try {
+      const now = Date.now();
+      if (now - _fnkGuardNoticeAt > 3000) {
+        _fnkGuardNoticeAt = now;
+        fnkOriginNotice();
+      }
+    } catch (e) {}
+    try { console.warn('[originガード] 書込ブロック: ' + (label || '')); } catch (e) {}
+  }
+  return ok;
+}
+
 function cloudSync() {
+  if (!fnkGuardProdWrite('クラウド同期')) return; // 別オリジンからの本番書込を構造的に遮断
   if (!SYNC_URL || SYNC_URL.indexOf('__') === 0) return; // URL未設定
   if (_syncTimer) clearTimeout(_syncTimer);
   _syncTimer = setTimeout(function() {
@@ -573,6 +662,39 @@ function cloudSync() {
         .catch(function() { _isSyncing = false; });
     } catch(e) { _isSyncing = false; }
   }, 2000);
+}
+
+// ===== 伝達ボード通知（件数のみ・冪等更新＋締め）2026-07-06 =====
+// 当月1メッセージを upsert（キー furikae-funou-YYYY-MM）。件数変化のたびに本文を置換し、
+// 0件（全件回収）で締め＝削除。氏名・金額・理由は一切出さない（件数のみ）。
+// ★これは書込POST（第2の送信経路）。fnkGuardProdWrite を必ず通す（tripwire維持・SENDERSに追加済）。
+const DENGON_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+let _fnkNotifyTimer = null;
+
+// 通知本文（件数のみ）。0件は空文字＝締め（削除）のシグナル。
+function fnkNoticeBody(count) {
+  return count > 0 ? ('振替不能・要対応あり（' + count + '件）') : '';
+}
+
+function fnkNotifyBoard(month) {
+  if (!fnkGuardProdWrite('伝達ボード通知')) return; // 別オリジンからの本番書込を遮断
+  if (!month) return;
+  const count = fnkActionableCount(data.records, month);
+  const payload = { action: 'upsert_furikae_notice', key: 'furikae-funou-' + month, body: fnkNoticeBody(count) };
+  try {
+    fetch(DENGON_API_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(function() {});
+  } catch (e) {}
+}
+
+// 連続操作（取込直後の複数消込など）でボード通知を暴発させない 1.5秒デバウンス
+function fnkScheduleNotify(month) {
+  if (_fnkNotifyTimer) clearTimeout(_fnkNotifyTimer);
+  _fnkNotifyTimer = setTimeout(function() { fnkNotifyBoard(month); }, 1500);
 }
 
 function cloudLoad() {
@@ -703,12 +825,14 @@ function saveData(data) {
 let data = loadData();
 
 // ============ 月選択 ============
-function getMonths() {
-  const months = [...new Set(data.records.map(r => r.month))];
+// 月一覧（新しい順）。マーカーのみの月はタブに出さない（幽霊タブ防止・経路1）。
+function fnkMonthsOf(records) {
+  const months = [...new Set((records || []).filter(r => !fnkIsImportMarker(r)).map(r => r.month))];
   months.sort().reverse();
   if (months.length === 0) months.push('2026-02');
   return months;
 }
+function getMonths() { return fnkMonthsOf(data.records); }
 
 function initMonthSelect() {
   const sel = document.getElementById('monthSelect');
@@ -719,176 +843,292 @@ function initMonthSelect() {
   }).join('');
 }
 
+// ===== 振替不能トラッカー 純関数（分類・未回収・集計・翌月合算候補）2026-07-06 =====
+// テスト: scripts/test-furikae-tracker.js
+// 結果コード抽出。電算xlsは "0-振替済み" 連結・素の "2" 両対応。split('-')[0] で先頭トークンの
+// 数字だけ取る（旧 match(/\d/)[0] は "10-…" を "1" に化けさせるバグ→修正）。
+function fnkExtractResultCode(raw) {
+  if (raw === null || raw === undefined) return '';
+  const head = String(raw).trim().split('-')[0];
+  return head.replace(/[^0-9]/g, '');
+}
+
+// 3色バッジ分類。コード優先、無ければ理由テキストから推定、不明は🔴要確認で必ず表面化。
+// 🔴要電話確認(2取引なし/3停止預金者/8委託者/9その他) 🟠要依頼書再送(4依頼書なし) ⚪翌月合算予定(1残高不足)
+function fnkBadgeFor(rec) {
+  rec = rec || {};
+  let code = rec.resultCode ? fnkExtractResultCode(rec.resultCode) : '';
+  if (!code) {
+    const t = String(rec.reason || '');
+    if (t.indexOf('残高') >= 0) code = '1';
+    else if (t.indexOf('依頼書') >= 0 || t.indexOf('印鑑') >= 0 || t.indexOf('相違') >= 0) code = '4';
+    else if (t.indexOf('取引なし') >= 0 || t.indexOf('解約') >= 0) code = '2';
+    else if (t.indexOf('停止') >= 0) code = '3';
+    else if (t.indexOf('その他') >= 0) code = '9';
+  }
+  if (code === '1') return { code: '1', key: 'white', mark: '⚪', label: '翌月合算予定' };
+  if (code === '4') return { code: '4', key: 'orange', mark: '🟠', label: '要依頼書再送' };
+  if (code === '2' || code === '3' || code === '8' || code === '9') return { code: code, key: 'red', mark: '🔴', label: '要電話確認' };
+  return { code: code || '?', key: 'red', mark: '🔴', label: '要確認' };
+}
+
+// 未回収判定（終わるまで方式：回収済フラグ/resolvedMonthでのみ消える・日付では消えない）
+function fnkIsUnpaid(rec) {
+  if (!rec) return false;
+  if (rec.resolvedMonth) return false;
+  return rec.status !== '回収済';
+}
+
+// 月別サマリー（未回収のみ・件数/合計）
+function fnkMonthSummary(records, month) {
+  const list = (records || []).filter(function (r) { return r.month === month && !fnkIsImportMarker(r) && fnkIsUnpaid(r); });
+  return { count: list.length, total: list.reduce(function (s, r) { return s + (r.amount || 0); }, 0) };
+}
+
+// 翌月合算の自動消込候補：過去の未回収レコードのうち、今月Excelで成功した顧客番号に一致する行
+function fnkGoushanCandidates(records, month, okCustomerIds) {
+  const ids = okCustomerIds || [];
+  return (records || []).filter(function (r) {
+    return r.month !== month && fnkIsUnpaid(r) && r.customerId && ids.indexOf(String(r.customerId)) >= 0;
+  });
+}
+
+// 伝達ボード通知に出す「要対応」件数：当月の未回収のうち 🔴🟠 のみ（⚪翌月合算予定は放置可＝数えない）
+function fnkActionableCount(records, month) {
+  return (records || []).filter(function (r) {
+    return r.month === month && !fnkIsImportMarker(r) && fnkIsUnpaid(r) && fnkBadgeFor(r).key !== 'white';
+  }).length;
+}
+
+// ===== 取込済マーカー（案B・センチネル）2026-07-06 =====
+// 不能0件の月にも「取り込んだ痕跡」を1件だけ records に残す隠しデータ。
+// morningDigest の未取込リマインド判定のためだけに読む。表示/件数/fold/伝達ボード件数/actionable の
+// 全経路から除外する（fnkIsImportMarker が唯一の正体判定・status依存にしない）。
+function fnkIsImportMarker(rec) {
+  return !!(rec && rec.isImportMarker === true);
+}
+
+// 対象月にマーカーを追加すべきか。該当月のレコード（実/マーカー問わず）が1件でもあれば不要（冪等）。
+function fnkNeedsImportMarker(records, month) {
+  if (!month) return false;
+  return !(records || []).some(function (r) { return r.month === month; });
+}
+
+// マーカー行を生成（純関数）。status:'回収済'＋resolvedMonth無し＝既存の未回収/回収済フッタ双方に出ない。
+function fnkMarkerRecord(month, id, today) {
+  return {
+    id: id, month: month, isImportMarker: true, status: '回収済',
+    name: '(取込済マーカー)', reason: '取込済み・不能0件', amount: 0,
+    customerId: '', hikiotoshiDate: '', createdAt: today
+  };
+}
+
+// 同月の重複判定に使う既存顧客番号一覧。マーカー(customerId:'')は除外（実不能の取りこぼし防止）。
+function fnkExistingCustomerIds(records, month) {
+  return (records || [])
+    .filter(function (r) { return r.month === month && !fnkIsImportMarker(r); })
+    .map(function (r) { return r.customerId; });
+}
+
+// 対象月が未取込ならマーカーを1件追加して data を変更（副作用は data のみ）。追加したら true。
+function fnkApplyImportMarker(data, month, today) {
+  if (!fnkNeedsImportMarker(data.records, month)) return false;
+  data.records.push(fnkMarkerRecord(month, data.nextId++, today));
+  return true;
+}
+
 // ============ 描画 ============
 function renderMonth() {
   const month = document.getElementById('monthSelect').value;
-  const records = data.records.filter(r => r.month === month);
+  const monthRecords = data.records.filter(r => r.month === month && !fnkIsImportMarker(r));
+  const unpaid = monthRecords.filter(fnkIsUnpaid);
+  const summary = fnkMonthSummary(data.records, month);
+  const mmLabel = month ? parseInt(month.split('-')[1]) + '月分' : '';
 
-  // サマリーカード
-  const total = records.length;
-  const totalAmount = records.reduce((s, r) => s + r.amount, 0);
-  const collected = records.filter(r => r.status === '回収済');
-  const collectedAmount = collected.reduce((s, r) => s + r.amount, 0);
-  const pendingCount = records.filter(r => r.expectedStartDate || r.expectedStartMonth).length;
-  const uncollected = totalAmount - collectedAmount;
-  const detailEmptyCount = records.filter(r => !r.detailReason).length;
+  // ① 集計ヘッダ（未回収のみ）
+  document.getElementById('summaryCards').innerHTML =
+    summary.count === 0
+      ? `<div class="fnk-head fnk-head-zero">✓ ${mmLabel} 未回収の振替不能はありません</div>`
+      : `<div class="fnk-head">
+           <span class="fnk-head-count">未回収 <b>${summary.count}</b>件</span>
+           <span class="fnk-head-amt">¥${summary.total.toLocaleString()}</span>
+           <span class="fnk-head-mon">${mmLabel}</span>
+         </div>`;
 
-  document.getElementById('summaryCards').innerHTML = `
-    <div class="card"><div class="label">不能件数</div><div class="value red">${total}件</div></div>
-    <div class="card"><div class="label">不能金額合計</div><div class="value red">${totalAmount.toLocaleString()}円</div></div>
-    <div class="card"><div class="label">回収済</div><div class="value green">${collectedAmount.toLocaleString()}円</div></div>
-    <div class="card"><div class="label">未回収</div><div class="value orange">${uncollected.toLocaleString()}円</div></div>
-    ${pendingCount > 0 ? `<div class="card"><div class="label">手続中（新規）</div><div class="value blue">${pendingCount}件</div></div>` : ''}
-    ${detailEmptyCount > 0 ? `<div class="card" style="border:2px solid #e74c3c;background:#fdeaea;"><div class="label" style="color:#c0392b;font-weight:bold;">⚠️ 詳細理由 未入力</div><div class="value red">${detailEmptyCount}件</div></div>` : ''}
-  `;
-
-  // テーブル
-  const tbody = document.getElementById('tableBody');
-  if (records.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="13" style="padding:30px;color:#888;">この月のデータはありません</td></tr>';
-  } else {
-    tbody.innerHTML = records.map(r => {
-      const reasonClass = r.reason.includes('依頼書') ? '依頼書なし' :
-                          r.reason.includes('取引なし') ? '取引なし' :
-                          r.reason.includes('残高') ? '残高不足' : 'その他';
-      const nameClass = r.name ? 'name-input name-filled' : 'name-input';
-      const sentDateClass = r.formSentDate ? 'date-input date-filled' : 'date-input';
-      const detailClass = r.detailReason ? 'detail-input detail-filled' : 'detail-input detail-empty';
-
-      // この利用者の全月累計（未回収のみ）を計算
-      const sameCustomerRecords = data.records.filter(rec =>
-        rec.customerId && rec.customerId === r.customerId && rec.status !== '回収済'
-      );
-      const customerTotal = sameCustomerRecords.reduce((s, rec) => s + rec.amount, 0);
-      const monthCount = sameCustomerRecords.length;
-      const hasAccumulated = monthCount > 1;
-      // expectedStartMonth（旧：月）とexpectedStartDate（新：日付）の両方に対応
-      const expectedDate = r.expectedStartDate || r.expectedStartMonth || '';
-      const expectedClass = expectedDate ? 'expected-input expected-filled' : 'expected-input';
-
-      // 引落開始予定の進捗ラベル（回収済の場合は表示しない）
-      let progressHtml = '';
-      if (expectedDate && r.status !== '回収済') {
-        const now = new Date();
-        now.setHours(0,0,0,0);
-        // 日付形式（2026-04-27）か月形式（2026-04）かを判定
-        let targetDate;
-        let displayStr;
-        if (expectedDate.length <= 7) {
-          // 月形式 → その月の27日として扱う
-          targetDate = new Date(expectedDate + '-27');
-          const [ey, em] = expectedDate.split('-');
-          displayStr = `${parseInt(em)}/27`;
-        } else {
-          targetDate = new Date(expectedDate);
-          const [ey, em, ed] = expectedDate.split('-');
-          displayStr = `${parseInt(em)}/${parseInt(ed)}`;
-        }
-        const diffDays = Math.ceil((targetDate - now) / (1000*60*60*24));
-        if (diffDays > 0) {
-          progressHtml = `<div class="progress-label">${displayStr}開始（あと${diffDays}日）</div>`;
-        } else if (diffDays === 0) {
-          progressHtml = `<div class="progress-label">今日引落予定</div>`;
-        } else {
-          progressHtml = `<div class="progress-label overdue">予定超過（${Math.abs(diffDays)}日前）</div>`;
-        }
-      } else if (expectedDate && r.status === '回収済') {
-        // 回収済なら緑のチェックマーク表示
-        const [ey, em, ed] = expectedDate.length <= 7 ? [...expectedDate.split('-'), '27'] : expectedDate.split('-');
-        progressHtml = `<div class="progress-label" style="background:#eafaf1;color:#27ae60;">✓ ${parseInt(em)}/${parseInt(ed)} 引落完了</div>`;
-      }
-
-      return `<tr class="${r.status === '未対応' && !r.expectedStartMonth ? 'highlight-row' : ''}">
-        <td>${r.no}</td>
-        <td><input type="text" class="${nameClass}" value="${escapeHtml(r.name)}"
-            placeholder="名前入力" onchange="updateName(${r.id}, this.value)"
-            title="利用者名を入力">${fubiHistoryBadge(r)}</td>
-        <td>${escapeHtml(r.bank)}</td>
-        <td>${escapeHtml(r.branch)}</td>
-        <td>${r.account}</td>
-        <td style="font-weight:bold;">${r.amount.toLocaleString()}円
-          ${hasAccumulated ? `<br><span style="display:inline-block;margin-top:4px;padding:2px 8px;background:#fdeaea;color:#c0392b;border-radius:10px;font-size:11px;font-weight:bold;">累計 ${customerTotal.toLocaleString()}円<br>(${monthCount}ヶ月分)</span>` : ''}
-        </td>
-        <td>${r.customerId}</td>
-        <td><span class="reason-badge reason-${reasonClass}">${r.reason}</span></td>
-        <td><textarea class="${detailClass}"
-            placeholder="不能の経緯を記入" onchange="updateDetailReason(${r.id}, this.value)"
-            title="${escapeHtml(r.detailReason || 'ゆうちょ末尾1漏れ等、不能になった具体的な理由')}">${escapeHtml(r.detailReason || '')}</textarea></td>
-        <td>
-          <select onchange="updateStatus(${r.id}, this.value)" style="font-size:12px;padding:4px;border-radius:6px;">
-            ${['未対応','連絡済','回収済','再提出済','手続中'].map(s =>
-              `<option value="${s}" ${r.status === s ? 'selected' : ''}>${s}</option>`
-            ).join('')}
-          </select>
-        </td>
-        <td>
-          <input type="date" class="${sentDateClass}" value="${r.formSentDate || ''}"
-            onchange="updateFormSentDate(${r.id}, this.value)"
-            title="依頼書を電算に郵送した日">
-        </td>
-        <td>
-          <input type="date" class="${expectedClass}" value="${expectedDate}"
-            onchange="updateExpectedStart(${r.id}, this.value)"
-            title="引落が始まる予定の日">
-          ${progressHtml}
-        </td>
-        <td><input type="text" class="memo-input" value="${escapeHtml(r.memo)}"
-            placeholder="メモ" onchange="updateMemo(${r.id}, this.value)"></td>
-      </tr>`;
-    }).join('');
+  // ② 未回収カード（既定はこれだけ・回収済/成功は出さない）
+  const list = document.getElementById('cardList');
+  if (list) {
+    if (unpaid.length === 0) {
+      list.innerHTML = monthRecords.length === 0
+        ? `<div class="fnk-empty">この月の取込データはありません。上の「📂 結果Excelを取込」から入れてください。</div>`
+        : `<div class="fnk-done">🎉 ${mmLabel}は全て回収済みです</div>`;
+    } else {
+      list.innerHTML = unpaid.map(fnkCardHtml).join('');
+    }
   }
 
-  // 🎉 今月解決セクション（過去の不能から今月引落成功した人）
-  const resolvedThisMonth = data.records.filter(r => r.resolvedMonth === month && r.month !== month);
-  const resolvedSection = document.getElementById('resolvedSection');
-  const resolvedList = document.getElementById('resolvedList');
-  if (resolvedThisMonth.length > 0) {
-    resolvedSection.style.display = 'block';
-    resolvedList.innerHTML = resolvedThisMonth.map(r => {
-      const [oy, om] = r.month.split('-');
-      const originLabel = `${parseInt(om)}月不能`;
-      return `<div style="background:white; border-radius:8px; padding:10px 14px; margin-bottom:8px; border-left:4px solid #27ae60; font-size:14px;">
-        <span style="font-weight:bold; color:#1e7e34;">✅ ${escapeHtml(r.name) || '(名前未入力)'} さん</span>
-        <span style="color:#555; margin-left:8px;">${r.amount.toLocaleString()}円</span>
-        <span style="display:inline-block; margin-left:8px; padding:2px 8px; background:#fff3cd; color:#856404; border-radius:10px; font-size:11px; font-weight:bold;">${originLabel}（${escapeHtml(r.reason)}）から回復</span>
-      </div>`;
-    }).join('');
-  } else {
-    resolvedSection.style.display = 'none';
-  }
-
-  renderPendingPanel();
-  renderUpcomingDebits();
-
-  renderHistory();
+  // ③ 翌月合算の回収済候補（承認パネル）／④ 今月回収済フッタ（取消用）
+  renderCandidatePanel(month);
+  renderCollectedFooter(month);
 }
 
-function renderHistory() {
-  const months = getMonths();
-  const tbody = document.getElementById('historyBody');
-  tbody.innerHTML = months.map(m => {
-    const recs = data.records.filter(r => r.month === m);
-    const total = recs.length;
-    const totalAmt = recs.reduce((s, r) => s + r.amount, 0);
-    const collectedAmt = recs.filter(r => r.status === '回収済').reduce((s, r) => s + r.amount, 0);
-    const uncollectedAmt = totalAmt - collectedAmt;
-    const doneCount = recs.filter(r => r.status === '回収済' || r.status === '再提出済' || r.status === '手続中').length;
-    const rate = total > 0 ? Math.round(doneCount / total * 100) : 0;
-    const [y, mo] = m.split('-');
-    return `<tr>
-      <td>${y}年${parseInt(mo)}月</td>
-      <td>${total}件</td>
-      <td style="color:#e74c3c;font-weight:bold;">${totalAmt.toLocaleString()}円</td>
-      <td style="color:#27ae60;">${collectedAmt.toLocaleString()}円</td>
-      <td style="color:#f39c12;font-weight:bold;">${uncollectedAmt.toLocaleString()}円</td>
-      <td>
-        <div style="background:#eee;border-radius:10px;height:20px;width:100px;display:inline-block;vertical-align:middle;">
-          <div style="background:${rate === 100 ? '#27ae60' : '#3498db'};height:100%;border-radius:10px;width:${rate}%;transition:0.3s;"></div>
-        </div>
-        ${rate}%
-      </td>
-    </tr>`;
-  }).join('');
+// 1枚の未回収カード（氏名/△月分/金額/理由/状態バッジ/[回収済]・行タップで詳細）
+function fnkCardHtml(r) {
+  const b = fnkBadgeFor(r);
+  const mm = r.month ? parseInt(r.month.split('-')[1]) + '月分' : '';
+  const hint = b.key === 'white' ? '今は放置でOK（翌月に合算）'
+             : b.key === 'orange' ? '依頼書を再送 → 送付日を記録'
+             : '電話で口座の生存・意向を確認';
+  const expected = r.expectedStartDate || r.expectedStartMonth || '';
+  return `
+  <div class="fnk-card fnk-b-${b.key}" data-id="${r.id}">
+    <div class="fnk-row" onclick="fnkToggleDetail(${r.id})">
+      <span class="fnk-badge">${b.mark}</span>
+      <span class="fnk-name">${escapeHtml(r.name) || '(名前なし)'}${fubiHistoryBadge(r)}</span>
+      <span class="fnk-mon">${mm}</span>
+      <span class="fnk-amt">¥${(r.amount || 0).toLocaleString()}</span>
+      <span class="fnk-reason">${escapeHtml(r.reason || '')}</span>
+      <span class="fnk-act" id="fnk-act-${r.id}" onclick="event.stopPropagation();">
+        <button class="fnk-collect-btn" onclick="fnkMarkCollected(${r.id})">回収済</button>
+      </span>
+    </div>
+    <div class="fnk-sub">└ ${b.label}（${hint}）</div>
+    <div class="fnk-detail" id="fnk-detail-${r.id}" style="display:none;">
+      <label class="fnk-f">利用者名（半角カナ）
+        <input type="text" value="${escapeHtml(r.name || '')}" onchange="updateName(${r.id}, this.value)"></label>
+      <div class="fnk-meta">金融機関: ${escapeHtml(r.bank || '')} ${escapeHtml(r.branch || '')} ／ 口座 ${escapeHtml(r.account || '')} ／ 顧客番号 ${escapeHtml(r.customerId || '')} ／ No.${escapeHtml(r.no || '')}</div>
+      <label class="fnk-f">詳細理由・経緯（電話で判明した内容など）
+        <textarea onchange="updateDetailReason(${r.id}, this.value)" placeholder="ゆうちょ末尾1漏れ・口座解約 等">${escapeHtml(r.detailReason || '')}</textarea></label>
+      <label class="fnk-f">対応状況
+        <select onchange="updateStatus(${r.id}, this.value)">
+          ${['未対応','連絡済','手続中','再提出済','回収済'].map(s => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+        </select></label>
+      <label class="fnk-f">依頼書郵送日（🟠要依頼書再送のとき）
+        <input type="date" value="${r.formSentDate || ''}" onchange="updateFormSentDate(${r.id}, this.value)"></label>
+      <label class="fnk-f">引落開始予定日
+        <input type="date" value="${expected}" onchange="updateExpectedStart(${r.id}, this.value)"></label>
+      <label class="fnk-f">メモ
+        <input type="text" value="${escapeHtml(r.memo || '')}" onchange="updateMemo(${r.id}, this.value)"></label>
+    </div>
+  </div>`;
+}
+
+function fnkToggleDetail(id) {
+  const d = document.getElementById('fnk-detail-' + id);
+  if (!d) return;
+  d.style.display = d.style.display === 'none' ? 'block' : 'none';
+}
+
+// [回収済]タップ → 回収方法ピッカーを出す（1〜2タップで消込・§4-3）
+function fnkMarkCollected(id) {
+  const act = document.getElementById('fnk-act-' + id);
+  if (!act) return;
+  act.innerHTML = '<span class="fnk-method-label">回収方法:</span>'
+    + ['現金', '口座変更', '翌月合算', 'その他'].map(m =>
+        `<button class="fnk-method-btn" onclick="fnkConfirmCollected(${id}, '${m}')">${m}</button>`).join('')
+    + `<button class="fnk-method-cancel" onclick="renderMonth()" title="やめる">×</button>`;
+}
+
+// 消込確定（回収済フラグでのみ消える・日付では消えない）。saveData→cloudSync（fnkGuardProdWrite経由）
+function fnkConfirmCollected(id, method) {
+  const r = data.records.find(x => x.id === id);
+  if (!r) return;
+  const month = document.getElementById('monthSelect').value;
+  r.status = '回収済';
+  r.resolvedMonth = month;
+  r.collectMethod = method;
+  r.resolvedNote = `${month} 回収済（${method}）`;
+  saveData(data);
+  renderMonth();
+  fnkScheduleNotify(month); // 伝達ボードの要対応件数を更新
+}
+
+// 消込の取消（1操作）
+function fnkUndoCollected(id) {
+  const r = data.records.find(x => x.id === id);
+  if (!r) return;
+  r.status = '未対応';
+  delete r.resolvedMonth;
+  delete r.collectMethod;
+  delete r.resolvedNote;
+  saveData(data);
+  renderMonth();
+  fnkScheduleNotify(document.getElementById('monthSelect').value); // 取消で件数が戻る→通知更新
+}
+
+// ③ 翌月合算の回収済候補（自動確定せず一括承認・§4-4）
+function renderCandidatePanel(month) {
+  const el = document.getElementById('candidatePanel');
+  if (!el) return;
+  const cands = _fnkCandidates || [];
+  if (cands.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = `<div class="fnk-cand-head">🎉 過去の不能から今月引落成功（${cands.length}件）
+      <button class="fnk-cand-all" onclick="fnkApproveAllCandidates()">まとめて回収済にする</button></div>`
+    + cands.map(r => {
+        const om = r.month ? parseInt(r.month.split('-')[1]) + '月不能' : '';
+        return `<div class="fnk-cand-row">
+          <span class="fnk-cand-name">${escapeHtml(r.name) || '(名前なし)'}</span>
+          <span class="fnk-cand-amt">¥${(r.amount || 0).toLocaleString()}</span>
+          <span class="fnk-cand-badge">${om}（${escapeHtml(r.reason || '')}）</span>
+          <button class="fnk-cand-btn" onclick="fnkApproveCandidate(${r.id})">回収済にする</button>
+        </div>`;
+      }).join('');
+}
+
+function fnkApproveCandidate(id) {
+  const r = data.records.find(x => x.id === id);
+  if (!r) return;
+  const month = document.getElementById('monthSelect').value;
+  r.status = '回収済';
+  r.resolvedMonth = month;
+  r.collectMethod = '翌月合算';
+  r.resolvedNote = `${month}の取込で引落成功を確認（翌月合算）`;
+  _fnkCandidates = _fnkCandidates.filter(x => x.id !== id);
+  saveData(data);
+  renderMonth();
+  fnkScheduleNotify(month);
+}
+
+function fnkApproveAllCandidates() {
+  const month = document.getElementById('monthSelect').value;
+  (_fnkCandidates || []).forEach(r => {
+    r.status = '回収済';
+    r.resolvedMonth = month;
+    r.collectMethod = '翌月合算';
+    r.resolvedNote = `${month}の取込で引落成功を確認（翌月合算）`;
+  });
+  _fnkCandidates = [];
+  saveData(data);
+  renderMonth();
+  fnkScheduleNotify(month);
+}
+
+// ④ 今月回収済フッタ（既定は畳む・展開で取消できる）
+function renderCollectedFooter(month) {
+  const el = document.getElementById('collectedFooter');
+  if (!el) return;
+  const collected = data.records.filter(r => r.resolvedMonth === month);
+  if (collected.length === 0) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  const open = el.getAttribute('data-open') === '1';
+  el.innerHTML = `<div class="fnk-cf-head" onclick="fnkToggleCollected()">✓ 今月回収済 ${collected.length}件 ${open ? '▲' : '▼'}</div>`
+    + (open ? `<div class="fnk-cf-body">` + collected.map(r => {
+        const om = r.month ? parseInt(r.month.split('-')[1]) + '月分' : '';
+        return `<div class="fnk-cf-row">
+          <span>${escapeHtml(r.name) || '(名前なし)'}</span>
+          <span>¥${(r.amount || 0).toLocaleString()}</span>
+          <span class="fnk-cf-meta">${om}${r.collectMethod ? '・' + escapeHtml(r.collectMethod) : ''}</span>
+          <button class="fnk-cf-undo" onclick="fnkUndoCollected(${r.id})">取消</button>
+        </div>`;
+      }).join('') + `</div>` : '');
+}
+
+function fnkToggleCollected() {
+  const el = document.getElementById('collectedFooter');
+  if (!el) return;
+  el.setAttribute('data-open', el.getAttribute('data-open') === '1' ? '0' : '1');
+  renderCollectedFooter(document.getElementById('monthSelect').value);
 }
 
 // ============ データ操作 ============
@@ -985,344 +1225,6 @@ function updateExpectedStart(id, value) {
   }
 }
 
-function renderPendingPanel() {
-  // 全月横断で手続中のものを一覧表示
-  const pending = data.records.filter(r => (r.expectedStartDate || r.expectedStartMonth) && r.status !== '回収済');
-  const panel = document.getElementById('pendingPanel');
-  const list = document.getElementById('pendingList');
-
-  if (pending.length === 0) {
-    panel.style.display = 'none';
-    return;
-  }
-
-  panel.style.display = 'block';
-  const now = new Date();
-  now.setHours(0,0,0,0);
-
-  list.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
-    '<tr style="background:#f0f7ff;"><th style="padding:8px;text-align:left;">利用者</th><th>顧客番号</th><th>不能理由</th><th>依頼書郵送日</th><th>引落開始予定</th><th>状態</th></tr>' +
-    pending.map(r => {
-      const expectedDate = r.expectedStartDate || r.expectedStartMonth || '';
-      let targetDate;
-      if (expectedDate.length <= 7) {
-        targetDate = new Date(expectedDate + '-27');
-      } else {
-        targetDate = new Date(expectedDate);
-      }
-      const diffDays = Math.ceil((targetDate - now) / (1000*60*60*24));
-      let statusLabel = '';
-      if (diffDays > 0) {
-        statusLabel = `<span class="progress-label">あと${diffDays}日</span>`;
-      } else if (diffDays === 0) {
-        statusLabel = '<span class="progress-label">今日引落予定</span>';
-      } else {
-        statusLabel = '<span class="progress-label overdue">予定超過！要確認</span>';
-      }
-      const sentStr = r.formSentDate || '未入力';
-      const expectedStr = expectedDate.length <= 7 ? expectedDate + '-27' : expectedDate;
-      return `<tr style="border-bottom:1px solid #eee;">
-        <td style="padding:8px;">${escapeHtml(r.name) || '（未入力）'}</td>
-        <td style="text-align:center;">${r.customerId}</td>
-        <td style="text-align:center;">${r.reason}</td>
-        <td style="text-align:center;">${sentStr}</td>
-        <td style="text-align:center;">${expectedStr}</td>
-        <td style="text-align:center;">${statusLabel}</td>
-      </tr>`;
-    }).join('') + '</table>';
-}
-
-// ============ 引落予定日別 請求合計（事前連絡用） ============
-let viewMode = 'A'; // 'A' = 利用者ごと合算, 'B' = 月ごとに表示
-let filterMode = 'all'; // 'all' = 全て, 'pending' = 未連絡のみ
-const CONTACT_STAFF_KEY = 'yawaragi_furikae_contact_staff';
-
-function saveContactStaff() {
-  const sel = document.getElementById('contactStaffSelect');
-  localStorage.setItem(CONTACT_STAFF_KEY, sel.value);
-}
-
-function loadContactStaff() {
-  const saved = localStorage.getItem(CONTACT_STAFF_KEY);
-  return saved || '勝又';
-}
-
-function getCurrentContactStaff() {
-  const sel = document.getElementById('contactStaffSelect');
-  return sel ? sel.value : loadContactStaff();
-}
-
-function setViewMode(mode) {
-  viewMode = mode;
-  document.getElementById('viewModeABtn').classList.toggle('active', mode === 'A');
-  document.getElementById('viewModeBBtn').classList.toggle('active', mode === 'B');
-  renderUpcomingDebits();
-}
-
-function setFilterMode(mode) {
-  filterMode = mode;
-  document.getElementById('filterAllBtn').classList.toggle('active', mode === 'all');
-  document.getElementById('filterPendingBtn').classList.toggle('active', mode === 'pending');
-  renderUpcomingDebits();
-}
-
-function renderUpcomingDebits() {
-  // 引落予定日があり、未回収のレコードを抽出
-  let upcoming = data.records.filter(r => {
-    const expDate = r.expectedStartDate || r.expectedStartMonth;
-    return expDate && r.status !== '回収済';
-  });
-
-  // 未連絡フィルター
-  if (filterMode === 'pending') {
-    upcoming = upcoming.filter(r => !r.contactedDate);
-  }
-
-  const panel = document.getElementById('upcomingPanel');
-  const list = document.getElementById('upcomingList');
-
-  if (upcoming.length === 0) {
-    if (filterMode === 'pending') {
-      // フィルター時はメッセージだけ出して、パネル自体は表示
-      panel.style.display = 'block';
-      list.innerHTML = '<div style="text-align:center;padding:30px;background:#f0fff4;border-radius:8px;color:#27ae60;font-weight:bold;font-size:15px;">✅ 全員に連絡済みです！素晴らしい！</div>';
-      return;
-    }
-    panel.style.display = 'none';
-    return;
-  }
-  panel.style.display = 'block';
-
-  // 引落予定日でグループ化
-  const groups = {};
-  upcoming.forEach(r => {
-    const expDate = r.expectedStartDate || r.expectedStartMonth;
-    const dateKey = expDate.length <= 7 ? expDate + '-27' : expDate;
-    if (!groups[dateKey]) groups[dateKey] = [];
-    groups[dateKey].push(r);
-  });
-
-  const sortedDates = Object.keys(groups).sort();
-  const now = new Date();
-  now.setHours(0,0,0,0);
-
-  list.innerHTML = sortedDates.map(dateKey => {
-    const records = groups[dateKey];
-    const targetDate = new Date(dateKey);
-    const diffDays = Math.ceil((targetDate - now) / (1000*60*60*24));
-    const [y, m, d] = dateKey.split('-');
-    const dateStr = `${y}年${parseInt(m)}月${parseInt(d)}日`;
-    let countdownStr;
-    if (diffDays > 0) countdownStr = `あと${diffDays}日`;
-    else if (diffDays === 0) countdownStr = '本日';
-    else countdownStr = `${Math.abs(diffDays)}日前（要確認）`;
-
-    const totalAmt = records.reduce((s, r) => s + r.amount, 0);
-
-    // 期日が近いほど赤
-    const borderColor = diffDays < 0 ? '#e74c3c' : diffDays <= 7 ? '#f39c12' : '#3498db';
-    const headerBg = diffDays < 0 ? 'linear-gradient(135deg, #e74c3c, #c0392b)' :
-                     diffDays <= 7 ? 'linear-gradient(135deg, #f39c12, #d68910)' :
-                     'linear-gradient(135deg, #3498db, #2980b9)';
-
-    let bodyHtml;
-    if (viewMode === 'A') {
-      // パターンA: 利用者ごとに合算
-      const byCustomer = {};
-      records.forEach(r => {
-        const key = r.customerId || ('id-' + r.id);
-        if (!byCustomer[key]) {
-          byCustomer[key] = {
-            customerId: r.customerId,
-            name: r.name,
-            months: [],
-            monthAmountMap: {},
-            totalAmount: 0,
-            ids: [],
-            allContacted: true,
-            contactedDates: [],
-            contactedBys: []
-          };
-        }
-        byCustomer[key].months.push(r.month);
-        // 月ごとの金額を集計（同月複数件にも対応して合算）
-        byCustomer[key].monthAmountMap[r.month] = (byCustomer[key].monthAmountMap[r.month] || 0) + r.amount;
-        byCustomer[key].totalAmount += r.amount;
-        byCustomer[key].ids.push(r.id);
-        if (!r.contactedDate) {
-          byCustomer[key].allContacted = false;
-        } else {
-          byCustomer[key].contactedDates.push(r.contactedDate);
-          if (r.contactedBy) byCustomer[key].contactedBys.push(r.contactedBy);
-        }
-        // 名前は最初に見つかったものを優先（同じ顧客なので同じはず）
-        if (!byCustomer[key].name && r.name) byCustomer[key].name = r.name;
-      });
-
-      bodyHtml = `<table class="upcoming-table">
-        <thead><tr>
-          <th>利用者名</th><th>顧客番号</th><th>月数</th><th>合計金額</th><th>事前連絡済</th><th class="no-print">連絡用テキスト</th>
-        </tr></thead>
-        <tbody>
-        ${Object.values(byCustomer).map(c => {
-          // 月ごとの金額を「2月 741円<br>3月 3,302円」形式で表示
-          const sortedMonths = Object.keys(c.monthAmountMap).sort();
-          const monthsBreakdown = sortedMonths.map(mm => {
-            const [, mo2] = mm.split('-');
-            const amt = c.monthAmountMap[mm];
-            return `${parseInt(mo2)}月 ${amt.toLocaleString()}円`;
-          }).join('<br>');
-          const safeName = (c.name || '').replace(/'/g, "\\'");
-          const rowClass = c.allContacted ? 'row-contacted' : 'row-not-contacted';
-          let contactInfo = '';
-          if (c.allContacted && c.contactedDates.length > 0) {
-            const latestDate = c.contactedDates.sort().reverse()[0];
-            const byStr = c.contactedBys.length > 0 ? c.contactedBys[c.contactedBys.length - 1] : '';
-            contactInfo = `<div class="contacted-info">✓ ${latestDate}${byStr ? ' (' + byStr + ')' : ''}</div>`;
-          }
-          return `<tr class="${rowClass}">
-            <td><strong>${escapeHtml(c.name) || '<span style="color:#aaa;">（名前未入力）</span>'}</strong></td>
-            <td>${c.customerId}</td>
-            <td><strong>${sortedMonths.length}ヶ月分</strong><br><span style="font-size:12px;color:#555;line-height:1.7;">${monthsBreakdown}</span></td>
-            <td style="font-weight:bold;color:#c0392b;font-size:16px;">${c.totalAmount.toLocaleString()}円</td>
-            <td>
-              <input type="checkbox" class="contacted-checkbox" ${c.allContacted ? 'checked' : ''}
-                onchange="toggleContactedBatch([${c.ids.join(',')}], this.checked)">
-              ${contactInfo}
-            </td>
-            <td class="no-print">
-              <button class="copy-btn" onclick="copyContactText('${safeName}', '${dateStr}', ${c.totalAmount}, ${c.months.length})">📋 コピー</button>
-            </td>
-          </tr>`;
-        }).join('')}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3" style="text-align:right;font-weight:bold;">この日の合計</td>
-            <td style="font-weight:bold;color:#c0392b;font-size:17px;">${totalAmt.toLocaleString()}円</td>
-            <td colspan="2"></td>
-          </tr>
-        </tfoot>
-      </table>`;
-    } else {
-      // パターンB: 月ごとに表示
-      bodyHtml = `<table class="upcoming-table">
-        <thead><tr>
-          <th>利用者名</th><th>顧客番号</th><th>振替元月</th><th>金額</th><th>事前連絡済</th>
-        </tr></thead>
-        <tbody>
-        ${records.slice().sort((a,b) => (a.customerId || '').localeCompare(b.customerId || '') || a.month.localeCompare(b.month)).map(r => {
-          const [, mo2] = r.month.split('-');
-          const rowClass = r.contactedDate ? 'row-contacted' : 'row-not-contacted';
-          let contactInfo = '';
-          if (r.contactedDate) {
-            contactInfo = `<div class="contacted-info">✓ ${r.contactedDate}${r.contactedBy ? ' (' + r.contactedBy + ')' : ''}</div>`;
-          }
-          return `<tr class="${rowClass}">
-            <td>${escapeHtml(r.name) || '<span style="color:#aaa;">（名前未入力）</span>'}</td>
-            <td>${r.customerId}</td>
-            <td>${parseInt(mo2)}月分</td>
-            <td style="font-weight:bold;">${r.amount.toLocaleString()}円</td>
-            <td>
-              <input type="checkbox" class="contacted-checkbox" ${r.contactedDate ? 'checked' : ''}
-                onchange="toggleContacted(${r.id}, this.checked)">
-              ${contactInfo}
-            </td>
-          </tr>`;
-        }).join('')}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3" style="text-align:right;font-weight:bold;">この日の合計</td>
-            <td style="font-weight:bold;color:#c0392b;font-size:17px;">${totalAmt.toLocaleString()}円</td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>`;
-    }
-
-    return `<div class="upcoming-group" style="border-color:${borderColor};">
-      <div class="upcoming-group-header" style="background:${headerBg};">
-        <div>📅 ${dateStr}（${countdownStr}）に引き落とし予定</div>
-        <div class="total">💰 合計 ${totalAmt.toLocaleString()}円</div>
-      </div>
-      ${bodyHtml}
-    </div>`;
-  }).join('');
-}
-
-function toggleContacted(id, checked) {
-  const rec = data.records.find(r => r.id === id);
-  if (rec) {
-    if (checked) {
-      rec.contactedDate = new Date().toISOString().split('T')[0];
-      rec.contactedBy = getCurrentContactStaff();
-    } else {
-      rec.contactedDate = '';
-      rec.contactedBy = '';
-    }
-    saveData(data);
-    renderUpcomingDebits();
-  }
-}
-
-function toggleContactedBatch(ids, checked) {
-  const today = new Date().toISOString().split('T')[0];
-  const staff = getCurrentContactStaff();
-  ids.forEach(id => {
-    const rec = data.records.find(r => r.id === id);
-    if (rec) {
-      if (checked) {
-        rec.contactedDate = today;
-        rec.contactedBy = staff;
-      } else {
-        rec.contactedDate = '';
-        rec.contactedBy = '';
-      }
-    }
-  });
-  saveData(data);
-  renderUpcomingDebits();
-}
-
-function copyContactText(name, dateStr, amount, monthsCount) {
-  const displayName = name || '◯◯';
-  const text = `${displayName}様
-
-お世話になっております、リハビリデイサービスyawaragiです。
-ご利用料のお支払いについてご連絡です。
-
-過去${monthsCount}ヶ月分の未収金、合計${amount.toLocaleString()}円を
-${dateStr}に口座から引き落とす予定です。
-
-ご準備のほど、よろしくお願いいたします。`;
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(() => {
-      alert('✅ クリップボードにコピーしました！\n\n以下の内容です:\n\n' + text);
-    }, () => {
-      fallbackCopy(text);
-    });
-  } else {
-    fallbackCopy(text);
-  }
-}
-
-function fallbackCopy(text) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.left = '-9999px';
-  document.body.appendChild(ta);
-  ta.select();
-  try {
-    document.execCommand('copy');
-    alert('✅ クリップボードにコピーしました！\n\n以下の内容です:\n\n' + text);
-  } catch (e) {
-    alert('コピーに失敗しました。手動でコピーしてください:\n\n' + text);
-  }
-  document.body.removeChild(ta);
-}
 
 // ============ 追加モーダル ============
 const DRAFT_KEY = 'furikae_draft';
@@ -1526,7 +1428,7 @@ function addRecord() {
 // ============ CSV出力 ============
 function exportCSV() {
   const month = document.getElementById('monthSelect').value;
-  const records = data.records.filter(r => r.month === month);
+  const records = data.records.filter(r => r.month === month && !fnkIsImportMarker(r));
   const bom = '\uFEFF';
   const header = '連番,利用者名,金融機関,支店,口座番号,金額,顧客番号,不能理由,詳細理由・経緯,対応状況,依頼書郵送日,引落開始予定日,メモ\n';
   const csvEscape = v => {
@@ -1595,12 +1497,9 @@ async function fetchFurikaeFubi() {
 }
 
 // ============ 初期化 ============
+fnkCheckProductionOrigin(); // 別オリジンで開いていたら先頭で警告（操作前に気づけるよう最優先）
 setupDropZone();
 initMonthSelect();
-// 担当者をlocalStorageから復元
-const savedStaff = loadContactStaff();
-const staffSel = document.getElementById('contactStaffSelect');
-if (staffSel) staffSel.value = savedStaff;
 renderMonth();
 
 // クラウドから初回ロード＋自動同期開始
@@ -1613,221 +1512,6 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) fetchFurikaeFubi();
 });
 
-// ============ 事例ノート機能セットアップ ============
-// 事例ノートセクションを動的に追加（既存HTML構造を壊さないため）
-(function setupNotesSection() {
-  const notesHtml = `
-    <div class="notes-section no-print" id="notesSection">
-      <h2>
-        📝 事例ノート（過去のミス・対策記録）
-        <span class="notes-header-right">
-          <button class="btn btn-primary" onclick="openNoteModal()">＋ 事例追加</button>
-        </span>
-      </h2>
-      <div id="notesBody"></div>
-    </div>
-
-    <!-- 事例追加・編集モーダル -->
-    <div class="modal-overlay" id="noteModal">
-      <div class="modal" style="max-width:600px;">
-        <h3 id="noteModalTitle">事例を追加</h3>
-        <input type="hidden" id="noteEditId">
-        <div class="form-group">
-          <label>タイトル <span style="color:#e74c3c;">*</span></label>
-          <input type="text" id="noteTitle" placeholder="例: 預金種目「その他」でE0410エラー">
-        </div>
-        <div class="form-group">
-          <label>カテゴリ</label>
-          <select id="noteCategory">
-            <option value="エラー">エラー</option>
-            <option value="手順">手順</option>
-            <option value="その他">その他</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>発生日</label>
-          <input type="date" id="noteDate">
-        </div>
-        <div class="form-group">
-          <label>詳細（原因・対処・再発防止）</label>
-          <textarea id="noteDescription" rows="8" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;"></textarea>
-        </div>
-        <div class="form-group">
-          <label>登録者</label>
-          <input type="text" id="noteAuthor" placeholder="名前">
-        </div>
-        <div class="form-group">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="notePinned" style="width:auto;">
-            <span>📌 要注意フラグ（上部バナーに表示・請求作業前に必ず確認）</span>
-          </label>
-        </div>
-        <div class="form-actions">
-          <button class="btn btn-secondary" onclick="closeNoteModal()">キャンセル</button>
-          <button class="btn btn-success" onclick="saveNote()">保存</button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.insertAdjacentHTML('beforeend', notesHtml);
-})();
-
-// ============ 事例ノート機能 ============
-const NOTES_KEY = 'yawaragi_furikae_notes';
-
-function loadNotes() {
-  try {
-    return JSON.parse(localStorage.getItem(NOTES_KEY)) || [];
-  } catch(e) { return []; }
-}
-
-function saveNotes(notes) {
-  localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
-}
-
-function renderNotes() {
-  const notes = loadNotes();
-  // ピン留め → 新しい順
-  const sorted = [...notes].sort((a, b) => {
-    if (a.pinned !== b.pinned) return b.pinned ? 1 : -1;
-    return (b.date || '').localeCompare(a.date || '');
-  });
-
-  const body = document.getElementById('notesBody');
-  if (!body) return;
-
-  if (sorted.length === 0) {
-    body.innerHTML = '<div class="note-empty">📝 まだ事例が登録されていません。「＋事例追加」から記録してください。</div>';
-  } else {
-    body.innerHTML = sorted.map(n => {
-      const cat = n.category || 'その他';
-      return `
-        <div class="note-card ${n.pinned ? 'pinned' : ''}">
-          <div class="note-card-header">
-            <div>
-              <span class="note-title">${escapeHtml(n.title)}</span>
-              <span class="note-category note-cat-${cat}">${cat}</span>
-              ${n.pinned ? '<span class="note-pin-badge">📌 要注意</span>' : ''}
-            </div>
-            <div class="note-actions">
-              <button class="btn btn-small btn-secondary" onclick="togglePinNote('${n.id}')">${n.pinned ? '📌解除' : '📌要注意'}</button>
-              <button class="btn btn-small btn-primary" onclick="editNote('${n.id}')">編集</button>
-              <button class="btn btn-small btn-danger" onclick="deleteNote('${n.id}')">削除</button>
-            </div>
-          </div>
-          <div class="note-meta">📅 ${n.date || '-'} ／ 登録: ${n.author || '-'}</div>
-          <div class="note-desc">${escapeHtml(n.description || '')}</div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  // バナーも更新
-  renderAlertBanner(sorted);
-}
-
-function renderAlertBanner(sortedNotes) {
-  const pinned = sortedNotes.filter(n => n.pinned);
-  const banner = document.getElementById('alertBanner');
-  if (!banner) return;
-
-  if (pinned.length === 0) {
-    banner.style.display = 'none';
-    return;
-  }
-
-  banner.style.display = 'block';
-  banner.innerHTML = `
-    <div class="alert-banner-title">⚠️ 請求作業前に必ず確認してください（${pinned.length}件）</div>
-    ${pinned.map(n => `
-      <div class="alert-item">
-        <div class="alert-item-title">${escapeHtml(n.title)}</div>
-        <div class="alert-item-desc">${escapeHtml(n.description || '')}</div>
-        <div class="alert-item-meta">📅 ${n.date || '-'}</div>
-      </div>
-    `).join('')}
-  `;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
-}
-
-function openNoteModal(editId) {
-  const modal = document.getElementById('noteModal');
-  const notes = loadNotes();
-  const editing = editId ? notes.find(n => n.id === editId) : null;
-  document.getElementById('noteModalTitle').textContent = editing ? '事例を編集' : '事例を追加';
-  document.getElementById('noteEditId').value = editId || '';
-  document.getElementById('noteTitle').value = editing?.title || '';
-  document.getElementById('noteCategory').value = editing?.category || 'エラー';
-  document.getElementById('noteDate').value = editing?.date || new Date().toISOString().slice(0,10);
-  document.getElementById('noteDescription').value = editing?.description || '';
-  document.getElementById('notePinned').checked = editing?.pinned || false;
-  document.getElementById('noteAuthor').value = editing?.author || loadContactStaff() || '';
-  modal.classList.add('active');
-}
-
-function closeNoteModal() {
-  document.getElementById('noteModal').classList.remove('active');
-}
-
-function saveNote() {
-  const id = document.getElementById('noteEditId').value || ('n_' + Date.now());
-  const title = document.getElementById('noteTitle').value.trim();
-  if (!title) { alert('タイトルを入力してください'); return; }
-  const note = {
-    id: id,
-    title: title,
-    category: document.getElementById('noteCategory').value,
-    date: document.getElementById('noteDate').value,
-    description: document.getElementById('noteDescription').value.trim(),
-    pinned: document.getElementById('notePinned').checked,
-    author: document.getElementById('noteAuthor').value.trim()
-  };
-  let notes = loadNotes();
-  const idx = notes.findIndex(n => n.id === id);
-  if (idx >= 0) notes[idx] = note;
-  else notes.push(note);
-  saveNotes(notes);
-  closeNoteModal();
-  renderNotes();
-}
-
-function editNote(id) { openNoteModal(id); }
-
-function deleteNote(id) {
-  if (!confirm('この事例を削除しますか？')) return;
-  saveNotes(loadNotes().filter(n => n.id !== id));
-  renderNotes();
-}
-
-function togglePinNote(id) {
-  const notes = loadNotes();
-  const n = notes.find(x => x.id === id);
-  if (!n) return;
-  n.pinned = !n.pinned;
-  saveNotes(notes);
-  renderNotes();
-}
-
-// 初回事例を1件プリセット（過去の事例が空なら登録）
-(function seedInitialNote() {
-  const existing = loadNotes();
-  if (existing.length > 0) return;
-  const seed = {
-    id: 'n_seed_20260412',
-    title: '預金種目「その他」でE0410エラー',
-    category: 'エラー',
-    date: '2026-04-12',
-    description: '【発生】4月分の電算アップロードで E0410「預金種目が違います」エラー。110件全件が処理されず。\n\n【原因】3月新規利用者（中村さん）の口座登録時、預金種目を「その他」で登録していた。電算/全銀フォーマットは「その他(9)」を受け付けない。\n\n【対処】\n1. リハブクラウドで該当者の口座情報を「普通預金」に修正\n2. 振替依頼確定解除 → 請求書削除 → 請求書再作成（スナップショット更新のため）\n3. 振替依頼の再確定 → 全銀ファイル再出力 → 電算再アップロード\n\n【再発防止】新規利用者の口座登録時は預金種目を普通/当座/貯蓄のみ選択。「その他」は絶対NG。既存者の口座情報変更時も要注意。',
-    pinned: true,
-    author: ''
-  };
-  saveNotes([seed]);
-})();
-
-renderNotes();
 </script>
 </body>
 </html>
