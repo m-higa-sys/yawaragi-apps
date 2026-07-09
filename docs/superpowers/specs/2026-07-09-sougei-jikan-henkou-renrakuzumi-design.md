@@ -124,12 +124,11 @@ sched-grid の書込POSTは genba同様 no-cors になる見込み＝**レスポ
 
 ### 3-4. 連絡者(operator)の取得（C1採用）
 - モーダル内に**連絡者セレクタ**を置く（メモリの欠席box/kbox で確立した「担当者はモーダル内選択」パターンに合わせる）。受付者バー直読はしない。
-- C1＝既存スタッフマスタ/ボードGASから候補を取得。**未確認（Q1・実装前の一次確認事項）**: sched-grid には現状スタッフ名リストが無いため、どこからスタッフ名を取るかを先に特定する。**次ラウンドの最初のステップ＝「名簿の在り処の調査」**とし、候補は次の3つ:
-  1. **ボードGAS**（yawaragi-board のスタッフ関連API・シート）
-  2. **`出勤＆送迎表.html`（sougei）**が参照しているスタッフ名リスト
-  3. **アプリ台帳（Sheets）**のスタッフマスタ相当シート
-
-  **名簿ソースが確定するまで連絡者セレクタのコーディングには入らない**（§8 の未確認事項ルール）。
+- C1＝**Task 0 調査で確定（2026-07-09）**: 連絡者名簿の正本は **ボードGAS `action=staff_list`**。実体 = `gas/yawaragi-board/コード.js:1684-1687` の分岐 → `getStaffListFromShiftSheet()`（`コード.js:3687-3703`）が **シフト希望SS「スタッフ」シートA列** を文字列配列で返す（`{staff:[...]}`）。リポジトリ全体の「スタッフ名一覧の正本」で、入退社はそのシート更新だけで全アプリ反映。
+  - **取得方式**: sched-grid は**素の `fetch`（CORS・JSONPではない）**で通信（`sched-grid.html:546`）。連絡者名簿も `fetch(BOARD_URL + '?action=staff_list&t=' + Date.now()).then(r=>r.json())` → `data.staff`。
+  - **URLを1本追加**: sched-grid の既存 `GAS_URL` は**出勤送迎表GAS（V66Udd…）でボードGASではない**。`staff_list` 用に**ボードGASのURLを別途定数追加**する（例 `sougei_nisshi.html:1121` の `AKfycbwo1UGx…` と同一）。
+  - **比嘉（社長）**: `data.staff` に社長が含まれない可能性あり（`yawaragi-board.html:5311` 前例）。連絡者に社長を含めるかは Task 9-B で確定（含めるなら先頭固定で補う）。
+  - 不採用: 候補2 sougei は静的配列 `STAFF`（`sougei.html:574-591`）で更新にコード改修が要り二重管理。候補3 getStaffMaster は提出物用の役割付きサブ集合（正本は staff_list とコード.js:13401-13404 が明言）。
 
 ---
 
@@ -195,7 +194,9 @@ sched-grid の書込POSTは genba同様 no-cors になる見込み＝**レスポ
 ---
 
 ## 8. 未確認事項の一覧（実装前に一次確認する）
-- **連絡者候補ソース（C1・Q1）**: どこからスタッフ名を取るか。**次ラウンドの最初のステップ＝この調査**。候補3つ = ①ボードGAS ②`出勤＆送迎表.html`（sougei） ③アプリ台帳（Sheets）。**名簿ソースが確定するまで連絡者セレクタの実装に入らない。**
+- **連絡者候補ソース（C1・Q1）** → **確定済み（Task 0・2026-07-09）**: ボードGAS `action=staff_list`（`getStaffListFromShiftSheet` / シフト希望SS「スタッフ」シートA列 / `{staff:[...]}`）。sched-grid から素の fetch でボードGAS URL に `?action=staff_list` を叩く（URL は別途定数追加）。→ §3-4 に詳細。**Task 9-B 着手可。**
+- **sched-grid の通信方式（Task 0 で判明）**: 素の `fetch`（CORS）であり JSONP ではない（`sched-grid.html:546`）。読みは `.then(r=>r.json())`。書込 POST の no-cors 可否は実測（genba前例では no-cors＝レスポンス読めない前提でライトバック検証を必須にする方針は不変）。
+- **連絡者に社長（比嘉）を含めるか**: staff_list に含まれない可能性（`yawaragi-board.html:5311`）。Task 9-B で確定。
 - **旧時間の引き当て（A1）**: 「直前 override が無ければ曜日ベース」から迎え時刻を引くロジックの実データ挙動（overrideと曜日ベースの突合が実際に旧時間を返すか）を実装時に実測確認。
 - sched-grid 書込POSTが no-cors 固定か（genba前例では固定・要実測）。
 - sched-grid の版ゲートは対象と実測済み（本番反映は `bump-app-version.js` 経由）。

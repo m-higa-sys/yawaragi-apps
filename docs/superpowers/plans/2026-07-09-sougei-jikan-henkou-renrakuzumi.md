@@ -559,7 +559,7 @@ git commit -m "feat(sched): doPost markSchedContacted（連絡済み追記・二
 
 - [ ] **Step 1: レスポンスに現在状態を載せる**
 
-`getSchedTimesResponse`（141行）が組み立てる JSONP ペイロードに、未来日ぶんの台帳現在状態を1フィールド追加する。overrides を返している構造の近くに:
+`getSchedTimesResponse`（141行）が組み立てるレスポンス（callback 有無で JSONP/素のJSON を出し分け。sched-grid は素の fetch で `.then(r=>r.json())` するため素JSON 経路が使われる）に、未来日ぶんの台帳現在状態を1フィールド追加する。overrides を返している構造の近くに:
 
 ```js
   // D1: 未来日の送迎連絡 現在状態を合成（sched-grid が色A/Bを出すため）。
@@ -596,12 +596,12 @@ git commit -m "feat(sched): getSchedTimesResponse に未来日の連絡現在状
 **Files:**
 - Modify: `sched-grid.html`
 
-*注: sched-grid の既存レンダリング構造・GET(JSONP) 受信部を Step1 で確認してから差し込む。*
+*注: sched-grid の既存レンダリング構造・受信部を Step1 で確認してから差し込む。**通信は素の `fetch`（CORS）で JSONP ではない**（Task 0 で確認済・`sched-grid.html:546` が `fetch(GAS_URL+'?action=getSchedTimes...').then(r=>r.json())`）。*
 
 - [ ] **Step 1: 受信部と stop 描画箇所を確認**
 
-Run: `grep -nE "getSchedTimes|overrides|timeChanged|render|stop" sched-grid.html | head -40`
-確認: JSONP コールバックで受けたデータのどこで stop を描画するか、override の timeChanged をどう見るか。
+Run: `grep -nE "getSchedTimes|overrides|timeChanged|render|stop|fetch" sched-grid.html | head -40`
+確認: `fetch(...).then(r=>r.json())` で受けたデータのどこで stop を描画するか、override の timeChanged をどう見るか。**JSONP コールバックではない**点に注意（`data = await res.json()` 系）。
 
 - [ ] **Step 2: 色クラスと判定を実装**
 
@@ -670,9 +670,30 @@ function sgGuardProdWrite() {
 ```
 非本番では「連絡済み」ボタンを `disabled` にする（描画時に `location.origin !== SG_PROD_ORIGIN` で判定）。
 
-- [ ] **Step 2: 連絡者セレクタ（Task 0 で確定したソース）**
+- [ ] **Step 2: 連絡者セレクタ（Task 0 確定＝ボードGAS `staff_list`）**
 
-Task 0 で確定した名簿ソースからスタッフ名配列を取得し、モーダル内の `<select>` に流す（受付者バー直読はしない・欠席box/kbox パターン）。取得方式は Task 0 の確定に従う（GET/JSONP か静的リスト）。
+**確定ソース**: ボードGAS `action=staff_list`（`getStaffListFromShiftSheet`／シフト希望SS「スタッフ」シートA列／`{staff:[...]}`）。sched-grid は素の fetch（CORS）なので JSONP は使わない。**ボードGAS URL を別途定数追加**する（既存 `GAS_URL`=V66Udd… は出勤送迎表GASでボードGASではない）:
+
+```js
+// 連絡者名簿の正本＝ボードGAS staff_list（sched-grid の既存 GAS_URL とは別のGAS）
+var SG_BOARD_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+
+function sgLoadOperators() {
+  return fetch(SG_BOARD_URL + '?action=staff_list&t=' + Date.now())
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var list = (data && data.staff) ? data.staff.slice() : [];
+      // 比嘉（社長）は staff_list に含まれない前例（yawaragi-board.html:5311）。送迎連絡者に社長を含めるならここで先頭固定で足す。
+      // → 送迎連絡者に社長を含めるか否かは実装時に社長へ一言確認（既定: staff_list のまま・社長は足さない）。
+      return list;
+    })
+    .catch(function() { return []; });   // 取得失敗時は空（モーダルで「名簿を取得できません」表示）
+}
+```
+
+取得した配列をモーダル内 `<select id="sg-operator-select">` に `<option>` で流す（受付者バー直読はしない・欠席box/kbox の「モーダル内選択」パターン）。名簿が空なら連絡済みボタンを押させず「名簿を取得できません」を表示。
+
+*⚠️ 社長への一言確認事項（実装時）: 送迎の連絡者に**比嘉（社長）を含めるか**。既定は staff_list のまま（含めない）。含めるなら上記コメント位置で先頭固定。*
 
 - [ ] **Step 3: 連絡済みボタン → モーダル → POST（no-cors）→ ライトバック検証**
 
@@ -695,13 +716,19 @@ function sgMarkContacted(date, user, unit) {
 }
 
 function sgVerifyContacted(date, user) {
-  sgReload(function(data) {                  // getSchedTimes を再取得（JSONP）
-    var cs = (data.contactStatus || {})[date + '|' + user];
-    if (cs && cs.status === '連絡済み') { sgResolvePending(date, user, true); }   // 色B確定・保留解除
-    else { sgResolvePending(date, user, false); alert('記録できませんでした。もう一度お試しください'); } // 色Aへ戻す
-  });
+  // getSchedTimes を素の fetch で再取得（JSONPではない）。キャッシュ回避に t= を付ける。
+  fetch(GAS_URL + '?action=getSchedTimes&t=' + Date.now())
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var cs = (data.contactStatus || {})[date + '|' + user];
+      if (cs && cs.status === '連絡済み') { sgResolvePending(date, user, true); }   // 色B確定・保留解除
+      else { sgResolvePending(date, user, false); alert('記録できませんでした。もう一度お試しください'); } // 色Aへ戻す
+    })
+    .catch(function() { sgResolvePending(date, user, false); alert('確認できませんでした。もう一度お試しください'); });
 }
 ```
+
+*注: `GAS_URL` は sched-grid 既存の出勤送迎表GAS（V66Udd…・getSchedTimes を返す）。連絡者名簿の `SG_BOARD_URL`（Step 2）とは別URL。*
 
 `sgSetPending`/`sgResolvePending` は保留スピナー表示と解決（成否どちらでも必ず保留を解く＝放置しない）。
 
