@@ -7727,6 +7727,8 @@ function kbUnnotifiedInRange_(pool, todayYMD) {
 // 記録は12ヶ月まで可能（Step A）にしたので、直近(赤)より古い未対応も「折りたたみ」で気づけるようにする。
 // ★誤陰性ゼロ: 古い必要月は範囲が広く遅延取得(Step C)なので、未取得を0と断定しない。
 //   0と断定してよいのは kbUnnotifiedOldLoaded_ が true（全古い月を取得済み）のときだけ。
+let kbUnnotifiedOldFailed_ = false;      // Step C: 古いゾーンの取得失敗（1つでも失敗月があれば true・後勝ちで消さない）
+let kbUnnotifiedOldEnsuring_ = {};       // Step C: 古いゾーンの進行中月（直近用 kbUnnotifiedEnsuring_ とは別＝非接触）
 
 // 古いゾーンの必要月＝下限月(12ヶ月前の同日を含む月)〜当月。月跨ぎで前月の未連絡を見落とさない。
 function kbUnnotifiedOldMonths_(todayYMD) {
@@ -7770,13 +7772,41 @@ function kbUnnotifiedOldInRange_(pool, todayYMD) {
     return { count: count, dates: dates };
 }
 
-// 折りたたみ（古い未連絡）の展開/収納トグル。展開すると古い日付一覧が現れる。書込ゼロ（再描画のみ）。
+// 折りたたみ（古い未連絡）の展開/収納トグル。★展開で初めて old月を取得する（遅延取得・JSONP本数を抑える）。書込ゼロ。
 function kbToggleOldUnnotified_() {
     kbState.oldUnnotifiedOpen = !kbState.oldUnnotifiedOpen;
     const today = (typeof jstTodayStr === 'function') ? jstTodayStr() : kbState.viewDate;
+    if (kbState.oldUnnotifiedOpen && typeof kbEnsureUnnotifiedOldMonths_ === 'function') {
+        kbEnsureUnnotifiedOldMonths_(today);   // ★展開時に初めて古い月を取得（初回表示では取得しない）
+    }
     if (typeof kbRenderUnnotifiedAlert_ === 'function') {
         kbRenderUnnotifiedAlert_(today, kbState.viewDate === today);
     }
+}
+
+// 古い必要月を月キャッシュへ充填要求する薄いラッパ（直近版 kbEnsureUnnotifiedMonths_ と同型・別グローバル）。
+// ★★I6型（誤陰性）防止: 一部月が失敗→他が成功でも、後勝ちで失敗を消さない。全古い月that揃ったときだけクリア。
+function kbEnsureUnnotifiedOldMonths_(todayYMD) {
+    if (typeof attEnsureMonthAbsences !== 'function') return;
+    kbUnnotifiedOldMonths_(todayYMD).forEach(function (ym) {
+        if (attMonthAbsCache[ym]) return;                 // 取得済み（空配列[]含む）は再取得しない
+        if (kbUnnotifiedOldEnsuring_[ym]) return;         // 同一月の多重要求を防ぐ（古いゾーン専用セット）
+        kbUnnotifiedOldEnsuring_[ym] = true;
+        attEnsureMonthAbsences(ym + '-01', function () {
+            delete kbUnnotifiedOldEnsuring_[ym];
+            // ★cb後もキャッシュに現れない＝失敗（timeout/onerror）。0件と断定させない。
+            if (!attMonthAbsCache[ym]) {
+                kbUnnotifiedOldFailed_ = true;
+            } else if (kbUnnotifiedOldLoaded_(todayYMD, attMonthAbsCache)) {
+                // ★全古い月that揃ったときだけ失敗フラグをクリア。月跨ぎ・複数月取得で
+                //   「一部失敗・他成功」だと後勝ちで失敗が消え誤陰性になるのを防ぐ（I6型）。
+                kbUnnotifiedOldFailed_ = false;
+            }
+            if (typeof kbRenderUnnotifiedAlert_ === 'function') {
+                kbRenderUnnotifiedAlert_(todayYMD, kbState.viewDate === todayYMD);
+            }
+        });
+    });
 }
 
 let kbPastContactEditing = null;   // 過去日連絡記録の対象 {name, date}
@@ -8139,14 +8169,38 @@ function kbRenderUnnotifiedAlert_(today, viewIsToday) {
     let oldHtml = '';
     const oldBtnStyle = 'background:none; border:none; color:#6b7280; text-decoration:underline; cursor:pointer; padding:0; font-size:.82rem;';
     const oldWrapStyle = 'margin-top:4px; color:#6b7280; font-size:.82rem;';
-    if (kbUnnotifiedOldLoaded_(today, attMonthAbsCache)) {
+    const oldAgg = function () {
         const oldPool = [];
         kbUnnotifiedOldMonths_(today).forEach(function (ym) {
             (attMonthAbsCache[ym] || []).forEach(function (a) { oldPool.push(a); });
         });
-        const ro = kbUnnotifiedOldInRange_(oldPool, today);
-        if (ro.count) {
-            if (kbState.oldUnnotifiedOpen) {
+        return kbUnnotifiedOldInRange_(oldPool, today);
+    };
+    if (!kbState.oldUnnotifiedOpen) {
+        // 未展開: 遅延取得のため中身は出さない。取得済みで件数が分かれば「N件 ▽」、それ以外は「確認する」導線。
+        if (kbUnnotifiedOldLoaded_(today, attMonthAbsCache)) {
+            const ro = oldAgg();
+            if (ro.count) {
+                oldHtml = '<div style="' + oldWrapStyle + '">'
+                    + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">他に古い未連絡 ' + ro.count + '件 ▽</button></div>';
+            }
+            // ro.count === 0 → 取得済みで確実に0 → 折りたたみ行なし（未取得と区別）
+        } else {
+            // ★old月未取得 → 件数を断定しない。▽ 展開で初めて取得する（Step C）
+            oldHtml = '<div style="' + oldWrapStyle + '">'
+                + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">▽ 古い未連絡も確認する</button></div>';
+        }
+    } else {
+        // 展開: 取得状態に応じて中身を出す。★誤陰性ゼロ: 失敗を先に判定し「なし」で覆い隠さない。
+        if (kbUnnotifiedOldFailed_) {
+            oldHtml = '<div style="' + oldWrapStyle + '">'
+                + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">△ 古い未連絡を確認できませんでした（再読込してください）</button></div>';
+        } else if (!kbUnnotifiedOldLoaded_(today, attMonthAbsCache)) {
+            oldHtml = '<div style="' + oldWrapStyle + '">'
+                + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">△ 古い未連絡を確認中…</button></div>';
+        } else {
+            const ro = oldAgg();
+            if (ro.count) {
                 const oldLinks = ro.dates.map(function (d) {
                     return '<button type="button" onclick="kbJumpTo(\'' + kbEsc_(d) + '\')" style="background:none; border:none; color:#374151; font-weight:700; text-decoration:underline; cursor:pointer; padding:0 2px; font-size:.82rem;">' + kbEsc_(kbFmtChip_(d)) + '</button>';
                 }).join('<span style="color:#9ca3af;"> ・ </span>');
@@ -8154,15 +8208,11 @@ function kbRenderUnnotifiedAlert_(today, viewIsToday) {
                     + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">△ 他に古い未連絡 ' + ro.count + '件</button>'
                     + '<div style="margin-top:2px;">' + oldLinks + '</div></div>';
             } else {
+                // 取得済みで確実に0 → ここで初めて「なし」と言える
                 oldHtml = '<div style="' + oldWrapStyle + '">'
-                    + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">他に古い未連絡 ' + ro.count + '件 ▽</button></div>';
+                    + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">△ 古い未連絡なし</button></div>';
             }
         }
-        // ro.count === 0 → 取得済みで確実に0 → 折りたたみ行を出さない（未取得と区別）
-    } else {
-        // ★old月未取得 → 件数を断定しない（Step C で ▽ 展開時に取得する）
-        oldHtml = '<div style="' + oldWrapStyle + '">'
-            + '<button type="button" onclick="kbToggleOldUnnotified_()" style="' + oldBtnStyle + '">▽ 古い未連絡も確認する</button></div>';
     }
 
     box.innerHTML = redHtml + oldHtml;

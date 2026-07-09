@@ -210,8 +210,10 @@ function chromeEnv(opts) {
     kbState: { viewDate: o.viewDate || '2026-07-08', forward: o.forward || [], oldUnnotifiedOpen: ('oldOpen' in o) ? o.oldOpen : false },
     attMonthAbsCache: ('cache' in o) ? o.cache : { '2026-07': (o.month || []) },
     kbUnnotifiedFailed_: ('failed' in o) ? o.failed : false,
+    kbUnnotifiedOldFailed_: ('oldFailed' in o) ? o.oldFailed : false,   // Step C: 古いゾーンの失敗フラグ
     KB_RECORD_MONTHS: 12,                               // Step B: 古いゾーンは記録範囲(12ヶ月)に一致
     jstTodayStr: () => o.today || (o.viewDate || '2026-07-08'),
+    attEnsureMonthAbsences: o.attEnsure,                // Step C: 遅延取得(未指定=undefined→typeofガードで素通り)
     fetch: () => { calls.push({ fetch: true }); },
   };
   env.__els = els; env.__calls = calls;
@@ -219,12 +221,14 @@ function chromeEnv(opts) {
 }
 const CHROME_FNS = ['kbAddDaysYMD_', 'kbBizDaysAgo_', 'kbPastContactEligible_', 'kbPastContactRecordable_', 'kbIsDoneInline_', 'kbEsc_', 'kbFmtChip_',
   'kbUnnotifiedMonths_', 'kbUnnotifiedRangeLoaded_', 'kbUnnotifiedInRange_',
-  'kbUnnotifiedOldMonths_', 'kbUnnotifiedOldLoaded_', 'kbUnnotifiedOldInRange_', 'kbToggleOldUnnotified_',
+  'kbUnnotifiedOldMonths_', 'kbUnnotifiedOldLoaded_', 'kbUnnotifiedOldInRange_',
+  'kbToggleOldUnnotified_', 'kbEnsureUnnotifiedOldMonths_',
   'kbRenderUnnotifiedAlert_', 'kbRenderChrome_'];
 function bindChrome(env) {
   const src = CHROME_FNS.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
   const keys = Object.keys(env).filter(k => k.indexOf('__') !== 0);
-  const body = src + '\n\nreturn {' + CHROME_FNS.map(n => n + ': (typeof ' + n + '!=="undefined")?' + n + ':undefined').join(', ') + '};';
+  const prelude = 'let kbUnnotifiedOldEnsuring_ = {};\n';   // Step C: 古いゾーン専用の進行中セット（アラート専用）
+  const body = prelude + src + '\n\nreturn {' + CHROME_FNS.map(n => n + ': (typeof ' + n + '!=="undefined")?' + n + ':undefined').join(', ') + '};';
   return new Function(...keys, body)(...keys.map(k => env[k]));
 }
 function alertHtml(env) { return env.__els['kbox-unnotified-alert'].innerHTML; }
@@ -701,6 +705,223 @@ okSafe(() => (html.match(/send_box_cm_mails/g) || []).length === 1,
   'K22(★非接触): send_box_cm_mails は1箇所のまま');
 okSafe(() => (html.match(/action:\s*'recordPastContact'/g) || []).length === 1,
   'K23(★非接触): recordPastContact の実POSTは1本のまま（Step Bは記録POSTを増やさない）');
+
+// ================= L) ★★Step C 古いゾーンの遅延取得（▽展開時に old月を取得・I6型再発防止） =================
+// 初回表示では old月を取得しない（赤の近い分だけ＝JSONP本数を増やさない）。▽ 展開で初めて取得する。
+// ★★I6型（誤陰性）: 複数月取得で「一部失敗→他成功」のとき、後勝ちで失敗フラグが消えると
+//   「本当は確認できていないのに 0件/確定」に見える。1つでも失敗月があれば「確認できませんでした」を出す。
+console.log('■ L) ★★Step C 古いゾーンの遅延取得（▽展開で取得・I6型再発防止）');
+
+// 古いゾーンの充填ラッパ用の環境（Phase3の ensureEnv と同流儀・別グローバルを使う）
+function ensureOldEnv(opts) {
+  const o = opts || {};
+  const calls = [];
+  const cache = o.cache || {};
+  const env = {
+    attMonthAbsCache: cache,
+    kbState: { viewDate: o.viewDate || '2026-07-08', oldUnnotifiedOpen: true, _ensuringYm: o.ensuringYm || '' },
+    KB_RECORD_MONTHS: 12,
+    // 実挙動を模す: fillMonths に載っている月だけ cache を埋める（それ以外は失敗＝埋めない）。cbは必ず呼ぶ。
+    attEnsureMonthAbsences: function (dateStr, cb) {
+      const ym = String(dateStr).slice(0, 7);
+      calls.push({ ensure: ym });
+      if ((o.fillMonths || []).indexOf(ym) >= 0) cache[ym] = o.fillData || [];
+      cb();
+    },
+    kbRenderUnnotifiedAlert_: function () { calls.push({ render: true }); },
+    jstTodayStr: () => o.today || '2026-07-08',
+  };
+  env.__calls = calls; env.__cache = cache;
+  return env;
+}
+const ENSURE_OLD_FNS = ['kbAddDaysYMD_', 'kbBizDaysAgo_', 'kbPastContactEligible_', 'kbPastContactRecordable_',
+  'kbUnnotifiedOldMonths_', 'kbUnnotifiedOldLoaded_', 'kbEnsureUnnotifiedOldMonths_'];
+function bindEnsureOld(env) {
+  const src = ENSURE_OLD_FNS.map(n => extractFn(n, true)).filter(Boolean).join('\n\n');
+  const keys = Object.keys(env).filter(k => k.indexOf('__') !== 0);
+  const prelude = 'let kbUnnotifiedOldEnsuring_ = {};\nlet kbUnnotifiedOldFailed_ = false;\n';
+  const body = prelude + src + '\n\nreturn {' + ENSURE_OLD_FNS.map(n => n + ': (typeof ' + n + '!=="undefined")?' + n + ':undefined').join(', ') +
+    ', __oldFailed: () => kbUnnotifiedOldFailed_};';
+  return new Function(...keys, body)(...keys.map(k => env[k]));
+}
+
+// --- L遅延取得: 展開で取得が走る／初回表示では走らない ---
+okSafe(() => {
+  // ▽展開(kbToggleOldUnnotified_)で old月取得が走る（attEnsureMonthAbsences が呼ばれる）
+  const env = chromeEnv({
+    viewDate: '2026-07-08', oldOpen: false, cache: nearOnlyCache('2026-07-08', []),
+    attEnsure: function (dateStr, cb) { env.__calls.push({ ensure: String(dateStr).slice(0, 7) }); cb(); }
+  });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);   // 初回描画（未展開）
+  const before = env.__calls.filter(c => c.ensure).length;
+  api.kbToggleOldUnnotified_();                            // ▽展開
+  const after = env.__calls.filter(c => c.ensure).length;
+  return before === 0 && after > 0;
+}, 'L1(★遅延取得): 初回描画では old月を取得せず、▽展開で初めて取得が走る');
+okSafe(() => {
+  // ★構造: kbLoad は直近(kbEnsureUnnotifiedMonths_)だけ・old(kbEnsureUnnotifiedOldMonths_)は呼ばない（初回にold取得しない）
+  const s = html.indexOf('async function kbLoad()');
+  if (s < 0) throw new Error('kbLoad が無い');
+  const b = html.indexOf('{', s);
+  let d = 0, e = s;
+  for (let j = b; j < html.length; j++) { const c = html[j]; if (c === '{') d++; else if (c === '}') { d--; if (d === 0) { e = j + 1; break; } } }
+  const body = html.slice(s, e);
+  return body.indexOf('kbEnsureUnnotifiedMonths_') >= 0 && body.indexOf('kbEnsureUnnotifiedOldMonths_') < 0;
+}, 'L2(★遅延取得/構造): kbLoad は直近のみ充填・old月は初回に取得しない（JSONP本数を増やさない）');
+okSafe(() => {
+  // ★構造: 展開トグルが old月取得を呼ぶ
+  const src = extractFn('kbToggleOldUnnotified_');
+  return src.indexOf('kbEnsureUnnotifiedOldMonths_') >= 0;
+}, 'L3(★遅延取得/構造): kbToggleOldUnnotified_ が展開時に kbEnsureUnnotifiedOldMonths_ を呼ぶ');
+
+// --- Lラッパ: 月ごと取得・★★I6型（後勝ちで失敗を消さない）---
+okSafe(() => {
+  // 古い必要月をすべて取得要求する（当月は含むが、直近月は取得済みならスキップ）
+  const env = ensureOldEnv({ today: '2026-07-08', cache: {}, fillMonths: [] });
+  const api = bindEnsureOld(env);
+  api.kbEnsureUnnotifiedOldMonths_('2026-07-08');
+  const ms = env.__calls.filter(c => c.ensure).map(c => c.ensure);
+  return ms.indexOf('2025-07') >= 0 && ms.indexOf('2026-07') >= 0;
+}, 'L4: 古い必要月(下限月〜当月)を取得要求する');
+okSafe(() => {
+  const env = ensureOldEnv({ today: '2026-07-08', cache: { '2026-06': [] }, fillMonths: [] });
+  const api = bindEnsureOld(env);
+  api.kbEnsureUnnotifiedOldMonths_('2026-07-08');
+  return env.__calls.filter(c => c.ensure === '2026-06').length === 0;
+}, 'L5: 取得済みの月は再取得しない（空配列[]も取得済み扱い）');
+okSafe(() => {
+  // 全古い月が成功 → 失敗フラグは立たない
+  const env = ensureOldEnv({ today: '2026-07-08', cache: {}, fillMonths: null });  // fillMonths=null→全月成功
+  // fillMonths=null では indexOf が使えないので、全月成功を明示的に作る
+  const all = (function () { const p = pureB(); return p.kbUnnotifiedOldMonths_('2026-07-08'); })();
+  const env2 = ensureOldEnv({ today: '2026-07-08', cache: {}, fillMonths: all });
+  const api = bindEnsureOld(env2);
+  api.kbEnsureUnnotifiedOldMonths_('2026-07-08');
+  return api.__oldFailed() === false;
+}, 'L6: 全古い月が成功 → 失敗フラグは立たない');
+okSafe(() => {
+  // ★★I6型: 一部の月だけ成功・残りは失敗 → 失敗フラグが立つ（0/確定と見なさない）
+  const p = pureB();
+  const all = p.kbUnnotifiedOldMonths_('2026-07-08');
+  const partial = all.slice(0, all.length - 1);   // 最後の1月(当月)だけ失敗させる
+  const env = ensureOldEnv({ today: '2026-07-08', cache: {}, fillMonths: partial });
+  const api = bindEnsureOld(env);
+  api.kbEnsureUnnotifiedOldMonths_('2026-07-08');
+  return api.__oldFailed() === true;
+}, 'L7(★★I6型): old月の一部が失敗 → 失敗フラグが立つ（後勝ちで消えない・0と見なさない）');
+okSafe(() => {
+  // ★★I6型（後勝ち順序）: 先に失敗月→後に成功月 でも、成功の後勝ちで失敗が消えない
+  //   （attEnsureMonthAbsences を「失敗月を先に、成功月を後に」cbさせる順序で駆動する）
+  const p = pureB();
+  const all = p.kbUnnotifiedOldMonths_('2026-07-08');
+  const failYm = all[0];                            // 下限月を失敗させる
+  const cache = {};
+  const calls = [];
+  const env = {
+    attMonthAbsCache: cache,
+    kbState: { viewDate: '2026-07-08', oldUnnotifiedOpen: true, _ensuringYm: '' },
+    KB_RECORD_MONTHS: 12,
+    attEnsureMonthAbsences: function (dateStr, cb) {
+      const ym = String(dateStr).slice(0, 7);
+      calls.push(ym);
+      if (ym !== failYm) cache[ym] = [];            // failYm以外は成功（＝失敗月を残す）
+      cb();                                          // 各月ここで即cb（宣言順＝下限月→当月の順で失敗が先）
+    },
+    kbRenderUnnotifiedAlert_: function () { },
+    jstTodayStr: () => '2026-07-08',
+  };
+  const api = bindEnsureOld(env);
+  api.kbEnsureUnnotifiedOldMonths_('2026-07-08');
+  return api.__oldFailed() === true;               // 成功月が後勝ちしても失敗は消えない
+}, 'L8(★★I6型・後勝ち): 失敗月→成功月の順でも、成功の後勝ちで失敗フラグが消えない');
+okSafe(() => {
+  // ★構造: 失敗クリアは「全古い月that揃ったとき」だけ（後勝ち防止・無条件クリアが無い）
+  const src = extractFn('kbEnsureUnnotifiedOldMonths_');
+  const code = src.replace(/\/\/[^\n]*/g, '');
+  const guarded = /kbUnnotifiedOldLoaded_\([^)]*\)\s*\)\s*\{[\s\S]{0,80}kbUnnotifiedOldFailed_\s*=\s*false/.test(code);
+  const clears = (code.match(/kbUnnotifiedOldFailed_\s*=\s*false/g) || []).length;
+  return guarded && clears === 1;
+}, 'L9(★★誤陰性): 失敗フラグのクリアは全古い月that揃ったとき1箇所だけ（後勝ちで失敗を消さない）');
+
+// --- L描画: 展開時の4状態（取得中/確定件数/確定0=なし/失敗）---
+okSafe(() => {
+  // 展開・old月未取得（取得中）→ 「確認中…」（★0件と断定しない）
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: true, cache: nearOnlyCache('2026-07-08', []) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('確認中') >= 0 && h.indexOf('古い未連絡なし') < 0;
+}, 'L10(★★誤陰性): 展開・old月取得中 → 「確認中…」（0件/なしと断定しない）');
+okSafe(() => {
+  // 展開・全古い月取得済・古い1件 → 確定件数＋日付一覧
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: true, cache: fullCache('2026-07-08', [abs('B', '2026-06-15')]) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('古い未連絡') >= 0 && h.indexOf('1件') >= 0 && /onclick="kbJumpTo\('2026-06-15'\)"/.test(h);
+}, 'L11(★): 展開・全取得済・古いあり → 確定件数＋日付一覧(kbJumpTo)');
+okSafe(() => {
+  // 展開・全古い月取得済・古い0件 → 「古い未連絡なし」（★取得済みで確実に0のときだけ言える）
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: true, cache: fullCache('2026-07-08', []) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('古い未連絡なし') >= 0;
+}, 'L12(★区別): 展開・全取得済・0件 → 「古い未連絡なし」（確定0のときだけ言える）');
+okSafe(() => {
+  // 展開・一部失敗 → 「確認できませんでした」（★I6型を描画でも封じる）
+  const env = chromeEnv({ viewDate: '2026-07-08', oldOpen: true, oldFailed: true, cache: nearOnlyCache('2026-07-08', []) });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  const h = alertHtml(env);
+  return h.indexOf('確認できませんでした') >= 0 && h.indexOf('古い未連絡なし') < 0;
+}, 'L13(★★I6型/描画): 展開・古い取得失敗 → 「確認できませんでした」（なし/0と見せない）');
+okSafe(() => {
+  // ★誤陰性ゼロ順序: 失敗判定は充填判定より先（失敗を「なし」で覆い隠さない）
+  const src = extractFn('kbRenderUnnotifiedAlert_');
+  const failed = src.indexOf('kbUnnotifiedOldFailed_');
+  const loaded = src.lastIndexOf('kbUnnotifiedOldLoaded_');
+  return failed >= 0 && loaded >= 0 && failed < loaded;
+}, 'L14(★誤陰性): 古い失敗判定は充填判定より先（失敗を「なし」で覆い隠さない）');
+
+// --- L★実クリックで取得→展開→日付タップ（実データ経路・遅延取得込み）---
+okSafe(() => {
+  // 未取得状態から ▽実クリック → old月取得(attEnsureで充填) → 再描画で日付一覧(kbJumpTo)が現れる
+  const env = chromeEnv({
+    viewDate: '2026-07-08', oldOpen: false, cache: nearOnlyCache('2026-07-08', []),
+    attEnsure: function (dateStr, cb) {
+      const ym = String(dateStr).slice(0, 7);
+      env.attMonthAbsCache[ym] = (ym === '2026-06') ? [abs('B', '2026-06-15')] : [];   // 取得成功
+      cb();
+    }
+  });
+  const api = bindChrome(env);
+  api.kbRenderChrome_('2026-07-08', '2026-07-08', true);
+  api.kbToggleOldUnnotified_();                            // ▽実クリック（取得→再描画）
+  const h = alertHtml(env);
+  return env.kbState.oldUnnotifiedOpen === true && /onclick="kbJumpTo\('2026-06-15'\)"/.test(h);
+}, 'L15(★★実クリック): ▽実クリックで old月取得→展開→古い日付タップ(kbJumpTo)が現れる');
+
+// --- L★書込ゼロ・非接触 ---
+okSafe(() => {
+  const src = extractFn('kbEnsureUnnotifiedOldMonths_');
+  return src.length > 0 && !/fetch\(|send_box_cm_mails|recordPastContact|updateAbsenceCmNotified/.test(src);
+}, 'L16(★★書込ゼロ): 古いゾーン充填ラッパは fetch も 送信/記録action も呼ばない（JSONP GETのみ・既存関数経由）');
+okSafe(() => {
+  // ★非接触: 既存の多重防止(_ensuringYm / kbUnnotifiedEnsuring_)を書き換えない・専用セットを使う
+  const src = extractFn('kbEnsureUnnotifiedOldMonths_');
+  return !/_ensuringYm\s*=/.test(src) && !/kbUnnotifiedEnsuring_/.test(src) && /kbUnnotifiedOldEnsuring_/.test(src);
+}, 'L17(★非接触): ラッパは _ensuringYm も直近用 kbUnnotifiedEnsuring_ も触らず、専用の kbUnnotifiedOldEnsuring_ を使う');
+okSafe(() => {
+  // ★非接触: attEnsureMonthAbsences 本体は Step C の都合を持ち込まない（無改変）
+  const src = extractFn('attEnsureMonthAbsences');
+  return src.indexOf('kbUnnotifiedOldFailed_') < 0 && src.indexOf('kbEnsureUnnotifiedOldMonths_') < 0;
+}, 'L18(★非接触): attEnsureMonthAbsences 本体は無改変（Step Cの都合を持ち込まない）');
+okSafe(() => (html.match(/send_box_cm_mails/g) || []).length === 1,
+  'L19(★非接触): send_box_cm_mails は1箇所のまま');
+okSafe(() => (html.match(/action:\s*'recordPastContact'/g) || []).length === 1,
+  'L20(★非接触): recordPastContact の実POSTは1本のまま（Step Cは記録POSTを増やさない）');
 
 console.log('\n実測ハーネス(unnotified-alert): ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);
