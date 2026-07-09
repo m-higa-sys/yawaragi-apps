@@ -153,6 +153,21 @@ function getSchedTimesResponse(callback) {
   var _ov = _readSchedOverrides();
   if (_ov && Object.keys(_ov).length > 0) { data.overrides = _ov; }
   else if (data.overrides) { delete data.overrides; }
+
+  // D1: 未来日の送迎連絡 現在状態を合成（sched-grid が色A/Bとモーダルを出すため）。
+  // 形: contactStatus[適用日|利用者] = { status, operator, contactedAt, oldTime, newTime, changes }
+  //   changes=[{slot,old,new}] は AM/PM ロスレス。既存フィールドは不変＝後方互換（旧sched-gridは無視するだけ）。
+  var _latestContact = _readSchedContactLatest();
+  var contactStatus = {};
+  var _todayStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  Object.keys(_latestContact).forEach(function(k) {
+    var r = _latestContact[k];
+    if (r.date >= _todayStr) {          // 未来日（適用日が今日以降）だけ渡す。過去は prune 済で色付けしない
+      contactStatus[k] = { status: r.status, operator: r.operator, contactedAt: r.contactedAt, oldTime: r.oldTime, newTime: r.newTime, changes: r.changes || [] };
+    }
+  });
+  data.contactStatus = contactStatus;
+
   var json = JSON.stringify(data);
   if (callback) {
     return ContentService.createTextOutput(callback + '(' + json + ')')
