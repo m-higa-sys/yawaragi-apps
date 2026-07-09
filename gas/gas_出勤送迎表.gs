@@ -1053,3 +1053,8 @@ function schedContactColor(timeChanged, latestStatus) {
   if (latestStatus === '連絡済み') return 'done';
   return 'need';
 }
+
+// markSchedContacted 受信時の二重押し対策: 最新が既に連絡済みなら追記しない。
+function schedContactShouldSkip(latestStatus) {
+  return latestStatus === '連絡済み';
+}
