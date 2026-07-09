@@ -430,6 +430,12 @@ function doPost(e) {
       return ContentService.createTextOutput('OK');
     }
 
+    // 送迎連絡「連絡済み」記録（2026-07 追加）
+    if (parsed.action === 'markSchedContacted') {
+      return ContentService.createTextOutput(JSON.stringify(markSchedContacted(parsed)))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // シフトから出勤＆送迎表反映 (2026-05-01追加)
     if (parsed.action === 'apply_shift_data' || parsed.type === 'apply_shift_data') {
       var result = applyShiftData(parsed);
@@ -1220,4 +1226,27 @@ function _count_amPmPickOverlap() {
   Logger.log('AM/PM 両pick 掛け持ち: ' + overlaps.length + ' 件');
   overlaps.forEach(function(s) { Logger.log('  ' + s); });
   return overlaps;
+}
+
+// 連絡済みを台帳へ追記。二重押しは idempotency で吸収（最新が既に連絡済みなら追記せず ok）。
+// parsed: { action, date, user, operator, contactedAt?, unit? }
+function markSchedContacted(parsed) {
+  var date = String(parsed.date || '').trim();
+  var user = String(parsed.user || '').trim();
+  if (!date || !user) return { ok: false, error: 'date/user 必須' };
+  var latest = _readSchedContactLatest();
+  var cur = latest[date + '|' + user];
+  if (schedContactShouldSkip(cur ? cur.status : null)) {
+    return { ok: true, skipped: true };   // 既に連絡済み＝二重行を作らない
+  }
+  var contactedAt = String(parsed.contactedAt || '') || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  // 連絡済み行は直前の要連絡行の changes（AM/PMロスレス）をそのまま引き継ぐ＝履歴を欠落させない
+  _appendSchedContactRow({
+    date: date, user: user, unit: parsed.unit || (cur ? cur.unit : ''),
+    oldTime: cur ? cur.oldTime : '', newTime: cur ? cur.newTime : '',
+    changes: (cur && cur.changes) ? cur.changes : [],
+    status: '連絡済み', operator: String(parsed.operator || ''),
+    contactedAt: contactedAt, source: '送迎時間一覧'
+  });
+  return { ok: true };
 }
