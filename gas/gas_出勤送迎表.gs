@@ -1029,3 +1029,17 @@ function _membersResp(obj, callback) {
   return ContentService.createTextOutput(json)
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// ===== 送迎連絡台帳: 純関数群（Node で test-sched-renrakuzumi.js が実コード抽出して検証）=====
+// 台帳の全行から (適用日|利用者) キーごとの最新行を導出（記録日時 文字列比較で最新勝ち）。
+// rows: [{recordedAt, date, user, oldTime, newTime, status, operator, contactedAt, source}, ...]
+function schedContactLatest(rows) {
+  var map = {};
+  (rows || []).forEach(function(r) {
+    if (!r || !r.date || !r.user) return;
+    var key = r.date + '|' + r.user;
+    var prev = map[key];
+    if (!prev || String(r.recordedAt) > String(prev.recordedAt)) map[key] = r;
+  });
+  return map;
+}
