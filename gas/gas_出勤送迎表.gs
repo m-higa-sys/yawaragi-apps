@@ -1043,3 +1043,13 @@ function schedContactLatest(rows) {
   });
   return map;
 }
+
+// 色判定: その stop の変更色ON(timeChanged) と 台帳最新 status から一覧の色を返す。
+// timeChanged: boolean（override の stop の timeChanged）
+// latestStatus: '要連絡'|'連絡済み'|'通常化'|null
+// 戻り値: 'normal'（通常）| 'need'（色A=要連絡）| 'done'（色B=連絡済み）
+function schedContactColor(timeChanged, latestStatus) {
+  if (!timeChanged) return 'normal';         // 色の起点は timeChanged。E1の色OFFもここで通常化
+  if (latestStatus === '連絡済み') return 'done';
+  return 'need';
+}

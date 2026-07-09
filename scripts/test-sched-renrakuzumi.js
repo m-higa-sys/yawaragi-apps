@@ -31,10 +31,10 @@ function extractFn(name) {
 }
 
 const sandbox = {};
-const code = extractFn('schedContactLatest')
-  + '\nsandbox.schedContactLatest = schedContactLatest;';
+const code = extractFn('schedContactLatest') + '\n' + extractFn('schedContactColor')
+  + '\nsandbox.schedContactLatest = schedContactLatest; sandbox.schedContactColor = schedContactColor;';
 (function () { eval(code); })();
-const { schedContactLatest } = sandbox;
+const { schedContactLatest, schedContactColor } = sandbox;
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {
@@ -57,6 +57,14 @@ eq(Object.keys(schedContactLatest([
 // 空・不正行は無視
 eq(schedContactLatest([null, { recordedAt: '1', date: '', user: 'x' }, { recordedAt: '2', date: '2026-07-15', user: '' }]), {}, '不正行は無視');
 eq(schedContactLatest(null), {}, 'null 入力で空オブジェクト');
+
+console.log('\n# schedContactColor');
+eq(schedContactColor(false, null), 'normal', '変更色OFF→通常');
+eq(schedContactColor(false, '連絡済み'), 'normal', '色OFFは連絡済みでも通常（変更表示しない）');
+eq(schedContactColor(true, null), 'need', '色ON・台帳なし→要連絡A');
+eq(schedContactColor(true, '要連絡'), 'need', '色ON・要連絡→A');
+eq(schedContactColor(true, '連絡済み'), 'done', '色ON・連絡済み→B');
+eq(schedContactColor(true, '通常化'), 'need', '色再ON・旧通常化→A（新しい変更）');
 
 console.log('\n結果: ' + pass + ' PASS / ' + fail + ' FAIL');
 process.exit(fail === 0 ? 0 : 1);
