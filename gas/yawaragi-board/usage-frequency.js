@@ -55,13 +55,16 @@ function _fromUTC(ms) {
 }
 var _DAY_MS = 86400000;
 
-// calcWindow(inputs, windowMonths, asOf) → { n, attended, rate, excludedCount, byWeekday }
-// 契約 §2:
+// calcWindow(inputs, windowMonths, asOf) → { n, attended, rate, excludedCount, unclassifiedCount, byWeekday }
+// 契約 §2 / 設計§6:
 //  - 窓 = asOf から windowMonths ヶ月遡った [windowStart, asOf]（両端 inclusive・3窓共通）。
 //  - 予定日 = contractWeekdays に該当する窓内の日。
 //  - 除外日（分母と機会の両方から引く）= ①holidays ②absences で classifyReason==='除外'
 //    （長期休みは date..endDate を毎日除外・endDate 無しは当日のみ）。
-//  - n(分母) = 予定日 − 除外日。attended = 窓内・非除外の来館（契約曜日外の追加利用も加算）。
+//  - 未分類日（§6安全弁）= absences で classifyReason==='未分類' の予定日。除外と同じく分母から引く
+//    （＝黙って率を下げない）が、excludedCount とは別に unclassifiedCount で数える。
+//    ※'カウント'（体調不良等）は分母に残す＝率が下がる側（未分類と混同しない）。
+//  - n(分母) = 予定日 −（除外日 ＋ 未分類日）。attended = 窓内・非除外・非未分類の来館（契約曜日外の追加利用も加算）。
 //  - rate = n===0 ? null : attended/n（NaN/Infinity/0% を返さない）。
 //  - byWeekday = 契約曜日ごとの {n, attended, rate}（追加利用は積まない＝分母無し曜日キーを作らない）。
 function calcWindow(inputs, windowMonths, asOf) {
@@ -92,28 +95,40 @@ function calcWindow(inputs, windowMonths, asOf) {
     }
   });
 
+  // 未分類日 set（§6安全弁）。classifyReason==='未分類' の欠席日を、除外と同じく分母から引く。
+  // ただし excludedCount とは別に unclassifiedCount で数える。既に除外側にある日は二重計上しない。
+  var unclassified = {};
+  (inputs.absences || []).forEach(function (a) {
+    if (classifyReason(a.type, a.reason, REASON_TABLE) !== '未分類') return;
+    if (!inWindow(a.date)) return;
+    if (excluded[a.date]) return; // 除外優先（二重計上防止）
+    unclassified[a.date] = true;
+  });
+
   // byWeekday 初期化（契約曜日のみ・追加利用では新キーを作らない）
   var byWeekday = {};
   contractWeekdays.forEach(function (wd) { byWeekday[wd] = { n: 0, attended: 0, rate: null }; });
 
-  // 予定日を列挙して n / excludedCount / byWeekday.n を集計
-  var n = 0, excludedCount = 0;
+  // 予定日を列挙して n / excludedCount / unclassifiedCount / byWeekday.n を集計
+  var n = 0, excludedCount = 0, unclassifiedCount = 0;
   for (var cur = startMs; cur <= endMs; cur += _DAY_MS) {
     var wd = new Date(cur).getUTCDay();
     if (!isContractWd[wd]) continue;
     var d = _fromUTC(cur);
-    if (excluded[d]) { excludedCount++; continue; } // 予定日だが除外 → 分母に入れない
+    if (excluded[d]) { excludedCount++; continue; }          // 予定日だが除外 → 分母に入れない
+    if (unclassified[d]) { unclassifiedCount++; continue; }  // 予定日だが未分類 → 分母に入れない（§6・黙って率を下げない）
     n++;
     byWeekday[wd].n++;
   }
 
-  // 出席日（窓内・非除外・重複排除）。契約曜日外の追加利用も overall に加算。
+  // 出席日（窓内・非除外・非未分類・重複排除）。契約曜日外の追加利用も overall に加算。
   var attended = 0, seen = {};
   (inputs.attendance || []).forEach(function (d) {
     if (seen[d]) return;             // 同一日を二重計上しない
     seen[d] = true;
     if (!inWindow(d)) return;
     if (excluded[d]) return;
+    if (unclassified[d]) return;     // 未分類日の来館も機会から外す（除外日と同扱い）
     attended++;
     var wd = new Date(_toUTC(d)).getUTCDay();
     if (byWeekday[wd]) byWeekday[wd].attended++; // 契約曜日のみ per-weekday に積む
@@ -126,7 +141,7 @@ function calcWindow(inputs, windowMonths, asOf) {
   });
 
   var rate = n === 0 ? null : attended / n;
-  return { n: n, attended: attended, rate: rate, excludedCount: excludedCount, byWeekday: byWeekday };
+  return { n: n, attended: attended, rate: rate, excludedCount: excludedCount, unclassifiedCount: unclassifiedCount, byWeekday: byWeekday };
 }
 
 // calcActualPerWeek(契約週回数, rate) → 実質週回数 = 契約週回数 × rate（分数）
@@ -177,23 +192,28 @@ function worstDayInvestigate(byWeekday, overallRate, opts) {
   return out;
 }
 
-// judge(rate, n, opts) → '対象外' | 'データ不足' | '減らし' | '適正' | '増やし'
-// 契約 §4。評価順（対象外・データ不足を率判定より先に）:
+// judge(rate, n, opts) → '対象外' | 'データ不足' | '保留' | '減らし' | '適正' | '増やし'
+// 契約 §4 / 設計§8。評価順（対象外・データ不足・保留を率判定より先に）:
 //   1. n===0 / rate==null / 非有限 → '対象外'
 //   2. n < THRESHOLDS.n下限(6) → 'データ不足'
-//   3. rate*100 < THRESHOLDS.減らし(70) → '減らし'
-//   4. rate*100 > THRESHOLDS.増やし(110) → '増やし'
-//   5. 適正圏(70〜110)だが opts.低契約 && opts.率天井継続 → '増やし'（保険・適正圏のみ引き上げ）
-//   6. それ以外 → '適正'
+//   3. opts.未分類件数 > 0 → '保留'（§6安全弁。減らし/適正/増やしに自動で落とさない・率判定/保険より前）
+//   4. rate*100 < THRESHOLDS.減らし(70) → '減らし'
+//   5. rate*100 > THRESHOLDS.増やし(110) → '増やし'
+//   6. 適正圏(70〜110)だが opts.低契約 && opts.率天井継続 → '増やし'（保険・適正圏のみ引き上げ）
+//   7. それ以外 → '適正'
 // ★丸めを判定に持ち込まない（rate をそのまま比較。途中で丸めると 70/110 をまたぐ人で判定が反転する）。
 //   境界は両端含む=適正（減らしは <70・増やしは >110）。
 // ★opts.追加利用 はメイン判定に影響させない（率が既に追加利用を織り込むため。受け取るが情報用）。
+// ★opts.未分類件数 は §6 の安全弁。>0 なら率判定より先に '保留' を返し、人の確認へ回す。
+//   既定0（未指定・opts省略）なら発火せず無害＝通常運用では出ない。
 function judge(rate, n, opts) {
   opts = opts || {};
   // 1. 対象外（n=0/rate null/非有限）を率判定より先に。NaN/Infinity/'0%' を返さない。
   if (n === 0 || rate == null || !isFinite(rate)) return '対象外';
   // 2. データ不足（n<下限）を率判定より先に。
   if (n < THRESHOLDS['n下限']) return 'データ不足';
+  // 3. 保留（§6安全弁）。未分類件数>0 で率判定・保険より先に発火。未分類ゼロなら無害。
+  if ((opts['未分類件数'] || 0) > 0) return '保留';
   var ratePct = rate * 100; // ％の数へ（生rateを丸めずに×100）
   // 境界の浮動小数ノイズだけ吸収する微小許容。丸め(0.69→0.7)より桁違いに小さいので
   // 減らし/適正の反転は起こさない。※ 1.10*100 は JS で 110.00000000000001 になり
