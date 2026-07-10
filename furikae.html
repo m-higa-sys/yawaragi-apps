@@ -238,6 +238,9 @@
   .fnk-method-cancel { background: #f7fafc; color: #718096; border: 1px solid #cbd5e0;
     border-radius: 6px; padding: 6px 9px; cursor: pointer; }
   .fnk-sub { padding: 0 14px 10px 46px; color: #718096; font-size: 12.5px; margin-top: -4px; }
+  /* code4 引落開始ガイド（依頼書なしのカードのみ） */
+  .fnk-guide { margin: -2px 14px 10px 46px; padding: 6px 10px; border-radius: 8px;
+    background: #ebf8ff; color: #2b6cb0; font-size: 12.5px; font-weight: 600; }
   .fnk-detail { padding: 12px 16px; background: #f7fafc; border-top: 1px dashed #cbd5e0;
     display: grid; gap: 10px; }
   .fnk-f { display: flex; flex-direction: column; font-size: 12px; color: #4a5568; gap: 4px; font-weight: 600; }
@@ -1044,6 +1047,13 @@ function renderMonth() {
 }
 
 // 1枚の未回収カード（氏名/△月分/金額/理由/状態バッジ/[回収済]・行タップで詳細）
+// 'YYYY-MM-DD' → 'M/D'（読みやすい月日）。空/不正は空文字。
+function fnkMd(dateStr) {
+  if (!dateStr) return '';
+  var p = String(dateStr).split('-');
+  return p.length >= 3 ? parseInt(p[1], 10) + '/' + parseInt(p[2], 10) : String(dateStr);
+}
+
 function fnkCardHtml(r) {
   const b = fnkBadgeFor(r);
   const mm = r.month ? parseInt(r.month.split('-')[1]) + '月分' : '';
@@ -1053,6 +1063,14 @@ function fnkCardHtml(r) {
   const cbadgeHtml = cbadge ? `<span class="fnk-contact-badge">${escapeHtml(cbadge)}</span>` : '';
   const extraHtml = fnkExtraBadges(r).map(t => `<span class="fnk-extra-badge">${escapeHtml(t)}</span>`).join('');
   const todo = fnkTodoText(r);
+  // code4（依頼書なし）だけ「次の締切までに郵送→引落開始」のガイド行を出す（これから郵送する前提の案内）
+  let guideHtml = '';
+  if (b.code === '4') {
+    const g = nextFurikaeGuide(new Date().toISOString().slice(0, 10));
+    guideHtml = g.deadline
+      ? `<div class="fnk-guide">📮 次の締切 ${fnkMd(g.deadline)} までに郵送 → ${fnkMd(g.furikaeDate)} から引落開始</div>`
+      : `<div class="fnk-guide">📮 次の締切は2027年1月以降（${fnkMd(g.furikaeDate)} 引落開始の見込み）</div>`;
+  }
   return `
   <div class="fnk-card fnk-b-${b.key}" data-id="${r.id}">
     <div class="fnk-row" onclick="fnkToggleDetail(${r.id})">
@@ -1067,6 +1085,7 @@ function fnkCardHtml(r) {
       </span>
     </div>
     <div class="fnk-sub">└ 📋 ${escapeHtml(todo)}</div>
+    ${guideHtml}
     <div class="fnk-detail" id="fnk-detail-${r.id}" style="display:none;">
       <label class="fnk-f">利用者名（半角カナ）
         <input type="text" value="${escapeHtml(r.name || '')}" onchange="updateName(${r.id}, this.value)"></label>
@@ -1308,31 +1327,38 @@ function updateFormSentDate(id, value) {
   }
 }
 
-// 電算スケジュール表2026年（27日振替）に基づいて引落開始予定日を推定
+// 電算スケジュール表2026年（27日振替・新規依頼書締切日 → その月の振替日）。★単一の真実源。
+// guessExpectedDate（郵送日→開始日）と nextFurikaeGuide（今日→次の締切ガイド）が共有する。
+const FURIKAE_SCHEDULE = [
+  { deadline: '2025-12-18', furikaeDate: '2026-01-27' },
+  { deadline: '2026-01-21', furikaeDate: '2026-02-27' },
+  { deadline: '2026-02-18', furikaeDate: '2026-03-27' },
+  { deadline: '2026-03-23', furikaeDate: '2026-04-27' },
+  { deadline: '2026-04-17', furikaeDate: '2026-05-27' },
+  { deadline: '2026-05-21', furikaeDate: '2026-06-29' },
+  { deadline: '2026-06-23', furikaeDate: '2026-07-27' },
+  { deadline: '2026-07-22', furikaeDate: '2026-08-27' },
+  { deadline: '2026-08-21', furikaeDate: '2026-09-28' },
+  { deadline: '2026-09-18', furikaeDate: '2026-10-27' },
+  { deadline: '2026-10-21', furikaeDate: '2026-11-27' },
+  { deadline: '2026-11-20', furikaeDate: '2026-12-28' },
+];
+
+// 引落開始予定日を推定：郵送日がどの締切に間に合うか（sentDate <= deadline の最初の振替日）
 function guessExpectedDate(sentDate) {
-  // 新規依頼書締切日 → その月の振替日（27日 or 振替日）
-  const schedule = [
-    { deadline: '2025-12-18', furikaeDate: '2026-01-27' },
-    { deadline: '2026-01-21', furikaeDate: '2026-02-27' },
-    { deadline: '2026-02-18', furikaeDate: '2026-03-27' },
-    { deadline: '2026-03-23', furikaeDate: '2026-04-27' },
-    { deadline: '2026-04-17', furikaeDate: '2026-05-27' },
-    { deadline: '2026-05-21', furikaeDate: '2026-06-29' },
-    { deadline: '2026-06-23', furikaeDate: '2026-07-27' },
-    { deadline: '2026-07-22', furikaeDate: '2026-08-27' },
-    { deadline: '2026-08-21', furikaeDate: '2026-09-28' },
-    { deadline: '2026-09-18', furikaeDate: '2026-10-27' },
-    { deadline: '2026-10-21', furikaeDate: '2026-11-27' },
-    { deadline: '2026-11-20', furikaeDate: '2026-12-28' },
-  ];
-  // 郵送日がどの締切に間に合うかを判定
-  for (const s of schedule) {
-    if (sentDate <= s.deadline) {
-      return s.furikaeDate;
-    }
+  for (const s of FURIKAE_SCHEDULE) {
+    if (sentDate <= s.deadline) return s.furikaeDate;
   }
-  // 2026年内に間に合わない場合は翌年1月
-  return '2027-01-27';
+  return '2027-01-27'; // 2026年内に間に合わない場合は翌年1月
+}
+
+// 今日基準で「次に間に合う締切と、その振替開始日」を返す（code4 カードの引落開始ガイド用）。
+// 全締切超過なら { deadline:null, furikaeDate:'2027-01-27' }（表の最終catchと一致）。
+function nextFurikaeGuide(today) {
+  for (const s of FURIKAE_SCHEDULE) {
+    if (today <= s.deadline) return { deadline: s.deadline, furikaeDate: s.furikaeDate };
+  }
+  return { deadline: null, furikaeDate: '2027-01-27' };
 }
 
 function updateExpectedStart(id, value) {

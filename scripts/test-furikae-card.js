@@ -154,6 +154,9 @@ new Function('sb',
   extractFn('fnkContactBadge') + '\n' +
   extractFn('fnkExtraBadges') + '\n' +
   extractFn('escapeHtml') + '\n' +
+  extractConst('FURIKAE_SCHEDULE') + '\n' +
+  extractFn('nextFurikaeGuide') + '\n' +
+  extractFn('fnkMd') + '\n' +
   'function fubiHistoryBadge(){return "";}\n' +
   extractFn('fnkCardHtml') + '\n' +
   'sb.fnkCardHtml = fnkCardHtml;'
@@ -170,6 +173,42 @@ const cardB = fnkCardHtml({ id: 2, month: '2026-06', name: 'ｲｼｶﾜ', amoun
 ok(cardB.indexOf('⚠️翌月請求なし・要確認') >= 0, 'nextMonthAbsent→「⚠️要確認」バッジ描画');
 ok(cardB.indexOf('✓連絡済 7/10 下浦') >= 0, 'contactedBy→連絡済バッジ描画');
 ok(cardB.indexOf('振替依頼書を提出してもらう') >= 0, 'code4(依頼書なし)→やること専用文を描画');
+ok(cardB.indexOf('から引落開始') >= 0, 'code4→引落開始ガイド行を描画');
+ok(cardB.indexOf('までに郵送') >= 0, 'code4→「次の締切…までに郵送」ガイド');
+const cardC = fnkCardHtml({ id: 3, month: '2026-06', name: 'ｲｸﾞｻ', amount: 3000, resultCode: '2' });
+ok(cardC.indexOf('までに郵送') < 0, 'code2(取引なし)→引落開始ガイドは出さない');
+const cardD = fnkCardHtml({ id: 4, month: '2026-06', name: 'ﾑﾗﾀ', amount: 5000, resultCode: '1' });
+ok(cardD.indexOf('までに郵送') < 0, 'code1(残高不足)→引落開始ガイドは出さない');
+
+// ===== nextFurikaeGuide（code4 引落開始ガイド・既存 FURIKAE_SCHEDULE を共有＝単一の真実源）=====
+function extractConst(name) {
+  const sig = 'const ' + name + ' =';
+  const s = html.indexOf(sig);
+  if (s < 0) throw new Error('furikae.html に const ' + name + ' が無い（未実装＝RED）');
+  const e = html.indexOf('];', s);
+  return html.slice(s, e + 2);
+}
+const scopeGuide = {};
+new Function('sb',
+  extractConst('FURIKAE_SCHEDULE') + '\n' +
+  extractFn('guessExpectedDate') + '\n' +
+  extractFn('nextFurikaeGuide') + '\n' +
+  'sb.guessExpectedDate = guessExpectedDate; sb.nextFurikaeGuide = nextFurikaeGuide;'
+)(scopeGuide);
+const guessExpectedDate = scopeGuide.guessExpectedDate;
+const nextFurikaeGuide = scopeGuide.nextFurikaeGuide;
+
+// リファクタ保護：schedule を FURIKAE_SCHEDULE へ抽出しても guessExpectedDate の動作は不変
+console.log('\n[guessExpectedDate 特性(リファクタ保護)]');
+eq(guessExpectedDate('2026-06-01'), '2026-07-27', 'sentDate締切前→その締切の月の振替日');
+eq(guessExpectedDate('2026-06-24'), '2026-08-27', 'sentDate締切後→次の締切の月の振替日');
+eq(guessExpectedDate('2027-01-01'), '2027-01-27', '全超過→翌年1月');
+
+console.log('\n[nextFurikaeGuide]');
+eq(nextFurikaeGuide('2026-06-01'), { deadline: '2026-06-23', furikaeDate: '2026-07-27' }, '締切前→次の締切6/23・開始7/27');
+eq(nextFurikaeGuide('2026-06-23'), { deadline: '2026-06-23', furikaeDate: '2026-07-27' }, '締切当日→当日締切が有効');
+eq(nextFurikaeGuide('2026-06-24'), { deadline: '2026-07-22', furikaeDate: '2026-08-27' }, '締切翌日→次の締切7/22');
+eq(nextFurikaeGuide('2026-12-31'), { deadline: null, furikaeDate: '2027-01-27' }, '全締切超過→最終catch(2027-01-27)');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
