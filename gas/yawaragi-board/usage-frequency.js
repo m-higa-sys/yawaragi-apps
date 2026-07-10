@@ -169,6 +169,38 @@ function worstDayInvestigate(byWeekday, overallRate, opts) {
   return out;
 }
 
+// judge(rate, n, opts) → '対象外' | 'データ不足' | '減らし' | '適正' | '増やし'
+// 契約 §4。評価順（対象外・データ不足を率判定より先に）:
+//   1. n===0 / rate==null / 非有限 → '対象外'
+//   2. n < THRESHOLDS.n下限(6) → 'データ不足'
+//   3. rate*100 < THRESHOLDS.減らし(70) → '減らし'
+//   4. rate*100 > THRESHOLDS.増やし(110) → '増やし'
+//   5. 適正圏(70〜110)だが opts.低契約 && opts.率天井継続 → '増やし'（保険・適正圏のみ引き上げ）
+//   6. それ以外 → '適正'
+// ★丸めを判定に持ち込まない（rate をそのまま比較。途中で丸めると 70/110 をまたぐ人で判定が反転する）。
+//   境界は両端含む=適正（減らしは <70・増やしは >110）。
+// ★opts.追加利用 はメイン判定に影響させない（率が既に追加利用を織り込むため。受け取るが情報用）。
+function judge(rate, n, opts) {
+  opts = opts || {};
+  // 1. 対象外（n=0/rate null/非有限）を率判定より先に。NaN/Infinity/'0%' を返さない。
+  if (n === 0 || rate == null || !isFinite(rate)) return '対象外';
+  // 2. データ不足（n<下限）を率判定より先に。
+  if (n < THRESHOLDS['n下限']) return 'データ不足';
+  var ratePct = rate * 100; // ％の数へ（生rateを丸めずに×100）
+  // 境界の浮動小数ノイズだけ吸収する微小許容。丸め(0.69→0.7)より桁違いに小さいので
+  // 減らし/適正の反転は起こさない。※ 1.10*100 は JS で 110.00000000000001 になり
+  //   これを素で > 110 判定すると境界含む(適正)の 1.10 が誤って増やしに化ける。
+  var _EPS = 1e-9;
+  // 3. 減らし（<70）。減らし圏は保険で救わない（step3が先）。
+  if (ratePct < THRESHOLDS['減らし'] - _EPS) return '減らし';
+  // 4. 増やし（>110）。境界 110 は含む=適正。
+  if (ratePct > THRESHOLDS['増やし'] + _EPS) return '増やし';
+  // 5. 適正圏(70〜110)の保険。低契約×率天井継続の人だけ増やしに引き上げる。
+  if (opts['低契約'] && opts['率天井継続']) return '増やし';
+  // 6. それ以外。
+  return '適正';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     THRESHOLDS: THRESHOLDS,
@@ -178,6 +210,7 @@ if (typeof module !== 'undefined' && module.exports) {
     calcWindow: calcWindow,
     calcActualPerWeek: calcActualPerWeek,
     direction: direction,
-    worstDayInvestigate: worstDayInvestigate
+    worstDayInvestigate: worstDayInvestigate,
+    judge: judge
   };
 }
