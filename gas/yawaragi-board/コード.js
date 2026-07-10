@@ -6437,7 +6437,8 @@ function getTerminations(ss, period) {
 // =============================================================
 // --- 純関数（scripts/test-chushi-digest.js と同一実装・二重持ち）---
 function chushiApplicableKeys_(careLevel) {
-  var isShien = String(careLevel || '').indexOf('要支援') !== -1;
+  // 要支援・事業対象者は個訓非対象（要介護のみ個訓・ADL対象）。'事業対象' で両台帳表記に一致
+  var isShien = String(careLevel || '').indexOf('要支援') !== -1 || String(careLevel || '').indexOf('事業対象') !== -1;
   return isShien
     ? ['tsusho', 'koukou', 'rihab_chushi', 'kagakuteki']
     : ['tsusho', 'kotraining', 'koukou', 'rihab_chushi', 'kagakuteki', 'adl'];
