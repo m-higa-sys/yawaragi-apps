@@ -167,7 +167,10 @@ var INTAKE_HEADERS = [
   'リハブクラウド登録済','ケアズ登録済','SNS顔出し可否確認済',
   '写真撮影済','同意書類取得済','朝礼周知済',
   // 2026-05-31 Phase C 追加分（シート末尾に append 済のため INTAKE_HEADERS でも末尾）
-  'ケアマネTEL','契約日'
+  'ケアマネTEL','契約日',
+  // 2026-07-10 P1: フェーズ遷移履歴（末尾append・位置ベース書込のため既存列の間への挿入は禁止）
+  // 値=JSON配列 [{from,to,at,by,reason}]。追記は intake-phase-history-core.js の appendPhaseHistory_ 経由。
+  'フェーズ遷移履歴'
 ];
 var INTAKE_COL = {};
 INTAKE_HEADERS.forEach(function(h, i){ INTAKE_COL[h] = i + 1; });
@@ -8634,6 +8637,8 @@ function createIntake(ss, data) {
       case '週間予定表仮予約済':
       case '全記入済':
       case '社長確認済':     return data[h] === true;
+      // 2026-07-10 P1: 初期履歴 [{to:作成フェーズ, at:作成時刻}]（from/byなし）
+      case 'フェーズ遷移履歴': return appendPhaseHistory_('', { to: (data.フェーズ || '受付'), at: now });
       default:               return data[h] != null ? data[h] : '';
     }
   });
@@ -8819,8 +8824,17 @@ function advanceIntakePhase(ss, data) {
   if (missing.length && !data.force) {
     return { success: false, blocked: true, missing: missing, transition: transition };
   }
+  var nowAdv = nowIso();
   sheet.getRange(rowIdx, idxPhase + 1).setValue(data.toPhase);
-  sheet.getRange(rowIdx, headers.indexOf('更新日時') + 1).setValue(nowIso());
+  sheet.getRange(rowIdx, headers.indexOf('更新日時') + 1).setValue(nowAdv);
+  // 2026-07-10 P1: フェーズ遷移履歴へ {from,to,at,by} を追記（列が未追加のシートでは静かにスキップ）
+  var idxHistAdv = headers.indexOf('フェーズ遷移履歴');
+  if (idxHistAdv >= 0) {
+    var histAdv = appendPhaseHistory_(rec['フェーズ遷移履歴'], {
+      from: String(rec['フェーズ'] || '受付'), to: data.toPhase, at: nowAdv, by: (data.登録者 || '')
+    });
+    sheet.getRange(rowIdx, idxHistAdv + 1).setValue(histAdv);
+  }
   return { success: true, transition: transition };
 }
 
@@ -8833,13 +8847,23 @@ function dropIntake(ss, data) {
   var idxId = headers.indexOf('id'), idxPhase = headers.indexOf('フェーズ');
   var idxReason = headers.indexOf('ドロップ理由'), idxAt = headers.indexOf('ドロップ記録日時');
   var idxDetail = headers.indexOf('利用なし理由詳細');
-  var values = sheet.getDataRange().getValues(), rowIdx = -1;
-  for (var i=1;i<values.length;i++){ if (String(values[i][idxId])===String(data.id)){ rowIdx=i+1; break; } }
+  var idxHistDrop = headers.indexOf('フェーズ遷移履歴');
+  var values = sheet.getDataRange().getValues(), rowIdx = -1, dropRow = null;
+  for (var i=1;i<values.length;i++){ if (String(values[i][idxId])===String(data.id)){ rowIdx=i+1; dropRow=values[i]; break; } }
   if (rowIdx < 0) return { success: false, error: '該当なし' };
+  var fromPhaseDrop = String(dropRow[idxPhase] || '受付');
+  var nowDrop = nowIso();
   sheet.getRange(rowIdx, idxPhase+1).setValue('ドロップ');
   sheet.getRange(rowIdx, idxReason+1).setValue(data.reason);
-  sheet.getRange(rowIdx, idxAt+1).setValue(nowIso());
+  sheet.getRange(rowIdx, idxAt+1).setValue(nowDrop);
   if (data.detail && idxDetail >= 0) sheet.getRange(rowIdx, idxDetail+1).setValue(data.detail);
+  // 2026-07-10 P1: フェーズ遷移履歴へ {from,to:ドロップ,at,by,reason} を追記（列未追加のシートは静かにスキップ）
+  if (idxHistDrop >= 0) {
+    var histDrop = appendPhaseHistory_(dropRow[idxHistDrop], {
+      from: fromPhaseDrop, to: 'ドロップ', at: nowDrop, by: (data.登録者 || ''), reason: data.reason
+    });
+    sheet.getRange(rowIdx, idxHistDrop+1).setValue(histDrop);
+  }
   return { success: true };
 }
 

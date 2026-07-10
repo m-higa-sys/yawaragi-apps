@@ -234,6 +234,18 @@
         personal_no: '体験で本人NG',
         other: 'その他'
     };
+    // 2026-07-10 P1: カンバンのドロップ理由（選択式）。サーバーは自由文字列保存so互換問題なし。
+    // 表示は intakeDropLabel() が新旧両マップを辿るため旧コードの過去レコードも日本語表示される。
+    const INTAKE_DROP_REASON = {
+        to_other_office: '他事業所へ',
+        illness: '入院・体調',
+        day_mismatch: '曜日が合わない',
+        family: '家族都合',
+        other: 'その他'
+    };
+    function intakeDropLabel(code) {
+        return INTAKE_DROP_REASON[code] || INTAKE_NO_USE_REASON[code] || code;
+    }
     const INTAKE_CARE_LEVELS = ['申請前・申請中', '要支援1', '要支援2', '要介護1', '要介護2', '要介護3', '要介護4', '要介護5', '不明'];
     // 土曜営業開始時は '土' を追加（project_土曜営業検討.md 参照）
     const INTAKE_DAY_BUTTONS = ['月', '火', '水', '木', '金'];
@@ -797,13 +809,13 @@
         const host = document.getElementById('kanban-dropout');
         if (!host) return;
         const rc = {}; dropouts.forEach(r => { const k = r.ドロップ理由 || 'other'; rc[k] = (rc[k] || 0) + 1; });
-        const summary = Object.keys(rc).map(k => (INTAKE_NO_USE_REASON[k] || k) + ' ' + rc[k]).join(' · ') || '';
+        const summary = Object.keys(rc).map(k => intakeDropLabel(k) + ' ' + rc[k]).join(' · ') || '';
         host.innerHTML = `<div class="kanban-dropout-head" onclick="document.getElementById('kanban-dropout-details').classList.toggle('open')">`
             + `<span class="pl-x">✕</span> 見送り・終了 <strong style="color:#4a4f5a;">${dropouts.length}</strong>`
             + (summary ? ` <span style="color:#9aa0ad;font-weight:400;font-size:12px;">${intakeEscapeHtml(summary)}</span>` : '')
             + `</div>`
             + `<div id="kanban-dropout-details" class="kanban-dropout-details">`
-            + (dropouts.map(r => `<div>${intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）')} — ${intakeEscapeHtml(INTAKE_NO_USE_REASON[r.ドロップ理由] || r.ドロップ理由 || '理由未記入')}<span style="color:#b4b8c2;"> ${intakeEscapeHtml((r.ドロップ記録日時 || '').slice(0,10))}</span></div>`).join('')
+            + (dropouts.map(r => `<div>${intakeEscapeHtml(r.氏名 || r.ふりがな || '（名前未入力）')} — ${intakeEscapeHtml(r.ドロップ理由 ? intakeDropLabel(r.ドロップ理由) : '理由未記入')}<span style="color:#b4b8c2;"> ${intakeEscapeHtml((r.ドロップ記録日時 || '').slice(0,10))}</span></div>`).join('')
                 || '<div style="color:#b4b8c2;">なし</div>') + '</div>';
     }
     
@@ -853,18 +865,44 @@
         const r = _intakeCache.find(x => x.id === id);
         if (!r) { alert('レコードが見つかりません。再読込します。'); loadIntakeList(); return; }
         if (!confirm(`「${r.氏名 || r.ふりがな}」を「${toPhase}」へ進めます。よろしいですか？`)) return;
-        const ok = await gasPost({ action: 'intake_advance_phase', id: id, toPhase: toPhase }, 'カンバン遷移');
+        const staff = localStorage.getItem('yawaragi_staff') || '';
+        const ok = await gasPost({ action: 'intake_advance_phase', id: id, toPhase: toPhase, 登録者: staff }, 'カンバン遷移');
         if (ok) setTimeout(loadIntakeList, 800);
     }
-    async function kanbanDrop(id) {
+    // ドロップ理由を選択式で入力（既存モーダルを流用・ivRenderBtnGroup使用・その他は詳細必須）
+    function kanbanDrop(id) {
         const r = _intakeCache.find(x => x.id === id);
-        const key = prompt('ドロップ理由を選択（番号）:\n1 他社デイに決定\n2 金額で折り合わず\n3 送迎範囲外\n4 体験で本人NG\n5 その他');
-        if (!key) return;
-        const map = { '1':'other_dayservice','2':'price','3':'out_of_range','4':'personal_no','5':'other' };
-        const reason = map[String(key).trim()];
-        if (!reason) { alert('不正な番号です'); return; }
-        const detail = prompt('詳細メモ（任意）:') || '';
-        const ok = await gasPost({ action: 'intake_drop', id: id, reason: reason, detail: detail }, 'カンバン ドロップ');
+        if (!r) { alert('レコードが見つかりません。再読込します。'); loadIntakeList(); return; }
+        const name = r.氏名 || r.ふりがな || '（名前未入力）';
+        const codes = Object.keys(INTAKE_DROP_REASON);
+        const btns = ivRenderBtnGroup('ドロップ理由', codes, codes.map(c => INTAKE_DROP_REASON[c]), '', { onchange: 'intakeOnDropReasonChange' });
+        document.getElementById('intake-modal-body').innerHTML = `
+            <h3 style="margin-top:0;">📦 ドロップ（見送り）</h3>
+            <div style="color:#4a5568;margin-bottom:10px;">「${intakeEscapeHtml(name)}」を見送りにします。理由を選択してください。</div>
+            <div style="margin-bottom:12px;">${btns}</div>
+            <div id="drop-detail-wrap" style="display:none;margin-bottom:12px;">
+                <label style="display:block;font-size:13px;color:#4a5568;margin-bottom:4px;">詳細（「その他」を選んだ場合は必須）</label>
+                <textarea id="drop-detail" rows="3" style="width:100%;box-sizing:border-box;"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button type="button" class="danger" onclick="submitDrop('${r.id}')">この理由でドロップ</button>
+                <button type="button" onclick="openIntakeModal('${r.id}')">キャンセル</button>
+            </div>`;
+        document.getElementById('intake-modal').classList.add('show');
+    }
+    // 「その他」選択時のみ詳細入力欄を表示（ivToggleBtnのonchangeから呼ばれる）
+    function intakeOnDropReasonChange() {
+        const wrap = document.getElementById('drop-detail-wrap');
+        if (wrap) wrap.style.display = (ivGetGroupValue('ドロップ理由') === 'other') ? 'block' : 'none';
+    }
+    async function submitDrop(id) {
+        const reason = ivGetGroupValue('ドロップ理由');
+        if (!reason) { alert('ドロップ理由を選択してください。'); return; }
+        const de = document.getElementById('drop-detail');
+        const detail = de ? de.value.trim() : '';
+        if (reason === 'other' && !detail) { alert('「その他」を選んだ場合は詳細の入力が必須です。'); return; }
+        const staff = localStorage.getItem('yawaragi_staff') || '';
+        const ok = await gasPost({ action: 'intake_drop', id: id, reason: reason, detail: detail, 登録者: staff }, 'カンバン ドロップ');
         if (ok) { closeIntakeModal(); setTimeout(loadIntakeList, 800); }
     }
     
