@@ -118,8 +118,34 @@ function showToast(msg, duration) {
    ※ no-cors のため GAS の {success:false} は取得不可。検証はJSONP往復(verifyAbsenceInGAS)で行う。
    ※ URL参照は ABS_BOARD_API_URL から YAWARAGIBOARD_API_URL に統一（同値・shared.js内で自己完結）。 */
 
+/* ===== P2.1: intake系API adminKey（PII保護・localStorage保持・yawaragi_staffと同方式・2026-07-11） =====
+   intake_* はPII（住所/TEL/生年月日/主訴等）を扱うためサーバー側で鍵必須。公開HTMLに鍵を
+   ハードコードしない（★禁止）。初回のみプロンプト入力→localStorageに保持→全intake_*に付与。 */
+var INTAKE_ADMIN_KEY_LS = 'yawaragi_intake_admin_key';
+function getIntakeAdminKey() {
+    var k = '';
+    try { k = localStorage.getItem(INTAKE_ADMIN_KEY_LS) || ''; } catch (e) {}
+    if (!k) {
+        k = (window.prompt('見学・体験・新規（intake）の管理キーを入力してください。\n（社長宛メールで届いた adminKey）') || '').trim();
+        if (k) { try { localStorage.setItem(INTAKE_ADMIN_KEY_LS, k); } catch (e) {} }
+    }
+    return k;
+}
+function clearIntakeAdminKey() {
+    try { localStorage.removeItem(INTAKE_ADMIN_KEY_LS); } catch (e) {}
+}
+// unauthorized を受けたら保持鍵を破棄（次回呼び出しで再入力プロンプト）＋トースト案内
+function handleIntakeUnauthorized(where) {
+    clearIntakeAdminKey();
+    try { if (typeof showToast === 'function') showToast('⚠️ 管理キーが正しくありません。再入力してください（' + (where || '') + '）', 5000); } catch (e) {}
+}
+
 // リトライ付きGAS POST送信（3回まで再試行。失敗時はスタッフに警告表示）
 async function gasPost(data, label) {
+    // P2.1: intake_* POST には adminKey を自動付与（明示指定があればそちら優先）
+    if (data && typeof data.action === 'string' && data.action.indexOf('intake_') === 0 && !data.adminKey) {
+        data = Object.assign({}, data, { adminKey: getIntakeAdminKey() });
+    }
     const maxRetries = 3;
     for (let i = 1; i <= maxRetries; i++) {
         try {

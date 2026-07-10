@@ -668,12 +668,18 @@
             : '<div style="padding:20px;text-align:center;color:#888;">読み込み中...</div>';
     
         const cbName = 'intakeListCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
-        let url = INTAKE_API_URL + '?action=intake_list&callback=' + cbName;
+        let url = INTAKE_API_URL + '?action=intake_list&callback=' + cbName
+            + '&adminKey=' + encodeURIComponent(getIntakeAdminKey());
         if (status) url += '&status=' + encodeURIComponent(status);
         if (approvalOnly) url += '&pendingApproval=1';
     
         window[cbName] = function(resp) {
             try {
+                if (resp && resp.error === 'unauthorized') {
+                    handleIntakeUnauthorized('一覧');
+                    host.innerHTML = '<div style="padding:20px;color:#a32d2d;">🔒 管理キーが必要です（または不正です）。<button onclick="loadIntakeList()">再入力して再読込</button></div>';
+                    return;
+                }
                 if (!resp || !resp.success) {
                     host.innerHTML = '<div style="color:red;padding:20px;">取得失敗: ' + (resp && resp.error || '不明なエラー') + '</div>';
                     return;
@@ -844,7 +850,8 @@
             } finally { try { delete window[cb]; } catch(e){} }
         };
         const s = document.createElement('script');
-        s.src = INTAKE_API_URL + '?action=intake_get_funnel&yearMonth=' + encodeURIComponent(ym) + '&callback=' + cb;
+        s.src = INTAKE_API_URL + '?action=intake_get_funnel&yearMonth=' + encodeURIComponent(ym) + '&callback=' + cb
+            + '&adminKey=' + encodeURIComponent(getIntakeAdminKey());
         s.onerror = function(){ try { delete window[cb]; } catch(e){} };
         document.body.appendChild(s);
         setTimeout(() => { try { s.remove(); } catch(e){} }, 8000);

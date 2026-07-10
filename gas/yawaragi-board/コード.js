@@ -1502,6 +1502,16 @@ function doGet(e) {
       var muYm   = e && e.parameter ? e.parameter.yearMonth : '';
       return respond(getMonthlyUsage(ss, muName, muYm), callback);
     }
+    if (action === 'intake_key_init') {
+      return respond(intakeKeyInit_(), callback);
+    }
+    if (action === 'intake_auth_selftest') {
+      return respond(intakeAuthSelftest_(ss), callback);
+    }
+    // P2.1: PIIを返す intake_* GET は adminKey 必須（不一致/未設定=fail-closed で unauthorized）
+    if (INTAKE_GATED_GET_ACTIONS_.indexOf(action) >= 0 && !intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, callback);
+    }
     if (action === 'intake_list') {
       var includeCancelled = e && e.parameter && e.parameter.includeCancelled === '1';
       var statusFilter = e && e.parameter ? e.parameter.status : null;
@@ -3765,6 +3775,11 @@ function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.openById(SS_ID);
+
+    // P2.1: PIIを変更/参照する intake_* POST は adminKey 必須（欠席・furikae等の他actionには影響なし）
+    if (INTAKE_GATED_POST_ACTIONS_.indexOf(data.action) >= 0 && !intakeAdminAuthorized_(null, data)) {
+      return jsonResp({ error: 'unauthorized', status: 401 });
+    }
 
     switch (data.action) {
       case 'appregistry_bulk_upsert':
@@ -8684,6 +8699,65 @@ function _trialAmpm(r) {
   var m = t.match(/^(\d{1,2})[:：]/);
   if (m) return (parseInt(m[1], 10) < 12) ? 'am' : 'pm';
   return 'am';
+}
+
+// ===== P2.1: intake系APIのadminKeyゲート（個人情報保護・2026-07-11） =====
+// 公開HTML(intake.html / yawaragi-board.html)から呼ばれる＝GAS URLは秘匿不可。
+// PIIを返す/変更する intake_* だけサーバー側でadminKey必須にする（欠席・furikae等は非対象）。
+// 純判定=intake-auth-core.js intakeAuthOk_（fail-closed）。既存 APPREGISTRY_ADMIN_KEY と同方式。
+// ★後続P2.2の intake_weekly_feed（匿名化）は例外的に鍵なし公開＝下記リストに入れない構造。
+var INTAKE_GATED_GET_ACTIONS_  = ['intake_list', 'intake_followup_pending', 'intake_get_funnel'];
+var INTAKE_GATED_POST_ACTIONS_ = ['intake_create', 'intake_update', 'intake_delete', 'intake_request_approval',
+                                  'intake_sync_to_userlist', 'intake_add_as_trial', 'intake_advance_phase', 'intake_drop'];
+
+// GET は e.parameter.adminKey、POST は data.adminKey を照合。
+function intakeAdminAuthorized_(e, data) {
+  var provided = (e && e.parameter && e.parameter.adminKey) || (data && data.adminKey) || '';
+  var expected = PropertiesService.getScriptProperties().getProperty(INTAKE_ADMIN_KEY_PROP);
+  return intakeAuthOk_(provided, expected);
+}
+
+// action=intake_key_init : 一度きり。INTAKE_ADMIN_KEY を生成→ScriptProperties保存→社長へメール。
+// 既に設定済みなら何もしない。★キー値はレスポンスに含めない（メールのみ・appregistry_initと同方式）。
+function intakeKeyInit_() {
+  var props = PropertiesService.getScriptProperties();
+  var key = props.getProperty(INTAKE_ADMIN_KEY_PROP);
+  var keyCreated = false;
+  if (!key) {
+    key = Utilities.getUuid();
+    props.setProperty(INTAKE_ADMIN_KEY_PROP, key);
+    keyCreated = true;
+  }
+  if (keyCreated) {
+    GmailApp.sendEmail('m-higa@keepfitlife.com',
+      '【見学体験新規】intakeアプリ 管理キー(adminKey)',
+      'intake系API（見学・体験・新規）の管理キーを設定しました。社外秘です。\n\n' +
+      '◆管理キー(adminKey):\n' + key + '\n\n' +
+      '◆使い方:\n' +
+      '「見学・体験・新規(intake.html)」または yawaragiボードの見学体験新規タブを開いた際、\n' +
+      '初回にこのキーの入力を求められます。入力するとこの端末(ブラウザ)に保存され、以後は自動付与されます。\n\n' +
+      '※このキーは住所・電話・生年月日等のPIIを守る鍵です。スタッフ以外に渡さないでください。\n' +
+      '※値を変えたい場合はGASエディタ「プロジェクトの設定→スクリプトプロパティ」で ' + INTAKE_ADMIN_KEY_PROP + ' を書き換えてください。');
+  }
+  return { success: true, keyCreated: keyCreated, keyAlreadySet: !keyCreated, emailedTo: keyCreated ? 'm-higa@keepfitlife.com' : null };
+}
+
+// action=intake_auth_selftest : ゲートの各分岐を検証（★キー値・PIIは返さない・boolean+件数のみ）。
+// 鍵を知らずに「鍵あり→正常返却」を実測するための自己診断。
+function intakeAuthSelftest_(ss) {
+  var expected = PropertiesService.getScriptProperties().getProperty(INTAKE_ADMIN_KEY_PROP);
+  var keySet = !!(expected && expected !== '');
+  var authListCount = -1;
+  if (keySet && intakeAuthOk_(expected, expected)) {
+    authListCount = getIntakeList(ss, {}).length; // 正しい鍵での認可経路が実データを返す証明（件数のみ・PIIなし）
+  }
+  return {
+    keySet: keySet,
+    gatePassesWithServerKey: keySet ? intakeAuthOk_(expected, expected) : false,
+    gateRejectsNoKey:    !intakeAuthOk_('', expected),
+    gateRejectsWrongKey: !intakeAuthOk_('WRONG-KEY-xxxxx', expected),
+    authListCount: authListCount
+  };
 }
 
 function getIntakeList(ss, opts) {
