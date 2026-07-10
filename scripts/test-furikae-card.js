@@ -79,6 +79,9 @@ eq(n3.occurrence, 2, '既存occurrence温存(既定1で上書きしない)');
 eq(n3.prevAmount, 5000, '既存prevAmount温存');
 eq(n3.nextMonthAbsent, true, '既存nextMonthAbsent温存');
 eq(n3.contactedBy, '下浦', '既存contactedBy温存');
+// breakdown（月別内訳）後方互換：無ければ自分自身1要素で補完
+eq(fnkNormalizeRecord({ month: '2026-05', amount: 4753 }).breakdown, [{ month: '2026-05', amount: 4753 }], '空breakdown→自己補完[{month,amount}]');
+eq(fnkNormalizeRecord({ breakdown: [{ month: '2026-03', amount: 4043 }, { month: '2026-04', amount: 1820 }] }).breakdown, [{ month: '2026-03', amount: 4043 }, { month: '2026-04', amount: 1820 }], '既存breakdown温存');
 
 // ===== fnkApplyContact（連絡記録でレコードを更新・純関数で新オブジェクト返す）=====
 const scopeApply = {};
@@ -157,11 +160,13 @@ new Function('sb',
   extractConst('FURIKAE_SCHEDULE') + '\n' +
   extractFn('nextFurikaeGuide') + '\n' +
   extractFn('fnkMd') + '\n' +
+  extractFn('fnkCardTotal') + '\n' +
   'function fubiHistoryBadge(){return "";}\n' +
   extractFn('fnkCardHtml') + '\n' +
-  'sb.fnkCardHtml = fnkCardHtml;'
+  'sb.fnkCardHtml = fnkCardHtml; sb.fnkCardTotal = fnkCardTotal;'
 )(scopeCard);
 const fnkCardHtml = scopeCard.fnkCardHtml;
+const fnkCardTotal = scopeCard.fnkCardTotal;
 
 console.log('\n[fnkCardHtml 統合]');
 const cardA = fnkCardHtml({ id: 1, month: '2026-06', name: 'ﾑﾗﾀ', amount: 5840, resultCode: '1', occurrence: 2, prevAmount: 5863 });
@@ -179,6 +184,18 @@ const cardC = fnkCardHtml({ id: 3, month: '2026-06', name: 'ｲｸﾞｻ', amoun
 ok(cardC.indexOf('までに郵送') < 0, 'code2(取引なし)→引落開始ガイドは出さない');
 const cardD = fnkCardHtml({ id: 4, month: '2026-06', name: 'ﾑﾗﾀ', amount: 5000, resultCode: '1' });
 ok(cardD.indexOf('までに郵送') < 0, 'code1(残高不足)→引落開始ガイドは出さない');
+
+// 月別内訳（breakdown 2要素以上）＝繰越カードの内訳＋合計を描画
+console.log('\n[fnkCardTotal / 月別内訳]');
+eq(fnkCardTotal({ breakdown: [{ month: '2026-05', amount: 4753 }, { month: '2026-06', amount: 4723 }] }), 9476, 'breakdown合計');
+eq(fnkCardTotal({ amount: 500 }), 500, 'breakdown無→amount');
+eq(fnkCardTotal({}), 0, '空→0');
+const cardE = fnkCardHtml({ id: 5, month: '2026-06', name: 'ﾏﾁﾀﾞ', amount: 9476, resultCode: '4', occurrence: 2, prevAmount: 4753, breakdown: [{ month: '2026-05', amount: 4753 }, { month: '2026-06', amount: 4723 }] });
+ok(cardE.indexOf('5月分') >= 0 && cardE.indexOf('4,753') >= 0, '繰越カード→5月分¥4,753 内訳描画');
+ok(cardE.indexOf('6月分') >= 0 && cardE.indexOf('4,723') >= 0, '繰越カード→6月分¥4,723 内訳描画');
+ok(cardE.indexOf('合計') >= 0 && cardE.indexOf('9,476') >= 0, '繰越カード→合計¥9,476 描画');
+const cardF = fnkCardHtml({ id: 6, month: '2026-06', name: 'X', amount: 2920, resultCode: '4', breakdown: [{ month: '2026-06', amount: 2920 }] });
+ok(cardF.indexOf('合計') < 0, 'breakdown 1要素→内訳行は出さない（単月）');
 
 // ===== nextFurikaeGuide（code4 引落開始ガイド・既存 FURIKAE_SCHEDULE を共有＝単一の真実源）=====
 function extractConst(name) {

@@ -241,6 +241,9 @@
   /* code4 引落開始ガイド（依頼書なしのカードのみ） */
   .fnk-guide { margin: -2px 14px 10px 46px; padding: 6px 10px; border-radius: 8px;
     background: #ebf8ff; color: #2b6cb0; font-size: 12.5px; font-weight: 600; }
+  /* 繰越カードの月別内訳（複数月） */
+  .fnk-breakdown { margin: -2px 14px 8px 46px; color: #4a5568; font-size: 12px; }
+  .fnk-breakdown b { color: #2d3748; }
   .fnk-detail { padding: 12px 16px; background: #f7fafc; border-top: 1px dashed #cbd5e0;
     display: grid; gap: 10px; }
   .fnk-f { display: flex; flex-direction: column; font-size: 12px; color: #4a5568; gap: 4px; font-weight: 600; }
@@ -511,75 +514,44 @@ function processExcelFile(file) {
         if (!month) return;
       }
 
+      const today = new Date().toISOString().slice(0, 10);
+
       if (funou.length === 0) {
-        // 成功のみの月も「取込済み」痕跡を残す（morningDigest の未取込リマインドを消すため・案B）
-        if (fnkApplyImportMarker(data, month, new Date().toISOString().slice(0, 10))) {
-          saveData(data);
-        }
+        // 成功のみの月：過去未回収の自動消込は走らせる（成功行=okCustomerIdsで消込）＋取込済みマーカー
+        const rz = fnkProcessImport(data.records, data.nextId, [], okCustomerIds, month, today);
+        data.records = rz.records; data.nextId = rz.nextId;
+        fnkApplyImportMarker(data, month, today);
+        saveData(data);
         initMonthSelect();
-        showImportResult(`✅ 振替不能は0件でした！（全${dataRows.length}件が正常振替）`, false);
+        document.getElementById('monthSelect').value = month;
+        renderMonth();
+        fnkScheduleNotify(month);
+        let m0 = `✅ ${month} 振替不能は0件でした！（全${dataRows.length}件が正常振替）`;
+        if (rz.autoCleared.length > 0) m0 += `\n✅ 自動消込 ${rz.autoCleared.length}件: ` + rz.autoCleared.map(c => `${c.name}¥${(c.amount || 0).toLocaleString()}`).join('／');
+        showImportResult(m0, false);
         return;
       }
 
-      // 重複チェック（同月・同顧客番号）※マーカー除外は fnkExistingCustomerIds に集約
-      const existingIds = fnkExistingCustomerIds(data.records, month);
+      // ★Step2取込コア：人ごと1枚モデルで 自動消込／繰越／要確認／新規／冪等 を一括処理（純関数）
+      const result = fnkProcessImport(data.records, data.nextId, funou, okCustomerIds, month, today);
+      data.records = result.records;
+      data.nextId = result.nextId;
+      saveData(data);
 
-      const newRecords = [];
-      let skipCount = 0;
-
-      funou.forEach((f, i) => {
-        if (existingIds.includes(f.customerId)) {
-          skipCount++;
-          return;
-        }
-        newRecords.push({
-          id: data.nextId++,
-          month: month,
-          hikiotoshiDate: hikiotoshiDate,
-          no: String(i + 1).padStart(5, '0'),
-          name: f.name,
-          bank: f.bank,
-          branch: f.branch,
-          account: f.account,
-          amount: f.amount,
-          customerId: f.customerId,
-          reason: f.reason,
-          detailReason: '',
-          status: '未対応',
-          memo: '',
-          formSentDate: '',
-          expectedStartMonth: '',
-          createdAt: new Date().toISOString().split('T')[0]
-        });
-      });
-
-      // 翌月合算の回収済候補：過去の未回収レコードのうち、今月正常振替できた顧客番号に一致する行
-      // （自動確定はしない・§4-4。承認パネルで社長が一括承認して回収済にする）
-      _fnkCandidates = fnkGoushanCandidates(data.records, month, okCustomerIds);
-
-      if (newRecords.length > 0) {
-        data.records.push(...newRecords);
-        saveData(data);
-      }
-
-      // 表示を更新（取込月に切替）
       initMonthSelect();
       document.getElementById('monthSelect').value = month;
       renderMonth();
       fnkScheduleNotify(month); // 取込後の要対応件数を伝達ボードへ
 
-      let msg;
-      if (newRecords.length === 0) {
-        msg = skipCount > 0
-          ? `この月のデータは既に登録済みです（${skipCount}件スキップ）`
-          : `✅ 新規の振替不能はありませんでした（${month}）`;
-      } else {
-        msg = `📥 ${newRecords.length}件の振替不能を取り込みました（${month}）`;
-        if (skipCount > 0) msg += `\n（${skipCount}件は登録済みのためスキップ）`;
-      }
-      if (_fnkCandidates.length > 0) {
-        msg += `\n🎉 過去の不能から今月引落成功が ${_fnkCandidates.length}件 見つかりました（下の承認パネルで確認）`;
-      }
+      // 取込サマリ（自動消込・繰越・要確認を明示＝断定リスクの担保）
+      let msg = `📥 ${month} 取込完了`;
+      const parts = [];
+      if (result.newCount) parts.push(`新規不能 ${result.newCount}件`);
+      if (result.carriedOver.length) parts.push(`繰越 ${result.carriedOver.length}件（${result.carriedOver.map(c => c.name).join('・')}）`);
+      if (result.skipCount) parts.push(`登録済スキップ ${result.skipCount}件`);
+      if (parts.length) msg += '：' + parts.join(' / ');
+      if (result.autoCleared.length > 0) msg += `\n✅ 自動消込 ${result.autoCleared.length}件: ` + result.autoCleared.map(c => `${c.name}¥${(c.amount || 0).toLocaleString()}`).join('／');
+      if (result.flagged.length > 0) msg += `\n⚠️ 要確認 ${result.flagged.length}件（翌月請求なし）: ` + result.flagged.map(c => c.name).join('・');
       showImportResult(msg, false);
 
     } catch (err) {
@@ -900,14 +872,17 @@ function fnkTodoText(rec) {
 // 既存の値は温存（上書きしない）。occurrence/prevAmount/nextMonthAbsent は器のみ（値はStep2で埋める）。
 function fnkNormalizeRecord(rec) {
   rec = rec || {};
-  return Object.assign({
-    occurrence: 1,          // 何回目の不能か（既定1・2回目昇格はStep2で判定）
-    prevAmount: null,       // 前回不能額（累積表示用・Step2で埋める）
-    nextMonthAbsent: false, // 翌月ファイルに不在＝要確認（Step2で判定）
+  var out = Object.assign({
+    occurrence: 1,          // 何回目の不能か（既定1・繰越で++）
+    prevAmount: null,       // 前月未収合計（累積表示用・繰越時に埋める）
+    nextMonthAbsent: false, // 翌月ファイルに不在＝要確認
     contactedBy: null,      // 連絡した職員名
     contactedAt: null,      // 連絡日(YYYY-MM-DD)
     contactMethod: null     // 連絡手段(電話/口頭/家族経由)
   }, rec);
+  // breakdown（月別内訳）後方互換：無ければ自分自身1要素で補完（人ごと1枚モデル・Step2）
+  if (!out.breakdown) out.breakdown = [{ month: out.month, amount: out.amount || 0 }];
+  return out;
 }
 
 // 連絡記録でレコードを更新（純関数・新オブジェクトを返す＝元を破壊しない）。追記型の履歴はGAS側、
@@ -946,11 +921,12 @@ function fnkExtraBadges(rec) {
   return out;
 }
 
-// 未回収判定（終わるまで方式：回収済フラグ/resolvedMonthでのみ消える・日付では消えない）
+// 未回収判定（終わるまで方式：回収済/繰越/resolvedMonthでのみ消える・日付では消えない）
+// 繰越＝前月分は当月カードに引き継がれ閉じる（アクティブから外す・Step2）。
 function fnkIsUnpaid(rec) {
   if (!rec) return false;
   if (rec.resolvedMonth) return false;
-  return rec.status !== '回収済';
+  return rec.status !== '回収済' && rec.status !== '繰越';
 }
 
 // 月別サマリー（未回収のみ・件数/合計）
@@ -965,6 +941,86 @@ function fnkGoushanCandidates(records, month, okCustomerIds) {
   return (records || []).filter(function (r) {
     return r.month !== month && fnkIsUnpaid(r) && r.customerId && ids.indexOf(String(r.customerId)) >= 0;
   });
+}
+
+// ===== Step2 取込コア（人ごと1枚＋月別内訳・自動消込/繰越/要確認/新規/冪等）純関数 =====
+// テスト: scripts/test-furikae-import.js。DOM非依存so取込ハンドラ processExcelFile から呼ぶ。
+// funou=今月の不能行[{customerId,name,amount,reason,resultCode,bank,branch,account}]（同月同顧客の複数行を含む生データ）
+// 戻り値: { records, nextId, autoCleared:[{customerId,name,amount}], carriedOver:[{customerId,name}], flagged:[{customerId,name}], newCount, skipCount }
+function fnkProcessImport(records, nextId, funou, okCustomerIds, month, today) {
+  var recs = (records || []).map(function (r) { return Object.assign({}, r); }); // 浅いコピー（元配列を破壊しない）
+  var ok = (okCustomerIds || []).map(String);
+  var autoCleared = [], carriedOver = [], flagged = [];
+  var newCount = 0, skipCount = 0;
+  var sumOf = function (b) { return (b || []).reduce(function (s, x) { return s + (x.amount || 0); }, 0); };
+
+  // 1) 同月合算：funou を customerId でグループ化（同月同顧客の複数サービス行→金額合計の1件）
+  var byCid = {};
+  (funou || []).forEach(function (f) {
+    var cid = String(f.customerId || '').trim();
+    if (!cid) return;
+    if (!byCid[cid]) byCid[cid] = { customerId: cid, name: f.name, amount: 0, reason: f.reason, resultCode: f.resultCode, bank: f.bank, branch: f.branch, account: f.account };
+    byCid[cid].amount += (f.amount || 0);
+  });
+  var allTodayIds = {}; // 今月ファイルの全customerId（成功+不能）
+  ok.forEach(function (id) { allTodayIds[id] = true; });
+  Object.keys(byCid).forEach(function (id) { allTodayIds[id] = true; });
+
+  // 2) 冪等：当月に既にレコードがある顧客（同月再取込で二重適用しない）
+  var curMonthCids = {};
+  recs.forEach(function (r) { if (r.month === month && r.customerId) curMonthCids[String(r.customerId)] = true; });
+
+  // 3) アクティブ未回収カード（別月・顧客ごと1枚が前提）
+  var activeByCid = {};
+  recs.forEach(function (r) { if (fnkIsUnpaid(r) && !fnkIsImportMarker(r) && r.customerId) activeByCid[String(r.customerId)] = r; });
+
+  // 4) アクティブ未回収の処理（自動消込 / 繰越 / 要確認）
+  Object.keys(activeByCid).forEach(function (cid) {
+    if (curMonthCids[cid]) return; // 冪等
+    var card = activeByCid[cid];
+    if (ok.indexOf(cid) >= 0) {
+      // 自動消込：今月成功行に出現
+      card.status = '回収済'; card.resolvedMonth = month; card.collectMethod = '翌月合算';
+      card.resolvedNote = month + 'の取込で引落成功を確認（翌月合算・自動）';
+      autoCleared.push({ customerId: cid, name: card.name, amount: sumOf(card.breakdown) || card.amount || 0 });
+    } else if (byCid[cid]) {
+      // 繰越：今月も不能行に出現 → 前月カードを閉じ、当月カードに内訳引継ぎ
+      card.status = '繰越'; card.carriedTo = month;
+      var prevSum = sumOf(card.breakdown) || card.amount || 0;
+      var curTotal = byCid[cid].amount;
+      var curPart = curTotal - prevSum; // 当月分 = 電算累積額 − 前月未収合計
+      var newBreakdown = (card.breakdown && card.breakdown.length ? card.breakdown.slice() : [{ month: card.month, amount: card.amount || 0 }]).concat([{ month: month, amount: curPart }]);
+      recs.push(fnkNormalizeRecord({
+        id: nextId++, month: month, customerId: cid, name: byCid[cid].name,
+        bank: byCid[cid].bank, branch: byCid[cid].branch, account: byCid[cid].account,
+        amount: curTotal, reason: byCid[cid].reason, resultCode: byCid[cid].resultCode,
+        breakdown: newBreakdown, occurrence: newBreakdown.length, prevAmount: prevSum,
+        status: '未対応', contactedBy: null, contactedAt: null, contactMethod: null, createdAt: today
+      }));
+      carriedOver.push({ customerId: cid, name: byCid[cid].name });
+      delete byCid[cid]; // 新規扱いにしない
+    } else if (!allTodayIds[cid]) {
+      // 要確認：今月ファイルに一切出ない（成功でも不能でもない＝請求対象外の可能性）
+      card.nextMonthAbsent = true;
+      flagged.push({ customerId: cid, name: card.name });
+    }
+  });
+
+  // 5) 新規顧客（過去にアクティブ未回収が無い・当月未処理）
+  Object.keys(byCid).forEach(function (cid) {
+    if (curMonthCids[cid]) { skipCount++; return; } // 冪等：当月既存
+    if (activeByCid[cid]) return; // 繰越で処理済み
+    recs.push(fnkNormalizeRecord({
+      id: nextId++, month: month, customerId: cid, name: byCid[cid].name,
+      bank: byCid[cid].bank, branch: byCid[cid].branch, account: byCid[cid].account,
+      amount: byCid[cid].amount, reason: byCid[cid].reason, resultCode: byCid[cid].resultCode,
+      breakdown: [{ month: month, amount: byCid[cid].amount }], occurrence: 1,
+      status: '未対応', createdAt: today
+    }));
+    newCount++;
+  });
+
+  return { records: recs, nextId: nextId, autoCleared: autoCleared, carriedOver: carriedOver, flagged: flagged, newCount: newCount, skipCount: skipCount };
 }
 
 // 伝達ボード通知に出す「要対応」件数：当月の未回収のうち 🔴🟠 のみ（⚪翌月合算予定は放置可＝数えない）
@@ -1014,34 +1070,30 @@ function fnkApplyImportMarker(data, month, today) {
 // ============ 描画 ============
 function renderMonth() {
   const month = document.getElementById('monthSelect').value;
-  const monthRecords = data.records.filter(r => r.month === month && !fnkIsImportMarker(r));
-  const unpaid = monthRecords.filter(fnkIsUnpaid);
-  const summary = fnkMonthSummary(data.records, month);
-  const mmLabel = month ? parseInt(month.split('-')[1]) + '月分' : '';
+  // ★未回収は月フィルタ独立＝全アクティブカード（人ごと1枚）。最新月を取り込めば解決済みは自動で消え、
+  //   未回収だけが人ごとに残る。月ドロップダウンは回収済/繰越/履歴の閲覧用（下部フッタ）。
+  const unpaid = data.records.filter(r => !fnkIsImportMarker(r) && fnkIsUnpaid(r));
+  const total = unpaid.reduce((s, r) => s + fnkCardTotal(r), 0);
 
-  // ① 集計ヘッダ（未回収のみ）
+  // ① 集計ヘッダ（全未回収・月に依存しない）
   document.getElementById('summaryCards').innerHTML =
-    summary.count === 0
-      ? `<div class="fnk-head fnk-head-zero">✓ ${mmLabel} 未回収の振替不能はありません</div>`
+    unpaid.length === 0
+      ? `<div class="fnk-head fnk-head-zero">✓ 未回収の振替不能はありません</div>`
       : `<div class="fnk-head">
-           <span class="fnk-head-count">未回収 <b>${summary.count}</b>件</span>
-           <span class="fnk-head-amt">¥${summary.total.toLocaleString()}</span>
-           <span class="fnk-head-mon">${mmLabel}</span>
+           <span class="fnk-head-count">未回収 <b>${unpaid.length}</b>件</span>
+           <span class="fnk-head-amt">¥${total.toLocaleString()}</span>
+           <span class="fnk-head-mon">（人ごと・全月）</span>
          </div>`;
 
-  // ② 未回収カード（既定はこれだけ・回収済/成功は出さない）
+  // ② 未回収カード（全アクティブ・人ごと1枚）
   const list = document.getElementById('cardList');
   if (list) {
-    if (unpaid.length === 0) {
-      list.innerHTML = monthRecords.length === 0
-        ? `<div class="fnk-empty">この月の取込データはありません。上の「📂 結果Excelを取込」から入れてください。</div>`
-        : `<div class="fnk-done">🎉 ${mmLabel}は全て回収済みです</div>`;
-    } else {
-      list.innerHTML = unpaid.map(fnkCardHtml).join('');
-    }
+    list.innerHTML = unpaid.length === 0
+      ? `<div class="fnk-empty">未回収の振替不能はありません。上の「📂 結果Excelを取込」から最新月を入れてください。</div>`
+      : unpaid.map(fnkCardHtml).join('');
   }
 
-  // ③ 翌月合算の回収済候補（承認パネル）／④ 今月回収済フッタ（取消用）
+  // ③ 承認パネル（自動消込化で _fnkCandidates は空＝非表示）／④ 回収済・繰越フッタ（月別・取消用）
   renderCandidatePanel(month);
   renderCollectedFooter(month);
 }
@@ -1054,6 +1106,12 @@ function fnkMd(dateStr) {
   return p.length >= 3 ? parseInt(p[1], 10) + '/' + parseInt(p[2], 10) : String(dateStr);
 }
 
+// カードの合計額（breakdown合計。無ければ amount）。人ごと1枚モデルの表示額。
+function fnkCardTotal(rec) {
+  if (rec && rec.breakdown && rec.breakdown.length) return rec.breakdown.reduce(function (s, b) { return s + (b.amount || 0); }, 0);
+  return (rec && rec.amount) || 0;
+}
+
 function fnkCardHtml(r) {
   const b = fnkBadgeFor(r);
   const mm = r.month ? parseInt(r.month.split('-')[1]) + '月分' : '';
@@ -1063,6 +1121,12 @@ function fnkCardHtml(r) {
   const cbadgeHtml = cbadge ? `<span class="fnk-contact-badge">${escapeHtml(cbadge)}</span>` : '';
   const extraHtml = fnkExtraBadges(r).map(t => `<span class="fnk-extra-badge">${escapeHtml(t)}</span>`).join('');
   const todo = fnkTodoText(r);
+  // 月別内訳（繰越で複数月＝breakdown 2要素以上のとき内訳＋合計を出す）
+  const total = fnkCardTotal(r);
+  const bd = r.breakdown || [];
+  const bdHtml = bd.length > 1
+    ? `<div class="fnk-breakdown">${bd.map(x => `${x.month ? parseInt(x.month.split('-')[1]) + '月分' : ''}¥${(x.amount || 0).toLocaleString()}`).join(' ／ ')} ／ <b>合計¥${total.toLocaleString()}</b></div>`
+    : '';
   // code4（依頼書なし）だけ「次の締切までに郵送→引落開始」のガイド行を出す（これから郵送する前提の案内）
   let guideHtml = '';
   if (b.code === '4') {
@@ -1077,7 +1141,7 @@ function fnkCardHtml(r) {
       <span class="fnk-badge">${b.mark}</span>
       <span class="fnk-name">${escapeHtml(r.name) || '(名前なし)'}${fubiHistoryBadge(r)}${cbadgeHtml}${extraHtml}</span>
       <span class="fnk-mon">${mm}</span>
-      <span class="fnk-amt">¥${(r.amount || 0).toLocaleString()}</span>
+      <span class="fnk-amt">¥${total.toLocaleString()}</span>
       <span class="fnk-reason">${escapeHtml(r.reason || '')}</span>
       <span class="fnk-act" id="fnk-act-${r.id}" onclick="event.stopPropagation();">
         <button class="fnk-contact-btn" onclick="fnkContactStart(${r.id})">連絡済み</button>
@@ -1085,6 +1149,7 @@ function fnkCardHtml(r) {
       </span>
     </div>
     <div class="fnk-sub">└ 📋 ${escapeHtml(todo)}</div>
+    ${bdHtml}
     ${guideHtml}
     <div class="fnk-detail" id="fnk-detail-${r.id}" style="display:none;">
       <label class="fnk-f">利用者名（半角カナ）
