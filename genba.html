@@ -8805,8 +8805,11 @@ function trmRenderList() {
 }
 
 function trmRenderCard(t) {
-    // 段階的有効化の判定
-    const stage1Done = t.tasks.tsusho && t.tasks.kotraining && t.tasks.koukou;
+    // 個訓非対象（要支援・事業対象者は個別機能訓練計画書を作らない＝要介護のみ対象）
+    // '事業対象' で拾えば「事業対象」「事業対象者」どちらの台帳表記でも一致する
+    const isNoKotraining = (t.careLevel || '').indexOf('要支援') !== -1 || (t.careLevel || '').indexOf('事業対象') !== -1;
+    // 段階的有効化の判定（個訓は要介護のみ完了条件に含める）
+    const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isNoKotraining || t.tasks.kotraining);
     const stage2Done = stage1Done && t.tasks.kagakuteki;
     const stage3Done = stage2Done && t.tasks.adl;
     const allDone = stage3Done;
@@ -8835,10 +8838,10 @@ function trmRenderCard(t) {
         '<div class="trm-task-list">' +
             '<div class="trm-task-title">📋 リハブクラウド作業チェックリスト（順序あり）</div>' +
 
-            // 段階1: 通所/個訓/口腔（順不同）
-            '<div class="trm-task-step-label active">段階1: この3つを完了させる（順不同）</div>' +
+            // 段階1: 通所/個訓/口腔（順不同）。要支援・事業対象者は個訓非対象なので非表示
+            '<div class="trm-task-step-label active">段階1: ' + (isNoKotraining ? 'この2つを完了させる（順不同）' : 'この3つを完了させる（順不同）') + '</div>' +
             trmTaskItem(t, 'tsusho', '通所計画書', false) +
-            trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false) +
+            (isNoKotraining ? '' : trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false)) +
             trmTaskItem(t, 'koukou', '口腔機能向上計画書', false) +
 
             // 段階1完了後・中止操作の前に常時表示（請求漏れ防止）。日付判定・条件分岐なし・既存ゲートには非干渉
