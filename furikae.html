@@ -221,6 +221,16 @@
   .fnk-collect-btn { background: #38a169; color: #fff; border: none; border-radius: 8px;
     padding: 8px 16px; font-weight: 700; font-size: 14px; cursor: pointer; }
   .fnk-collect-btn:hover { background: #2f855a; }
+  /* ③連絡済み記録ボタン（回収済と並ぶ・青系で区別） */
+  .fnk-contact-btn { background: #3182ce; color: #fff; border: none; border-radius: 8px;
+    padding: 8px 14px; font-weight: 700; font-size: 14px; cursor: pointer; margin-right: 6px; }
+  .fnk-contact-btn:hover { background: #2b6cb0; }
+  /* ✓連絡済バッジ（緑・氏名の後） */
+  .fnk-contact-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 10px;
+    background: #c6f6d5; color: #22543d; font-size: 11.5px; font-weight: 700; vertical-align: middle; }
+  /* 2回目/⚠️要確認バッジ（強調・オレンジ系） */
+  .fnk-extra-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 10px;
+    background: #feebc8; color: #9c4221; font-size: 11.5px; font-weight: 700; vertical-align: middle; }
   .fnk-method-label { font-size: 12px; color: #718096; }
   .fnk-method-btn { background: #ebf8ff; color: #2b6cb0; border: 1px solid #90cdf4;
     border-radius: 6px; padding: 6px 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -872,6 +882,65 @@ function fnkBadgeFor(rec) {
   return { code: code || '?', key: 'red', mark: '🔴', label: '要確認' };
 }
 
+// やること文面（結果コード→文・設計書§3の表。v1は編集UIなし）。fnkBadgeFor と同じコード判定を再利用。
+// code1=残高不足／code3=停止(預金者都合)／その他(2/4/8/9/不明)=電話で状況確認。
+function fnkTodoText(rec) {
+  var code = fnkBadgeFor(rec).code;
+  if (code === '1') return '翌月2ヶ月分まとめて引き落とされる旨を利用者（またはご家族）に伝える';
+  if (code === '3') return '口座の状態を確認し、翌月の振替可否を電話で確認する';
+  return '電話で状況を確認する';
+}
+
+// レコードschema後方互換（③カード機能・2026-07-10）。既存レコードに新フィールドを既定値で補完し、
+// 既存の値は温存（上書きしない）。occurrence/prevAmount/nextMonthAbsent は器のみ（値はStep2で埋める）。
+function fnkNormalizeRecord(rec) {
+  rec = rec || {};
+  return Object.assign({
+    occurrence: 1,          // 何回目の不能か（既定1・2回目昇格はStep2で判定）
+    prevAmount: null,       // 前回不能額（累積表示用・Step2で埋める）
+    nextMonthAbsent: false, // 翌月ファイルに不在＝要確認（Step2で判定）
+    contactedBy: null,      // 連絡した職員名
+    contactedAt: null,      // 連絡日(YYYY-MM-DD)
+    contactMethod: null     // 連絡手段(電話/口頭/家族経由)
+  }, rec);
+}
+
+// 連絡記録でレコードを更新（純関数・新オブジェクトを返す＝元を破壊しない）。追記型の履歴はGAS側、
+// レコードは最新の連絡だけ保持（再連絡で上書き＝最新をバッジ表示）。status→連絡済み。
+function fnkApplyContact(rec, info) {
+  info = info || {};
+  return Object.assign({}, rec, {
+    status: '連絡済み',
+    contactedBy: info.operator || null,
+    contactedAt: info.dateStr || null,
+    contactMethod: info.method || null
+  });
+}
+
+// 連絡済みバッジ文字列「✓連絡済 M/D 名前」。未連絡（contactedBy無し）は空文字＝バッジ出さない。
+function fnkContactBadge(rec) {
+  if (!rec || !rec.contactedBy) return '';
+  var md = '';
+  if (rec.contactedAt) {
+    var p = String(rec.contactedAt).split('-'); // YYYY-MM-DD
+    if (p.length >= 3) md = parseInt(p[1], 10) + '/' + parseInt(p[2], 10);
+  }
+  return '✓連絡済 ' + (md ? md + ' ' : '') + rec.contactedBy;
+}
+
+// 追加バッジ（表示側の判定のみ・値の充填はStep2）。occurrence≧2→「2回目」（prevAmountあれば累積額）、
+// nextMonthAbsent→「⚠️翌月請求なし・要確認」。該当なしは空配列。
+function fnkExtraBadges(rec) {
+  rec = rec || {};
+  var out = [];
+  if (rec.occurrence >= 2) {
+    var suffix = (rec.prevAmount != null) ? '（累積¥' + Number(rec.prevAmount).toLocaleString() + '）' : '';
+    out.push('🔁2回目' + suffix);
+  }
+  if (rec.nextMonthAbsent === true) out.push('⚠️翌月請求なし・要確認');
+  return out;
+}
+
 // 未回収判定（終わるまで方式：回収済フラグ/resolvedMonthでのみ消える・日付では消えない）
 function fnkIsUnpaid(rec) {
   if (!rec) return false;
@@ -976,23 +1045,26 @@ function renderMonth() {
 function fnkCardHtml(r) {
   const b = fnkBadgeFor(r);
   const mm = r.month ? parseInt(r.month.split('-')[1]) + '月分' : '';
-  const hint = b.key === 'white' ? '今は放置でOK（翌月に合算）'
-             : b.key === 'orange' ? '依頼書を再送 → 送付日を記録'
-             : '電話で口座の生存・意向を確認';
   const expected = r.expectedStartDate || r.expectedStartMonth || '';
+  // ③連絡済みバッジ・追加バッジ（2回目/⚠️要確認）・やること文面
+  const cbadge = fnkContactBadge(r);
+  const cbadgeHtml = cbadge ? `<span class="fnk-contact-badge">${escapeHtml(cbadge)}</span>` : '';
+  const extraHtml = fnkExtraBadges(r).map(t => `<span class="fnk-extra-badge">${escapeHtml(t)}</span>`).join('');
+  const todo = fnkTodoText(r);
   return `
   <div class="fnk-card fnk-b-${b.key}" data-id="${r.id}">
     <div class="fnk-row" onclick="fnkToggleDetail(${r.id})">
       <span class="fnk-badge">${b.mark}</span>
-      <span class="fnk-name">${escapeHtml(r.name) || '(名前なし)'}${fubiHistoryBadge(r)}</span>
+      <span class="fnk-name">${escapeHtml(r.name) || '(名前なし)'}${fubiHistoryBadge(r)}${cbadgeHtml}${extraHtml}</span>
       <span class="fnk-mon">${mm}</span>
       <span class="fnk-amt">¥${(r.amount || 0).toLocaleString()}</span>
       <span class="fnk-reason">${escapeHtml(r.reason || '')}</span>
       <span class="fnk-act" id="fnk-act-${r.id}" onclick="event.stopPropagation();">
+        <button class="fnk-contact-btn" onclick="fnkContactStart(${r.id})">連絡済み</button>
         <button class="fnk-collect-btn" onclick="fnkMarkCollected(${r.id})">回収済</button>
       </span>
     </div>
-    <div class="fnk-sub">└ ${b.label}（${hint}）</div>
+    <div class="fnk-sub">└ 📋 ${escapeHtml(todo)}</div>
     <div class="fnk-detail" id="fnk-detail-${r.id}" style="display:none;">
       <label class="fnk-f">利用者名（半角カナ）
         <input type="text" value="${escapeHtml(r.name || '')}" onchange="updateName(${r.id}, this.value)"></label>
@@ -1027,6 +1099,56 @@ function fnkMarkCollected(id) {
     + ['現金', '口座変更', '翌月合算', 'その他'].map(m =>
         `<button class="fnk-method-btn" onclick="fnkConfirmCollected(${id}, '${m}')">${m}</button>`).join('')
     + `<button class="fnk-method-cancel" onclick="renderMonth()" title="やめる">×</button>`;
+}
+
+// ===== ③連絡済み記録（genba Phase2型・記録のみ・send非呼び）2026-07-10 =====
+// スタッフ名簿（genba職員リスト・比嘉除外）。連絡記録者ピッカーに使う。
+const FURIKAE_STAFF = ['星野', '勝又', '下浦', '工藤', '髙山', '春山', '大久保', '石井'];
+
+// [連絡済み]タップ → 手段選択（電話/口頭/家族経由）をカード内に展開
+function fnkContactStart(id) {
+  const act = document.getElementById('fnk-act-' + id);
+  if (!act) return;
+  act.innerHTML = '<span class="fnk-method-label">手段:</span>'
+    + ['電話', '口頭', '家族経由'].map(m =>
+        `<button class="fnk-method-btn" onclick="fnkContactPickStaff(${id}, '${m}')">${m}</button>`).join('')
+    + `<button class="fnk-method-cancel" onclick="renderMonth()" title="やめる">×</button>`;
+}
+
+// 手段選択後 → 連絡者（スタッフ）ピッカーを展開（毎回選ぶ＝前の人の名前が残らない）
+function fnkContactPickStaff(id, method) {
+  const act = document.getElementById('fnk-act-' + id);
+  if (!act) return;
+  act.innerHTML = '<span class="fnk-method-label">連絡者:</span>'
+    + FURIKAE_STAFF.map(s =>
+        `<button class="fnk-method-btn" onclick="fnkConfirmContact(${id}, '${method}', '${s}')">${s}</button>`).join('')
+    + `<button class="fnk-method-cancel" onclick="renderMonth()" title="やめる">×</button>`;
+}
+
+// 連絡確定：レコードを連絡済みに更新(fnkApplyContact)＋保存(cloudSync)＋連絡履歴POST（記録のみ）
+function fnkConfirmContact(id, method, operator) {
+  const r = data.records.find(x => x.id === id);
+  if (!r) return;
+  const today = new Date().toISOString().slice(0, 10);
+  Object.assign(r, fnkApplyContact(r, { operator: operator, method: method, dateStr: today }));
+  saveData(data); // cloudSync（fnkGuardProdWrite経由でSYNC_URLへ）
+  fnkPostContact(r, method, operator, today); // board GASの連絡履歴へ追記（記録のみ）
+  renderMonth();
+}
+
+// 連絡履歴を board GAS へ追記POST（記録のみ・メール送信なし）。
+// ★書込POST（第3の送信経路）＝fnkGuardProdWrite を必ず通す（origin-guard tripwire維持）。
+function fnkPostContact(r, method, operator, dateStr) {
+  if (!fnkGuardProdWrite('連絡記録')) return; // 別オリジンからの本番書込を遮断
+  const payload = { action: 'recordFurikaeContact', customerId: r.customerId, name: r.name, month: r.month, method: method, operator: operator, note: '' };
+  try {
+    fetch(DENGON_API_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(function () {});
+  } catch (e) {}
 }
 
 // 消込確定（回収済フラグでのみ消える・日付では消えない）。saveData→cloudSync（fnkGuardProdWrite経由）
