@@ -1502,6 +1502,16 @@ function doGet(e) {
       var muYm   = e && e.parameter ? e.parameter.yearMonth : '';
       return respond(getMonthlyUsage(ss, muName, muYm), callback);
     }
+    // P2.2: 週間予定表バックエンド（weekly_* は鍵なし公開＝ゲート外）
+    if (action === 'intake_weekly_feed') {
+      return respond(weeklyGetFeed_(ss), callback);
+    }
+    if (action === 'weekly_overlay_get') {
+      return respond(weeklyOverlayGet_(ss), callback);
+    }
+    if (action === 'weekly_seed_orders') {
+      return respond(weeklySeedOrders_(ss), callback);
+    }
     if (action === 'intake_key_init') {
       return respond(intakeKeyInit_(), callback);
     }
@@ -3782,6 +3792,8 @@ function doPost(e) {
     }
 
     switch (data.action) {
+      case 'weekly_overlay_upsert': // P2.2: 週間予定表オーバーレイ（鍵なし・空ガード・LWW）
+        return jsonResp(weeklyOverlayUpsert_(ss, data));
       case 'appregistry_bulk_upsert':
         return jsonResp(appregistryBulkUpsert_(data));
       case 'absence':
@@ -8758,6 +8770,85 @@ function intakeAuthSelftest_(ss) {
     gateRejectsWrongKey: !intakeAuthOk_('WRONG-KEY-xxxxx', expected),
     authListCount: authListCount
   };
+}
+
+// ===== P2.2: 週間予定表バックエンド（匿名feed＋overlay＋seed・2026-07-11） =====
+// 純判定=weekly-core.js。weekly_* は新規でゲート外（intake_*のP2.1ゲートは非改変）。
+var WEEKLY_OLD_GAS_URL_ = 'https://script.google.com/macros/s/AKfycbzyb380RoeohiJQfh0EleDecHgwbYzNOL1BioqxdNDYQt9TbGxKTMvquYREGdk06-fIxQ/exec';
+
+function weeklyEnsureOverlaySheet_(ss) {
+  var sh = ss.getSheetByName(WEEKLY_OVERLAY_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(WEEKLY_OVERLAY_SHEET);
+    sh.getRange(1, 1, 1, WEEKLY_OVERLAY_HEADER.length).setValues([WEEKLY_OVERLAY_HEADER]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// action=intake_weekly_feed（★匿名・鍵なし公開）：未ドロップ かつ 台帳反映済でない案件を
+// PII一切なしの最小5フィールドだけにして返す（weeklyFeedRow_ が5キーの新オブジェクトを構築）。
+function weeklyGetFeed_(ss) {
+  var list = getIntakeList(ss, {}); // 既存（cancelled除外）。返すのは weeklyFeedRow_ の5キーのみ＝PII混入不可
+  var feed = [];
+  list.forEach(function(rec) { if (weeklyFeedInclude_(rec)) feed.push(weeklyFeedRow_(rec)); });
+  return { success: true, count: feed.length, feed: feed };
+}
+
+// action=weekly_overlay_get（鍵なし）：memo/order をまとめて返す
+function weeklyOverlayGet_(ss) {
+  var sh = weeklyEnsureOverlaySheet_(ss);
+  var lastRow = sh.getLastRow();
+  var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, WEEKLY_OVERLAY_HEADER.length).getValues() : [];
+  var memos = {}, orders = {};
+  rows.forEach(function(r) {
+    var key = String(r[0]), type = String(r[1]), value = r[2];
+    if (type === 'memo') memos[key] = String(value == null ? '' : value);
+    else if (type === 'order') { try { orders[key] = JSON.parse(String(value || '[]')); } catch (e) { orders[key] = []; } }
+  });
+  return { success: true, memos: memos, orders: orders };
+}
+
+// action=weekly_overlay_upsert（鍵なし・空ガード・last-write-wins・updatedByに登録者）
+function weeklyOverlayUpsert_(ss, data) {
+  data = data || {};
+  var type = data.type, key = data.key, value = data.value, by = String(data.updatedBy || data.登録者 || '');
+  var v = weeklyUpsertValid_(type, key, value);
+  if (!v.ok) return { success: false, error: v.reason };
+  var sh = weeklyEnsureOverlaySheet_(ss);
+  var lastRow = sh.getLastRow();
+  var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, WEEKLY_OVERLAY_HEADER.length).getValues() : [];
+  var now = nowIso();
+  var valStr = String(value == null ? '' : value);
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(key) && String(rows[i][1]) === String(type)) {
+      sh.getRange(i + 2, 1, 1, WEEKLY_OVERLAY_HEADER.length).setValues([[key, type, valStr, now, by]]); // last-write-wins
+      return { success: true, action: 'updated', key: key, type: type };
+    }
+  }
+  sh.appendRow([key, type, valStr, now, by]);
+  return { success: true, action: 'added', key: key, type: type };
+}
+
+// action=weekly_seed_orders：旧weekly GAS(am/pm)の行順を type='order' として1回だけ投入（★冪等）。
+// 既に order がある key は上書きしない（誤再実行で並び順を壊さない）。
+function weeklySeedOrders_(ss) {
+  var sh = weeklyEnsureOverlaySheet_(ss);
+  var lastRow = sh.getLastRow();
+  var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, WEEKLY_OVERLAY_HEADER.length).getValues() : [];
+  var result = {};
+  ['am', 'pm'].forEach(function(sheet) {
+    if (weeklyOrderExists_(rows, sheet)) { result[sheet] = 'skip(既存order)'; return; }
+    var names = [];
+    try {
+      var resp = UrlFetchApp.fetch(WEEKLY_OLD_GAS_URL_ + '?action=getAll&sheet=' + sheet + '&t=' + Date.now(), { muteHttpExceptions: true });
+      var arr = JSON.parse(resp.getContentText());
+      if (Array.isArray(arr)) names = arr.map(function(r) { return String(r.name || ''); }).filter(function(n) { return n; });
+    } catch (e) { result[sheet] = 'error:' + e.message; return; }
+    sh.appendRow([sheet, 'order', JSON.stringify(names), nowIso(), 'seed']);
+    result[sheet] = 'seeded(' + names.length + '件)';
+  });
+  return { success: true, result: result };
 }
 
 function getIntakeList(ss, opts) {
