@@ -126,12 +126,58 @@ function calcWindow(inputs, windowMonths, asOf) {
   return { n: n, attended: attended, rate: rate, excludedCount: excludedCount, byWeekday: byWeekday };
 }
 
+// calcActualPerWeek(契約週回数, rate) → 実質週回数 = 契約週回数 × rate（分数）
+// 契約 §3。÷4.3 等の除数を発明しない（率は「出席÷予定」で週数が約分済み前提）。
+// rate が null/undefined → null（対象外の実質週回数は出さない）。
+function calcActualPerWeek(contractPerWeek, rate) {
+  if (rate == null) return null;
+  return contractPerWeek * rate;
+}
+
+// direction(recent, baseline) → '↑' | '↓' | ''
+// recent > baseline → '↑' / recent < baseline → '↓' / 等しい・null/undefined → ''
+// 引数は実質週回数 or 率のどちらでも（呼び出し側が単位を揃える）。
+function direction(recent, baseline) {
+  if (recent == null || baseline == null) return '';
+  if (recent > baseline) return '↑';
+  if (recent < baseline) return '↓';
+  return '';
+}
+
+// 曜日番号 → ラベル（0=日..6=土）
+var _WD_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+// worstDayInvestigate(byWeekday, overallRate, opts?) → string[]
+// - byWeekday = calcWindow の返り値 byWeekday（{曜日番号: {n, attended, rate}}・rateは分数）。
+// - 各曜日で (overallRate - rate)*100 >= THRESHOLDS.曜日差(20) かつ n >= 4 → '○曜 要調査' を push。
+// - n<4 の曜日は光らせない（小n暴れ防止）。rate=null の曜日はスキップ。該当なし → []。
+// - 曜日番号昇順で返す（安定した順序）。
+function worstDayInvestigate(byWeekday, overallRate, opts) {
+  var out = [];
+  if (!byWeekday || overallRate == null) return out;
+  var keys = Object.keys(byWeekday)
+    .map(function (k) { return +k; })
+    .sort(function (a, b) { return a - b; });
+  keys.forEach(function (wd) {
+    var bw = byWeekday[wd];
+    if (!bw || bw.rate == null) return;
+    if (bw.n < 4) return; // 小n暴れ防止
+    if ((overallRate - bw.rate) * 100 >= THRESHOLDS['曜日差']) {
+      out.push(_WD_LABELS[wd] + '曜 要調査');
+    }
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     THRESHOLDS: THRESHOLDS,
     REASON_TABLE: REASON_TABLE,
     classifyReason: classifyReason,
     subMonths: subMonths,
-    calcWindow: calcWindow
+    calcWindow: calcWindow,
+    calcActualPerWeek: calcActualPerWeek,
+    direction: direction,
+    worstDayInvestigate: worstDayInvestigate
   };
 }

@@ -191,5 +191,79 @@ if (uf && typeof uf.subMonths === 'function') {
   ok(r1 && r3 && r3.attended >= r1.attended, 'N4: attended 単調（3ヶ月 ≥ 1ヶ月）');
 }
 
+// =====================================================================
+// Task3: calcActualPerWeek / direction / worstDayInvestigate
+// 契約: scratchpad/usage-frequency-contract.md §3 §5 §6
+// =====================================================================
+const { calcActualPerWeek, direction, worstDayInvestigate } = uf;
+
+// ---- T5: calcActualPerWeek = 契約週回数 × rate（÷4.3等の除数を発明しない）----
+// もし ÷4.3 等が混入すれば calcActualPerWeek(2,1.0) は 2/4.3≈0.465 になる。契約×率で 2.0 を保つ。
+ok(typeof calcActualPerWeek === 'function' && approx(calcActualPerWeek(2, 1.0), 2.0),
+  'T5a: calcActualPerWeek(2,1.0)=2.0（契約×率。÷4.3混入なら0.465等になる）');
+ok(typeof calcActualPerWeek === 'function' && approx(calcActualPerWeek(2, 0.5), 1.0),
+  'T5b: calcActualPerWeek(2,0.5)=1.0');
+ok(typeof calcActualPerWeek === 'function' && approx(calcActualPerWeek(3, 1.2), 3.6),
+  'T5c: calcActualPerWeek(3,1.2)=3.6（率>1.0の追加利用も素直に）');
+ok(typeof calcActualPerWeek === 'function' && approx(calcActualPerWeek(3, 0.8), 2.4),
+  'T5d: calcActualPerWeek(3,0.8)=2.4');
+// 1ヶ月窓の率(=出席÷予定・週数約分済み)でも÷4.3でズレない: 契約2・1ヶ月窓率0.9 → 実質1.8回/週（0.9*2）
+ok(typeof calcActualPerWeek === 'function' && approx(calcActualPerWeek(2, 0.9), 1.8),
+  'T5e: 契約2×1ヶ月窓率0.9=1.8（÷4.3すると0.418になり誤り・率は週数約分済み前提）');
+ok(typeof calcActualPerWeek === 'function' && calcActualPerWeek(3, null) === null,
+  'T5f: rate=null → null（対象外の実質週回数は出さない）');
+ok(typeof calcActualPerWeek === 'function' && calcActualPerWeek(3, undefined) === null,
+  'T5g: rate=undefined → null（堅牢性）');
+
+// ---- direction(recent, baseline) → '↑' | '↓' | '' ----
+ok(typeof direction === 'function' && direction(2.0, 1.5) === '↑', 'DIR1: recent>baseline → ↑');
+ok(typeof direction === 'function' && direction(1.0, 1.5) === '↓', 'DIR2: recent<baseline → ↓');
+ok(typeof direction === 'function' && direction(1.5, 1.5) === '', 'DIR3: recent==baseline → ""（マーク無し）');
+ok(typeof direction === 'function' && direction(null, 1.5) === '' && direction(1.5, undefined) === '' && direction(null, null) === '',
+  'DIR4: null/undefined堅牢性 → ""');
+
+// ---- T10: worstDayInvestigate（曜日−20pt以上 かつ n≥4 → 要調査／n<4は光らせない）----
+// overallRate=0.9。水(3) rate=0.6（=30pt下）かつ n=5(≥4) → 光る。
+{
+  const byWeekday = {
+    1: { n: 5, attended: 5, rate: 1.0 }, // 月 上振れ・光らない
+    3: { n: 5, attended: 3, rate: 0.6 }, // 水 30pt下・n≥4 → 光る
+    5: { n: 5, attended: 4, rate: 0.8 }  // 金 10pt下・光らない
+  };
+  const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 0.9) : null;
+  ok(r && r.length === 1 && r[0] === '水曜 要調査', 'T10a: 水30pt下×n≥4 → ["水曜 要調査"]');
+}
+// 同じ30pt下でも n=3 なら光らせない（小n暴れ防止）
+{
+  const byWeekday = { 3: { n: 3, attended: 1, rate: 0.6 } };
+  const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 0.9) : null;
+  ok(r && r.length === 0, 'T10b: 30pt下でも n=3 → 光らせない（小n暴れ防止）');
+}
+// ちょうど20pt下（境界・以上）かつ n=4 → 光る
+{
+  const byWeekday = { 2: { n: 4, attended: 3, rate: 0.7 } }; // 火 0.9-0.7=20pt ちょうど
+  const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 0.9) : null;
+  ok(r && r.length === 1 && r[0] === '火曜 要調査', 'T10c: ちょうど20pt下×n=4 → 光る（>= 境界含む）');
+}
+// 複数曜日該当 → 曜日番号昇順
+{
+  const byWeekday = {
+    5: { n: 4, attended: 2, rate: 0.5 }, // 金 40pt下
+    2: { n: 4, attended: 2, rate: 0.5 }, // 火 40pt下
+    3: { n: 6, attended: 6, rate: 1.0 }  // 水 上振れ・光らない
+  };
+  const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 0.9) : null;
+  ok(r && r.length === 2 && r[0] === '火曜 要調査' && r[1] === '金曜 要調査', 'T10d: 複数該当は曜日番号昇順（火→金）');
+}
+// rate=null の曜日はスキップ・該当なしは []
+{
+  const byWeekday = {
+    0: { n: 0, attended: 0, rate: null }, // 日 n=0 → スキップ
+    1: { n: 5, attended: 5, rate: 1.0 }   // 月 上振れ
+  };
+  const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 0.9) : null;
+  ok(r && r.length === 0, 'T10e: rate=nullスキップ・該当なし → []');
+}
+
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
