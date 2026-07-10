@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>週間予定表</title>
+<!-- キャッシュ自動更新バージョンゲート（version.txt を取得し ?v= と違えば1回だけ最新版へ） -->
+<script>
+function gateShouldReload(cur, latest){ return !!latest && cur !== latest; }
+(function(){ try{
+  var cur = new URLSearchParams(location.search).get('v');
+  fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+    .then(function(r){ return r.text(); })
+    .then(function(t){ var l=(t||'').trim(); if(gateShouldReload(cur,l)){ var u=new URL(location.href); u.searchParams.set('v',l); location.replace(u.href); } })
+    .catch(function(){});
+} catch(e){} })();
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:sans-serif;padding:1rem;background:#fff;color:#222}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:8px}
+.title{font-size:18px;font-weight:600}
+.sub{font-size:12px;color:#999;margin-left:8px;font-weight:400}
+.tabs{display:flex;gap:6px}
+.tab{padding:6px 18px;border:1px solid #ccc;border-radius:6px;cursor:pointer;font-size:15px;background:#fff;color:#666}
+.tab.active{background:#e6f1fb;color:#185fa5;border-color:#185fa5;font-weight:600}
+.reload-btn{padding:5px 12px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;color:#666}
+.grid-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{background:#f5f5f5;padding:6px 4px;text-align:center;border:1px solid #ddd;font-weight:600;color:#444;font-size:14px}
+th .cnt{display:block;font-size:11px;font-weight:600;margin-top:2px}
+.cnt-ok{color:#0f6e56}.cnt-warn{color:#854f0b}.cnt-full{color:#a32d2d}
+td{padding:3px 4px;border:1px solid #eee;text-align:center;vertical-align:middle;height:30px}
+td.num{color:#c3c3c3;font-size:11px;width:26px;background:#fafafa}
+th.numh{width:26px}
+.name{display:inline-block;font-size:15px;color:#1a1a1a;font-weight:500;cursor:grab;padding:1px 4px;border-radius:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name:active{cursor:grabbing}
+.name.drag-over{outline:2px dashed #185fa5;background:#eef5fd}
+.badge{display:inline-block;padding:1px 6px;border-radius:9px;font-size:11px;font-weight:600;cursor:grab}
+.s-minarai{background:#e6f1fb;color:#185fa5}
+.s-taiken{background:#faeeda;color:#854f0b}
+.s-toiawase{background:#eeedfe;color:#534ab7}
+.s-horyuu{background:#f1efe8;color:#5f5e5a}
+.s-akimachi{background:#fcebeb;color:#a32d2d}
+.s-riyou_yotei{background:#eaf3de;color:#3b6d11}
+.s-riyou_kettei{background:#9fe1cb;color:#085041}
+.b-name{font-size:13px;color:#333;margin-left:3px}
+.memo-row td{background:#fcfcfa;padding:4px;border-top:2px solid #ddd}
+.memo-row textarea{width:100%;min-height:44px;border:1px solid #e0e0e0;border-radius:6px;padding:5px 6px;font-size:12px;font-family:inherit;resize:vertical;background:#fff}
+.memo-row textarea:focus{outline:none;border-color:#185fa5}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
+.legend .lbl{font-size:11px;color:#999}
+.loading{text-align:center;padding:2.5rem;color:#888;font-size:14px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast.show{opacity:.95}
+@media(max-width:600px){ body{padding:.5rem} .name{font-size:14px} th{font-size:13px} }
+</style>
+</head>
+<body>
+<div class="header">
+  <div><span class="title">週間予定表</span><span class="sub" id="freshness"></span></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <div class="tabs">
+      <div class="tab active" data-s="am" onclick="setSession('am')">午前</div>
+      <div class="tab" data-s="pm" onclick="setSession('pm')">午後</div>
+    </div>
+    <button class="reload-btn" onclick="loadAll()">↺ 再読込</button>
+  </div>
+</div>
+<div id="body"><div class="loading">読み込み中...</div></div>
+<div class="legend" id="legend"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== 週間予定表（計算描画・閲覧専用＋メモ/並び順オーバーレイ）P2.3 =====
+// データ源はすべて既存/ P2.2 の読み取りAPI（GAS改修なし）。GETはJSONP、overlay保存はno-cors POST。
+var BOARD_URL  = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+var DAICHO_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+var DAYS = ['月','火','水','木','金'];
+var DAY_EN = { '月':'mon','火':'tue','水':'wed','木':'thu','金':'fri' };
+var MAX = 18;
+var CAT_CLASS = { '見学':'s-minarai','体験':'s-taiken','問い合わせ':'s-toiawase','保留':'s-horyuu','空き待ち':'s-akimachi','利用予定':'s-riyou_yotei','利用決定':'s-riyou_kettei' };
+var CAT_LEGEND = ['見学','体験','問い合わせ','保留','利用予定','利用決定'];
+
+var session = 'am';
+var state = { daicho: [], feed: [], orders: { am: [], pm: [] }, memos: {} };
+var people = { am: [], pm: [] }; // 描画用（重複排除・順序適用済）
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},2200); }
+function staffName(){ try{ return localStorage.getItem('yawaragi_staff')||''; }catch(e){ return ''; } }
+
+// ---- JSONP GET（GASはcross-originのfetch().json不可so script tag方式） ----
+function jsonp(baseUrl, params){
+  return new Promise(function(resolve, reject){
+    var cb = 'wcb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
+    var qs = Object.keys(params||{}).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(params[k]); }).join('&');
+    var url = baseUrl + '?' + (qs?qs+'&':'') + 'callback=' + cb + '&t=' + Date.now();
+    var s = document.createElement('script');
+    var done = false;
+    window[cb] = function(data){ done=true; resolve(data); cleanup(); };
+    function cleanup(){ try{ delete window[cb]; }catch(e){} try{ s.remove(); }catch(e){} }
+    s.onerror = function(){ if(!done){ cleanup(); reject(new Error('JSONP失敗')); } };
+    s.src = url; document.body.appendChild(s);
+    setTimeout(function(){ if(!done){ cleanup(); reject(new Error('JSONPタイムアウト')); } }, 15000);
+  });
+}
+// ---- overlay保存（no-cors POST・応答は読めないので保存後は再GETで確認する運用） ----
+function overlayUpsert(type, key, value){
+  var body = { action:'weekly_overlay_upsert', type:type, key:key, value:value, updatedBy: staffName() };
+  return fetch(BOARD_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+}
+
+// ===== 純ロジック（jsdom/nodeで検証可能） =====
+// ampm文字列(session)に該当するか
+function inSession_(ampm, sess){ var a=String(ampm||''); return sess==='am' ? a.indexOf('午前')>=0 : a.indexOf('午後')>=0; }
+// feed項目の表示可否＋重複排除。台帳名(daichoNames)に姓が含まれれば台帳優先でスキップ。体験でdisplayName空＝アーカイブ相当は隠す。
+function feedVisible_(item, daichoNames){
+  var cat = item.category, dn = String(item.displayName||'').trim();
+  if (cat === '体験' && !dn) return false;                 // アーカイブ相当（体験なのに姓が無い）は隠す
+  if (dn) { for (var i=0;i<daichoNames.length;i++){ if (String(daichoNames[i]||'').indexOf(dn) >= 0) return false; } } // 台帳と同姓→台帳優先で1回
+  return true;
+}
+// 並び順キー：台帳=氏名フル / intake=displayName or 合成キー
+function personKey_(p){ return p.type==='daicho' ? p.name : (p.name || ('__i_'+p.category+'_'+(p.予定日||''))); }
+// order配列(名前列)でソート。order内はindex順、order外は元順で末尾。安定。
+function applyOrder_(list, orderArr){
+  var idx = {}; (orderArr||[]).forEach(function(k,i){ if(!(k in idx)) idx[k]=i; });
+  var BIG = 1e9;
+  return list.map(function(p,i){ return {p:p, o:(personKey_(p) in idx)?idx[personKey_(p)]:(BIG+i)}; })
+             .sort(function(a,b){ return a.o-b.o; }).map(function(x){ return x.p; });
+}
+// 台帳＋feedを1セッション分の people 配列に統合（重複排除→順序適用）
+function buildPeople_(daicho, feed, sess, orderArr){
+  var list = [];
+  var daichoNames = daicho.filter(function(u){ return inSession_(u.ampm, sess); }).map(function(u){ return u.name; });
+  daicho.forEach(function(u){ if(inSession_(u.ampm, sess) && u.days) list.push({ type:'daicho', name:u.name, days:u.days, category:null }); });
+  feed.forEach(function(it){ if(inSession_(it.ampm, sess) && it.days && feedVisible_(it, daichoNames)) list.push({ type:'intake', name:it.displayName||'', days:it.days, category:it.category, 予定日:it.予定日 }); });
+  return applyOrder_(list, orderArr);
+}
+function countColor_(n){ return n>=MAX ? 'cnt-full' : n>=MAX-2 ? 'cnt-warn' : 'cnt-ok'; }
+
+// ===== データ取得 =====
+function loadAll(){
+  document.getElementById('body').innerHTML = '<div class="loading">読み込み中...</div>';
+  Promise.all([
+    jsonp(DAICHO_URL, {}),                                    // 在籍者（既定＝中止/終了除外・status空でも在籍）
+    jsonp(BOARD_URL, { action:'intake_weekly_feed' }),        // 匿名feed
+    jsonp(BOARD_URL, { action:'weekly_overlay_get' })         // メモ・並び順
+  ]).then(function(res){
+    state.daicho = (res[0] && res[0].users) || [];
+    state.feed   = (res[1] && res[1].feed) || [];
+    var ov = res[2] || {};
+    state.orders = { am: (ov.orders&&ov.orders.am)||[], pm: (ov.orders&&ov.orders.pm)||[] };
+    state.memos  = ov.memos || {};
+    rebuild();
+    render();
+    var d=new Date(); document.getElementById('freshness').textContent = '台帳'+state.daicho.length+'名・更新 '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+  }).catch(function(e){
+    document.getElementById('body').innerHTML = '<div class="loading" style="color:#a32d2d">読み込み失敗：'+esc(e.message)+'<br><button class="reload-btn" onclick="loadAll()">再試行</button></div>';
+  });
+}
+function rebuild(){ people.am = buildPeople_(state.daicho, state.feed, 'am', state.orders.am); people.pm = buildPeople_(state.daicho, state.feed, 'pm', state.orders.pm); }
+
+// ===== 描画 =====
+function setSession(s){ session=s; document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.s===s); }); render(); }
+
+function cellHtml(p){
+  if (p.type === 'daicho') return '<span class="name" draggable="true" data-key="'+esc(personKey_(p))+'">'+esc(p.name)+'</span>';
+  var cls = CAT_CLASS[p.category] || 's-horyuu';
+  var nm = p.name ? '<span class="b-name">'+esc(p.name)+'</span>' : '';
+  return '<span class="badge '+cls+'" draggable="true" data-key="'+esc(personKey_(p))+'">'+esc(p.category)+'</span>'+nm;
+}
+function render(){
+  var pl = people[session];
+  // 各曜日ごとに該当者（people順を保持）
+  var byDay = {}; var counts = {};
+  DAYS.forEach(function(d){ byDay[d] = pl.filter(function(p){ return String(p.days).indexOf(d)>=0; }); counts[d]=byDay[d].length; });
+  var h = '<div class="grid-wrap"><table><thead><tr><th class="numh">#</th>';
+  DAYS.forEach(function(d){ var n=counts[d]; var rem=Math.max(0,MAX-n); h+='<th>'+d+'<span class="cnt '+countColor_(n)+'">'+n+'/'+MAX+'・残'+rem+'</span></th>'; });
+  h += '</tr></thead><tbody>';
+  for (var i=0;i<MAX;i++){
+    h += '<tr><td class="num">'+(i+1)+'</td>';
+    DAYS.forEach(function(d){ var p=byDay[d][i]; h += '<td class="drop-cell" data-day="'+d+'">'+(p?cellHtml(p):'')+'</td>'; });
+    h += '</tr>';
+  }
+  // メモ行
+  h += '</tbody><tfoot><tr class="memo-row"><td class="num">memo</td>';
+  DAYS.forEach(function(d){ var key=DAY_EN[d]+'_'+session; var val=state.memos[key]||''; h+='<td><textarea data-memokey="'+key+'" placeholder="メモ（'+d+'）" onchange="saveMemo(this)">'+esc(val)+'</textarea></td>'; });
+  h += '</tr></tfoot></table></div>';
+  document.getElementById('body').innerHTML = h;
+  bindDrag();
+  renderLegend();
+}
+function renderLegend(){
+  var h = '<span class="lbl">凡例:</span><span class="name" style="cursor:default">氏名=台帳の在籍者</span>';
+  CAT_LEGEND.forEach(function(c){ h += '<span class="badge '+(CAT_CLASS[c]||'')+'" style="cursor:default">'+c+'</span>'; });
+  h += '<span class="lbl">・見学=名前なし/体験=姓・ドラッグで並び替え・列下にメモ</span>';
+  document.getElementById('legend').innerHTML = h;
+}
+
+// ===== メモ保存（空欄可・サーバ空ガードはmemoに掛からない＝消去OK） =====
+function saveMemo(el){
+  var key = el.getAttribute('data-memokey'); var val = el.value;
+  state.memos[key] = val;
+  overlayUpsert('memo', key, val);
+  toast('メモを保存しました');
+}
+
+// ===== ドラッグ並び替え（session単位のorder配列を更新→保存） =====
+var dragKey = null;
+function bindDrag(){
+  document.querySelectorAll('[draggable="true"]').forEach(function(el){
+    el.addEventListener('dragstart', function(e){ dragKey = el.getAttribute('data-key'); e.dataTransfer.effectAllowed='move'; });
+    el.addEventListener('dragover', function(e){ e.preventDefault(); el.classList.add('drag-over'); });
+    el.addEventListener('dragleave', function(){ el.classList.remove('drag-over'); });
+    el.addEventListener('drop', function(e){ e.preventDefault(); el.classList.remove('drag-over'); var tgt=el.getAttribute('data-key'); reorder(dragKey, tgt); });
+  });
+}
+// order配列(state.orders[session])内で dragKey を tgtKey の位置へ移動（両方無ければ現在の描画順から補完）
+function reorder(dragK, tgtK){
+  if (!dragK || !tgtK || dragK===tgtK) return;
+  var arr = state.orders[session].slice();
+  // 現在の描画順で order を補完（order未登録の新規者も並びに載せる）
+  var cur = people[session].map(personKey_);
+  cur.forEach(function(k){ if (arr.indexOf(k)<0) arr.push(k); });
+  var di = arr.indexOf(dragK), ti = arr.indexOf(tgtK);
+  if (di<0 || ti<0) return;
+  arr.splice(di,1);
+  ti = arr.indexOf(tgtK);
+  arr.splice(ti, 0, dragK);
+  state.orders[session] = arr;
+  overlayUpsert('order', session, JSON.stringify(arr));
+  rebuild(); render();
+  toast('並び順を保存しました');
+}
+
+// node/jsdom検証用にエクスポート
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { inSession_:inSession_, feedVisible_:feedVisible_, personKey_:personKey_, applyOrder_:applyOrder_, buildPeople_:buildPeople_, countColor_:countColor_ };
+}
+loadAll();
+</script>
+</body>
+</html>
