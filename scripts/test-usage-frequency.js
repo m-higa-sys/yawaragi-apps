@@ -264,6 +264,20 @@ ok(typeof direction === 'function' && direction(null, 1.5) === '' && direction(1
   const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 0.9) : null;
   ok(r && r.length === 0, 'T10e: rate=nullスキップ・該当なし → []');
 }
+// ---- M-1: ちょうど20pt下だが浮動小数ノイズで <20 に落ちる境界（EPS無しだと点灯しない）----
+// 数学的には (0.7-0.5)=0.2=20pt ちょうど＝「以上」で点灯すべき。だが JS で (0.7-0.5)*100=19.999999999999996。
+// judge の 70/110 と同じ向きに `>= 曜日差 - EPS` で微小許容を入れないと、真の20ptを取りこぼす。
+{
+  const byWeekday = { 3: { n: 4, attended: 2, rate: 0.5 } }; // 水 0.7-0.5=20pt（float=19.9999…6）
+  const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 0.7) : null;
+  ok(r && r.length === 1 && r[0] === '水曜 要調査', 'T10f: ちょうど20pt下(0.7 vs 0.5・float=19.999…6)×n=4 → 光る（EPS無しだと点灯しない・M-1バグ）');
+}
+// M-1 対照: 別の真20pt境界ペアでも点灯する（1.0 vs 0.8 も float=19.999…6）
+{
+  const byWeekday = { 4: { n: 4, attended: 3, rate: 0.8 } }; // 木 1.0-0.8=20pt（float=19.9999…6）
+  const r = (typeof worstDayInvestigate === 'function') ? worstDayInvestigate(byWeekday, 1.0) : null;
+  ok(r && r.length === 1 && r[0] === '木曜 要調査', 'T10g: 別の真20ptペア(1.0 vs 0.8)でも点灯（EPS向きの回帰）');
+}
 
 // =====================================================================
 // Task4: judge（対象外・データ不足を率判定より先に・保険は適正圏のみ）
@@ -318,6 +332,101 @@ ok(J(0.95, 10, { 追加利用: 5 }) === '適正', 'T9g: 追加利用を渡して
 ok(J(0.8, 10) === '適正', 'JR1: opts省略で適正圏 → 適正（optsデフォルト{}）');
 ok(J(0.6, 10) === '減らし', 'JR2: rate=0.6,n=10 → 減らし');
 ok(J(1.2, 10) === '増やし', 'JR3: rate=1.2,n=10 → 増やし');
+
+// =====================================================================
+// I-1: holidays 除外パス（設計§11 名指しの祝日リスク）を突く回帰網
+// 契約 §2: holidays は「分母と機会の両方」から引く（除外日に来館記録があっても attended に入らない）。
+// 合成: 月[1]・6月窓。月曜は6/1,6/8,6/15,6/22,6/29 の5日。契約曜日(月)に一致する祝日6/15を holidays に入れる。
+//   attendance=6/1,6/8,6/15,6/22（6/15は閉所日だが来館記録あり＝異常データ・6/29は本当の欠席）。
+//   ①n が1減る(5→4) ②excludedCount が1増える(0→1) ③6/15の来館記録は attended に入らない。
+// T4(入院除外)と対称: 除外は「分母と機会の両方」に効く＝閉所日の異常来館記録も破棄され率に混入しない
+//   （除外なし: attended=4/n=5=0.80 に 6/15来館が混入／除外あり: attended=3/n=4=0.75 で 6/15を両側から除去）。
+{
+  const base = {
+    name: '祝日子', contractWeekdays: [1], contractPerWeek: 1,
+    absences: [],
+    attendance: ['2026-06-01', '2026-06-08', '2026-06-15', '2026-06-22'], // 6/15は祝日だが来館記録あり／6/29欠席
+    holidays: []
+  };
+  const withHoliday = Object.assign({}, base, { holidays: ['2026-06-15'] }); // 月曜に一致する祝日
+  const rNo = W(base, 1, '2026-06-30');        // 祝日除外なし（対照）
+  const rHo = W(withHoliday, 1, '2026-06-30'); // 祝日除外あり
+  ok(rNo && rNo.n === 5, 'H0: 祝日除外なしの分母 n=5（対照・月曜5日）');
+  ok(rNo && rNo.attended === 4 && approx(rNo.rate, 0.8), 'H0b: 除外なしだと閉所日6/15の来館が混入 attended=4,rate=0.80');
+  ok(rHo && rHo.n === 4, 'H1: 祝日除外で分母 n が1減る（5→4・機会から引かれる）');
+  ok(rHo && rHo.excludedCount === 1, 'H2: excludedCount=1（祝日1日が除外）');
+  ok(rHo && rHo.attended === 3, 'H3: 6/15来館記録があっても attended に入らない（3・除外日の来館は数えない）');
+  ok(rHo && approx(rHo.rate, 0.75), 'H4: rate=0.75（3/4・祝日を分母と機会の両方から除去＝閉所日の異常来館が混入しない）');
+  ok(rHo && rHo.byWeekday && rHo.byWeekday[1] && rHo.byWeekday[1].n === 4, 'H5: byWeekday[月].n=4（祝日で1減）');
+  ok(rHo && rHo.byWeekday && rHo.byWeekday[1] && rHo.byWeekday[1].attended === 3, 'H6: byWeekday[月].attended=3（6/15来館は per-weekday にも積まない）');
+}
+
+// =====================================================================
+// M-2: calcWindow の薄いパス2本
+// =====================================================================
+// M-2①: 出席日が除外日と重なった場合 attended から落ちる（除外日に来た記録は数えない）。
+// 月[1]・6月窓。6/8を入院で除外。attendance に 6/8 を含めても attended には入らない。
+{
+  const inputs = {
+    name: '重複子', contractWeekdays: [1], contractPerWeek: 1,
+    absences: [{ date: '2026-06-08', type: '欠席', reason: '入院' }], // 除外日
+    attendance: ['2026-06-01', '2026-06-08', '2026-06-15', '2026-06-22', '2026-06-29'], // 6/8も来館記録に混入
+    holidays: []
+  };
+  const r = W(inputs, 1, '2026-06-30');
+  ok(r && r.n === 4, 'M2a: 入院除外で n=4（月曜5−除外1）');
+  ok(r && r.attended === 4, 'M2b: 除外日6/8の来館記録は attended に数えない（5来館記録−除外重複1=4）');
+  ok(r && r.excludedCount === 1, 'M2c: excludedCount=1');
+  ok(r && approx(r.rate, 1.0), 'M2d: rate=1.0（除外日の来館を数えないので率が暴れない）');
+}
+// M-2②: type:'欠席' で未分類の謎理由（classifyReason→'未分類'）の日は分母 n に残る（黙って率を下げない安全弁＝除外しない）。
+// 入院(除外)との対比で n の差を示す。
+{
+  const mikai = {
+    name: '謎理由子', contractWeekdays: [1], contractPerWeek: 1,
+    absences: [{ date: '2026-06-08', type: '欠席', reason: '未分類の謎理由' }], // classifyReason→'未分類'
+    attendance: ['2026-06-01', '2026-06-15', '2026-06-22', '2026-06-29'], // 6/8は未来館
+    holidays: []
+  };
+  const nyuin = Object.assign({}, mikai, {
+    absences: [{ date: '2026-06-08', type: '欠席', reason: '入院' }] // 同じ日を入院(除外)にした対照
+  });
+  const rM = W(mikai, 1, '2026-06-30');
+  const rN = W(nyuin, 1, '2026-06-30');
+  ok(rM && rM.n === 5, 'M2e: 未分類の謎理由は分母 n に残る（n=5・除外しない安全弁）');
+  ok(rM && rM.attended === 4 && approx(rM.rate, 0.8), 'M2f: 未分類日は未来館で率が下がる（4/5=0.8・黙って率を下げない）');
+  ok(rM && rM.excludedCount === 0, 'M2g: 未分類は excludedCount=0（除外しない）');
+  ok(rN && rN.n === 4, 'M2h: 対照—同じ日を入院にすると n=4（除外で1減）');
+  ok(rM && rN && (rM.n - rN.n === 1), 'M2i: 未分類 n − 入院 n = 1（未分類は分母に残る／入院は引かれる差）');
+}
+
+// =====================================================================
+// N-1: classifyReason にカスタム表（既定と異なる分類）を渡すと分類が変わる
+// 設計「区分追加時は表だけ直す」の回帰網。'通院' を除外側へ移した表で分類が変わる。
+// =====================================================================
+{
+  const custom = { 除外: ['入院', '通院'], カウント: ['体調不良'] }; // 通院を除外へ移動
+  ok(classifyReason('欠席', '通院', custom) === '除外', 'N1a: カスタム表では 通院→除外（既定はカウント・表だけで挙動が変わる）');
+  ok(classifyReason('欠席', '通院', REASON_TABLE) === 'カウント', 'N1b: 対照—既定表では 通院→カウント');
+  ok(classifyReason('欠席', '本人都合', custom) === '未分類', 'N1c: カスタム表に無い 本人都合→未分類（表がカウントを絞れば未分類になる）');
+}
+
+// =====================================================================
+// N-2: THRESHOLDS / REASON_TABLE の freeze（誤代入によるドリフトを型で封じる）
+// sloppy mode では凍結オブジェクトへの代入は例外を出さず黙って無視される→ Object.isFrozen で確認。
+// =====================================================================
+ok(Object.isFrozen(THRESHOLDS) === true, 'N2a: THRESHOLDS は凍結（Object.isFrozen===true）');
+ok(Object.isFrozen(REASON_TABLE) === true, 'N2b: REASON_TABLE は凍結');
+ok(Object.isFrozen(REASON_TABLE['除外']) === true, 'N2c: REASON_TABLE.除外 の配列も凍結');
+ok(Object.isFrozen(REASON_TABLE['カウント']) === true, 'N2d: REASON_TABLE.カウント の配列も凍結');
+{
+  // freeze の実効を確認。sloppy mode では単純代入は黙って無視され、frozen配列への push は
+  // TypeError を投げる（どちらも「書けない」＝ドリフト事故が値に反映されない）。try/catch で両モード安全に。
+  try { THRESHOLDS['減らし'] = 999; } catch (e) { /* strict mode なら throw・どちらでも値は不変 */ }
+  ok(THRESHOLDS['減らし'] === 70, 'N2e: 凍結後の誤代入は反映されない（減らし=70のまま・ドリフト防止）');
+  try { REASON_TABLE['除外'].push('乗っ取り理由'); } catch (e) { /* frozen配列への push は throw */ }
+  ok(REASON_TABLE['除外'].indexOf('乗っ取り理由') === -1, 'N2f: 凍結配列への push も反映されない（除外配列が汚染されない）');
+}
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

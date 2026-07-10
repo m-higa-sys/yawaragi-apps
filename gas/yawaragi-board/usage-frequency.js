@@ -3,13 +3,16 @@
 // Task1: classifyReason + THRESHOLDS + REASON_TABLE のみ（calcWindow/judge等は後続タスク）
 
 // しきい値（設計書リテラル準拠・％の数／回数）。ドリフト禁止。
-var THRESHOLDS = { 減らし: 70, 増やし: 110, 曜日差: 20, n下限: 6, 期間: 3 };
+// ★N-2: freeze でドライバ側の誤代入（例 THRESHOLDS.減らし=80）を型で封じる。sloppy mode では
+//   凍結オブジェクトへの代入が例外を出さず黙って無視される＝ドリフト事故が silent に潰れる。
+var THRESHOLDS = Object.freeze({ 減らし: 70, 増やし: 110, 曜日差: 20, n下限: 6, 期間: 3 });
 
 // 欠席理由 対応表。除外=分母と機会の両方から引く／カウント=率が下がる側（除外しない）。
-var REASON_TABLE = {
-  除外: ['入院', '施設側中止', '長期不在'],   // ショート等は長期不在に含む
-  カウント: ['体調不良', '本人都合', '家族都合', '通院']
-};
+// ★N-2: 表本体＋中の配列も freeze（配列 push/代入によるドリフトも封じる）。
+var REASON_TABLE = Object.freeze({
+  除外: Object.freeze(['入院', '施設側中止', '長期不在']),   // ショート等は長期不在に含む
+  カウント: Object.freeze(['体調不良', '本人都合', '家族都合', '通院'])
+});
 
 // classifyReason(type, reason, table) → '除外' | 'カウント' | '未分類'
 // - type === '長期休み' → '除外'（reason 問わず・type優先）
@@ -155,6 +158,11 @@ var _WD_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 function worstDayInvestigate(byWeekday, overallRate, opts) {
   var out = [];
   if (!byWeekday || overallRate == null) return out;
+  // 境界の浮動小数ノイズだけ吸収する微小許容（judge の 70/110 と同じ向き）。
+  // ★M-1: 数学的にちょうど20pt下（例 0.7-0.5=0.2）でも JS では (0.7-0.5)*100=19.999999999999996
+  //   となり、素の `>= 20` だと真の20ptを取りこぼして点灯しない。丸め(0.19→0.2)より桁違いに
+  //   小さい _EPS を引いて「以上」を守る（判定ゾーンを真の20ptだけ含むよう微拡大する正しい向き）。
+  var _EPS = 1e-9;
   var keys = Object.keys(byWeekday)
     .map(function (k) { return +k; })
     .sort(function (a, b) { return a - b; });
@@ -162,7 +170,7 @@ function worstDayInvestigate(byWeekday, overallRate, opts) {
     var bw = byWeekday[wd];
     if (!bw || bw.rate == null) return;
     if (bw.n < 4) return; // 小n暴れ防止
-    if ((overallRate - bw.rate) * 100 >= THRESHOLDS['曜日差']) {
+    if ((overallRate - bw.rate) * 100 >= THRESHOLDS['曜日差'] - _EPS) {
       out.push(_WD_LABELS[wd] + '曜 要調査');
     }
   });
