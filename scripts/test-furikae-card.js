@@ -39,18 +39,23 @@ new Function('sb',
 const fnkTodoText = scopeTodo.fnkTodoText;
 
 const TODO_1 = '翌月2ヶ月分まとめて引き落とされる旨を利用者（またはご家族）に伝える';
+const TODO_2 = '口座が解約・休眠の可能性。口座の状態と翌月の振替可否を確認する';
 const TODO_3 = '口座の状態を確認し、翌月の振替可否を電話で確認する';
+const TODO_4 = '口座振替の登録が未完了。振替依頼書を提出してもらう';
 const TODO_OTHER = '電話で状況を確認する';
 
 console.log('[fnkTodoText]');
-eq(fnkTodoText({ resultCode: '1' }), TODO_1, 'code1(残高不足)→翌月2ヶ月分文面');
-eq(fnkTodoText({ resultCode: '3' }), TODO_3, 'code3(停止預金者)→口座確認文面');
-eq(fnkTodoText({ resultCode: '2' }), TODO_OTHER, 'code2(取引なし)→電話で状況確認');
-eq(fnkTodoText({ resultCode: '4' }), TODO_OTHER, 'code4(依頼書なし)→電話で状況確認');
-eq(fnkTodoText({ resultCode: '9' }), TODO_OTHER, 'code9(その他)→電話で状況確認');
+eq(fnkTodoText({ resultCode: '1' }), TODO_1, 'code1(残高不足)→翌月2ヶ月分文面【既存維持】');
+eq(fnkTodoText({ resultCode: '3' }), TODO_3, 'code3(停止預金者)→口座確認文面【既存維持】');
+eq(fnkTodoText({ resultCode: '2' }), TODO_2, 'code2(取引なし)→解約・休眠の専用文【新規】');
+eq(fnkTodoText({ resultCode: '4' }), TODO_4, 'code4(依頼書なし)→依頼書提出の専用文【新規】');
+eq(fnkTodoText({ resultCode: '9' }), TODO_OTHER, 'code9(その他)→汎用フォールバック');
+eq(fnkTodoText({ resultCode: '8' }), TODO_OTHER, 'code8(委託者都合)→汎用フォールバック');
 eq(fnkTodoText({ reason: '残高不足' }), TODO_1, 'reason推定 残高不足→翌月2ヶ月分文面');
 eq(fnkTodoText({ reason: '振替停止（預金者都合）' }), TODO_3, 'reason推定 停止→口座確認文面');
-eq(fnkTodoText({}), TODO_OTHER, '不明→電話で状況確認（安全側）');
+eq(fnkTodoText({ reason: '預金取引なし' }), TODO_2, 'reason推定 取引なし→解約・休眠の専用文');
+eq(fnkTodoText({ reason: '預金口座振替依頼書なし' }), TODO_4, 'reason推定 依頼書なし→依頼書提出の専用文');
+eq(fnkTodoText({}), TODO_OTHER, '不明→汎用フォールバック（安全側）');
 
 // ===== fnkNormalizeRecord（schema後方互換：新フィールドを既定値で補完・既存は温存）=====
 const scopeNorm = {};
@@ -164,7 +169,7 @@ ok(cardA.indexOf('翌月2ヶ月分') >= 0, 'code1→やること文面(残高不
 const cardB = fnkCardHtml({ id: 2, month: '2026-06', name: 'ｲｼｶﾜ', amount: 2910, resultCode: '4', nextMonthAbsent: true, contactedBy: '下浦', contactedAt: '2026-07-10', contactMethod: '電話' });
 ok(cardB.indexOf('⚠️翌月請求なし・要確認') >= 0, 'nextMonthAbsent→「⚠️要確認」バッジ描画');
 ok(cardB.indexOf('✓連絡済 7/10 下浦') >= 0, 'contactedBy→連絡済バッジ描画');
-ok(cardB.indexOf('電話で状況を確認する') >= 0, 'code4(その他)→やること文面を描画');
+ok(cardB.indexOf('振替依頼書を提出してもらう') >= 0, 'code4(依頼書なし)→やること専用文を描画');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
