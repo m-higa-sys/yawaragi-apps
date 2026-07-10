@@ -10111,8 +10111,9 @@ function trmRenderList() {
 }
 
 function trmRenderCard(t) {
-    // 要支援判定（介護度に「要支援」を含むか）。空なら不明→要介護扱い（ADL必要）
-    const isShienMode = (t.careLevel || '').indexOf('要支援') !== -1;
+    // 要支援・事業対象者判定（個訓非対象＝要介護のみ対象）。空なら不明→要介護扱い（ADL必要）
+    // '事業対象' で拾えば「事業対象」「事業対象者」どちらの台帳表記でも一致する
+    const isShienMode = (t.careLevel || '').indexOf('要支援') !== -1 || (t.careLevel || '').indexOf('事業対象') !== -1;
 
     // 段階的有効化の判定（要支援は個訓非対象→通所＋口腔のみで段階1完了）
     const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isShienMode || t.tasks.kotraining);
