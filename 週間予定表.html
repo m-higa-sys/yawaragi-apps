@@ -54,6 +54,13 @@ th.numh{width:26px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
 .toast.show{opacity:.95}
 @media(max-width:600px){ body{padding:.5rem} .name{font-size:14px} th{font-size:13px} }
+.jukyu-bar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin:.2rem 0 .7rem;padding:.55rem .8rem;background:#f0f6f6;border:1px solid #cfe3e3;border-radius:10px;font-size:1.05rem}
+.jukyu-bar b{font-size:1.5rem;font-weight:800;margin-left:2px;line-height:1}
+.jukyu-bar .jb-vac{color:#1b6b6b;font-weight:700}
+.jukyu-bar .jb-vac b{color:#0f7a4f}
+.jukyu-bar .jb-sep{color:#888;font-size:.9rem;margin-left:6px;border-left:1px solid #cfe3e3;padding-left:12px}
+.jukyu-bar .jb-item{color:#334}
+@media (max-width:600px){.jukyu-bar{font-size:.95rem}.jukyu-bar b{font-size:1.3rem}}
 </style>
 </head>
 <body>
@@ -67,6 +74,7 @@ th.numh{width:26px}
     <button class="reload-btn" onclick="loadAll()">↺ 再読込</button>
   </div>
 </div>
+<div id="jukyuBar" class="jukyu-bar"></div>
 <div id="body"><div class="loading">読み込み中...</div></div>
 <div class="legend" id="legend"></div>
 <div class="toast" id="toast"></div>
@@ -168,6 +176,36 @@ function buildPeople_(daicho, feed, sess, orderArr){
 }
 function countColor_(n){ return n>=MAX ? 'cnt-full' : n>=MAX-2 ? 'cnt-warn' : 'cnt-ok'; }
 
+// 需給サマリー（純関数・PIIゼロ＝件数のみ返す）。空き枠=Σ(MAX−在籍daicho)を全曜日×午前午後で合算
+// （attendsCell_の曜日別ampmパース流用so複合ampm幽霊なし・見込みはfeedのcategory別カウントのみ）。
+// 空き枠はP5経営タブと同じ「在籍daichoのみ」方式so一致する（見込みfeedは枠を埋めない＝別立て）。
+function jukyuSummary_(daicho, feed){
+  var vac = 0;
+  DAYS.forEach(function(d){ ['am','pm'].forEach(function(s){
+    var n = 0; (daicho||[]).forEach(function(u){ if(attendsCell_(u.days, u.ampm, d, s)) n++; });
+    vac += Math.max(0, MAX - n);
+  }); });
+  var c = {};
+  (feed||[]).forEach(function(it){ var k = String(it && it.category || ''); c[k] = (c[k]||0) + 1; });
+  return {
+    空き枠: vac,
+    開始待ち: (c['利用決定']||0),                                   // 契約済・台帳未反映
+    体験:   (c['体験']||0) + (c['利用予定']||0),
+    見学:   (c['見学']||0) + (c['問い合わせ']||0) + (c['保留']||0)
+  };
+}
+// 需給バー描画（件数のみ・氏名/予定日等のPIIは一切出さない）。0でも各項目を表示。
+function renderJukyuBar(){
+  var el = document.getElementById('jukyuBar'); if(!el) return;
+  var s = jukyuSummary_(state.daicho, state.feed);
+  el.innerHTML =
+    '<span class="jb-vac">空き枠 <b>'+s.空き枠+'</b></span>'+
+    '<span class="jb-sep">見込み</span>'+
+    '<span class="jb-item">開始待ち <b>'+s.開始待ち+'</b></span>'+
+    '<span class="jb-item">体験 <b>'+s.体験+'</b></span>'+
+    '<span class="jb-item">見学 <b>'+s.見学+'</b></span>';
+}
+
 // ===== データ取得 =====
 function loadAll(){
   document.getElementById('body').innerHTML = '<div class="loading">読み込み中...</div>';
@@ -183,6 +221,7 @@ function loadAll(){
     state.memos  = ov.memos || {};
     rebuild();
     render();
+    renderJukyuBar();
     var d=new Date(); document.getElementById('freshness').textContent = '台帳'+state.daicho.length+'名・更新 '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
   }).catch(function(e){
     document.getElementById('body').innerHTML = '<div class="loading" style="color:#a32d2d">読み込み失敗：'+esc(e.message)+'<br><button class="reload-btn" onclick="loadAll()">再試行</button></div>';
@@ -265,7 +304,7 @@ function reorder(dragK, tgtK){
 
 // node/jsdom検証用にエクスポート
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { slotSet_:slotSet_, attendsCell_:attendsCell_, attendsSession_:attendsSession_, feedVisible_:feedVisible_, personKey_:personKey_, applyOrder_:applyOrder_, buildPeople_:buildPeople_, countColor_:countColor_ };
+  module.exports = { slotSet_:slotSet_, attendsCell_:attendsCell_, attendsSession_:attendsSession_, feedVisible_:feedVisible_, personKey_:personKey_, applyOrder_:applyOrder_, buildPeople_:buildPeople_, countColor_:countColor_, jukyuSummary_:jukyuSummary_ };
 }
 loadAll();
 </script>
