@@ -13005,6 +13005,108 @@ function installBounceTrigger() {
 }
 
 
+// ===== Gmail新着チェック（2026-07-12追加・指示書_Gmail新着チェックGAS.md）=====
+// morningDigest とは完全に独立した新規機能。GAS自身が実行アカウント(m-higa@)の受信箱を
+// GmailApp で検索し、差出人・件名・日時だけを抽出して「見落としたら困る重要メール(important)」と
+// 「それ以外の全新着(others)」に仕分けして返す。新着チェックの便利さを取り戻す。
+//
+// 【本文絶対非読込】getBody() / getPlainBody() は一切呼ばない。過去にGmailデータ経由の
+//   プロンプトインジェクションが発生したためGmailコネクタは遮断済み。自由記述の本文をAIに一切
+//   届けないのが本設計の絶対条件。使うのは getFrom() / getSubject() / getDate() のみ。
+
+// Fromヘッダ文字列 → 小文字アドレス。表示名+<addr> 形式は <...> 内を優先抽出する
+// （表示名に @ が混じるケースがあるため）。純関数（GmailApp非依存・テスト対象）。
+function nmExtractSender_(from) {
+  var s = String(from == null ? '' : from).trim();
+  if (!s) return '';
+  var m = s.match(/<([^>]+)>/);
+  if (m) return m[1].trim().toLowerCase();
+  // 山括弧なし: 後ろから @ を含むトークンを拾う（"表示名 addr@dom" 形式）
+  var tokens = s.split(/\s+/);
+  for (var i = tokens.length - 1; i >= 0; i--) {
+    if (tokens[i].indexOf('@') >= 0) return tokens[i].replace(/[<>]/g, '').trim().toLowerCase();
+  }
+  return s.toLowerCase();
+}
+
+// from/subject だけで important 判定し matchedBy（一致条件）を返す。本文は一切見ない。
+// 純関数（GmailApp非依存・テスト対象）。ドメイン/キーワードは本関数内に一元管理する。
+function nmClassifyMail_(from, subject) {
+  // 第1段: この差出人ドメインに自尾一致したら important
+  var IMPORTANT_DOMAINS = ['.lg.jp', '.go.jp', 'carezou.net', 'densan-s.co.jp',
+    'moneyforward.com', 'e-seikyuu.jp', 'jm-academy.jp', 'keepfitlife.com'];
+  // 第1段: この件名キーワードを含んだら important
+  var SUBJECT_KEYWORDS = ['請求書', '領収書', '補助金', '助成金', '交付決定', '口座振替', '応募', '国保伝送'];
+  // 将来用の除外集合（今は空。ここに差出人アド要素/件名キーワードを足すと important から落ちる）。
+  var EXCLUDE = { senders: [], subjects: [] };
+
+  var addr = nmExtractSender_(from);
+  var subj = String(subject == null ? '' : subject);
+  var host = '';
+  var at = addr.lastIndexOf('@');
+  if (at >= 0) host = addr.slice(at + 1);
+
+  // 除外リスト（将来用）: 一致したら問答無用で others 行き
+  for (var e = 0; e < EXCLUDE.senders.length; e++) {
+    if (addr && addr.indexOf(String(EXCLUDE.senders[e]).toLowerCase()) >= 0) return { important: false, matchedBy: [] };
+  }
+  for (var x = 0; x < EXCLUDE.subjects.length; x++) {
+    if (subj.indexOf(EXCLUDE.subjects[x]) >= 0) return { important: false, matchedBy: [] };
+  }
+
+  var matchedBy = [];
+  // ドメイン自尾一致（先頭 '.' 付きは末尾一致、無しは完全一致 or サブドメイン）
+  for (var i = 0; i < IMPORTANT_DOMAINS.length; i++) {
+    var d = IMPORTANT_DOMAINS[i];
+    var ok = false;
+    if (d.charAt(0) === '.') {
+      ok = host.length >= d.length && host.slice(-d.length) === d;
+    } else {
+      ok = (host === d) || (host.length > d.length + 1 && host.slice(-(d.length + 1)) === '.' + d);
+    }
+    if (ok) matchedBy.push('domain:' + d);
+  }
+  // 件名キーワード（部分一致）
+  for (var k = 0; k < SUBJECT_KEYWORDS.length; k++) {
+    if (subj.indexOf(SUBJECT_KEYWORDS[k]) >= 0) matchedBy.push('subject:' + SUBJECT_KEYWORDS[k]);
+  }
+
+  return { important: matchedBy.length > 0, matchedBy: matchedBy };
+}
+
+// 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
+// sinceHours: 何時間前までの新着を見るか（既定24）。
+function checkNewMail(sinceHours) {
+  var hours = (typeof sinceHours === 'number' && sinceHours > 0) ? sinceHours : 24;
+  // newer_than は日単位。時間単位で絞れないので広めに取り、getDate() で二次フィルタする。
+  var days = Math.max(1, Math.ceil(hours / 24));
+  var threads = GmailApp.search('newer_than:' + days + 'd', 0, 50);
+  var cutoff = new Date(new Date().getTime() - hours * 60 * 60 * 1000);
+  var important = [];
+  var others = [];
+  for (var t = 0; t < threads.length; t++) {
+    var msgs = threads[t].getMessages();
+    for (var m = 0; m < msgs.length; m++) {
+      var msg = msgs[m];
+      var dt = msg.getDate();           // ← 本文は読まない
+      if (dt < cutoff) continue;        // sinceHours より古いメッセージは除外
+      var from = msg.getFrom();
+      var subject = msg.getSubject();
+      var cls = nmClassifyMail_(from, subject);
+      var dateStr = Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+      if (cls.important) {
+        important.push({ from: from, subject: subject, date: dateStr, matchedBy: cls.matchedBy });
+      } else {
+        others.push({ from: from, subject: subject, date: dateStr });
+      }
+    }
+  }
+  var result = { important: important, others: { count: others.length, items: others } };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+
 // 利用者イベント削除（2026/5/21追加・カード+項目+連動タスクボードを一括削除）
 function deleteUserEvent(ss, data) {
   var id = String((data && data.id) || '').trim();
