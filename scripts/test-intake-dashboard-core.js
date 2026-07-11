@@ -67,7 +67,14 @@ console.log('[dashLeadTime_]');
   eq('Bはapprox', r.cases[1].source, 'approx');
   eq('A段階別に受付→見学=7', r.cases[0].段階別['受付→見学'], 7);
   eq('Bは段階別なし', r.cases[1].段階別, undefined);
+  // 対象0件→中央値null・件数0（空shape）
+  const empty = C.dashLeadTime_([{ 氏名:'E', 本格利用開始日:'' }], today);
+  eq('対象0件 中央値null', empty.中央値, null);
+  eq('対象0件 件数0', empty.件数, 0);
 }
+
+// 奇数長の中央値（真ん中の値・偶数分岐と別経路）
+eq('median奇数[30,20,40]=30', C.INTAKE_DASH_median_([30,20,40]), 30);
 
 console.log('\n[' + (fail ? 'FAIL' : 'OK') + '] ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
