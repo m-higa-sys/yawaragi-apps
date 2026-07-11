@@ -3831,6 +3831,9 @@ function doPost(e) {
       // 2026-07-06 振替不能トラッカー：伝達ボードの月次通知を件数のみで冪等 upsert／0件で締め
       case 'upsert_furikae_notice':
         return jsonResp(upsertFurikaeNotice(ss, data));
+      // 2026-07-10 振替不能トラッカー③：連絡済み記録（furikae連絡履歴に追記のみ・メール送信なし）
+      case 'recordFurikaeContact':
+        return jsonResp(recordFurikaeContact(ss, data));
       case 'create_drafts':
         return jsonResp(createJissekiDrafts(data.yearMonth));
       // 2026-05-10: ケアマネ欠席連絡 即時方式 Phase 1
@@ -15002,6 +15005,21 @@ function upsertFurikaeNotice(ss, data) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// 2026-07-10 振替不能トラッカー③：連絡済み記録（genba recordPastContact 型・記録のみ・メール送信なし）。
+// 「furikae連絡履歴」シートに追記型で1行残す。レコード本体(status/contactedBy等)の更新は furikae.html 側
+// (SYNC_URL) が担う。純コア=gas/yawaragi-board/furikae-contact-core.js（furikaeContactValid_/Row_）。
+function recordFurikaeContact(ss, data) {
+  data = data || {};
+  if (!furikaeContactValid_(data)) return { success: false, error: '顧客番号または氏名が必要です' };
+  var sh = ss.getSheetByName(FNK_CONTACT_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(FNK_CONTACT_SHEET);
+    sh.appendRow(FNK_CONTACT_HEADER);
+  }
+  sh.appendRow(furikaeContactRow_(new Date(), data));
+  return { success: true, recorded: true };   // ★メール送信なし（記録のみ）
 }
 
 function addDengonMessage(ss, data) {
