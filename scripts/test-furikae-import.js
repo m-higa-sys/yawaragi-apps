@@ -95,5 +95,38 @@ eq(r.records.length, 1, '再取込で新規増えない');
 eq(r.skipCount, 1, 'skipCount=1');
 eq(findCid(r.records, '162')[0].status, '未対応', '既存カード不変（繰越/消込を二重適用しない）');
 
+// ===== 案A改：累積スナップショット（同一cid複数アクティブ）対応 =====
+const igusa3 = () => ([
+  { id: 1, customerId: '151', name: 'ｲｸﾞｻ', month: '2026-02', amount: 741, status: '未対応', breakdown: [{ month: '2026-02', amount: 741 }] },
+  { id: 2, customerId: '151', name: 'ｲｸﾞｻ', month: '2026-03', amount: 3302, status: '未対応', breakdown: [{ month: '2026-03', amount: 3302 }] },
+  { id: 3, customerId: '151', name: 'ｲｸﾞｻ', month: '2026-04', amount: 5863, status: '未対応', breakdown: [{ month: '2026-04', amount: 5863 }] }
+]);
+
+console.log('\n[累積SS：同一cid3枚→今月成功→全消込・過剰消込なし]');
+r = fnkProcessImport(igusa3(), 4, [], ['151'], '2026-06', T);
+eq(active(r.records, '151').length, 0, '3枚とも消込（アクティブ0）');
+ok(findCid(r.records, '151').every(x => x.status === '回収済'), '全カード status=回収済');
+eq(r.autoCleared, [{ customerId: '151', name: 'ｲｸﾞｻ', amount: 5863 }], '回収額=最新SS5863（合算9906にしない＝過剰消込なし）');
+
+console.log('\n[累積SS：同一cid3枚→今月も不能→1枚集約・prevSum最新額]');
+r = fnkProcessImport(igusa3(), 4, [F('151', 'ｲｸﾞｻ', 9030, '2')], [], '2026-05', T);
+eq(active(r.records, '151').length, 1, '集約後アクティブ1枚のみ（二重ゼロ）');
+const ig = active(r.records, '151')[0];
+eq(ig.prevAmount, 5863, 'prevSum=最新SS5863（合算9906にしない＝二重計上なし）');
+eq(ig.amount, 9030, 'amount=電算当月累積額');
+eq(ig.breakdown, [{ month: '2026-04', amount: 5863 }, { month: '2026-05', amount: 3167 }], '当月分=9030−5863=3167・内訳引継ぎ');
+ok(findCid(r.records, '151').filter(x => x.status === '繰越').length === 3, '旧3枚とも繰越で閉じる（取り残しゼロ）');
+
+console.log('\n[安全弁：累積で説明できない外れカードは消さず要確認]');
+prev = [
+  { id: 1, customerId: '300', name: 'C', month: '2026-04', amount: 5000, status: '未対応', breakdown: [{ month: '2026-04', amount: 5000 }] },
+  { id: 2, customerId: '300', name: 'C', month: '2026-05', amount: 2000, status: '未対応', breakdown: [{ month: '2026-05', amount: 2000 }] } // 5月<4月＝累積で説明できない
+];
+r = fnkProcessImport(prev, 3, [], ['300'], '2026-06', T); // 今月成功
+ok(findCid(r.records, '300').find(x => x.month === '2026-04').status === '回収済', 'チェーン4月→回収済');
+const outlier = findCid(r.records, '300').find(x => x.month === '2026-05');
+ok(fnkIsUnpaid(outlier), '外れ5月カードは消さず残る（アクティブ）');
+ok(r.flagged.some(f => f.customerId === '300'), '外れカードは flagged（要確認）');
+
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

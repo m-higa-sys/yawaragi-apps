@@ -970,26 +970,46 @@ function fnkProcessImport(records, nextId, funou, okCustomerIds, month, today) {
   var curMonthCids = {};
   recs.forEach(function (r) { if (r.month === month && r.customerId) curMonthCids[String(r.customerId)] = true; });
 
-  // 3) アクティブ未回収カード（別月・顧客ごと1枚が前提）
-  var activeByCid = {};
-  recs.forEach(function (r) { if (fnkIsUnpaid(r) && !fnkIsImportMarker(r) && r.customerId) activeByCid[String(r.customerId)] = r; });
+  // 3) アクティブ未回収カード（同一cidの複数枚＝累積スナップショットを許容）
+  //    旧データは「人ごと複数枚」（各月が同一債権の累積額を写したスナップショット）が存在する。
+  //    cid ごとに全アクティブカードを集めて一括処理する（1枚前提を撤廃）。
+  var activeByCid = {}; // cid -> [全アクティブカード]
+  recs.forEach(function (r) { if (fnkIsUnpaid(r) && !fnkIsImportMarker(r) && r.customerId) { var c = String(r.customerId); (activeByCid[c] = activeByCid[c] || []).push(r); } });
 
-  // 4) アクティブ未回収の処理（自動消込 / 繰越 / 要確認）
+  // 累積スナップショット整合：月順で金額が単調非減少なら1本の累積チェーン（各月が前月を内包）。
+  // 前月より小さい＝累積で説明できない外れカードは chain から外し outliers へ（勝手に消さない安全弁）。
+  var splitCumulative = function (cards) {
+    var sorted = cards.slice().sort(function (a, b) { var am = String(a.month), bm = String(b.month); return am < bm ? -1 : am > bm ? 1 : 0; });
+    var chain = [], outliers = [], maxSeen = -1;
+    sorted.forEach(function (c) {
+      var amt = sumOf(c.breakdown) || c.amount || 0;
+      if (amt >= maxSeen) { chain.push(c); maxSeen = amt; } else { outliers.push(c); }
+    });
+    return { chain: chain, outliers: outliers, latest: chain.length ? chain[chain.length - 1] : (sorted[sorted.length - 1] || cards[0]) };
+  };
+
+  // 4) アクティブ未回収の処理（自動消込 / 繰越 / 要確認）※同一cidの全スナップショットを一括処理
   Object.keys(activeByCid).forEach(function (cid) {
     if (curMonthCids[cid]) return; // 冪等
-    var card = activeByCid[cid];
+    var cards = activeByCid[cid];
+    var cut = splitCumulative(cards);
     if (ok.indexOf(cid) >= 0) {
-      // 自動消込：今月成功行に出現
-      card.status = '回収済'; card.resolvedMonth = month; card.collectMethod = '翌月合算';
-      card.resolvedNote = month + 'の取込で引落成功を確認（翌月合算・自動）';
-      autoCleared.push({ customerId: cid, name: card.name, amount: sumOf(card.breakdown) || card.amount || 0 });
+      // 自動消込：累積チェーンの全スナップショットを回収済に（1枚でなく全部＝取り残しゼロ）
+      cut.chain.forEach(function (card) {
+        card.status = '回収済'; card.resolvedMonth = month; card.collectMethod = '翌月合算';
+        card.resolvedNote = month + 'の取込で引落成功を確認（翌月合算・自動）';
+      });
+      // 回収額＝最新スナップショット（＝累積額）。単純合算しない（二重計上＝過剰消込の防止）。
+      autoCleared.push({ customerId: cid, name: cards[0].name, amount: sumOf(cut.latest.breakdown) || cut.latest.amount || 0 });
+      cut.outliers.forEach(function (c) { flagged.push({ customerId: cid, name: c.name }); }); // 累積外は消さず要確認
     } else if (byCid[cid]) {
-      // 繰越：今月も不能行に出現 → 前月カードを閉じ、当月カードに内訳引継ぎ
-      card.status = '繰越'; card.carriedTo = month;
-      var prevSum = sumOf(card.breakdown) || card.amount || 0;
+      // 繰越：累積チェーンの全スナップショットを閉じ、当月カード1枚に集約（内訳引継ぎ）
+      var latest = cut.latest;
+      var prevSum = sumOf(latest.breakdown) || latest.amount || 0; // ★最新スナップショット額（合算しない＝二重計上防止）
       var curTotal = byCid[cid].amount;
-      var curPart = curTotal - prevSum; // 当月分 = 電算累積額 − 前月未収合計
-      var newBreakdown = (card.breakdown && card.breakdown.length ? card.breakdown.slice() : [{ month: card.month, amount: card.amount || 0 }]).concat([{ month: month, amount: curPart }]);
+      var curPart = curTotal - prevSum; // 当月分 = 電算累積額 − 最新スナップショット
+      var newBreakdown = (latest.breakdown && latest.breakdown.length ? latest.breakdown.slice() : [{ month: latest.month, amount: latest.amount || 0 }]).concat([{ month: month, amount: curPart }]);
+      cut.chain.forEach(function (card) { card.status = '繰越'; card.carriedTo = month; }); // 全スナップショットを閉じる（取り残し防止）
       recs.push(fnkNormalizeRecord({
         id: nextId++, month: month, customerId: cid, name: byCid[cid].name,
         bank: byCid[cid].bank, branch: byCid[cid].branch, account: byCid[cid].account,
@@ -998,11 +1018,12 @@ function fnkProcessImport(records, nextId, funou, okCustomerIds, month, today) {
         status: '未対応', contactedBy: null, contactedAt: null, contactMethod: null, createdAt: today
       }));
       carriedOver.push({ customerId: cid, name: byCid[cid].name });
+      cut.outliers.forEach(function (c) { flagged.push({ customerId: cid, name: c.name }); }); // 累積外は消さず要確認
       delete byCid[cid]; // 新規扱いにしない
     } else if (!allTodayIds[cid]) {
       // 要確認：今月ファイルに一切出ない（成功でも不能でもない＝請求対象外の可能性）
-      card.nextMonthAbsent = true;
-      flagged.push({ customerId: cid, name: card.name });
+      cards.forEach(function (card) { card.nextMonthAbsent = true; });
+      flagged.push({ customerId: cid, name: cards[0].name });
     }
   });
 
