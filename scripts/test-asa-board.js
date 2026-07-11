@@ -52,5 +52,15 @@ eq(shienRows[0].key, '未測定男', 'D1: 未測定(実測定日なし)が最優
 ok(shienRows[0].unmeasured === true, 'D2: 未測定フラグ');
 ok(shienRows[1].key === '佐藤花子' && shienRows[1].remaining === 9, 'D3: 佐藤は残9日');
 
+// 表記ゆれ耐性: 測定日シート側が全角スペース付きでも正規化して突合（§3.4）
+var shienRows2 = core.abMeasureShien_(
+  [{ name: '山田太郎', care: '要支援2' }],
+  { '山田　太郎': '2026-03-10' },  // 全角スペース付きキー
+  '2026-07-01'
+);
+ok(shienRows2[0].unmeasured === false && shienRows2[0].remaining === 9, 'D4: 表記ゆれでも測定済み判定（誤って最優先化しない）');
+ok(shienRows2[0].due === '2026-07-10', 'D5: dueも正しく算出');
+eq(core.abMeasureShien_(null, null, '2026-07-01').length, 0, 'D6: null入力で空（落ちない）');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
