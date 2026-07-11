@@ -185,8 +185,11 @@ function jukyuSummary_(daicho, feed){
     var n = 0; (daicho||[]).forEach(function(u){ if(attendsCell_(u.days, u.ampm, d, s)) n++; });
     vac += Math.max(0, MAX - n);
   }); });
+  // 見込みはグリッド(buildPeople_)と同じ feedVisible_ 通過後のfeedで数える。
+  // ＝アーカイブ相当（体験なのに姓なし）と台帳同姓の重複はバーにも計上しない→経営タブの除外基準と揃う。
+  var daichoNames = (daicho||[]).map(function(u){ return u && u.name; });
   var c = {};
-  (feed||[]).forEach(function(it){ var k = String(it && it.category || ''); c[k] = (c[k]||0) + 1; });
+  (feed||[]).forEach(function(it){ if(!feedVisible_(it, daichoNames)) return; var k = String(it && it.category || ''); c[k] = (c[k]||0) + 1; });
   return {
     空き枠: vac,
     開始待ち: (c['利用決定']||0),                                   // 契約済・台帳未反映

@@ -21,7 +21,7 @@ var SLOT_OF = { am:'午前', pm:'午後' };
 var DAYS = ['月','火','水','木','金'];
 var MAX = 18;
 `;
-eval([vars, grab('slotSet_'), grab('attendsCell_'), grab('jukyuSummary_')].join('\n'));
+eval([vars, grab('slotSet_'), grab('attendsCell_'), grab('feedVisible_'), grab('jukyuSummary_')].join('\n'));
 
 let pass = 0, fail = 0;
 function eq(m, a, e) { const A = JSON.stringify(a), E = JSON.stringify(e); if (A === E) { pass++; console.log('  PASS ' + m); } else { fail++; console.log('  FAIL ' + m + '\n    exp ' + E + '\n    act ' + A); } }
@@ -32,18 +32,35 @@ eq('全曜日午前午後の在籍1名→10セル埋め→170', jukyuSummary_([{
 // 複合ampm（宮さん型）＝曜日別パース流用so月午前・木午後の2セルのみ→178（naiveなら誤って4セル減=176）
 eq('複合ampm 月午前、木午後→2セルのみ減→178', jukyuSummary_([{ days: '月木', ampm: '月午前、木午後' }], []).空き枠, 178);
 
-console.log('[jukyuSummary_ 見込みバケット]');
+console.log('[jukyuSummary_ 見込みバケット（feedVisible_通過後で集計）]');
 {
+  // 体験は displayName 有り＝可視（姓なし体験はアーカイブ相当で除外されるため）。daicho=[]so同姓除外は無し。
   const feed = [
-    { category: '利用決定' },                       // 開始待ち
-    { category: '体験' }, { category: '利用予定' },  // 体験
+    { category: '利用決定' },                                    // 開始待ち（姓なしでも体験以外は可視）
+    { category: '体験', displayName: '佐藤' }, { category: '利用予定' }, // 体験
     { category: '見学' }, { category: '問い合わせ' }, { category: '保留' }, // 見学
-    { category: '空き待ち' }                         // どのバケットにも入らない
+    { category: '空き待ち' }                                     // どのバケットにも入らない
   ];
   const s = jukyuSummary_([], feed);
   eq('開始待ち=利用決定1', s.開始待ち, 1);
   eq('体験=体験1+利用予定1=2', s.体験, 2);
   eq('見学=見学1+問い合わせ1+保留1=3', s.見学, 3);
+}
+
+console.log('[★不一致修正: アーカイブ相当(体験・姓なし)はバーにも数えない]');
+{
+  // 実バグ再現: feed=体験1件・displayName空（グリッド非表示・経営タブもアーカイブ除外）→ バー体験0
+  const s = jukyuSummary_([], [{ category: '体験', displayName: '', days: '水', ampm: '午前' }]);
+  eq('姓なし体験→体験0（feedVisible_で除外）', s.体験, 0);
+  eq('姓なし体験→見学/開始待ちも0', [s.開始待ち, s.見学], [0, 0]);
+}
+
+console.log('[台帳同姓の重複はバーにも数えない（グリッドと同基準）]');
+{
+  // feed の displayName が在籍daichoの姓に含まれる→feedVisible_で除外
+  const s = jukyuSummary_([{ days: '月', ampm: '午前', name: '鈴木一郎' }],
+    [{ category: '見学', displayName: '鈴木' }]);
+  eq('台帳同姓→見学0', s.見学, 0);
 }
 
 console.log('[PII非表示＝返りは件数キーのみ]');
