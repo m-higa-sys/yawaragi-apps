@@ -178,6 +178,20 @@ function abBirthday_(users, targetMonth, statusByKey) {
   return rows;
 }
 
+// 対象リスト × 当日出席者。出席keyの集合に含まれる対象のみを、出席順で返す。
+function abIntersectPresent_(targets, present) {
+  var presentKeys = {};
+  (present || []).forEach(function (p) { presentKeys[p.key] = true; });
+  return (targets || []).filter(function (t) { return presentKeys[t.key]; });
+}
+
+// 出席者のうち、どの対象キー集合(allTargetKeys)にも当たらない者＝名寄せ不能residue。
+// 別人誤割当より拾い漏れ可視化を優先する安全弁。返り値: [{ name, key }]
+function abResidue_(present, allTargetKeys) {
+  return (present || []).filter(function (p) { return !allTargetKeys[p.key]; })
+    .map(function (p) { return { name: p.name, key: p.key }; });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     abNormalizeName_: abNormalizeName_,
@@ -191,6 +205,8 @@ if (typeof module !== 'undefined' && module.exports) {
     abKoukuMoni_: abKoukuMoni_,
     abKoukuTaisou_: abKoukuTaisou_,
     abKotan_: abKotan_,
-    abBirthday_: abBirthday_
+    abBirthday_: abBirthday_,
+    abIntersectPresent_: abIntersectPresent_,
+    abResidue_: abResidue_
   };
 }

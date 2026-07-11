@@ -159,5 +159,19 @@ eq(core.abBirthday_([{ name: '未登録美', birthday: '7/3' }], 7, {}).length, 
 eq(core.abBirthday_([{ name: '済み郎', birthday: '7/20' }], 7, { '済み　郎': { photo: true, print: true, give: true } }).length, 0, 'I5: statusの表記ゆれでも正規化して完了除外');
 eq(core.abBirthday_(null, 7, {}).length, 0, 'I6: null入力で空（落ちない）');
 
+// ===== J. abIntersectPresent_（対象×当日出席の交差・出席順維持） =====
+var present = [{ name: '山田太郎', key: '山田太郎' }, { name: '佐藤花子', key: '佐藤花子' }];
+var targets = [{ name: '山田 太郎', key: '山田太郎', care: '要介護1' }, { name: '欠席男', key: '欠席男' }];
+var inter = core.abIntersectPresent_(targets, present);
+eq(inter.length, 1, 'J1: 出席かつ対象は1名（欠席男は出席にいない）');
+eq(inter[0].key, '山田太郎', 'J2: 山田太郎が交差');
+ok(inter[0].care === '要介護1', 'J3: 対象側の属性を保持');
+
+// ===== K. abResidue_（出席者のうちどの対象キーにも当たらない＝名寄せ不能） =====
+var allTargetKeys = { '山田太郎': true };
+var residue = core.abResidue_(present, allTargetKeys);
+eq(residue.length, 1, 'K1: 佐藤花子はどの対象にも当たらず名寄せ不能');
+eq(residue[0].key, '佐藤花子', 'K2: 佐藤花子がresidue');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
