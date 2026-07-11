@@ -216,12 +216,15 @@ eq(fnkStartGuide({ resultCode: '4' }, '2026-06-01').mode, 'predict', 'formSentDa
 
 console.log('\n[fnkCardHtml (b)郵送日記録の統合]');
 const cardG = fnkCardHtml({ id: 7, month: '2026-06', name: 'ｲｼｶﾜ', amount: 2910, resultCode: '4', formSentDate: '2026-07-11' });
-ok(cardG.indexOf('7/11郵送済') >= 0, '記録済→「7/11郵送済」確定表示');
+ok(cardG.indexOf('7/11 郵送した') >= 0, '記録済→「7/11 郵送した」結果表示（社長要望文言）');
+ok(cardG.indexOf('郵送済') < 0, '記録済→旧文言「郵送済」は出さない');
 ok(cardG.indexOf('8/27') >= 0, '記録済→開始予定8/27表示');
 ok(cardG.indexOf('までに郵送') < 0, '記録済→予告ガイドは消える');
-ok(cardG.indexOf('fnkClearSent(7)') >= 0, '記録済→取消導線');
-ok(cardB.indexOf('fnkMarkSent(2)') >= 0, '未記録code4→「郵送した」ボタン');
-ok(cardC.indexOf('fnkMarkSent') < 0, 'code2→郵送したボタン出さない');
+ok(cardG.indexOf('fnkClearSent(7)') >= 0, '記録済→取消導線（維持）');
+ok(cardB.indexOf('fnkMarkSent(2)') >= 0, '未記録code4→郵送日入力ボタン(handler)');
+ok(cardB.indexOf('📮 郵送日を入力') >= 0, '未記録→ボタン文言は中立「郵送日を入力」');
+ok(cardB.indexOf('郵送した') < 0, '未記録→まだ「郵送した」とは出さない（郵送前so変を解消）');
+ok(cardC.indexOf('fnkMarkSent') < 0, 'code2→郵送日入力ボタン出さない');
 
 // ===== nextFurikaeGuide（code4 引落開始ガイド・既存 FURIKAE_SCHEDULE を共有＝単一の真実源）=====
 function extractConst(name) {
