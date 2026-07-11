@@ -26,7 +26,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>朝ボード｜やわらぎ</title>
+    <title>セッションボード｜やわらぎ</title>
 <style>
   :root{
     --ground:#eef2f6; --surface:#ffffff; --surface-2:#f5f8fb;
@@ -174,7 +174,7 @@
   <div class="datehead">
     <span class="dnum" id="dnum">—</span>
     <span class="dwk" id="dwk"></span>
-    <span class="app">🌅 朝ボード</span>
+    <span class="app">📋 セッションボード</span>
   </div>
   <div class="sub">その時間帯の出席者 × 今日やる業務を自動ピックアップ</div>
 
@@ -197,7 +197,7 @@
 
   <div id="board"><div class="loading">読み込み中…</div></div>
 
-  <div class="foot">やわらぎ 朝ボード ／ 判定は当日出席（台帳曜日−欠席）に紐づく</div>
+  <div class="foot">やわらぎ セッションボード ／ 判定は当日出席（台帳曜日−欠席）に紐づく</div>
 </div>
 
 <script>
@@ -207,12 +207,12 @@
 
   var ROLE_LABEL = { moni1:'モニ①', moni2:'モニ②', setsume:'報告書＋計画書' };
   var YOUBI = ['日','月','火','水','木','金','土'];
-  var TOPN_KEY = 'asaBoard_topN', TAB_KEY = 'asaBoard_tab';
+  var TOPN_KEY = 'sessionBoard_topN', TAB_KEY = 'sessionBoard_tab';
 
   var topN = parseInt(localStorage.getItem(TOPN_KEY) || '3', 10);
   if (!(topN >= 1 && topN <= 9)) topN = 3;
 
-  var DATA = null;     // abBuildBoard_ 出力
+  var DATA = null;     // sbBuildBoard_ 出力
   var selTab = 'am';   // render時に確定
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -393,14 +393,14 @@
     render();
   }
   function showError(msg){
-    document.getElementById('board').innerHTML = '<div class="errcard">⚠ 朝ボードの取得に失敗しました'
+    document.getElementById('board').innerHTML = '<div class="errcard">⚠ セッションボードの取得に失敗しました'
       + (msg? '：'+esc(msg) : '') + '（↻再読込を試してください）</div>';
   }
 
   // ===== データ取得 =====
   // JSONP（board GAS は GET=JSONP・POST=no-cors。genba/sokutei と同型）
   function fetchBoard(date){
-    var cbName = 'asaBoardCb_' + Date.now();
+    var cbName = 'sessionBoardCb_' + Date.now();
     var done = false;
     var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); showError('タイムアウト'); }, 20000);
     function cleanup(){ try { delete window[cbName]; } catch(e){ window[cbName] = undefined; } if (s && s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
@@ -410,7 +410,7 @@
       boot(resp);
     };
     var s = document.createElement('script');
-    s.src = GAS + '?action=asaBoard&date=' + encodeURIComponent(date) + '&callback=' + cbName + '&t=' + Date.now();
+    s.src = GAS + '?action=sessionBoard&date=' + encodeURIComponent(date) + '&callback=' + cbName + '&t=' + Date.now();
     s.onerror = function(){ if (done) return; done = true; cleanup(); showError('通信エラー'); };
     document.head.appendChild(s);
   }
@@ -423,7 +423,7 @@
     fetchBoard(todayYMD());
   }
 
-  // ===== demoサンプル（abBuildBoard_ 出力契約に一致・行に session）=====
+  // ===== demoサンプル（sbBuildBoard_ 出力契約に一致・行に session）=====
   function DEMO_DATA(){
     return {
       date:'2026-07-13', year:2026, month:7,

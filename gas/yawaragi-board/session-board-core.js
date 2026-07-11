@@ -1,9 +1,9 @@
-// 2026-07-11 朝ボード（当日業務ピックアップ）の判定純関数。
+// 2026-07-11 セッションボード（当日業務ピックアップ）の判定純関数。
 // GAS/node 両用（kesseki-box-core.js と同じ流儀）。SpreadsheetApp 等の GAS API に依存しない。
-// 名寄せは全業務ここを通す。判定spec: docs/superpowers/specs/2026-07-11-asa-board-design.md
+// 名寄せは全業務ここを通す。判定spec: docs/superpowers/specs/2026-07-11-session-board-design.md
 
 // 名寄せ正規化＝全突合キーの唯一の正（_normalizeUserName 相当・NFKC＋全空白除去＋末尾敬称除去）
-function abNormalizeName_(name) {
+function sbNormalizeName_(name) {
   var s = String(name == null ? '' : name);
   if (typeof s.normalize === 'function') s = s.normalize('NFKC');
   s = s.replace(/[\s　]+/g, '');
@@ -15,13 +15,13 @@ function abNormalizeName_(name) {
 // 1日2単位制so同一利用者は同日 am/pm どちらか一方のみ＝session:'both'は無い。
 // 異常（同一正規化キーが am/pm 両方に「出席」＝別人の正規化衝突が現実的原因）は am へ決定的割当＋ conflict:true で可視化。
 // 返り値: [{ name, key, care, status, session, conflict? }]（name は最初に現れた表記を保持）
-function abUniquePresent_(att) {
+function sbUniquePresent_(att) {
   var out = [], seen = {}, sawAm = {}, sawPm = {};
   var root = att && att.attendance;
   if (!root) return out;
   ['am', 'pm'].forEach(function (k) {
     (root[k] || []).forEach(function (a) {
-      var key = abNormalizeName_(a && a.name);
+      var key = sbNormalizeName_(a && a.name);
       if (!key) return;
       if (a.status === '出席') { if (k === 'am') sawAm[key] = true; else sawPm[key] = true; }
       if (seen[key]) {
@@ -68,28 +68,28 @@ function sokuteiRemaining_(dueDateStr, todayStr) {
   return Math.round((due - today) / 86400000);
 }
 
-// 要支援・事業対象の測定対象行（enriched・未ソート）。前回実測定日+4ヶ月。並びは abSokuteiSort_ が担当。
+// 要支援・事業対象の測定対象行（enriched・未ソート）。前回実測定日+4ヶ月。並びは sbSokuteiSort_ が担当。
 // usageByKey: 名前→出席率U（内部正規化・§3.4）。返り値行に careLayer:1 / weeklyVisits / remainingVisits / absenceRate / unmeasured を付与。
 // 返り値: [{ name, key, care, last, due, remaining, unmeasured, track:'shien', careLayer:1, weeklyVisits, remainingVisits, absenceRate }]
-function abMeasureShien_(shienUsers, lastByName, todayStr, usageByKey) {
+function sbMeasureShien_(shienUsers, lastByName, todayStr, usageByKey) {
   var lastByKey = {};
   if (lastByName) {
     for (var nm in lastByName) {
       if (!lastByName.hasOwnProperty(nm)) continue;
       var v = lastByName[nm];
       if (!v) continue;
-      var nk = abNormalizeName_(nm);
+      var nk = sbNormalizeName_(nm);
       if (!lastByKey[nk] || v > lastByKey[nk]) lastByKey[nk] = v;
     }
   }
   var usageNorm = {};
   if (usageByKey) {
     for (var un in usageByKey) {
-      if (usageByKey.hasOwnProperty(un)) usageNorm[abNormalizeName_(un)] = usageByKey[un];
+      if (usageByKey.hasOwnProperty(un)) usageNorm[sbNormalizeName_(un)] = usageByKey[un];
     }
   }
   return (shienUsers || []).map(function (u) {
-    var key = abNormalizeName_(u.name);
+    var key = sbNormalizeName_(u.name);
     var last = lastByKey[key] || '';
     var due = '', remaining = -999, unmeasured = !last;
     if (last) { due = sokuteiDueDate_(last, u.care || ''); remaining = sokuteiRemaining_(due, todayStr); }
@@ -98,48 +98,48 @@ function abMeasureShien_(shienUsers, lastByName, todayStr, usageByKey) {
     return {
       name: u.name, key: key, care: u.care || '', last: last, due: due, remaining: remaining,
       unmeasured: unmeasured, track: 'shien', careLayer: 1,
-      weeklyVisits: abCountWeeklyVisits_(u.days), remainingVisits: abCountRemainingVisits_(u.days, todayStr),
+      weeklyVisits: sbCountWeeklyVisits_(u.days), remainingVisits: sbCountRemainingVisits_(u.days, todayStr),
       absenceRate: absRate
     };
   });
 }
 
 // 対象日が属する月の月末(YYYY-MM-DD)を返す
-function abMonthEnd_(year, month) {
+function sbMonthEnd_(year, month) {
   var lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   return year + '-' + pad(month) + '-' + pad(lastDay);
 }
 
-// 要介護の測定対象行（enriched・未ソート）。当月が評価月(isHyoukaMonthFn)かつ当評価月未実施。並びは abSokuteiSort_ が担当。
+// 要介護の測定対象行（enriched・未ソート）。当月が評価月(isHyoukaMonthFn)かつ当評価月未実施。並びは sbSokuteiSort_ が担当。
 // doneByKey: 当評価月に sokutei_date が入っている人の名前→true（内部正規化・§3.4）。usageByKey: 名前→出席率U（内部正規化）。
 // 返り値: [{ name, key, care, remaining, track:'kaigo', careLayer:0, weeklyVisits, remainingVisits, absenceRate }]
 //   remaining=月末カレンダー残日数（表示用）／remainingVisits=残来所日数（優先順位用）。
-function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn, usageByKey) {
+function sbMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn, usageByKey) {
   var doneNorm = {};
   if (doneByKey) {
     for (var dk in doneByKey) {
-      if (doneByKey.hasOwnProperty(dk) && doneByKey[dk]) doneNorm[abNormalizeName_(dk)] = true;
+      if (doneByKey.hasOwnProperty(dk) && doneByKey[dk]) doneNorm[sbNormalizeName_(dk)] = true;
     }
   }
   var usageNorm = {};
   if (usageByKey) {
     for (var un in usageByKey) {
-      if (usageByKey.hasOwnProperty(un)) usageNorm[abNormalizeName_(un)] = usageByKey[un];
+      if (usageByKey.hasOwnProperty(un)) usageNorm[sbNormalizeName_(un)] = usageByKey[un];
     }
   }
-  var monthEnd = abMonthEnd_(year, month);
+  var monthEnd = sbMonthEnd_(year, month);
   var rows = [];
   (kaigoUsers || []).forEach(function (u) {
     if (!isHyoukaMonthFn(u.planStart, u.planMonths, year, month)) return;
-    var key = abNormalizeName_(u.name);
+    var key = sbNormalizeName_(u.name);
     if (doneNorm[key]) return;
     var uRate = (usageNorm[key] != null) ? usageNorm[key] : 1.0;
     var absRate = 1 - uRate; if (absRate < 0) absRate = 0; if (absRate > 1) absRate = 1;
     rows.push({
       name: u.name, key: key, care: u.category || '', remaining: sokuteiRemaining_(monthEnd, todayStr),
       track: 'kaigo', careLayer: 0,
-      weeklyVisits: abCountWeeklyVisits_(u.days), remainingVisits: abCountRemainingVisits_(u.days, todayStr),
+      weeklyVisits: sbCountWeeklyVisits_(u.days), remainingVisits: sbCountRemainingVisits_(u.days, todayStr),
       absenceRate: absRate
     });
   });
@@ -151,18 +151,18 @@ function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaM
 // oralCycleAtFn は oral-plan.html の oralCycleAt を注入。
 // 実施済み判定: moni1→moni1_date / moni2→moni2_date / setsume→(houkoku_date && plan_date)。
 // 返り値: [{ name, key, role }]
-function abKoukuMoni_(oralUsers, oralRecByKey, year, month, oralCycleAtFn) {
+function sbKoukuMoni_(oralUsers, oralRecByKey, year, month, oralCycleAtFn) {
   var recByKey = {};
   if (oralRecByKey) {
     for (var rk in oralRecByKey) {
-      if (oralRecByKey.hasOwnProperty(rk)) recByKey[abNormalizeName_(rk)] = oralRecByKey[rk];
+      if (oralRecByKey.hasOwnProperty(rk)) recByKey[sbNormalizeName_(rk)] = oralRecByKey[rk];
     }
   }
   var rows = [];
   (oralUsers || []).forEach(function (u) {
     var res = oralCycleAtFn(u.planStart, u.planEnd, year, month);
     if (!res || res.role === 'none') return;
-    var key = abNormalizeName_(u.name);
+    var key = sbNormalizeName_(u.name);
     var rec = recByKey[key] || {};
     var done;
     if (res.role === 'moni1') done = !!rec.moni1_date;
@@ -177,26 +177,26 @@ function abKoukuMoni_(oralUsers, oralRecByKey, year, month, oralCycleAtFn) {
 // 口腔体操対象。isTarget/is_target が明示 false 以外は対象（未設定=既定true）。
 // 実源getOralTargetUsers_はキャメルケースisTargetを返す。is_targetは生シート列名（互換のため両対応）。
 // 返り値: [{ name, key }]
-function abKoukuTaisou_(oralSettings) {
+function sbKoukuTaisou_(oralSettings) {
   return (oralSettings || []).filter(function (u) { return u.isTarget !== false && u.is_target !== false; })
-    .map(function (u) { return { name: u.name, key: abNormalizeName_(u.name) }; });
+    .map(function (u) { return { name: u.name, key: sbNormalizeName_(u.name) }; });
 }
 
 // 個訓対象。介護度「要介護」前方一致かつ非中止。返り値: [{ name, key, care }]
-function abKotan_(users) {
+function sbKotan_(users) {
   return (users || []).filter(function (u) {
     return !u.cancelled && String(u.category || '').indexOf('要介護') === 0;
-  }).map(function (u) { return { name: u.name, key: abNormalizeName_(u.name), care: u.category || '' }; });
+  }).map(function (u) { return { name: u.name, key: sbNormalizeName_(u.name), care: u.category || '' }; });
 }
 
 // 誕生日対象。birthday("M/D") が今月＝targetMonth かつ 撮影status未完（photo&&print&&give でない）。
 // 当日出席フィルタは掛けない（月単位業務）。statusByKey: 名前→{photo,print,give}（キーは内部で正規化・§3.4）。
 // 返り値: [{ name, key, month, day }]（日昇順）
-function abBirthday_(users, targetMonth, statusByKey) {
+function sbBirthday_(users, targetMonth, statusByKey) {
   var statusNorm = {};
   if (statusByKey) {
     for (var sk in statusByKey) {
-      if (statusByKey.hasOwnProperty(sk)) statusNorm[abNormalizeName_(sk)] = statusByKey[sk];
+      if (statusByKey.hasOwnProperty(sk)) statusNorm[sbNormalizeName_(sk)] = statusByKey[sk];
     }
   }
   var rows = [];
@@ -205,7 +205,7 @@ function abBirthday_(users, targetMonth, statusByKey) {
     if (!mm) return;
     var mo = parseInt(mm[1], 10), da = parseInt(mm[2], 10);
     if (mo !== targetMonth) return;
-    var key = abNormalizeName_(u.name);
+    var key = sbNormalizeName_(u.name);
     var st = statusNorm[key] || {};
     var done = !!(st.photo && st.print && st.give);
     if (done) return;
@@ -217,7 +217,7 @@ function abBirthday_(users, targetMonth, statusByKey) {
 
 // 対象リスト × 当日出席者。出席keyの集合に含まれる対象のみを、対象(targets)側の順序を維持して返す（targetsは逼迫度順で来る）。
 // 当たった出席者の session を業務hit行へ載せる（§2.5）。元 target 行は破壊せず浅いコピーを返す。
-function abIntersectPresent_(targets, present) {
+function sbIntersectPresent_(targets, present) {
   var byKey = {};
   (present || []).forEach(function (p) { byKey[p.key] = p; });
   var out = [];
@@ -234,39 +234,39 @@ function abIntersectPresent_(targets, present) {
 
 // 出席者のうち、どの対象キー集合(allTargetKeys)にも当たらない者＝名寄せ不能residue。
 // 別人誤割当より拾い漏れ可視化を優先する安全弁。返り値: [{ name, key }]
-function abResidue_(present, allTargetKeys) {
+function sbResidue_(present, allTargetKeys) {
   return (present || []).filter(function (p) { return !allTargetKeys[p.key]; })
     .map(function (p) { return { name: p.name, key: p.key, session: p.session }; });
 }
 
-// 全業務を集約して朝ボード1レスポンス相当を組み立てる純関数。
+// 全業務を集約してセッションボード1レスポンス相当を組み立てる純関数。
 // judges = { isHyoukaMonth, oralCycleAt }（GASはグローバル、nodeは抽出注入）。
 // 測定=要介護(交差)+要支援(交差) を sokutei に統合。口腔体操・個訓は当日出席と交差。誕生日は交差しない。
 // residue = 出席者のうち 測定/口腔モニ/口腔体操/個訓 のどれにも当たらない者。
 // 測定プール優先順位の重み（spec §2.4・実データ確認後に調整可）。
 var SOKUTEI_WEIGHTS = { chance: 1.0, freq: 0.6, absence: 0.6, unmeasuredBoost: 2.0 };
 
-function abBuildBoard_(input, judges) {
-  var present = abUniquePresent_(input.attendance);
+function sbBuildBoard_(input, judges) {
+  var present = sbUniquePresent_(input.attendance);
   // session別のdistinct人数と異常（am/pm衝突）を集計（§2.5）。presentAm+presentPm=presentCount 恒等。
   var presentAm = 0, presentPm = 0, ampmConflict = [];
   present.forEach(function (p) {
     if (p.session === 'am') presentAm++; else if (p.session === 'pm') presentPm++;
     if (p.conflict) ampmConflict.push({ name: p.name, key: p.key });
   });
-  var kaigo = abMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth, input.usageByKey);
-  var shien = abMeasureShien_(input.shienUsers, input.shienLastByName, input.today, input.usageByKey);
-  var sokutei = abSokuteiSort_(abIntersectPresent_(kaigo, present).concat(abIntersectPresent_(shien, present)), SOKUTEI_WEIGHTS);
-  var koukuMoni = abIntersectPresent_(abKoukuMoni_(input.oralUsers, input.oralRecByKey, input.year, input.month, judges.oralCycleAt), present);
-  var koukuTaisou = abIntersectPresent_(abKoukuTaisou_(input.oralSettings), present);
-  var kotan = abIntersectPresent_(abKotan_(input.allUsers), present);
-  var birthday = abBirthday_(input.bdUsers, input.month, input.bdStatusByKey);
+  var kaigo = sbMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth, input.usageByKey);
+  var shien = sbMeasureShien_(input.shienUsers, input.shienLastByName, input.today, input.usageByKey);
+  var sokutei = sbSokuteiSort_(sbIntersectPresent_(kaigo, present).concat(sbIntersectPresent_(shien, present)), SOKUTEI_WEIGHTS);
+  var koukuMoni = sbIntersectPresent_(sbKoukuMoni_(input.oralUsers, input.oralRecByKey, input.year, input.month, judges.oralCycleAt), present);
+  var koukuTaisou = sbIntersectPresent_(sbKoukuTaisou_(input.oralSettings), present);
+  var kotan = sbIntersectPresent_(sbKotan_(input.allUsers), present);
+  var birthday = sbBirthday_(input.bdUsers, input.month, input.bdStatusByKey);
 
   var hit = {};
   [sokutei, koukuMoni, koukuTaisou, kotan].forEach(function (arr) {
     arr.forEach(function (r) { hit[r.key] = true; });
   });
-  var residue = abResidue_(present, hit);
+  var residue = sbResidue_(present, hit);
 
   return {
     date: input.today, year: input.year, month: input.month,
@@ -277,7 +277,7 @@ function abBuildBoard_(input, judges) {
 }
 
 // 利用曜日文字列（例 "火木"）の曜日文字数＝週来所回数（日数ベース・AM/PM不使用）。
-function abCountWeeklyVisits_(days) {
+function sbCountWeeklyVisits_(days) {
   var s = String(days == null ? '' : days);
   var w = ['月', '火', '水', '木', '金', '土', '日'];
   var c = 0;
@@ -286,7 +286,7 @@ function abCountWeeklyVisits_(days) {
 }
 
 // 明日〜当月末で days に含まれる曜日の日数（残来所日数）。today='YYYY-MM-DD'。
-function abCountRemainingVisits_(days, todayStr) {
+function sbCountRemainingVisits_(days, todayStr) {
   var s = String(days == null ? '' : days);
   if (!s) return 0;
   var y = parseInt(String(todayStr).slice(0, 4), 10);
@@ -305,7 +305,7 @@ function abCountRemainingVisits_(days, todayStr) {
 
 // 加重加算の逼迫度スコア（高いほど「今日やる」先頭）。row={weeklyVisits,remainingVisits,absenceRate,unmeasured?}。
 // weights={chance,freq,absence,unmeasuredBoost}。欠損ガード: weeklyVisits<=0 は chance/freq を0。
-function abMeasureUrgency_(row, weights) {
+function sbMeasureUrgency_(row, weights) {
   var w = weights || {};
   var wc = (w.chance != null) ? w.chance : 1.0;
   var wf = (w.freq != null) ? w.freq : 0.6;
@@ -325,12 +325,12 @@ function abMeasureUrgency_(row, weights) {
 
 // 測定プール（要介護＋要支援）の階層ソート。非破壊で新配列を返す。
 // careLayer↑ → urgency↓ → remainingVisits↑ → weeklyVisits↑ → absenceRate↓ → key↑。
-function abSokuteiSort_(pool, weights) {
+function sbSokuteiSort_(pool, weights) {
   var arr = (pool || []).slice();
   arr.sort(function (a, b) {
     var la = a.careLayer || 0, lb = b.careLayer || 0;
     if (la !== lb) return la - lb;
-    var ua = abMeasureUrgency_(a, weights), ub = abMeasureUrgency_(b, weights);
+    var ua = sbMeasureUrgency_(a, weights), ub = sbMeasureUrgency_(b, weights);
     if (ua !== ub) return ub - ua;
     var ra = (a.remainingVisits != null) ? a.remainingVisits : 1e9;
     var rb = (b.remainingVisits != null) ? b.remainingVisits : 1e9;
@@ -347,24 +347,24 @@ function abSokuteiSort_(pool, weights) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    abNormalizeName_: abNormalizeName_,
-    abUniquePresent_: abUniquePresent_,
+    sbNormalizeName_: sbNormalizeName_,
+    sbUniquePresent_: sbUniquePresent_,
     sokuteiCycleMonths_: sokuteiCycleMonths_,
     sokuteiDueDate_: sokuteiDueDate_,
     sokuteiRemaining_: sokuteiRemaining_,
-    abMeasureShien_: abMeasureShien_,
-    abMonthEnd_: abMonthEnd_,
-    abMeasureKaigo_: abMeasureKaigo_,
-    abKoukuMoni_: abKoukuMoni_,
-    abKoukuTaisou_: abKoukuTaisou_,
-    abKotan_: abKotan_,
-    abBirthday_: abBirthday_,
-    abIntersectPresent_: abIntersectPresent_,
-    abResidue_: abResidue_,
-    abBuildBoard_: abBuildBoard_,
-    abCountWeeklyVisits_: abCountWeeklyVisits_,
-    abCountRemainingVisits_: abCountRemainingVisits_,
-    abMeasureUrgency_: abMeasureUrgency_,
-    abSokuteiSort_: abSokuteiSort_
+    sbMeasureShien_: sbMeasureShien_,
+    sbMonthEnd_: sbMonthEnd_,
+    sbMeasureKaigo_: sbMeasureKaigo_,
+    sbKoukuMoni_: sbKoukuMoni_,
+    sbKoukuTaisou_: sbKoukuTaisou_,
+    sbKotan_: sbKotan_,
+    sbBirthday_: sbBirthday_,
+    sbIntersectPresent_: sbIntersectPresent_,
+    sbResidue_: sbResidue_,
+    sbBuildBoard_: sbBuildBoard_,
+    sbCountWeeklyVisits_: sbCountWeeklyVisits_,
+    sbCountRemainingVisits_: sbCountRemainingVisits_,
+    sbMeasureUrgency_: sbMeasureUrgency_,
+    sbSokuteiSort_: sbSokuteiSort_
   };
 }

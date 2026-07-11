@@ -1,6 +1,6 @@
-// scripts/test-asa-board-judges.js
-// Drift-guard + behavioral matrix for asa-board's ported judge functions.
-// Ensures gas/yawaragi-board/asa-board-judges.js (GAS-executable) stays byte-identical
+// scripts/test-session-board-judges.js
+// Drift-guard + behavioral matrix for session-board's ported judge functions.
+// Ensures gas/yawaragi-board/session-board-judges.js (GAS-executable) stays byte-identical
 // to the canonical sources: shared.js#isHyoukaMonth / oral-plan.html#oralCycleAt.
 
 const path = require('path');
@@ -14,13 +14,13 @@ function extractFn(src, name) {
 }
 const sharedSrc = fs.readFileSync(path.join(__dirname, '..', 'shared.js'), 'utf8');
 const oralSrc = fs.readFileSync(path.join(__dirname, '..', 'oral-plan.html'), 'utf8');
-const judgesSrc = fs.readFileSync(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'asa-board-judges.js'), 'utf8');
+const judgesSrc = fs.readFileSync(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'session-board-judges.js'), 'utf8');
 
 const canonHyouka = extractFn(sharedSrc, 'isHyoukaMonth');
 const canonOral = extractFn(oralSrc, 'oralCycleAt');
 const portedHyouka = extractFn(judgesSrc, 'isHyoukaMonth');
 const portedOral = extractFn(judgesSrc, 'oralCycleAt');
-const judges = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'asa-board-judges.js'));
+const judges = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'session-board-judges.js'));
 
 let pass = 0, fail = 0;
 function ok(cond, label) { if (cond) pass++; else { fail++; console.error('  [FAIL] ' + label); } }

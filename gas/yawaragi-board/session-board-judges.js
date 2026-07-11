@@ -1,8 +1,8 @@
-// gas/yawaragi-board/asa-board-judges.js
-// 朝ボード(asa-board) が使う判定関数のGAS実行可能・逐語移植。
+// gas/yawaragi-board/session-board-judges.js
+// セッションボード(session-board) が使う判定関数のGAS実行可能・逐語移植。
 // 正本(canonical)は shared.js の isHyoukaMonth / oral-plan.html の oralCycleAt。
 // ここに書かれた2関数はそれらとbyte単位で一致していなければならない
-// （scripts/test-asa-board-judges.js の DG1/DG2 でdrift検知）。
+// （scripts/test-session-board-judges.js の DG1/DG2 でdrift検知）。
 // GASランタイムはV8 (appsscript.json runtimeVersion:"V8") のため const/アロー関数はそのまま動作する。
 
 // 個訓 評価月: 計画スタート月の翌々月（=次計画前月）。開始前月(diff===-1)も評価月扱い。
