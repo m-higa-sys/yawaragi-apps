@@ -24,6 +24,54 @@ function dashStageBuckets_(cases) {
   return r;
 }
 
+// yyyy-MM-dd 2つの日数差（b - a）。どちらか不正なら null。
+function INTAKE_DASH_daysBetween_(a, b) {
+  var da = new Date(String(a || '').slice(0,10) + 'T00:00:00');
+  var db = new Date(String(b || '').slice(0,10) + 'T00:00:00');
+  if (isNaN(da.getTime()) || isNaN(db.getTime())) return null;
+  return Math.round((db.getTime() - da.getTime()) / 86400000);
+}
+
+function INTAKE_DASH_median_(nums) {
+  if (!nums.length) return null;
+  var s = nums.slice().sort(function(x,y){ return x - y; });
+  var m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+
+// 所要日数（問い合わせ日→本格利用開始日）。対象＝本格利用開始日が過去日のみ。
+function dashLeadTime_(cases, today) {
+  var out = [];
+  (cases || []).forEach(function(c) {
+    var start = String(c.本格利用開始日 || '');
+    if (!start) return;
+    if (INTAKE_DASH_daysBetween_(today, start) > 0) return; // 未来日は除外
+    var days = INTAKE_DASH_daysBetween_(c.問い合わせ日, start);
+    if (days === null) return;
+    var hist = Array.isArray(c.履歴) ? c.履歴 : [];
+    var rec = { 氏名: c.氏名 || '', days: days, source: hist.length ? 'history' : 'approx' };
+    if (hist.length) {
+      var seg = {};
+      var prevAt = c.問い合わせ日;
+      hist.forEach(function(h) {
+        var d = INTAKE_DASH_daysBetween_(prevAt, h.at);
+        if (d !== null) seg[h.from + '→' + h.to] = d;
+        prevAt = h.at;
+      });
+      rec.段階別 = seg;
+    }
+    out.push(rec);
+  });
+  var nums = out.map(function(r){ return r.days; });
+  return { 中央値: INTAKE_DASH_median_(nums), 件数: out.length, cases: out };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { dashStageBuckets_: dashStageBuckets_, INTAKE_DASH_PHASE_RANK: INTAKE_DASH_PHASE_RANK };
+  module.exports = {
+    dashStageBuckets_: dashStageBuckets_,
+    INTAKE_DASH_PHASE_RANK: INTAKE_DASH_PHASE_RANK,
+    dashLeadTime_: dashLeadTime_,
+    INTAKE_DASH_daysBetween_: INTAKE_DASH_daysBetween_,
+    INTAKE_DASH_median_: INTAKE_DASH_median_
+  };
 }

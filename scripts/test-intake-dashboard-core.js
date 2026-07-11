@@ -46,5 +46,28 @@ console.log('[dashStageBuckets_ 空入力]');
   eq('undefined その他', u.その他, 0);
 }
 
+console.log('[INTAKE_DASH_daysBetween_]');
+eq('10日差', C.INTAKE_DASH_daysBetween_('2026-06-01','2026-06-11'), 10);
+eq('不正→null', C.INTAKE_DASH_daysBetween_('','2026-06-11'), null);
+
+console.log('[dashLeadTime_]');
+{
+  const today = '2026-07-11';
+  const cases = [
+    { 氏名:'A', 問い合わせ日:'2026-05-01', 本格利用開始日:'2026-05-31',
+      履歴:[{from:'受付',to:'見学',at:'2026-05-08'},{from:'見学',to:'体験',at:'2026-05-18'},{from:'体験',to:'利用開始準備',at:'2026-05-31'}] },
+    { 氏名:'B', 問い合わせ日:'2026-05-01', 本格利用開始日:'2026-05-21', 履歴:[] },
+    { 氏名:'C', 問い合わせ日:'2026-06-01', 本格利用開始日:'2026-08-01', 履歴:[] },
+    { 氏名:'D', フェーズ:'利用開始準備', 問い合わせ日:'2026-06-01', 本格利用開始日:'', 履歴:[] }
+  ];
+  const r = C.dashLeadTime_(cases, today);
+  eq('件数=2(過去日のみ)', r.件数, 2);
+  eq('中央値=(30+20)/2=25', r.中央値, 25);
+  eq('Aはhistory', r.cases[0].source, 'history');
+  eq('Bはapprox', r.cases[1].source, 'approx');
+  eq('A段階別に受付→見学=7', r.cases[0].段階別['受付→見学'], 7);
+  eq('Bは段階別なし', r.cases[1].段階別, undefined);
+}
+
 console.log('\n[' + (fail ? 'FAIL' : 'OK') + '] ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
