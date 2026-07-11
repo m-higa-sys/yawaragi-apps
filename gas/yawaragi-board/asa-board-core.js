@@ -178,7 +178,7 @@ function abBirthday_(users, targetMonth, statusByKey) {
   return rows;
 }
 
-// 対象リスト × 当日出席者。出席keyの集合に含まれる対象のみを、出席順で返す。
+// 対象リスト × 当日出席者。出席keyの集合に含まれる対象のみを、対象(targets)側の順序を維持して返す（targetsは逼迫度順で来る）。
 function abIntersectPresent_(targets, present) {
   var presentKeys = {};
   (present || []).forEach(function (p) { presentKeys[p.key] = true; });
