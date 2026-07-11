@@ -112,8 +112,36 @@ function overlayUpsert(type, key, value){
 }
 
 // ===== 純ロジック（jsdom/nodeで検証可能） =====
-// ampm文字列(session)に該当するか
-function inSession_(ampm, sess){ var a=String(ampm||''); return sess==='am' ? a.indexOf('午前')>=0 : a.indexOf('午後')>=0; }
+var WEEKDAY_CHARS = ['月','火','水','木','金','土','日'];
+var SLOT_OF = { am:'午前', pm:'午後' };
+// ampmを曜日ごとにパースし、実際に来る (曜日,時間帯) の集合 { "曜日|午前/午後": true } を返す。
+//  ・曜日文字を含むセグメント（例「木午後」）＝その曜日専用ルール（daysに在る場合のみ）
+//  ・曜日文字を含まないセグメント（"午前"/"午後"のみ）＝days内の全曜日に適用するグローバルルール（従来の単純ケース）
+// 区切りは 、／，／, 。台帳の複合ampm「月午前、木午後」の幽霊計上を根治する。
+function slotSet_(days, ampm){
+  var daysStr = String(days||'');
+  var dayList = WEEKDAY_CHARS.filter(function(d){ return daysStr.indexOf(d)>=0; });
+  var set = {};
+  String(ampm||'').split(/[、，,]/).forEach(function(seg){
+    seg = String(seg).trim(); if(!seg) return;
+    var slots = [];
+    if (seg.indexOf('午前')>=0) slots.push('午前');
+    if (seg.indexOf('午後')>=0) slots.push('午後');
+    if (!slots.length) return;
+    var segDays = WEEKDAY_CHARS.filter(function(d){ return seg.indexOf(d)>=0; });
+    if (segDays.length){
+      segDays.forEach(function(d){ if(dayList.indexOf(d)>=0) slots.forEach(function(s){ set[d+'|'+s]=true; }); }); // 曜日限定
+    } else {
+      dayList.forEach(function(d){ slots.forEach(function(s){ set[d+'|'+s]=true; }); }); // グローバル（従来）
+    }
+  });
+  return set;
+}
+// セル(曜日, セッション)に計上するか
+function attendsCell_(days, ampm, day, sess){ return !!slotSet_(days, ampm)[day+'|'+SLOT_OF[sess]]; }
+// セッション(am/pm)にそもそも所属するか（どこかの曜日に該当スロットがあるか）
+function attendsSession_(days, ampm, sess){ var slot=SLOT_OF[sess]; var s=slotSet_(days, ampm); for(var k in s){ if(k.split('|')[1]===slot) return true; } return false; }
+// feed項目の表示可否＋重複排除。台帳名(daichoNames)に姓が含まれれば台帳優先でスキップ。体験でdisplayName空＝アーカイブ相当は隠す。
 // feed項目の表示可否＋重複排除。台帳名(daichoNames)に姓が含まれれば台帳優先でスキップ。体験でdisplayName空＝アーカイブ相当は隠す。
 function feedVisible_(item, daichoNames){
   var cat = item.category, dn = String(item.displayName||'').trim();
@@ -133,9 +161,9 @@ function applyOrder_(list, orderArr){
 // 台帳＋feedを1セッション分の people 配列に統合（重複排除→順序適用）
 function buildPeople_(daicho, feed, sess, orderArr){
   var list = [];
-  var daichoNames = daicho.filter(function(u){ return inSession_(u.ampm, sess); }).map(function(u){ return u.name; });
-  daicho.forEach(function(u){ if(inSession_(u.ampm, sess) && u.days) list.push({ type:'daicho', name:u.name, days:u.days, category:null }); });
-  feed.forEach(function(it){ if(inSession_(it.ampm, sess) && it.days && feedVisible_(it, daichoNames)) list.push({ type:'intake', name:it.displayName||'', days:it.days, category:it.category, 予定日:it.予定日 }); });
+  var daichoNames = daicho.filter(function(u){ return attendsSession_(u.days, u.ampm, sess); }).map(function(u){ return u.name; });
+  daicho.forEach(function(u){ if(u.days && attendsSession_(u.days, u.ampm, sess)) list.push({ type:'daicho', name:u.name, days:u.days, ampm:u.ampm, category:null }); });
+  feed.forEach(function(it){ if(it.days && attendsSession_(it.days, it.ampm, sess) && feedVisible_(it, daichoNames)) list.push({ type:'intake', name:it.displayName||'', days:it.days, ampm:it.ampm, category:it.category, 予定日:it.予定日 }); });
   return applyOrder_(list, orderArr);
 }
 function countColor_(n){ return n>=MAX ? 'cnt-full' : n>=MAX-2 ? 'cnt-warn' : 'cnt-ok'; }
@@ -175,7 +203,7 @@ function render(){
   var pl = people[session];
   // 各曜日ごとに該当者（people順を保持）
   var byDay = {}; var counts = {};
-  DAYS.forEach(function(d){ byDay[d] = pl.filter(function(p){ return String(p.days).indexOf(d)>=0; }); counts[d]=byDay[d].length; });
+  DAYS.forEach(function(d){ byDay[d] = pl.filter(function(p){ return attendsCell_(p.days, p.ampm, d, session); }); counts[d]=byDay[d].length; });
   var h = '<div class="grid-wrap"><table><thead><tr><th class="numh">#</th>';
   DAYS.forEach(function(d){ var n=counts[d]; var rem=Math.max(0,MAX-n); h+='<th>'+d+'<span class="cnt '+countColor_(n)+'">'+n+'/'+MAX+'・残'+rem+'</span></th>'; });
   h += '</tr></thead><tbody>';
@@ -237,7 +265,7 @@ function reorder(dragK, tgtK){
 
 // node/jsdom検証用にエクスポート
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { inSession_:inSession_, feedVisible_:feedVisible_, personKey_:personKey_, applyOrder_:applyOrder_, buildPeople_:buildPeople_, countColor_:countColor_ };
+  module.exports = { slotSet_:slotSet_, attendsCell_:attendsCell_, attendsSession_:attendsSession_, feedVisible_:feedVisible_, personKey_:personKey_, applyOrder_:applyOrder_, buildPeople_:buildPeople_, countColor_:countColor_ };
 }
 loadAll();
 </script>
