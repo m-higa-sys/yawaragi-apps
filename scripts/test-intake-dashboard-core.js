@@ -146,5 +146,17 @@ console.log('[dashLostReasons_]');
   eq('Y approx=false(履歴あり)', r.一覧[0].到達段階approx, false);
 }
 
+console.log('[intakeDashboard_ 集約・エッジ]');
+{
+  const r = C.intakeDashboard_([], '2026-07-11');
+  eq('空:需給受付0', r.需給.受付, 0);
+  eq('空:所要件数0', r.所要日数.件数, 0);
+  eq('空:所要中央値null', r.所要日数.中央値, null);
+  eq('空:転換率率null', r.転換率.見学到達_体験到達.率, null);
+  eq('空:失注一覧空', r.失注.一覧.length, 0);
+  const r2 = C.intakeDashboard_([{ フェーズ:'ドロップ', 氏名:'W', 履歴:null }], '2026-07-11');
+  eq('壊れ履歴でも失注1', r2.失注.一覧.length, 1);
+}
+
 console.log('\n[' + (fail ? 'FAIL' : 'OK') + '] ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

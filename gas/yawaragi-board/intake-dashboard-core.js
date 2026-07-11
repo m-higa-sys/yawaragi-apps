@@ -143,6 +143,18 @@ function dashLostReasons_(cases) {
   return { 理由別: 理由別, 一覧: 一覧 };
 }
 
+// 集約：正規化済み案件配列(cases)＋today から5指標を1オブジェクトに束ねる。
+function intakeDashboard_(cases, today) {
+  var list = Array.isArray(cases) ? cases : [];
+  return {
+    需給: dashStageBuckets_(list),
+    所要日数: dashLeadTime_(list, today),
+    問合せ元: dashSources_(list),
+    転換率: dashConversion_(list),
+    失注: dashLostReasons_(list)
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     dashStageBuckets_: dashStageBuckets_,
@@ -154,6 +166,7 @@ if (typeof module !== 'undefined' && module.exports) {
     dashConversion_: dashConversion_,
     dashSources_: dashSources_,
     dashLostReasons_: dashLostReasons_,
-    dashMaxReachedLabel_: dashMaxReachedLabel_
+    dashMaxReachedLabel_: dashMaxReachedLabel_,
+    intakeDashboard_: intakeDashboard_
   };
 }
