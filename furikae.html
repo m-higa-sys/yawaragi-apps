@@ -241,6 +241,11 @@
   /* code4 引落開始ガイド（依頼書なしのカードのみ） */
   .fnk-guide { margin: -2px 14px 10px 46px; padding: 6px 10px; border-radius: 8px;
     background: #ebf8ff; color: #2b6cb0; font-size: 12.5px; font-weight: 600; }
+  /* 郵送済＝確定表示（緑系）と「郵送した」ボタン・取消導線 */
+  .fnk-guide-sent { background: #f0fff4; color: #276749; }
+  .fnk-sent-btn { margin-left: 6px; padding: 3px 10px; border: 1px solid #3182ce; background: #fff;
+    color: #2b6cb0; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+  .fnk-sent-edit { margin-left: 6px; color: #718096; text-decoration: underline; cursor: pointer; font-weight: 500; }
   /* 繰越カードの月別内訳（複数月） */
   .fnk-breakdown { margin: -2px 14px 8px 46px; color: #4a5568; font-size: 12px; }
   .fnk-breakdown b { color: #2d3748; }
@@ -878,7 +883,8 @@ function fnkNormalizeRecord(rec) {
     nextMonthAbsent: false, // 翌月ファイルに不在＝要確認
     contactedBy: null,      // 連絡した職員名
     contactedAt: null,      // 連絡日(YYYY-MM-DD)
-    contactMethod: null     // 連絡手段(電話/口頭/家族経由)
+    contactMethod: null,    // 連絡手段(電話/口頭/家族経由)
+    formSentDate: null      // 依頼書郵送日(code4)・未記録null＝予告表示／記録済＝引落開始確定表示
   }, rec);
   // breakdown（月別内訳）後方互換：無ければ自分自身1要素で補完（人ごと1枚モデル・Step2）
   if (!out.breakdown) out.breakdown = [{ month: out.month, amount: out.amount || 0 }];
@@ -1148,13 +1154,17 @@ function fnkCardHtml(r) {
   const bdHtml = bd.length > 1
     ? `<div class="fnk-breakdown">${bd.map(x => `${x.month ? parseInt(x.month.split('-')[1]) + '月分' : ''}¥${(x.amount || 0).toLocaleString()}`).join(' ／ ')} ／ <b>合計¥${total.toLocaleString()}</b></div>`
     : '';
-  // code4（依頼書なし）だけ「次の締切までに郵送→引落開始」のガイド行を出す（これから郵送する前提の案内）
+  // code4（依頼書なし）だけ引落開始ガイド：郵送日 未記録=予告／記録済=確定 に切替（既存 guessExpectedDate 流用）
   let guideHtml = '';
-  if (b.code === '4') {
-    const g = nextFurikaeGuide(new Date().toISOString().slice(0, 10));
-    guideHtml = g.deadline
-      ? `<div class="fnk-guide">📮 次の締切 ${fnkMd(g.deadline)} までに郵送 → ${fnkMd(g.furikaeDate)} から引落開始</div>`
-      : `<div class="fnk-guide">📮 次の締切は2027年1月以降（${fnkMd(g.furikaeDate)} 引落開始の見込み）</div>`;
+  const sg = fnkStartGuide(r, new Date().toISOString().slice(0, 10));
+  if (sg && sg.mode === 'sent') {
+    guideHtml = `<div class="fnk-guide fnk-guide-sent">✉️ ${fnkMd(sg.sentDate)}郵送済 → <b>${fnkMd(sg.expectedDate)}</b> から引落開始予定`
+      + ` <a class="fnk-sent-edit" onclick="event.stopPropagation();fnkClearSent(${r.id})">取消</a></div>`;
+  } else if (sg) {
+    guideHtml = (sg.deadline
+      ? `<div class="fnk-guide">📮 次の締切 ${fnkMd(sg.deadline)} までに郵送 → ${fnkMd(sg.furikaeDate)} から引落開始`
+      : `<div class="fnk-guide">📮 次の締切は2027年1月以降（${fnkMd(sg.furikaeDate)} 引落開始の見込み）`)
+      + ` <button class="fnk-sent-btn" onclick="event.stopPropagation();fnkMarkSent(${r.id})">📮 郵送した</button></div>`;
   }
   return `
   <div class="fnk-card fnk-b-${b.key}" data-id="${r.id}">
@@ -1392,6 +1402,35 @@ function updateDetailReason(id, value) {
   if (rec) { rec.detailReason = value; saveData(data); renderMonth(); }
 }
 
+// 「📮 郵送した」→ 郵送日を記録（既定today）→ guessExpectedDate で開始予定を確定 → 保存（cloudSync）。
+// ★回収済にはしない（あくまで開始予定の記録）。実際の引落復活は既存の自動消込が担う＝二重管理しない。
+function fnkMarkSent(id) {
+  const rec = data.records.find(r => r.id === id);
+  if (!rec) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const v = prompt('依頼書を郵送した日を入力してください（YYYY-MM-DD）', rec.formSentDate || today);
+  if (!v) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { alert('日付の形式が不正です（YYYY-MM-DD で入力してください）'); return; }
+  rec.formSentDate = v;
+  rec.expectedStartDate = guessExpectedDate(v);
+  rec.expectedStartMonth = rec.expectedStartDate.substring(0, 7);
+  if (rec.status === '未対応') rec.status = '手続中';
+  saveData(data);
+  renderMonth();
+}
+
+// 郵送日の取消（誤入力の逃げ道）。郵送日と開始予定を消し、予告表示へ戻す。status は据え置き。
+function fnkClearSent(id) {
+  const rec = data.records.find(r => r.id === id);
+  if (!rec) return;
+  if (!confirm('郵送日の記録を取り消しますか？（「までに郵送」の予告表示に戻ります）')) return;
+  rec.formSentDate = '';
+  rec.expectedStartDate = '';
+  rec.expectedStartMonth = '';
+  saveData(data);
+  renderMonth();
+}
+
 function updateFormSentDate(id, value) {
   const rec = data.records.find(r => r.id === id);
   if (rec) {
@@ -1445,6 +1484,19 @@ function nextFurikaeGuide(today) {
     if (today <= s.deadline) return { deadline: s.deadline, furikaeDate: s.furikaeDate };
   }
   return { deadline: null, furikaeDate: '2027-01-27' };
+}
+
+// code4カードの引落開始ガイド状態（純関数）。郵送日(formSentDate)未記録=予告／記録済=確定。
+// code4以外は null（他コードに出さない）。既存 guessExpectedDate / nextFurikaeGuide を流用（単一の真実源）。
+// mode:'predict' → { deadline, furikaeDate }（今日基準の予告）
+// mode:'sent'    → { sentDate, expectedDate }（記録済・guessExpectedDate で確定した引落開始日）
+function fnkStartGuide(rec, today) {
+  rec = rec || {};
+  if (fnkBadgeFor(rec).code !== '4') return null;
+  var sent = rec.formSentDate || '';
+  if (sent) return { mode: 'sent', sentDate: sent, expectedDate: guessExpectedDate(sent) };
+  var g = nextFurikaeGuide(today);
+  return { mode: 'predict', deadline: g.deadline, furikaeDate: g.furikaeDate };
 }
 
 function updateExpectedStart(id, value) {
