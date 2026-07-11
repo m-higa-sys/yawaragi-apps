@@ -127,5 +127,24 @@ console.log('[dashSources_]');
   eq('月次2026-05', r.月次['2026-05'], 1);
 }
 
+console.log('[dashLostReasons_]');
+{
+  const cases = [
+    { フェーズ:'ドロップ', 氏名:'X', 見学日:'2026-06-01', ドロップ理由:'他事業所に決定', ドロップ記録日時:'2026-06-05', 履歴:[] },
+    { フェーズ:'ドロップ', 氏名:'Y', ドロップ理由:'', ドロップ記録日時:'2026-06-08',
+      履歴:[{from:'受付',to:'見学',at:'x'},{from:'見学',to:'体験',at:'x'}] },
+    { フェーズ:'見学', 氏名:'Z' }
+  ];
+  const r = C.dashLostReasons_(cases);
+  eq('理由 他事業所=1', r.理由別['他事業所に決定'], 1);
+  eq('理由 未設定=1', r.理由別['未設定'], 1);
+  eq('一覧件数', r.一覧.length, 2);
+  eq('日付降順 先頭Y', r.一覧[0].氏名, 'Y');
+  eq('X 到達段階=見学', r.一覧[1].到達段階, '見学');
+  eq('X approx=true(履歴なし)', r.一覧[1].到達段階approx, true);
+  eq('Y 到達段階=体験', r.一覧[0].到達段階, '体験');
+  eq('Y approx=false(履歴あり)', r.一覧[0].到達段階approx, false);
+}
+
 console.log('\n[' + (fail ? 'FAIL' : 'OK') + '] ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

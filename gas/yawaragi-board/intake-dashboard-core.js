@@ -118,6 +118,31 @@ function dashSources_(cases) {
   return { 区分別: 区分別, 月次: 月次 };
 }
 
+// 到達した最上位段階の日本語名（未到達は'受付'）。判定は dashReached_ を流用。
+function dashMaxReachedLabel_(c) {
+  if (dashReached_(c, '契約準備')) return '契約準備';
+  if (dashReached_(c, '体験')) return '体験';
+  if (dashReached_(c, '見学')) return '見学';
+  return '受付';
+}
+
+// 失注理由：ドロップ案件を理由別件数＋個別一覧（氏名可・鍵の中）。日付降順。
+function dashLostReasons_(cases) {
+  var 理由別 = {}, 一覧 = [];
+  (cases || []).forEach(function(c) {
+    if (String(c.フェーズ || '') !== 'ドロップ') return;
+    var rsn = String(c.ドロップ理由 || '').trim() || '未設定';
+    理由別[rsn] = (理由別[rsn] || 0) + 1;
+    var hist = Array.isArray(c.履歴) ? c.履歴 : [];
+    一覧.push({
+      氏名: c.氏名 || '', 到達段階: dashMaxReachedLabel_(c), 到達段階approx: hist.length === 0,
+      理由: rsn, 日付: String(c.ドロップ記録日時 || '')
+    });
+  });
+  一覧.sort(function(a,b){ return a.日付 < b.日付 ? 1 : (a.日付 > b.日付 ? -1 : 0); });
+  return { 理由別: 理由別, 一覧: 一覧 };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     dashStageBuckets_: dashStageBuckets_,
@@ -127,6 +152,8 @@ if (typeof module !== 'undefined' && module.exports) {
     INTAKE_DASH_median_: INTAKE_DASH_median_,
     dashReached_: dashReached_,
     dashConversion_: dashConversion_,
-    dashSources_: dashSources_
+    dashSources_: dashSources_,
+    dashLostReasons_: dashLostReasons_,
+    dashMaxReachedLabel_: dashMaxReachedLabel_
   };
 }
