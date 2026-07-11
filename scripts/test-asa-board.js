@@ -136,5 +136,10 @@ var hRows = core.abKotan_(allUsers);
 eq(hRows.length, 1, 'H1: 要介護かつ非中止のみ（要支子除外・中止郎除外）');
 eq(hRows[0].key, '個訓太郎', 'H2: 個訓太郎が対象');
 
+eq(core.abKoukuTaisou_(null).length, 0, 'G3: null入力で空（落ちない）');
+eq(core.abKotan_(null).length, 0, 'H3: null入力で空（落ちない）');
+// is_target キー自体が無い（シート行なし＝既定true）も対象になる
+eq(core.abKoukuTaisou_([{ name: '行なし子' }]).length, 1, 'G4: is_targetキー欠落は既定で対象');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
