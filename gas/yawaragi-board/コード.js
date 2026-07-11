@@ -1539,6 +1539,9 @@ function doGet(e) {
     if (action === 'intake_get_funnel') {
       return respond(getIntakeFunnel(ss, e.parameter), callback);
     }
+    if (action === 'intake_dashboard') {
+      return respond(getIntakeDashboard(ss), callback);
+    }
     if (action === 'admin_dump_intake_headers') {
       var _ds = ss.getSheetByName('見学体験新規');
       var _dh = _ds.getRange(1,1,1,_ds.getLastColumn()).getValues()[0].map(function(v){return String(v).trim();});
@@ -8722,7 +8725,7 @@ function _trialAmpm(r) {
 // PIIを返す/変更する intake_* だけサーバー側でadminKey必須にする（欠席・furikae等は非対象）。
 // 純判定=intake-auth-core.js intakeAuthOk_（fail-closed）。既存 APPREGISTRY_ADMIN_KEY と同方式。
 // ★後続P2.2の intake_weekly_feed（匿名化）は例外的に鍵なし公開＝下記リストに入れない構造。
-var INTAKE_GATED_GET_ACTIONS_  = ['intake_list', 'intake_followup_pending', 'intake_get_funnel'];
+var INTAKE_GATED_GET_ACTIONS_  = ['intake_list', 'intake_followup_pending', 'intake_get_funnel', 'intake_dashboard'];
 var INTAKE_GATED_POST_ACTIONS_ = ['intake_create', 'intake_update', 'intake_delete', 'intake_request_approval',
                                   'intake_sync_to_userlist', 'intake_add_as_trial', 'intake_advance_phase', 'intake_drop'];
 
@@ -9065,6 +9068,58 @@ function getIntakeFunnel(ss, params) {
   };
   return { success: true, yearMonth: ym, funnel: funnel, dropByReason: dropByReason, rawCounts: counts };
 }
+
+// P5 経営ダッシュボード：見学体験新規 全行を正規化して intakeDashboard_（純ロジック）に渡す薄アダプタ。
+function getIntakeDashboard(ss) {
+  var sheet = ss.getSheetByName('見学体験新規');
+  if (!sheet) return { success: false, error: 'シートなし' };
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return { success: true, dashboard: intakeDashboard_([], _dashToday_()) };
+  var headers = values[0].map(function(v){ return String(v).trim(); });
+  function col(name){ return headers.indexOf(name); }
+  var idx = {
+    氏名: col('氏名'), フェーズ: col('フェーズ'), 見学完了: col('見学完了'), 体験完了: col('体験完了'),
+    問い合わせ日: col('問い合わせ日'), 見学日: col('見学日'), 契約日: col('契約日'),
+    本格利用開始日: col('本格利用開始日'), ドロップ記録日時: col('ドロップ記録日時'),
+    連絡元区分: col('連絡元区分'), ドロップ理由: col('ドロップ理由'),
+    利用者台帳反映済: col('利用者台帳反映済'), 契約書取り交わし済: col('契約書取り交わし済'),
+    フェーズ遷移履歴: col('フェーズ遷移履歴')
+  };
+  function dstr(v){
+    if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
+    var s = String(v || '').trim();
+    return s.length >= 10 ? s.slice(0,10) : (s.length >= 7 ? s : '');
+  }
+  function boolv(v){ return v === true || String(v) === 'true' || String(v) === 'TRUE'; }
+  var cases = [];
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    var hist = [];
+    if (idx.フェーズ遷移履歴 >= 0) {
+      try { var h = JSON.parse(String(row[idx.フェーズ遷移履歴] || '[]')); if (Array.isArray(h)) hist = h; }
+      catch (e) { hist = []; }
+    }
+    cases.push({
+      氏名: idx.氏名>=0 ? String(row[idx.氏名]||'') : '',
+      フェーズ: idx.フェーズ>=0 ? String(row[idx.フェーズ]||'') : '',
+      見学完了: idx.見学完了>=0 ? boolv(row[idx.見学完了]) : false,
+      体験完了: idx.体験完了>=0 ? boolv(row[idx.体験完了]) : false,
+      問い合わせ日: idx.問い合わせ日>=0 ? dstr(row[idx.問い合わせ日]) : '',
+      見学日: idx.見学日>=0 ? dstr(row[idx.見学日]) : '',
+      契約日: idx.契約日>=0 ? dstr(row[idx.契約日]) : '',
+      本格利用開始日: idx.本格利用開始日>=0 ? dstr(row[idx.本格利用開始日]) : '',
+      ドロップ記録日時: idx.ドロップ記録日時>=0 ? dstr(row[idx.ドロップ記録日時]) : '',
+      連絡元区分: idx.連絡元区分>=0 ? String(row[idx.連絡元区分]||'') : '',
+      ドロップ理由: idx.ドロップ理由>=0 ? String(row[idx.ドロップ理由]||'') : '',
+      利用者台帳反映済: idx.利用者台帳反映済>=0 ? boolv(row[idx.利用者台帳反映済]) : false,
+      契約書取り交わし済: idx.契約書取り交わし済>=0 ? boolv(row[idx.契約書取り交わし済]) : false,
+      履歴: hist
+    });
+  }
+  return { success: true, dashboard: intakeDashboard_(cases, _dashToday_()) };
+}
+
+function _dashToday_() { return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'); }
 
 // 利用開始日＋利用曜日から各曜日の初回利用日を算出（開始日から14日以内の最初の該当曜日）
 function computeFirstUsageDates_(startDateStr, days, ampm) {
