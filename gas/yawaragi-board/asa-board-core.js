@@ -111,6 +111,34 @@ function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaM
   return rows;
 }
 
+// 口腔モニ対象行。role が none 以外かつ当月role未実施。role仕分けはせず対象者を全員返す。
+// oralRecByKey: 名前 → { moni1_date, moni2_date, houkoku_date, plan_date }（キーは内部で正規化して照合・§3.4）。
+// oralCycleAtFn は oral-plan.html の oralCycleAt を注入。
+// 実施済み判定: moni1→moni1_date / moni2→moni2_date / setsume→(houkoku_date && plan_date)。
+// 返り値: [{ name, key, role }]
+function abKoukuMoni_(oralUsers, oralRecByKey, year, month, oralCycleAtFn) {
+  var recByKey = {};
+  if (oralRecByKey) {
+    for (var rk in oralRecByKey) {
+      if (oralRecByKey.hasOwnProperty(rk)) recByKey[abNormalizeName_(rk)] = oralRecByKey[rk];
+    }
+  }
+  var rows = [];
+  (oralUsers || []).forEach(function (u) {
+    var res = oralCycleAtFn(u.planStart, u.planEnd, year, month);
+    if (!res || res.role === 'none') return;
+    var key = abNormalizeName_(u.name);
+    var rec = recByKey[key] || {};
+    var done;
+    if (res.role === 'moni1') done = !!rec.moni1_date;
+    else if (res.role === 'moni2') done = !!rec.moni2_date;
+    else done = !!(rec.houkoku_date && rec.plan_date); // setsume
+    if (done) return;
+    rows.push({ name: u.name, key: key, role: res.role });
+  });
+  return rows;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     abNormalizeName_: abNormalizeName_,
@@ -120,6 +148,7 @@ if (typeof module !== 'undefined' && module.exports) {
     sokuteiRemaining_: sokuteiRemaining_,
     abMeasureShien_: abMeasureShien_,
     abMonthEnd_: abMonthEnd_,
-    abMeasureKaigo_: abMeasureKaigo_
+    abMeasureKaigo_: abMeasureKaigo_,
+    abKoukuMoni_: abKoukuMoni_
   };
 }

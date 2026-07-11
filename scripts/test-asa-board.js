@@ -15,6 +15,9 @@ function extractFn(src, name) {
 const sharedSrc = fs.readFileSync(path.join(__dirname, '..', 'shared.js'), 'utf8');
 const isHyoukaMonth = new Function(extractFn(sharedSrc, 'isHyoukaMonth') + '; return isHyoukaMonth;')();
 
+const oralSrc = fs.readFileSync(path.join(__dirname, '..', 'oral-plan.html'), 'utf8');
+const oralCycleAt = new Function(extractFn(oralSrc, 'oralCycleAt') + '; return oralCycleAt;')();
+
 let pass = 0, fail = 0;
 function ok(cond, label) { if (cond) pass++; else { fail++; console.error('  [FAIL] ' + label); } }
 function eq(a, b, label) { ok(a === b, label + ' :: exp=' + JSON.stringify(b) + ' act=' + JSON.stringify(a)); }
@@ -92,6 +95,26 @@ eq(kRows2.length, 0, 'E4: 当評価月に測定済みなら除外');
 // 表記ゆれ耐性: doneByKey のキーが全角スペース付きでも正規化して除外（§3.4）
 var kRows3 = core.abMeasureKaigo_(kaigoUsers, { '評価月　太郎': true }, 2026, 7, '2026-07-20', isHyoukaMonth);
 eq(kRows3.length, 0, 'E5: doneByKeyの表記ゆれでも正規化して測定済み除外');
+
+// ===== F. abKoukuMoni_（口腔モニ＝oralCycleAt role!=none かつ 未実施・role仕分けなし） =====
+// planStart=2026-07 → 7月は (T-P)%3=0 → role='moni1'。moni1未実施＝moni1_date空。
+var oralUsers = [
+  { userId: 'モニ太郎', name: 'モニ太郎', planStart: '2026-07', planEnd: '' },
+  { userId: '対象外郎', name: '対象外郎', planStart: '2026-07', planEnd: '2026-06' } // planEnd超過→none
+];
+var oralRecByKey = { 'モニ太郎': { moni1_date: '', moni2_date: '', houkoku_date: '', plan_date: '' } };
+var mRows = core.abKoukuMoni_(oralUsers, oralRecByKey, 2026, 7, oralCycleAt);
+eq(mRows.length, 1, 'F1: 対象かつ未実施1名（対象外郎はplanEnd超過でnone）');
+eq(mRows[0].key, 'モニ太郎', 'F2: モニ太郎が対象');
+eq(mRows[0].role, 'moni1', 'F3: role=moni1');
+
+// moni1実施済み（moni1_dateあり）は除外
+var oralRecDone = { 'モニ太郎': { moni1_date: '2026-07-05', moni2_date: '', houkoku_date: '', plan_date: '' } };
+eq(core.abKoukuMoni_(oralUsers, oralRecDone, 2026, 7, oralCycleAt).length, 0, 'F4: moni1実施済みは除外');
+
+// 表記ゆれ耐性: oralRecByKey のキーが全角スペース付きでも正規化して突合（§3.4）
+var oralRecDoneVar = { 'モニ　太郎': { moni1_date: '2026-07-05', moni2_date: '', houkoku_date: '', plan_date: '' } };
+eq(core.abKoukuMoni_(oralUsers, oralRecDoneVar, 2026, 7, oralCycleAt).length, 0, 'F5: oralRecの表記ゆれでも正規化して実施済み除外');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
