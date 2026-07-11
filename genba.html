@@ -10058,6 +10058,39 @@ function dengonRequestedMD_(createdAt) {
     return (t.getMonth() + 1) + '/' + t.getDate();
 }
 
+// ===== 伝達ボード 既読: 純関数（テスト対象・副作用なし）=====
+// 宛先グループ→対象者名を算出（マスタ動的・ハードコード禁止）。
+// master: [{name, role, employ, active(boolean)}]。個人名/未知グループ/不正masterは [] を返す。
+function dengonComputeRecipients_(master, group) {
+    var list = Array.isArray(master) ? master.filter(function (m) { return m && m.active; }) : [];
+    switch (group) {
+        case '全員': return list.map(function (m) { return m.name; });
+        case '全員・ドライバー除く': return list.filter(function (m) { return m.role !== 'ドライバー'; }).map(function (m) { return m.name; });
+        case '社員': return list.filter(function (m) { return m.employ === '社員'; }).map(function (m) { return m.name; });
+        case '相談員': return list.filter(function (m) { return m.role === '相談員'; }).map(function (m) { return m.name; });
+        case '看護師': return list.filter(function (m) { return m.role === '看護師'; }).map(function (m) { return m.name; });
+        default: return [];
+    }
+}
+// 既読者配列に1名追加（冪等・非破壊・順序保持）。
+function dengonAddReadBy_(readBy, name) {
+    var arr = Array.isArray(readBy) ? readBy.slice() : [];
+    if (name && arr.indexOf(name) === -1) arr.push(name);
+    return arr;
+}
+// 既読者配列から1名除去（冪等・非破壊）。
+function dengonRemoveReadBy_(readBy, name) {
+    var arr = Array.isArray(readBy) ? readBy.slice() : [];
+    return arr.filter(function (n) { return n !== name; });
+}
+// 全員既読判定：recipients が非空で、その全員が readBy に含まれる時のみ true。
+// recipients 空（個人宛て等）は false＝完了ボタン変化を起こさない。マスタは参照しない（不変条件2）。
+function dengonIsAllRead_(recipients, readBy) {
+    if (!Array.isArray(recipients) || recipients.length === 0) return false;
+    var read = Array.isArray(readBy) ? readBy : [];
+    return recipients.every(function (n) { return read.indexOf(n) !== -1; });
+}
+
 // data-id でカード要素を引く（id に特殊文字が入っても安全なよう走査）
 function dengonCardEl_(id) {
     const cards = document.querySelectorAll('.dengon-card');
