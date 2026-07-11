@@ -19,7 +19,7 @@
 | 口腔モニ | planStart起点3ヶ月周期（`oralCycleAt`型）で当月対象、かつ未実施 | 当日出席者のうち対象＆未実施を**全員ピックアップ（role仕分けなし）** |
 | 測定（要介護） | **個訓の評価月（`isHyoukaMonth`：planStart＋planMonths起点＝計画開始の前月／各サイクル前月）で当月が評価月、かつ未実施（当評価月の `sokutei_date` が空）** | 当日出席者のうち上記対象を、**月末までの残日数が少ない順**に。上位N名「今日やる」／残り「余裕あれば」。**N既定=3・画面から変更可** |
 | 測定（要支援・事業対象） | **前回"実"測定日＋4ヶ月固定周期（`sokuteiCycleMonths_`のその他=4）で期限接近・超過**。評価月モデルは適用しない。休み等のスライドは実測定日起点で自然吸収 | 当日出席者のうち上記対象を、**残日数が少ない順**に。上位N／残りは要介護と同じUI（N共有） |
-| 口腔体操 | `is_target`（明示false以外はtrue）× 当日出席 | 対象者一覧 |
+| 口腔体操 | 算定対象フラグ（明示false以外はtrue）× 当日出席。**実源 `getOralTargetUsers_` は `isTarget`（キャメル）で返す**（`is_target` はシート列名）。`abKoukuTaisou_` は両フィールド対応 | 対象者一覧 |
 | 個別機能訓練 | 介護度「要介護」前方一致 × 非中止（`u.cancelled` が真でない）× 当日出席（周期なし＝毎回全員） | 対象者一覧 |
 | 誕生日 | 台帳M/Dで今月誕生月、かつ taskboard status 未完 | 今月の対象者一覧（当日出席フィルタなし＝月ベース） |
 
@@ -34,6 +34,8 @@
 - 測定「上位N名」の N は既定3。画面で変更でき、値は localStorage に保存（サーバへは送らない）。
 - 逼迫度＝**評価月内の月末までの残日数**（少ないほど急ぐ）。評価月は月単位で確定するため、同一評価月内の順序付けにのみ残日数を使う。
 - **個訓の非中止除外の契約**：個訓対象母集合 `abKotan_` は `u.cancelled` が真の利用者を除外する（終了・中止者を「毎日やる」に出さない）。この `cancelled` boolean は Phase 2 で `getKeikakushoTargetUsers_`（`cancelled: isCancelled` を返す・`gas/yawaragi-board/コード.js:13559`）から供給する。当日出席フィルタでも実務上は落ちるが、二重の安全として母集合側でも除外する。
+- **測定2系統の判別子（track）**：`abMeasureKaigo_` の行は `track:'kaigo'`、`abMeasureShien_` の行は `track:'shien'` を持つ。`abBuildBoard_` は両者を `sokutei` に統合するが、フロント（Phase 3）は **track で要介護/要支援を分離し、各系統を独立に上位N件スライス**する（統合配列を丸ごとN件で切ると kaigo が常に先頭に来て優先順位が壊れるため）。
+- **要支援の care フィールド**：`abMeasureShien_` は `u.care` を読む。実源の介護度フィールドは `category` なので、Phase 2 で `shienUsers` を作る際に `care: category` へ写像する（未写像でもサイクル4ヶ月判定は正しく落ちるが、表示 care が空になる。`sokutei.html:344` と同じ写像規約）。
 
 ### 2.3 第1版で「やらないこと」（YAGNI）
 
