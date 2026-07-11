@@ -55,7 +55,7 @@ function dashLeadTime_(cases, today) {
       var prevAt = c.問い合わせ日;
       hist.forEach(function(h) {
         var d = INTAKE_DASH_daysBetween_(prevAt, h.at);
-        if (d !== null) seg[h.from + '→' + h.to] = d;
+        if (d !== null) seg[(h.from || '受付') + '→' + (h.to || '')] = d; // seed履歴はfrom無しso'受付'補完（undefined→回避）
         prevAt = h.at;
       });
       rec.段階別 = seg;
