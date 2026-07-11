@@ -11,16 +11,19 @@ function abNormalizeName_(name) {
   return s;
 }
 
-// am/pm を正規化キーで一意化し「出席」の人だけ返す。どちらかで出席なら出席扱い。
-// 返り値: [{ name, key, care, status }]（name は最初に現れた表記を保持）
+// am/pm を正規化キーで一意化し「出席」の人だけ返す。各出席者に session:'am'|'pm' を付与（§2.5）。
+// 1日2単位制so同一利用者は同日 am/pm どちらか一方のみ＝session:'both'は無い。
+// 異常（同一正規化キーが am/pm 両方に「出席」＝別人の正規化衝突が現実的原因）は am へ決定的割当＋ conflict:true で可視化。
+// 返り値: [{ name, key, care, status, session, conflict? }]（name は最初に現れた表記を保持）
 function abUniquePresent_(att) {
-  var out = [], seen = {};
+  var out = [], seen = {}, sawAm = {}, sawPm = {};
   var root = att && att.attendance;
   if (!root) return out;
   ['am', 'pm'].forEach(function (k) {
     (root[k] || []).forEach(function (a) {
       var key = abNormalizeName_(a && a.name);
       if (!key) return;
+      if (a.status === '出席') { if (k === 'am') sawAm[key] = true; else sawPm[key] = true; }
       if (seen[key]) {
         if (a.status === '出席') seen[key].status = '出席';
         if (!seen[key].care && a.care) seen[key].care = a.care;
@@ -30,7 +33,14 @@ function abUniquePresent_(att) {
       seen[key] = c; out.push(c);
     });
   });
-  return out.filter(function (c) { return c.status === '出席'; });
+  var present = out.filter(function (c) { return c.status === '出席'; });
+  present.forEach(function (c) {
+    var inAm = !!sawAm[c.key], inPm = !!sawPm[c.key];
+    if (inAm && inPm) { c.session = 'am'; c.conflict = true; }  // 2単位制ではあり得ない異常
+    else if (inAm) { c.session = 'am'; }
+    else { c.session = 'pm'; }
+  });
+  return present;
 }
 
 // --- sokutei.html:99-121 からの逐語転記（1文字も変えない・正本=my-project/scripts/test-sokutei-priority.js） ---
@@ -206,17 +216,27 @@ function abBirthday_(users, targetMonth, statusByKey) {
 }
 
 // 対象リスト × 当日出席者。出席keyの集合に含まれる対象のみを、対象(targets)側の順序を維持して返す（targetsは逼迫度順で来る）。
+// 当たった出席者の session を業務hit行へ載せる（§2.5）。元 target 行は破壊せず浅いコピーを返す。
 function abIntersectPresent_(targets, present) {
-  var presentKeys = {};
-  (present || []).forEach(function (p) { presentKeys[p.key] = true; });
-  return (targets || []).filter(function (t) { return presentKeys[t.key]; });
+  var byKey = {};
+  (present || []).forEach(function (p) { byKey[p.key] = p; });
+  var out = [];
+  (targets || []).forEach(function (t) {
+    var p = byKey[t.key];
+    if (!p) return;
+    var row = {};
+    for (var kk in t) { if (t.hasOwnProperty(kk)) row[kk] = t[kk]; }
+    if (p.session) row.session = p.session;
+    out.push(row);
+  });
+  return out;
 }
 
 // 出席者のうち、どの対象キー集合(allTargetKeys)にも当たらない者＝名寄せ不能residue。
 // 別人誤割当より拾い漏れ可視化を優先する安全弁。返り値: [{ name, key }]
 function abResidue_(present, allTargetKeys) {
   return (present || []).filter(function (p) { return !allTargetKeys[p.key]; })
-    .map(function (p) { return { name: p.name, key: p.key }; });
+    .map(function (p) { return { name: p.name, key: p.key, session: p.session }; });
 }
 
 // 全業務を集約して朝ボード1レスポンス相当を組み立てる純関数。
@@ -228,6 +248,12 @@ var SOKUTEI_WEIGHTS = { chance: 1.0, freq: 0.6, absence: 0.6, unmeasuredBoost: 2
 
 function abBuildBoard_(input, judges) {
   var present = abUniquePresent_(input.attendance);
+  // session別のdistinct人数と異常（am/pm衝突）を集計（§2.5）。presentAm+presentPm=presentCount 恒等。
+  var presentAm = 0, presentPm = 0, ampmConflict = [];
+  present.forEach(function (p) {
+    if (p.session === 'am') presentAm++; else if (p.session === 'pm') presentPm++;
+    if (p.conflict) ampmConflict.push({ name: p.name, key: p.key });
+  });
   var kaigo = abMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth, input.usageByKey);
   var shien = abMeasureShien_(input.shienUsers, input.shienLastByName, input.today, input.usageByKey);
   var sokutei = abSokuteiSort_(abIntersectPresent_(kaigo, present).concat(abIntersectPresent_(shien, present)), SOKUTEI_WEIGHTS);
@@ -244,9 +270,9 @@ function abBuildBoard_(input, judges) {
 
   return {
     date: input.today, year: input.year, month: input.month,
-    presentCount: present.length,
+    presentCount: present.length, presentAm: presentAm, presentPm: presentPm,
     sokutei: sokutei, koukuMoni: koukuMoni, koukuTaisou: koukuTaisou,
-    kotan: kotan, birthday: birthday, residue: residue
+    kotan: kotan, birthday: birthday, residue: residue, ampmConflict: ampmConflict
   };
 }
 
