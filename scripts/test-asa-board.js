@@ -35,5 +35,22 @@ var pres2 = core.abUniquePresent_({ attendance: {
 }});
 ok(pres2.length === 1 && pres2[0].care === '要支援1', 'B7: careは後続occurrenceからbackfillされる');
 
+// ===== C. sokutei純関数（sokutei.html:99-121 の逐語転記・挙動同一） =====
+eq(core.sokuteiCycleMonths_('要支援2'), 4, 'C1: 要支援→4ヶ月');
+eq(core.sokuteiCycleMonths_('要介護1'), 3, 'C2: 要介護→3ヶ月');
+eq(core.sokuteiDueDate_('2026-03-10', '要支援2'), '2026-07-10', 'C3: 実測定日+4ヶ月');
+eq(core.sokuteiRemaining_('2026-07-10', '2026-07-01'), 9, 'C4: 残9日');
+
+// ===== D. abMeasureShien_（要支援・事業対象＝前回実測定日+4ヶ月・残日数昇順・未測定最優先） =====
+var shienLast = { '佐藤花子': '2026-03-10', '未測定男': '' };
+var shienUsers = [
+  { name: '佐藤花子', care: '要支援2' },
+  { name: '未測定男', care: '事業対象者' }
+];
+var shienRows = core.abMeasureShien_(shienUsers, shienLast, '2026-07-01');
+eq(shienRows[0].key, '未測定男', 'D1: 未測定(実測定日なし)が最優先で先頭');
+ok(shienRows[0].unmeasured === true, 'D2: 未測定フラグ');
+ok(shienRows[1].key === '佐藤花子' && shienRows[1].remaining === 9, 'D3: 佐藤は残9日');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
