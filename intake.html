@@ -175,12 +175,36 @@
     .gstep-next:hover { filter:brightness(1.06); }
     .gstep-body .intake-modal-grid { gap:10px; }
     .gstep-body label { display:block; font-size:12px; font-weight:600; color:#5a5f6a; margin-bottom:4px; }
-    
+
+    /* ===== 経営ダッシュボード（kd-）2026-07-11 ===== */
+    .kd-tabbar { display:inline-flex; gap:0; margin-bottom:16px; background:#efece6; border-radius:10px; padding:3px; }
+    .kd-tabbtn { background:transparent; border:none; color:#7a7f8b; border-radius:8px; padding:8px 22px; font-size:14px; font-weight:700; cursor:pointer; transition:all .14s; }
+    .kd-tabbtn.active { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(28,30,38,.12); }
+    .kd-loading { padding:40px; text-align:center; color:#888; }
+    .kd-sec { border:1px solid var(--line); border-radius:13px; padding:16px 18px; margin-bottom:14px; background:#fff; }
+    .kd-sec h3 { font-size:15px; font-weight:800; color:var(--ink); margin:0 0 12px; }
+    .kd-kpirow { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:6px; }
+    .kd-kpi { flex:1 1 110px; min-width:100px; background:#f7f5f0; border-radius:10px; padding:10px 12px; text-align:center; }
+    .kd-kpi .kd-num { font-size:22px; font-weight:800; color:var(--ink); display:block; line-height:1.1; }
+    .kd-kpi .kd-lbl { font-size:11px; color:var(--muted); font-weight:600; }
+    .kd-kpi.kd-warn { background:#fbeee6; }
+    .kd-list { margin:8px 0 0; padding:0; list-style:none; }
+    .kd-list li { padding:4px 0; font-size:13px; color:#4a4f5a; border-top:1px solid #f2efe9; }
+    .kd-list li:first-child { border-top:none; }
+    .kd-note { color:#a8703a; font-size:11px; margin-left:4px; }
+    .kd-sub { font-size:12px; color:var(--muted); margin:10px 0 4px; font-weight:700; }
+    .kd-pill { display:inline-block; background:#f0eee8; color:#6b6f7a; border-radius:8px; padding:2px 8px; font-size:12px; margin:2px 4px 2px 0; }
+    .kd-err { padding:20px; color:#a32d2d; }
   </style>
 </head>
 <body>
   <div class="container">
     <div id="app">
+      <!-- タブバー（案件 / 経営）2026-07-11 経営ダッシュボード追加 -->
+      <div class="kd-tabbar">
+        <button id="kd-tabbtn-intake" class="kd-tabbtn active" onclick="kdSwitchTab('intake')">案件</button>
+        <button id="kd-tabbtn-keiei" class="kd-tabbtn" onclick="kdSwitchTab('keiei')">経営</button>
+      </div>
       <div id="tab-intake" class="tab-content">
           <button class="intake-new-btn" onclick="openIntakeModalNew()">🆕 新規登録（問合せ受付）</button>
           <!-- ビュー切替（カンバン⇄リスト）2026-05-31 Phase C -->
@@ -197,6 +221,9 @@
           <div class="intake-list" id="intake-list" style="display:none;">
               <div style="padding:40px;text-align:center;color:#888;">読み込み中...</div>
           </div>
+      </div>
+      <div id="tab-keiei" class="tab-content" style="display:none;">
+          <div class="kd-loading">読み込み中...</div>
       </div>
       <div id="intake-modal" class="modal-overlay">
           <div class="modal-content" id="intake-modal-body"></div>
@@ -1929,6 +1956,198 @@
         }
     }
     
+
+    /* =====================================================================
+       経営タブ（kd- / KD_）2026-07-11
+       action=intake_dashboard を鍵付きJSONPで取得し5指標を描画。
+       空き枠は 週間予定表.html の曜日対応ampmパーサ（KD_slotSet_/KD_attendsCell_）を
+       名前だけ変えて流用する（naive indexOf は複合ampm幽霊計上を再発させるので禁止）。
+       ===================================================================== */
+    var DAICHO_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
+    var kdDaicho = [];
+    var kdDashLoaded = false;
+
+    // ---- 週間予定表.html から verbatim 流用（名前のみ KD_ 化・ロジック不変）----
+    var KD_WEEKDAY_CHARS = ['月','火','水','木','金','土','日'];
+    var KD_SLOT_OF = { am:'午前', pm:'午後' };
+    // ampmを曜日ごとにパースし {"曜日|午前/午後":true} を返す（複合ampmの幽霊計上を根治）
+    function KD_slotSet_(days, ampm){
+      var daysStr = String(days||'');
+      var dayList = KD_WEEKDAY_CHARS.filter(function(d){ return daysStr.indexOf(d)>=0; });
+      var set = {};
+      String(ampm||'').split(/[、，,]/).forEach(function(seg){
+        seg = String(seg).trim(); if(!seg) return;
+        var slots = [];
+        if (seg.indexOf('午前')>=0) slots.push('午前');
+        if (seg.indexOf('午後')>=0) slots.push('午後');
+        if (!slots.length) return;
+        var segDays = KD_WEEKDAY_CHARS.filter(function(d){ return seg.indexOf(d)>=0; });
+        if (segDays.length){
+          segDays.forEach(function(d){ if(dayList.indexOf(d)>=0) slots.forEach(function(s){ set[d+'|'+s]=true; }); }); // 曜日限定
+        } else {
+          dayList.forEach(function(d){ slots.forEach(function(s){ set[d+'|'+s]=true; }); }); // グローバル（従来）
+        }
+      });
+      return set;
+    }
+    function KD_attendsCell_(days, ampm, day, sess){ return !!KD_slotSet_(days, ampm)[day+'|'+KD_SLOT_OF[sess]]; }
+
+    // 空き枠 = 月〜金 × am/pm の10セル、各定員18から在籍計上を引いた残の総和
+    function kdComputeVacant(){
+      var DAYS=['月','火','水','木','金'], SESS=['am','pm'], CAP=18, vac=0;
+      DAYS.forEach(function(day){ SESS.forEach(function(sess){
+        var n=0; kdDaicho.forEach(function(u){ if (KD_attendsCell_(u.days, u.ampm, day, sess)) n++; });
+        vac += Math.max(0, CAP - n);
+      }); });
+      return vac;
+    }
+
+    function kdEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+    // 率(0-1 or null) → 表示文字列
+    function kdRate(r){ return (r==null) ? '—' : (Math.round(r*1000)/10) + '%'; }
+
+    function kdSwitchTab(name){
+      document.getElementById('tab-intake').style.display = (name==='intake')?'block':'none';
+      document.getElementById('tab-keiei').style.display  = (name==='keiei')?'block':'none';
+      var bi=document.getElementById('kd-tabbtn-intake'), bk=document.getElementById('kd-tabbtn-keiei');
+      if (bi) bi.classList.toggle('active', name==='intake');
+      if (bk) bk.classList.toggle('active', name==='keiei');
+      if (name==='keiei') kdLoadDashboard();
+    }
+
+    // 在籍台帳をJSONPで取得（在籍=既定・中止/終了除外）
+    function kdLoadDaicho(cb){
+      var cbName = 'kdDaichoCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+      var done = false;
+      var s = document.createElement('script');
+      window[cbName] = function(resp){ done=true; kdDaicho = (resp && resp.users) || []; cleanup(); if(cb) cb(); };
+      function cleanup(){ try{ delete window[cbName]; }catch(e){} try{ s.remove(); }catch(e){} }
+      s.src = DAICHO_URL + '?callback=' + cbName + '&t=' + Date.now();
+      s.onerror = function(){ if(!done){ kdDaicho = []; cleanup(); if(cb) cb(); } };
+      document.body.appendChild(s);
+      setTimeout(function(){ if(!done && typeof window[cbName]==='function'){ kdDaicho = []; cleanup(); if(cb) cb(); } }, 12000);
+    }
+
+    function kdLoadDashboard(){
+      var host = document.getElementById('tab-keiei');
+      host.innerHTML = '<div class="kd-loading">読み込み中...</div>';
+      var cbName = 'kdDashCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+      var url = INTAKE_API_URL + '?action=intake_dashboard&callback=' + cbName
+              + '&adminKey=' + encodeURIComponent(getIntakeAdminKey());
+      var done = false;
+      var s = document.createElement('script');
+      window[cbName] = function(resp){
+        done = true;
+        try {
+          if (resp && resp.error === 'unauthorized') {
+            handleIntakeUnauthorized('経営');
+            host.innerHTML = '<div class="kd-err">🔒 管理キーが必要です（または不正です）。<button onclick="kdLoadDashboard()">再入力して再読込</button></div>';
+            return;
+          }
+          if (!resp || !resp.success || !resp.dashboard) {
+            host.innerHTML = '<div class="kd-err">取得失敗: ' + kdEsc(resp && resp.error || '不明なエラー') + '<button onclick="kdLoadDashboard()" style="margin-left:8px;">再試行</button></div>';
+            return;
+          }
+          var d = resp.dashboard;
+          // 空き枠計算のため台帳を先にロード（未取得時のみ）してから描画
+          if (kdDaicho.length) { kdRenderDashboard(d); }
+          else { kdLoadDaicho(function(){ kdRenderDashboard(d); }); }
+        } catch (e) {
+          host.innerHTML = '<div class="kd-err">描画エラー: ' + kdEsc(e && e.message || e) + '</div>';
+        } finally {
+          try { delete window[cbName]; } catch(e){}
+        }
+      };
+      s.src = url;
+      s.onerror = function(){ if(!done){ host.innerHTML = '<div class="kd-err">通信エラー：GASに接続できません。<button onclick="kdLoadDashboard()">再試行</button></div>'; try{ delete window[cbName]; }catch(e){} } };
+      document.body.appendChild(s);
+      setTimeout(function(){ try{ s.remove(); }catch(e){} if(typeof window[cbName]==='function'){ try{ delete window[cbName]; }catch(e){} if(!done) host.innerHTML = '<div class="kd-err">取得タイムアウト：GAS応答なし。<button onclick="kdLoadDashboard()">再試行</button></div>'; } }, 12000);
+    }
+
+    function kdRenderDashboard(d){
+      d = d || {};
+      var 需給 = d.需給 || {}, sk = 需給.進行中 || {};
+      var 所要 = d.所要日数 || {}, 問元 = d.問合せ元 || {}, 転換 = d.転換率 || {}, 失注 = d.失注 || {};
+      var h = '';
+
+      // 1) 需給対比
+      var vac = kdComputeVacant();
+      h += '<div class="kd-sec"><h3>需給対比</h3><div class="kd-kpirow">';
+      h += '<div class="kd-kpi"><span class="kd-num">' + vac + '</span><span class="kd-lbl">空き枠</span></div>';
+      h += '<div class="kd-kpi"><span class="kd-num">' + (需給.開始待ち||0) + '</span><span class="kd-lbl">開始待ち</span></div>';
+      h += '<div class="kd-kpi"><span class="kd-num">' + (需給.進行中合計||0) + '</span><span class="kd-lbl">進行中</span></div>';
+      h += '<div class="kd-kpi"><span class="kd-num">' + (需給.受付||0) + '</span><span class="kd-lbl">受付</span></div>';
+      if ((需給.その他||0) > 0) h += '<div class="kd-kpi kd-warn"><span class="kd-num">' + 需給.その他 + '</span><span class="kd-lbl">その他(未分類)</span></div>';
+      h += '</div>';
+      h += '<div class="kd-sub">進行中の内訳</div><div>';
+      h += '<span class="kd-pill">見学予定 ' + (sk.見学予定||0) + '</span><span class="kd-pill">見学済 ' + (sk.見学済||0) + '</span>';
+      h += '<span class="kd-pill">体験予定 ' + (sk.体験予定||0) + '</span><span class="kd-pill">体験済 ' + (sk.体験済||0) + '</span>';
+      h += '<span class="kd-pill">契約準備 ' + (sk.契約準備||0) + '</span></div></div>';
+
+      // 2) 所要日数
+      h += '<div class="kd-sec"><h3>所要日数（問い合わせ→利用開始）</h3>';
+      var med = (所要.中央値==null) ? '—' : (所要.中央値 + '日');
+      h += '<div class="kd-kpirow"><div class="kd-kpi"><span class="kd-num">' + med + '</span><span class="kd-lbl">中央値</span></div>';
+      h += '<div class="kd-kpi"><span class="kd-num">' + (所要.件数||0) + '</span><span class="kd-lbl">件数</span></div></div>';
+      var cs = 所要.cases || [];
+      if (cs.length){
+        h += '<ul class="kd-list">';
+        cs.forEach(function(c){ h += '<li>' + kdEsc(c.氏名) + '：' + (c.days==null?'—':c.days) + '日' + (c.source==='approx' ? '<span class="kd-note">※日付列からの概算</span>' : '') + '</li>'; });
+        h += '</ul>';
+      }
+      h += '</div>';
+
+      // 3) 問合せ元
+      h += '<div class="kd-sec"><h3>問合せ元</h3>';
+      var kb = 問元.区分別 || {};
+      var kbKeys = Object.keys(kb);
+      if (kbKeys.length){
+        h += '<ul class="kd-list">';
+        kbKeys.forEach(function(name){ var v = kb[name] || {}; h += '<li>' + kdEsc(name) + '：' + (v.件数||0) + '件（うち利用開始 ' + (v.利用開始数||0) + '）</li>'; });
+        h += '</ul>';
+      } else { h += '<div class="kd-sub">データなし</div>'; }
+      var mo = 問元.月次 || {};
+      var moKeys = Object.keys(mo).sort();
+      if (moKeys.length){
+        h += '<div class="kd-sub">月次</div><div>';
+        moKeys.forEach(function(k){ h += '<span class="kd-pill">' + kdEsc(k) + '：' + mo[k] + '</span>'; });
+        h += '</div>';
+      }
+      h += '</div>';
+
+      // 4) 転換率
+      h += '<div class="kd-sec"><h3>転換率</h3><ul class="kd-list">';
+      [['見学到達→体験到達', 転換.見学到達_体験到達], ['体験到達→契約到達', 転換.体験到達_契約到達]].forEach(function(pair){
+        var lbl = pair[0], t = pair[1] || {};
+        h += '<li>' + lbl + '：' + kdRate(t.率) + '（' + (t.分子||0) + '/' + (t.分母||0) + '）＋進行中 ' + (t.進行中N||0) + '件</li>';
+      });
+      h += '</ul></div>';
+
+      // 5) 失注理由
+      h += '<div class="kd-sec"><h3>失注理由</h3>';
+      var rb = 失注.理由別 || {};
+      var rbKeys = Object.keys(rb);
+      if (rbKeys.length){
+        h += '<div class="kd-sub">理由別</div><div>';
+        rbKeys.forEach(function(r){ h += '<span class="kd-pill">' + kdEsc(r) + '：' + rb[r] + '</span>'; });
+        h += '</div>';
+      }
+      var ls = 失注.一覧 || [];
+      if (ls.length){
+        h += '<ol class="kd-list">';
+        ls.forEach(function(x){
+          var stage = kdEsc(x.到達段階) + (x.到達段階approx ? '<span class="kd-note">※推定</span>' : '');
+          h += '<li>' + kdEsc(x.氏名) + '（' + stage + '）／' + kdEsc(x.理由) + '／' + kdEsc(x.日付) + '</li>';
+        });
+        h += '</ol>';
+      }
+      h += '</div>';
+
+      var host = document.getElementById('tab-keiei');
+      host.innerHTML = h;
+      kdDashLoaded = true;
+      return h;
+    }
 
     /* ===== 初期化(単一タブ=intake) ===== */
     window.addEventListener('load', function () {
