@@ -63,9 +63,11 @@ var shienUsers = [
   { name: '未測定男', care: '事業対象者' }
 ];
 var shienRows = core.abMeasureShien_(shienUsers, shienLast, '2026-07-01');
-eq(shienRows[0].key, '未測定男', 'D1: 未測定(実測定日なし)が最優先で先頭');
-ok(shienRows[0].unmeasured === true, 'D2: 未測定フラグ');
-ok(shienRows[1].key === '佐藤花子' && shienRows[1].remaining === 9, 'D3: 佐藤は残9日');
+var dUn = shienRows.filter(function(r){ return r.key === '未測定男'; })[0];
+var dSa = shienRows.filter(function(r){ return r.key === '佐藤花子'; })[0];
+ok(dUn && dUn.unmeasured === true, 'D1: 未測定男は未測定フラグ（並替はabSokuteiSort_）');
+ok(dSa && dSa.remaining === 9, 'D2: 佐藤は残9日');
+ok(dUn && dUn.careLayer === 1 && dSa && dSa.careLayer === 1, 'D3: 要支援はcareLayer=1');
 
 // 表記ゆれ耐性: 測定日シート側が全角スペース付きでも正規化して突合（§3.4）
 var shienRows2 = core.abMeasureShien_(
@@ -76,7 +78,7 @@ var shienRows2 = core.abMeasureShien_(
 ok(shienRows2[0].unmeasured === false && shienRows2[0].remaining === 9, 'D4: 表記ゆれでも測定済み判定（誤って最優先化しない）');
 ok(shienRows2[0].due === '2026-07-10', 'D5: dueも正しく算出');
 eq(core.abMeasureShien_(null, null, '2026-07-01').length, 0, 'D6: null入力で空（落ちない）');
-ok(shienRows[0].track === 'shien', 'D7: 要支援行にtrack=shien');
+ok(shienRows.every(function(r){ return r.track === 'shien'; }), 'D7: 全行track=shien');
 
 // ===== E. abMeasureKaigo_（要介護＝評価月isHyoukaMonth・未実施・月末残日数昇順） =====
 // planStart=2026-08 → diff=-1 の 2026-07 が評価月（計画開始前月）
@@ -97,6 +99,7 @@ eq(kRows2.length, 0, 'E4: 当評価月に測定済みなら除外');
 var kRows3 = core.abMeasureKaigo_(kaigoUsers, { '評価月　太郎': true }, 2026, 7, '2026-07-20', isHyoukaMonth);
 eq(kRows3.length, 0, 'E5: doneByKeyの表記ゆれでも正規化して測定済み除外');
 ok(kRows[0].track === 'kaigo', 'E6: 要介護行にtrack=kaigo');
+ok(kRows[0].careLayer === 0, 'E7: 要介護行にcareLayer=0');
 
 // ===== F. abKoukuMoni_（口腔モニ＝oralCycleAt role!=none かつ 未実施・role仕分けなし） =====
 // planStart=2026-07 → 7月は (T-P)%3=0 → role='moni1'。moni1未実施＝moni1_date空。
@@ -257,6 +260,31 @@ ok(sorted[2].careLayer === 1 && sorted[3].careLayer === 1, 'P4: 要支援(careLa
 eq(sorted[2].key, '要支援未測', 'P5: 要支援内は未測定boostで先頭（ただし要介護より下）');
 // 非破壊
 ok(pool[0].key === '要支援A', 'P6: 入力配列を破壊しない');
+
+// ===== Q. abBuildBoard_ 測定プール優先順位（1プール・careLayer→urgency・要介護>要支援） =====
+var qInput = {
+  year:2026, month:7, today:'2026-07-06',
+  attendance:{ attendance:{ am:[
+    {name:'介護低リスク', status:'出席', care:'要介護1'},
+    {name:'介護高リスク', status:'出席', care:'要介護1'},
+    {name:'支援未測',   status:'出席', care:'要支援2'}
+  ], pm:[] }},
+  kaigoUsers:[
+    {name:'介護低リスク', category:'要介護1', planStart:'2026-08', planMonths:3, days:'月火水木金'},
+    {name:'介護高リスク', category:'要介護1', planStart:'2026-08', planMonths:3, days:'月'}
+  ],
+  kaigoDoneByKey:{},
+  shienUsers:[{name:'支援未測', care:'要支援2', days:'火木'}],
+  shienLastByName:{},
+  usageByKey:{ '介護高リスク':0.5 },
+  oralUsers:[], oralRecByKey:{}, oralSettings:[], allUsers:[], bdUsers:[], bdStatusByKey:{}
+};
+var qb = core.abBuildBoard_(qInput, { isHyoukaMonth: isHyoukaMonth, oralCycleAt: oralCycleAt });
+eq(qb.sokutei.length, 3, 'Q1: 測定プール3名（要介護2＋要支援1）');
+eq(qb.sokutei[0].key, '介護高リスク', 'Q2: 要介護の高リスク(週1・欠席0.5)が先頭');
+eq(qb.sokutei[1].key, '介護低リスク', 'Q3: 要介護の低リスク(週5)が次');
+eq(qb.sokutei[2].key, '支援未測', 'Q4: 要支援は最後尾（careLayerで要介護より下）');
+ok(qb.sokutei[0].careLayer === 0 && qb.sokutei[2].careLayer === 1, 'Q5: careLayerで層分離');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

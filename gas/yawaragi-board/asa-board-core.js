@@ -58,9 +58,10 @@ function sokuteiRemaining_(dueDateStr, todayStr) {
   return Math.round((due - today) / 86400000);
 }
 
-// 要支援・事業対象の測定対象行。前回実測定日+4ヶ月。未測定(実測定日なし)は最優先。残日数昇順。
-// 返り値: [{ name, key, care, last, due, remaining, unmeasured, track: 'shien' }]
-function abMeasureShien_(shienUsers, lastByName, todayStr) {
+// 要支援・事業対象の測定対象行（enriched・未ソート）。前回実測定日+4ヶ月。並びは abSokuteiSort_ が担当。
+// usageByKey: 名前→出席率U（内部正規化・§3.4）。返り値行に careLayer:1 / weeklyVisits / remainingVisits / absenceRate / unmeasured を付与。
+// 返り値: [{ name, key, care, last, due, remaining, unmeasured, track:'shien', careLayer:1, weeklyVisits, remainingVisits, absenceRate }]
+function abMeasureShien_(shienUsers, lastByName, todayStr, usageByKey) {
   var lastByKey = {};
   if (lastByName) {
     for (var nm in lastByName) {
@@ -71,15 +72,26 @@ function abMeasureShien_(shienUsers, lastByName, todayStr) {
       if (!lastByKey[nk] || v > lastByKey[nk]) lastByKey[nk] = v;
     }
   }
-  var rows = (shienUsers || []).map(function (u) {
+  var usageNorm = {};
+  if (usageByKey) {
+    for (var un in usageByKey) {
+      if (usageByKey.hasOwnProperty(un)) usageNorm[abNormalizeName_(un)] = usageByKey[un];
+    }
+  }
+  return (shienUsers || []).map(function (u) {
     var key = abNormalizeName_(u.name);
     var last = lastByKey[key] || '';
     var due = '', remaining = -999, unmeasured = !last;
     if (last) { due = sokuteiDueDate_(last, u.care || ''); remaining = sokuteiRemaining_(due, todayStr); }
-    return { name: u.name, key: key, care: u.care || '', last: last, due: due, remaining: remaining, unmeasured: unmeasured, track: 'shien' };
+    var uRate = (usageNorm[key] != null) ? usageNorm[key] : 1.0;
+    var absRate = 1 - uRate; if (absRate < 0) absRate = 0; if (absRate > 1) absRate = 1;
+    return {
+      name: u.name, key: key, care: u.care || '', last: last, due: due, remaining: remaining,
+      unmeasured: unmeasured, track: 'shien', careLayer: 1,
+      weeklyVisits: abCountWeeklyVisits_(u.days), remainingVisits: abCountRemainingVisits_(u.days, todayStr),
+      absenceRate: absRate
+    };
   });
-  rows.sort(function (a, b) { return a.remaining - b.remaining; });
-  return rows;
 }
 
 // 対象日が属する月の月末(YYYY-MM-DD)を返す
@@ -89,14 +101,21 @@ function abMonthEnd_(year, month) {
   return year + '-' + pad(month) + '-' + pad(lastDay);
 }
 
-// 要介護の測定対象行。当月が評価月(isHyoukaMonthFn)かつ当評価月未実施(doneByKey に無い)。月末残日数昇順。
-// doneByKey: 当評価月に sokutei_date が入っている人の名前→true（キーは内部で正規化して照合・§3.4）。
-// isHyoukaMonthFn は shared.js の isHyoukaMonth を注入。返り値: [{ name, key, care, remaining, track: 'kaigo' }]
-function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn) {
+// 要介護の測定対象行（enriched・未ソート）。当月が評価月(isHyoukaMonthFn)かつ当評価月未実施。並びは abSokuteiSort_ が担当。
+// doneByKey: 当評価月に sokutei_date が入っている人の名前→true（内部正規化・§3.4）。usageByKey: 名前→出席率U（内部正規化）。
+// 返り値: [{ name, key, care, remaining, track:'kaigo', careLayer:0, weeklyVisits, remainingVisits, absenceRate }]
+//   remaining=月末カレンダー残日数（表示用）／remainingVisits=残来所日数（優先順位用）。
+function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn, usageByKey) {
   var doneNorm = {};
   if (doneByKey) {
     for (var dk in doneByKey) {
       if (doneByKey.hasOwnProperty(dk) && doneByKey[dk]) doneNorm[abNormalizeName_(dk)] = true;
+    }
+  }
+  var usageNorm = {};
+  if (usageByKey) {
+    for (var un in usageByKey) {
+      if (usageByKey.hasOwnProperty(un)) usageNorm[abNormalizeName_(un)] = usageByKey[un];
     }
   }
   var monthEnd = abMonthEnd_(year, month);
@@ -105,9 +124,15 @@ function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaM
     if (!isHyoukaMonthFn(u.planStart, u.planMonths, year, month)) return;
     var key = abNormalizeName_(u.name);
     if (doneNorm[key]) return;
-    rows.push({ name: u.name, key: key, care: u.category || '', remaining: sokuteiRemaining_(monthEnd, todayStr), track: 'kaigo' });
+    var uRate = (usageNorm[key] != null) ? usageNorm[key] : 1.0;
+    var absRate = 1 - uRate; if (absRate < 0) absRate = 0; if (absRate > 1) absRate = 1;
+    rows.push({
+      name: u.name, key: key, care: u.category || '', remaining: sokuteiRemaining_(monthEnd, todayStr),
+      track: 'kaigo', careLayer: 0,
+      weeklyVisits: abCountWeeklyVisits_(u.days), remainingVisits: abCountRemainingVisits_(u.days, todayStr),
+      absenceRate: absRate
+    });
   });
-  rows.sort(function (a, b) { return a.remaining - b.remaining; });
   return rows;
 }
 
@@ -198,11 +223,14 @@ function abResidue_(present, allTargetKeys) {
 // judges = { isHyoukaMonth, oralCycleAt }（GASはグローバル、nodeは抽出注入）。
 // 測定=要介護(交差)+要支援(交差) を sokutei に統合。口腔体操・個訓は当日出席と交差。誕生日は交差しない。
 // residue = 出席者のうち 測定/口腔モニ/口腔体操/個訓 のどれにも当たらない者。
+// 測定プール優先順位の重み（spec §2.4・実データ確認後に調整可）。
+var SOKUTEI_WEIGHTS = { chance: 1.0, freq: 0.6, absence: 0.6, unmeasuredBoost: 2.0 };
+
 function abBuildBoard_(input, judges) {
   var present = abUniquePresent_(input.attendance);
-  var kaigo = abMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth);
-  var shien = abMeasureShien_(input.shienUsers, input.shienLastByName, input.today);
-  var sokutei = abIntersectPresent_(kaigo, present).concat(abIntersectPresent_(shien, present));
+  var kaigo = abMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth, input.usageByKey);
+  var shien = abMeasureShien_(input.shienUsers, input.shienLastByName, input.today, input.usageByKey);
+  var sokutei = abSokuteiSort_(abIntersectPresent_(kaigo, present).concat(abIntersectPresent_(shien, present)), SOKUTEI_WEIGHTS);
   var koukuMoni = abIntersectPresent_(abKoukuMoni_(input.oralUsers, input.oralRecByKey, input.year, input.month, judges.oralCycleAt), present);
   var koukuTaisou = abIntersectPresent_(abKoukuTaisou_(input.oralSettings), present);
   var kotan = abIntersectPresent_(abKotan_(input.allUsers), present);
