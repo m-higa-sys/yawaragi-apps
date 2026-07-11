@@ -25,6 +25,15 @@ eq(pres1[0].key, '山田太郎', 'B2: 正規化キー付与（スペース吸収
 ok(pres1.some(function(p){ return p.key === '佐藤花子' && p.care === '要支援2'; }), 'B3: careを保持');
 eq(core.abUniquePresent_(null).length, 0, 'B4: null→空（落ちない）');
 eq(core.abUniquePresent_({ attendance: { am: [{ name: 'A', status: '欠席' }] } }).length, 0, 'B5: 全欠席→空');
+eq(core.abUniquePresent_({ attendance: {
+  am: [{ name: '両単位子', status: '欠席', care: '' }],
+  pm: [{ name: '両単位子', status: '出席', care: '要介護2' }]
+}}).length, 1, 'B6: am欠席/pm出席は出席扱い（どちらかで出席）');
+var pres2 = core.abUniquePresent_({ attendance: {
+  am: [{ name: '後埋子', status: '出席', care: '' }],
+  pm: [{ name: '後埋子', status: '出席', care: '要支援1' }]
+}});
+ok(pres2.length === 1 && pres2[0].care === '要支援1', 'B7: careは後続occurrenceからbackfillされる');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
