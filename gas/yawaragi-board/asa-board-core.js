@@ -82,6 +82,35 @@ function abMeasureShien_(shienUsers, lastByName, todayStr) {
   return rows;
 }
 
+// 対象日が属する月の月末(YYYY-MM-DD)を返す
+function abMonthEnd_(year, month) {
+  var lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  return year + '-' + pad(month) + '-' + pad(lastDay);
+}
+
+// 要介護の測定対象行。当月が評価月(isHyoukaMonthFn)かつ当評価月未実施(doneByKey に無い)。月末残日数昇順。
+// doneByKey: 当評価月に sokutei_date が入っている人の名前→true（キーは内部で正規化して照合・§3.4）。
+// isHyoukaMonthFn は shared.js の isHyoukaMonth を注入。返り値: [{ name, key, care, remaining }]
+function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn) {
+  var doneNorm = {};
+  if (doneByKey) {
+    for (var dk in doneByKey) {
+      if (doneByKey.hasOwnProperty(dk) && doneByKey[dk]) doneNorm[abNormalizeName_(dk)] = true;
+    }
+  }
+  var monthEnd = abMonthEnd_(year, month);
+  var rows = [];
+  (kaigoUsers || []).forEach(function (u) {
+    if (!isHyoukaMonthFn(u.planStart, u.planMonths, year, month)) return;
+    var key = abNormalizeName_(u.name);
+    if (doneNorm[key]) return;
+    rows.push({ name: u.name, key: key, care: u.category || '', remaining: sokuteiRemaining_(monthEnd, todayStr) });
+  });
+  rows.sort(function (a, b) { return a.remaining - b.remaining; });
+  return rows;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     abNormalizeName_: abNormalizeName_,
@@ -89,6 +118,8 @@ if (typeof module !== 'undefined' && module.exports) {
     sokuteiCycleMonths_: sokuteiCycleMonths_,
     sokuteiDueDate_: sokuteiDueDate_,
     sokuteiRemaining_: sokuteiRemaining_,
-    abMeasureShien_: abMeasureShien_
+    abMeasureShien_: abMeasureShien_,
+    abMonthEnd_: abMonthEnd_,
+    abMeasureKaigo_: abMeasureKaigo_
   };
 }

@@ -3,6 +3,18 @@
 const path = require('path');
 const core = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'asa-board-core.js'));
 
+// shared.js から isHyoukaMonth を抽出注入（正準を使う・drift防止。test-cycle-judge.js と同方式）
+const fs = require('fs');
+function extractFn(src, name) {
+  var start = src.indexOf('function ' + name + '(');
+  if (start < 0) throw new Error('shared.js に ' + name + ' が無い');
+  var i = src.indexOf('{', start), depth = 0;
+  for (; i < src.length; i++) { if (src[i] === '{') depth++; else if (src[i] === '}') { depth--; if (!depth) { i++; break; } } }
+  return src.slice(start, i);
+}
+const sharedSrc = fs.readFileSync(path.join(__dirname, '..', 'shared.js'), 'utf8');
+const isHyoukaMonth = new Function(extractFn(sharedSrc, 'isHyoukaMonth') + '; return isHyoukaMonth;')();
+
 let pass = 0, fail = 0;
 function ok(cond, label) { if (cond) pass++; else { fail++; console.error('  [FAIL] ' + label); } }
 function eq(a, b, label) { ok(a === b, label + ' :: exp=' + JSON.stringify(b) + ' act=' + JSON.stringify(a)); }
@@ -61,6 +73,25 @@ var shienRows2 = core.abMeasureShien_(
 ok(shienRows2[0].unmeasured === false && shienRows2[0].remaining === 9, 'D4: 表記ゆれでも測定済み判定（誤って最優先化しない）');
 ok(shienRows2[0].due === '2026-07-10', 'D5: dueも正しく算出');
 eq(core.abMeasureShien_(null, null, '2026-07-01').length, 0, 'D6: null入力で空（落ちない）');
+
+// ===== E. abMeasureKaigo_（要介護＝評価月isHyoukaMonth・未実施・月末残日数昇順） =====
+// planStart=2026-08 → diff=-1 の 2026-07 が評価月（計画開始前月）
+var kaigoUsers = [
+  { name: '評価月太郎', category: '要介護1', planStart: '2026-08', planMonths: 3 }, // 7月=評価月
+  { name: '対象外子', category: '要介護2', planStart: '2026-09', planMonths: 3 }    // 7月は評価月でない
+];
+var doneByKey = {}; // 当評価月に sokutei_date 済みの正規化キー集合
+var kRows = core.abMeasureKaigo_(kaigoUsers, doneByKey, 2026, 7, '2026-07-20', isHyoukaMonth);
+eq(kRows.length, 1, 'E1: 評価月かつ未実施は1名（対象外子は評価月でない）');
+eq(kRows[0].key, '評価月太郎', 'E2: 評価月太郎が対象');
+eq(kRows[0].remaining, 11, 'E3: 7/20→月末7/31まで残11日');
+
+var kRows2 = core.abMeasureKaigo_(kaigoUsers, { '評価月太郎': true }, 2026, 7, '2026-07-20', isHyoukaMonth);
+eq(kRows2.length, 0, 'E4: 当評価月に測定済みなら除外');
+
+// 表記ゆれ耐性: doneByKey のキーが全角スペース付きでも正規化して除外（§3.4）
+var kRows3 = core.abMeasureKaigo_(kaigoUsers, { '評価月　太郎': true }, 2026, 7, '2026-07-20', isHyoukaMonth);
+eq(kRows3.length, 0, 'E5: doneByKeyの表記ゆれでも正規化して測定済み除外');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
