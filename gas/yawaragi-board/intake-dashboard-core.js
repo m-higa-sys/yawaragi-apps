@@ -66,12 +66,50 @@ function dashLeadTime_(cases, today) {
   return { 中央値: INTAKE_DASH_median_(nums), 件数: out.length, cases: out };
 }
 
+// 案件が stage（'見学'|'体験'|'契約準備'）に到達したか。履歴優先→現フェーズ/日付/フラグで概算。
+function dashReached_(c, stage) {
+  var hist = Array.isArray(c.履歴) ? c.履歴 : [];
+  var wantRank = INTAKE_DASH_PHASE_RANK[stage];
+  for (var i = 0; i < hist.length; i++) {
+    var r = INTAKE_DASH_PHASE_RANK[hist[i].to];
+    if (r !== undefined && r >= wantRank) return true;
+  }
+  var cur = INTAKE_DASH_PHASE_RANK[String(c.フェーズ || '')];
+  if (cur !== undefined && cur >= wantRank) return true;
+  if (stage === '見学'   && (c.見学日 || c.見学完了 === true)) return true;
+  if (stage === '体験'   && c.体験完了 === true) return true;
+  if (stage === '契約準備' && (c.契約日 || c.契約書取り交わし済 === true)) return true;
+  return false;
+}
+
+// 段階遷移の歩留まり（累計）。進行中は分母/分子から除外し別枠。
+function dashConversion_(cases) {
+  function step(fromStage, toStage) {
+    var 分母 = 0, 分子 = 0, 進行中N = 0;
+    (cases || []).forEach(function(c) {
+      if (!dashReached_(c, fromStage)) return;
+      var reachedNext = dashReached_(c, toStage);
+      var dropped = String(c.フェーズ || '') === 'ドロップ';
+      if (reachedNext) { 分母++; 分子++; }
+      else if (dropped) { 分母++; }
+      else { 進行中N++; }
+    });
+    return { 分母: 分母, 分子: 分子, 率: 分母 ? Math.round(分子 / 分母 * 1000) / 1000 : null, 進行中N: 進行中N };
+  }
+  return {
+    見学到達_体験到達: step('見学', '体験'),
+    体験到達_契約到達: step('体験', '契約準備')
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     dashStageBuckets_: dashStageBuckets_,
     INTAKE_DASH_PHASE_RANK: INTAKE_DASH_PHASE_RANK,
     dashLeadTime_: dashLeadTime_,
     INTAKE_DASH_daysBetween_: INTAKE_DASH_daysBetween_,
-    INTAKE_DASH_median_: INTAKE_DASH_median_
+    INTAKE_DASH_median_: INTAKE_DASH_median_,
+    dashReached_: dashReached_,
+    dashConversion_: dashConversion_
   };
 }
