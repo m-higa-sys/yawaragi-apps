@@ -173,5 +173,31 @@ var residue = core.abResidue_(present, allTargetKeys);
 eq(residue.length, 1, 'K1: 佐藤花子はどの対象にも当たらず名寄せ不能');
 eq(residue[0].key, '佐藤花子', 'K2: 佐藤花子がresidue');
 
+// ===== L. abBuildBoard_（全業務集約・当日出席交差・residue） =====
+var input = {
+  year: 2026, month: 7, today: '2026-07-20',
+  attendance: { attendance: {
+    am: [{ name: '評価月太郎', status: '出席', care: '要介護1' }, { name: 'モニ太郎', status: '出席', care: '要介護1' }],
+    pm: [{ name: '佐藤花子', status: '出席', care: '要支援2' }, { name: '謎の人', status: '出席', care: '' }]
+  }},
+  kaigoUsers: [{ name: '評価月太郎', category: '要介護1', planStart: '2026-08', planMonths: 3 }],
+  kaigoDoneByKey: {},
+  shienUsers: [{ name: '佐藤花子', care: '要支援2' }],
+  shienLastByName: { '佐藤花子': '2026-03-10' },
+  oralUsers: [{ userId: 'モニ太郎', name: 'モニ太郎', planStart: '2026-07', planEnd: '' }],
+  oralRecByKey: { 'モニ太郎': {} },
+  oralSettings: [{ name: 'モニ太郎', is_target: true }],
+  allUsers: [{ name: '評価月太郎', category: '要介護1' }],
+  bdUsers: [{ name: '評価月太郎', birthday: '7/25' }],
+  bdStatusByKey: {}
+};
+var board = core.abBuildBoard_(input, { isHyoukaMonth: isHyoukaMonth, oralCycleAt: oralCycleAt });
+ok(board.sokutei.length === 2, 'L1: 測定=要介護(評価月太郎)+要支援(佐藤花子)の2名');
+ok(board.koukuMoni.length === 1 && board.koukuMoni[0].key === 'モニ太郎', 'L2: 口腔モニ=モニ太郎');
+ok(board.koukuTaisou.length === 1, 'L3: 口腔体操=出席かつis_target(モニ太郎)');
+ok(board.kotan.length === 1 && board.kotan[0].key === '評価月太郎', 'L4: 個訓=出席かつ要介護');
+ok(board.birthday.length === 1, 'L5: 誕生日=今月誕生月(評価月太郎・当日出席フィルタなし)');
+ok(board.residue.some(function(r){ return r.key === '謎の人'; }), 'L6: 謎の人はどの対象にも当たらず名寄せ不能residue');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

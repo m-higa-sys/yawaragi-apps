@@ -192,6 +192,34 @@ function abResidue_(present, allTargetKeys) {
     .map(function (p) { return { name: p.name, key: p.key }; });
 }
 
+// 全業務を集約して朝ボード1レスポンス相当を組み立てる純関数。
+// judges = { isHyoukaMonth, oralCycleAt }（GASはグローバル、nodeは抽出注入）。
+// 測定=要介護(交差)+要支援(交差) を sokutei に統合。口腔体操・個訓は当日出席と交差。誕生日は交差しない。
+// residue = 出席者のうち 測定/口腔モニ/口腔体操/個訓 のどれにも当たらない者。
+function abBuildBoard_(input, judges) {
+  var present = abUniquePresent_(input.attendance);
+  var kaigo = abMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth);
+  var shien = abMeasureShien_(input.shienUsers, input.shienLastByName, input.today);
+  var sokutei = abIntersectPresent_(kaigo, present).concat(abIntersectPresent_(shien, present));
+  var koukuMoni = abIntersectPresent_(abKoukuMoni_(input.oralUsers, input.oralRecByKey, input.year, input.month, judges.oralCycleAt), present);
+  var koukuTaisou = abIntersectPresent_(abKoukuTaisou_(input.oralSettings), present);
+  var kotan = abIntersectPresent_(abKotan_(input.allUsers), present);
+  var birthday = abBirthday_(input.bdUsers, input.month, input.bdStatusByKey);
+
+  var hit = {};
+  [sokutei, koukuMoni, koukuTaisou, kotan].forEach(function (arr) {
+    arr.forEach(function (r) { hit[r.key] = true; });
+  });
+  var residue = abResidue_(present, hit);
+
+  return {
+    date: input.today, year: input.year, month: input.month,
+    presentCount: present.length,
+    sokutei: sokutei, koukuMoni: koukuMoni, koukuTaisou: koukuTaisou,
+    kotan: kotan, birthday: birthday, residue: residue
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     abNormalizeName_: abNormalizeName_,
@@ -207,6 +235,7 @@ if (typeof module !== 'undefined' && module.exports) {
     abKotan_: abKotan_,
     abBirthday_: abBirthday_,
     abIntersectPresent_: abIntersectPresent_,
-    abResidue_: abResidue_
+    abResidue_: abResidue_,
+    abBuildBoard_: abBuildBoard_
   };
 }
