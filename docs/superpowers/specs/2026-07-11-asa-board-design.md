@@ -17,8 +17,7 @@
 | 業務 | 判定 | 表示 |
 |---|---|---|
 | 口腔モニ | planStart起点3ヶ月周期（`oralCycleAt`型）で当月対象、かつ未実施 | 当日出席者のうち対象＆未実施を**全員ピックアップ（role仕分けなし）** |
-| 測定（要介護） | **個訓の評価月（`isHyoukaMonth`：planStart＋planMonths起点＝計画開始の前月／各サイクル前月）で当月が評価月、かつ未実施（当評価月の `sokutei_date` が空）** | 当日出席者のうち上記対象を、**月末までの残日数が少ない順**に。上位N名「今日やる」／残り「余裕あれば」。**N既定=3・画面から変更可** |
-| 測定（要支援・事業対象） | **前回"実"測定日＋4ヶ月固定周期（`sokuteiCycleMonths_`のその他=4）で期限接近・超過**。評価月モデルは適用しない。休み等のスライドは実測定日起点で自然吸収 | 当日出席者のうち上記対象を、**残日数が少ない順**に。上位N／残りは要介護と同じUI（N共有） |
+| 測定（1プール統合） | 要介護＝個訓の評価月（`isHyoukaMonth`：計画開始前月／各サイクル前月・当月が評価月かつ `sokutei_date` 空）。要支援・事業対象＝前回"実"測定日＋4ヶ月固定（`sokuteiCycleMonths_`その他=4・未測定最優先）。**両者を1プールに合算**し §2.4 の優先順位で並べる | 当日出席者のうち上記対象を、**プール全体を優先順位順**に。**プール全体の上位N名「今日やる」／残り「余裕があれば」（要介護/要支援でセクション分割しない）**。N既定=3・画面から変更可 |
 | 口腔体操 | 算定対象フラグ（明示false以外はtrue）× 当日出席。**実源 `getOralTargetUsers_` は `isTarget`（キャメル）で返す**（`is_target` はシート列名）。`abKoukuTaisou_` は両フィールド対応 | 対象者一覧 |
 | 個別機能訓練 | 介護度「要介護」前方一致 × 非中止（`u.cancelled` が真でない）× 当日出席（周期なし＝毎回全員） | 対象者一覧 |
 | 誕生日 | 台帳M/Dで今月誕生月、かつ taskboard status 未完 | 今月の対象者一覧（当日出席フィルタなし＝月ベース） |
@@ -31,11 +30,35 @@
 - **測定は介護度で2系統に分岐する（core分岐）：**
   - **要介護 → 個訓計画書サイクルに紐づく（`isHyoukaMonth`）。** 前回測定日からの独立サイクルは採用しない。理由：要介護の測定は個訓計画を更新するための評価であり、計画開始の前月（評価月）に行う運用のため（社長確認：計画開始8月なら7月に測定）。個別短縮は `planMonths`（台帳「計画月数」1-12）で自動反映され、`isHyoukaMonth` がそれを起点に評価月を算出するため別フラグ不要（Q1は要介護に限り解決）。
   - **要支援・事業対象 → 前回"実"測定日＋4ヶ月固定周期（`sokuteiCycleMonths_`のその他=4）。** 評価月モデルは適用しない。この4ヶ月周期は不変で、休み等のスライドは実測定日起点で自然に吸収される。要支援は個訓計画書（planStart/planMonths）を持たない場合があるため、評価月モデルを使わないのはデータ上も正しい。
-- 測定「上位N名」の N は既定3。画面で変更でき、値は localStorage に保存（サーバへは送らない）。
-- 逼迫度＝**評価月内の月末までの残日数**（少ないほど急ぐ）。評価月は月単位で確定するため、同一評価月内の順序付けにのみ残日数を使う。
+- 測定「上位N名」の N は既定3。画面で変更でき、値は localStorage に保存（サーバへは送らない）。**上位N は要介護/要支援を分けず、統合プール全体の上位N**（§2.4）。
 - **個訓の非中止除外の契約**：個訓対象母集合 `abKotan_` は `u.cancelled` が真の利用者を除外する（終了・中止者を「毎日やる」に出さない）。この `cancelled` boolean は Phase 2 で `getKeikakushoTargetUsers_`（`cancelled: isCancelled` を返す・`gas/yawaragi-board/コード.js:13559`）から供給する。当日出席フィルタでも実務上は落ちるが、二重の安全として母集合側でも除外する。
-- **測定2系統の判別子（track）**：`abMeasureKaigo_` の行は `track:'kaigo'`、`abMeasureShien_` の行は `track:'shien'` を持つ。`abBuildBoard_` は両者を `sokutei` に統合するが、フロント（Phase 3）は **track で要介護/要支援を分離し、各系統を独立に上位N件スライス**する（統合配列を丸ごとN件で切ると kaigo が常に先頭に来て優先順位が壊れるため）。
+- **測定2系統の判別子（track）**：`abMeasureKaigo_` の行は `track:'kaigo'`・`careLayer:0`、`abMeasureShien_` の行は `track:'shien'`・`careLayer:1` を持つ。`abBuildBoard_` は両者を1プール `sokutei` に統合し **§2.4 の comparator で1回ソート**する（フロントはソート済みプールを丸ごと上位Nで切ってよい）。track はUIバッジ表示（要介護/要支援）に使う。
 - **要支援の care フィールド**：`abMeasureShien_` は `u.care` を読む。実源の介護度フィールドは `category` なので、Phase 2 で `shienUsers` を作る際に `care: category` へ写像する（未写像でもサイクル4ヶ月判定は正しく落ちるが、表示 care が空になる。`sokutei.html:344` と同じ写像規約）。
+
+### 2.4 測定プールの優先順位（1プール・階層ソート）
+
+要介護・要支援を**1プールに統合**し、テスト可能な純関数 comparator で1回ソートする。上位N（既定3）が「今日やる」、残りが「余裕があれば」。
+
+**ソートキー（earlier＝今日やる先頭）：**
+1. **第0層 `careLayer` 昇順**：要介護(0) を要支援・事業対象(1) より必ず先（要介護＝加算必達、要支援＝翌月可）。
+2. **第1層 `urgency` 降順**：同層内で「取り逃しリスク＝今後会える残チャンスが少ない人」ほど先。
+3. 同点：残来所日数↑ → 週回数↑ → 欠席率↓ → 氏名（安定・決定的）。
+
+**urgency（加重加算スコア・高いほど先）：**
+```
+urgency = W_CHANCE  × chanceScarcity
+        + W_FREQ    × freqScarcity
+        + W_ABSENCE × absenceRate
+        + (未測定(要支援)なら UNMEASURED_BOOST)
+  chanceScarcity = weeklyVisits>0 ? 1/(remainingVisits+1) : 0   // remainingVisits=明日〜月末の契約来所日数(0=今日が最後→最大1.0)
+  freqScarcity   = weeklyVisits>0 ? 1/weeklyVisits : 0            // 週1→1.0, 週2→0.5, 週5→0.2
+  absenceRate    = clamp(1 − U, 0, 1)                            // U=出席率(usage_stats)・データ不足時U=1.0
+```
+- 既定の重み（名前付き定数・実データ確認後に調整可）：`W_CHANCE=1.0`, `W_FREQ=0.6`, `W_ABSENCE=0.6`, `UNMEASURED_BOOST=2.0`（未測定要支援を層内先頭へ／ただし careLayer により要介護より上には来ない）。
+- **データ欠損ガード**：`利用曜日` 不明（weeklyVisits=0）は chanceScarcity・freqScarcity とも0＝欠損で誤って上位化しない（欠席率のみ効く）。
+- **軸1 週回数**＝台帳「利用曜日」の曜日文字数（日数ベース・AM/PMは使わない。Q5）。**軸2 欠席率**＝`1−U`、U は `usage_stats`（運用開始2026-04以降・直近3ヶ月・`isPreOperational` 月除外）。（Q6）
+- 純関数構成：`abCountWeeklyVisits_(days)`／`abCountRemainingVisits_(days, today)`／`abMeasureUrgency_(row, weights)`／`abSokuteiSort_(pool, weights)`。`abMeasureKaigo_`/`abMeasureShien_` は行に `careLayer`/`weeklyVisits`/`remainingVisits`/`absenceRate`（＋要支援は`unmeasured`）を付与し、`abBuildBoard_` が交差後の統合プールを `abSokuteiSort_` で並べる。
+- 追加データ契約（Phase 2）：`abMeasureKaigo_`/`abMeasureShien_` は各利用者の `days`（利用曜日）を要する（`getKeikakushoTargetUsers_` は既に `days` を返す）。U は新入力 `usageByKey`（正規化名→出席率、`usage_stats` から構築・キーは core が内部正規化）で供給する。
 
 ### 2.3 第1版で「やらないこと」（YAGNI）
 
