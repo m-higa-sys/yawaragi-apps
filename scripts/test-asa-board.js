@@ -204,5 +204,57 @@ ok(board.residue.some(function(r){ return r.key === '謎の人'; }), 'L6: 謎の
 ok(board.residue.every(function(r){ return r.key !== '欠席誕生子'; }), 'L7: 欠席誕生子は出席者でないのでresidueにも入らない(residueは出席者のみ)');
 ok(board.sokutei[0].track === 'kaigo' && board.sokutei[board.sokutei.length-1].track === 'shien', 'L8: sokutei統合後もtrackで要介護/要支援を判別可能');
 
+// ===== M. abCountWeeklyVisits_（利用曜日→週来所回数・日数ベース） =====
+eq(core.abCountWeeklyVisits_('火木'), 2, 'M1: 火木→週2');
+eq(core.abCountWeeklyVisits_('月水金'), 3, 'M2: 月水金→週3');
+eq(core.abCountWeeklyVisits_('月火水木金'), 5, 'M3: 平日毎日→週5');
+eq(core.abCountWeeklyVisits_(''), 0, 'M4: 空→0');
+eq(core.abCountWeeklyVisits_(null), 0, 'M5: null→0（落ちない）');
+
+// ===== N. abCountRemainingVisits_（明日〜月末の契約来所日数） =====
+// 全曜日指定なら明日〜月末の日数そのもの（曜日非依存で決定的）
+eq(core.abCountRemainingVisits_('月火水木金土日', '2026-07-30'), 1, 'N1: 7/30時点・全曜日→残1(7/31)');
+eq(core.abCountRemainingVisits_('月火水木金土日', '2026-07-29'), 2, 'N2: 7/29時点・全曜日→残2(7/30,7/31)');
+eq(core.abCountRemainingVisits_('月火水木金土日', '2026-07-31'), 0, 'N3: 月末当日→残0');
+eq(core.abCountRemainingVisits_('月', '2026-07-31'), 0, 'N4: 月末当日→残0(曜日問わず)');
+eq(core.abCountRemainingVisits_('', '2026-07-01'), 0, 'N5: 曜日不明→0');
+eq(core.abCountRemainingVisits_(null, '2026-07-01'), 0, 'N6: null→0（落ちない）');
+
+// ===== O. abMeasureUrgency_（加重加算スコア・高いほど先） =====
+var W = { chance:1.0, freq:0.6, absence:0.6, unmeasuredBoost:2.0 };
+// 週1(週回数1)は週2より頻度項が大きい（残来所日数・欠席を同一化）
+var uWk1 = core.abMeasureUrgency_({ weeklyVisits:1, remainingVisits:2, absenceRate:0 }, W);
+var uWk2 = core.abMeasureUrgency_({ weeklyVisits:2, remainingVisits:2, absenceRate:0 }, W);
+ok(uWk1 > uWk2, 'O1: 週1は週2より高urgency（取り逃しリスク大）');
+// 欠席率が高いほど高urgency
+var uAbs = core.abMeasureUrgency_({ weeklyVisits:2, remainingVisits:2, absenceRate:0.5 }, W);
+ok(uAbs > uWk2, 'O2: 欠席率が高いと加算される');
+// 欠損ガード: weeklyVisits<=0 は chance/freq を0（欠席率のみ効く）
+var uMiss = core.abMeasureUrgency_({ weeklyVisits:0, remainingVisits:0, absenceRate:0.3 }, W);
+ok(Math.abs(uMiss - (0.6*0.3)) < 1e-9, 'O3: 曜日不明はchance/freq=0・欠席率のみ（誤上位化しない）');
+// 未測定boostが層内先頭化に効く
+var uUn = core.abMeasureUrgency_({ weeklyVisits:2, remainingVisits:2, absenceRate:0, unmeasured:true }, W);
+ok(uUn > uWk1, 'O4: 未測定boostが乗る');
+// 残来所日数0(今日が最後)はchance最大
+var uLast = core.abMeasureUrgency_({ weeklyVisits:3, remainingVisits:0, absenceRate:0 }, W);
+var uMany = core.abMeasureUrgency_({ weeklyVisits:3, remainingVisits:5, absenceRate:0 }, W);
+ok(uLast > uMany, 'O5: 残来所0(今日が最後)はchance最大で先');
+
+// ===== P. abSokuteiSort_（1プール階層ソート・careLayer→urgency→tiebreak） =====
+var pool = [
+  { name:'要支援A', key:'要支援A', careLayer:1, weeklyVisits:1, remainingVisits:1, absenceRate:0.4, unmeasured:false },
+  { name:'要介護低', key:'要介護低', careLayer:0, weeklyVisits:5, remainingVisits:8, absenceRate:0 },
+  { name:'要介護高', key:'要介護高', careLayer:0, weeklyVisits:1, remainingVisits:1, absenceRate:0.5 },
+  { name:'要支援未測', key:'要支援未測', careLayer:1, weeklyVisits:2, remainingVisits:3, absenceRate:0, unmeasured:true }
+];
+var sorted = core.abSokuteiSort_(pool, W);
+ok(sorted[0].careLayer === 0 && sorted[1].careLayer === 0, 'P1: 要介護(careLayer0)が全て先頭');
+eq(sorted[0].key, '要介護高', 'P2: 要介護内は高リスク(週1・欠席)が先');
+eq(sorted[1].key, '要介護低', 'P3: 要介護内は低リスクが後');
+ok(sorted[2].careLayer === 1 && sorted[3].careLayer === 1, 'P4: 要支援(careLayer1)が後半');
+eq(sorted[2].key, '要支援未測', 'P5: 要支援内は未測定boostで先頭（ただし要介護より下）');
+// 非破壊
+ok(pool[0].key === '要支援A', 'P6: 入力配列を破壊しない');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

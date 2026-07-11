@@ -222,6 +222,74 @@ function abBuildBoard_(input, judges) {
   };
 }
 
+// 利用曜日文字列（例 "火木"）の曜日文字数＝週来所回数（日数ベース・AM/PM不使用）。
+function abCountWeeklyVisits_(days) {
+  var s = String(days == null ? '' : days);
+  var w = ['月', '火', '水', '木', '金', '土', '日'];
+  var c = 0;
+  for (var i = 0; i < w.length; i++) { if (s.indexOf(w[i]) >= 0) c++; }
+  return c;
+}
+
+// 明日〜当月末で days に含まれる曜日の日数（残来所日数）。today='YYYY-MM-DD'。
+function abCountRemainingVisits_(days, todayStr) {
+  var s = String(days == null ? '' : days);
+  if (!s) return 0;
+  var y = parseInt(String(todayStr).slice(0, 4), 10);
+  var m = parseInt(String(todayStr).slice(5, 7), 10);
+  var d = parseInt(String(todayStr).slice(8, 10), 10);
+  if (!(y && m && d)) return 0;
+  var w = ['日', '月', '火', '水', '木', '金', '土'];  // getUTCDay: 0=日
+  var lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  var c = 0;
+  for (var day = d + 1; day <= lastDay; day++) {
+    var dow = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
+    if (s.indexOf(w[dow]) >= 0) c++;
+  }
+  return c;
+}
+
+// 加重加算の逼迫度スコア（高いほど「今日やる」先頭）。row={weeklyVisits,remainingVisits,absenceRate,unmeasured?}。
+// weights={chance,freq,absence,unmeasuredBoost}。欠損ガード: weeklyVisits<=0 は chance/freq を0。
+function abMeasureUrgency_(row, weights) {
+  var w = weights || {};
+  var wc = (w.chance != null) ? w.chance : 1.0;
+  var wf = (w.freq != null) ? w.freq : 0.6;
+  var wa = (w.absence != null) ? w.absence : 0.6;
+  var ub = (w.unmeasuredBoost != null) ? w.unmeasuredBoost : 2.0;
+  var wv = row && row.weeklyVisits ? row.weeklyVisits : 0;
+  var rv = row && row.remainingVisits != null ? row.remainingVisits : 0;
+  var chance = wv > 0 ? 1 / (rv + 1) : 0;
+  var freq = wv > 0 ? 1 / wv : 0;
+  var abs = row && row.absenceRate ? row.absenceRate : 0;
+  if (abs < 0) abs = 0; if (abs > 1) abs = 1;
+  var s = wc * chance + wf * freq + wa * abs;
+  if (row && row.unmeasured) s += ub;
+  return s;
+}
+
+// 測定プール（要介護＋要支援）の階層ソート。非破壊で新配列を返す。
+// careLayer↑ → urgency↓ → remainingVisits↑ → weeklyVisits↑ → absenceRate↓ → key↑。
+function abSokuteiSort_(pool, weights) {
+  var arr = (pool || []).slice();
+  arr.sort(function (a, b) {
+    var la = a.careLayer || 0, lb = b.careLayer || 0;
+    if (la !== lb) return la - lb;
+    var ua = abMeasureUrgency_(a, weights), ub = abMeasureUrgency_(b, weights);
+    if (ua !== ub) return ub - ua;
+    var ra = (a.remainingVisits != null) ? a.remainingVisits : 1e9;
+    var rb = (b.remainingVisits != null) ? b.remainingVisits : 1e9;
+    if (ra !== rb) return ra - rb;
+    var wa2 = (a.weeklyVisits != null) ? a.weeklyVisits : 1e9;
+    var wb2 = (b.weeklyVisits != null) ? b.weeklyVisits : 1e9;
+    if (wa2 !== wb2) return wa2 - wb2;
+    var aa = a.absenceRate || 0, ab = b.absenceRate || 0;
+    if (aa !== ab) return ab - aa;
+    return String(a.key || '').localeCompare(String(b.key || ''));
+  });
+  return arr;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     abNormalizeName_: abNormalizeName_,
@@ -238,6 +306,10 @@ if (typeof module !== 'undefined' && module.exports) {
     abBirthday_: abBirthday_,
     abIntersectPresent_: abIntersectPresent_,
     abResidue_: abResidue_,
-    abBuildBoard_: abBuildBoard_
+    abBuildBoard_: abBuildBoard_,
+    abCountWeeklyVisits_: abCountWeeklyVisits_,
+    abCountRemainingVisits_: abCountRemainingVisits_,
+    abMeasureUrgency_: abMeasureUrgency_,
+    abSokuteiSort_: abSokuteiSort_
   };
 }
