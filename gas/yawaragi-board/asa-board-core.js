@@ -259,6 +259,7 @@ function abMeasureUrgency_(row, weights) {
   var ub = (w.unmeasuredBoost != null) ? w.unmeasuredBoost : 2.0;
   var wv = row && row.weeklyVisits ? row.weeklyVisits : 0;
   var rv = row && row.remainingVisits != null ? row.remainingVisits : 0;
+  if (rv < 0) rv = 0;
   var chance = wv > 0 ? 1 / (rv + 1) : 0;
   var freq = wv > 0 ? 1 / wv : 0;
   var abs = row && row.absenceRate ? row.absenceRate : 0;

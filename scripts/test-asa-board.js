@@ -219,6 +219,8 @@ eq(core.abCountRemainingVisits_('月火水木金土日', '2026-07-31'), 0, 'N3: 
 eq(core.abCountRemainingVisits_('月', '2026-07-31'), 0, 'N4: 月末当日→残0(曜日問わず)');
 eq(core.abCountRemainingVisits_('', '2026-07-01'), 0, 'N5: 曜日不明→0');
 eq(core.abCountRemainingVisits_(null, '2026-07-01'), 0, 'N6: null→0（落ちない）');
+eq(core.abCountRemainingVisits_('火', '2026-07-01'), 4, 'N7: 単一曜日(火)で曜日マッピング検証');
+eq(core.abCountRemainingVisits_('月', '2026-07-01'), 4, 'N8: 単一曜日(月)で曜日マッピング検証');
 
 // ===== O. abMeasureUrgency_（加重加算スコア・高いほど先） =====
 var W = { chance:1.0, freq:0.6, absence:0.6, unmeasuredBoost:2.0 };
