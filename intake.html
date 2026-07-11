@@ -1965,7 +1965,8 @@
        ===================================================================== */
     var DAICHO_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7yecMqaUmTIQgF4g67HkrepT2x37lO8WdbFNG8URaAHXs/exec';
     var kdDaicho = [];
-    var kdDashLoaded = false;
+    var kdDaichoLoaded = false; // 名簿(台帳)が実取得できたか。false時は空き枠を数値で出さない（誤メトリクス防止）
+    var kdLoading = false;      // in-flightガード（重複fetch防止・キャッシュはしない＝毎回最新取得）
 
     // ---- 週間予定表.html から verbatim 流用（名前のみ KD_ 化・ロジック不変）----
     var KD_WEEKDAY_CHARS = ['月','火','水','木','金','土','日'];
@@ -2002,6 +2003,9 @@
       return vac;
     }
 
+    // 空き枠の表示ラベル：名簿未取得なら数値を出さず未取得を明示する（経営判断メトリクスの誤表示防止）
+    function kdVacantLabel(){ return kdDaichoLoaded ? kdComputeVacant() : '—（名簿未取得）'; }
+
     function kdEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
     // 率(0-1 or null) → 表示文字列
     function kdRate(r){ return (r==null) ? '—' : (Math.round(r*1000)/10) + '%'; }
@@ -2020,15 +2024,17 @@
       var cbName = 'kdDaichoCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
       var done = false;
       var s = document.createElement('script');
-      window[cbName] = function(resp){ done=true; kdDaicho = (resp && resp.users) || []; cleanup(); if(cb) cb(); };
+      window[cbName] = function(resp){ done=true; kdDaicho = (resp && resp.users) || []; kdDaichoLoaded = true; cleanup(); if(cb) cb(); };
       function cleanup(){ try{ delete window[cbName]; }catch(e){} try{ s.remove(); }catch(e){} }
       s.src = DAICHO_URL + '?callback=' + cbName + '&t=' + Date.now();
-      s.onerror = function(){ if(!done){ kdDaicho = []; cleanup(); if(cb) cb(); } };
+      s.onerror = function(){ if(!done){ kdDaicho = []; kdDaichoLoaded = false; cleanup(); if(cb) cb(); } };
       document.body.appendChild(s);
-      setTimeout(function(){ if(!done && typeof window[cbName]==='function'){ kdDaicho = []; cleanup(); if(cb) cb(); } }, 12000);
+      setTimeout(function(){ if(!done && typeof window[cbName]==='function'){ kdDaicho = []; kdDaichoLoaded = false; cleanup(); if(cb) cb(); } }, 12000);
     }
 
     function kdLoadDashboard(){
+      if (kdLoading) return; // in-flightガード（重複fetch防止・キャッシュはしない＝毎回最新）
+      kdLoading = true;
       var host = document.getElementById('tab-keiei');
       host.innerHTML = '<div class="kd-loading">読み込み中...</div>';
       var cbName = 'kdDashCb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
@@ -2036,8 +2042,9 @@
               + '&adminKey=' + encodeURIComponent(getIntakeAdminKey());
       var done = false;
       var s = document.createElement('script');
+      function cleanup(){ try{ delete window[cbName]; }catch(e){} try{ s.remove(); }catch(e){} }
       window[cbName] = function(resp){
-        done = true;
+        done = true; kdLoading = false;
         try {
           if (resp && resp.error === 'unauthorized') {
             handleIntakeUnauthorized('経営');
@@ -2049,19 +2056,19 @@
             return;
           }
           var d = resp.dashboard;
-          // 空き枠計算のため台帳を先にロード（未取得時のみ）してから描画
-          if (kdDaicho.length) { kdRenderDashboard(d); }
+          // 空き枠計算のため台帳を先にロード（未取得時のみ）してから描画。失敗時は kdDaichoLoaded=false のまま→空き枠は「—（名簿未取得）」表示
+          if (kdDaichoLoaded) { kdRenderDashboard(d); }
           else { kdLoadDaicho(function(){ kdRenderDashboard(d); }); }
         } catch (e) {
           host.innerHTML = '<div class="kd-err">描画エラー: ' + kdEsc(e && e.message || e) + '</div>';
         } finally {
-          try { delete window[cbName]; } catch(e){}
+          cleanup();
         }
       };
       s.src = url;
-      s.onerror = function(){ if(!done){ host.innerHTML = '<div class="kd-err">通信エラー：GASに接続できません。<button onclick="kdLoadDashboard()">再試行</button></div>'; try{ delete window[cbName]; }catch(e){} } };
+      s.onerror = function(){ if(!done){ done=true; kdLoading=false; host.innerHTML = '<div class="kd-err">通信エラー：GASに接続できません。<button onclick="kdLoadDashboard()">再試行</button></div>'; cleanup(); } };
       document.body.appendChild(s);
-      setTimeout(function(){ try{ s.remove(); }catch(e){} if(typeof window[cbName]==='function'){ try{ delete window[cbName]; }catch(e){} if(!done) host.innerHTML = '<div class="kd-err">取得タイムアウト：GAS応答なし。<button onclick="kdLoadDashboard()">再試行</button></div>'; } }, 12000);
+      setTimeout(function(){ if(typeof window[cbName]==='function'){ cleanup(); if(!done){ done=true; kdLoading=false; host.innerHTML = '<div class="kd-err">取得タイムアウト：GAS応答なし。<button onclick="kdLoadDashboard()">再試行</button></div>'; } } }, 12000);
     }
 
     function kdRenderDashboard(d){
@@ -2071,7 +2078,7 @@
       var h = '';
 
       // 1) 需給対比
-      var vac = kdComputeVacant();
+      var vac = kdVacantLabel(); // 名簿未取得時は数値でなく「—（名簿未取得）」
       h += '<div class="kd-sec"><h3>需給対比</h3><div class="kd-kpirow">';
       h += '<div class="kd-kpi"><span class="kd-num">' + vac + '</span><span class="kd-lbl">空き枠</span></div>';
       h += '<div class="kd-kpi"><span class="kd-num">' + (需給.開始待ち||0) + '</span><span class="kd-lbl">開始待ち</span></div>';
@@ -2145,7 +2152,6 @@
 
       var host = document.getElementById('tab-keiei');
       host.innerHTML = h;
-      kdDashLoaded = true;
       return h;
     }
 

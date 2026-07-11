@@ -28,8 +28,10 @@ const preamble =
   "var KD_SLOT_OF = { am:'午前', pm:'午後' };\n" +
   "var kdDaicho = [];\n";
 
+const preamble2 = "var kdDaichoLoaded = false;\n";
+
 const fns = [
-  'KD_slotSet_', 'KD_attendsCell_', 'kdComputeVacant',
+  'KD_slotSet_', 'KD_attendsCell_', 'kdComputeVacant', 'kdVacantLabel',
   'kdEsc', 'kdRate', 'kdRenderDashboard'
 ].map(extractFn).join('\n');
 
@@ -39,11 +41,13 @@ const wire =
   ' sb.kdRenderDashboard=kdRenderDashboard;' +
   ' sb.setDaicho=function(d){ kdDaicho = d; };';
 
+const wire2 = ' sb.kdVacantLabel=kdVacantLabel; sb.setDaichoLoaded=function(b){ kdDaichoLoaded = b; };';
+
 const sb = {};
 // document は kdRenderDashboard が innerHTML を書き込む先。captured に文字列を退避する。
 const captured = { html: '' };
 const fakeDoc = { getElementById: function(){ return { set innerHTML(v){ captured.html = v; } }; } };
-new Function('sb', 'document', preamble + fns + wire)(sb, fakeDoc);
+new Function('sb', 'document', preamble + preamble2 + fns + wire + wire2)(sb, fakeDoc);
 
 let pass = 0, fail = 0;
 function ok(label, cond) { if (cond) { pass++; console.log('  PASS', label); } else { fail++; console.error('  FAIL', label); } }
@@ -59,6 +63,14 @@ eq('月火の午前で 月AM/火AM 各-1 → 178', sb.kdComputeVacant(), 178);
 // 複合ampm: 「月午前、木午後」は 月AM と 木PM のみ。naive indexOf なら 月PM/木AM も誤ヒットし176になる。
 sb.setDaicho([{ days:'月木', ampm:'月午前、木午後' }]);
 eq('複合ampm 月午前/木午後のみ-2 → 178（曜日対応パース証明）', sb.kdComputeVacant(), 178);
+
+console.log('[kdVacantLabel 名簿未取得ガード]');
+sb.setDaicho([]);
+sb.setDaichoLoaded(false);
+eq('名簿未取得 → —（名簿未取得）', sb.kdVacantLabel(), '—（名簿未取得）');
+ok('名簿未取得時に数値180を出さない', String(sb.kdVacantLabel()).indexOf('180') < 0);
+sb.setDaichoLoaded(true);
+eq('名簿取得済＆空daicho → 180（回帰）', sb.kdVacantLabel(), 180);
 
 console.log('[KD_attendsCell_ 曜日対応]');
 ok('月午前=true', sb.KD_attendsCell_('月木', '月午前、木午後', '月', 'am') === true);
@@ -82,7 +94,7 @@ const sample = {
   転換率: { 見学到達_体験到達:{分母:4,分子:2,率:0.5,進行中N:1}, 体験到達_契約到達:{分母:0,分子:0,率:null,進行中N:0} },
   失注: { 理由別:{ '他事業所へ':2 }, 一覧:[{氏名:'佐藤',到達段階:'見学',到達段階approx:true,理由:'他事業所へ',日付:'2026-06-10'}] }
 };
-sb.setDaicho([]); // 空き枠180
+sb.setDaicho([]); sb.setDaichoLoaded(true); // 空き枠180
 let out;
 try { out = sb.kdRenderDashboard(sample); } catch (e) { out = null; console.error('  render threw:', e && e.message); }
 ok('例外を投げない', !!out);
@@ -104,6 +116,12 @@ const sample0 = JSON.parse(JSON.stringify(sample));
 sample0.需給.その他 = 0;
 const out0 = sb.kdRenderDashboard(sample0);
 ok('その他=0 で「その他(未分類)」を隠す', out0.indexOf('その他(未分類)') < 0);
+
+// 名簿未取得のまま描画したら空き枠に —（名簿未取得）を出し、誤180を出さない
+sb.setDaichoLoaded(false);
+const outNL = sb.kdRenderDashboard(sample);
+ok('名簿未取得の描画で「—（名簿未取得）」を含む', outNL.indexOf('—（名簿未取得）') >= 0);
+ok('名簿未取得の描画で空き枠に180を出さない', outNL.indexOf('>180<') < 0);
 
 console.log('\n' + (fail === 0 ? 'ALL PASS' : 'FAIL') + ' : ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
