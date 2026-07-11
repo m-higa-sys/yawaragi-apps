@@ -139,6 +139,19 @@ function abKoukuMoni_(oralUsers, oralRecByKey, year, month, oralCycleAtFn) {
   return rows;
 }
 
+// 口腔体操対象。is_target が明示 false 以外は対象（未設定=既定true）。返り値: [{ name, key }]
+function abKoukuTaisou_(oralSettings) {
+  return (oralSettings || []).filter(function (u) { return u.is_target !== false; })
+    .map(function (u) { return { name: u.name, key: abNormalizeName_(u.name) }; });
+}
+
+// 個訓対象。介護度「要介護」前方一致かつ非中止。返り値: [{ name, key, care }]
+function abKotan_(users) {
+  return (users || []).filter(function (u) {
+    return !u.cancelled && String(u.category || '').indexOf('要介護') === 0;
+  }).map(function (u) { return { name: u.name, key: abNormalizeName_(u.name), care: u.category || '' }; });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     abNormalizeName_: abNormalizeName_,
@@ -149,6 +162,8 @@ if (typeof module !== 'undefined' && module.exports) {
     abMeasureShien_: abMeasureShien_,
     abMonthEnd_: abMonthEnd_,
     abMeasureKaigo_: abMeasureKaigo_,
-    abKoukuMoni_: abKoukuMoni_
+    abKoukuMoni_: abKoukuMoni_,
+    abKoukuTaisou_: abKoukuTaisou_,
+    abKotan_: abKotan_
   };
 }

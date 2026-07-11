@@ -116,5 +116,25 @@ eq(core.abKoukuMoni_(oralUsers, oralRecDone, 2026, 7, oralCycleAt).length, 0, 'F
 var oralRecDoneVar = { 'モニ　太郎': { moni1_date: '2026-07-05', moni2_date: '', houkoku_date: '', plan_date: '' } };
 eq(core.abKoukuMoni_(oralUsers, oralRecDoneVar, 2026, 7, oralCycleAt).length, 0, 'F5: oralRecの表記ゆれでも正規化して実施済み除外');
 
+// ===== G. abKoukuTaisou_（is_target 明示false以外はtrue） =====
+var oralSettings = [
+  { name: '体操太郎', is_target: true },
+  { name: '既定子', is_target: undefined },   // 未設定→対象
+  { name: '除外郎', is_target: false }         // 明示false→非対象
+];
+var gRows = core.abKoukuTaisou_(oralSettings);
+eq(gRows.length, 2, 'G1: 明示false以外は対象（2名）');
+ok(gRows.some(function(r){ return r.key === '体操太郎'; }) && gRows.some(function(r){ return r.key === '既定子'; }), 'G2: 太郎と既定子が対象');
+
+// ===== H. abKotan_（介護度「要介護」前方一致） =====
+var allUsers = [
+  { name: '個訓太郎', category: '要介護3' },
+  { name: '要支子', category: '要支援1' },
+  { name: '中止郎', category: '要介護1', cancelled: true }
+];
+var hRows = core.abKotan_(allUsers);
+eq(hRows.length, 1, 'H1: 要介護かつ非中止のみ（要支子除外・中止郎除外）');
+eq(hRows[0].key, '個訓太郎', 'H2: 個訓太郎が対象');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
