@@ -17,7 +17,7 @@
 | 業務 | 判定 | 表示 |
 |---|---|---|
 | 口腔モニ | planStart起点3ヶ月周期（`oralCycleAt`型）で当月対象、かつ未実施 | 当日出席者のうち対象＆未実施を**全員ピックアップ（role仕分けなし）** |
-| 測定（1プール統合） | 要介護＝個訓の評価月（`isHyoukaMonth`：計画開始前月／各サイクル前月・当月が評価月かつ `sokutei_date` 空）。要支援・事業対象＝前回"実"測定日＋4ヶ月固定（`sokuteiCycleMonths_`その他=4・未測定最優先）。**両者を1プールに合算**し §2.4 の優先順位で並べる | 当日出席者のうち上記対象を、**プール全体を優先順位順**に。**プール全体の上位N名「今日やる」／残り「余裕があれば」（要介護/要支援でセクション分割しない）**。N既定=3・画面から変更可 |
+| 測定（1プール統合） | 要介護＝個訓の評価月（`isHyoukaMonth`：計画開始前月／各サイクル前月・当月が評価月かつ `sokutei_date` 空）。要支援・事業対象＝前回"実"測定日＋4ヶ月固定（`sokuteiCycleMonths_`その他=4・未測定最優先）。**両者を1プールに合算**し §2.4 の優先順位で並べる | 当日出席者のうち上記対象を、**当該AM/PMタブ内で優先順位順**に（§2.5）。**タブ内プールの上位N名「今日やる」／残り「余裕があれば」（要介護/要支援でセクション分割しない）**。N既定=3・画面から変更可 |
 | 口腔体操 | 算定対象フラグ（明示false以外はtrue）× 当日出席。**実源 `getOralTargetUsers_` は `isTarget`（キャメル）で返す**（`is_target` はシート列名）。`abKoukuTaisou_` は両フィールド対応 | 対象者一覧 |
 | 個別機能訓練 | 介護度「要介護」前方一致 × 非中止（`u.cancelled` が真でない）× 当日出席（周期なし＝毎回全員） | 対象者一覧 |
 | 誕生日 | 台帳M/Dで今月誕生月、かつ taskboard status 未完 | 今月の対象者一覧（当日出席フィルタなし＝月ベース） |
@@ -30,7 +30,7 @@
 - **測定は介護度で2系統に分岐する（core分岐）：**
   - **要介護 → 個訓計画書サイクルに紐づく（`isHyoukaMonth`）。** 前回測定日からの独立サイクルは採用しない。理由：要介護の測定は個訓計画を更新するための評価であり、計画開始の前月（評価月）に行う運用のため（社長確認：計画開始8月なら7月に測定）。個別短縮は `planMonths`（台帳「計画月数」1-12）で自動反映され、`isHyoukaMonth` がそれを起点に評価月を算出するため別フラグ不要（Q1は要介護に限り解決）。
   - **要支援・事業対象 → 前回"実"測定日＋4ヶ月固定周期（`sokuteiCycleMonths_`のその他=4）。** 評価月モデルは適用しない。この4ヶ月周期は不変で、休み等のスライドは実測定日起点で自然に吸収される。要支援は個訓計画書（planStart/planMonths）を持たない場合があるため、評価月モデルを使わないのはデータ上も正しい。
-- 測定「上位N名」の N は既定3。画面で変更でき、値は localStorage に保存（サーバへは送らない）。**上位N は要介護/要支援を分けず、統合プール全体の上位N**（§2.4）。
+- 測定「上位N名」の N は既定3。画面で変更でき、値は localStorage に保存（サーバへは送らない）。**上位N は要介護/要支援を分けず、当該セッション（AM/PMタブ）の統合プールの上位N**（§2.4・§2.5）。午前・午後は独立枠（各セッションで上位N＝最大2N名/日）。
 - **個訓の非中止除外の契約**：個訓対象母集合 `abKotan_` は `u.cancelled` が真の利用者を除外する（終了・中止者を「毎日やる」に出さない）。この `cancelled` boolean は Phase 2 で `getKeikakushoTargetUsers_`（`cancelled: isCancelled` を返す・`gas/yawaragi-board/コード.js:13559`）から供給する。当日出席フィルタでも実務上は落ちるが、二重の安全として母集合側でも除外する。
 - **測定2系統の判別子（track）**：`abMeasureKaigo_` の行は `track:'kaigo'`・`careLayer:0`、`abMeasureShien_` の行は `track:'shien'`・`careLayer:1` を持つ。`abBuildBoard_` は両者を1プール `sokutei` に統合し **§2.4 の comparator で1回ソート**する（フロントはソート済みプールを丸ごと上位Nで切ってよい）。track はUIバッジ表示（要介護/要支援）に使う。
 - **要支援の care フィールド**：`abMeasureShien_` は `u.care` を読む。実源の介護度フィールドは `category` なので、Phase 2 で `shienUsers` を作る際に `care: category` へ写像する（未写像でもサイクル4ヶ月判定は正しく落ちるが、表示 care が空になる。`sokutei.html:344` と同じ写像規約）。
@@ -59,6 +59,26 @@ urgency = W_CHANCE  × chanceScarcity
 - **軸1 週回数**＝台帳「利用曜日」の曜日文字数（日数ベース・AM/PMは使わない。Q5）。**軸2 欠席率**＝`1−U`、U は `usage_stats`（運用開始2026-04以降・直近3ヶ月・`isPreOperational` 月除外）。（Q6）
 - 純関数構成：`abCountWeeklyVisits_(days)`／`abCountRemainingVisits_(days, today)`／`abMeasureUrgency_(row, weights)`／`abSokuteiSort_(pool, weights)`。`abMeasureKaigo_`/`abMeasureShien_` は行に `careLayer`/`weeklyVisits`/`remainingVisits`/`absenceRate`（＋要支援は`unmeasured`）を付与し、`abBuildBoard_` が交差後の統合プールを `abSokuteiSort_` で並べる。
 - 追加データ契約（Phase 2）：`abMeasureKaigo_`/`abMeasureShien_` は各利用者の `days`（利用曜日）を要する（`getKeikakushoTargetUsers_` は既に `days` を返す）。U は新入力 `usageByKey`（正規化名→出席率、`usage_stats` から構築・キーは core が内部正規化）で供給する。
+
+### 2.5 AM/PM分割（タブ）と session 帰属
+
+**前提＝1日2単位制**：やわらぎは午前の部／午後の部の2単位制で、**同一利用者が同日にAM/PMの両方へ来ることは無い**。したがって session は **`'am'` / `'pm'` の2値のみ**で、`'both'`（通し利用者）は運用上存在しない。「通し利用者」を両タブに出す・二重カウントを避ける等の設計は**採用しない**。
+
+- **session 帰属**：`abUniquePresent_` は当日出席者を am/pm で単純二分し、各出席者に `session:'am'|'pm'` を付与する（出席＝`status==='出席'` のみ対象）。名寄せは正規化キー（§3.4）。
+- **タブ＝表示フィルタ（厳格）**：午前タブは `session==='am'` のみ、午後タブは `session==='pm'` のみを表示する。**午前タブに午後専用の人、午後タブに午前専用の人は絶対に混ぜない**。
+- **上位N（測定）はタブ内で計算**：当該セッションの出席者 × 測定対象を §2.4 の comparator でソートし、その中の上位N（既定3）が「今日やる」。**午前と午後は独立した枠**（午前で上位3・午後で上位3＝最大2N名/日）。誕生日以外の各業務は当該セッションの出席者に絞られる。
+- **人数の恒等**：`presentAm`（session `'am'` の distinct 人数）＋ `presentPm`＝`presentCount`（総 distinct）。同一人物は1名として1度だけ数える（2単位制ゆえ両枠加算は起きない）。
+- **誕生日はタブ外・常時表示**：出席非依存（月単位業務）so タブに関係なく今月対象を常に表示する。
+- **初期タブ**：時間帯で自動選択（正午前＝午前／以降＝午後）。手動で切り替えたらその選択を `localStorage` に保存。上位N の値も従来どおり localStorage 保存。
+
+**データ異常の扱い（am/pm キー衝突）**：2単位制で**同一正規化キーが am と pm の両方に「出席」で現れることは本来あり得ない**。現実的な原因は「別人が正規化後に同一キーへ衝突」（NFKC＋空白除去＋敬称除去で別人が同キーになる）で、これを silent に片方採用すると **別人の出席が握りつぶされ業務が誤割当**される。so 次の安全側で扱う（`abResidue_` と同じ「別人誤割当より可視化優先」の思想）：
+- 衝突キーは **`session:'am'` へ決定的に割当てて業務からは落とさない**（無害な二重登録でも実在出席者を取りこぼさない）。
+- かつ `abUniquePresent_` が当該行に `conflict:true` を立て、`abBuildBoard_` が `ampmConflict:[{name,key}]` として出力する。フロントは **⚠️「AM/PM両方に出席登録＝要確認」バナー**で名指し可視化する。
+
+**core への追加（§2.5 実装契約）**：
+- `abUniquePresent_` → 返り値の各行に `session:'am'|'pm'`（＋衝突時のみ `conflict:true`）。am/pm 二分・出席のみ。
+- `abIntersectPresent_` → 当たった出席者の `session` を業務 hit 行へ載せる（順序保持・元 target 行を破壊しない浅いコピー）。
+- `abBuildBoard_` → 各業務行が `session` を持つ。出力に `presentAm`／`presentPm`／`ampmConflict` を追加（`presentCount` は従来どおり総 distinct）。residue 行にも `session`。上位N の線引きは core で行わず**フロントがタブ内で切る**（§2.2 の localStorage 変更式を踏襲）。
 
 ### 2.3 第1版で「やらないこと」（YAGNI）
 
@@ -112,7 +132,7 @@ urgency = W_CHANCE  × chanceScarcity
      - 口腔体操 → シート「口腔機能向上設定」`is_target`。
      - 個訓 → 台帳「介護度」。
      - 誕生日 → 台帳「誕生日／生年月日」M/D ＋ 撮影済みstatus（§3.3）。
-  4. core関数で判定し、`{ ok, date, am, pm, sokutei:[], koukuMoni:[], koukuTaisou:[], kotan:[], birthday:[] }` を1レスポンスで返す。
+  4. core関数（`abBuildBoard_`）で判定し、`{ ok, date, year, month, presentCount, presentAm, presentPm, sokutei:[], koukuMoni:[], koukuTaisou:[], kotan:[], birthday:[], residue:[], ampmConflict:[] }` を1レスポンスで返す。測定・口腔モニ・口腔体操・個訓・residue の各行は `session:'am'|'pm'` を持つ（誕生日は出席非依存so session 無し・§2.5）。
 - **運用注意**：コード.js を触るため clasp pull 突合 → deploy が必須（本番のみ機能を消しかけた前科あり。MEMORY `月次定例+morningDigest統合` の runbook 準拠）。
 
 ### 3.3 誕生日 撮影済みstatusの取得（唯一の統合リスク）
