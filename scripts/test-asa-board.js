@@ -141,5 +141,23 @@ eq(core.abKotan_(null).length, 0, 'H3: null入力で空（落ちない）');
 // is_target キー自体が無い（シート行なし＝既定true）も対象になる
 eq(core.abKoukuTaisou_([{ name: '行なし子' }]).length, 1, 'G4: is_targetキー欠落は既定で対象');
 
+// ===== I. abBirthday_（今月誕生月・撮影status未完・当日出席フィルタなし） =====
+var bdUsers = [
+  { name: '誕生太郎', birthday: '7/15' },
+  { name: '来月子', birthday: '8/1' },
+  { name: '済み郎', birthday: '7/20' }
+];
+// statusByKey: 正規化キー → { photo, print, give } すべて true なら完了＝除外
+var bdStatus = { '済み郎': { photo: true, print: true, give: true } };
+var iRows = core.abBirthday_(bdUsers, 7, bdStatus);
+eq(iRows.length, 1, 'I1: 今月誕生月かつ未完のみ（来月子は月違い・済み郎は完了）');
+eq(iRows[0].key, '誕生太郎', 'I2: 誕生太郎が対象');
+eq(iRows[0].day, 15, 'I3: 日を数値で保持');
+// status不明（未登録）は未完扱いで残る
+eq(core.abBirthday_([{ name: '未登録美', birthday: '7/3' }], 7, {}).length, 1, 'I4: status未登録は未完で残す');
+// 表記ゆれ耐性: statusByKey のキーが全角スペース付きでも正規化して完了判定（§3.4）
+eq(core.abBirthday_([{ name: '済み郎', birthday: '7/20' }], 7, { '済み　郎': { photo: true, print: true, give: true } }).length, 0, 'I5: statusの表記ゆれでも正規化して完了除外');
+eq(core.abBirthday_(null, 7, {}).length, 0, 'I6: null入力で空（落ちない）');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

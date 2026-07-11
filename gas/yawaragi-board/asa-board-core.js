@@ -152,6 +152,32 @@ function abKotan_(users) {
   }).map(function (u) { return { name: u.name, key: abNormalizeName_(u.name), care: u.category || '' }; });
 }
 
+// 誕生日対象。birthday("M/D") が今月＝targetMonth かつ 撮影status未完（photo&&print&&give でない）。
+// 当日出席フィルタは掛けない（月単位業務）。statusByKey: 名前→{photo,print,give}（キーは内部で正規化・§3.4）。
+// 返り値: [{ name, key, month, day }]（日昇順）
+function abBirthday_(users, targetMonth, statusByKey) {
+  var statusNorm = {};
+  if (statusByKey) {
+    for (var sk in statusByKey) {
+      if (statusByKey.hasOwnProperty(sk)) statusNorm[abNormalizeName_(sk)] = statusByKey[sk];
+    }
+  }
+  var rows = [];
+  (users || []).forEach(function (u) {
+    var mm = String(u.birthday == null ? '' : u.birthday).match(/(\d{1,2})\/(\d{1,2})/);
+    if (!mm) return;
+    var mo = parseInt(mm[1], 10), da = parseInt(mm[2], 10);
+    if (mo !== targetMonth) return;
+    var key = abNormalizeName_(u.name);
+    var st = statusNorm[key] || {};
+    var done = !!(st.photo && st.print && st.give);
+    if (done) return;
+    rows.push({ name: u.name, key: key, month: mo, day: da });
+  });
+  rows.sort(function (a, b) { return a.day - b.day; });
+  return rows;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     abNormalizeName_: abNormalizeName_,
@@ -164,6 +190,7 @@ if (typeof module !== 'undefined' && module.exports) {
     abMeasureKaigo_: abMeasureKaigo_,
     abKoukuMoni_: abKoukuMoni_,
     abKoukuTaisou_: abKoukuTaisou_,
-    abKotan_: abKotan_
+    abKotan_: abKotan_,
+    abBirthday_: abBirthday_
   };
 }
