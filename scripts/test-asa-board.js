@@ -188,16 +188,17 @@ var input = {
   oralRecByKey: { 'モニ太郎': {} },
   oralSettings: [{ name: 'モニ太郎', is_target: true }],
   allUsers: [{ name: '評価月太郎', category: '要介護1' }],
-  bdUsers: [{ name: '評価月太郎', birthday: '7/25' }],
+  bdUsers: [{ name: '評価月太郎', birthday: '7/25' }, { name: '欠席誕生子', birthday: '7/10' }],
   bdStatusByKey: {}
 };
 var board = core.abBuildBoard_(input, { isHyoukaMonth: isHyoukaMonth, oralCycleAt: oralCycleAt });
-ok(board.sokutei.length === 2, 'L1: 測定=要介護(評価月太郎)+要支援(佐藤花子)の2名');
+ok(board.sokutei.length === 2 && board.sokutei[0].key === '評価月太郎' && board.sokutei[1].key === '佐藤花子', 'L1: 測定=要介護(評価月太郎)先頭+要支援(佐藤花子)の2系統統合・順序');
 ok(board.koukuMoni.length === 1 && board.koukuMoni[0].key === 'モニ太郎', 'L2: 口腔モニ=モニ太郎');
-ok(board.koukuTaisou.length === 1, 'L3: 口腔体操=出席かつis_target(モニ太郎)');
+ok(board.koukuTaisou.length === 1 && board.koukuTaisou[0].key === 'モニ太郎', 'L3: 口腔体操=出席かつis_target(モニ太郎)');
 ok(board.kotan.length === 1 && board.kotan[0].key === '評価月太郎', 'L4: 個訓=出席かつ要介護');
-ok(board.birthday.length === 1, 'L5: 誕生日=今月誕生月(評価月太郎・当日出席フィルタなし)');
+ok(board.birthday.length === 2 && board.birthday.some(function(r){ return r.key === '欠席誕生子'; }), 'L5: 誕生日は当日出席フィルタなし=欠席の誕生月該当者も含む(交差されない証明)');
 ok(board.residue.some(function(r){ return r.key === '謎の人'; }), 'L6: 謎の人はどの対象にも当たらず名寄せ不能residue');
+ok(board.residue.every(function(r){ return r.key !== '欠席誕生子'; }), 'L7: 欠席誕生子は出席者でないのでresidueにも入らない(residueは出席者のみ)');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
