@@ -17,7 +17,8 @@
 | 業務 | 判定 | 表示 |
 |---|---|---|
 | 口腔モニ | planStart起点3ヶ月周期（`oralCycleAt`型）で当月対象、かつ未実施 | 当日出席者のうち対象＆未実施を**全員ピックアップ（role仕分けなし）** |
-| 測定 | **個訓の評価月（`isHyoukaMonth`：planStart＋planMonths起点＝計画開始の前月／各サイクル前月）で当月が評価月、かつ未実施（当評価月の `sokutei_date` が空）** | 当日出席者のうち上記対象を、**月末までの残日数が少ない順**に。上位N名「今日やる」／残り「余裕あれば」。**N既定=3・画面から変更可** |
+| 測定（要介護） | **個訓の評価月（`isHyoukaMonth`：planStart＋planMonths起点＝計画開始の前月／各サイクル前月）で当月が評価月、かつ未実施（当評価月の `sokutei_date` が空）** | 当日出席者のうち上記対象を、**月末までの残日数が少ない順**に。上位N名「今日やる」／残り「余裕あれば」。**N既定=3・画面から変更可** |
+| 測定（要支援・事業対象） | **前回"実"測定日＋4ヶ月固定周期（`sokuteiCycleMonths_`のその他=4）で期限接近・超過**。評価月モデルは適用しない。休み等のスライドは実測定日起点で自然吸収 | 当日出席者のうち上記対象を、**残日数が少ない順**に。上位N／残りは要介護と同じUI（N共有） |
 | 口腔体操 | `is_target`（明示false以外はtrue）× 当日出席 | 対象者一覧 |
 | 個別機能訓練 | 介護度「要介護」× 当日出席（周期なし＝毎回全員） | 対象者一覧 |
 | 誕生日 | 台帳M/Dで今月誕生月、かつ taskboard status 未完 | 今月の対象者一覧（当日出席フィルタなし＝月ベース） |
@@ -27,8 +28,9 @@
 - **測定・口腔モニは当日出席者に限定**する（来館した人にしかできない業務のため）。
 - **口腔体操・個訓は当日出席者の全員**（周期・実施記録なし＝毎日やる業務）。
 - **誕生日だけは当日出席フィルタを掛けない**（月単位の準備業務のため、今月誕生月の全員が対象）。
-- **測定サイクルは個訓計画書サイクルに紐づく（`isHyoukaMonth`）。** 前回測定日からの独立3/4ヶ月サイクル（`sokuteiCycleMonths_`）は**採用しない**。理由：測定は個訓計画を更新するための評価であり、計画開始の前月（評価月）に行う運用のため（社長確認：計画開始8月なら7月に測定）。
-- **測定サイクルの個別短縮は `planMonths`（台帳「計画月数」1-12）で自動反映**される。ケアプラン都合で短い人は個訓アプリ側で `planMonths` が既に短く設定されており、`isHyoukaMonth` がそれを起点に評価月を算出するため、別フラグ・別列は不要（Q1追加調査で「専用の個別測定サイクル列は無い」と確定。planStart＋planMonthsが実質の個別サイクル源）。
+- **測定は介護度で2系統に分岐する（core分岐）：**
+  - **要介護 → 個訓計画書サイクルに紐づく（`isHyoukaMonth`）。** 前回測定日からの独立サイクルは採用しない。理由：要介護の測定は個訓計画を更新するための評価であり、計画開始の前月（評価月）に行う運用のため（社長確認：計画開始8月なら7月に測定）。個別短縮は `planMonths`（台帳「計画月数」1-12）で自動反映され、`isHyoukaMonth` がそれを起点に評価月を算出するため別フラグ不要（Q1は要介護に限り解決）。
+  - **要支援・事業対象 → 前回"実"測定日＋4ヶ月固定周期（`sokuteiCycleMonths_`のその他=4）。** 評価月モデルは適用しない。この4ヶ月周期は不変で、休み等のスライドは実測定日起点で自然に吸収される。要支援は個訓計画書（planStart/planMonths）を持たない場合があるため、評価月モデルを使わないのはデータ上も正しい。
 - 測定「上位N名」の N は既定3。画面で変更でき、値は localStorage に保存（サーバへは送らない）。
 - 逼迫度＝**評価月内の月末までの残日数**（少ないほど急ぐ）。評価月は月単位で確定するため、同一評価月内の順序付けにのみ残日数を使う。
 
@@ -56,7 +58,9 @@
 
 ### 3.0 流用元（Q3追加調査で確定）
 
-- **測定ブロックは `sokutei.html` タブ1「今日の測定優先リスト」が直接の流用元**（`sokutei.html:396-413` `renderTab1`）。`action=attendance`で当日出席取得→`status==='出席'`で絞り→対象と氏名キーで積集合→逼迫度昇順→上位/余裕振り分け、という**当日出席×対象の交差構造をそのまま流用**する。**ただしサイクル判定だけは差し替える**：sokutei.html の `sokuteiDueDate_`（前回測定日＋3/4ヶ月）ではなく `isHyoukaMonth`（評価月）を使う。
+- **測定ブロックは `sokutei.html` タブ1「今日の測定優先リスト」が直接の流用元**（`sokutei.html:396-413` `renderTab1`）。`action=attendance`で当日出席取得→`status==='出席'`で絞り→対象と氏名キーで積集合→逼迫度昇順→上位/余裕振り分け、という**当日出席×対象の交差構造をそのまま流用**する。
+  - **要介護ブロックのみサイクル判定を差し替える**：sokutei.html の `sokuteiDueDate_`（前回測定日＋3/4ヶ月）ではなく `isHyoukaMonth`（評価月）を使う。
+  - **要支援・事業対象ブロックは sokutei.html の元ロジックをそのまま流用**：`sokuteiCycleMonths_`（その他=4）＋`sokuteiDueDate_`（前回実測定日＋4ヶ月）＋`sokuteiRemaining_`。差し替えない。
 - **口腔モニ・口腔体操・個訓・誕生日の「当日出席×対象」交差は既存に実例が無い＝朝ボードが初実装**（oral.html/oral-plan.html/teishutsu.html は月次で対象者全員を出すのみで出席交差なし）。この4業務は交差部分を新規に書く。
 
 ### 3.1 判定純関数 `asa-board-core.js`
@@ -76,7 +80,8 @@
   1. 対象日 date（未指定は Asia/Tokyo の当日）を確定。
   2. `getAttendance` 相当（台帳曜日 − 出欠変更の欠席）で当日 `{am:[], pm:[]}` を得る＝**出席一次ソース**。
   3. 各業務の生データを読む：
-     - 測定 → 台帳「計画書開始」`planStart`＋「計画月数」`planMonths`（`getKeikakushoTargetUsers_` が既に返す）で `isHyoukaMonth` により当月が評価月か判定。実施済みはシート「個別機能訓練計画書記録」の当評価月 `sokutei_date`（要介護）＋別シート要支援測定。
+     - 測定（要介護）→ 台帳「計画書開始」`planStart`＋「計画月数」`planMonths`（`getKeikakushoTargetUsers_` が既に返す・**§3.6の正本**）で `isHyoukaMonth` により当月が評価月か判定。実施済みはシート「個別機能訓練計画書記録」の当評価月 `sokutei_date`。
+     - 測定（要支援・事業対象）→ 別シート要支援測定（`getShienSokutei`）の前回実測定日＋4ヶ月で判定。planStart/planMonthsは使わない。
      - 口腔モニ → シート「口腔機能向上記録」（`moni1_date`/`moni2_date`/`houkoku_date`/`plan_date`）＋「口腔機能向上設定」（`plan_start`/`plan_end`）。
      - 口腔体操 → シート「口腔機能向上設定」`is_target`。
      - 個訓 → 台帳「介護度」。
@@ -99,7 +104,13 @@
 - **安全弁（サイレント欠落の禁止）**：当日出席者のうち、正規化しても各対象シートに突合先が見つからなかった者は**捨てず、末尾に「名寄せ不能（要確認）」として氏名を表示**する。別人へタスクを誤割当するより、拾い漏れを可視化する方を優先する。
 - **構造的に解決不能な残存リスク**（specに明記して運用で許容）：①同姓同名（同一綴り）＝氏名キーで衝突し1人に集約。②改名・旧姓変更＝記録行の氏名を同時に直さないと旧記録が孤立（自動移行コードは存在しない）。朝ボードはこれらを新規に解決しない（既存全システムと同じ制約）。
 
-### 3.5 フロント `asa-board.html`
+### 3.6 計画開始月の正本と動的連動（Q4追加調査で確定）
+
+- **書込先＝読取元は完全に同一フィールド。** 計画書チェックHTMLの「計画書開始月を変更」ダイアログ（`applyPlanStart` → `action=updatePlanStart`）は、台帳（`SS_ID`・シート「利用者台帳」）の列「計画書開始」「計画月数」に直接 `setValue` する（`gas/yawaragi-board/コード.js:2246-2281`）。朝ボードが読む `getKeikakushoTargetUsers_` は**同一SS・同一シート・同一列を毎回 `getDataRange().getValues()` で直読み**（`gas/yawaragi-board/コード.js:13473-13488`）。
+- **キャッシュ層なし**（CacheService/PropertiesService不使用）。→ **朝ボードは正本を毎回読むだけで、計画開始月の変更に即自動連動する。要介護測定のデータソースは台帳「計画書開始」「計画月数」で確定・キャッシュ禁止。**
+- **⚠️運用リスク（設計で解決せず明記・運用で担保）**：「計画書作成（`keikaku_date` を `updateKeikakusho` で記録シートへ）」と「計画開始月の更新（`updatePlanStart` で台帳へ）」は**別操作でコード上連動しない**。社長が計画作成時に開始月ダイアログを操作し忘れると `planStart` が旧値のまま残り、`isHyoukaMonth` が古い評価月を出す。これはフィールドのズレではなく「正本の更新漏れ」。朝ボード側では解決できないため、②morningDigest要約行や運用リマインドで補完する余地として残す（第1版スコープ外）。
+
+### 3.7 フロント `asa-board.html`
 
 - 起動時に `action=asaBoard&date=YYYY-MM-DD` を1回叩き、返ってきた配列を業務ブロックに描画するだけの薄い実装。
 - 測定の N（上位何名を「今日やる」に出すか）だけクライアント状態（localStorage）。
@@ -128,7 +139,8 @@
 
 - `scripts/test-asa-board.js`：core純関数を単体でTDD。
   - 口腔モニ：planStart×対象日で当月role判定、未実施（各date欄空）抽出、当日出席との積。
-  - 測定：`isHyoukaMonth`で評価月判定（計画開始前月 diff===-1／L=3の各サイクル前月 diff%3===2／変則planMonthsの diff===L-1）、planMonths短縮での評価月前倒し、未実施（当評価月 sokutei_date空）抽出、当日出席との積、月末残日数昇順、上位N境界。
+  - 測定（要介護）：`isHyoukaMonth`で評価月判定（計画開始前月 diff===-1／L=3の各サイクル前月 diff%3===2／変則planMonthsの diff===L-1）、planMonths短縮での評価月前倒し、未実施（当評価月 sokutei_date空）抽出、当日出席との積、月末残日数昇順、上位N境界。
+  - 測定（要支援・事業）：`sokuteiCycleMonths_`その他=4、前回実測定日＋4ヶ月の `sokuteiDueDate_`/`sokuteiRemaining_`、超過（負の残日数）、当日出席との積。要介護と要支援の**core分岐が介護度で正しく振り分くこと**。
   - 口腔体操：is_target の明示false/未設定（既定true）/true、当日出席との積。
   - 個訓：介護度「要介護」判定（前方一致）、当日出席との積。
   - 誕生日：今月誕生月抽出、status未完フィルタ、当日出席フィルタを掛けないこと。
@@ -138,7 +150,10 @@
 
 - 出席一次ソース：`getAttendance`（台帳曜日 − 出欠変更の欠席）。コードは欠席を dailyOps より上位の真実として扱う（`gas/yawaragi-board/コード.js:13783`「欠席登録ある日はスキップ」）。sougei dailyOps は送迎ルート用で当日未作成なら空になり得るため二次的。
 - 口腔モニ判定：`oralCycleAt(planStart, planEnd, year, month)`（`oral-plan.html:701`）。`(対象月−planStart月)%3` で role。未実施＝`moni1_date`/`moni2_date`/（setsumeは`houkoku_date && plan_date`）が空。正本シート「口腔機能向上記録」/「口腔機能向上設定」（board GAS）。
-- 測定タイミング：**個訓の評価月**＝`isHyoukaMonth(planStart, planMonths, y, m)`（`shared.js:420`。計画開始前月 diff===-1、L=3は各サイクル前月、変則planMonthsは diff===L-1）。同関数は「個別機能訓練計画書チェック.htmlの同名関数を移植」とコメントにあり個訓アプリが把握。planStart/planMonthsは台帳「計画書開始」「計画月数」＝`getKeikakushoTargetUsers_`（`gas/yawaragi-board/コード.js:13488`/`:13558`）が返す。実施済みはシート「個別機能訓練計画書記録」`sokutei_date`（`action=getKeikakushoYear`）＋要支援別シート（`getShienSokutei`）。**（前回測定日＋`sokuteiCycleMonths_`の独立サイクルは不採用）**
+- 測定タイミング（**2系統**）：
+  - 要介護＝**個訓の評価月** `isHyoukaMonth(planStart, planMonths, y, m)`（`shared.js:420`。計画開始前月 diff===-1、L=3は各サイクル前月、変則planMonthsは diff===L-1）。同関数は「個別機能訓練計画書チェック.htmlの同名関数を移植」とコメントにあり個訓アプリが把握。planStart/planMonthsは台帳「計画書開始」「計画月数」＝`getKeikakushoTargetUsers_`（`gas/yawaragi-board/コード.js:13488`/`:13558`）が返す。実施済みはシート「個別機能訓練計画書記録」`sokutei_date`（`action=getKeikakushoYear`）。
+  - 要支援・事業対象＝**前回実測定日＋4ヶ月固定** `sokuteiCycleMonths_`その他=4／`sokuteiDueDate_`（`sokutei.html:99`/`:103`）。前回実測定日は要支援別シート（`getShienSokutei`）。planStart不要。
+- 計画開始月の正本＝台帳「計画書開始」「計画月数」。書込`updatePlanStart`（`gas/yawaragi-board/コード.js:2246-2281`）＝読取`getKeikakushoTargetUsers_`（`:13473-13488`）で同一列・キャッシュなし＝毎回直読みで自動連動（Q4）。ただし計画作成`updateKeikakusho`と開始月更新`updatePlanStart`は非連動（正本更新漏れの運用リスク）。
 - 名寄せ：安定ID無し。`userId===氏名`（`gas/yawaragi-board/コード.js:13551`他）。`getAttendance`は氏名のみ`.trim()`（`:3939`）。正規化は口腔"設定"の`_normalizeUserName`（`:11870`）のみで記録系は生trim＝基準不一致。改名で旧記録孤立（自動移行なし）・同姓同名衝突・sokutei.htmlの「改名耐性あり」コメントは実は不成立（Q2追加調査で裏取り）。
 - 当日出席×対象の交差実例：`sokutei.html`タブ1のみ（`sokutei.html:396-413`）。他アプリは月次で出席交差なし。
 - 口腔体操フラグ：シート「口腔機能向上設定」`is_target`（`gas/yawaragi-board/コード.js:13045`）。行なし新規は既定true、明示falseのみ非対象。
@@ -150,6 +165,6 @@
 ## 8. 実装計画で最終確定する既定（各項に既定あり）
 
 - 誕生日 撮影済みstatus取得 → **既定=UrlFetch（§3.3）**、フォールバック=クライアントoverlay。どちらで進めるか着手時に確定。
-- 測定の要支援・事業対象者（別シート）→ **既定=含める**。ただし要支援は個訓計画書（planStart/planMonths）を持たない場合があり、その場合 `isHyoukaMonth` が評価月を出せない。要支援の測定タイミング源（planStartの有無）を着手時に実データで確認し、無ければ要支援は測定ブロック対象外とする。
+- 測定の要支援・事業対象者 → **含める（別系統）。前回実測定日＋4ヶ月固定で判定**するため planStart 不要。要支援に前回実測定日が1件も無い（初回）場合の扱い（未測定最優先で先頭に出す等）を着手時に確認。
 - asaBoard レスポンスのキー名 → **既定=§3.2の `sokutei/koukuMoni/koukuTaisou/kotan/birthday`**。morningDigest要約行と共有するため実装時にfix。
 - 測定サイクルの個別短縮（Q1）→ **解決済み。planStart＋planMonths（個訓計画書サイクル）を `isHyoukaMonth` で使うことで自動反映**。専用の個別測定サイクル列は存在しないことを確認済み（新規に作らない）。
