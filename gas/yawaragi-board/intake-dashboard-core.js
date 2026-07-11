@@ -104,6 +104,20 @@ function dashConversion_(cases) {
   };
 }
 
+// 問合せ元別：連絡元区分ごと {件数,利用開始数}(累計)＋問い合わせ日の月次件数。空区分は'未設定'。
+function dashSources_(cases) {
+  var 区分別 = {}, 月次 = {};
+  (cases || []).forEach(function(c) {
+    var k = String(c.連絡元区分 || '').trim() || '未設定';
+    if (!区分別[k]) 区分別[k] = { 件数:0, 利用開始数:0 };
+    区分別[k].件数++;
+    if (String(c.本格利用開始日 || '')) 区分別[k].利用開始数++;
+    var ym = String(c.問い合わせ日 || '').slice(0,7);
+    if (ym.length === 7) 月次[ym] = (月次[ym] || 0) + 1;
+  });
+  return { 区分別: 区分別, 月次: 月次 };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     dashStageBuckets_: dashStageBuckets_,
@@ -112,6 +126,7 @@ if (typeof module !== 'undefined' && module.exports) {
     INTAKE_DASH_daysBetween_: INTAKE_DASH_daysBetween_,
     INTAKE_DASH_median_: INTAKE_DASH_median_,
     dashReached_: dashReached_,
-    dashConversion_: dashConversion_
+    dashConversion_: dashConversion_,
+    dashSources_: dashSources_
   };
 }
