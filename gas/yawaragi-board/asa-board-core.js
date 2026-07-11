@@ -59,7 +59,7 @@ function sokuteiRemaining_(dueDateStr, todayStr) {
 }
 
 // 要支援・事業対象の測定対象行。前回実測定日+4ヶ月。未測定(実測定日なし)は最優先。残日数昇順。
-// 返り値: [{ name, key, care, last, due, remaining, unmeasured }]
+// 返り値: [{ name, key, care, last, due, remaining, unmeasured, track: 'shien' }]
 function abMeasureShien_(shienUsers, lastByName, todayStr) {
   var lastByKey = {};
   if (lastByName) {
@@ -76,7 +76,7 @@ function abMeasureShien_(shienUsers, lastByName, todayStr) {
     var last = lastByKey[key] || '';
     var due = '', remaining = -999, unmeasured = !last;
     if (last) { due = sokuteiDueDate_(last, u.care || ''); remaining = sokuteiRemaining_(due, todayStr); }
-    return { name: u.name, key: key, care: u.care || '', last: last, due: due, remaining: remaining, unmeasured: unmeasured };
+    return { name: u.name, key: key, care: u.care || '', last: last, due: due, remaining: remaining, unmeasured: unmeasured, track: 'shien' };
   });
   rows.sort(function (a, b) { return a.remaining - b.remaining; });
   return rows;
@@ -91,7 +91,7 @@ function abMonthEnd_(year, month) {
 
 // 要介護の測定対象行。当月が評価月(isHyoukaMonthFn)かつ当評価月未実施(doneByKey に無い)。月末残日数昇順。
 // doneByKey: 当評価月に sokutei_date が入っている人の名前→true（キーは内部で正規化して照合・§3.4）。
-// isHyoukaMonthFn は shared.js の isHyoukaMonth を注入。返り値: [{ name, key, care, remaining }]
+// isHyoukaMonthFn は shared.js の isHyoukaMonth を注入。返り値: [{ name, key, care, remaining, track: 'kaigo' }]
 function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn) {
   var doneNorm = {};
   if (doneByKey) {
@@ -105,7 +105,7 @@ function abMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaM
     if (!isHyoukaMonthFn(u.planStart, u.planMonths, year, month)) return;
     var key = abNormalizeName_(u.name);
     if (doneNorm[key]) return;
-    rows.push({ name: u.name, key: key, care: u.category || '', remaining: sokuteiRemaining_(monthEnd, todayStr) });
+    rows.push({ name: u.name, key: key, care: u.category || '', remaining: sokuteiRemaining_(monthEnd, todayStr), track: 'kaigo' });
   });
   rows.sort(function (a, b) { return a.remaining - b.remaining; });
   return rows;
@@ -139,9 +139,11 @@ function abKoukuMoni_(oralUsers, oralRecByKey, year, month, oralCycleAtFn) {
   return rows;
 }
 
-// 口腔体操対象。is_target が明示 false 以外は対象（未設定=既定true）。返り値: [{ name, key }]
+// 口腔体操対象。isTarget/is_target が明示 false 以外は対象（未設定=既定true）。
+// 実源getOralTargetUsers_はキャメルケースisTargetを返す。is_targetは生シート列名（互換のため両対応）。
+// 返り値: [{ name, key }]
 function abKoukuTaisou_(oralSettings) {
-  return (oralSettings || []).filter(function (u) { return u.is_target !== false; })
+  return (oralSettings || []).filter(function (u) { return u.isTarget !== false && u.is_target !== false; })
     .map(function (u) { return { name: u.name, key: abNormalizeName_(u.name) }; });
 }
 
