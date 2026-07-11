@@ -68,6 +68,8 @@ function dashLeadTime_(cases, today) {
 
 // 案件が stage（'見学'|'体験'|'契約準備'）に到達したか。履歴優先→現フェーズ/日付/フラグで概算。
 function dashReached_(c, stage) {
+  var ph = String(c.フェーズ || '');
+  if (ph === 'アーカイブ') return true; // アーカイブ=利用開始まで到達し完了した案件so全段階到達扱い（getIntakeFunnelと同semantics）
   var hist = Array.isArray(c.履歴) ? c.履歴 : [];
   var wantRank = INTAKE_DASH_PHASE_RANK[stage];
   for (var i = 0; i < hist.length; i++) {
@@ -77,7 +79,7 @@ function dashReached_(c, stage) {
   var cur = INTAKE_DASH_PHASE_RANK[String(c.フェーズ || '')];
   if (cur !== undefined && cur >= wantRank) return true;
   if (stage === '見学'   && (c.見学日 || c.見学完了 === true)) return true;
-  if (stage === '体験'   && c.体験完了 === true) return true;
+  if (stage === '体験'   && c.体験完了 === true) return true; // 体験日列は存在しないので完了フラグのみ
   if (stage === '契約準備' && (c.契約日 || c.契約書取り交わし済 === true)) return true;
   return false;
 }
