@@ -111,6 +111,30 @@ function avDisplayState_(opt) {
   return { state: 'normal', label: '' };
 }
 
+// 追加できる空き枠：候補が使うampm(am/pm)を保ったまま、月〜金(現曜日除く)で空き>0の枠。
+function avAddableSlots_(days, unit, slotsFree) {
+  var mySet = avSlotSet_(days, unit);
+  var useAm = false, usePm = false;
+  Object.keys(mySet).forEach(function (k) {
+    if (k.indexOf('午前') >= 0) useAm = true;
+    if (k.indexOf('午後') >= 0) usePm = true;
+  });
+  var daysStr = String(days || '');
+  var out = [];
+  var passes = [];
+  if (useAm) passes.push({ sess: 'am', label: 'AM' });
+  if (usePm) passes.push({ sess: 'pm', label: 'PM' });
+  passes.forEach(function (p) {
+    AV_DAYS.forEach(function (d) {
+      if (daysStr.indexOf(d) >= 0) return;          // 現曜日は除外
+      var f = slotsFree[d] || { am: 0, pm: 0 };
+      if (f[p.sess] > 0) out.push(d + p.label);
+    });
+  });
+  return out;
+}
+function avIsUpsizeCandidate_(state, contractN) { return state === 'normal' && contractN === 1; }
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
@@ -120,6 +144,7 @@ if (typeof module !== 'undefined' && module.exports) {
     avDateMinusMonths_: avDateMinusMonths_, avLast3CompletedMonths_: avLast3CompletedMonths_,
     avUserOpsRate_: avUserOpsRate_,
     avActualPerWeek_: avActualPerWeek_,
-    avDisplayState_: avDisplayState_
+    avDisplayState_: avDisplayState_,
+    avAddableSlots_: avAddableSlots_, avIsUpsizeCandidate_: avIsUpsizeCandidate_
   };
 }

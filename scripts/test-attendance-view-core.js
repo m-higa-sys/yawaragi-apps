@@ -85,5 +85,16 @@ eq(c.avDisplayState_({isLongLeave:false, isWeekdayChange:true, startDate:'2026-0
 eq(c.avDisplayState_({isLongLeave:false, isWeekdayChange:false, startDate:'', today:'2026-07-12'}),
    {state:'normal', label:''}, '開始日空→normal（判定中にしない）');
 
+console.log('\n[avAddableSlots_] 同ampm保持・現曜日除外・空き>0の枠');
+const sf = { '月':{am:1,pm:0}, '火':{am:1,pm:2}, '水':{am:0,pm:0}, '木':{am:0,pm:0}, '金':{am:1,pm:1} };
+eq(c.avAddableSlots_('水','午前', sf), ['月AM','火AM','金AM'], '水AMのみ→月/火/金AM（水除外・空きある枠）');
+eq(c.avAddableSlots_('火','午後', sf), ['金PM'], '火PMのみ→金PM（火除外・月木水はPM空きなし）');
+eq(c.avAddableSlots_('月','午前午後', sf), ['火AM','金AM','火PM','金PM'], '午前午後→AM/PM両面の空き（月除外）');
+
+console.log('\n[avIsUpsizeCandidate_] normal かつ 週1回');
+ok(c.avIsUpsizeCandidate_('normal',1)===true, 'normal週1→候補');
+ok(c.avIsUpsizeCandidate_('normal',2)===false, '週2→非候補');
+ok(c.avIsUpsizeCandidate_('sanko',1)===false, 'sanko週1→非候補');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);
