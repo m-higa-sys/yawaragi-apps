@@ -2159,9 +2159,11 @@
             <label style="font-size:0.85rem;">宛先：
                 <select id="dengon-to" style="padding:6px; border-radius:6px; border:1px solid #cbd5e0;">
                     <option value="全員">全員</option>
+                    <option value="全員・ドライバー除く">全員・ドライバー除く</option>
+                    <option value="社員">社員</option>
                     <optgroup label="役割宛">
-                        <option value="看護師">看護師</option>
                         <option value="相談員">相談員</option>
+                        <option value="看護師">看護師</option>
                     </optgroup>
                     <optgroup label="特定スタッフ" id="dengon-to-staff"></optgroup>
                 </select>
@@ -9928,6 +9930,8 @@ function rmdToggleBirthday(name) {
 const DENGON_API_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 let dengonSelectedStaff = null;
 let dengonView = 'active'; // 'active'=未完了 / 'history'=完了履歴
+let dengonStaffMaster = [];       // dengon_staff_master の11人（宛先算出・既読チップ・移行フォールバック用）
+let dengonLastActiveItems = [];   // 未完了ビューの直近items（マスタ遅延到着時の再描画用）
 const DENGON_VIEWBTN_BASE = 'padding:6px 16px; border:1px solid #3182ce; border-radius:6px; font-size:0.85rem; cursor:pointer; font-weight:700; ';
 const dengonConfirmTimers = {}; // 完了2段階確認の自動キャンセル用タイマー
 
@@ -9967,17 +9971,55 @@ function dengonSelectStaff(name) {
 // 一覧取得。未完了ビューはサーバーの未完了一覧（期限切れも含む）、完了履歴ビューは履歴を取得。
 function dengonLoad() {
     dengonRenderStaffSelect();
+    if (!dengonStaffMaster.length) dengonFetchMaster_(); // 初回のみ・到着後に select と一覧を再描画
     if (dengonView === 'history') { dengonLoadHistory(); return; }
     const cb = 'dengonCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=dengonBoard"]').forEach(s => s.remove());
-        dengonRender(resp && resp.items ? resp.items : []);
+        dengonLastActiveItems = (resp && resp.items) ? resp.items : [];
+        dengonRender(dengonLastActiveItems);
         try { kbReleaseCb_(cb); } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=dengonBoard&today=' + toLocalDateStr() + '&callback=' + cb;
     s.onerror = () => { s.remove(); };
     document.body.appendChild(s);
+}
+
+// スタッフマスタ取得（宛先算出・既読チップ・移行フォールバック）。到着後に select と未完了一覧を再描画。
+function dengonFetchMaster_() {
+    const cb = 'dengonMasterCb_' + Date.now();
+    window[cb] = function (resp) {
+        document.querySelectorAll('script[src*="action=dengon_staff_master"]').forEach(s => s.remove());
+        if (resp && resp.staff) {
+            dengonStaffMaster = resp.staff;
+            dengonRenderToSelect_();
+            if (dengonView === 'active') dengonRender(dengonLastActiveItems);
+        }
+        try { kbReleaseCb_(cb); } catch (e) {}
+    };
+    const s = document.createElement('script');
+    s.src = DENGON_API_URL + '?action=dengon_staff_master&callback=' + cb;
+    s.onerror = () => { s.remove(); };
+    document.body.appendChild(s);
+}
+
+// 宛先select刷新：グループ（人数付き）＋特定スタッフ（マスタactive全員）。
+// ※人数は「表示用の一次確認」。保存される recipients はサーバ(add_dengon_message)が確定する（不変条件1）。
+function dengonRenderToSelect_() {
+    const sel = document.getElementById('dengon-to');
+    if (!sel) return;
+    const prev = sel.value;
+    const groups = ['全員', '全員・ドライバー除く', '社員', '相談員', '看護師'];
+    let html = groups.map(g => {
+        const n = dengonComputeRecipients_(dengonStaffMaster, g).length;
+        return `<option value="${escapeHtml(g)}">${escapeHtml(g)}(${n})</option>`;
+    }).join('');
+    const indiv = (dengonStaffMaster || []).filter(m => m && m.active)
+        .map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('');
+    html += `<optgroup label="特定スタッフ">${indiv}</optgroup>`;
+    sel.innerHTML = html;
+    if (prev) { sel.value = prev; }
 }
 
 // 完了履歴取得（JSONP・done=true を doneAt降順）
@@ -10009,14 +10051,20 @@ function dengonRender(items) {
         const req = dengonRequestedMD_(x.createdAt);          // B：依頼日（無効/空は非表示）
         const reqHtml = req ? ' ・ 依頼 ' + req : '';
         const dlHtml = dengonDeadlineBadge_(x.deadline);      // A：期限バッジ（今日基準）
+        const chipsHtml = dengonReadChipsHtml_(x, id, dengonStaffMaster); // 既読チップ（グループ宛てのみ）
+        const eff = dengonEffectiveRecipients_(x, dengonStaffMaster);
+        const allRead = dengonIsAllRead_(eff, x.readBy);      // 全員既読で完了ボタン変化
+        const cLabel = allRead ? '✅ 全員既読・完了にする' : '完了にする';
+        const cBg = allRead ? '#276749' : '#38a169';
         return `
         <div class="dengon-card" data-id="${escapeHtml(id)}" style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff;">
             <div style="font-size:0.78rem; color:#718096; margin-bottom:4px;">
                 宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${reqHtml}${dlHtml}
             </div>
             <div style="margin:4px 0 8px; white-space:pre-wrap;">${escapeHtml(x.body)}</div>
+            ${chipsHtml}
             <div class="dg-normal">
-                <button onclick="dengonAskConfirm('${id}')" style="background:#38a169; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer;">完了にする</button>
+                <button onclick="dengonAskConfirm('${id}')" style="background:${cBg}; color:#fff; border:none; border-radius:6px; padding:5px 14px; font-size:0.8rem; cursor:pointer; font-weight:${allRead ? '700' : '400'};">${cLabel}</button>
             </div>
             <div class="dg-confirm" style="display:none;">
                 <div style="font-size:0.85rem; color:#c53030; font-weight:700; margin:2px 0 4px;">完了にする？</div>
@@ -10027,6 +10075,25 @@ function dengonRender(items) {
             </div>
         </div>`;
     }).join('');
+}
+
+// 既読チップのHTML（グループ宛てのみ・個人/社長宛ては ''）。未読=赤主役、既読=薄い取消線。副作用なし。
+function dengonReadChipsHtml_(item, id, master) {
+    const eff = dengonEffectiveRecipients_(item, master);
+    if (!eff.length) return '';
+    const readBy = Array.isArray(item.readBy) ? item.readBy : [];
+    const unread = dengonUnread_(eff, readBy);
+    const head = unread.length
+        ? `<div style="font-size:0.8rem; color:#c53030; font-weight:700; margin:8px 0 4px;">未読: ${unread.map(escapeHtml).join('・')}</div>`
+        : `<div style="font-size:0.8rem; color:#38a169; font-weight:700; margin:8px 0 4px;">✅ 全員既読</div>`;
+    const chips = eff.map(name => {
+        const safe = name.replace(/'/g, "\\'");
+        const isRead = readBy.indexOf(name) !== -1;
+        return isRead
+            ? `<button onclick="dengonUnmarkRead('${id}','${safe}')" style="background:#edf2f7; color:#a0aec0; border:1px solid #e2e8f0; border-radius:12px; padding:3px 10px; font-size:0.78rem; cursor:pointer; text-decoration:line-through;">${escapeHtml(name)}</button>`
+            : `<button onclick="dengonMarkRead('${id}','${safe}')" style="background:#fff5f5; color:#c53030; border:1px solid #fc8181; border-radius:12px; padding:3px 10px; font-size:0.78rem; cursor:pointer; font-weight:700;">${escapeHtml(name)}</button>`;
+    }).join('');
+    return head + `<div class="dengon-chips" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px;">${chips}</div>`;
 }
 
 // 端末ローカルの今日（YYYY-MM-DD）
@@ -10089,6 +10156,22 @@ function dengonIsAllRead_(recipients, readBy) {
     if (!Array.isArray(recipients) || recipients.length === 0) return false;
     var read = Array.isArray(readBy) ? readBy : [];
     return recipients.every(function (n) { return read.indexOf(n) !== -1; });
+}
+// 宛先がグループ（既読対象）か。個人名・社長・振替不能等はグループでない。
+function dengonIsGroupTo_(to) {
+    return ['全員', '全員・ドライバー除く', '社員', '相談員', '看護師'].indexOf(to) !== -1;
+}
+// 実効recipients：保存済みrecipients優先。空でグループ宛ての既存投稿はマスタから算出フォールバック（移行期・全員未読）。
+// 個人・社長宛て（グループでない）は [] ＝チップを出さない。
+function dengonEffectiveRecipients_(item, master) {
+    if (item && Array.isArray(item.recipients) && item.recipients.length) return item.recipients;
+    if (item && dengonIsGroupTo_(item.to)) return dengonComputeRecipients_(master, item.to);
+    return [];
+}
+// 未読者＝recipients − readBy（順序保持）。
+function dengonUnread_(recipients, readBy) {
+    var read = Array.isArray(readBy) ? readBy : [];
+    return (Array.isArray(recipients) ? recipients : []).filter(function (n) { return read.indexOf(n) === -1; });
 }
 
 // data-id でカード要素を引く（id に特殊文字が入っても安全なよう走査）
@@ -10207,6 +10290,39 @@ function dengonReopen(id, btn) {
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=reopenDengonMessage&id=' + encodeURIComponent(id) + '&callback=' + cb;
     s.onerror = () => { if (btn) { btn.disabled = false; btn.textContent = '未完了に戻す'; } s.remove(); };
+    document.body.appendChild(s);
+}
+
+// 既読にする（チップtap）。確認→JSONP GET mark_dengon_read→サーバ確定後に再描画（楽観更新しない）。
+// recipients照合はサーバ側（不変条件3）。対象外なら ok:false で戻る。
+function dengonMarkRead(id, name) {
+    if (!confirm(name + 'さんとして既読にしますか？')) return;
+    const cb = 'dengonMarkCb_' + Date.now();
+    window[cb] = function (resp) {
+        document.querySelectorAll('script[src*="action=mark_dengon_read"]').forEach(s => s.remove());
+        if (resp && resp.ok) { dengonLoad(); } // サーバ確定後に一覧を読み直して再描画
+        else { alert('既読の記録に失敗しました: ' + (resp && resp.error || '不明')); }
+        try { kbReleaseCb_(cb); } catch (e) {}
+    };
+    const s = document.createElement('script');
+    s.src = DENGON_API_URL + '?action=mark_dengon_read&id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name) + '&callback=' + cb;
+    s.onerror = () => { s.remove(); };
+    document.body.appendChild(s);
+}
+
+// 既読取り消し（既読チップ再tap）。確認→JSONP GET unmark_dengon_read→サーバ確定後に再描画。
+function dengonUnmarkRead(id, name) {
+    if (!confirm('既読を取り消しますか？')) return;
+    const cb = 'dengonUnmarkCb_' + Date.now();
+    window[cb] = function (resp) {
+        document.querySelectorAll('script[src*="action=unmark_dengon_read"]').forEach(s => s.remove());
+        if (resp && resp.ok) { dengonLoad(); }
+        else { alert('取り消しに失敗しました: ' + (resp && resp.error || '不明')); }
+        try { kbReleaseCb_(cb); } catch (e) {}
+    };
+    const s = document.createElement('script');
+    s.src = DENGON_API_URL + '?action=unmark_dengon_read&id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name) + '&callback=' + cb;
+    s.onerror = () => { s.remove(); };
     document.body.appendChild(s);
 }
 

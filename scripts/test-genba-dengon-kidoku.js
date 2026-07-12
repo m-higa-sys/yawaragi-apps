@@ -24,8 +24,12 @@ new Function('sb',
   extractFn('dengonAddReadBy_') + '\n' +
   extractFn('dengonRemoveReadBy_') + '\n' +
   extractFn('dengonIsAllRead_') + '\n' +
+  extractFn('dengonIsGroupTo_') + '\n' +
+  extractFn('dengonEffectiveRecipients_') + '\n' +
+  extractFn('dengonUnread_') + '\n' +
   'sb.computeRecipients = dengonComputeRecipients_;' +
-  'sb.add = dengonAddReadBy_; sb.remove = dengonRemoveReadBy_; sb.isAllRead = dengonIsAllRead_;'
+  'sb.add = dengonAddReadBy_; sb.remove = dengonRemoveReadBy_; sb.isAllRead = dengonIsAllRead_;' +
+  'sb.isGroupTo = dengonIsGroupTo_; sb.effective = dengonEffectiveRecipients_; sb.unread = dengonUnread_;'
 )(sb);
 
 let pass = 0, fail = 0;
@@ -91,6 +95,25 @@ ok(sb.isAllRead(rc, ['髙山', '石井', '春山', '工藤']) === true, 'A3-read
 ok(sb.isAllRead([], ['髙山']) === false, 'A3-recipients空はfalse（個人宛て等）');
 ok(sb.isAllRead(rc, []) === false, 'A3-readBy空はfalse');
 ok(sb.isAllRead(rc, null) === false, 'A3-readBy null許容false');
+
+// ===== C: フロント配線の純ヘルパ =====
+// isGroupTo：宛先がグループ（既読対象）か
+ok(sb.isGroupTo('看護師') === true, 'C-看護師はグループ');
+ok(sb.isGroupTo('全員・ドライバー除く') === true, 'C-ドライバー除くはグループ');
+ok(sb.isGroupTo('全員') === true, 'C-全員はグループ');
+ok(sb.isGroupTo('比嘉') === false, 'C-個人名はグループでない');
+ok(sb.isGroupTo('社長') === false, 'C-社長はグループでない');
+// effective：保存recipients優先／空グループはフォールバック算出／個人は[]
+ok(JSON.stringify(sb.effective({ to: '看護師', recipients: ['髙山'], readBy: [] }, MASTER)) === JSON.stringify(['髙山']), 'C-保存recipients優先');
+ok(sb.effective({ to: '看護師', recipients: [], readBy: [] }, MASTER).length === 3, 'C-空グループはフォールバック3名');
+ok(sb.effective({ to: '看護師', recipients: null }, MASTER).length === 3, 'C-recipients無しでもフォールバック');
+ok(sb.effective({ to: '比嘉', recipients: [] }, MASTER).length === 0, 'C-個人宛ては[]（チップ無し）');
+ok(sb.effective({ to: '社長', recipients: [] }, MASTER).length === 0, 'C-社長宛ては[]');
+// unread：recipients − readBy
+ok(JSON.stringify(sb.unread(['A', 'B', 'C'], ['B'])) === JSON.stringify(['A', 'C']), 'C-未読=recipients−readBy');
+ok(sb.unread(['A', 'B'], null).length === 2, 'C-readBy null は全員未読');
+ok(sb.unread(null, ['A']).length === 0, 'C-recipients null は空');
+ok(sb.unread(['A', 'B'], ['A', 'B']).length === 0, 'C-全員既読で未読0');
 
 console.log('dengon-kidoku core: ' + pass + ' PASS / ' + fail + ' FAIL');
 if (fail > 0) process.exit(1);
