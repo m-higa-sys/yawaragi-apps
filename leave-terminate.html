@@ -541,16 +541,18 @@
             font-size: 0.85rem; color: #4a5568; margin: 6px 0;
             padding: 6px 10px; background: #f7fafc; border-radius: 6px;
         }
-    /* 常時表示の注意書き（請求漏れ防止・日付判定なし）。既存の赤系警告色を流用 */
-    .trm-card-alert {
+    /* リハブ中止 3状態ゲート表示（静的callout置換）。既存の赤系/緑系色を流用・新色なし */
+    .trm-gate {
             display: flex; align-items: flex-start; gap: 8px;
-            margin: 8px 0; padding: 9px 11px;
-            background: #fff5f5; border: 1px solid #f5c6cb;
-            border-left: 3px solid #c0392b; border-radius: 8px;
+            margin: 8px 0; padding: 9px 11px; border-radius: 8px;
         }
-    .trm-card-alert-icon { font-size: 0.95rem; line-height: 1.35; flex-shrink: 0; }
-    .trm-card-alert-head { font-size: 0.82rem; font-weight: 700; color: #c0392b; }
-    .trm-card-alert-body { font-size: 0.8rem; color: #c0392b; margin-top: 2px; }
+    .trm-gate-icon { font-size: 0.95rem; line-height: 1.35; flex-shrink: 0; }
+    .trm-gate-head { font-size: 0.82rem; font-weight: 700; }
+    .trm-gate-body { font-size: 0.8rem; margin-top: 2px; }
+    .trm-gate.warn { background: #fff5f5; border: 1px solid #f5c6cb; border-left: 3px solid #c0392b; }
+    .trm-gate.warn .trm-gate-head, .trm-gate.warn .trm-gate-body { color: #c0392b; }
+    .trm-gate.ok { background: #f0fff4; border-left: 3px solid #2f855a; }
+    .trm-gate.ok .trm-gate-head, .trm-gate.ok .trm-gate-body { color: #2f855a; }
     .trm-task-list {
             margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0;
         }
@@ -1752,32 +1754,24 @@
                 (isShienMode ? '' : trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false)) +
                 trmTaskItem(t, 'koukou', '口腔機能向上計画書', false) +
 
-                // 段階1完了後・中止操作の前に常時表示（請求漏れ防止）。日付判定・条件分岐なし・既存ゲートには非干渉
-                '<div class="trm-card-alert">' +
-                    '<span class="trm-card-alert-icon">⚠️</span>' +
-                    '<div>' +
-                        '<div class="trm-card-alert-head">リハブでの利用中止登録は実績確定後に</div>' +
-                        '<div class="trm-card-alert-body">先に中止すると実績が消えて、請求できなくなります。</div>' +
-                    '</div>' +
-                '</div>' +
-
-                // 段階2: リハブクラウドで利用中止操作（段階1完了後・科学的/ADLの前に必須・2026-05-20順序変更）
-                '<div class="trm-task-step-label ' + (stage1Done ? 'active' : '') + '" style="margin-top:8px;">' +
-                    '段階2: ' + (stage1Done
-                        ? '段階1完了 → リハブで利用中止操作（請求対象から外す）'
-                        : '段階1完了後にチェック可能') +
-                '</div>' +
+                // リハブ中止（段階番号なし）: 段階1完了後に実施。解禁=段階1完了 かつ 最終利用日の翌月11日到来
                 trmTaskItem(t, 'rihab_chushi', 'リハブクラウドで利用中止操作', !stage1Done || cancelLocked) +
-                // 中止操作ゲート: 解禁日前は赤字警告でロック理由を明示、解禁後は控えめな緑で経過を表示
-                (cancelLocked
-                    ? '<div style="color:#c0392b;font-weight:600;font-size:0.8rem;margin:4px 0 2px 26px;">⚠️ ' + lastUseMonth + '月分の国保連請求がまだ。中止操作は ' + unlockMD + ' 以降に</div>'
-                    : (cancelUnlock ? '<div style="color:#2e7d32;font-size:0.78rem;margin:2px 0 2px 26px;opacity:0.85;">✓ ' + lastUseMonth + '月分の請求期間を経過。中止操作OK</div>' : '')) +
-    
-                // 段階3: 科学的＋ADL（段階2完了後＝リハブ中止操作後に作業）
+                // 3状態ゲート表示（静的callout＋旧2状態警告を置換・リハブ中止項目の直下・ローカル日付の文字列比較）
+                (!stage1Done
+                    ? '<div class="trm-gate warn"><span class="trm-gate-icon">⚠️</span><div>' +
+                        '<div class="trm-gate-head">まだリハブで中止しないでください</div>' +
+                        '<div class="trm-gate-body">先に段階1の書類を仕上げてください。</div></div></div>'
+                    : (cancelLocked
+                        ? '<div class="trm-gate warn"><span class="trm-gate-icon">⚠️</span><div>' +
+                            '<div class="trm-gate-head">まだリハブで中止しないでください</div>' +
+                            '<div class="trm-gate-body">書類は完了。' + unlockMD + ' 以降にOKになります。</div></div></div>'
+                        : '<div class="trm-gate ok"><span class="trm-gate-icon">✓</span><div>' +
+                            '<div class="trm-gate-head">リハブで利用中止にしてください</div>' +
+                            '<div class="trm-gate-body">' + lastUseMonth + '月分の実績は確定済み。今から中止してOK。</div></div></div>')) +
+
+                // 中止後の作業（順不同）: リハブ中止済みで科学的・ADLを各々独立にチェック可（段階番号なし）
                 '<div class="trm-task-step-label ' + (stage2Done ? 'active' : '') + '" style="margin-top:8px;">' +
-                    '段階3: ' + (stage2Done
-                        ? '段階2完了 → ' + (isShienMode ? '科学的介護をチェック（要支援はADL不要）' : '科学的介護とADLをチェック')
-                        : '段階2完了後にチェック可能') +
+                    '中止後の作業（順不同）' + (stage2Done ? '' : '：リハブ中止の後にチェック') +
                 '</div>' +
                 trmTaskItem(t, 'kagakuteki', '科学的介護推進体制', !stage2Done) +
                 (isShienMode ? '' : trmTaskItem(t, 'adl', 'ADL維持等加算', !stage2Done)) +
