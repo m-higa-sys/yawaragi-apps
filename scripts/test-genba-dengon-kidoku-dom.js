@@ -35,13 +35,13 @@ const MASTER = [
 const FN = ['escapeHtml', 'dengonComputeRecipients_', 'dengonAddReadBy_', 'dengonRemoveReadBy_',
   'dengonIsAllRead_', 'dengonIsGroupTo_', 'dengonEffectiveRecipients_', 'dengonUnread_',
   'dengonReadChipsHtml_', 'dengonRequestedMD_', 'dengonTodayStr_', 'dengonDeadlineBadge_',
-  'dengonRender', 'dengonRenderToSelect_'];
+  'dengonRender', 'dengonRenderToSelect_', 'dengonChipProcessing_'];
 
 const dom = new JSDOM('<!DOCTYPE html><body><select id="dengon-to"></select><div id="dengon-list"></div></body>');
 const sb = {};
 const src = FN.map(extractFn).join('\n') + '\n' +
   'var dengonStaffMaster = MASTER;\n' +
-  'sb.render = dengonRender; sb.renderSelect = dengonRenderToSelect_;';
+  'sb.render = dengonRender; sb.renderSelect = dengonRenderToSelect_; sb.processing = dengonChipProcessing_;';
 new Function('sb', 'document', 'MASTER', src)(sb, dom.window.document, MASTER);
 const doc = dom.window.document;
 
@@ -96,6 +96,19 @@ ok(cardIndiv.querySelectorAll('.dengon-chips').length === 0, '検証7-個人宛�
 // 社長宛ては dengonRender が除外（従来仕様）
 sb.render([{ id: 'db_owner', to: '社長', from: '勝又', body: '社長宛て', deadline: '', createdAt: '', recipients: [], readBy: [] }]);
 ok(list.querySelector('.dengon-card[data-id="db_owner"]') === null, '検証7b-社長宛ては板に出さない（従来）');
+
+// ===== 処理中UX: dengonChipProcessing_（連打防止＋動きのある表示）=====
+const pb = doc.createElement('button');
+pb.innerHTML = '髙山';
+sb.processing(pb, true);
+ok(pb.disabled === true, '処理中-チップをdisabled化（連打防止）');
+ok(pb.innerHTML.indexOf('送信中') !== -1, '処理中-「送信中…」表示');
+ok(pb.innerHTML.indexOf('dengon-spin') !== -1, '処理中-スピナー要素在中（動きのある表示）');
+sb.processing(pb, false);
+ok(pb.disabled === false, '解除-押せる状態に戻る');
+ok(pb.innerHTML === '髙山', '解除-元のラベルに復元');
+sb.processing(null, true);
+ok(true, '処理中-null（btn無し）でも落ちない');
 
 console.log('\ndengon-kidoku DOM: ' + pass + ' PASS / ' + fail + ' FAIL');
 if (fail > 0) process.exit(1);

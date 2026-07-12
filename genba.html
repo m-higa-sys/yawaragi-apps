@@ -1490,6 +1490,8 @@
         .mu-cal-cell.attended.nopickup::after { content: '🔵'; font-size: 0.6rem; line-height: 1; }
         .mu-cal-cell.today { box-shadow: inset 0 0 0 2px #3182ce; }
         .mu-legend { padding: 10px 18px; font-size: 0.78rem; color: #718096; border-top: 1px solid #f1f5f9; text-align: center; }
+        /* 既読チップ「送信中」スピナー（ss-spin キーフレーム再利用） */
+        .dengon-spin { display: inline-block; width: 0.75em; height: 0.75em; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: ss-spin 0.7s linear infinite; vertical-align: -1px; }
     </style>
 </head>
 <body>
@@ -10090,8 +10092,8 @@ function dengonReadChipsHtml_(item, id, master) {
         const safe = name.replace(/'/g, "\\'");
         const isRead = readBy.indexOf(name) !== -1;
         return isRead
-            ? `<button onclick="dengonUnmarkRead('${id}','${safe}')" style="background:#edf2f7; color:#a0aec0; border:1px solid #e2e8f0; border-radius:12px; padding:3px 10px; font-size:0.78rem; cursor:pointer; text-decoration:line-through;">${escapeHtml(name)}</button>`
-            : `<button onclick="dengonMarkRead('${id}','${safe}')" style="background:#fff5f5; color:#c53030; border:1px solid #fc8181; border-radius:12px; padding:3px 10px; font-size:0.78rem; cursor:pointer; font-weight:700;">${escapeHtml(name)}</button>`;
+            ? `<button onclick="dengonUnmarkRead('${id}','${safe}', this)" style="background:#edf2f7; color:#a0aec0; border:1px solid #e2e8f0; border-radius:12px; padding:3px 10px; font-size:0.78rem; cursor:pointer; text-decoration:line-through;">${escapeHtml(name)}</button>`
+            : `<button onclick="dengonMarkRead('${id}','${safe}', this)" style="background:#fff5f5; color:#c53030; border:1px solid #fc8181; border-radius:12px; padding:3px 10px; font-size:0.78rem; cursor:pointer; font-weight:700;">${escapeHtml(name)}</button>`;
     }).join('');
     return head + `<div class="dengon-chips" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px;">${chips}</div>`;
 }
@@ -10293,36 +10295,59 @@ function dengonReopen(id, btn) {
     document.body.appendChild(s);
 }
 
-// 既読にする（チップtap）。確認→JSONP GET mark_dengon_read→サーバ確定後に再描画（楽観更新しない）。
-// recipients照合はサーバ側（不変条件3）。対象外なら ok:false で戻る。
-function dengonMarkRead(id, name) {
+// チップの処理中表示トグル。on=true: disable＋スピナー「送信中…」（連打防止・動きのある表示）。
+// false: 元のラベル/押下可能に復元。楽観更新はしない＝サーバ確定までこの「送信中」を出し続ける。
+function dengonChipProcessing_(btn, on) {
+    if (!btn) return;
+    if (on) {
+        if (btn.getAttribute('data-orig') === null) btn.setAttribute('data-orig', btn.innerHTML);
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.style.cursor = 'wait';
+        btn.innerHTML = '<span class="dengon-spin"></span> 送信中…';
+    } else {
+        btn.disabled = false;
+        btn.style.opacity = '';
+        btn.style.cursor = 'pointer';
+        var orig = btn.getAttribute('data-orig');
+        if (orig !== null) { btn.innerHTML = orig; btn.removeAttribute('data-orig'); }
+    }
+}
+
+// 既読にする（チップtap）。確認→即「送信中」表示＋disable→JSONP GET→サーバ確定後に再描画（楽観更新しない）。
+// recipients照合はサーバ側（不変条件3）。対象外なら ok:false で戻る。失敗時は送信中を解除して押下可へ戻す。
+function dengonMarkRead(id, name, btn) {
+    if (btn && btn.disabled) return; // 連打ガード（送信中の再押下を無視）
     if (!confirm(name + 'さんとして既読にしますか？')) return;
+    dengonChipProcessing_(btn, true); // 確定OK後、即「送信中」＝固まって見せない
     const cb = 'dengonMarkCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=mark_dengon_read"]').forEach(s => s.remove());
-        if (resp && resp.ok) { dengonLoad(); } // サーバ確定後に一覧を読み直して再描画
-        else { alert('既読の記録に失敗しました: ' + (resp && resp.error || '不明')); }
+        if (resp && resp.ok) { dengonLoad(); } // サーバ確定後に一覧を読み直して再描画（チップごと差し替え＝送信中解除）
+        else { dengonChipProcessing_(btn, false); alert('既読の記録に失敗しました: ' + (resp && resp.error || '不明')); }
         try { kbReleaseCb_(cb); } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=mark_dengon_read&id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name) + '&callback=' + cb;
-    s.onerror = () => { s.remove(); };
+    s.onerror = () => { dengonChipProcessing_(btn, false); s.remove(); };
     document.body.appendChild(s);
 }
 
-// 既読取り消し（既読チップ再tap）。確認→JSONP GET unmark_dengon_read→サーバ確定後に再描画。
-function dengonUnmarkRead(id, name) {
+// 既読取り消し（既読チップ再tap）。確認→即「送信中」→JSONP GET→サーバ確定後に再描画。失敗時は解除。
+function dengonUnmarkRead(id, name, btn) {
+    if (btn && btn.disabled) return; // 連打ガード
     if (!confirm('既読を取り消しますか？')) return;
+    dengonChipProcessing_(btn, true);
     const cb = 'dengonUnmarkCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=unmark_dengon_read"]').forEach(s => s.remove());
         if (resp && resp.ok) { dengonLoad(); }
-        else { alert('取り消しに失敗しました: ' + (resp && resp.error || '不明')); }
+        else { dengonChipProcessing_(btn, false); alert('取り消しに失敗しました: ' + (resp && resp.error || '不明')); }
         try { kbReleaseCb_(cb); } catch (e) {}
     };
     const s = document.createElement('script');
     s.src = DENGON_API_URL + '?action=unmark_dengon_read&id=' + encodeURIComponent(id) + '&name=' + encodeURIComponent(name) + '&callback=' + cb;
-    s.onerror = () => { s.remove(); };
+    s.onerror = () => { dengonChipProcessing_(btn, false); s.remove(); };
     document.body.appendChild(s);
 }
 
