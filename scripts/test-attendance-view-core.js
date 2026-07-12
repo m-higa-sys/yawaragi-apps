@@ -66,5 +66,12 @@ ok(r.monthly['2026-06']===75, '6月=6/8=75%');
 const z = c.avUserOpsRate_({}, ['2026-05'], ['2026-05']);
 ok(z.rate===null && z.windowScheduled===0, '窓に予定0→率null');
 
+console.log('\n[avActualPerWeek_] 実績週N.N=契約N×率, 乖離=契約N−実績');
+const a = c.avActualPerWeek_(3, 84.6);
+ok(a.actualPerWeek===2.54, '3×0.846=2.54');
+ok(a.diverge===0.46, '3-2.54=0.46');
+const nn = c.avActualPerWeek_(2, null);
+ok(nn.actualPerWeek===null && nn.diverge===null, '率null→実績/乖離null');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);

@@ -94,6 +94,13 @@ function avUserOpsRate_(monthlyCounts, windowMonths, displayMonths) {
   return { rate: rate, windowAttended: wa, windowScheduled: ws, monthly: monthly };
 }
 
+function avActualPerWeek_(contractN, rate) {
+  if (rate == null) return { actualPerWeek: null, diverge: null };
+  var apw = Math.round((contractN * rate)) / 100; // contractN×(rate/100)を小数2桁
+  var diverge = Math.round((contractN - apw) * 100) / 100;
+  return { actualPerWeek: apw, diverge: diverge };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
@@ -101,6 +108,7 @@ if (typeof module !== 'undefined' && module.exports) {
     avContractN_: avContractN_,
     avOccupancy_: avOccupancy_, avSlotsFree_: avSlotsFree_,
     avDateMinusMonths_: avDateMinusMonths_, avLast3CompletedMonths_: avLast3CompletedMonths_,
-    avUserOpsRate_: avUserOpsRate_
+    avUserOpsRate_: avUserOpsRate_,
+    avActualPerWeek_: avActualPerWeek_
   };
 }
