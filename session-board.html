@@ -65,6 +65,14 @@
   }
   .wrap{max-width:720px; margin:0 auto; padding:18px 14px 60px;}
 
+  /* 日付ナビ */
+  .datenav{display:flex; align-items:center; gap:8px; margin:0 2px 12px;}
+  .dnav{width:34px; height:34px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--accent); font-size:1rem; font-weight:800; cursor:pointer; line-height:1; box-shadow:var(--shadow);}
+  .dnav:active{transform:translateY(1px);}
+  .dpick{flex:1; min-width:0; padding:7px 10px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:.95rem; font-weight:700; box-shadow:var(--shadow); font-family:inherit;}
+  .dtoday{padding:7px 12px; border-radius:9px; border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent); font-size:.85rem; font-weight:800; cursor:pointer; white-space:nowrap;}
+  .dtoday:active{transform:translateY(1px);}
+
   /* 日付を主役に */
   .datehead{
     display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
@@ -173,6 +181,13 @@
   </div>
   <div class="sub">その時間帯の出席者 × 今日やる業務を自動ピックアップ</div>
 
+  <div class="datenav">
+    <button class="dnav" id="prevDay" type="button" aria-label="前日">◀</button>
+    <input type="date" id="datePick" class="dpick" aria-label="日付を選ぶ">
+    <button class="dnav" id="nextDay" type="button" aria-label="翌日">▶</button>
+    <button class="dtoday" id="todayBtn" type="button">今日</button>
+  </div>
+
   <div id="conflict"></div>
 
   <div class="tabs" id="tabs" style="display:none;">
@@ -220,19 +235,20 @@
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
   }
 
-  // 初期タブ：保存が当日内なら尊重、そうでなければ時間帯自動（正午前=午前/以降=午後）
-  function initialTab(dataDate){
+  // 初期タブ：保存が「実カレンダー今日(todayYMD)」なら尊重、そうでなければ時間帯自動（正午前=午前/以降=午後）。
+  // ★閲覧中の日付(DATA.date)ではなく実今日基準＝過去日を見た記録が翌朝に残らない（毎朝5時に開けば午前）。
+  function initialTab(){
     var raw = localStorage.getItem(TAB_KEY);
     if (raw){
       try {
         var o = JSON.parse(raw);
-        if (o && o.date === dataDate && (o.tab === 'am' || o.tab === 'pm')) return o.tab;
+        if (o && o.date === todayYMD() && (o.tab === 'am' || o.tab === 'pm')) return o.tab;
       } catch(e){}
     }
     return (new Date().getHours() < 12) ? 'am' : 'pm';
   }
-  function saveTab(dataDate, tab){
-    try { localStorage.setItem(TAB_KEY, JSON.stringify({ date: dataDate, tab: tab })); } catch(e){}
+  function saveTab(tab){
+    try { localStorage.setItem(TAB_KEY, JSON.stringify({ date: todayYMD(), tab: tab })); } catch(e){}
   }
 
   // ===== 描画 =====
@@ -315,6 +331,7 @@
       tabEls[i].className = 'tab ' + tabEls[i].getAttribute('data-tab') + (on?' on':'');
     }
     document.getElementById('nVal').textContent = topN;
+    document.getElementById('datePick').value = b.date || '';  // 日付pickerを閲覧日に追随
 
     var sok = filt(b.sokutei), moni = filt(b.koukuMoni), tais = filt(b.koukuTaisou), kot = filt(b.kotan), res = filt(b.residue);
 
@@ -371,7 +388,7 @@
   function setTab(t){
     if (t!=='am' && t!=='pm') return;
     selTab = t;
-    saveTab(DATA ? DATA.date : todayYMD(), t);
+    saveTab(t);   // 実今日基準で保存
     render();
   }
   document.getElementById('nMinus').addEventListener('click', function(){ setN(topN-1); });
@@ -381,9 +398,9 @@
     (function(el){ el.addEventListener('click', function(){ setTab(el.getAttribute('data-tab')); }); })(tabBtns[j]);
   }
 
-  function boot(data){
+  function boot(data, keepTab){
     DATA = data;
-    selTab = initialTab(DATA.date);
+    if (!keepTab) selTab = initialTab();  // 日付ナビ時(keepTab)はタブ維持・初回のみ自動判定
     render();
   }
   function showError(msg){
@@ -393,24 +410,38 @@
 
   // ===== データ取得 =====
   // JSONP（board GAS は GET=JSONP・POST=no-cors。genba/sokutei と同型）
-  function fetchBoard(date){
-    var cbName = 'sessionBoardCb_' + Date.now();
+  // reqId: 日付連打で古い応答が後着しても、最新要求以外は描画しない（画面の順序崩れ防止）。
+  var reqId = 0;
+  function fetchBoard(date, keepTab){
+    var myReq = ++reqId;
+    var cbName = 'sessionBoardCb_' + Date.now() + '_' + myReq;
     var done = false;
-    var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); showError('タイムアウト'); }, 20000);
+    var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); if (myReq===reqId) showError('タイムアウト'); }, 20000);
     function cleanup(){ try { delete window[cbName]; } catch(e){ window[cbName] = undefined; } if (s && s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
     window[cbName] = function(resp){
       if (done) return; done = true; cleanup();
+      if (myReq !== reqId) return;   // 古い応答は無視（連打ガード）
       if (resp && resp.ok === false){ showError(resp.error || '不明なエラー'); return; }
-      boot(resp);
+      boot(resp, keepTab);
     };
     var s = document.createElement('script');
     s.src = GAS + '?action=sessionBoard&date=' + encodeURIComponent(date) + '&callback=' + cbName + '&t=' + Date.now();
-    s.onerror = function(){ if (done) return; done = true; cleanup(); showError('通信エラー'); };
+    s.onerror = function(){ if (done) return; done = true; cleanup(); if (myReq===reqId) showError('通信エラー'); };
     document.head.appendChild(s);
   }
 
-  // 本番: 起動時に board GAS の action=sessionBoard を1回JSONPで叩き描画
-  fetchBoard(todayYMD());
+  // ===== 日付ナビ（前日/翌日/今日/picker）=====
+  function pad2_(n){ return (n<10?'0':'')+n; }
+  function addDays_(s, delta){ var p=s.split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]+delta); return d.getFullYear()+'-'+pad2_(d.getMonth()+1)+'-'+pad2_(d.getDate()); }
+  var curDate = todayYMD();
+  function goDate(d){ if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return; curDate = d; fetchBoard(curDate, true); }  // 日付ナビはタブ維持(keepTab)
+  document.getElementById('prevDay').addEventListener('click', function(){ goDate(addDays_(curDate,-1)); });
+  document.getElementById('nextDay').addEventListener('click', function(){ goDate(addDays_(curDate,1)); });
+  document.getElementById('todayBtn').addEventListener('click', function(){ goDate(todayYMD()); });
+  document.getElementById('datePick').addEventListener('change', function(){ goDate(document.getElementById('datePick').value); });
+
+  // 本番: 起動時に今日を1回JSONPで叩き描画（初回はタブ自動判定＝keepTab=false）
+  fetchBoard(curDate, false);
 </script>
 </body>
 </html>
