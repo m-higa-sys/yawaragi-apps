@@ -3702,6 +3702,10 @@ function doGet(e) {
       return respond(result, callback);
     }
 
+    if (action === 'attendance_view') {
+      return respond(attendance_view(ss, e), callback);
+    }
+
     return respond(result, callback);
   } catch (err) {
     return respond({ error: err.message, success: false }, callback);
@@ -12655,6 +12659,120 @@ function _test_getUsageAlerts() {
   var yellow = r.users.filter(function(u) { return u.badge === 'yellow'; }).length;
   var red = r.users.filter(function(u) { return u.badge === 'red'; }).length;
   Logger.log('黄: ' + yellow + '名 / 赤: ' + red + '名 / 全' + r.users.length + '名');
+}
+
+// ===== 出席率・利用頻度ビュー（要介護・dailyOps正本・2026-07-12）=====
+// 純関数は attendance-view-core.js（av*）。ここは取得と組立のみ。
+function attendance_view(ss, e) {
+  var today = (e && e.parameter && e.parameter.date) || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+
+  // 1) 台帳 patterns（全在籍＝占有用）＋ 介護度/開始日
+  var patterns = getUserPatterns(ss, false); // {name:{days,unit,care,cancelled}}
+  var sheet = ss.getSheetByName('利用者台帳');
+  var data = sheet.getDataRange().getValues();
+  var h = data[0].map(function (v) { return String(v).trim(); });
+  var nameCol = findCol(h, ['名前', '氏名', '利用者名']);
+  var startCol = findCol(h, ['利用開始日', '利用開始']);
+  var startMap = {};
+  for (var i = 1; i < data.length; i++) {
+    var nm = String(data[i][nameCol] || '').trim();
+    if (nm && startCol >= 0 && data[i][startCol]) startMap[nm] = fmtDate(data[i][startCol]);
+  }
+  var patternsAll = Object.keys(patterns).map(function (nm) { return { days: patterns[nm].days, unit: patterns[nm].unit }; });
+  var occupancy = avOccupancy_(patternsAll);
+  var slotsFree = avSlotsFree_(occupancy, avConstCap_());
+
+  // 2) dailyOps 取得 → 日別 attendedSet（正規化名）と稼働月
+  var dailyOps = _muFetchAllDailyOps_(); // { 'YYYY-MM-DD': dayOps }
+  var opDays = Object.keys(dailyOps).filter(function (k) {
+    var d = dailyOps[k];
+    return (d.am && d.am.users && d.am.users.length) || (d.pm && d.pm.users && d.pm.users.length);
+  });
+  var attByDate = {}, opsMonths = {};
+  opDays.forEach(function (k) {
+    opsMonths[k.slice(0, 7)] = true;
+    var att = {};
+    ['am', 'pm'].forEach(function (u) {
+      var o = dailyOps[k][u]; if (!o || !o.users) return;
+      o.users.forEach(function (nm) {
+        var st = (o.userStatus && o.userStatus[nm]) || '';
+        if (st !== 'absent' && st !== 'longabsent') att[_normalizeUserName(nm)] = true;
+      });
+    });
+    attByDate[k] = att;
+  });
+
+  // 3) ウィンドウ・除外セット
+  var displayMonths = avLast3CompletedMonths_(today);
+  var windowMonths = displayMonths.filter(function (ym) { return opsMonths[ym]; });
+  var longLeave = getOnLongLeaveSet(ss, today);
+  var wdChange = getWeekdayChangeUsersSince(ss, (displayMonths[0] || today.slice(0, 7)) + '-01');
+
+  // 4) 要介護のみ 行組立
+  var rows = [];
+  Object.keys(patterns).forEach(function (name) {
+    var pt = patterns[name];
+    if (pt.cancelled) return;
+    if (String(pt.care || '').indexOf('要介護') < 0) return; // ★要介護のみ
+    var norm = _normalizeUserName(name);
+    var contractN = avContractN_(pt.days);
+    var codes = _muParseWeekdays(pt.days);
+
+    // monthlyCounts（稼働日ベース）
+    var monthlyCounts = {};
+    opDays.forEach(function (k) {
+      var ym = k.slice(0, 7);
+      if (displayMonths.indexOf(ym) < 0) return;
+      var dow = new Date(parseInt(k.slice(0,4)), parseInt(k.slice(5,7)) - 1, parseInt(k.slice(8,10))).getDay();
+      if (codes.indexOf(dow) < 0) return;
+      if (!monthlyCounts[ym]) monthlyCounts[ym] = { scheduled: 0, attended: 0 };
+      monthlyCounts[ym].scheduled++;
+      if (attByDate[k] && attByDate[k][norm]) monthlyCounts[ym].attended++;
+    });
+    var ops = avUserOpsRate_(monthlyCounts, windowMonths, displayMonths);
+    var dispState = avDisplayState_({ isLongLeave: !!longLeave[norm], isWeekdayChange: !!wdChange[norm], startDate: startMap[name] || '', today: today });
+
+    // hanteichu/chouki は率を出さない（数字がまだ無い/算出不可）
+    var showRate = (dispState.state === 'normal' || dispState.state === 'sanko');
+    var rate = showRate ? ops.rate : null;
+    var monthly = showRate ? ops.monthly : blankMonthly_(displayMonths);
+    var apw = avActualPerWeek_(contractN, rate);
+    var isCand = avIsUpsizeCandidate_(dispState.state, contractN);
+
+    rows.push({
+      name: name, care: pt.care, days: pt.days, unit: pt.unit, contractN: contractN,
+      displayState: dispState.state, stateLabel: dispState.label,
+      rate: rate, actualPerWeek: apw.actualPerWeek, diverge: apw.diverge, monthly: monthly,
+      windowAttended: showRate ? ops.windowAttended : 0,
+      windowScheduled: showRate ? ops.windowScheduled : 0,
+      isUpsizeCandidate: isCand,
+      addableSlots: isCand ? avAddableSlots_(pt.days, pt.unit, slotsFree) : []
+    });
+  });
+
+  return {
+    success: true,
+    generatedAt: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
+    today: today,
+    window: { months: windowMonths, note: '4月はdailyOps未保持のため対象外' },
+    displayMonths: displayMonths,
+    kaigoAvgRate: avKaigoAvgRate_(rows),
+    capacity: avConstCap_(),
+    slotsFree: slotsFree,
+    users: rows
+  };
+}
+function avConstCap_() { return 18; }
+function blankMonthly_(months) { var o = {}; (months || []).forEach(function (m) { o[m] = null; }); return o; }
+
+// dailyOps 全件（getMonthlyUsage の _muFetchDailyOpsForMonth と同経路・月フィルタなし）
+function _muFetchAllDailyOps_() {
+  try {
+    var resp = UrlFetchApp.fetch(DIGEST_OPS_URL, { muteHttpExceptions: true, followRedirects: true });
+    if (resp.getResponseCode() !== 200) return {};
+    var json = JSON.parse(resp.getContentText());
+    return (json && json.dailyOps) ? json.dailyOps : {};
+  } catch (e) { return {}; }
 }
 
 // ===== ケアマネ欠席連絡 即時方式 Phase 1（2026-05-10） =====
