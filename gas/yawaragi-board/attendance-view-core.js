@@ -76,12 +76,31 @@ function avLast3CompletedMonths_(today) {
   return out;
 }
 
+// monthlyCounts={ym:{scheduled,attended}}, window=率計算対象月[], displayMonths=月別列[]
+// 返り値: { rate(%|null), windowAttended, windowScheduled, monthly:{ym:%|null} }
+function avUserOpsRate_(monthlyCounts, windowMonths, displayMonths) {
+  monthlyCounts = monthlyCounts || {};
+  var wa = 0, ws = 0;
+  (windowMonths || []).forEach(function (ym) {
+    var mc = monthlyCounts[ym];
+    if (mc) { wa += mc.attended; ws += mc.scheduled; }
+  });
+  var rate = ws > 0 ? Math.round((1000 * wa) / ws) / 10 : null;
+  var monthly = {};
+  (displayMonths || []).forEach(function (ym) {
+    var mc = monthlyCounts[ym];
+    monthly[ym] = (mc && mc.scheduled > 0) ? Math.round((1000 * mc.attended) / mc.scheduled) / 10 : null;
+  });
+  return { rate: rate, windowAttended: wa, windowScheduled: ws, monthly: monthly };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
     avSlotSet_: avSlotSet_, avAttendsCell_: avAttendsCell_,
     avContractN_: avContractN_,
     avOccupancy_: avOccupancy_, avSlotsFree_: avSlotsFree_,
-    avDateMinusMonths_: avDateMinusMonths_, avLast3CompletedMonths_: avLast3CompletedMonths_
+    avDateMinusMonths_: avDateMinusMonths_, avLast3CompletedMonths_: avLast3CompletedMonths_,
+    avUserOpsRate_: avUserOpsRate_
   };
 }

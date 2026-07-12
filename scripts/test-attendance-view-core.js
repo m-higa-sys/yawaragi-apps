@@ -51,5 +51,20 @@ console.log('\n[avDateMinusMonths_] 3ヶ月前（判定中の閾値用）');
 eq(c.avDateMinusMonths_('2026-07-12', 3), '2026-04-12', '7/12-3ヶ月=4/12');
 eq(c.avDateMinusMonths_('2026-01-31', 3), '2025-10-31', '年跨ぎ');
 
+console.log('\n[avUserOpsRate_] 窓内出席率＋月別（—=null・推測で埋めない）');
+const r = c.avUserOpsRate_(
+  { '2026-05': {scheduled:5, attended:5}, '2026-06': {scheduled:8, attended:6} },
+  ['2026-05','2026-06'],                 // window（率計算対象）
+  ['2026-04','2026-05','2026-06']        // displayMonths（月別列）
+);
+ok(r.rate===84.6, '率=(5+6)/(5+8)=11/13=84.6%');
+ok(r.windowAttended===11 && r.windowScheduled===13, '窓合計を保持（基準線用）');
+ok(r.monthly['2026-04']===null, '4月=null（opsなし）');
+ok(r.monthly['2026-05']===100, '5月=100%');
+ok(r.monthly['2026-06']===75, '6月=6/8=75%');
+
+const z = c.avUserOpsRate_({}, ['2026-05'], ['2026-05']);
+ok(z.rate===null && z.windowScheduled===0, '窓に予定0→率null');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);
