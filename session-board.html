@@ -64,10 +64,6 @@
     -webkit-font-smoothing:antialiased; line-height:1.5; font-feature-settings:"palt";
   }
   .wrap{max-width:720px; margin:0 auto; padding:18px 14px 60px;}
-  .demo-ribbon{
-    max-width:720px; margin:0 auto 12px; background:var(--accent-soft); color:var(--accent);
-    border-radius:9px; padding:7px 12px; font-size:.76rem; font-weight:700; text-align:center; letter-spacing:.02em;
-  }
 
   /* 日付を主役に */
   .datehead{
@@ -170,7 +166,6 @@
 </head>
 <body>
 <div class="wrap">
-  <div id="ribbon"></div>
   <div class="datehead">
     <span class="dnum" id="dnum">—</span>
     <span class="dwk" id="dwk"></span>
@@ -203,7 +198,6 @@
 <script>
   // ===== 設定 =====
   var GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
-  var DEMO = /[?&]demo=1/.test(location.search);
 
   var ROLE_LABEL = { moni1:'モニ①', moni2:'モニ②', setsume:'報告書＋計画書' };
   var YOUBI = ['日','月','火','水','木','金','土'];
@@ -415,56 +409,8 @@
     document.head.appendChild(s);
   }
 
-  if (DEMO){
-    document.getElementById('ribbon').className = 'demo-ribbon';
-    document.getElementById('ribbon').textContent = '🖼 表示確認用サンプル（氏名・数字はダミー）。午前／午後タブで出席者を切り替え、測定は各タブ内で1プール優先順位。';
-    boot(DEMO_DATA());
-  } else {
-    fetchBoard(todayYMD());
-  }
-
-  // ===== demoサンプル（sbBuildBoard_ 出力契約に一致・行に session）=====
-  function DEMO_DATA(){
-    return {
-      date:'2026-07-13', year:2026, month:7,
-      presentCount:22, presentAm:12, presentPm:10,
-      ampmConflict:[{ name:'例外 花子', key:'例外花子' }],
-      sokutei:[
-        { name:'田中 一郎', key:'田中一郎', care:'要介護2', track:'kaigo', session:'am', remaining:3,  weeklyVisits:1, remainingVisits:1, absenceRate:0.4 },
-        { name:'佐々木 実', key:'佐々木実', care:'要介護3', track:'kaigo', session:'am', remaining:12, weeklyVisits:3, remainingVisits:4, absenceRate:0.0 },
-        { name:'中村 明',   key:'中村明',   care:'事業対象者', track:'shien', session:'am', remaining:-999, unmeasured:true, weeklyVisits:2, remainingVisits:3, absenceRate:0.2 },
-        { name:'山本 春子', key:'山本春子', care:'要支援2', track:'shien', session:'am', remaining:-5, unmeasured:false, weeklyVisits:2, remainingVisits:2, absenceRate:0.3 },
-        { name:'鈴木 花子', key:'鈴木花子', care:'要介護1', track:'kaigo', session:'pm', remaining:8,  weeklyVisits:2, remainingVisits:2, absenceRate:0.1 },
-        { name:'渡辺 三郎', key:'渡辺三郎', care:'要介護1', track:'kaigo', session:'pm', remaining:18, weeklyVisits:5, remainingVisits:12, absenceRate:0.0 },
-        { name:'小林 桃子', key:'小林桃子', care:'要支援1', track:'shien', session:'pm', remaining:22, unmeasured:false, weeklyVisits:5, remainingVisits:10, absenceRate:0.0 }
-      ],
-      koukuMoni:[
-        { name:'高橋 太郎', key:'高橋太郎', role:'moni1', session:'am' },
-        { name:'伊藤 めぐみ', key:'伊藤めぐみ', role:'moni2', session:'pm' },
-        { name:'渡辺 剛', key:'渡辺剛', role:'setsume', session:'am' }
-      ],
-      koukuTaisou:[
-        { name:'松本 幸子',key:'松本幸子',session:'am' },{ name:'井上 健',key:'井上健',session:'am' },{ name:'木村 光',key:'木村光',session:'am' },
-        { name:'林 静江',key:'林静江',session:'am' },{ name:'清水 保',key:'清水保',session:'pm' },{ name:'森 久美',key:'森久美',session:'pm' },
-        { name:'池田 豊',key:'池田豊',session:'pm' },{ name:'橋本 恵',key:'橋本恵',session:'pm' },{ name:'阿部 清',key:'阿部清',session:'am' },
-        { name:'石川 泉',key:'石川泉',session:'pm' },{ name:'山田 悟',key:'山田悟',session:'am' },{ name:'中島 桜',key:'中島桜',session:'pm' }
-      ],
-      kotan:[
-        { name:'田中 一郎',key:'田中一郎',care:'要介護2',session:'am' },{ name:'鈴木 花子',key:'鈴木花子',care:'要介護1',session:'pm' },
-        { name:'佐々木 実',key:'佐々木実',care:'要介護3',session:'am' },{ name:'渡辺 三郎',key:'渡辺三郎',care:'要介護1',session:'pm' },
-        { name:'高橋 太郎',key:'高橋太郎',care:'要介護2',session:'am' },{ name:'伊藤 めぐみ',key:'伊藤めぐみ',care:'要介護1',session:'pm' },
-        { name:'加藤 信',key:'加藤信',care:'要介護4',session:'am' },{ name:'山口 康',key:'山口康',care:'要介護1',session:'pm' },
-        { name:'松田 里',key:'松田里',care:'要介護3',session:'am' },{ name:'和田 稔',key:'和田稔',care:'要介護2',session:'pm' }
-      ],
-      birthday:[
-        { name:'加藤 信', key:'加藤信', month:7, day:15 },
-        { name:'吉田 昭', key:'吉田昭', month:7, day:28 }
-      ],
-      residue:[
-        { name:'新規 太郎（体験）', key:'新規太郎（体験）', session:'am' }
-      ]
-    };
-  }
+  // 本番: 起動時に board GAS の action=sessionBoard を1回JSONPで叩き描画
+  fetchBoard(todayYMD());
 </script>
 </body>
 </html>
