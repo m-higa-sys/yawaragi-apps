@@ -13037,8 +13037,13 @@ function nmClassifyMail_(from, subject) {
     'moneyforward.com', 'e-seikyuu.jp', 'jm-academy.jp', 'keepfitlife.com'];
   // 第1段: この件名キーワードを含んだら important
   var SUBJECT_KEYWORDS = ['請求書', '領収書', '補助金', '助成金', '交付決定', '口座振替', '応募', '国保伝送'];
-  // 将来用の除外集合（今は空。ここに差出人アド要素/件名キーワードを足すと important から落ちる）。
-  var EXCLUDE = { senders: [], subjects: [] };
+  // ノイズ除去用の除外ドメイン（2026-07-12・社長dryRun判断）。others を毎日埋める広告/メルマガ/
+  // カード通知。該当は important にも others にも入れない（完全除外）。★育てる前提＝「これは」という
+  // 情報源が出たら該当行を外すだけ。三井住友カード(vpass.ne.jp)も社長判断で除外（不正利用検知は
+  // カード会社アプリ・電話・明細で別途できるため）。
+  var EXCLUDE_DOMAINS = ['satofull.co.jp', 'ecovacs.com', 'zozo.jp', 'neweraonlinestore.jp',
+    'apj.media', 'mail.instagram.com', 'vpass.ne.jp'];
+  var EXCLUDE_SUBJECTS = [];  // 将来用（件名でのノイズ除去。今は空）
 
   var addr = nmExtractSender_(from);
   var subj = String(subject == null ? '' : subject);
@@ -13046,32 +13051,34 @@ function nmClassifyMail_(from, subject) {
   var at = addr.lastIndexOf('@');
   if (at >= 0) host = addr.slice(at + 1);
 
-  // 除外リスト（将来用）: 一致したら問答無用で others 行き
-  for (var e = 0; e < EXCLUDE.senders.length; e++) {
-    if (addr && addr.indexOf(String(EXCLUDE.senders[e]).toLowerCase()) >= 0) return { important: false, matchedBy: [] };
-  }
-  for (var x = 0; x < EXCLUDE.subjects.length; x++) {
-    if (subj.indexOf(EXCLUDE.subjects[x]) >= 0) return { important: false, matchedBy: [] };
+  // ドメイン自尾一致（先頭 '.' 付き=末尾一致、無し=完全一致 or サブドメイン）。important/EXCLUDE共用。
+  function hostHit(entry) {
+    if (entry.charAt(0) === '.') {
+      return host.length >= entry.length && host.slice(-entry.length) === entry;
+    }
+    return (host === entry) || (host.length > entry.length + 1 && host.slice(-(entry.length + 1)) === '.' + entry);
   }
 
+  // 第1段: important判定（EXCLUDEより先に確定させる＝important優先の安全設計）
   var matchedBy = [];
-  // ドメイン自尾一致（先頭 '.' 付きは末尾一致、無しは完全一致 or サブドメイン）
   for (var i = 0; i < IMPORTANT_DOMAINS.length; i++) {
-    var d = IMPORTANT_DOMAINS[i];
-    var ok = false;
-    if (d.charAt(0) === '.') {
-      ok = host.length >= d.length && host.slice(-d.length) === d;
-    } else {
-      ok = (host === d) || (host.length > d.length + 1 && host.slice(-(d.length + 1)) === '.' + d);
-    }
-    if (ok) matchedBy.push('domain:' + d);
+    if (hostHit(IMPORTANT_DOMAINS[i])) matchedBy.push('domain:' + IMPORTANT_DOMAINS[i]);
   }
-  // 件名キーワード（部分一致）
   for (var k = 0; k < SUBJECT_KEYWORDS.length; k++) {
     if (subj.indexOf(SUBJECT_KEYWORDS[k]) >= 0) matchedBy.push('subject:' + SUBJECT_KEYWORDS[k]);
   }
+  // important該当は EXCLUDE を無視して優先（誤ってEXCLUDEに重要ドメインを入れても落とさない）
+  if (matchedBy.length > 0) return { important: true, matchedBy: matchedBy, excluded: false };
 
-  return { important: matchedBy.length > 0, matchedBy: matchedBy };
+  // important非該当のときだけ EXCLUDE 判定（該当は others からも除外＝完全に不可視化）
+  for (var e = 0; e < EXCLUDE_DOMAINS.length; e++) {
+    if (hostHit(EXCLUDE_DOMAINS[e])) return { important: false, matchedBy: [], excluded: true };
+  }
+  for (var x = 0; x < EXCLUDE_SUBJECTS.length; x++) {
+    if (subj.indexOf(EXCLUDE_SUBJECTS[x]) >= 0) return { important: false, matchedBy: [], excluded: true };
+  }
+
+  return { important: false, matchedBy: [], excluded: false };
 }
 
 // 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
@@ -13093,6 +13100,7 @@ function checkNewMail(sinceHours) {
       var from = msg.getFrom();
       var subject = msg.getSubject();
       var cls = nmClassifyMail_(from, subject);
+      if (cls.excluded) continue;   // EXCLUDE該当（広告/メルマガ/カード通知等）は important にも others にも入れない
       var dateStr = Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
       if (cls.important) {
         important.push({ from: from, subject: subject, date: dateStr, matchedBy: cls.matchedBy });
