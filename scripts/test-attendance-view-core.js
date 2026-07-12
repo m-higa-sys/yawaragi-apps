@@ -73,5 +73,17 @@ ok(a.diverge===0.46, '3-2.54=0.46');
 const nn = c.avActualPerWeek_(2, null);
 ok(nn.actualPerWeek===null && nn.diverge===null, '率null→実績/乖離null');
 
+console.log('\n[avDisplayState_] 優先: 長期休み>判定中(新規)>参考値(曜日変更)>normal');
+eq(c.avDisplayState_({isLongLeave:true, isWeekdayChange:true, startDate:'2026-07-01', today:'2026-07-12'}),
+   {state:'chouki', label:'算出不可'}, '長期休みが最優先');
+eq(c.avDisplayState_({isLongLeave:false, isWeekdayChange:true, startDate:'2026-07-01', today:'2026-07-12'}),
+   {state:'hanteichu', label:'判定中（データ蓄積中）'}, '新規(開始<3ヶ月)が曜日変更より優先');
+eq(c.avDisplayState_({isLongLeave:false, isWeekdayChange:false, startDate:'2026-03-01', today:'2026-07-12'}),
+   {state:'normal', label:''}, '開始>3ヶ月前→通常復帰');
+eq(c.avDisplayState_({isLongLeave:false, isWeekdayChange:true, startDate:'2026-01-01', today:'2026-07-12'}),
+   {state:'sanko', label:'参考値（率が不正確）'}, '曜日変更のみ→参考値');
+eq(c.avDisplayState_({isLongLeave:false, isWeekdayChange:false, startDate:'', today:'2026-07-12'}),
+   {state:'normal', label:''}, '開始日空→normal（判定中にしない）');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);

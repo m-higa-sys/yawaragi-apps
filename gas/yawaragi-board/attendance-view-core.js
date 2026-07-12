@@ -101,6 +101,16 @@ function avActualPerWeek_(contractN, rate) {
   return { actualPerWeek: apw, diverge: diverge };
 }
 
+// 状態＋ラベル。hanteichu = 利用開始日が today の3ヶ月前より新しい（3ヶ月経過で自動normal復帰）。
+function avDisplayState_(opt) {
+  opt = opt || {};
+  if (opt.isLongLeave) return { state: 'chouki', label: '算出不可' };
+  var sd = String(opt.startDate || '').trim();
+  if (sd && sd > avDateMinusMonths_(opt.today, 3)) return { state: 'hanteichu', label: '判定中（データ蓄積中）' };
+  if (opt.isWeekdayChange) return { state: 'sanko', label: '参考値（率が不正確）' };
+  return { state: 'normal', label: '' };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
@@ -109,6 +119,7 @@ if (typeof module !== 'undefined' && module.exports) {
     avOccupancy_: avOccupancy_, avSlotsFree_: avSlotsFree_,
     avDateMinusMonths_: avDateMinusMonths_, avLast3CompletedMonths_: avLast3CompletedMonths_,
     avUserOpsRate_: avUserOpsRate_,
-    avActualPerWeek_: avActualPerWeek_
+    avActualPerWeek_: avActualPerWeek_,
+    avDisplayState_: avDisplayState_
   };
 }
