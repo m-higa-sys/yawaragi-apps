@@ -13114,6 +13114,13 @@ function checkNewMail(sinceHours) {
   return result;
 }
 
+// 実弾テスト用ラッパー（2026-07-12追加）。GASエディタのプルダウンは引数を渡せないため、
+// checkNewMail(72) を引数付きで実行するためだけの薄いラッパー。ロジックは持たない。
+function testNewMail72() {
+  var result = checkNewMail(72);
+  Logger.log(JSON.stringify(result, null, 2));
+}
+
 
 // 利用者イベント削除（2026/5/21追加・カード+項目+連動タスクボードを一括削除）
 function deleteUserEvent(ss, data) {
