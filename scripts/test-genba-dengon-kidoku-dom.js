@@ -35,13 +35,16 @@ const MASTER = [
 const FN = ['escapeHtml', 'dengonComputeRecipients_', 'dengonAddReadBy_', 'dengonRemoveReadBy_',
   'dengonIsAllRead_', 'dengonIsGroupTo_', 'dengonEffectiveRecipients_', 'dengonUnread_',
   'dengonReadChipsHtml_', 'dengonRequestedMD_', 'dengonTodayStr_', 'dengonDeadlineBadge_',
-  'dengonRender', 'dengonRenderToSelect_', 'dengonChipProcessing_'];
+  'dengonRender', 'dengonCardHtml_', 'dengonRenderToSelect_', 'dengonChipProcessing_',
+  'dengonCardEl_', 'dengonUpdateCardReadBy_'];
 
 const dom = new JSDOM('<!DOCTYPE html><body><select id="dengon-to"></select><div id="dengon-list"></div></body>');
 const sb = {};
 const src = FN.map(extractFn).join('\n') + '\n' +
   'var dengonStaffMaster = MASTER;\n' +
-  'sb.render = dengonRender; sb.renderSelect = dengonRenderToSelect_; sb.processing = dengonChipProcessing_;';
+  'var dengonLastActiveItems = [];\n' +
+  'sb.render = dengonRender; sb.renderSelect = dengonRenderToSelect_; sb.processing = dengonChipProcessing_;' +
+  'sb.cardHtml = dengonCardHtml_; sb.updateCard = dengonUpdateCardReadBy_; sb.setItems = function(a){ dengonLastActiveItems = a; };';
 new Function('sb', 'document', 'MASTER', src)(sb, dom.window.document, MASTER);
 const doc = dom.window.document;
 
@@ -109,6 +112,36 @@ ok(pb.disabled === false, '解除-押せる状態に戻る');
 ok(pb.innerHTML === '髙山', '解除-元のラベルに復元');
 sb.processing(null, true);
 ok(true, '処理中-null（btn無し）でも落ちない');
+
+// ===== 高速化: 単一カード差し替え dengonUpdateCardReadBy_（dengonBoard全件再取得を回避）=====
+const flist = doc.getElementById('dengon-list');
+const fItem = { id: 'db_fast', to: '看護師', from: '比嘉', body: 'x', deadline: '', createdAt: '', recipients: ['髙山', '石井', '春山'], readBy: [] };
+sb.setItems([fItem]);
+flist.innerHTML = sb.cardHtml(fItem);
+ok(flist.querySelector('.dengon-card[data-id="db_fast"]').querySelectorAll('.dengon-chips button').length === 3, '高速-初期チップ3人');
+// mark応答 readBy=[髙山] で単一カード差し替え
+ok(sb.updateCard('db_fast', ['髙山']) === true, '高速-更新成功でtrue');
+let fc = flist.querySelector('.dengon-card[data-id="db_fast"]');
+ok(fc.innerHTML.indexOf('未読: 石井・春山') !== -1, '高速-未読が石井・春山に減る');
+ok(fc.innerHTML.indexOf("dengonUnmarkRead('db_fast','髙山'") !== -1, '高速-髙山が既読(unmark)化');
+// 全員既読 → 完了ボタン変化
+ok(sb.updateCard('db_fast', ['髙山', '石井', '春山']) === true, '高速-全員既読更新true');
+fc = flist.querySelector('.dengon-card[data-id="db_fast"]');
+ok(fc.querySelector('.dg-normal button').textContent.trim() === '✅ 全員既読・完了にする', '高速-全員既読で完了ボタン変化');
+// unmark応答 readBy=[髙山,石井] で戻す
+ok(sb.updateCard('db_fast', ['髙山', '石井']) === true, '高速-unmark更新true');
+fc = flist.querySelector('.dengon-card[data-id="db_fast"]');
+ok(fc.innerHTML.indexOf('未読: 春山') !== -1, '高速-unmarkで未読に春山復活');
+// フォールバック（安全側）
+ok(sb.updateCard('db_fast', null) === false, '高速-readBy非配列はfalse=全件再取得フォールバック');
+ok(sb.updateCard('db_fast', 'oops') === false, '高速-readBy文字列はfalse');
+ok(sb.updateCard('db_notexist', ['髙山']) === false, '高速-item無しはfalse');
+// 他カード非破壊: 2枚描画→1枚更新→もう1枚不変
+sb.setItems([fItem, { id: 'db_other', to: '相談員', from: '比嘉', body: 'y', deadline: '', createdAt: '', recipients: ['勝又', '下浦', '工藤'], readBy: [] }]);
+flist.innerHTML = sb.cardHtml(fItem) + sb.cardHtml({ id: 'db_other', to: '相談員', from: '比嘉', body: 'y', deadline: '', createdAt: '', recipients: ['勝又', '下浦', '工藤'], readBy: [] });
+const otherBefore = flist.querySelector('.dengon-card[data-id="db_other"]').innerHTML;
+sb.updateCard('db_fast', ['髙山']);
+ok(flist.querySelector('.dengon-card[data-id="db_other"]').innerHTML === otherBefore, '高速-他カードは非破壊');
 
 console.log('\ndengon-kidoku DOM: ' + pass + ' PASS / ' + fail + ' FAIL');
 if (fail > 0) process.exit(1);

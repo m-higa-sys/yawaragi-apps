@@ -10048,17 +10048,22 @@ function dengonRender(items) {
         list.innerHTML = '<p style="color:#a0aec0; font-size:0.85rem;">未完了の伝達はありません</p>';
         return;
     }
-    list.innerHTML = visible.map(x => {
-        const id = String(x.id);
-        const req = dengonRequestedMD_(x.createdAt);          // B：依頼日（無効/空は非表示）
-        const reqHtml = req ? ' ・ 依頼 ' + req : '';
-        const dlHtml = dengonDeadlineBadge_(x.deadline);      // A：期限バッジ（今日基準）
-        const chipsHtml = dengonReadChipsHtml_(x, id, dengonStaffMaster); // 既読チップ（グループ宛てのみ）
-        const eff = dengonEffectiveRecipients_(x, dengonStaffMaster);
-        const allRead = dengonIsAllRead_(eff, x.readBy);      // 全員既読で完了ボタン変化
-        const cLabel = allRead ? '✅ 全員既読・完了にする' : '完了にする';
-        const cBg = allRead ? '#276749' : '#38a169';
-        return `
+    list.innerHTML = visible.map(x => dengonCardHtml_(x)).join('');
+}
+
+// カード1枚分のHTML（未完了ビュー）。既読チップ＋完了ボタン変化を含む。副作用なし。
+// mark/unmark後の単一カード差し替え（dengonUpdateCardReadBy_）でも再利用する。
+function dengonCardHtml_(x) {
+    const id = String(x.id);
+    const req = dengonRequestedMD_(x.createdAt);          // B：依頼日（無効/空は非表示）
+    const reqHtml = req ? ' ・ 依頼 ' + req : '';
+    const dlHtml = dengonDeadlineBadge_(x.deadline);      // A：期限バッジ（今日基準）
+    const chipsHtml = dengonReadChipsHtml_(x, id, dengonStaffMaster); // 既読チップ（グループ宛てのみ）
+    const eff = dengonEffectiveRecipients_(x, dengonStaffMaster);
+    const allRead = dengonIsAllRead_(eff, x.readBy);      // 全員既読で完了ボタン変化
+    const cLabel = allRead ? '✅ 全員既読・完了にする' : '完了にする';
+    const cBg = allRead ? '#276749' : '#38a169';
+    return `
         <div class="dengon-card" data-id="${escapeHtml(id)}" style="border:1px solid #e2e8f0; border-radius:8px; padding:10px; margin-bottom:8px; background:#fff;">
             <div style="font-size:0.78rem; color:#718096; margin-bottom:4px;">
                 宛先: <b>${escapeHtml(x.to)}</b> ・ 投稿: ${escapeHtml(x.from)}${reqHtml}${dlHtml}
@@ -10076,7 +10081,20 @@ function dengonRender(items) {
                 </div>
             </div>
         </div>`;
-    }).join('');
+}
+
+// mark/unmark応答の readBy で「そのカードだけ」を差し替える（dengonBoard全件再取得を回避＝2往復目を削る）。
+// 楽観更新ではない：サーバが確定して返した readBy を使い、確定後に描く。
+// readBy が配列でない／該当itemが無い／カードDOMが無い場合は false を返し、呼出側が全件再取得へフォールバックする。
+function dengonUpdateCardReadBy_(id, readBy) {
+    if (!Array.isArray(readBy)) return false;                              // 想定外の応答→フォールバック
+    const item = (dengonLastActiveItems || []).filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!item) return false;                                               // itemが無い→フォールバック
+    const card = dengonCardEl_(id);
+    if (!card) return false;                                               // カードDOMが無い→フォールバック
+    item.readBy = readBy;                                                  // 直近items側も同期（後続描画の整合）
+    card.outerHTML = dengonCardHtml_(item);                                // そのカードだけ描き直し
+    return true;
 }
 
 // 既読チップのHTML（グループ宛てのみ・個人/社長宛ては ''）。未読=赤主役、既読=薄い取消線。副作用なし。
@@ -10323,7 +10341,11 @@ function dengonMarkRead(id, name, btn) {
     const cb = 'dengonMarkCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=mark_dengon_read"]').forEach(s => s.remove());
-        if (resp && resp.ok) { dengonLoad(); } // サーバ確定後に一覧を読み直して再描画（チップごと差し替え＝送信中解除）
+        if (resp && resp.ok) {
+            // サーバ確定後：応答の readBy でそのカードだけ差し替え（2往復目=全件再取得を回避）。
+            // 応答が想定外なら安全側に全件再取得へフォールバック。
+            if (!dengonUpdateCardReadBy_(id, resp.readBy)) dengonLoad();
+        }
         else { dengonChipProcessing_(btn, false); alert('既読の記録に失敗しました: ' + (resp && resp.error || '不明')); }
         try { kbReleaseCb_(cb); } catch (e) {}
     };
@@ -10341,7 +10363,9 @@ function dengonUnmarkRead(id, name, btn) {
     const cb = 'dengonUnmarkCb_' + Date.now();
     window[cb] = function (resp) {
         document.querySelectorAll('script[src*="action=unmark_dengon_read"]').forEach(s => s.remove());
-        if (resp && resp.ok) { dengonLoad(); }
+        if (resp && resp.ok) {
+            if (!dengonUpdateCardReadBy_(id, resp.readBy)) dengonLoad(); // 応答readByで単一カード差し替え／想定外は全件再取得
+        }
         else { dengonChipProcessing_(btn, false); alert('取り消しに失敗しました: ' + (resp && resp.error || '不明')); }
         try { kbReleaseCb_(cb); } catch (e) {}
     };
