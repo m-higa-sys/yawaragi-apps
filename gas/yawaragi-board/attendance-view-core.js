@@ -29,9 +29,15 @@ function avSlotSet_(days, ampm) {
 }
 function avAttendsCell_(days, ampm, day, sess) { return !!avSlotSet_(days, ampm)[day + '|' + AV_SLOT_OF[sess]]; }
 
+function avContractN_(days) {
+  var s = String(days || '');
+  return AV_WEEKDAY_CHARS.filter(function (d) { return s.indexOf(d) >= 0; }).length;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
-    avSlotSet_: avSlotSet_, avAttendsCell_: avAttendsCell_
+    avSlotSet_: avSlotSet_, avAttendsCell_: avAttendsCell_,
+    avContractN_: avContractN_
   };
 }

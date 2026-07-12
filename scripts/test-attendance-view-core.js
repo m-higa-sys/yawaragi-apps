@@ -20,5 +20,11 @@ ok(c.avAttendsCell_('火木','午前','火','am')===true, '火AM在籍→true');
 ok(c.avAttendsCell_('火木','午前','火','pm')===false, '火PMは不在→false');
 ok(c.avAttendsCell_('月木','月午前、木午後','木','pm')===true, '複合 木PM→true');
 
+console.log('\n[avContractN_] 契約週N=曜日数（午前午後は足さない）');
+ok(c.avContractN_('火木')===2, '火木→2');
+ok(c.avContractN_('月水金')===3, '月水金→3');
+ok(c.avContractN_('木')===1, '木→1');
+ok(c.avContractN_('')===0, '空→0');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);
