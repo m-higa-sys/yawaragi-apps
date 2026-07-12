@@ -96,5 +96,26 @@ ok(c.avIsUpsizeCandidate_('normal',1)===true, 'normal週1→候補');
 ok(c.avIsUpsizeCandidate_('normal',2)===false, '週2→非候補');
 ok(c.avIsUpsizeCandidate_('sanko',1)===false, 'sanko週1→非候補');
 
+console.log('\n[avKaigoAvgRate_] normalのみ重み付き平均（除外群は分母外）');
+const rows = [
+  { displayState:'normal', windowAttended:11, windowScheduled:13 },
+  { displayState:'normal', windowAttended:9,  windowScheduled:9  },
+  { displayState:'sanko',  windowAttended:5,  windowScheduled:10 }, // 除外
+  { displayState:'hanteichu', windowAttended:0, windowScheduled:0 } // 除外
+];
+ok(c.avKaigoAvgRate_(rows)===90.9, '(11+9)/(13+9)=20/22=90.9%（normalのみ）');
+ok(c.avKaigoAvgRate_([])===null, '対象ゼロ→null');
+
+console.log('\n[avSortRows_] 3モード');
+const rs = [
+  { name:'A', isUpsizeCandidate:true,  rate:100, diverge:0,   displayState:'normal' },
+  { name:'B', isUpsizeCandidate:true,  rate:92,  diverge:0,   displayState:'normal' },
+  { name:'C', isUpsizeCandidate:false, rate:60,  diverge:1.2, displayState:'normal' },
+  { name:'D', isUpsizeCandidate:false, rate:null,diverge:null,displayState:'hanteichu' }
+];
+eq(c.avSortRows_(rs,'upsize').map(function(x){return x.name;}), ['A','B','C','D'], 'upsize:候補→率降順、非候補下、null末尾');
+eq(c.avSortRows_(rs,'diverge').map(function(x){return x.name;}), ['C','A','B','D'], 'diverge:乖離降順、null末尾');
+eq(c.avSortRows_(rs,'lowrate').map(function(x){return x.name;}), ['C','B','A','D'], 'lowrate:率昇順、null末尾');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);

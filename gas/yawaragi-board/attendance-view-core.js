@@ -135,6 +135,34 @@ function avAddableSlots_(days, unit, slotsFree) {
 }
 function avIsUpsizeCandidate_(state, contractN) { return state === 'normal' && contractN === 1; }
 
+function avKaigoAvgRate_(rows) {
+  var a = 0, s = 0;
+  (rows || []).forEach(function (r) {
+    if (r.displayState === 'normal') { a += r.windowAttended; s += r.windowScheduled; }
+  });
+  return s > 0 ? Math.round((1000 * a) / s) / 10 : null;
+}
+// mode: 'upsize'|'diverge'|'lowrate'。null(率/乖離なし)は常に末尾。安定ソート前提でtiebreakは名前。
+function avSortRows_(rows, mode) {
+  var arr = (rows || []).slice();
+  function nn(v) { return v == null ? 1 : 0; } // nullを後ろへ
+  arr.sort(function (x, y) {
+    if (mode === 'upsize') {
+      if (x.isUpsizeCandidate !== y.isUpsizeCandidate) return x.isUpsizeCandidate ? -1 : 1;
+      if (nn(x.rate) !== nn(y.rate)) return nn(x.rate) - nn(y.rate);
+      if (x.rate !== y.rate) return (y.rate || 0) - (x.rate || 0);
+    } else if (mode === 'diverge') {
+      if (nn(x.diverge) !== nn(y.diverge)) return nn(x.diverge) - nn(y.diverge);
+      if (x.diverge !== y.diverge) return (y.diverge || 0) - (x.diverge || 0);
+    } else if (mode === 'lowrate') {
+      if (nn(x.rate) !== nn(y.rate)) return nn(x.rate) - nn(y.rate);
+      if (x.rate !== y.rate) return (x.rate || 0) - (y.rate || 0);
+    }
+    return String(x.name).localeCompare(String(y.name));
+  });
+  return arr;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
@@ -145,6 +173,7 @@ if (typeof module !== 'undefined' && module.exports) {
     avUserOpsRate_: avUserOpsRate_,
     avActualPerWeek_: avActualPerWeek_,
     avDisplayState_: avDisplayState_,
-    avAddableSlots_: avAddableSlots_, avIsUpsizeCandidate_: avIsUpsizeCandidate_
+    avAddableSlots_: avAddableSlots_, avIsUpsizeCandidate_: avIsUpsizeCandidate_,
+    avKaigoAvgRate_: avKaigoAvgRate_, avSortRows_: avSortRows_
   };
 }
