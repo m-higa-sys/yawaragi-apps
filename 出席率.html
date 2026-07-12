@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭） -->
+    <!-- version.txt を取得し、現URLの ?v= と違えば1回だけ最新版へ location.replace する -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) {
+                        location.replace(buildVersionedUrl(location.href, latest));
+                    }
+                })
+                .catch(function () { /* オフライン等は no-op で固まらせない */ });
+        } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
+    })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>出席率・利用頻度ビュー</title>
+    <style>
+        :root { --line:#e2e5ea; --ink:#1f2733; --sub:#6b7684; --bg:#f5f6f8; --card:#fff;
+                --accent:#2563a8; --good:#1a7f43; --warn:#b7791f; --bad:#c0392b; --cand:#fff8e1; }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+               color:var(--ink); background:var(--bg); font-size:14px; line-height:1.5; }
+        header { background:var(--card); border-bottom:1px solid var(--line); padding:14px 16px; position:sticky; top:0; z-index:5; }
+        h1 { margin:0; font-size:17px; }
+        .meta { color:var(--sub); font-size:12px; margin-top:3px; }
+        .wrap { padding:14px 16px 60px; max-width:1200px; margin:0 auto; }
+        .baseline { display:flex; align-items:baseline; gap:10px; background:var(--card); border:1px solid var(--line);
+                    border-radius:10px; padding:12px 16px; margin-bottom:12px; }
+        .baseline b { font-size:26px; color:var(--accent); }
+        .baseline .lbl { font-weight:600; }
+        .baseline .hint { color:var(--sub); font-size:12px; }
+        .note { background:#eef4fb; border:1px solid #cfe0f2; color:#2a4a68; border-radius:8px; padding:8px 12px; font-size:12.5px; margin-bottom:10px; }
+        .warn-banner { background:#fdecec; border:1px solid #f3c0c0; color:var(--bad); border-radius:8px; padding:10px 12px; margin-bottom:10px; font-weight:600; }
+        .slots { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:12.5px; color:var(--sub); }
+        .slots b { color:var(--ink); }
+        .controls { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+        .controls button { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:20px;
+                           padding:6px 14px; font-size:13px; cursor:pointer; }
+        .controls button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+        .tablewrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+        table { border-collapse:collapse; width:100%; min-width:760px; }
+        th,td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap; }
+        th { background:#fafbfc; color:var(--sub); font-size:12px; font-weight:600; position:sticky; top:0; }
+        td.num, th.num { text-align:right; }
+        tr.cand { background:var(--cand); }
+        .rate-good { color:var(--good); font-weight:600; }
+        .rate-warn { color:var(--warn); font-weight:600; }
+        .rate-bad { color:var(--bad); font-weight:600; }
+        .dash { color:#b9c0c9; }
+        .pill { display:inline-block; border-radius:12px; padding:1px 8px; font-size:11.5px; font-weight:600; }
+        .pill-sanko { background:#fbeecb; color:#8a6100; }
+        .pill-hanteichu { background:#e4edf6; color:#3a5a7a; }
+        .pill-chouki { background:#ececf0; color:#66707c; }
+        .slot-badge { display:inline-block; background:#e7f4ec; color:var(--good); border:1px solid #bfe3cd;
+                      border-radius:6px; padding:1px 6px; margin:1px 3px 1px 0; font-size:11.5px; font-weight:600; }
+        .loading, .error { padding:40px; text-align:center; color:var(--sub); }
+        .error { color:var(--bad); }
+        .mono { font-variant-numeric: tabular-nums; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>出席率・利用頻度ビュー <span style="font-weight:400;font-size:13px;color:var(--sub)">（要介護のみ・実来館dailyOps基準）</span></h1>
+        <div class="meta" id="meta">読み込み中…</div>
+    </header>
+    <div class="wrap">
+        <div id="warnings"></div>
+        <div class="baseline" id="baseline" style="display:none">
+            <span class="lbl">要介護の平均実来館率</span>
+            <b id="avg">—</b>
+            <span class="hint">← この基準線より低い人が「実際は契約ほど来ていない」目安（85%前後が普通）</span>
+        </div>
+        <div class="note" id="note" style="display:none"></div>
+        <div class="slots" id="slots" style="display:none"></div>
+        <div class="controls" id="controls" style="display:none">
+            <button data-mode="upsize" class="on">増回候補（週1・出席率高い順）</button>
+            <button data-mode="diverge">乖離の大きい順</button>
+            <button data-mode="lowrate">出席率の低い順</button>
+        </div>
+        <div class="tablewrap" id="tablewrap" style="display:none">
+            <table>
+                <thead id="thead"></thead>
+                <tbody id="tbody"></tbody>
+            </table>
+        </div>
+        <div class="loading" id="loading">利用者データを取得中…</div>
+        <div class="error" id="error" style="display:none"></div>
+    </div>
+
+    <script>
+    var API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+    var DATA = null;      // attendance_view レスポンス
+    var MODE = 'upsize';
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+    // ---- JSONP 取得（github.io→script.google.com は CORS so fetch不可・intake.html kdLoadDaicho と同方式）----
+    function loadView() {
+        var cbName = 'avCb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        var done = false;
+        var s = document.createElement('script');
+        window[cbName] = function (resp) { done = true; cleanup(); onData(resp); };
+        function cleanup() { try { delete window[cbName]; } catch (e) {} try { s.remove(); } catch (e) {} }
+        s.src = API + '?action=attendance_view&callback=' + cbName + '&t=' + Date.now();
+        s.onerror = function () { if (!done) { cleanup(); showError('サーバー接続に失敗しました。通信環境を確認して再読込してください。'); } };
+        document.body.appendChild(s);
+        setTimeout(function () { if (!done) { cleanup(); showError('タイムアウトしました。再読込してください。'); } }, 20000);
+    }
+
+    function showError(msg) {
+        document.getElementById('loading').style.display = 'none';
+        var e = document.getElementById('error');
+        e.style.display = 'block';
+        e.textContent = msg;
+    }
+
+    function onData(resp) {
+        if (!resp || resp.success !== true) {
+            showError('データ取得エラー：' + esc((resp && resp.error) || '不明なエラー') + '（台帳のヘッダ改名などが原因の場合があります）');
+            return;
+        }
+        DATA = resp;
+        document.getElementById('loading').style.display = 'none';
+        render();
+    }
+
+    // 出席率 → 色クラス（null は色なし）
+    function rateClass(r) { if (r == null) return ''; if (r >= 90) return 'rate-good'; if (r >= 70) return 'rate-warn'; return 'rate-bad'; }
+
+    // avSortRows_（core）と同ロジック。配信境界so純関数を共有できず描画用に複製（DRY例外）。
+    function sortRows(rows, mode) {
+        var arr = rows.slice();
+        function nn(v) { return v == null ? 1 : 0; }
+        arr.sort(function (x, y) {
+            if (mode === 'upsize') {
+                if (x.isUpsizeCandidate !== y.isUpsizeCandidate) return x.isUpsizeCandidate ? -1 : 1;
+                if (nn(x.rate) !== nn(y.rate)) return nn(x.rate) - nn(y.rate);
+                if (x.rate !== y.rate) return (y.rate || 0) - (x.rate || 0);
+            } else if (mode === 'diverge') {
+                if (nn(x.diverge) !== nn(y.diverge)) return nn(x.diverge) - nn(y.diverge);
+                if (x.diverge !== y.diverge) return (y.diverge || 0) - (x.diverge || 0);
+            } else if (mode === 'lowrate') {
+                if (nn(x.rate) !== nn(y.rate)) return nn(x.rate) - nn(y.rate);
+                if (x.rate !== y.rate) return (x.rate || 0) - (y.rate || 0);
+            }
+            return String(x.name).localeCompare(String(y.name), 'ja');
+        });
+        return arr;
+    }
+
+    function pct(v) { return (v == null) ? '<span class="dash">—</span>' : '<span class="mono">' + v + '%</span>'; }
+    function num(v) { return (v == null) ? '<span class="dash">—</span>' : '<span class="mono">' + v + '</span>'; }
+    function monthLabel(ym) { return parseInt(ym.slice(5, 7), 10) + '月'; }
+
+    function statePill(st, label) {
+        if (st === 'sanko') return ' <span class="pill pill-sanko">' + esc(label) + '</span>';
+        if (st === 'hanteichu') return ' <span class="pill pill-hanteichu">' + esc(label) + '</span>';
+        if (st === 'chouki') return ' <span class="pill pill-chouki">' + esc(label) + '</span>';
+        return '';
+    }
+
+    function render() {
+        var d = DATA;
+        document.getElementById('meta').textContent =
+            '生成 ' + esc(d.generatedAt) + '　／　集計窓 ' + (d.window.months.join('・') || 'なし') +
+            '　／　要介護 ' + d.users.length + '名';
+
+        // 警告バナー（ops取得失敗など）
+        var wrap = document.getElementById('warnings');
+        wrap.innerHTML = '';
+        (d.warnings || []).forEach(function (w) {
+            var el = document.createElement('div'); el.className = 'warn-banner'; el.textContent = '⚠ ' + w; wrap.appendChild(el);
+        });
+
+        // 基準線
+        var bl = document.getElementById('baseline'); bl.style.display = 'flex';
+        document.getElementById('avg').textContent = (d.kaigoAvgRate == null ? '—' : d.kaigoAvgRate + '%');
+
+        // 注記（4月など ops未保持月）
+        var noteEl = document.getElementById('note');
+        var noteMsg = '出席率は実際に来た記録（dailyOps）が正本。' + (d.window.note ? d.window.note + '。' : '');
+        noteEl.style.display = 'block'; noteEl.textContent = noteMsg;
+
+        // 空き枠サマリー（台帳契約ベース＝週間予定表と一致）
+        var slotsEl = document.getElementById('slots');
+        if (d.slotsFree) {
+            var order = ['月', '火', '水', '木', '金'];
+            var parts = order.map(function (day) {
+                var f = d.slotsFree[day] || { am: 0, pm: 0 };
+                return day + ' AM' + f.am + '/PM' + f.pm;
+            });
+            slotsEl.style.display = 'block';
+            slotsEl.innerHTML = '空き枠（定員' + d.capacity + '・台帳契約ベース）：<b>' + esc(parts.join('　')) + '</b>';
+        }
+
+        document.getElementById('controls').style.display = 'flex';
+        document.getElementById('tablewrap').style.display = 'block';
+
+        // ヘッダ（月別列は displayMonths）
+        var monthCols = d.displayMonths.map(function (ym) { return '<th class="num">' + monthLabel(ym) + '</th>'; }).join('');
+        document.getElementById('thead').innerHTML =
+            '<tr><th>氏名</th><th>介護度</th><th>契約曜日</th><th class="num">契約</th><th class="num">実績</th>' +
+            '<th class="num">乖離</th><th class="num">出席率</th>' + monthCols + '<th>状態 / 増回できる空き枠</th></tr>';
+
+        renderBody();
+
+        var btns = document.querySelectorAll('#controls button');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].onclick = function () { MODE = this.getAttribute('data-mode');
+                for (var j = 0; j < btns.length; j++) btns[j].classList.remove('on');
+                this.classList.add('on'); renderBody(); };
+        }
+    }
+
+    function renderBody() {
+        var d = DATA;
+        var rows = sortRows(d.users, MODE);
+        var html = rows.map(function (u) {
+            var cls = u.isUpsizeCandidate ? ' class="cand"' : '';
+            var monthCells = d.displayMonths.map(function (ym) {
+                var v = u.monthly ? u.monthly[ym] : null;
+                return '<td class="num">' + pct(v) + '</td>';
+            }).join('');
+            // 状態 / 増回できる空き枠
+            var stateCol;
+            if (u.displayState === 'chouki' || u.displayState === 'hanteichu') {
+                stateCol = statePill(u.displayState, u.stateLabel);
+            } else {
+                var badges = (u.addableSlots || []).map(function (s) { return '<span class="slot-badge">＋' + esc(s) + '</span>'; }).join('');
+                stateCol = statePill(u.displayState, u.stateLabel) + (badges ? ' ' + badges : '');
+            }
+            var rateCell = (u.rate == null)
+                ? '<span class="dash">—</span>'
+                : '<span class="' + rateClass(u.rate) + ' mono">' + u.rate + '%</span>';
+            return '<tr' + cls + '>' +
+                '<td>' + esc(u.name) + '</td>' +
+                '<td>' + esc(u.care) + '</td>' +
+                '<td>' + esc(u.days) + '（' + esc(u.unit) + '）</td>' +
+                '<td class="num mono">週' + u.contractN + '</td>' +
+                '<td class="num">' + num(u.actualPerWeek) + '</td>' +
+                '<td class="num">' + num(u.diverge) + '</td>' +
+                '<td class="num">' + rateCell + '</td>' +
+                monthCells +
+                '<td>' + stateCol + '</td>' +
+                '</tr>';
+        }).join('');
+        document.getElementById('tbody').innerHTML = html;
+    }
+
+    loadView();
+    </script>
+</body>
+</html>
