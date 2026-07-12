@@ -262,5 +262,18 @@ eq(nextFurikaeGuide('2026-06-23'), { deadline: '2026-06-23', furikaeDate: '2026-
 eq(nextFurikaeGuide('2026-06-24'), { deadline: '2026-07-22', furikaeDate: '2026-08-27' }, '締切翌日→次の締切7/22');
 eq(nextFurikaeGuide('2026-12-31'), { deadline: null, furikaeDate: '2027-01-27' }, '全締切超過→最終catch(2027-01-27)');
 
+// ===== 取込ゾーン表示分け（B3・yawaragi_admin_key の有無・純判定）=====
+const scopeGate = {};
+new Function('sb', extractFn('fnkShouldShowImport') + '\nsb.fnkShouldShowImport = fnkShouldShowImport;')(scopeGate);
+const fnkShouldShowImport = scopeGate.fnkShouldShowImport;
+console.log('\n[fnkShouldShowImport 純判定]');
+ok(fnkShouldShowImport('some-key') === true, '鍵あり(社長端末)→取込ゾーン表示');
+ok(fnkShouldShowImport('') === false, '鍵なし(空文字)→非表示');
+ok(fnkShouldShowImport(null) === false, '鍵なし(null)→非表示');
+ok(fnkShouldShowImport(undefined) === false, '鍵なし(undefined)→非表示');
+// 呼び出し配線: 初期化で fnkApplyImportGate を呼び、admin.htmlと同一キー名を見ていること
+ok(html.indexOf('fnkApplyImportGate()') >= 0, '初期化で fnkApplyImportGate() を呼ぶ');
+ok(html.indexOf("localStorage.getItem('yawaragi_admin_key')") >= 0, "判定は 'yawaragi_admin_key'（admin.htmlと同一キー名）");
+
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
