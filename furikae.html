@@ -461,6 +461,21 @@ function setupDropZone() {
   });
 }
 
+// ===== 取込ゾーンの表示分け（B3・誤操作防止・2026-07-12）=====
+// 電算Excelの取込ゾーンは「社長端末のみ」表示。判定は localStorage 'yawaragi_admin_key'（admin.html:KEY_STORE と同一名）の
+// 【有無だけ】。鍵の中身は検証しない（サーバ照合なし＝機密防御でなく、スタッフの誤ドロップ防止が目的）。
+// 対象は #dropZone と #importResult の2要素のみ。表示月セレクタ(.controls)以降は全員に見せる（不触）。
+function fnkShouldShowImport(hasAdminKey) { return !!hasAdminKey; } // 純関数（テスト対象）
+function fnkApplyImportGate() {
+  var hasKey = false;
+  try { hasKey = !!localStorage.getItem('yawaragi_admin_key'); } catch (e) { hasKey = false; }
+  var show = fnkShouldShowImport(hasKey);
+  var dz = document.getElementById('dropZone');
+  var ir = document.getElementById('importResult');
+  if (dz) dz.style.display = show ? '' : 'none';
+  if (ir) ir.style.display = show ? '' : 'none';
+}
+
 function handleFileSelect(event) {
   const file = event.target.files[0];
   if (file) processExcelFile(file);
@@ -1801,6 +1816,7 @@ async function fetchFurikaeFubi() {
 // ============ 初期化 ============
 fnkCheckProductionOrigin(); // 別オリジンで開いていたら先頭で警告（操作前に気づけるよう最優先）
 setupDropZone();
+fnkApplyImportGate(); // 取込ゾーンは社長端末のみ表示（yawaragi_admin_key の有無・誤操作防止）
 initMonthSelect();
 renderMonth();
 
