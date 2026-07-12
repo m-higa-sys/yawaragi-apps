@@ -72,6 +72,15 @@
   .dpick{flex:1; min-width:0; padding:7px 10px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font-size:.95rem; font-weight:700; box-shadow:var(--shadow); font-family:inherit;}
   .dtoday{padding:7px 12px; border-radius:9px; border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent); font-size:.85rem; font-weight:800; cursor:pointer; white-space:nowrap;}
   .dtoday:active{transform:translateY(1px);}
+  .loadInd{font-size:.78rem; font-weight:800; color:var(--accent); white-space:nowrap;}
+
+  /* 今日でない日を見ているときの警告バナー（既定は非表示・.on で表示） */
+  .dstate{display:none;}
+  .dstate.on{display:flex; align-items:center; gap:8px; margin:0 2px 12px; padding:8px 12px; border-radius:10px; font-size:.85rem; font-weight:800;
+    background:var(--warn-bg); border:1.5px solid var(--warn-line); color:var(--warn);}
+  .dstate.on.past{background:var(--warn-bg); border-color:var(--warn-line); color:var(--warn);}
+  .dstate.on.future{background:var(--crit-bg); border-color:var(--crit-line); color:var(--crit);}
+  .dstate .di{font-size:1rem;}
 
   /* 日付を主役に */
   .datehead{
@@ -186,7 +195,11 @@
     <input type="date" id="datePick" class="dpick" aria-label="日付を選ぶ">
     <button class="dnav" id="nextDay" type="button" aria-label="翌日">▶</button>
     <button class="dtoday" id="todayBtn" type="button">今日</button>
+    <span class="loadInd" id="loadInd" aria-live="polite"></span>
   </div>
+
+  <!-- 今日以外の日を見ているときの警告（過去/未来）。事故防止のため常時表示。 -->
+  <div class="dstate" id="dstate"></div>
 
   <div id="conflict"></div>
 
@@ -311,6 +324,22 @@
     dwk.textContent = (p.length===3) ? YOUBI[wd] : '';
     dwk.className = 'dwk' + (wd===6?' sat':(wd===0?' sun':''));
 
+    // 「今日ではない日」を見ているときの警告（過去/未来・何日ずれか）。事故防止のため常時表示。
+    var dst = document.getElementById('dstate');
+    var ty = todayYMD();
+    if (p.length===3 && b.date && b.date !== ty){
+      var past = b.date < ty;
+      var tp = ty.split('-');
+      var diff = Math.round((d - new Date(+tp[0], +tp[1]-1, +tp[2])) / 86400000);
+      var ad = Math.abs(diff);
+      dst.className = 'dstate on ' + (past ? 'past' : 'future');
+      dst.textContent = (past ? '⏪ 過去の日付を表示中' : '⏩ 未来の日付を表示中')
+        + '（今日ではありません・' + ad + '日' + (past ? '前' : '後') + '）';
+    } else {
+      dst.className = 'dstate';
+      dst.textContent = '';
+    }
+
     // 衝突バナー
     var confEl = document.getElementById('conflict');
     if (b.ampmConflict && b.ampmConflict.length){
@@ -411,22 +440,26 @@
   // ===== データ取得 =====
   // JSONP（board GAS は GET=JSONP・POST=no-cors。genba/sokutei と同型）
   // reqId: 日付連打で古い応答が後着しても、最新要求以外は描画しない（画面の順序崩れ防止）。
+  // 読み込み中表示（日付変更で無反応→連打を防ぐ。最新要求が解決するまで出す）。
+  function setLoad(on){ var el=document.getElementById('loadInd'); if(!el) return; el.textContent = on ? '⟳ 読み込み中…' : ''; }
   var reqId = 0;
   function fetchBoard(date, keepTab){
     var myReq = ++reqId;
+    setLoad(true);
     var cbName = 'sessionBoardCb_' + Date.now() + '_' + myReq;
     var done = false;
-    var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); if (myReq===reqId) showError('タイムアウト'); }, 20000);
+    var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); if (myReq===reqId){ setLoad(false); showError('タイムアウト'); } }, 20000);
     function cleanup(){ try { delete window[cbName]; } catch(e){ window[cbName] = undefined; } if (s && s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
     window[cbName] = function(resp){
       if (done) return; done = true; cleanup();
-      if (myReq !== reqId) return;   // 古い応答は無視（連打ガード）
+      if (myReq !== reqId) return;   // 古い応答は無視（連打ガード。loadingは最新要求のまま維持）
+      setLoad(false);
       if (resp && resp.ok === false){ showError(resp.error || '不明なエラー'); return; }
       boot(resp, keepTab);
     };
     var s = document.createElement('script');
     s.src = GAS + '?action=sessionBoard&date=' + encodeURIComponent(date) + '&callback=' + cbName + '&t=' + Date.now();
-    s.onerror = function(){ if (done) return; done = true; cleanup(); if (myReq===reqId) showError('通信エラー'); };
+    s.onerror = function(){ if (done) return; done = true; cleanup(); if (myReq===reqId){ setLoad(false); showError('通信エラー'); } };
     document.head.appendChild(s);
   }
 
