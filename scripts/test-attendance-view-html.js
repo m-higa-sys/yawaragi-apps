@@ -56,14 +56,32 @@ setTimeout(function () {
   const lastName = lr[lr.length - 1].querySelector('td').textContent;
   ok(lastName === '太田賢' || lastName === '有野久美', 'lowrate:率null行が末尾(' + lastName + ')');
 
-  // success:false → エラー表示（沈黙不全ガードの画面側）
-  const dom2 = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://x.github.io/a?v=x' });
+  // XSS・rate:0 の描画安全性（別インスタンス）
+  const dom3 = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://y.github.io/a?v=x' });
   setTimeout(function () {
-    dom2.window.onData({ success: false, error: '介護度列が見つかりません' });
-    const e = dom2.window.document.getElementById('error');
-    ok(e.style.display === 'block', 'success:false→エラー表示');
-    ok(e.textContent.indexOf('介護度列') >= 0, 'エラー本文にサーバmsg反映');
-    console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
-    process.exit(fail ? 1 : 0);
+    dom3.window.onData({
+      success: true, generatedAt: '2026-07-12 10:00', today: '2026-07-12',
+      window: { months: ['2026-05', '2026-06'], note: '' }, displayMonths: ['2026-05', '2026-06'],
+      kaigoAvgRate: 70, capacity: 18, slotsFree: { '月': { am: 0, pm: 0 }, '火': { am: 0, pm: 0 }, '水': { am: 0, pm: 0 }, '木': { am: 0, pm: 0 }, '金': { am: 0, pm: 0 } },
+      users: [
+        { name: '<img src=x onerror=alert(1)>太郎', care: '要介護1', days: '月', unit: '午前', contractN: 1, displayState: 'normal', stateLabel: '', rate: 0, actualPerWeek: 0, diverge: 1, monthly: { '2026-05': 0, '2026-06': 0 }, isUpsizeCandidate: true, addableSlots: [] }
+      ], diag: { opsFetched: true, opDaysCount: 40, kaigoCount: 1 }, warnings: []
+    });
+    const b3 = dom3.window.document.getElementById('tbody').innerHTML;
+    ok(b3.indexOf('<img src=x') < 0, 'XSS: 氏名のHTMLタグが生挿入されない(esc済)');
+    ok(b3.indexOf('&lt;img') >= 0, 'XSS: 氏名がエスケープ表示される');
+    ok(dom3.window.document.querySelector('#tbody tr').querySelectorAll('td')[6].textContent.trim() === '0%', 'rate:0→「0%」表示（—と取り違えない）');
+    ok(dom3.window.document.querySelector('#tbody tr').querySelectorAll('td')[7].textContent.trim() === '0%', '月別0→「0%」表示（—と取り違えない）');
+
+    // success:false → エラー表示（沈黙不全ガードの画面側・二重エスケープしない）
+    const dom2 = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://x.github.io/a?v=x' });
+    setTimeout(function () {
+      dom2.window.onData({ success: false, error: '介護度列<>が見つかりません' });
+      const e = dom2.window.document.getElementById('error');
+      ok(e.style.display === 'block', 'success:false→エラー表示');
+      ok(e.textContent.indexOf('介護度列<>が') >= 0, 'エラー本文にサーバmsg反映（二重エスケープなし）');
+      console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
+      process.exit(fail ? 1 : 0);
+    }, 60);
   }, 60);
 }, 60);

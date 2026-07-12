@@ -130,7 +130,8 @@
 
     function onData(resp) {
         if (!resp || resp.success !== true) {
-            showError('データ取得エラー：' + esc((resp && resp.error) || '不明なエラー') + '（台帳のヘッダ改名などが原因の場合があります）');
+            // showError は textContent 代入so esc不要（二重エスケープ防止）
+            showError('データ取得エラー：' + ((resp && resp.error) || '不明なエラー') + '（台帳のヘッダ改名などが原因の場合があります）');
             return;
         }
         DATA = resp;
@@ -157,7 +158,7 @@
                 if (nn(x.rate) !== nn(y.rate)) return nn(x.rate) - nn(y.rate);
                 if (x.rate !== y.rate) return (x.rate || 0) - (y.rate || 0);
             }
-            return String(x.name).localeCompare(String(y.name), 'ja');
+            return String(x.name).localeCompare(String(y.name)); // core avSortRows_ と厳密一致（locale引数なし）
         });
         return arr;
     }
