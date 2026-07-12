@@ -167,7 +167,10 @@ var INTAKE_HEADERS = [
   'リハブクラウド登録済','ケアズ登録済','SNS顔出し可否確認済',
   '写真撮影済','同意書類取得済','朝礼周知済',
   // 2026-05-31 Phase C 追加分（シート末尾に append 済のため INTAKE_HEADERS でも末尾）
-  'ケアマネTEL','契約日'
+  'ケアマネTEL','契約日',
+  // 2026-07-10 P1: フェーズ遷移履歴（末尾append・位置ベース書込のため既存列の間への挿入は禁止）
+  // 値=JSON配列 [{from,to,at,by,reason}]。追記は intake-phase-history-core.js の appendPhaseHistory_ 経由。
+  'フェーズ遷移履歴'
 ];
 var INTAKE_COL = {};
 INTAKE_HEADERS.forEach(function(h, i){ INTAKE_COL[h] = i + 1; });
@@ -1203,6 +1206,22 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'reopenDengonMessage') {
     return respond(reopenDengonMessage(SpreadsheetApp.openById(SS_ID), e.parameter.id), e.parameter.callback);
   }
+  // 伝達ボード：スタッフマスタ取得（既読チップ・宛先算出用・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'dengon_staff_master') {
+    return respond({ ok: true, staff: getDengonStaffMaster(SpreadsheetApp.openById(SS_ID)) }, e.parameter.callback);
+  }
+  // 伝達ボード：スタッフマスタ初期セットアップ（新シート＋11行・冪等・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'setupDengonStaffMaster') {
+    return respond(setupDengonStaffMaster(SpreadsheetApp.openById(SS_ID)), e.parameter.callback);
+  }
+  // 伝達ボード：既読にする（readByに1名追加・recipients照合＝不変条件3・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'mark_dengon_read') {
+    return respond(markDengonRead(SpreadsheetApp.openById(SS_ID), e.parameter.id, e.parameter.name, false), e.parameter.callback);
+  }
+  // 伝達ボード：既読取り消し（readByから1名除去・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'unmark_dengon_read') {
+    return respond(markDengonRead(SpreadsheetApp.openById(SS_ID), e.parameter.id, e.parameter.name, true), e.parameter.callback);
+  }
   // 伝達ボード：掃除用 削除（db_ で始まるテスト/誤投稿idのみ・実データは保護・2026-06-18）
   if (e && e.parameter && e.parameter.action === 'deleteDengonMessage') {
     return respond(deleteDengonMessage(SpreadsheetApp.openById(SS_ID), e.parameter.id), e.parameter.callback);
@@ -1499,6 +1518,26 @@ function doGet(e) {
       var muYm   = e && e.parameter ? e.parameter.yearMonth : '';
       return respond(getMonthlyUsage(ss, muName, muYm), callback);
     }
+    // P2.2: 週間予定表バックエンド（weekly_* は鍵なし公開＝ゲート外）
+    if (action === 'intake_weekly_feed') {
+      return respond(weeklyGetFeed_(ss), callback);
+    }
+    if (action === 'weekly_overlay_get') {
+      return respond(weeklyOverlayGet_(ss), callback);
+    }
+    if (action === 'weekly_seed_orders') {
+      return respond(weeklySeedOrders_(ss), callback);
+    }
+    if (action === 'intake_key_init') {
+      return respond(intakeKeyInit_(), callback);
+    }
+    if (action === 'intake_auth_selftest') {
+      return respond(intakeAuthSelftest_(ss), callback);
+    }
+    // P2.1: PIIを返す intake_* GET は adminKey 必須（不一致/未設定=fail-closed で unauthorized）
+    if (INTAKE_GATED_GET_ACTIONS_.indexOf(action) >= 0 && !intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, callback);
+    }
     if (action === 'intake_list') {
       var includeCancelled = e && e.parameter && e.parameter.includeCancelled === '1';
       var statusFilter = e && e.parameter ? e.parameter.status : null;
@@ -1515,6 +1554,9 @@ function doGet(e) {
     }
     if (action === 'intake_get_funnel') {
       return respond(getIntakeFunnel(ss, e.parameter), callback);
+    }
+    if (action === 'intake_dashboard') {
+      return respond(getIntakeDashboard(ss), callback);
     }
     if (action === 'admin_dump_intake_headers') {
       var _ds = ss.getSheetByName('見学体験新規');
@@ -3763,7 +3805,14 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.openById(SS_ID);
 
+    // P2.1: PIIを変更/参照する intake_* POST は adminKey 必須（欠席・furikae等の他actionには影響なし）
+    if (INTAKE_GATED_POST_ACTIONS_.indexOf(data.action) >= 0 && !intakeAdminAuthorized_(null, data)) {
+      return jsonResp({ error: 'unauthorized', status: 401 });
+    }
+
     switch (data.action) {
+      case 'weekly_overlay_upsert': // P2.2: 週間予定表オーバーレイ（鍵なし・空ガード・LWW）
+        return jsonResp(weeklyOverlayUpsert_(ss, data));
       case 'appregistry_bulk_upsert':
         return jsonResp(appregistryBulkUpsert_(data));
       case 'absence':
@@ -6410,7 +6459,8 @@ function getTerminations(ss, period) {
 // =============================================================
 // --- 純関数（scripts/test-chushi-digest.js と同一実装・二重持ち）---
 function chushiApplicableKeys_(careLevel) {
-  var isShien = String(careLevel || '').indexOf('要支援') !== -1;
+  // 要支援・事業対象者は個訓非対象（要介護のみ個訓・ADL対象）。'事業対象' で両台帳表記に一致
+  var isShien = String(careLevel || '').indexOf('要支援') !== -1 || String(careLevel || '').indexOf('事業対象') !== -1;
   return isShien
     ? ['tsusho', 'koukou', 'rihab_chushi', 'kagakuteki']
     : ['tsusho', 'kotraining', 'koukou', 'rihab_chushi', 'kagakuteki', 'adl'];
@@ -8637,6 +8687,8 @@ function createIntake(ss, data) {
       case '週間予定表仮予約済':
       case '全記入済':
       case '社長確認済':     return data[h] === true;
+      // 2026-07-10 P1: 初期履歴 [{to:作成フェーズ, at:作成時刻}]（from/byなし）
+      case 'フェーズ遷移履歴': return appendPhaseHistory_('', { to: (data.フェーズ || '受付'), at: now });
       default:               return data[h] != null ? data[h] : '';
     }
   });
@@ -8682,6 +8734,144 @@ function _trialAmpm(r) {
   var m = t.match(/^(\d{1,2})[:：]/);
   if (m) return (parseInt(m[1], 10) < 12) ? 'am' : 'pm';
   return 'am';
+}
+
+// ===== P2.1: intake系APIのadminKeyゲート（個人情報保護・2026-07-11） =====
+// 公開HTML(intake.html / yawaragi-board.html)から呼ばれる＝GAS URLは秘匿不可。
+// PIIを返す/変更する intake_* だけサーバー側でadminKey必須にする（欠席・furikae等は非対象）。
+// 純判定=intake-auth-core.js intakeAuthOk_（fail-closed）。既存 APPREGISTRY_ADMIN_KEY と同方式。
+// ★後続P2.2の intake_weekly_feed（匿名化）は例外的に鍵なし公開＝下記リストに入れない構造。
+var INTAKE_GATED_GET_ACTIONS_  = ['intake_list', 'intake_followup_pending', 'intake_get_funnel', 'intake_dashboard'];
+var INTAKE_GATED_POST_ACTIONS_ = ['intake_create', 'intake_update', 'intake_delete', 'intake_request_approval',
+                                  'intake_sync_to_userlist', 'intake_add_as_trial', 'intake_advance_phase', 'intake_drop'];
+
+// GET は e.parameter.adminKey、POST は data.adminKey を照合。
+function intakeAdminAuthorized_(e, data) {
+  var provided = (e && e.parameter && e.parameter.adminKey) || (data && data.adminKey) || '';
+  var expected = PropertiesService.getScriptProperties().getProperty(INTAKE_ADMIN_KEY_PROP);
+  return intakeAuthOk_(provided, expected);
+}
+
+// action=intake_key_init : 一度きり。INTAKE_ADMIN_KEY を生成→ScriptProperties保存→社長へメール。
+// 既に設定済みなら何もしない。★キー値はレスポンスに含めない（メールのみ・appregistry_initと同方式）。
+function intakeKeyInit_() {
+  var props = PropertiesService.getScriptProperties();
+  var key = props.getProperty(INTAKE_ADMIN_KEY_PROP);
+  var keyCreated = false;
+  if (!key) {
+    key = Utilities.getUuid();
+    props.setProperty(INTAKE_ADMIN_KEY_PROP, key);
+    keyCreated = true;
+  }
+  if (keyCreated) {
+    GmailApp.sendEmail('m-higa@keepfitlife.com',
+      '【見学体験新規】intakeアプリ 管理キー(adminKey)',
+      'intake系API（見学・体験・新規）の管理キーを設定しました。社外秘です。\n\n' +
+      '◆管理キー(adminKey):\n' + key + '\n\n' +
+      '◆使い方:\n' +
+      '「見学・体験・新規(intake.html)」または yawaragiボードの見学体験新規タブを開いた際、\n' +
+      '初回にこのキーの入力を求められます。入力するとこの端末(ブラウザ)に保存され、以後は自動付与されます。\n\n' +
+      '※このキーは住所・電話・生年月日等のPIIを守る鍵です。スタッフ以外に渡さないでください。\n' +
+      '※値を変えたい場合はGASエディタ「プロジェクトの設定→スクリプトプロパティ」で ' + INTAKE_ADMIN_KEY_PROP + ' を書き換えてください。');
+  }
+  return { success: true, keyCreated: keyCreated, keyAlreadySet: !keyCreated, emailedTo: keyCreated ? 'm-higa@keepfitlife.com' : null };
+}
+
+// action=intake_auth_selftest : ゲートの各分岐を検証（★キー値・PIIは返さない・boolean+件数のみ）。
+// 鍵を知らずに「鍵あり→正常返却」を実測するための自己診断。
+function intakeAuthSelftest_(ss) {
+  var expected = PropertiesService.getScriptProperties().getProperty(INTAKE_ADMIN_KEY_PROP);
+  var keySet = !!(expected && expected !== '');
+  var authListCount = -1;
+  if (keySet && intakeAuthOk_(expected, expected)) {
+    authListCount = getIntakeList(ss, {}).length; // 正しい鍵での認可経路が実データを返す証明（件数のみ・PIIなし）
+  }
+  return {
+    keySet: keySet,
+    gatePassesWithServerKey: keySet ? intakeAuthOk_(expected, expected) : false,
+    gateRejectsNoKey:    !intakeAuthOk_('', expected),
+    gateRejectsWrongKey: !intakeAuthOk_('WRONG-KEY-xxxxx', expected),
+    authListCount: authListCount
+  };
+}
+
+// ===== P2.2: 週間予定表バックエンド（匿名feed＋overlay＋seed・2026-07-11） =====
+// 純判定=weekly-core.js。weekly_* は新規でゲート外（intake_*のP2.1ゲートは非改変）。
+var WEEKLY_OLD_GAS_URL_ = 'https://script.google.com/macros/s/AKfycbzyb380RoeohiJQfh0EleDecHgwbYzNOL1BioqxdNDYQt9TbGxKTMvquYREGdk06-fIxQ/exec';
+
+function weeklyEnsureOverlaySheet_(ss) {
+  var sh = ss.getSheetByName(WEEKLY_OVERLAY_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(WEEKLY_OVERLAY_SHEET);
+    sh.getRange(1, 1, 1, WEEKLY_OVERLAY_HEADER.length).setValues([WEEKLY_OVERLAY_HEADER]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// action=intake_weekly_feed（★匿名・鍵なし公開）：未ドロップ かつ 台帳反映済でない案件を
+// PII一切なしの最小5フィールドだけにして返す（weeklyFeedRow_ が5キーの新オブジェクトを構築）。
+function weeklyGetFeed_(ss) {
+  var list = getIntakeList(ss, {}); // 既存（cancelled除外）。返すのは weeklyFeedRow_ の5キーのみ＝PII混入不可
+  var feed = [];
+  list.forEach(function(rec) { if (weeklyFeedInclude_(rec)) feed.push(weeklyFeedRow_(rec)); });
+  return { success: true, count: feed.length, feed: feed };
+}
+
+// action=weekly_overlay_get（鍵なし）：memo/order をまとめて返す
+function weeklyOverlayGet_(ss) {
+  var sh = weeklyEnsureOverlaySheet_(ss);
+  var lastRow = sh.getLastRow();
+  var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, WEEKLY_OVERLAY_HEADER.length).getValues() : [];
+  var memos = {}, orders = {};
+  rows.forEach(function(r) {
+    var key = String(r[0]), type = String(r[1]), value = r[2];
+    if (type === 'memo') memos[key] = String(value == null ? '' : value);
+    else if (type === 'order') { try { orders[key] = JSON.parse(String(value || '[]')); } catch (e) { orders[key] = []; } }
+  });
+  return { success: true, memos: memos, orders: orders };
+}
+
+// action=weekly_overlay_upsert（鍵なし・空ガード・last-write-wins・updatedByに登録者）
+function weeklyOverlayUpsert_(ss, data) {
+  data = data || {};
+  var type = data.type, key = data.key, value = data.value, by = String(data.updatedBy || data.登録者 || '');
+  var v = weeklyUpsertValid_(type, key, value);
+  if (!v.ok) return { success: false, error: v.reason };
+  var sh = weeklyEnsureOverlaySheet_(ss);
+  var lastRow = sh.getLastRow();
+  var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, WEEKLY_OVERLAY_HEADER.length).getValues() : [];
+  var now = nowIso();
+  var valStr = String(value == null ? '' : value);
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(key) && String(rows[i][1]) === String(type)) {
+      sh.getRange(i + 2, 1, 1, WEEKLY_OVERLAY_HEADER.length).setValues([[key, type, valStr, now, by]]); // last-write-wins
+      return { success: true, action: 'updated', key: key, type: type };
+    }
+  }
+  sh.appendRow([key, type, valStr, now, by]);
+  return { success: true, action: 'added', key: key, type: type };
+}
+
+// action=weekly_seed_orders：旧weekly GAS(am/pm)の行順を type='order' として1回だけ投入（★冪等）。
+// 既に order がある key は上書きしない（誤再実行で並び順を壊さない）。
+function weeklySeedOrders_(ss) {
+  var sh = weeklyEnsureOverlaySheet_(ss);
+  var lastRow = sh.getLastRow();
+  var rows = lastRow >= 2 ? sh.getRange(2, 1, lastRow - 1, WEEKLY_OVERLAY_HEADER.length).getValues() : [];
+  var result = {};
+  ['am', 'pm'].forEach(function(sheet) {
+    if (weeklyOrderExists_(rows, sheet)) { result[sheet] = 'skip(既存order)'; return; }
+    var names = [];
+    try {
+      var resp = UrlFetchApp.fetch(WEEKLY_OLD_GAS_URL_ + '?action=getAll&sheet=' + sheet + '&t=' + Date.now(), { muteHttpExceptions: true });
+      var arr = JSON.parse(resp.getContentText());
+      if (Array.isArray(arr)) names = arr.map(function(r) { return String(r.name || ''); }).filter(function(n) { return n; });
+    } catch (e) { result[sheet] = 'error:' + e.message; return; }
+    sh.appendRow([sheet, 'order', JSON.stringify(names), nowIso(), 'seed']);
+    result[sheet] = 'seeded(' + names.length + '件)';
+  });
+  return { success: true, result: result };
 }
 
 function getIntakeList(ss, opts) {
@@ -8822,8 +9012,17 @@ function advanceIntakePhase(ss, data) {
   if (missing.length && !data.force) {
     return { success: false, blocked: true, missing: missing, transition: transition };
   }
+  var nowAdv = nowIso();
   sheet.getRange(rowIdx, idxPhase + 1).setValue(data.toPhase);
-  sheet.getRange(rowIdx, headers.indexOf('更新日時') + 1).setValue(nowIso());
+  sheet.getRange(rowIdx, headers.indexOf('更新日時') + 1).setValue(nowAdv);
+  // 2026-07-10 P1: フェーズ遷移履歴へ {from,to,at,by} を追記（列が未追加のシートでは静かにスキップ）
+  var idxHistAdv = headers.indexOf('フェーズ遷移履歴');
+  if (idxHistAdv >= 0) {
+    var histAdv = appendPhaseHistory_(rec['フェーズ遷移履歴'], {
+      from: String(rec['フェーズ'] || '受付'), to: data.toPhase, at: nowAdv, by: (data.登録者 || '')
+    });
+    sheet.getRange(rowIdx, idxHistAdv + 1).setValue(histAdv);
+  }
   return { success: true, transition: transition };
 }
 
@@ -8836,13 +9035,23 @@ function dropIntake(ss, data) {
   var idxId = headers.indexOf('id'), idxPhase = headers.indexOf('フェーズ');
   var idxReason = headers.indexOf('ドロップ理由'), idxAt = headers.indexOf('ドロップ記録日時');
   var idxDetail = headers.indexOf('利用なし理由詳細');
-  var values = sheet.getDataRange().getValues(), rowIdx = -1;
-  for (var i=1;i<values.length;i++){ if (String(values[i][idxId])===String(data.id)){ rowIdx=i+1; break; } }
+  var idxHistDrop = headers.indexOf('フェーズ遷移履歴');
+  var values = sheet.getDataRange().getValues(), rowIdx = -1, dropRow = null;
+  for (var i=1;i<values.length;i++){ if (String(values[i][idxId])===String(data.id)){ rowIdx=i+1; dropRow=values[i]; break; } }
   if (rowIdx < 0) return { success: false, error: '該当なし' };
+  var fromPhaseDrop = String(dropRow[idxPhase] || '受付');
+  var nowDrop = nowIso();
   sheet.getRange(rowIdx, idxPhase+1).setValue('ドロップ');
   sheet.getRange(rowIdx, idxReason+1).setValue(data.reason);
-  sheet.getRange(rowIdx, idxAt+1).setValue(nowIso());
+  sheet.getRange(rowIdx, idxAt+1).setValue(nowDrop);
   if (data.detail && idxDetail >= 0) sheet.getRange(rowIdx, idxDetail+1).setValue(data.detail);
+  // 2026-07-10 P1: フェーズ遷移履歴へ {from,to:ドロップ,at,by,reason} を追記（列未追加のシートは静かにスキップ）
+  if (idxHistDrop >= 0) {
+    var histDrop = appendPhaseHistory_(dropRow[idxHistDrop], {
+      from: fromPhaseDrop, to: 'ドロップ', at: nowDrop, by: (data.登録者 || ''), reason: data.reason
+    });
+    sheet.getRange(rowIdx, idxHistDrop+1).setValue(histDrop);
+  }
   return { success: true };
 }
 
@@ -8875,6 +9084,58 @@ function getIntakeFunnel(ss, params) {
   };
   return { success: true, yearMonth: ym, funnel: funnel, dropByReason: dropByReason, rawCounts: counts };
 }
+
+// P5 経営ダッシュボード：見学体験新規 全行を正規化して intakeDashboard_（純ロジック）に渡す薄アダプタ。
+function getIntakeDashboard(ss) {
+  var sheet = ss.getSheetByName('見学体験新規');
+  if (!sheet) return { success: false, error: 'シートなし' };
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return { success: true, dashboard: intakeDashboard_([], _dashToday_()) };
+  var headers = values[0].map(function(v){ return String(v).trim(); });
+  function col(name){ return headers.indexOf(name); }
+  var idx = {
+    氏名: col('氏名'), フェーズ: col('フェーズ'), 見学完了: col('見学完了'), 体験完了: col('体験完了'),
+    問い合わせ日: col('問い合わせ日'), 見学日: col('見学日'), 契約日: col('契約日'),
+    本格利用開始日: col('本格利用開始日'), ドロップ記録日時: col('ドロップ記録日時'),
+    連絡元区分: col('連絡元区分'), ドロップ理由: col('ドロップ理由'),
+    利用者台帳反映済: col('利用者台帳反映済'), 契約書取り交わし済: col('契約書取り交わし済'),
+    フェーズ遷移履歴: col('フェーズ遷移履歴')
+  };
+  function dstr(v){
+    if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
+    var s = String(v || '').trim();
+    return s.length >= 10 ? s.slice(0,10) : (s.length >= 7 ? s : '');
+  }
+  function boolv(v){ return v === true || String(v) === 'true' || String(v) === 'TRUE'; }
+  var cases = [];
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    var hist = [];
+    if (idx.フェーズ遷移履歴 >= 0) {
+      try { var h = JSON.parse(String(row[idx.フェーズ遷移履歴] || '[]')); if (Array.isArray(h)) hist = h; }
+      catch (e) { hist = []; }
+    }
+    cases.push({
+      氏名: idx.氏名>=0 ? String(row[idx.氏名]||'') : '',
+      フェーズ: idx.フェーズ>=0 ? String(row[idx.フェーズ]||'') : '',
+      見学完了: idx.見学完了>=0 ? boolv(row[idx.見学完了]) : false,
+      体験完了: idx.体験完了>=0 ? boolv(row[idx.体験完了]) : false,
+      問い合わせ日: idx.問い合わせ日>=0 ? dstr(row[idx.問い合わせ日]) : '',
+      見学日: idx.見学日>=0 ? dstr(row[idx.見学日]) : '',
+      契約日: idx.契約日>=0 ? dstr(row[idx.契約日]) : '',
+      本格利用開始日: idx.本格利用開始日>=0 ? dstr(row[idx.本格利用開始日]) : '',
+      ドロップ記録日時: idx.ドロップ記録日時>=0 ? dstr(row[idx.ドロップ記録日時]) : '',
+      連絡元区分: idx.連絡元区分>=0 ? String(row[idx.連絡元区分]||'') : '',
+      ドロップ理由: idx.ドロップ理由>=0 ? String(row[idx.ドロップ理由]||'') : '',
+      利用者台帳反映済: idx.利用者台帳反映済>=0 ? boolv(row[idx.利用者台帳反映済]) : false,
+      契約書取り交わし済: idx.契約書取り交わし済>=0 ? boolv(row[idx.契約書取り交わし済]) : false,
+      履歴: hist
+    });
+  }
+  return { success: true, dashboard: intakeDashboard_(cases, _dashToday_()) };
+}
+
+function _dashToday_() { return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'); }
 
 // 利用開始日＋利用曜日から各曜日の初回利用日を算出（開始日から14日以内の最初の該当曜日）
 function computeFirstUsageDates_(startDateStr, days, ampm) {
@@ -14601,12 +14862,15 @@ function appregistryMigrateLauncherV2() {
 
 // =============================================================
 // 伝達ボード（社長⇄スタッフ⇄スタッフ 3方向メッセージ板・2026-06-18）
-//   シート「伝達ボード」列=id/from/to/body/deadline/createdAt/done/doneAt/doneBy
-//   純関数の正本は scripts/test-dengon-board.js（34テストPASS）と同一実装（二重持ち）。
+//   シート「伝達ボード」列=id/from/to/body/deadline/createdAt/done/doneAt/doneBy/recipients/readBy
+//   純関数の正本は genba.html 側（PhaseA・31テストPASS）と同一実装（二重持ち）。
+//   ※旧 scripts/test-dengon-board.js は消失（2026-07-12 実測・C:\dev に存在せず）。
 // =============================================================
 var DENGON_SHEET = '伝達ボード';
-var DB_COL = { ID: 0, FROM: 1, TO: 2, BODY: 3, DEADLINE: 4, CREATED: 5, DONE: 6, DONEAT: 7, DONEBY: 8 };
-var DB_HEADER = ['id', 'from', 'to', 'body', 'deadline', 'createdAt', 'done', 'doneAt', 'doneBy'];
+var DENGON_STAFF_SHEET = 'スタッフ';                                 // 伝達ボード専用スタッフマスタ（SS_ID内・シフト用の別SSとは別物）
+// 既存 0〜8 は1つも動かさない（既存機能は構造的に無傷）。recipients/readBy を末尾に追加（2026-07-12 既読機能）。
+var DB_COL = { ID: 0, FROM: 1, TO: 2, BODY: 3, DEADLINE: 4, CREATED: 5, DONE: 6, DONEAT: 7, DONEBY: 8, RECIPIENTS: 9, READBY: 10 };
+var DB_HEADER = ['id', 'from', 'to', 'body', 'deadline', 'createdAt', 'done', 'doneAt', 'doneBy', 'recipients', 'readBy'];
 
 // 旧pendingTasks 4件の移行シード（from=社長/to=社長＝朝報告に残す・id流用で二重化防止）。
 var DENGON_MIGRATE_SEED = [
@@ -14633,6 +14897,12 @@ function _dbYmd_(v) {
   }
   return String(v || '').trim();
 }
+// セルのJSON配列文字列→配列。空・不正・未定義（既存9列行の10/11列目）は []（互換）。
+function dbParseJsonArr_(v) {
+  var s = String(v == null ? '' : v).trim();
+  if (!s) return [];
+  try { var a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
 function dbNormalizeRow_(row) {
   return {
     id: String(row[DB_COL.ID] || '').trim(),
@@ -14643,7 +14913,9 @@ function dbNormalizeRow_(row) {
     createdAt: String(row[DB_COL.CREATED] || '').trim(),
     done: dbIsDone_(row[DB_COL.DONE]),
     doneAt: String(row[DB_COL.DONEAT] || '').trim(),
-    doneBy: String(row[DB_COL.DONEBY] || '').trim()
+    doneBy: String(row[DB_COL.DONEBY] || '').trim(),
+    recipients: dbParseJsonArr_(row[DB_COL.RECIPIENTS]),
+    readBy: dbParseJsonArr_(row[DB_COL.READBY])
   };
 }
 function dbFilterActive_(values, today) {
@@ -14655,7 +14927,7 @@ function dbFilterActive_(values, today) {
     var o = dbNormalizeRow_(values[i]);
     if (!o.id) continue;
     if (o.done) continue;
-    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, row: i + 1 });
+    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, recipients: o.recipients, readBy: o.readBy, row: i + 1 });
   }
   return out;
 }
@@ -14667,7 +14939,7 @@ function dbFilterDone_(values) {
     var o = dbNormalizeRow_(values[i]);
     if (!o.id) continue;
     if (!o.done) continue;
-    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, doneAt: o.doneAt, doneBy: o.doneBy, row: i + 1 });
+    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, doneAt: o.doneAt, doneBy: o.doneBy, recipients: o.recipients, readBy: o.readBy, row: i + 1 });
   }
   out.sort(function (a, b) { return String(b.doneAt || '').localeCompare(String(a.doneAt || '')); });
   return out;
@@ -14719,6 +14991,37 @@ function dbFindRecentDuplicate_(values, from, to, body, nowMs, windowMs) {
   return null;
 }
 
+// --- 既読機能の純関数（genba.html PhaseA・31テストPASS と同一実装・二重持ち）---
+// 宛先グループ→対象者名を算出（マスタ動的・ハードコード禁止）。個人名/未知/不正masterは []。
+function dengonComputeRecipients_(master, group) {
+  var list = Array.isArray(master) ? master.filter(function (m) { return m && m.active; }) : [];
+  switch (group) {
+    case '全員': return list.map(function (m) { return m.name; });
+    case '全員・ドライバー除く': return list.filter(function (m) { return m.role !== 'ドライバー'; }).map(function (m) { return m.name; });
+    case '社員': return list.filter(function (m) { return m.employ === '社員'; }).map(function (m) { return m.name; });
+    case '相談員': return list.filter(function (m) { return m.role === '相談員'; }).map(function (m) { return m.name; });
+    case '看護師': return list.filter(function (m) { return m.role === '看護師'; }).map(function (m) { return m.name; });
+    default: return [];
+  }
+}
+// 既読者配列に1名追加（冪等・非破壊・順序保持）。
+function dengonAddReadBy_(readBy, name) {
+  var arr = Array.isArray(readBy) ? readBy.slice() : [];
+  if (name && arr.indexOf(name) === -1) arr.push(name);
+  return arr;
+}
+// 既読者配列から1名除去（冪等・非破壊）。
+function dengonRemoveReadBy_(readBy, name) {
+  var arr = Array.isArray(readBy) ? readBy.slice() : [];
+  return arr.filter(function (n) { return n !== name; });
+}
+// 全員既読判定：recipients が非空で全員が readBy に含まれる時のみ true（マスタ非参照・不変条件2）。
+function dengonIsAllRead_(recipients, readBy) {
+  if (!Array.isArray(recipients) || recipients.length === 0) return false;
+  var read = Array.isArray(readBy) ? readBy : [];
+  return recipients.every(function (n) { return read.indexOf(n) !== -1; });
+}
+
 // --- I/O（GAS固有）---
 function _dengonToday_() {
   return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
@@ -14736,6 +15039,7 @@ function setupDengonBoard(ss) {
   }
   // 期限列はテキスト書式に固定（Sheetsの日付自動変換を防ぐ＝文字列比較を守る）
   sheet.getRange(1, DB_COL.DEADLINE + 1, sheet.getMaxRows(), 1).setNumberFormat('@');
+  ensureDengonReadColumns_(sheet); // 既存シートに recipients/readBy 列を追記（非破壊・冪等・2026-07-12）
   var values = sheet.getDataRange().getValues();
   var now = _dengonToday_();
   var added = [];
@@ -14845,12 +15149,108 @@ function addDengonMessage(ss, data) {
   var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'); // 秒精度（重複判定に使う）
   var id = 'db_' + new Date().getTime();
   var deadline = String(data.deadline || '').trim();
-  sheet.appendRow([id, from, to, body, deadline, now, false, '', '']);
+  // 不変条件1：recipients はサーバ側でマスタから確定（グループ宛てのみ非空／個人・社長宛ては[]）。readByは[]で開始。
+  var recipients = dengonComputeRecipients_(getDengonStaffMaster(ss), to);
+  sheet.appendRow([id, from, to, body, deadline, now, false, '', '', JSON.stringify(recipients), '[]']);
   SpreadsheetApp.flush();
   var idx = dbFindRowIndex_(sheet.getDataRange().getValues(), id);
   if (idx === -1) return { success: false, error: 'verify_failed', verified: false };
   sheet.getRange(idx + 1, DB_COL.DONE + 1).insertCheckboxes();
   return { success: true, id: id, verified: true };
+}
+
+// ===== 既読機能 I/O（2026-07-12）=====
+// スタッフマスタ11行のシード（名前/職種/雇用区分/在籍）。伝達ボード専用（他アプリ名簿と非統合）。
+var DENGON_STAFF_HEADER = ['名前', '職種', '雇用区分', '在籍'];
+var DENGON_STAFF_SEED = [
+  ['比嘉', '代表', '−', '在籍'],
+  ['勝又', '相談員', '社員', '在籍'],
+  ['星野', '介護', '社員', '在籍'],
+  ['下浦', '相談員', 'パート', '在籍'],
+  ['工藤', '相談員', 'パート', '在籍'],
+  ['髙山', '看護師', 'パート', '在籍'],
+  ['石井', '看護師', 'パート', '在籍'],
+  ['春山', '看護師', 'パート', '在籍'],
+  ['大久保', '介護', 'パート', '在籍'],
+  ['小野', 'ドライバー', 'パート', '在籍'],
+  ['林', 'ドライバー', 'パート', '在籍']
+];
+
+// スタッフマスタ読み取り → [{name, role, employ, active}]。シート無し/空は []。
+function getDengonStaffMaster(ss) {
+  var sheet = ss.getSheetByName(DENGON_STAFF_SHEET);
+  if (!sheet) return [];
+  var vals = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < vals.length; i++) {
+    var name = String(vals[i][0] || '').trim();
+    if (!name) continue;
+    out.push({
+      name: name,
+      role: String(vals[i][1] || '').trim(),
+      employ: String(vals[i][2] || '').trim(),
+      active: String(vals[i][3] || '').trim() === '在籍'
+    });
+  }
+  return out;
+}
+
+// スタッフマスタ初期セットアップ（新シート＋ヘッダ＋11行）。冪等：既に本文行があれば投入しない。
+function setupDengonStaffMaster(ss) {
+  ss = ss || SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName(DENGON_STAFF_SHEET);
+  if (!sheet) { sheet = ss.insertSheet(DENGON_STAFF_SHEET); }
+  var head = sheet.getRange(1, 1, 1, DENGON_STAFF_HEADER.length).getValues()[0];
+  if (String(head[0] || '').trim() !== DENGON_STAFF_HEADER[0]) {
+    sheet.getRange(1, 1, 1, DENGON_STAFF_HEADER.length).setValues([DENGON_STAFF_HEADER]);
+    sheet.getRange(1, 1, 1, DENGON_STAFF_HEADER.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  var seeded = 0;
+  if (sheet.getLastRow() < 2) { // 本文が無い時だけ投入（冪等）
+    sheet.getRange(2, 1, DENGON_STAFF_SEED.length, DENGON_STAFF_HEADER.length).setValues(DENGON_STAFF_SEED);
+    seeded = DENGON_STAFF_SEED.length;
+  }
+  return { ok: true, sheet: DENGON_STAFF_SHEET, seeded: seeded, rows: Math.max(0, sheet.getLastRow() - 1) };
+}
+
+// 既存「伝達ボード」シートに recipients/readBy ヘッダが無ければ末尾に追記（非破壊・冪等）。
+function ensureDengonReadColumns_(sheet) {
+  var lastCol = sheet.getLastColumn() || DB_HEADER.length;
+  var head = sheet.getRange(1, 1, 1, Math.max(lastCol, DB_HEADER.length)).getValues()[0];
+  [DB_COL.RECIPIENTS, DB_COL.READBY].forEach(function (c) {
+    if (String(head[c] || '').trim() !== DB_HEADER[c]) {
+      sheet.getRange(1, c + 1).setValue(DB_HEADER[c]);
+    }
+  });
+}
+
+// 既読トグル：readBy に name を add/remove。LockServiceで直列化＋read-modify-write＋recipients照合（不変条件3）。
+// remove=false=既読にする／true=取り消し。クライアントは配列を送らない（save_haichi上書き事故の再発防止）。
+function markDengonRead(ss, id, name, remove) {
+  var taskId = String(id || '').trim();
+  var person = String(name || '').trim();
+  if (!taskId) return { ok: false, error: 'missing_id' };
+  if (!person) return { ok: false, error: 'missing_name' };
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return { ok: false, error: 'lock_timeout' }; }
+  try {
+    var sheet = ss.getSheetByName(DENGON_SHEET);
+    if (!sheet) return { ok: false, error: 'no_sheet', id: taskId };
+    var values = sheet.getDataRange().getValues();
+    var idx = dbFindRowIndex_(values, taskId);
+    if (idx === -1) return { ok: false, error: 'no_such_id', id: taskId };
+    var recipients = dbParseJsonArr_(values[idx][DB_COL.RECIPIENTS]);
+    if (!remove && recipients.indexOf(person) === -1) {
+      return { ok: false, error: 'not_recipient', id: taskId, name: person }; // 不変条件3：対象外は却下
+    }
+    var readBy = dbParseJsonArr_(values[idx][DB_COL.READBY]);
+    readBy = remove ? dengonRemoveReadBy_(readBy, person) : dengonAddReadBy_(readBy, person);
+    sheet.getRange(idx + 1, DB_COL.READBY + 1).setValue(JSON.stringify(readBy));
+    SpreadsheetApp.flush();
+    var back = dbParseJsonArr_(sheet.getRange(idx + 1, DB_COL.READBY + 1).getValue()); // read-back検証
+    return { ok: true, id: taskId, readBy: back, removed: !!remove };
+  } finally { lock.releaseLock(); }
 }
 
 // 完了：冪等／id無効は明示／書込後に読み直して done を確認。スタッフ宛て（社長以外）はnotify@へ完了通知。
