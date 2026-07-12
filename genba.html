@@ -1030,16 +1030,18 @@
             font-size: 0.85rem; color: #4a5568; margin: 6px 0;
             padding: 6px 10px; background: #f7fafc; border-radius: 6px;
         }
-        /* 常時表示の注意書き（請求漏れ防止・日付判定なし）。既存の赤系警告色を流用 */
-        .trm-card-alert {
+        /* リハブ中止 3状態ゲート表示（静的callout置換）。既存の赤系/緑系色を流用・新色なし */
+        .trm-gate {
             display: flex; align-items: flex-start; gap: 8px;
-            margin: 8px 0; padding: 9px 11px;
-            background: #fff5f5; border: 1px solid #f5c6cb;
-            border-left: 3px solid #c0392b; border-radius: 8px;
+            margin: 8px 0; padding: 9px 11px; border-radius: 8px;
         }
-        .trm-card-alert-icon { font-size: 0.95rem; line-height: 1.35; flex-shrink: 0; }
-        .trm-card-alert-head { font-size: 0.82rem; font-weight: 700; color: #c0392b; }
-        .trm-card-alert-body { font-size: 0.8rem; color: #c0392b; margin-top: 2px; }
+        .trm-gate-icon { font-size: 0.95rem; line-height: 1.35; flex-shrink: 0; }
+        .trm-gate-head { font-size: 0.82rem; font-weight: 700; }
+        .trm-gate-body { font-size: 0.8rem; margin-top: 2px; }
+        .trm-gate.warn { background: #fff5f5; border: 1px solid #f5c6cb; border-left: 3px solid #c0392b; }
+        .trm-gate.warn .trm-gate-head, .trm-gate.warn .trm-gate-body { color: #c0392b; }
+        .trm-gate.ok { background: #f0fff4; border-left: 3px solid #2f855a; }
+        .trm-gate.ok .trm-gate-head, .trm-gate.ok .trm-gate-body { color: #2f855a; }
         .trm-task-list {
             margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0;
         }
@@ -8804,15 +8806,38 @@ function trmRenderList() {
     listEl.innerHTML = trmState.list.map(t => trmRenderCard(t)).join('');
 }
 
+// 中止操作ゲート（請求漏れ防止）: 解禁日 = 最終利用日の「翌月」の「11日」
+// 理由: けあ蔵→国保連の伝送締めが翌月10日。11日以降なら最終利用月の請求は確定済みとみなせる。
+// ※ 比較は yyyy-MM-dd 文字列の辞書順で行い、new Date の生比較によるUTCズレ（5時台バグ）を避ける
+function trmCancelUnlockDate(lastUseDate) {
+    if (!lastUseDate) return '';
+    const parts = String(lastUseDate).split('-');
+    if (parts.length !== 3) return '';
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10); // 1..12（最終利用日の月）
+    // 0-indexed 月で翌月=m。new Date(y, m, 11)=翌月11日。12月(m=12)→翌年1月11日も自動繰上げ。
+    return toLocalDateStr(new Date(y, m, 11));
+}
+// ロック判定: 今日 < 解禁日 → true（中止操作チェック不可）
+function trmIsCancelLocked(lastUseDate, todayStr) {
+    const unlock = trmCancelUnlockDate(lastUseDate);
+    if (!unlock) return false; // 最終利用日不明なら誤ロックしない（業務停止を避ける）
+    return (todayStr || toLocalDateStr()) < unlock; // zero-pad済 yyyy-MM-dd の辞書順比較
+}
+
 function trmRenderCard(t) {
-    // 個訓非対象（要支援・事業対象者は個別機能訓練計画書を作らない＝要介護のみ対象）
-    // '事業対象' で拾えば「事業対象」「事業対象者」どちらの台帳表記でも一致する
-    const isNoKotraining = (t.careLevel || '').indexOf('要支援') !== -1 || (t.careLevel || '').indexOf('事業対象') !== -1;
-    // 段階的有効化の判定（個訓は要介護のみ完了条件に含める）
-    const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isNoKotraining || t.tasks.kotraining);
-    const stage2Done = stage1Done && t.tasks.kagakuteki;
-    const stage3Done = stage2Done && t.tasks.adl;
-    const allDone = stage3Done;
+    // 要支援・事業対象者判定（個訓・ADL非対象＝要介護のみ対象）。'事業対象'で両台帳表記に一致
+    const isShienMode = (t.careLevel || '').indexOf('要支援') !== -1 || (t.careLevel || '').indexOf('事業対象') !== -1;
+    // 段階1: 通所・口腔（+要介護は個訓）順不同 → リハブ中止 → 中止後の作業(科学的・ADL 順不同)
+    const stage1Done = t.tasks.tsusho && t.tasks.koukou && (isShienMode || t.tasks.kotraining);
+    const stage2Done = stage1Done && t.tasks.rihab_chushi; // リハブ中止完了
+    const allDone = stage2Done && t.tasks.kagakuteki && (isShienMode || t.tasks.adl);
+
+    // 中止操作ゲート（請求漏れ防止）: 最終利用月の国保連請求(翌月10日締め)が終わる前の中止操作をロック
+    const cancelLocked = trmIsCancelLocked(t.lastUseDate, toLocalDateStr());
+    const cancelUnlock = trmCancelUnlockDate(t.lastUseDate);
+    const lastUseMonth = (t.lastUseDate && t.lastUseDate.split('-').length === 3) ? parseInt(t.lastUseDate.split('-')[1], 10) : '';
+    const unlockMD = cancelUnlock ? (parseInt(cancelUnlock.split('-')[1], 10) + '/' + parseInt(cancelUnlock.split('-')[2], 10)) : '';
 
     const lastUseJP = trmFormatDateJP(t.lastUseDate);
     const terminateJP = trmFormatDateJP(t.terminateDate);
@@ -8839,31 +8864,32 @@ function trmRenderCard(t) {
             '<div class="trm-task-title">📋 リハブクラウド作業チェックリスト（順序あり）</div>' +
 
             // 段階1: 通所/個訓/口腔（順不同）。要支援・事業対象者は個訓非対象なので非表示
-            '<div class="trm-task-step-label active">段階1: ' + (isNoKotraining ? 'この2つを完了させる（順不同）' : 'この3つを完了させる（順不同）') + '</div>' +
+            '<div class="trm-task-step-label active">段階1: ' + (isShienMode ? 'この2つを完了させる（順不同）' : 'この3つを完了させる（順不同）') + '</div>' +
             trmTaskItem(t, 'tsusho', '通所計画書', false) +
-            (isNoKotraining ? '' : trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false)) +
+            (isShienMode ? '' : trmTaskItem(t, 'kotraining', '個別機能訓練計画書', false)) +
             trmTaskItem(t, 'koukou', '口腔機能向上計画書', false) +
 
-            // 段階1完了後・中止操作の前に常時表示（請求漏れ防止）。日付判定・条件分岐なし・既存ゲートには非干渉
-            '<div class="trm-card-alert">' +
-                '<span class="trm-card-alert-icon">⚠️</span>' +
-                '<div>' +
-                    '<div class="trm-card-alert-head">リハブでの利用中止登録は実績確定後に</div>' +
-                    '<div class="trm-card-alert-body">先に中止すると実績が消えて、請求できなくなります。</div>' +
-                '</div>' +
-            '</div>' +
+            // リハブ中止（段階番号なし）: 段階1完了後に実施。解禁=段階1完了 かつ 最終利用日の翌月11日到来
+            trmTaskItem(t, 'rihab_chushi', 'リハブクラウドで利用中止操作', !stage1Done || cancelLocked) +
+            // 3状態ゲート表示（静的callout置換・リハブ中止項目の直下・ローカル日付の文字列比較）
+            (!stage1Done
+                ? '<div class="trm-gate warn"><span class="trm-gate-icon">⚠️</span><div>' +
+                    '<div class="trm-gate-head">まだリハブで中止しないでください</div>' +
+                    '<div class="trm-gate-body">先に段階1の書類を仕上げてください。</div></div></div>'
+                : (cancelLocked
+                    ? '<div class="trm-gate warn"><span class="trm-gate-icon">⚠️</span><div>' +
+                        '<div class="trm-gate-head">まだリハブで中止しないでください</div>' +
+                        '<div class="trm-gate-body">書類は完了。' + unlockMD + ' 以降にOKになります。</div></div></div>'
+                    : '<div class="trm-gate ok"><span class="trm-gate-icon">✓</span><div>' +
+                        '<div class="trm-gate-head">リハブで利用中止にしてください</div>' +
+                        '<div class="trm-gate-body">' + lastUseMonth + '月分の実績は確定済み。今から中止してOK。</div></div></div>')) +
 
-            // 段階2: 科学的（段階1完了で有効化）
-            '<div class="trm-task-step-label ' + (stage1Done ? 'active' : '') + '" style="margin-top:8px;">' +
-                '段階2: ' + (stage1Done ? '段階1完了 → ここをチェック' : '段階1完了後にチェック可能') +
-            '</div>' +
-            trmTaskItem(t, 'kagakuteki', '科学的介護推進体制', !stage1Done) +
-
-            // 段階3: ADL（段階2完了で有効化）
+            // 中止後の作業（順不同）: リハブ中止済みで科学的・ADLを各々独立にチェック可（段階番号なし・ADLは要介護のみ）
             '<div class="trm-task-step-label ' + (stage2Done ? 'active' : '') + '" style="margin-top:8px;">' +
-                '段階3: ' + (stage2Done ? '段階2完了 → ここをチェック' : '段階2完了後にチェック可能') +
+                '中止後の作業（順不同）' + (stage2Done ? '' : '：リハブ中止の後にチェック') +
             '</div>' +
-            trmTaskItem(t, 'adl', 'ADL維持等加算', !stage2Done) +
+            trmTaskItem(t, 'kagakuteki', '科学的介護推進体制', !stage2Done) +
+            (isShienMode ? '' : trmTaskItem(t, 'adl', 'ADL維持等加算', !stage2Done)) +
         '</div>' +
 
         '<div class="trm-card-actions">' +
