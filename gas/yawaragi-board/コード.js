@@ -12667,11 +12667,17 @@ function attendance_view(ss, e) {
   var today = (e && e.parameter && e.parameter.date) || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
 
   // 1) 台帳 patterns（全在籍＝占有用）＋ 介護度/開始日
-  var patterns = getUserPatterns(ss, false); // {name:{days,unit,care,cancelled}}
+  //   ★沈黙不全ガード: シート/列不在は success:false で明示（台帳ヘッダ改名で0名の正常応答に化けるのを防ぐ）
   var sheet = ss.getSheetByName('利用者台帳');
+  if (!sheet) return { success: false, error: '利用者台帳シートが見つかりません' };
   var data = sheet.getDataRange().getValues();
   var h = data[0].map(function (v) { return String(v).trim(); });
   var nameCol = findCol(h, ['名前', '氏名', '利用者名']);
+  if (nameCol < 0) return { success: false, error: '利用者台帳の名前列が見つかりません（ヘッダ改名の可能性）' };
+  var careCol = findColP(h, '介護度');
+  if (careCol < 0) careCol = findColP(h, '要介護');
+  if (careCol < 0) return { success: false, error: '利用者台帳の介護度列が見つかりません（ヘッダ改名の可能性）' };
+  var patterns = getUserPatterns(ss, false); // {name:{days,unit,care,cancelled}}
   var startCol = findCol(h, ['利用開始日', '利用開始']);
   var startMap = {};
   for (var i = 1; i < data.length; i++) {
@@ -12680,10 +12686,11 @@ function attendance_view(ss, e) {
   }
   var patternsAll = Object.keys(patterns).map(function (nm) { return { days: patterns[nm].days, unit: patterns[nm].unit }; });
   var occupancy = avOccupancy_(patternsAll);
-  var slotsFree = avSlotsFree_(occupancy, avConstCap_());
+  var slotsFree = avSlotsFree_(occupancy, AV_CAP);
 
   // 2) dailyOps 取得 → 日別 attendedSet（正規化名）と稼働月
-  var dailyOps = _muFetchAllDailyOps_(); // { 'YYYY-MM-DD': dayOps }
+  var opsResult = _muFetchAllDailyOps_(); // { ok, ops }
+  var dailyOps = opsResult.ops;
   var opDays = Object.keys(dailyOps).filter(function (k) {
     var d = dailyOps[k];
     return (d.am && d.am.users && d.am.users.length) || (d.pm && d.pm.users && d.pm.users.length);
@@ -12723,7 +12730,7 @@ function attendance_view(ss, e) {
     opDays.forEach(function (k) {
       var ym = k.slice(0, 7);
       if (displayMonths.indexOf(ym) < 0) return;
-      var dow = new Date(parseInt(k.slice(0,4)), parseInt(k.slice(5,7)) - 1, parseInt(k.slice(8,10))).getDay();
+      var dow = new Date(parseInt(k.slice(0,4), 10), parseInt(k.slice(5,7), 10) - 1, parseInt(k.slice(8,10), 10)).getDay();
       if (codes.indexOf(dow) < 0) return;
       if (!monthlyCounts[ym]) monthlyCounts[ym] = { scheduled: 0, attended: 0 };
       monthlyCounts[ym].scheduled++;
@@ -12750,29 +12757,39 @@ function attendance_view(ss, e) {
     });
   });
 
+  // 表示3ヶ月のうち ops未保持の月（＝月別は「—」・率窓外）。動的生成で文言の陳腐化を防ぐ。
+  var noOpsMonths = displayMonths.filter(function (ym) { return !opsMonths[ym]; });
+  var warnings = [];
+  if (!opsResult.ok) warnings.push('送迎GASからの実来館(dailyOps)取得に失敗しました。出席率は表示できません（再読込で回復する場合があります）。');
   return {
     success: true,
     generatedAt: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
     today: today,
-    window: { months: windowMonths, note: '4月はdailyOps未保持のため対象外' },
+    window: {
+      months: windowMonths,
+      note: noOpsMonths.length ? (noOpsMonths.join('・') + ' はdailyOps未保持のため率は「—」') : ''
+    },
     displayMonths: displayMonths,
     kaigoAvgRate: avKaigoAvgRate_(rows),
-    capacity: avConstCap_(),
+    capacity: AV_CAP,
     slotsFree: slotsFree,
-    users: rows
+    users: rows,
+    // 診断: 取得ゼロ(ops落ち)と本当に算出ゼロを画面で区別できるように明示
+    diag: { opsFetched: opsResult.ok, opDaysCount: opDays.length, kaigoCount: rows.length },
+    warnings: warnings
   };
 }
-function avConstCap_() { return 18; }
 function blankMonthly_(months) { var o = {}; (months || []).forEach(function (m) { o[m] = null; }); return o; }
 
 // dailyOps 全件（getMonthlyUsage の _muFetchDailyOpsForMonth と同経路・月フィルタなし）
+// 取得成否を ok で返す（恒久失敗と「正当に空」を呼び出し側で区別＝沈黙不全ガード）
 function _muFetchAllDailyOps_() {
   try {
     var resp = UrlFetchApp.fetch(DIGEST_OPS_URL, { muteHttpExceptions: true, followRedirects: true });
-    if (resp.getResponseCode() !== 200) return {};
+    if (resp.getResponseCode() !== 200) return { ok: false, ops: {} };
     var json = JSON.parse(resp.getContentText());
-    return (json && json.dailyOps) ? json.dailyOps : {};
-  } catch (e) { return {}; }
+    return { ok: true, ops: (json && json.dailyOps) ? json.dailyOps : {} };
+  } catch (e) { return { ok: false, ops: {} }; }
 }
 
 // ===== ケアマネ欠席連絡 即時方式 Phase 1（2026-05-10） =====
