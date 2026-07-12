@@ -1149,6 +1149,10 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'morningDigest') {
     return morningDigest(e);
   }
+  // セッションボード（当日AM/PM出席×5業務ピックアップ・判定はsession-board-core.jsの純関数）2026-07-12
+  if (e && e.parameter && e.parameter.action === 'sessionBoard') {
+    return sessionBoard(e);
+  }
   if (e && e.parameter && e.parameter.action === 'teireiList') {
     return respond(teireiListAction_(SpreadsheetApp.openById(SS_ID), _shiftDateParam_(e)), e.parameter.callback);
   }
@@ -15186,4 +15190,185 @@ function clearDengonTestRows(ss) {
     if (id.indexOf('db_') === 0) { sheet.deleteRow(i + 1); deleted.push(id); }
   }
   return { ok: true, deleted: deleted, remaining: Math.max(0, sheet.getLastRow() - 1) };
+}
+
+// ============================================================
+// セッションボード（当日AM/PM出席 × 5業務ピックアップ）2026-07-12
+//   判定ロジックは一切書かない＝すべて session-board-core.js の純関数(sb*_)へ委譲。
+//   judges(isHyoukaMonth/oralCycleAt)は session-board-judges.js のGASグローバル。
+//   morningDigest流儀の safe() で、1データ源が死んでも全体レスポンスは返す（部分縮退）。
+//   additive-only: 既存 action / 既存関数には一切手を入れていない。
+// ============================================================
+function sessionBoard(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var dateStr = (e && e.parameter && e.parameter.date && /^\d{4}-\d{2}-\d{2}$/.test(e.parameter.date))
+    ? e.parameter.date
+    : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var year = parseInt(dateStr.slice(0, 4), 10);
+  var month = parseInt(dateStr.slice(5, 7), 10);
+
+  var out = { ok: true, date: dateStr, year: year, month: month };
+  var errors = [];
+  function safe(name, fn) {
+    try { return fn(); }
+    catch (err) { errors.push({ section: name, error: String((err && err.message) || err) }); return null; }
+  }
+
+  var built = safe('buildInput', function () { return sessionBoardBuildInput_(dateStr, year, month, safe); });
+  if (built) {
+    var board = safe('sbBuildBoard', function () {
+      return sbBuildBoard_(built, { isHyoukaMonth: isHyoukaMonth, oralCycleAt: oralCycleAt });
+    });
+    if (board) {
+      ['presentCount', 'presentAm', 'presentPm', 'sokutei', 'koukuMoni', 'koukuTaisou', 'kotan', 'birthday', 'residue', 'ampmConflict']
+        .forEach(function (k) { out[k] = board[k]; });
+    } else { out.ok = false; }
+  } else { out.ok = false; }
+
+  out.errors = errors;
+  return respond(out, callback);
+}
+
+// セッションボード用 core入力の整形（各シート読み取り→ sbBuildBoard_ の確定データ契約へ写像）。
+// 各データ源は safe() で個別に守り、失敗時は空で縮退（該当セクションだけ0件になり全体は返る）。
+function sessionBoardBuildInput_(dateStr, year, month, safe) {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var dow = getDayOfWeek(dateStr);  // 既存規約: 曜日文字（'月'等）
+
+  function fmtDate_(v) {
+    if (!v) return '';
+    if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
+    return String(v).trim();
+  }
+
+  // --- 当日出席（台帳曜日 − 欠席）: getAttendance(ss, dateStr, dow) を attendance でラップ ---
+  var attendance = { attendance: { am: [], pm: [] } };
+  safe('attendance', function () { attendance.attendance = getAttendance(ss, dateStr, dow); });
+
+  // --- 要介護（個訓）: kaigoUsers = allUsers（要介護のみ・非中止・days/planStart/planMonths付き） ---
+  var kaigoUsers = [];
+  safe('kaigoUsers', function () { kaigoUsers = getKeikakushoTargetUsers_(false); });
+  var allUsers = kaigoUsers;
+
+  // --- kaigoDoneByKey: 個別機能訓練計画書記録で当評価月(year/month)に sokutei_date 済みの name→true ---
+  var kaigoDoneByKey = {};
+  safe('kaigoDoneByKey', function () {
+    var kkSheet = ensureKeikakushoSheet_();
+    var kkValues = kkSheet.getDataRange().getValues();
+    for (var ki = 1; ki < kkValues.length; ki++) {
+      var kr = kkValues[ki];
+      if ((parseInt(kr[2], 10) || 0) !== year) continue;   // col2=year
+      if ((parseInt(kr[3], 10) || 0) !== month) continue;  // col3=month
+      if (fmtDate_(kr[12])) kaigoDoneByKey[String(kr[1] || '').trim()] = true;  // col12=sokutei_date, col1=name
+    }
+  });
+
+  // --- 利用者台帳を1回読み: shienUsers（要支援/事業対象・days付き）＋ bdUsers（誕生日M/D） ---
+  var shienUsers = [], bdUsers = [];
+  safe('daichoScan', function () {
+    var uSheet = ss.getSheetByName('利用者台帳');
+    if (!uSheet) return;
+    var uv = uSheet.getDataRange().getValues();
+    if (uv.length < 2) return;
+    var uh = uv[0].map(function (v) { return String(v).trim(); });
+    var uNameCol = findCol(uh, ['名前', '氏名', '利用者名']);
+    var uCareCol = findCol(uh, ['要介護度', '介護度']);
+    var uDaysCol = findCol(uh, ['利用曜日', '曜日']);
+    var uStatusCol = findCol(uh, ['利用ステータス']);
+    if (uStatusCol < 0) uStatusCol = findColP(uh, 'ステータス');
+    if (uStatusCol < 0) uStatusCol = findColP(uh, '利用状況');
+    var uBdCol = findCol(uh, ['誕生日', '生年月日']);
+    if (uNameCol < 0) return;
+    for (var ui = 1; ui < uv.length; ui++) {
+      var urow = uv[ui];
+      var uname = String(urow[uNameCol] || '').trim();
+      if (!uname) continue;
+      if (uStatusCol >= 0) {
+        var ust = String(urow[uStatusCol] || '').trim();
+        if (ust.indexOf('終了') >= 0 || ust.indexOf('中止') >= 0 || ust.indexOf('卒業') >= 0) continue;
+      }
+      var ucare = uCareCol >= 0 ? String(urow[uCareCol] || '').trim() : '';
+      var udays = uDaysCol >= 0 ? String(urow[uDaysCol] || '').trim() : '';
+      if (ucare.indexOf('要支援') === 0 || ucare.indexOf('事業対象') === 0) {
+        shienUsers.push({ name: uname, care: ucare, days: udays });
+      }
+      if (uBdCol >= 0) {
+        var bv = urow[uBdCol], mmdd = '';
+        if (bv instanceof Date) { mmdd = (bv.getMonth() + 1) + '/' + bv.getDate(); }
+        else {
+          var bm = String(bv || '').trim().match(/(\d{1,2})[\/\-月](\d{1,2})/);
+          if (bm) mmdd = parseInt(bm[1], 10) + '/' + parseInt(bm[2], 10);
+        }
+        if (mmdd) bdUsers.push({ name: uname, birthday: mmdd });
+      }
+    }
+  });
+
+  // --- shienLastByName: 要支援測定記録の利用者ごと最新 sokutei_date ---
+  var shienLastByName = {};
+  safe('shienLast', function () {
+    var shSheet = ensureShienSokuteiSheet_();
+    var shValues = shSheet.getDataRange().getValues();
+    for (var si = 1; si < shValues.length; si++) {
+      var so = shienSokuteiRowToObj_(shValues[si]);
+      if (!so.name || !so.sokutei_date) continue;
+      if (!shienLastByName[so.name] || so.sokutei_date > shienLastByName[so.name]) {
+        shienLastByName[so.name] = so.sokutei_date;
+      }
+    }
+  });
+
+  // --- usageByKey: 直近3ヶ月（isPreOperational除外）の出席率 U=（予定−欠席）/予定 ---
+  var usageByKey = {};
+  safe('usage', function () {
+    var fromYM = Utilities.formatDate(new Date(year, month - 4, 1), 'Asia/Tokyo', 'yyyy-MM'); // 直近3完了月
+    var toYM = Utilities.formatDate(new Date(year, month - 2, 1), 'Asia/Tokyo', 'yyyy-MM');
+    var usage = getUsageStats(ss, fromYM, toYM);
+    (usage.users || []).forEach(function (u) {
+      var sched = 0, abs = 0;
+      for (var mk in u.monthly) {
+        if (!u.monthly.hasOwnProperty(mk)) continue;
+        var mm = u.monthly[mk];
+        if (mm.isPreOperational) continue;
+        sched += (mm.scheduled || 0); abs += (mm.absences || 0);
+      }
+      var uRate = (sched > 0) ? (sched - abs) / sched : 1.0;
+      if (uRate < 0) uRate = 0; if (uRate > 1) uRate = 1;
+      usageByKey[u.name] = uRate;
+    });
+  });
+
+  // --- 口腔: oralUsers（planStart/planEnd）/ oralSettings（isTarget）/ oralRecByKey（当年月行のmoni/houkoku/plan日） ---
+  var oralUsers = [], oralSettings = [], oralRecByKey = {};
+  safe('oral', function () {
+    var oralList = getOralTargetUsers_(false);
+    oralUsers = oralList.map(function (u) { return { name: u.name, planStart: u.planStart, planEnd: u.planEnd }; });
+    oralSettings = oralList.map(function (u) { return { name: u.name, isTarget: u.isTarget }; });
+    var oralSheets = ensureOralPlansSheets_();
+    var orValues = oralSheets.recordSheet.getDataRange().getValues();
+    for (var oi = 1; oi < orValues.length; oi++) {
+      var orow = orValues[oi];
+      if ((parseInt(orow[1], 10) || 0) !== year) continue;   // col1=year
+      if ((parseInt(orow[2], 10) || 0) !== month) continue;  // col2=month
+      var oname = String(orow[0] || '').trim();              // col0=userId(=name)
+      if (!oname) continue;
+      oralRecByKey[oname] = {
+        plan_date: fmtDate_(orow[3]),      // col3=plan_date
+        moni1_date: fmtDate_(orow[11]),    // col11=moni1_date
+        moni2_date: fmtDate_(orow[12]),    // col12=moni2_date
+        houkoku_date: fmtDate_(orow[13])   // col13=houkoku_date
+      };
+    }
+  });
+
+  return {
+    year: year, month: month, today: dateStr,
+    attendance: attendance,
+    kaigoUsers: kaigoUsers, kaigoDoneByKey: kaigoDoneByKey,
+    shienUsers: shienUsers, shienLastByName: shienLastByName,
+    usageByKey: usageByKey,
+    oralUsers: oralUsers, oralRecByKey: oralRecByKey, oralSettings: oralSettings,
+    allUsers: allUsers,
+    bdUsers: bdUsers, bdStatusByKey: {}  // 初版フォールバック（撮影status除外なし・§3.3）
+  };
 }
