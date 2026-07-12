@@ -65,9 +65,11 @@ setTimeout(function () {
       kaigoAvgRate: 70, capacity: 18, slotsFree: { '月': { am: 0, pm: 0 }, '火': { am: 0, pm: 0 }, '水': { am: 0, pm: 0 }, '木': { am: 0, pm: 0 }, '金': { am: 0, pm: 0 } },
       users: [
         { name: '<img src=x onerror=alert(1)>太郎', care: '要介護1', days: '月', unit: '午前', contractN: 1, displayState: 'normal', stateLabel: '', rate: 0, actualPerWeek: 0, diverge: 1, monthly: { '2026-05': 0, '2026-06': 0 }, isUpsizeCandidate: true, addableSlots: [] }
-      ], diag: { opsFetched: true, opDaysCount: 40, kaigoCount: 1 }, warnings: []
-    });
-    const b3 = dom3.window.document.getElementById('tbody').innerHTML;
+      ], diag: { opsFetched: true, opDaysCount: 40, kaigoCount: 1 }, warnings: ['利用開始日列が見つかりません'] });
+    const w3doc = dom3.window.document;
+    const banners = w3doc.querySelectorAll('#warnings .warn-banner');
+    ok(banners.length === 1 && banners[0].textContent.indexOf('利用開始日列が見つかりません') >= 0, 'warnings→赤バナー描画（沈黙不全の画面明示）');
+    const b3 = w3doc.getElementById('tbody').innerHTML;
     ok(b3.indexOf('<img src=x') < 0, 'XSS: 氏名のHTMLタグが生挿入されない(esc済)');
     ok(b3.indexOf('&lt;img') >= 0, 'XSS: 氏名がエスケープ表示される');
     ok(dom3.window.document.querySelector('#tbody tr').querySelectorAll('td')[6].textContent.trim() === '0%', 'rate:0→「0%」表示（—と取り違えない）');

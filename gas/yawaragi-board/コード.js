@@ -12761,6 +12761,10 @@ function attendance_view(ss, e) {
   var noOpsMonths = displayMonths.filter(function (ym) { return !opsMonths[ym]; });
   var warnings = [];
   if (!opsResult.ok) warnings.push('送迎GASからの実来館(dailyOps)取得に失敗しました。出席率は表示できません（再読込で回復する場合があります）。');
+  // ops取得は成功したが稼働日ゼロ＝「本当に空」を沈黙させない（送迎表未入力/URL差替え等の早期検知）
+  if (opsResult.ok && opDays.length === 0) warnings.push('実来館(dailyOps)の稼働日が0件でした。出勤送迎表が未入力か取得先が変わった可能性があります。');
+  // 利用開始日列が無いと「新規=判定中」判定が効かず、新規者が通常表示になり増回候補に誤混入し得る（名前/介護度と同様に沈黙させない）
+  if (startCol < 0) warnings.push('利用者台帳に利用開始日列が見つかりません。新規利用者が「判定中」でなく通常表示になり、増回候補に誤って混じる可能性があります。');
   return {
     success: true,
     generatedAt: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
@@ -12775,7 +12779,7 @@ function attendance_view(ss, e) {
     slotsFree: slotsFree,
     users: rows,
     // 診断: 取得ゼロ(ops落ち)と本当に算出ゼロを画面で区別できるように明示
-    diag: { opsFetched: opsResult.ok, opDaysCount: opDays.length, kaigoCount: rows.length },
+    diag: { opsFetched: opsResult.ok, opDaysCount: opDays.length, kaigoCount: rows.length, startColResolved: startCol >= 0 },
     warnings: warnings
   };
 }
