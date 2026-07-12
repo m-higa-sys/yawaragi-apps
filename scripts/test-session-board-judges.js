@@ -18,8 +18,10 @@ const judgesSrc = fs.readFileSync(path.join(__dirname, '..', 'gas', 'yawaragi-bo
 
 const canonHyouka = extractFn(sharedSrc, 'isHyoukaMonth');
 const canonOral = extractFn(oralSrc, 'oralCycleAt');
+const canonPlan = extractFn(sharedSrc, 'isPlanMonth');
 const portedHyouka = extractFn(judgesSrc, 'isHyoukaMonth');
 const portedOral = extractFn(judgesSrc, 'oralCycleAt');
+const portedPlan = extractFn(judgesSrc, 'isPlanMonth');
 const judges = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'session-board-judges.js'));
 
 let pass = 0, fail = 0;
@@ -35,6 +37,23 @@ if (portedOral !== canonOral) {
   console.error('  [DIFF] oralCycleAt length: canon=' + canonOral.length + ' ported=' + portedOral.length);
 }
 ok(portedOral === canonOral, 'DG2: oralCycleAt 移植がoral-plan.htmlとbyte一致（driftなし）');
+
+if (portedPlan !== canonPlan) {
+  console.error('  [DIFF] isPlanMonth length: canon=' + canonPlan.length + ' ported=' + portedPlan.length);
+}
+ok(portedPlan === canonPlan, 'DG3: isPlanMonth 移植がshared.jsとbyte一致（driftなし）');
+
+// isPlanMonth 挙動マトリクス（正本と一致）
+const canonPlanFn = new Function(canonPlan + '; return isPlanMonth;')();
+['2026-04', '2026-07', '2026-08'].forEach(function (planStart) {
+  [3, 2, 1].forEach(function (planMonths) {
+    for (let month = 1; month <= 12; month++) {
+      const a = judges.isPlanMonth(planStart, planMonths, 2026, month);
+      const b = canonPlanFn(planStart, planMonths, 2026, month);
+      ok(a === b, 'BM-plan: planStart=' + planStart + ' planMonths=' + planMonths + ' 2026-' + month + ' => ' + a + ' vs ' + b);
+    }
+  });
+});
 
 // --- Behavioral matrix ---
 const canonHyoukaFn = new Function(canonHyouka + '; return isHyoukaMonth;')();

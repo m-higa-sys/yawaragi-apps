@@ -1153,6 +1153,10 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'sessionBoard') {
     return sessionBoard(e);
   }
+  // 月次ボード（指定月×書類種別ごとの対象/実施済み集計・判定はmonth-board-core.jsの純関数）2026-07-12
+  if (e && e.parameter && e.parameter.action === 'monthBoard') {
+    return monthBoard(e);
+  }
   if (e && e.parameter && e.parameter.action === 'teireiList') {
     return respond(teireiListAction_(SpreadsheetApp.openById(SS_ID), _shiftDateParam_(e)), e.parameter.callback);
   }
@@ -15370,5 +15374,233 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     oralUsers: oralUsers, oralRecByKey: oralRecByKey, oralSettings: oralSettings,
     allUsers: allUsers,
     bdUsers: bdUsers, bdStatusByKey: {}  // 初版フォールバック（撮影status除外なし・§3.3）
+  };
+}
+
+// ============================================================
+// 月次ボード（月末のケアマネ提出前チェック）action。2026-07-12
+//   指定月×書類種別ごとに「対象者/実施済み/名前」を集計して返す読取専用action。
+//   判定は month-board-core.js の純関数 buildMonthBoard（判定関数は依存注入）。
+//   additive-only: 既存 action / 既存関数には一切手を入れていない。書込みゼロ（読取専用）。
+// ============================================================
+function monthBoard(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var ym = (e && e.parameter && e.parameter.month && /^\d{4}-\d{2}$/.test(e.parameter.month))
+    ? e.parameter.month
+    : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  var year = parseInt(ym.slice(0, 4), 10);
+  var month = parseInt(ym.slice(5, 7), 10);
+
+  var out = { ok: true, month: ym, sections: [], warnings: [] };
+  var errors = [];
+  function safe(name, fn) {
+    try { return fn(); }
+    catch (err) { errors.push({ section: name, error: String((err && err.message) || err) }); return null; }
+  }
+
+  var bi = safe('buildInput', function () { return monthBoardBuildInput_(ym, year, month, safe); });
+  if (bi && bi.input) {
+    var board = safe('buildMonthBoard', function () {
+      return buildMonthBoard(bi.input, {
+        oralCycleAt: oralCycleAt, isPlanMonth: isPlanMonth, isHyoukaMonth: isHyoukaMonth,
+        sokuteiDueDate_: sokuteiDueDate_, sbNormalizeName_: sbNormalizeName_
+      });
+    });
+    if (board) {
+      // データ源が落ちたセクションに error フラグを立てる（黙って0件にしない）
+      (board.sections || []).forEach(function (s) { if (bi.errorSections[s.key]) s.error = true; });
+      out.sections = board.sections;
+      out.warnings = board.warnings;
+    } else { out.ok = false; }
+  } else { out.ok = false; }
+
+  out.errors = errors;
+  return respond(out, callback);
+}
+
+// 月次ボード用 core入力の整形（各シート読み取り→ buildMonthBoard の入力契約へ写像）。
+// 各データ源は safe() で個別に守り、失敗時は空で縮退＋該当セクションkeyを errorSections に記録。
+// 戻り値: { input, errorSections }
+function monthBoardBuildInput_(ym, year, month, safe) {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var errSec = {};
+  function markErr(keys) { keys.forEach(function (k) { errSec[k] = true; }); }
+  function mbFmt_(v) {
+    if (!v) return '';
+    if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
+    return String(v).trim();
+  }
+
+  var ALL_SEC = ['oralEval', 'oralPlan', 'kunPlan', 'kunEval', 'sokuteiKaigo', 'sokuteiShien', 'tsushoPlan', 'tsushoEval', 'tsushoMoni'];
+
+  // --- base roster: 利用者台帳（active全員・name/category）＝通所母集団(isTsusho=true) ---
+  var usersMap = {}, order = [];
+  var r;
+  r = safe('mb_base', function () {
+    var uSheet = ss.getSheetByName('利用者台帳');
+    if (!uSheet) throw new Error('利用者台帳シートなし');
+    var uv = uSheet.getDataRange().getValues();
+    if (uv.length < 2) return true;
+    var uh = uv[0].map(function (v) { return String(v).trim(); });
+    var nameCol = findCol(uh, ['名前', '氏名', '利用者名']);
+    var careCol = findCol(uh, ['要介護度', '介護度']);
+    var statusCol = findCol(uh, ['利用ステータス']);
+    if (statusCol < 0) statusCol = findColP(uh, 'ステータス');
+    if (statusCol < 0) statusCol = findColP(uh, '利用状況');
+    if (nameCol < 0) throw new Error('名前列なし');
+    for (var i = 1; i < uv.length; i++) {
+      var nm = String(uv[i][nameCol] || '').trim();
+      if (!nm) continue;
+      if (statusCol >= 0) {
+        var st = String(uv[i][statusCol] || '').trim();
+        if (st.indexOf('終了') >= 0 || st.indexOf('中止') >= 0 || st.indexOf('卒業') >= 0) continue;
+      }
+      var cat = careCol >= 0 ? String(uv[i][careCol] || '').trim() : '';
+      var key = _normalizeUserName(nm);
+      if (!usersMap[key]) { usersMap[key] = { userId: nm, name: nm, category: cat, isTsusho: true }; order.push(key); }
+    }
+    return true;
+  });
+  if (r === null) markErr(ALL_SEC);
+
+  // --- overlay: 個訓 planStart/planMonths（要介護・getKeikakushoTargetUsers_） ---
+  r = safe('mb_kaigo', function () {
+    getKeikakushoTargetUsers_(false).forEach(function (u) {
+      var key = _normalizeUserName(u.name);
+      var t = usersMap[key];
+      if (!t) { t = { userId: u.userId || u.name, name: u.name, category: u.category || '', isTsusho: true }; usersMap[key] = t; order.push(key); }
+      t.planStart = u.planStart; t.planMonths = u.planMonths;
+      if (!t.category) t.category = u.category || '';
+    });
+    return true;
+  });
+  if (r === null) markErr(['kunPlan', 'kunEval', 'sokuteiKaigo']);
+
+  // --- overlay: 口腔 planStart/planEnd（getOralTargetUsers_） ---
+  r = safe('mb_oralUsers', function () {
+    getOralTargetUsers_(false).forEach(function (u) {
+      var key = _normalizeUserName(u.name);
+      var t = usersMap[key];
+      if (!t) { t = { userId: u.name, name: u.name, category: u.category || '', isTsusho: true }; usersMap[key] = t; order.push(key); }
+      t.oralPlanStart = u.planStart; t.oralPlanEnd = u.planEnd;
+    });
+    return true;
+  });
+  if (r === null) markErr(['oralEval', 'oralPlan']);
+
+  // --- 口腔記録（当月・plan_date/houkoku_date） ---
+  var oralRecords = [];
+  r = safe('mb_oralRec', function () {
+    var sh = ensureOralPlansSheets_().recordSheet;
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      if ((parseInt(v[i][1], 10) || 0) !== year) continue;   // col1=year
+      if ((parseInt(v[i][2], 10) || 0) !== month) continue;  // col2=month
+      var nm = String(v[i][0] || '').trim(); if (!nm) continue; // col0=userId(=name)
+      oralRecords.push({ userId: nm, name: nm, plan_date: mbFmt_(v[i][3]), houkoku_date: mbFmt_(v[i][13]) });
+    }
+    return true;
+  });
+  if (r === null) markErr(['oralEval', 'oralPlan']);
+
+  // --- 個訓記録（当月・keikaku_date/tasseido_date）＋ 要介護測定 sokutei_date（全月・userIdキー） ---
+  var kunRecords = [], sokuteiRecords = [];
+  r = safe('mb_kunRec', function () {
+    var sh = ensureKeikakushoSheet_();
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      var uid = String(v[i][0] || '').trim(), nm = String(v[i][1] || '').trim(); // col0=userId,col1=name
+      var sok = mbFmt_(v[i][12]);                                                 // col12=sokutei_date
+      if (sok) sokuteiRecords.push({ userId: uid || nm, sokutei_date: sok });     // kaigo: userIdキー・当月判定はcore
+      if ((parseInt(v[i][2], 10) || 0) !== year) continue;   // col2=year
+      if ((parseInt(v[i][3], 10) || 0) !== month) continue;  // col3=month
+      kunRecords.push({ userId: uid || nm, name: nm, keikaku_date: mbFmt_(v[i][6]), tasseido_date: mbFmt_(v[i][15]) }); // col6=keikaku,col15=tasseido
+    }
+    return true;
+  });
+  if (r === null) markErr(['kunPlan', 'kunEval', 'sokuteiKaigo']);
+
+  // --- 要支援測定記録（全履歴・nameキー・前回測定日+4ヶ月判定用） ---
+  r = safe('mb_shienSok', function () {
+    var sh = ensureShienSokuteiSheet_();
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      var o = shienSokuteiRowToObj_(v[i]);
+      if (!o.name || !o.sokutei_date) continue;
+      sokuteiRecords.push({ name: o.name, sokutei_date: o.sokutei_date });
+    }
+    return true;
+  });
+  if (r === null) markErr(['sokuteiShien']);
+
+  // --- 通所 満了日（通所介護計画書設定・due_dateは動的列so indexOfで） ---
+  var tsushoDueMap = {};
+  r = safe('mb_due', function () {
+    var cfg = ensureTsushoPlansSheets_().configSheet;
+    var v = cfg.getDataRange().getValues();
+    var hdr = (v[0] || []).map(function (x) { return String(x).trim(); });
+    var dcol = hdr.indexOf('due_date');
+    if (dcol >= 0) {
+      for (var i = 1; i < v.length; i++) {
+        var uid = String(v[i][0] || '').trim(); if (!uid) continue;
+        var raw = v[i][dcol];
+        var s = (raw instanceof Date) ? Utilities.formatDate(raw, 'Asia/Tokyo', 'yyyy-MM-dd') : String(raw || '').trim();
+        if (s) tsushoDueMap[uid] = s;
+      }
+    }
+    return true;
+  });
+  if (r === null) markErr(['tsushoPlan', 'tsushoEval', 'tsushoMoni']);
+
+  // --- 通所送付記録: 計画書plan_date（当月）＋モニ送付日（当月）を userId で1件にマージ ---
+  var sendMap = {};
+  r = safe('mb_tsushoPlanRec', function () {
+    var sh = ensureTsushoPlansSheets_().recordSheet;
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      if ((parseInt(v[i][1], 10) || 0) !== year) continue;   // col1=year
+      if ((parseInt(v[i][2], 10) || 0) !== month) continue;  // col2=month
+      var uid = String(v[i][0] || '').trim(); if (!uid) continue;
+      var rec = sendMap[uid] || (sendMap[uid] = { userId: uid, name: uid });
+      rec.plan_date = mbFmt_(v[i][3]);  // col3=plan_date
+    }
+    return true;
+  });
+  if (r === null) markErr(['tsushoPlan']);
+
+  r = safe('mb_monRec', function () {
+    var sh = ensureMonitoringSheet_();
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      if ((parseInt(v[i][2], 10) || 0) !== year) continue;   // col2=year
+      if ((parseInt(v[i][3], 10) || 0) !== month) continue;  // col3=month
+      var uid = String(v[i][0] || '').trim(), nm = String(v[i][1] || '').trim();
+      var key = uid || nm; if (!key) continue;
+      var rec = sendMap[key] || (sendMap[key] = { userId: uid || nm, name: nm || uid });
+      if (nm && (!rec.name || rec.name === rec.userId)) rec.name = nm;
+      rec.pdfSendDate = mbFmt_(v[i][7]);    // col7=pdfSendDate
+      rec.printSendDate = mbFmt_(v[i][8]);  // col8=printSendDate
+    }
+    return true;
+  });
+  if (r === null) markErr(['tsushoEval', 'tsushoMoni']);
+
+  var tsushoSendRecords = [];
+  for (var sk in sendMap) { if (sendMap.hasOwnProperty(sk)) tsushoSendRecords.push(sendMap[sk]); }
+
+  var users = [];
+  order.forEach(function (k) { users.push(usersMap[k]); });
+
+  return {
+    input: {
+      targetMonth: ym,
+      users: users,
+      oralRecords: oralRecords,
+      kunRecords: kunRecords,
+      sokuteiRecords: sokuteiRecords,
+      tsushoDueMap: tsushoDueMap,
+      tsushoSendRecords: tsushoSendRecords
+    },
+    errorSections: errSec
   };
 }
