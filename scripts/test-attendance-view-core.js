@@ -43,5 +43,13 @@ ok(free['火'].am===2, '火AM空き=18-16=2');
 ok(free['火'].pm===0, '火PM空き=0');
 ok(free['月'].am===18, '月AM空き=18');
 
+console.log('\n[avLast3CompletedMonths_] 直近完了3ヶ月');
+eq(c.avLast3CompletedMonths_('2026-07-12'), ['2026-04','2026-05','2026-06'], '7月→4/5/6');
+eq(c.avLast3CompletedMonths_('2026-01-05'), ['2025-10','2025-11','2025-12'], '年跨ぎ');
+
+console.log('\n[avDateMinusMonths_] 3ヶ月前（判定中の閾値用）');
+eq(c.avDateMinusMonths_('2026-07-12', 3), '2026-04-12', '7/12-3ヶ月=4/12');
+eq(c.avDateMinusMonths_('2026-01-31', 3), '2025-10-31', '年跨ぎ');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);

@@ -55,11 +55,33 @@ function avSlotsFree_(occupancy, capacity) {
   return free;
 }
 
+// 'YYYY-MM-DD' の n ヶ月前を返す（日は保持・末日補正は簡易＝そのまま）。
+function avDateMinusMonths_(ymd, n) {
+  var p = String(ymd).split('-');
+  var y = parseInt(p[0], 10), m = parseInt(p[1], 10), d = p[2] || '01';
+  m -= n;
+  while (m <= 0) { m += 12; y -= 1; }
+  return y + '-' + ('0' + m).slice(-2) + '-' + d;
+}
+// today('YYYY-MM-DD')基準の直近完了3ヶ月 ['YYYY-MM',...]（昇順）
+function avLast3CompletedMonths_(today) {
+  var p = String(today).split('-');
+  var y = parseInt(p[0], 10), m = parseInt(p[1], 10);
+  var out = [];
+  for (var k = 3; k >= 1; k--) {
+    var yy = y, mm = m - k;
+    while (mm <= 0) { mm += 12; yy -= 1; }
+    out.push(yy + '-' + ('0' + mm).slice(-2));
+  }
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
     avSlotSet_: avSlotSet_, avAttendsCell_: avAttendsCell_,
     avContractN_: avContractN_,
-    avOccupancy_: avOccupancy_, avSlotsFree_: avSlotsFree_
+    avOccupancy_: avOccupancy_, avSlotsFree_: avSlotsFree_,
+    avDateMinusMonths_: avDateMinusMonths_, avLast3CompletedMonths_: avLast3CompletedMonths_
   };
 }
