@@ -26,5 +26,22 @@ ok(c.avContractN_('月水金')===3, '月水金→3');
 ok(c.avContractN_('木')===1, '木→1');
 ok(c.avContractN_('')===0, '空→0');
 
+console.log('\n[avOccupancy_] 全在籍から占有[曜日]{am,pm}を集計');
+const occ = c.avOccupancy_([
+  { days:'火木', unit:'午前' },   // 火AM 木AM
+  { days:'火', unit:'午前午後' }, // 火AM 火PM
+  { days:'月木', unit:'月午前、木午後' } // 月AM 木PM
+]);
+ok(occ['火'].am===2, '火AM=2（1人目+2人目）');
+ok(occ['火'].pm===1, '火PM=1（2人目のみ）');
+ok(occ['木'].am===1 && occ['木'].pm===1, '木AM=1(1人目) 木PM=1(3人目)');
+ok(occ['月'].am===1 && occ['月'].pm===0, '月AM=1(3人目) 月PM=0');
+
+console.log('\n[avSlotsFree_] 空き=CAP-占有');
+const free = c.avSlotsFree_({ '火':{am:16,pm:18}, '月':{am:0,pm:0} }, 18);
+ok(free['火'].am===2, '火AM空き=18-16=2');
+ok(free['火'].pm===0, '火PM空き=0');
+ok(free['月'].am===18, '月AM空き=18');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);

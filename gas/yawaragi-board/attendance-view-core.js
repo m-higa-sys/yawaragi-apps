@@ -34,10 +34,32 @@ function avContractN_(days) {
   return AV_WEEKDAY_CHARS.filter(function (d) { return s.indexOf(d) >= 0; }).length;
 }
 
+// 全在籍(非中止・要介護+要支援すべて)から占有[曜日]{am,pm}を集計。椅子は共有so全員数える。
+function avOccupancy_(patternsAll) {
+  var occ = {};
+  AV_DAYS.forEach(function (d) { occ[d] = { am: 0, pm: 0 }; });
+  (patternsAll || []).forEach(function (u) {
+    AV_DAYS.forEach(function (d) {
+      if (avAttendsCell_(u.days, u.unit, d, 'am')) occ[d].am++;
+      if (avAttendsCell_(u.days, u.unit, d, 'pm')) occ[d].pm++;
+    });
+  });
+  return occ;
+}
+function avSlotsFree_(occupancy, capacity) {
+  var free = {};
+  AV_DAYS.forEach(function (d) {
+    var o = occupancy[d] || { am: 0, pm: 0 };
+    free[d] = { am: Math.max(0, capacity - o.am), pm: Math.max(0, capacity - o.pm) };
+  });
+  return free;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AV_CAP: AV_CAP, AV_DAYS: AV_DAYS, AV_SLOT_OF: AV_SLOT_OF,
     avSlotSet_: avSlotSet_, avAttendsCell_: avAttendsCell_,
-    avContractN_: avContractN_
+    avContractN_: avContractN_,
+    avOccupancy_: avOccupancy_, avSlotsFree_: avSlotsFree_
   };
 }
