@@ -13093,22 +13093,6 @@ function nmClassifyMail_(from, subject) {
   return { important: false, matchedBy: [], excluded: false };
 }
 
-// 同一メールの重複表示を1件に畳む（純関数・テスト対象）。from+subject+date（分単位）が
-// 完全一致するものを先勝ちで1件に。Gmailのスレッド→メッセージ二重ループで同一件名メールが
-// 同スレッドにまとまると同じ内容が複数回入るため。date が違えば別メールとして全部残す。
-function nmDedupeItems_(list) {
-  var seen = {};
-  var out = [];
-  for (var i = 0; i < list.length; i++) {
-    var it = list[i];
-    var key = String(it.from) + '\u0001' + String(it.subject) + '\u0001' + String(it.date);
-    if (seen[key]) continue;
-    seen[key] = true;
-    out.push(it);
-  }
-  return out;
-}
-
 // 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
 // sinceHours: 何時間前までの新着を見るか（既定24）。
 function checkNewMail(sinceHours) {
@@ -13137,9 +13121,7 @@ function checkNewMail(sinceHours) {
       }
     }
   }
-  var dImp = nmDedupeItems_(important);
-  var dOth = nmDedupeItems_(others);
-  var result = { important: dImp, others: { count: dOth.length, items: dOth } };
+  var result = { important: important, others: { count: others.length, items: others } };
   Logger.log(JSON.stringify(result, null, 2));
   return result;
 }
