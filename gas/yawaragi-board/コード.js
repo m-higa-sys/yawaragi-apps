@@ -13148,6 +13148,135 @@ function installBounceTrigger() {
 }
 
 
+// ===== Gmail新着チェック（2026-07-12追加・指示書_Gmail新着チェックGAS.md）=====
+// morningDigest とは完全に独立した新規機能。GAS自身が実行アカウント(m-higa@)の受信箱を
+// GmailApp で検索し、差出人・件名・日時だけを抽出して「見落としたら困る重要メール(important)」と
+// 「それ以外の全新着(others)」に仕分けして返す。新着チェックの便利さを取り戻す。
+//
+// 【本文絶対非読込】getBody() / getPlainBody() は一切呼ばない。過去にGmailデータ経由の
+//   プロンプトインジェクションが発生したためGmailコネクタは遮断済み。自由記述の本文をAIに一切
+//   届けないのが本設計の絶対条件。使うのは getFrom() / getSubject() / getDate() のみ。
+
+// Fromヘッダ文字列 → 小文字アドレス。表示名+<addr> 形式は <...> 内を優先抽出する
+// （表示名に @ が混じるケースがあるため）。純関数（GmailApp非依存・テスト対象）。
+function nmExtractSender_(from) {
+  var s = String(from == null ? '' : from).trim();
+  if (!s) return '';
+  var m = s.match(/<([^>]+)>/);
+  if (m) return m[1].trim().toLowerCase();
+  // 山括弧なし: 後ろから @ を含むトークンを拾う（"表示名 addr@dom" 形式）
+  var tokens = s.split(/\s+/);
+  for (var i = tokens.length - 1; i >= 0; i--) {
+    if (tokens[i].indexOf('@') >= 0) return tokens[i].replace(/[<>]/g, '').trim().toLowerCase();
+  }
+  return s.toLowerCase();
+}
+
+// from/subject だけで important 判定し matchedBy（一致条件）を返す。本文は一切見ない。
+// 純関数（GmailApp非依存・テスト対象）。ドメイン/キーワードは本関数内に一元管理する。
+function nmClassifyMail_(from, subject) {
+  // 第1段: この差出人ドメインに自尾一致したら important
+  var IMPORTANT_DOMAINS = ['.lg.jp', '.go.jp', 'carezou.net', 'densan-s.co.jp',
+    'moneyforward.com', 'e-seikyuu.jp', 'jm-academy.jp', 'keepfitlife.com',
+    'job-medley.com'];
+  // 第1段: この件名キーワードを含んだら important
+  var SUBJECT_KEYWORDS = ['請求書', '領収書', '補助金', '助成金', '交付決定', '口座振替', '応募', '国保伝送'];
+  // ノイズ除去用の除外ドメイン（2026-07-12・社長dryRun判断）。others を毎日埋める広告/メルマガ/
+  // カード通知。該当は important にも others にも入れない（完全除外）。★育てる前提＝「これは」という
+  // 情報源が出たら該当行を外すだけ。三井住友カード(vpass.ne.jp)も社長判断で除外（不正利用検知は
+  // カード会社アプリ・電話・明細で別途できるため）。
+  var EXCLUDE_DOMAINS = ['satofull.co.jp', 'ecovacs.com', 'zozo.jp', 'neweraonlinestore.jp',
+    'apj.media', 'mail.instagram.com', 'vpass.ne.jp',
+    'mail.dazn.com', 'lixiltepco-sp.co.jp'];
+  var EXCLUDE_SUBJECTS = [];  // 将来用（件名でのノイズ除去。今は空）
+  // yawaragi自作アプリの自動通知（2026-07-14・社長dryRun判断）。件名がこのプレフィックスで
+  // 始まるものは important にも others にも入れない。from が keepfitlife.com 自尾のため
+  // IMPORTANT_DOMAINS で拾われる → 件名プレフィックス除外を important 判定より必ず先に評価する。
+  var EXCLUDE_SUBJECT_PREFIXES = ['【yawaragi', '【見学体験新規】'];
+
+  var addr = nmExtractSender_(from);
+  var subj = String(subject == null ? '' : subject);
+  var host = '';
+  var at = addr.lastIndexOf('@');
+  if (at >= 0) host = addr.slice(at + 1);
+
+  // ドメイン自尾一致（先頭 '.' 付き=末尾一致、無し=完全一致 or サブドメイン）。important/EXCLUDE共用。
+  function hostHit(entry) {
+    if (entry.charAt(0) === '.') {
+      return host.length >= entry.length && host.slice(-entry.length) === entry;
+    }
+    return (host === entry) || (host.length > entry.length + 1 && host.slice(-(entry.length + 1)) === '.' + entry);
+  }
+
+  // 最優先: 自作アプリ通知の件名プレフィックス除外（keepfitlife.com は IMPORTANT に残すので、
+  // ここで important 判定より先に落とさないと除外が効かない）。
+  for (var pfx = 0; pfx < EXCLUDE_SUBJECT_PREFIXES.length; pfx++) {
+    if (subj.indexOf(EXCLUDE_SUBJECT_PREFIXES[pfx]) === 0) return { important: false, matchedBy: [], excluded: true };
+  }
+
+  // 第1段: important判定（EXCLUDE_DOMAINSより先に確定させる＝important優先の安全設計）
+  var matchedBy = [];
+  for (var i = 0; i < IMPORTANT_DOMAINS.length; i++) {
+    if (hostHit(IMPORTANT_DOMAINS[i])) matchedBy.push('domain:' + IMPORTANT_DOMAINS[i]);
+  }
+  for (var k = 0; k < SUBJECT_KEYWORDS.length; k++) {
+    if (subj.indexOf(SUBJECT_KEYWORDS[k]) >= 0) matchedBy.push('subject:' + SUBJECT_KEYWORDS[k]);
+  }
+  // important該当は EXCLUDE を無視して優先（誤ってEXCLUDEに重要ドメインを入れても落とさない）
+  if (matchedBy.length > 0) return { important: true, matchedBy: matchedBy, excluded: false };
+
+  // important非該当のときだけ EXCLUDE 判定（該当は others からも除外＝完全に不可視化）
+  for (var e = 0; e < EXCLUDE_DOMAINS.length; e++) {
+    if (hostHit(EXCLUDE_DOMAINS[e])) return { important: false, matchedBy: [], excluded: true };
+  }
+  for (var x = 0; x < EXCLUDE_SUBJECTS.length; x++) {
+    if (subj.indexOf(EXCLUDE_SUBJECTS[x]) >= 0) return { important: false, matchedBy: [], excluded: true };
+  }
+
+  return { important: false, matchedBy: [], excluded: false };
+}
+
+// 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
+// sinceHours: 何時間前までの新着を見るか（既定24）。
+function checkNewMail(sinceHours) {
+  var hours = (typeof sinceHours === 'number' && sinceHours > 0) ? sinceHours : 24;
+  // newer_than は日単位。時間単位で絞れないので広めに取り、getDate() で二次フィルタする。
+  var days = Math.max(1, Math.ceil(hours / 24));
+  var threads = GmailApp.search('newer_than:' + days + 'd', 0, 50);
+  var cutoff = new Date(new Date().getTime() - hours * 60 * 60 * 1000);
+  var important = [];
+  var others = [];
+  for (var t = 0; t < threads.length; t++) {
+    var msgs = threads[t].getMessages();
+    for (var m = 0; m < msgs.length; m++) {
+      var msg = msgs[m];
+      var dt = msg.getDate();           // ← 本文は読まない
+      if (dt < cutoff) continue;        // sinceHours より古いメッセージは除外
+      var from = msg.getFrom();
+      var subject = msg.getSubject();
+      var cls = nmClassifyMail_(from, subject);
+      if (cls.excluded) continue;   // EXCLUDE該当（広告/メルマガ/カード通知等）は important にも others にも入れない
+      var dateStr = Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+      if (cls.important) {
+        important.push({ from: from, subject: subject, date: dateStr, matchedBy: cls.matchedBy });
+      } else {
+        others.push({ from: from, subject: subject, date: dateStr });
+      }
+    }
+  }
+  var result = { important: important, others: { count: others.length, items: others } };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+// 実弾テスト用ラッパー（2026-07-12追加）。GASエディタのプルダウンは引数を渡せないため、
+// checkNewMail(72) を引数付きで実行するためだけの薄いラッパー。ロジックは持たない。
+function testNewMail72() {
+  var result = checkNewMail(72);
+  Logger.log(JSON.stringify(result, null, 2));
+}
+
+
 // 利用者イベント削除（2026/5/21追加・カード+項目+連動タスクボードを一括削除）
 function deleteUserEvent(ss, data) {
   var id = String((data && data.id) || '').trim();
