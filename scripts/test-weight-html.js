@@ -142,5 +142,60 @@ ok(lastPost !== null, '取得済みなら自動同期でPOSTが飛ぶ');
 ok(!lastPost.body.data.weights[2026]['法浦武治'], '自動同期でも台帳外(法浦)は除外');
 ok(!!lastPost.body.data.weights[2026]['柳浦武治'], '自動同期で現役(柳浦)は送信');
 
+// ===== 9) 起動時の台帳自動取得（手間ゼロで送信ブロックを実質無効化） =====
+function newCallback(before) {
+  return Object.keys(window).find(k => k.indexOf('gasCallback_') === 0 && !before.has(k));
+}
+
+// 9a) 自動取得成功 → ledgerLoadedAt が立つ／現役・中止者反映／既存の体重データは消えない／バナー消える
+run('appData.users=[]; appData.terminated=[]; appData.ledgerLoadedAt=null;');
+run('appData.weights = ' + JSON.stringify({ 2026: { '既存太郎': { '7月': 55 }, '柳浦武治': { '7月': 83.8 } } }) + ';');
+const before9a = new Set(Object.keys(window));
+run('loadFromSpreadsheet({auto:true});');
+const cb9a = newCallback(before9a);
+ok(!!cb9a, '自動取得: JSONPコールバックを登録');
+ok(document.getElementById('ledgerStatus').style.display === 'block' &&
+   document.getElementById('ledgerStatus').textContent.indexOf('取得中') >= 0, '自動取得中はローディングバナー表示');
+window[cb9a]({ users: [
+  { name: '柳浦武治', kana: 'ヤナギウラタケハル', status: '', days: '月水', ampm: '午前' },
+  { name: '田中太郎', kana: 'タナカタロウ', status: '', days: '火', ampm: '午後' },
+  { name: '古田花子', kana: 'フルタハナコ', status: '中止', lastUseDate: '2026-05-31' }
+]});
+ok(window.eval('!!appData.ledgerLoadedAt'), '自動取得成功で ledgerLoadedAt が立つ');
+ok(window.eval('appData.users.length') === 2, '自動取得: 現役2名');
+ok(window.eval('appData.terminated.length') === 1, '自動取得: 中止者1名');
+ok(window.eval('appData.weights[2026]["既存太郎"]["7月"]') === 55, '自動取得で既存のローカル体重データが消えない');
+ok(document.getElementById('ledgerStatus').style.display === 'none', '自動取得成功でバナーは消える');
+
+// 9b) 自動取得成功後は 送信ブロックが発火しない（🔄を押さず全件送信できる）
+let lp9 = null;
+window.fetch = (url, o) => { if (o && o.method === 'POST') lp9 = { body: JSON.parse(o.body) }; return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+window.confirm = () => true;
+run('forceCloudSync();');
+ok(lp9 !== null, '自動取得後は🔄なしで全件送信できる（ブロック発火せず）');
+
+// 9c) 自動取得失敗（onerror）→ アプリ継続・ledgerLoadedAt立たず・エラーバナー・送信ブロック維持
+run('appData.users=[]; appData.terminated=[]; appData.ledgerLoadedAt=null;');
+run('appData.weights = ' + JSON.stringify({ 2026: { '既存太郎': { '7月': 55 } } }) + ';');
+run('loadFromSpreadsheet({auto:true});');
+const scr9 = Array.from(document.head.querySelectorAll('script')).filter(s => s.src && s.src.indexOf('script.google.com') >= 0).pop();
+ok(!!scr9 && typeof scr9.onerror === 'function', '自動取得: scriptにonerror設定');
+scr9.onerror();
+ok(window.eval('appData.ledgerLoadedAt') === null, '自動取得失敗: ledgerLoadedAt は立たない');
+ok(document.getElementById('ledgerStatus').className.indexOf('error') >= 0 &&
+   document.getElementById('ledgerStatus').textContent.indexOf('取得できませんでした') >= 0, '失敗時は再取得を促すエラーバナー');
+ok(window.eval('appData.weights[2026]["既存太郎"]["7月"]') === 55, '失敗してもローカル体重データは残る（アプリ継続）');
+lp9 = null;
+run('forceCloudSync();');
+ok(lp9 === null, '自動取得失敗時は送信ブロック維持（POSTなし）');
+
+// 9d) 失敗後の手動🔄リトライで復帰できる
+const before9d = new Set(Object.keys(window));
+run('loadFromSpreadsheet();'); // 手動（auto無し）
+const cb9d = newCallback(before9d);
+ok(!!cb9d, '手動リトライ: コールバック登録');
+window[cb9d]({ users: [{ name: '柳浦武治', kana: 'ヤナギウラタケハル', status: '' }] });
+ok(window.eval('!!appData.ledgerLoadedAt'), '手動🔄リトライ成功で復帰（ledgerLoadedAt）');
+
 console.log('\n==== weight-html(jsdom): ' + pass + ' PASS / ' + fail + ' FAIL ====');
 process.exit(fail === 0 ? 0 : 1);

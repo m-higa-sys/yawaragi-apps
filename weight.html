@@ -477,6 +477,15 @@
             align-self: center;
         }
         @media print { .filter-bar { display: none; } }
+
+        /* 台帳取得の状態バナー（自動取得のローディング/失敗を控えめに表示） */
+        .ledger-status {
+            display: none;
+            padding: 8px 16px; font-size: 14px; text-align: center;
+        }
+        .ledger-status.loading { background: #e3f2fd; color: #1565c0; }
+        .ledger-status.error   { background: #fff3e0; color: #b26a00; }
+        @media print { .ledger-status { display: none !important; } }
     </style>
 </head>
 <body>
@@ -494,6 +503,8 @@
         <button class="btn btn-white no-print" onclick="window.print()">🖨 印刷</button>
     </div>
 </div>
+
+<div class="ledger-status" id="ledgerStatus"></div>
 
 <div class="toolbar">
     <div class="stats">
@@ -992,18 +1003,45 @@ function sortUsers() {
     appData.users.sort((a, b) => (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja'));
 }
 
+// 台帳取得の状態バナー（自動取得のローディング/失敗を控えめに可視化）
+function setLedgerStatus(state) {
+    const el = document.getElementById('ledgerStatus');
+    if (!el) return;
+    if (state === 'loading') {
+        el.className = 'ledger-status loading';
+        el.textContent = '📋 利用者台帳を取得中…';
+        el.style.display = 'block';
+    } else if (state === 'error') {
+        el.className = 'ledger-status error';
+        el.textContent = '⚠ 台帳を取得できませんでした。🔄 を押して再取得してください';
+        el.style.display = 'block';
+    } else { // ok / hidden
+        el.style.display = 'none';
+        el.textContent = '';
+    }
+}
+
 // ============ 利用者台帳から取得（GAS JSONP方式 = サーバー不要） ============
-function loadFromSpreadsheet() {
-    showToast('📋 利用者台帳からデータ取得中...', '#2196F3');
+// opts.auto=true: 起動時の自動取得。フィードバックはトーストでなく状態バナーに出す（静かに・失敗は継続表示）。
+function loadFromSpreadsheet(opts) {
+    const auto = !!(opts && opts.auto);
+    if (auto) setLedgerStatus('loading');
+    else showToast('📋 利用者台帳からデータ取得中...', '#2196F3');
 
     const callbackName = 'gasCallback_' + Date.now();
     // includeEnded=1 で現役＋中止者（status/最終利用日つき）をまとめて取得（中止判定の単一ソース・改修2）
     const url = GAS_URL + '?callback=' + callbackName + '&includeEnded=1';
 
+    const fail = function(msg) {
+        // 取得失敗：アプリは止めない。未取得のまま（ledgerLoadedAtは更新しない）＝送信ブロックは維持。
+        if (auto) setLedgerStatus('error');
+        else showToast(msg, '#f44');
+    };
+
     const timeout = setTimeout(() => {
         delete window[callbackName];
         if (script.parentNode) script.parentNode.removeChild(script);
-        showToast('⚠ 取得に時間がかかっています。ネット接続を確認してください', '#f44');
+        fail('⚠ 取得に時間がかかっています。ネット接続を確認してください');
     }, 15000);
 
     window[callbackName] = function(data) {
@@ -1025,18 +1063,20 @@ function loadFromSpreadsheet() {
             });
 
             if (activeUsers.length === 0 && terminated.length === 0) {
-                showToast('⚠ 利用者が見つかりません', '#f44');
+                fail('⚠ 利用者が見つかりません');
                 return;
             }
+            // 台帳は氏名・status（現役/中止）のみ上書き。weights/heights（体重・身長）は一切触らない＝ローカル入力は消えない。
             mergeUsers(activeUsers);
             appData.terminated = terminated;
-            appData.ledgerLoadedAt = new Date().toISOString(); // 台帳照合の許可リストが揃った印→送信フィルタ有効化
+            appData.ledgerLoadedAt = new Date().toISOString(); // 台帳照合の許可リストが揃った印→送信ブロック解除・フィルタ有効化
             saveData();
             renderTable();
-            showToast(`✅ ${appData.users.length}名（中止者${terminated.length}名）を取得しました`, '#4CAF50');
+            if (auto) setLedgerStatus('ok');
+            else showToast(`✅ ${appData.users.length}名（中止者${terminated.length}名）を取得しました`, '#4CAF50');
         } catch(err) {
-            showToast('⚠ データの解析に失敗しました', '#f44');
             console.error(err);
+            fail('⚠ データの解析に失敗しました');
         }
     };
 
@@ -1045,7 +1085,7 @@ function loadFromSpreadsheet() {
     script.onerror = function() {
         clearTimeout(timeout);
         delete window[callbackName];
-        showToast('⚠ 取得失敗。ネット接続を確認してください', '#f44');
+        fail('⚠ 取得失敗。ネット接続を確認してください');
     };
     document.head.appendChild(script);
 }
@@ -1797,6 +1837,9 @@ loadData();
 initYearSelect();
 renderTable();
 cloudLoad().then(function(){ renderTable(); });
+// 起動時に台帳を自動取得（毎回のリロードで1回）。成功で送信ブロックは実質発火しなくなる。
+// 失敗してもアプリは止めず、ローカル閲覧・入力は可能・送信ブロックは維持（バナーで再取得を促す）。
+loadFromSpreadsheet({ auto: true });
 
 // タブが非表示→表示に戻った時に自動でクラウド再取得（マルチデバイス間の手動リロード不要化）
 document.addEventListener('visibilitychange', function() {
