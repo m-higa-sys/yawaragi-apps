@@ -1157,6 +1157,14 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'monthBoard') {
     return monthBoard(e);
   }
+  // 新着メールボード（checkNewMail(168)のimportantから対応済みを除外・morningDigest Phase2-A）2026-07-14
+  if (e && e.parameter && e.parameter.action === 'getNewMailBoard') {
+    return getNewMailBoard(e);
+  }
+  // 新着メール 対応済みにする（messageId単位・冪等・read-back検証）2026-07-14
+  if (e && e.parameter && e.parameter.action === 'completeNewMail') {
+    return completeNewMail(e);
+  }
   if (e && e.parameter && e.parameter.action === 'teireiList') {
     return respond(teireiListAction_(SpreadsheetApp.openById(SS_ID), _shiftDateParam_(e)), e.parameter.callback);
   }
@@ -13260,6 +13268,26 @@ function nmClassifyMail_(from, subject) {
   return { important: false, matchedBy: [], excluded: false };
 }
 
+// メタデータ配列（{id, from, subject, date}）を important / others に仕分ける純関数。
+// 各要素に Gmail の messageId（id）を含める。分類は nmClassifyMail_（本文非依存）。
+// 重複排除はしない ― from/subject/date が同一でも id が違えば別メールso全部残す
+// （住信SBIの別口座2通のように、片方を消すと見落としになるため。id が一意キー）。
+function nmSortItems_(msgs) {
+  var important = [];
+  var others = [];
+  for (var i = 0; i < msgs.length; i++) {
+    var m = msgs[i];
+    var cls = nmClassifyMail_(m.from, m.subject);
+    if (cls.excluded) continue;   // EXCLUDE該当（広告/メルマガ/カード通知/自作アプリ通知）は両方に入れない
+    if (cls.important) {
+      important.push({ id: m.id, from: m.from, subject: m.subject, date: m.date, matchedBy: cls.matchedBy });
+    } else {
+      others.push({ id: m.id, from: m.from, subject: m.subject, date: m.date });
+    }
+  }
+  return { important: important, others: { count: others.length, items: others } };
+}
+
 // 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
 // sinceHours: 何時間前までの新着を見るか（既定24）。
 function checkNewMail(sinceHours) {
@@ -13268,27 +13296,23 @@ function checkNewMail(sinceHours) {
   var days = Math.max(1, Math.ceil(hours / 24));
   var threads = GmailApp.search('newer_than:' + days + 'd', 0, 50);
   var cutoff = new Date(new Date().getTime() - hours * 60 * 60 * 1000);
-  var important = [];
-  var others = [];
+  var items = [];
   for (var t = 0; t < threads.length; t++) {
     var msgs = threads[t].getMessages();
     for (var m = 0; m < msgs.length; m++) {
       var msg = msgs[m];
       var dt = msg.getDate();           // ← 本文は読まない
       if (dt < cutoff) continue;        // sinceHours より古いメッセージは除外
-      var from = msg.getFrom();
-      var subject = msg.getSubject();
-      var cls = nmClassifyMail_(from, subject);
-      if (cls.excluded) continue;   // EXCLUDE該当（広告/メルマガ/カード通知等）は important にも others にも入れない
-      var dateStr = Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
-      if (cls.important) {
-        important.push({ from: from, subject: subject, date: dateStr, matchedBy: cls.matchedBy });
-      } else {
-        others.push({ from: from, subject: subject, date: dateStr });
-      }
+      // getId() はメッセージのメタデータ（本文ではない）。morningDigest の一意キーに使う。
+      items.push({
+        id: msg.getId(),
+        from: msg.getFrom(),
+        subject: msg.getSubject(),
+        date: Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm')
+      });
     }
   }
-  var result = { important: important, others: { count: others.length, items: others } };
+  var result = nmSortItems_(items);
   Logger.log(JSON.stringify(result, null, 2));
   return result;
 }
@@ -13298,6 +13322,166 @@ function checkNewMail(sinceHours) {
 function testNewMail72() {
   var result = checkNewMail(72);
   Logger.log(JSON.stringify(result, null, 2));
+}
+
+// getNewMailBoard 動作確認用ラッパー（GASエディタ実行でログ確認・2026-07-14）。
+// getNewMailBoard は respond() = ContentService の TextOutput を返すため、そのまま
+// stringify すると {} になる。getContent() で中身(JSON文字列)を取り出して整形表示する。
+function testNewMailBoard() {
+  var r = getNewMailBoard();
+  var out = JSON.parse(r.getContent());
+  console.log(JSON.stringify(out, null, 2));
+  return out;
+}
+
+// completeNewMail 動作確認用ラッパー（GASエディタ実行・2026-07-14）。
+// completeNewMail(e) は e.parameter.id / e.parameter.by を読む＝{parameter:{id,by}} を渡す。
+// respond() の TextOutput は getContent() で取り出す。実行後にボード件数が1減ることを確認する。
+// テスト対象は Money Forward「出金のお知らせ」（業務影響ゼロの安全なメール）。
+function testCompleteNewMail() {
+  var TEST_ID = '19f5413af2a501b6';
+  var r = completeNewMail({ parameter: { id: TEST_ID, by: '比嘉' } });
+  console.log('complete: ' + JSON.stringify(JSON.parse(r.getContent()), null, 2));
+
+  var b = JSON.parse(getNewMailBoard().getContent());
+  console.log('board count after: ' + b.count);
+}
+
+// =============================================================
+// 新着メール「対応済み」バックエンド（morningDigest Phase2-A・2026-07-14）
+//   teirei（定例タスク完了記録・コード.js:7314付近）の「完了記録シート方式」を下敷きにする。
+//   ★伝達ボードの既読(readBy列)は流用不可＝メールはGmailから動的取得でシートに行として存在しないため。
+//   一意キーは Gmail messageId（checkNewMail が id で返す・Phase1）。
+//   純関数3つは scripts/test-newmail-check.js と同一実装（二重持ち・あちらが正本）。
+// =============================================================
+var NEWMAIL_DONE_SHEET = '新着メール対応済み';
+var NEWMAIL_DONE_HEADER = ['messageId', 'doneAt', 'by'];
+var NEWMAIL_WINDOW_HOURS = 168;   // 表示対象の時間窓（7日）
+var NEWMAIL_PRUNE_DAYS = 30;      // 完了記録の掃除境界（30日より古い記録を刈る）
+
+// --- 純関数（テスト対象・GmailApp/Sheet非依存）---
+// important 配列から、対応済み messageId（doneIds）を id 単位で除外する。
+// from/subject/date が同一でも id が違えば別メールso残す（住信SBIの見落とし防止の核心）。
+function nmFilterUndone_(items, doneIds) {
+  var done = {};
+  for (var i = 0; i < doneIds.length; i++) done[doneIds[i]] = true;
+  var out = [];
+  for (var j = 0; j < items.length; j++) {
+    if (!done[items[j].id]) out.push(items[j]);
+  }
+  return out;
+}
+// 完了記録に id を追記すべきか（既に登録済みなら false＝二重追記しない・冪等）。
+function nmShouldAppendDone_(doneIds, id) {
+  return doneIds.indexOf(id) === -1;
+}
+// 完了記録の行から、doneAt が maxAgeDays より古いものの行番号配列を返す（掃除対象）。
+// パース不能な doneAt は刈らない（安全側＝誤って新しい記録を消さない）。
+function nmOldDoneRows_(rows, nowMs, maxAgeDays) {
+  var cutoff = nowMs - maxAgeDays * 24 * 60 * 60 * 1000;
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var t = Date.parse(rows[i].doneAt);
+    if (!isNaN(t) && t < cutoff) out.push(rows[i].row);
+  }
+  return out;
+}
+
+// --- I/O（GAS固有）---
+// 完了記録シートを作る（無ければ）。ヘッダ＋太字＋frozen＋messageId列を文字列書式に。
+function setupNewMailDoneSheet_(ss) {
+  var sheet = ss.getSheetByName(NEWMAIL_DONE_SHEET);
+  var created = false;
+  if (!sheet) {
+    sheet = ss.insertSheet(NEWMAIL_DONE_SHEET);
+    sheet.getRange(1, 1, 1, NEWMAIL_DONE_HEADER.length).setValues([NEWMAIL_DONE_HEADER]);
+    sheet.getRange(1, 1, 1, NEWMAIL_DONE_HEADER.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    created = true;
+  }
+  sheet.getRange('A:A').setNumberFormat('@'); // messageId を文字列のまま保持（数値化・日付化防止）
+  return { ok: true, sheet: NEWMAIL_DONE_SHEET, created: created };
+}
+// 対応済み messageId の配列を読む。シート無し/空は []。
+function readNewMailDoneIds_(ss) {
+  var sheet = ss.getSheetByName(NEWMAIL_DONE_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var values = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var id = String(values[i][0] || '').trim();
+    if (id) out.push(id);
+  }
+  return out;
+}
+// 完了記録の行（prune用・row番号付き）を読む。シート無し/空は []。
+function readNewMailDoneRows_(ss) {
+  var sheet = ss.getSheetByName(NEWMAIL_DONE_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var values = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var id = String(values[i][0] || '').trim();
+    if (!id) continue;
+    out.push({ messageId: id, doneAt: String(values[i][1] || ''), by: String(values[i][2] || ''), row: i + 1 });
+  }
+  return out;
+}
+
+// API: 新着メールボード。checkNewMail(168) の important から対応済みを除外して返す（others は返さない）。
+function getNewMailBoard(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var ss = SpreadsheetApp.openById(SS_ID);
+  setupNewMailDoneSheet_(ss); // 初回自動生成
+  var mail = checkNewMail(NEWMAIL_WINDOW_HOURS);
+  var doneIds = readNewMailDoneIds_(ss);
+  var items = nmFilterUndone_(mail.important || [], doneIds);
+  return respond({
+    ok: true,
+    windowHours: NEWMAIL_WINDOW_HOURS,
+    count: items.length,
+    items: items
+  }, callback);
+}
+// API: メールを「対応済み」にする。冪等（既登録は追記せず）＋read-back検証（teirei完了に倣う）。
+function completeNewMail(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var id = String((e && e.parameter && e.parameter.id) || '').trim();
+  var by = String((e && e.parameter && e.parameter.by) || 'api').trim();
+  if (!id) return respond({ ok: false, error: 'missing_id' }, callback);
+  var ss = SpreadsheetApp.openById(SS_ID);
+  setupNewMailDoneSheet_(ss);
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (err) { return respond({ ok: false, error: 'lock_timeout' }, callback); }
+  try {
+    var doneIds = readNewMailDoneIds_(ss);
+    if (!nmShouldAppendDone_(doneIds, id)) {
+      return respond({ ok: true, id: id, completed: true, alreadyDone: true, verified: true }, callback);
+    }
+    var sheet = ss.getSheetByName(NEWMAIL_DONE_SHEET);
+    sheet.appendRow([id, Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'), by]);
+    SpreadsheetApp.flush();
+    if (readNewMailDoneIds_(ss).indexOf(id) === -1) {
+      return respond({ ok: false, error: 'verify_failed', id: id, verified: false }, callback);
+    }
+    return respond({ ok: true, id: id, completed: true, alreadyDone: false, verified: true }, callback);
+  } finally { lock.releaseLock(); }
+}
+// 掃除: doneAt が30日より古い完了記録を削除。★トリガー登録はしない（別GO）。手動/将来トリガーで呼ぶ。
+function pruneNewMailDone(ss) {
+  ss = ss || SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName(NEWMAIL_DONE_SHEET);
+  if (!sheet) return { ok: true, deleted: 0, note: 'no_sheet' };
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch (err) { return { ok: false, error: 'lock_timeout' }; }
+  try {
+    var rows = readNewMailDoneRows_(ss);
+    var toDelete = nmOldDoneRows_(rows, new Date().getTime(), NEWMAIL_PRUNE_DAYS);
+    toDelete.sort(function (a, b) { return b - a; }); // 下から消して行番号ズレを防ぐ
+    for (var i = 0; i < toDelete.length; i++) sheet.deleteRow(toDelete[i]);
+    SpreadsheetApp.flush();
+    return { ok: true, deleted: toDelete.length };
+  } finally { lock.releaseLock(); }
 }
 
 

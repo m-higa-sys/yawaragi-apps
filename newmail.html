@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭・genba型/自己完結・shared.js不要） -->
+    <!-- version.txt を取得し、現URLの ?v= と違えば1回だけ最新版へ location.replace する -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) {
+                        location.replace(buildVersionedUrl(location.href, latest));
+                    }
+                })
+                .catch(function () { /* オフライン等は no-op で固まらせない */ });
+        } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
+    })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>新着メール｜やわらぎ</title>
+<style>
+  :root{
+    --ground:#eef2f6; --surface:#ffffff; --surface-2:#f5f8fb;
+    --ink:#243239; --ink-2:#516470; --muted:#93a3ad;
+    --accent:#2c7a7b; --accent-soft:#e2f0ef;
+    --line:#e3e9ee; --chip-bg:#eceff1; --chip-ink:#546e7a;
+    --crit:#e04338; --crit-bg:#fcebe9; --crit-line:#e04338;
+    --warn:#e08a1e; --warn-bg:#fdf1df; --warn-line:#f0a83a;
+    --calm:#9aa8b1; --calm-line:#c4ced4;
+    --ok:#2e9e78; --ok-bg:#e4f4ec;
+    --shadow:0 1px 3px rgba(38,55,70,.10),0 1px 2px rgba(38,55,70,.06);
+    --radius:13px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#111820; --surface:#1b232b; --surface-2:#212b34;
+      --ink:#e7eef3; --ink-2:#a2b3bf; --muted:#6f8290;
+      --accent:#4db6ac; --accent-soft:#1e2f30;
+      --line:#2b353e; --chip-bg:#28333c; --chip-ink:#a9bac6;
+      --crit:#ff7168; --crit-bg:#3a2220; --crit-line:#c74a42;
+      --warn:#e6ab5b; --warn-bg:#33291a; --warn-line:#8a6a35;
+      --calm:#7d8d97; --calm-line:#3a454e;
+      --ok:#57c39a; --ok-bg:#1e2f28;
+      --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif;
+    -webkit-font-smoothing:antialiased; line-height:1.5; font-feature-settings:"palt";
+  }
+  .wrap{max-width:720px; margin:0 auto; padding:18px 14px 60px;}
+
+  .head{
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+    padding-bottom:10px; margin-bottom:6px; border-bottom:2px solid var(--line);
+  }
+  .head .ttl{font-size:1.5rem; font-weight:800; line-height:1; color:var(--ink);}
+  .head .cnt{font-size:1.1rem; font-weight:800; color:var(--accent); border:1.5px solid var(--accent); border-radius:8px; padding:2px 10px; align-self:center; font-variant-numeric:tabular-nums;}
+  .head .rel{margin-left:auto; align-self:center;}
+  .rel{width:34px; height:34px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--accent); font-size:1.1rem; font-weight:800; cursor:pointer; line-height:1; box-shadow:var(--shadow);}
+  .rel:active{transform:translateY(1px);}
+  .sub{font-size:.8rem; color:var(--muted); margin:6px 2px 16px;}
+  .loadInd{font-size:.78rem; font-weight:800; color:var(--accent); margin-left:8px;}
+
+  /* メールカード */
+  .mailcard{
+    background:var(--surface); border-radius:var(--radius); padding:12px 14px; margin-bottom:9px;
+    box-shadow:var(--shadow); border:1px solid var(--line); border-left:5px solid var(--calm-line);
+    transition:opacity .3s, transform .3s;
+  }
+  .mailcard.age-warn{border-left-color:var(--warn-line);}
+  .mailcard.age-crit{border-left-color:var(--crit-line);}
+  .mailcard.pending{opacity:.62;}
+  .mailcard.removed{opacity:0; transform:translateX(20px);}
+  .mc-top{display:flex; align-items:flex-start; gap:10px;}
+  .mc-subj{font-weight:800; color:var(--ink); font-size:1rem; flex:1; word-break:break-word;}
+  .agebadge{font-size:.72rem; font-weight:800; border-radius:6px; padding:3px 9px; white-space:nowrap; align-self:flex-start;
+    background:var(--chip-bg); color:var(--chip-ink);}
+  .agebadge.warn{background:var(--warn-bg); color:var(--warn);}
+  .agebadge.crit{background:var(--crit-bg); color:var(--crit);}
+  .mc-meta{font-size:.8rem; color:var(--ink-2); margin-top:5px; word-break:break-word;}
+  .mc-meta .dt{color:var(--muted); font-variant-numeric:tabular-nums;}
+  .mc-labels{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px;}
+  .lbl{font-size:.72rem; font-weight:800; border-radius:5px; padding:2px 8px; white-space:nowrap; background:var(--accent-soft); color:var(--accent);}
+  .mc-act{display:flex; align-items:center; gap:10px; margin-top:11px;}
+  .doneBtn{
+    padding:8px 18px; border-radius:9px; border:1.5px solid var(--accent); background:var(--accent-soft);
+    color:var(--accent); font-size:.88rem; font-weight:800; cursor:pointer; font-family:inherit;
+  }
+  .doneBtn:active{transform:translateY(1px);}
+  .pendmsg{font-size:.83rem; font-weight:800; color:var(--ok);}
+  .undoBtn{
+    padding:7px 14px; border-radius:9px; border:1.5px solid var(--warn-line); background:var(--warn-bg);
+    color:var(--warn); font-size:.83rem; font-weight:800; cursor:pointer; font-family:inherit;
+  }
+  .undoBtn:active{transform:translateY(1px);}
+  .cardErr{font-size:.76rem; color:var(--crit); font-weight:700; margin-top:6px;}
+
+  .emptybox{text-align:center; color:var(--ok); background:var(--ok-bg); border:1px solid var(--ok); border-radius:var(--radius); padding:26px 14px; font-size:1rem; font-weight:800; margin-top:10px;}
+  .errcard{background:var(--crit-bg); border:1px solid var(--crit-line); border-radius:var(--radius); padding:12px 14px; margin:14px 0; font-size:.85rem; color:var(--crit); font-weight:700;}
+  .loading{text-align:center; color:var(--muted); padding:44px 0; font-size:.95rem;}
+  .foot{margin-top:34px; text-align:center; font-size:.72rem; color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <span class="ttl">📧 新着メール</span>
+    <span class="cnt" id="cnt" style="display:none;">0</span>
+    <button class="rel" id="reload" type="button" aria-label="再読込">↻</button>
+    <span class="loadInd" id="loadInd" aria-live="polite"></span>
+  </div>
+  <div class="sub">直近7日の「見るべきメール」だけ表示。対応したらタップで消せます（本文は読み込みません）</div>
+
+  <div id="board"><div class="loading">📧 メールを確認しています…（数秒かかります）</div></div>
+
+  <div class="foot">やわらぎ 新着メール ／ 差出人・件名・日時のみ（本文非読込）</div>
+</div>
+
+<script>
+  // ===== 設定 =====
+  var GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+  var UNDO_MS = 5000;  // 「対応済み」タップ後、APIを叩くまでの猶予（この間は取り消せる＝誤タップ救済）
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  // 対応者名：社長個人用so固定でよい。他アプリと同じ localStorage 'yawaragi_staff' があれば使う。
+  function getBy(){ try { return (localStorage.getItem('yawaragi_staff') || '').trim() || '比嘉'; } catch(e){ return '比嘉'; } }
+
+  // ===== 純関数（テスト対象・DOM非依存）=====
+  // matchedBy（['domain:.lg.jp','subject:請求書']）→ 人が読める短いラベル配列（重複除去）。
+  // ドメインはそのまま出さず既知ラベルに変換。件名キーワードはそのまま。未知ドメインはドメイン名にフォールバック。
+  var NM_DOMAIN_LABEL = {
+    'domain:.lg.jp':'行政', 'domain:.go.jp':'行政',
+    'domain:densan-s.co.jp':'電算', 'domain:carezou.net':'けあ蔵',
+    'domain:job-medley.com':'求人', 'domain:moneyforward.com':'マネフォ',
+    'domain:e-seikyuu.jp':'請求', 'domain:jm-academy.jp':'研修',
+    'domain:keepfitlife.com':'社内'
+  };
+  function nmLabel_(matchedBy){
+    var out = [], seen = {};
+    (matchedBy || []).forEach(function(m){
+      var lbl;
+      if (NM_DOMAIN_LABEL[m]) lbl = NM_DOMAIN_LABEL[m];
+      else if (m.indexOf('subject:') === 0) lbl = m.slice(8);              // 件名キーワードそのまま
+      else if (m.indexOf('domain:') === 0) lbl = m.slice(7).replace(/^\./, ''); // 未知ドメインはドメイン名
+      else lbl = m;
+      if (lbl && !seen[lbl]) { seen[lbl] = true; out.push(lbl); }
+    });
+    return out;
+  }
+  // 'yyyy-MM-dd HH:mm' と現在時刻(ms)から経過日数（切り捨て）。パース不能は null。
+  function nmDaysAgo_(dateStr, nowMs){
+    var t = Date.parse(String(dateStr).replace(' ', 'T'));
+    if (isNaN(t)) return null;
+    return Math.floor((nowMs - t) / 86400000);
+  }
+  // 経過日数→強調クラス（古いほど強調）。0-1日=calm / 2-3日=warn / 4日以上=crit。
+  function nmAgeClass_(days){
+    if (days == null) return 'calm';
+    if (days >= 4) return 'crit';
+    if (days >= 2) return 'warn';
+    return 'calm';
+  }
+
+  // ===== 描画 =====
+  var ITEMS = [];
+
+  function ageBadgeText_(days){
+    if (days == null) return '日時不明';
+    if (days <= 0) return '今日';
+    return days + '日経過';
+  }
+
+  function cardHtml(it, nowMs){
+    var days = nmDaysAgo_(it.date, nowMs);
+    var ageCls = nmAgeClass_(days);
+    var labels = nmLabel_(it.matchedBy);
+    var lblHtml = labels.map(function(l){ return '<span class="lbl">' + esc(l) + '</span>'; }).join('');
+    return '<div class="mailcard age-' + ageCls + '" data-id="' + esc(it.id) + '">'
+      + '<div class="mc-top"><span class="mc-subj">' + esc(it.subject || '(件名なし)') + '</span>'
+      + '<span class="agebadge ' + ageCls + '">' + esc(ageBadgeText_(days)) + '</span></div>'
+      + '<div class="mc-meta">' + esc(it.from || '') + ' <span class="dt">· ' + esc(it.date || '') + '</span></div>'
+      + (lblHtml ? '<div class="mc-labels">' + lblHtml + '</div>' : '')
+      + '<div class="mc-act"><button class="doneBtn" type="button">対応済み</button></div>'
+      + '</div>';
+  }
+
+  function updateCount(){
+    var el = document.getElementById('cnt');
+    var n = document.querySelectorAll('#board .mailcard').length;
+    el.style.display = '';
+    el.textContent = n + '件';
+    // 全部消えたら空表示へ
+    if (n === 0 && ITEMS.length >= 0) {
+      var board = document.getElementById('board');
+      if (!board.querySelector('.emptybox')) {
+        board.innerHTML = '<div class="emptybox">✅ 対応が必要な新着メールはありません</div>';
+      }
+    }
+  }
+
+  function render(resp){
+    var board = document.getElementById('board');
+    ITEMS = (resp && resp.items) ? resp.items : [];
+    document.getElementById('cnt').style.display = '';
+    document.getElementById('cnt').textContent = ITEMS.length + '件';
+    if (!ITEMS.length){
+      board.innerHTML = '<div class="emptybox">✅ 対応が必要な新着メールはありません</div>';
+      return;
+    }
+    var nowMs = Date.now();
+    // 古いものほど上（経過日数の降順）。放置が長いほど先に目に入る。
+    var sorted = ITEMS.slice().sort(function(a, b){
+      var da = nmDaysAgo_(a.date, nowMs), db = nmDaysAgo_(b.date, nowMs);
+      if (da == null) da = -1; if (db == null) db = -1;
+      return db - da;
+    });
+    board.innerHTML = sorted.map(function(it){ return cardHtml(it, nowMs); }).join('');
+    bindCards();
+  }
+
+  function bindCards(){
+    var btns = document.querySelectorAll('#board .mailcard .doneBtn');
+    for (var i = 0; i < btns.length; i++){
+      (function(btn){
+        btn.addEventListener('click', function(){
+          var card = btn.closest('.mailcard');
+          onDone(card.getAttribute('data-id'), card);
+        });
+      })(btns[i]);
+    }
+  }
+
+  function showDoneButton(card){
+    var act = card.querySelector('.mc-act');
+    act.innerHTML = '<button class="doneBtn" type="button">対応済み</button>';
+    act.querySelector('.doneBtn').addEventListener('click', function(){
+      onDone(card.getAttribute('data-id'), card);
+    });
+  }
+
+  // 「対応済み」タップ → UNDO_MS の猶予つき（この間に取り消せる）。猶予後に completeNewMail を叩く。
+  function onDone(id, card){
+    card.classList.add('pending');
+    var act = card.querySelector('.mc-act');
+    var timer = setTimeout(function(){ doComplete(id, card); }, UNDO_MS);
+    act.innerHTML = '<span class="pendmsg">対応済みにします…</span>'
+      + '<button class="undoBtn" type="button">取り消し</button>';
+    act.querySelector('.undoBtn').addEventListener('click', function(){
+      clearTimeout(timer);
+      card.classList.remove('pending');
+      showDoneButton(card);
+    });
+  }
+
+  // completeNewMail を JSONP で叩く（GET=JSONP・genba/board と同型）。成功でカードを消す。
+  function doComplete(id, card){
+    var cbName = 'nmDoneCb_' + Date.now() + '_' + Math.floor(ITEMS.length + document.querySelectorAll('#board .mailcard').length);
+    var done = false;
+    var s = null;
+    var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); onFail(card, 'タイムアウト'); }, 20000);
+    function cleanup(){ try { delete window[cbName]; } catch(e){ window[cbName] = undefined; } if (s && s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
+    window[cbName] = function(resp){
+      if (done) return; done = true; cleanup();
+      if (resp && resp.ok){
+        card.classList.add('removed');
+        setTimeout(function(){ if (card.parentNode) card.parentNode.removeChild(card); updateCount(); }, 320);
+      } else {
+        onFail(card, (resp && resp.error) || '不明なエラー');
+      }
+    };
+    s = document.createElement('script');
+    s.src = GAS + '?action=completeNewMail&id=' + encodeURIComponent(id)
+      + '&by=' + encodeURIComponent(getBy()) + '&callback=' + cbName + '&t=' + Date.now();
+    s.onerror = function(){ if (done) return; done = true; cleanup(); onFail(card, '通信エラー'); };
+    document.head.appendChild(s);
+  }
+  function onFail(card, msg){
+    card.classList.remove('pending');
+    showDoneButton(card);
+    var act = card.querySelector('.mc-act');
+    var e = document.createElement('div');
+    e.className = 'cardErr';
+    e.textContent = '⚠ 対応済みにできませんでした：' + msg + '（もう一度お試しください）';
+    act.parentNode.appendChild(e);
+  }
+
+  function showError(msg){
+    document.getElementById('board').innerHTML = '<div class="errcard">⚠ 新着メールの取得に失敗しました'
+      + (msg ? '：' + esc(msg) : '') + '（↻再読込を試してください）</div>';
+  }
+
+  // ===== データ取得（getNewMailBoard・JSONP）=====
+  function setLoad(on){ var el = document.getElementById('loadInd'); if (!el) return; el.textContent = on ? '⟳ 確認中…' : ''; }
+  var reqId = 0;
+  function fetchBoard(){
+    var myReq = ++reqId;
+    setLoad(true);
+    document.getElementById('board').innerHTML = '<div class="loading">📧 メールを確認しています…（数秒かかります）</div>';
+    var cbName = 'nmBoardCb_' + Date.now() + '_' + myReq;
+    var done = false, s = null;
+    var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); if (myReq === reqId){ setLoad(false); showError('タイムアウト（メール確認に時間がかかっています）'); } }, 30000);
+    function cleanup(){ try { delete window[cbName]; } catch(e){ window[cbName] = undefined; } if (s && s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
+    window[cbName] = function(resp){
+      if (done) return; done = true; cleanup();
+      if (myReq !== reqId) return;
+      setLoad(false);
+      if (resp && resp.ok === false){ showError(resp.error || '不明なエラー'); return; }
+      render(resp);
+    };
+    s = document.createElement('script');
+    s.src = GAS + '?action=getNewMailBoard&callback=' + cbName + '&t=' + Date.now();
+    s.onerror = function(){ if (done) return; done = true; cleanup(); if (myReq === reqId){ setLoad(false); showError('通信エラー'); } };
+    document.head.appendChild(s);
+  }
+
+  document.getElementById('reload').addEventListener('click', function(){ fetchBoard(); });
+
+  // 本番: 起動時に1回叩いて描画
+  fetchBoard();
+</script>
+</body>
+</html>
