@@ -13034,7 +13034,8 @@ function nmExtractSender_(from) {
 function nmClassifyMail_(from, subject) {
   // 第1段: この差出人ドメインに自尾一致したら important
   var IMPORTANT_DOMAINS = ['.lg.jp', '.go.jp', 'carezou.net', 'densan-s.co.jp',
-    'moneyforward.com', 'e-seikyuu.jp', 'jm-academy.jp', 'keepfitlife.com'];
+    'moneyforward.com', 'e-seikyuu.jp', 'jm-academy.jp', 'keepfitlife.com',
+    'job-medley.com'];
   // 第1段: この件名キーワードを含んだら important
   var SUBJECT_KEYWORDS = ['請求書', '領収書', '補助金', '助成金', '交付決定', '口座振替', '応募', '国保伝送'];
   // ノイズ除去用の除外ドメイン（2026-07-12・社長dryRun判断）。others を毎日埋める広告/メルマガ/
@@ -13042,7 +13043,8 @@ function nmClassifyMail_(from, subject) {
   // 情報源が出たら該当行を外すだけ。三井住友カード(vpass.ne.jp)も社長判断で除外（不正利用検知は
   // カード会社アプリ・電話・明細で別途できるため）。
   var EXCLUDE_DOMAINS = ['satofull.co.jp', 'ecovacs.com', 'zozo.jp', 'neweraonlinestore.jp',
-    'apj.media', 'mail.instagram.com', 'vpass.ne.jp'];
+    'apj.media', 'mail.instagram.com', 'vpass.ne.jp',
+    'mail.dazn.com', 'lixiltepco-sp.co.jp'];
   var EXCLUDE_SUBJECTS = [];  // 将来用（件名でのノイズ除去。今は空）
 
   var addr = nmExtractSender_(from);
