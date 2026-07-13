@@ -1153,6 +1153,10 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'sessionBoard') {
     return sessionBoard(e);
   }
+  // 月次ボード（指定月×書類種別ごとの対象/実施済み集計・判定はmonth-board-core.jsの純関数）2026-07-12
+  if (e && e.parameter && e.parameter.action === 'monthBoard') {
+    return monthBoard(e);
+  }
   if (e && e.parameter && e.parameter.action === 'teireiList') {
     return respond(teireiListAction_(SpreadsheetApp.openById(SS_ID), _shiftDateParam_(e)), e.parameter.callback);
   }
@@ -1209,6 +1213,26 @@ function doGet(e) {
   // 伝達ボード：未完了に戻す（done=false・doneAt/doneByクリア・検証付き・JSONP・2026-06-21）
   if (e && e.parameter && e.parameter.action === 'reopenDengonMessage') {
     return respond(reopenDengonMessage(SpreadsheetApp.openById(SS_ID), e.parameter.id), e.parameter.callback);
+  }
+  // 伝達ボード：スタッフマスタ取得（既読チップ・宛先算出用・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'dengon_staff_master') {
+    return respond({ ok: true, staff: getDengonStaffMaster(SpreadsheetApp.openById(SS_ID)) }, e.parameter.callback);
+  }
+  // 伝達ボード：スタッフマスタ初期セットアップ（新シート＋11行・冪等・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'setupDengonStaffMaster') {
+    return respond(setupDengonStaffMaster(SpreadsheetApp.openById(SS_ID)), e.parameter.callback);
+  }
+  // 伝達ボード：既読にする（readByに1名追加・recipients照合＝不変条件3・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'mark_dengon_read') {
+    return respond(markDengonRead(SpreadsheetApp.openById(SS_ID), e.parameter.id, e.parameter.name, false), e.parameter.callback);
+  }
+  // 伝達ボード：既読取り消し（readByから1名除去・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'unmark_dengon_read') {
+    return respond(markDengonRead(SpreadsheetApp.openById(SS_ID), e.parameter.id, e.parameter.name, true), e.parameter.callback);
+  }
+  // 伝達ボード：一度きりのマイグレーション（既存行の空recipientsをマスタで確定・冪等・JSONP・2026-07-12）
+  if (e && e.parameter && e.parameter.action === 'migrateDengonRecipients') {
+    return respond(migrateDengonRecipients_(SpreadsheetApp.openById(SS_ID)), e.parameter.callback);
   }
   // 伝達ボード：掃除用 削除（db_ で始まるテスト/誤投稿idのみ・実データは保護・2026-06-18）
   if (e && e.parameter && e.parameter.action === 'deleteDengonMessage') {
@@ -15118,12 +15142,15 @@ function appregistryMigrateLauncherV2() {
 
 // =============================================================
 // 伝達ボード（社長⇄スタッフ⇄スタッフ 3方向メッセージ板・2026-06-18）
-//   シート「伝達ボード」列=id/from/to/body/deadline/createdAt/done/doneAt/doneBy
-//   純関数の正本は scripts/test-dengon-board.js（34テストPASS）と同一実装（二重持ち）。
+//   シート「伝達ボード」列=id/from/to/body/deadline/createdAt/done/doneAt/doneBy/recipients/readBy
+//   純関数の正本は genba.html 側（PhaseA・31テストPASS）と同一実装（二重持ち）。
+//   ※旧 scripts/test-dengon-board.js は消失（2026-07-12 実測・C:\dev に存在せず）。
 // =============================================================
 var DENGON_SHEET = '伝達ボード';
-var DB_COL = { ID: 0, FROM: 1, TO: 2, BODY: 3, DEADLINE: 4, CREATED: 5, DONE: 6, DONEAT: 7, DONEBY: 8 };
-var DB_HEADER = ['id', 'from', 'to', 'body', 'deadline', 'createdAt', 'done', 'doneAt', 'doneBy'];
+var DENGON_STAFF_SHEET = 'スタッフ';                                 // 伝達ボード専用スタッフマスタ（SS_ID内・シフト用の別SSとは別物）
+// 既存 0〜8 は1つも動かさない（既存機能は構造的に無傷）。recipients/readBy を末尾に追加（2026-07-12 既読機能）。
+var DB_COL = { ID: 0, FROM: 1, TO: 2, BODY: 3, DEADLINE: 4, CREATED: 5, DONE: 6, DONEAT: 7, DONEBY: 8, RECIPIENTS: 9, READBY: 10 };
+var DB_HEADER = ['id', 'from', 'to', 'body', 'deadline', 'createdAt', 'done', 'doneAt', 'doneBy', 'recipients', 'readBy'];
 
 // 旧pendingTasks 4件の移行シード（from=社長/to=社長＝朝報告に残す・id流用で二重化防止）。
 var DENGON_MIGRATE_SEED = [
@@ -15150,6 +15177,12 @@ function _dbYmd_(v) {
   }
   return String(v || '').trim();
 }
+// セルのJSON配列文字列→配列。空・不正・未定義（既存9列行の10/11列目）は []（互換）。
+function dbParseJsonArr_(v) {
+  var s = String(v == null ? '' : v).trim();
+  if (!s) return [];
+  try { var a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
 function dbNormalizeRow_(row) {
   return {
     id: String(row[DB_COL.ID] || '').trim(),
@@ -15160,7 +15193,9 @@ function dbNormalizeRow_(row) {
     createdAt: String(row[DB_COL.CREATED] || '').trim(),
     done: dbIsDone_(row[DB_COL.DONE]),
     doneAt: String(row[DB_COL.DONEAT] || '').trim(),
-    doneBy: String(row[DB_COL.DONEBY] || '').trim()
+    doneBy: String(row[DB_COL.DONEBY] || '').trim(),
+    recipients: dbParseJsonArr_(row[DB_COL.RECIPIENTS]),
+    readBy: dbParseJsonArr_(row[DB_COL.READBY])
   };
 }
 function dbFilterActive_(values, today) {
@@ -15172,7 +15207,7 @@ function dbFilterActive_(values, today) {
     var o = dbNormalizeRow_(values[i]);
     if (!o.id) continue;
     if (o.done) continue;
-    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, row: i + 1 });
+    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, recipients: o.recipients, readBy: o.readBy, row: i + 1 });
   }
   return out;
 }
@@ -15184,7 +15219,7 @@ function dbFilterDone_(values) {
     var o = dbNormalizeRow_(values[i]);
     if (!o.id) continue;
     if (!o.done) continue;
-    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, doneAt: o.doneAt, doneBy: o.doneBy, row: i + 1 });
+    out.push({ id: o.id, from: o.from, to: o.to, body: o.body, deadline: o.deadline, createdAt: o.createdAt, doneAt: o.doneAt, doneBy: o.doneBy, recipients: o.recipients, readBy: o.readBy, row: i + 1 });
   }
   out.sort(function (a, b) { return String(b.doneAt || '').localeCompare(String(a.doneAt || '')); });
   return out;
@@ -15236,6 +15271,37 @@ function dbFindRecentDuplicate_(values, from, to, body, nowMs, windowMs) {
   return null;
 }
 
+// --- 既読機能の純関数（genba.html PhaseA・31テストPASS と同一実装・二重持ち）---
+// 宛先グループ→対象者名を算出（マスタ動的・ハードコード禁止）。個人名/未知/不正masterは []。
+function dengonComputeRecipients_(master, group) {
+  var list = Array.isArray(master) ? master.filter(function (m) { return m && m.active; }) : [];
+  switch (group) {
+    case '全員': return list.map(function (m) { return m.name; });
+    case '全員・ドライバー除く': return list.filter(function (m) { return m.role !== 'ドライバー'; }).map(function (m) { return m.name; });
+    case '社員': return list.filter(function (m) { return m.employ === '社員'; }).map(function (m) { return m.name; });
+    case '相談員': return list.filter(function (m) { return m.role === '相談員'; }).map(function (m) { return m.name; });
+    case '看護師': return list.filter(function (m) { return m.role === '看護師'; }).map(function (m) { return m.name; });
+    default: return [];
+  }
+}
+// 既読者配列に1名追加（冪等・非破壊・順序保持）。
+function dengonAddReadBy_(readBy, name) {
+  var arr = Array.isArray(readBy) ? readBy.slice() : [];
+  if (name && arr.indexOf(name) === -1) arr.push(name);
+  return arr;
+}
+// 既読者配列から1名除去（冪等・非破壊）。
+function dengonRemoveReadBy_(readBy, name) {
+  var arr = Array.isArray(readBy) ? readBy.slice() : [];
+  return arr.filter(function (n) { return n !== name; });
+}
+// 全員既読判定：recipients が非空で全員が readBy に含まれる時のみ true（マスタ非参照・不変条件2）。
+function dengonIsAllRead_(recipients, readBy) {
+  if (!Array.isArray(recipients) || recipients.length === 0) return false;
+  var read = Array.isArray(readBy) ? readBy : [];
+  return recipients.every(function (n) { return read.indexOf(n) !== -1; });
+}
+
 // --- I/O（GAS固有）---
 function _dengonToday_() {
   return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
@@ -15253,6 +15319,7 @@ function setupDengonBoard(ss) {
   }
   // 期限列はテキスト書式に固定（Sheetsの日付自動変換を防ぐ＝文字列比較を守る）
   sheet.getRange(1, DB_COL.DEADLINE + 1, sheet.getMaxRows(), 1).setNumberFormat('@');
+  ensureDengonReadColumns_(sheet); // 既存シートに recipients/readBy 列を追記（非破壊・冪等・2026-07-12）
   var values = sheet.getDataRange().getValues();
   var now = _dengonToday_();
   var added = [];
@@ -15362,12 +15429,142 @@ function addDengonMessage(ss, data) {
   var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'); // 秒精度（重複判定に使う）
   var id = 'db_' + new Date().getTime();
   var deadline = String(data.deadline || '').trim();
-  sheet.appendRow([id, from, to, body, deadline, now, false, '', '']);
+  // 不変条件1：recipients はサーバ側でマスタから確定（グループ宛てのみ非空／個人・社長宛ては[]）。readByは[]で開始。
+  var recipients = dengonComputeRecipients_(getDengonStaffMaster(ss), to);
+  sheet.appendRow([id, from, to, body, deadline, now, false, '', '', JSON.stringify(recipients), '[]']);
   SpreadsheetApp.flush();
   var idx = dbFindRowIndex_(sheet.getDataRange().getValues(), id);
   if (idx === -1) return { success: false, error: 'verify_failed', verified: false };
   sheet.getRange(idx + 1, DB_COL.DONE + 1).insertCheckboxes();
   return { success: true, id: id, verified: true };
+}
+
+// ===== 既読機能 I/O（2026-07-12）=====
+// スタッフマスタ11行のシード（名前/職種/雇用区分/在籍）。伝達ボード専用（他アプリ名簿と非統合）。
+var DENGON_STAFF_HEADER = ['名前', '職種', '雇用区分', '在籍'];
+var DENGON_STAFF_SEED = [
+  ['比嘉', '代表', '−', '在籍'],
+  ['勝又', '相談員', '社員', '在籍'],
+  ['星野', '介護', '社員', '在籍'],
+  ['下浦', '相談員', 'パート', '在籍'],
+  ['工藤', '相談員', 'パート', '在籍'],
+  ['髙山', '看護師', 'パート', '在籍'],
+  ['石井', '看護師', 'パート', '在籍'],
+  ['春山', '看護師', 'パート', '在籍'],
+  ['大久保', '介護', 'パート', '在籍'],
+  ['小野', 'ドライバー', 'パート', '在籍'],
+  ['林', 'ドライバー', 'パート', '在籍']
+];
+
+// スタッフマスタ読み取り → [{name, role, employ, active}]。シート無し/空は []。
+function getDengonStaffMaster(ss) {
+  var sheet = ss.getSheetByName(DENGON_STAFF_SHEET);
+  if (!sheet) return [];
+  var vals = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < vals.length; i++) {
+    var name = String(vals[i][0] || '').trim();
+    if (!name) continue;
+    out.push({
+      name: name,
+      role: String(vals[i][1] || '').trim(),
+      employ: String(vals[i][2] || '').trim(),
+      active: String(vals[i][3] || '').trim() === '在籍'
+    });
+  }
+  return out;
+}
+
+// スタッフマスタ初期セットアップ（新シート＋ヘッダ＋11行）。冪等：既に本文行があれば投入しない。
+function setupDengonStaffMaster(ss) {
+  ss = ss || SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName(DENGON_STAFF_SHEET);
+  if (!sheet) { sheet = ss.insertSheet(DENGON_STAFF_SHEET); }
+  var head = sheet.getRange(1, 1, 1, DENGON_STAFF_HEADER.length).getValues()[0];
+  if (String(head[0] || '').trim() !== DENGON_STAFF_HEADER[0]) {
+    sheet.getRange(1, 1, 1, DENGON_STAFF_HEADER.length).setValues([DENGON_STAFF_HEADER]);
+    sheet.getRange(1, 1, 1, DENGON_STAFF_HEADER.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  var seeded = 0;
+  if (sheet.getLastRow() < 2) { // 本文が無い時だけ投入（冪等）
+    sheet.getRange(2, 1, DENGON_STAFF_SEED.length, DENGON_STAFF_HEADER.length).setValues(DENGON_STAFF_SEED);
+    seeded = DENGON_STAFF_SEED.length;
+  }
+  return { ok: true, sheet: DENGON_STAFF_SHEET, seeded: seeded, rows: Math.max(0, sheet.getLastRow() - 1) };
+}
+
+// 既存「伝達ボード」シートに recipients/readBy ヘッダが無ければ末尾に追記（非破壊・冪等）。
+function ensureDengonReadColumns_(sheet) {
+  var lastCol = sheet.getLastColumn() || DB_HEADER.length;
+  var head = sheet.getRange(1, 1, 1, Math.max(lastCol, DB_HEADER.length)).getValues()[0];
+  [DB_COL.RECIPIENTS, DB_COL.READBY].forEach(function (c) {
+    if (String(head[c] || '').trim() !== DB_HEADER[c]) {
+      sheet.getRange(1, c + 1).setValue(DB_HEADER[c]);
+    }
+  });
+}
+
+// 既読トグル：readBy に name を add/remove。LockServiceで直列化＋read-modify-write＋recipients照合（不変条件3）。
+// remove=false=既読にする／true=取り消し。クライアントは配列を送らない（save_haichi上書き事故の再発防止）。
+function markDengonRead(ss, id, name, remove) {
+  var taskId = String(id || '').trim();
+  var person = String(name || '').trim();
+  if (!taskId) return { ok: false, error: 'missing_id' };
+  if (!person) return { ok: false, error: 'missing_name' };
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return { ok: false, error: 'lock_timeout' }; }
+  try {
+    var sheet = ss.getSheetByName(DENGON_SHEET);
+    if (!sheet) return { ok: false, error: 'no_sheet', id: taskId };
+    var values = sheet.getDataRange().getValues();
+    var idx = dbFindRowIndex_(values, taskId);
+    if (idx === -1) return { ok: false, error: 'no_such_id', id: taskId };
+    var recipients = dbParseJsonArr_(values[idx][DB_COL.RECIPIENTS]);
+    if (!remove && recipients.indexOf(person) === -1) {
+      return { ok: false, error: 'not_recipient', id: taskId, name: person }; // 不変条件3：対象外は却下
+    }
+    var readBy = dbParseJsonArr_(values[idx][DB_COL.READBY]);
+    readBy = remove ? dengonRemoveReadBy_(readBy, person) : dengonAddReadBy_(readBy, person);
+    sheet.getRange(idx + 1, DB_COL.READBY + 1).setValue(JSON.stringify(readBy));
+    SpreadsheetApp.flush();
+    var back = dbParseJsonArr_(sheet.getRange(idx + 1, DB_COL.READBY + 1).getValue()); // read-back検証
+    return { ok: true, id: taskId, readBy: back, removed: !!remove };
+  } finally { lock.releaseLock(); }
+}
+
+// 一度きりのマイグレーション（2026-07-12・案B）：既存行の空 recipients をマスタから確定して埋める。
+// 背景：「空=全員」の暗黙ルールをフロント(フォールバック)とサーバ(recipients照合)の2箇所で維持していたため、
+//   既存投稿(recipients空)はチップは出るがタップすると not_recipient で拒否された。空の行を無くし曖昧さを消す。
+// 冪等：recipients が既に入っている行はスキップ。done済み行も対象（履歴の既読表示を保つ）。
+// グループ判定は dengonComputeRecipients_ の戻り値（個人/社長/未知は [] を返す）で行う。
+// ※recipients は【実行時点】のスタッフマスタ(getDengonStaffMaster)で確定する。現時点は入退職なしso当時=現在だが、
+//   将来、当時の在籍と現在が異なる場合はこの前提が崩れる（＝当時の顔ぶれの厳密復元にはならない）点を記録しておく。
+// 既存列 0〜8 は一切変更しない（recipients=列9 のみ read-modify-write）。
+function migrateDengonRecipients_(ss) {
+  ss = ss || SpreadsheetApp.openById(SS_ID);
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch (e) { return { ok: false, error: 'lock_timeout' }; }
+  try {
+    var sheet = ss.getSheetByName(DENGON_SHEET);
+    if (!sheet) return { ok: false, error: 'no_sheet' };
+    var staff = getDengonStaffMaster(ss);
+    var values = sheet.getDataRange().getValues();
+    var scanned = 0, filled = 0, skippedAlreadyFilled = 0, leftEmptyNonGroup = 0;
+    for (var i = 1; i < values.length; i++) {
+      var id = String(values[i][DB_COL.ID] || '').trim();
+      if (!id) continue;
+      scanned++;
+      if (dbParseJsonArr_(values[i][DB_COL.RECIPIENTS]).length > 0) { skippedAlreadyFilled++; continue; } // 冪等
+      var to = String(values[i][DB_COL.TO] || '').trim() || '全員';
+      var recipients = dengonComputeRecipients_(staff, to); // 個人/社長/未知グループは [] を返す
+      if (recipients.length === 0) { leftEmptyNonGroup++; continue; }  // 個人・社長宛ては空のまま（設計通り）
+      sheet.getRange(i + 1, DB_COL.RECIPIENTS + 1).setValue(JSON.stringify(recipients));
+      filled++;
+    }
+    SpreadsheetApp.flush();
+    return { ok: true, scanned: scanned, filled: filled, skippedAlreadyFilled: skippedAlreadyFilled, leftEmptyNonGroup: leftEmptyNonGroup, masterSize: staff.length };
+  } finally { lock.releaseLock(); }
 }
 
 // 完了：冪等／id無効は明示／書込後に読み直して done を確認。スタッフ宛て（社長以外）はnotify@へ完了通知。
@@ -15638,5 +15835,233 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     oralUsers: oralUsers, oralRecByKey: oralRecByKey, oralSettings: oralSettings,
     allUsers: allUsers,
     bdUsers: bdUsers, bdStatusByKey: {}  // 初版フォールバック（撮影status除外なし・§3.3）
+  };
+}
+
+// ============================================================
+// 月次ボード（月末のケアマネ提出前チェック）action。2026-07-12
+//   指定月×書類種別ごとに「対象者/実施済み/名前」を集計して返す読取専用action。
+//   判定は month-board-core.js の純関数 buildMonthBoard（判定関数は依存注入）。
+//   additive-only: 既存 action / 既存関数には一切手を入れていない。書込みゼロ（読取専用）。
+// ============================================================
+function monthBoard(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var ym = (e && e.parameter && e.parameter.month && /^\d{4}-\d{2}$/.test(e.parameter.month))
+    ? e.parameter.month
+    : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  var year = parseInt(ym.slice(0, 4), 10);
+  var month = parseInt(ym.slice(5, 7), 10);
+
+  var out = { ok: true, month: ym, sections: [], warnings: [] };
+  var errors = [];
+  function safe(name, fn) {
+    try { return fn(); }
+    catch (err) { errors.push({ section: name, error: String((err && err.message) || err) }); return null; }
+  }
+
+  var bi = safe('buildInput', function () { return monthBoardBuildInput_(ym, year, month, safe); });
+  if (bi && bi.input) {
+    var board = safe('buildMonthBoard', function () {
+      return buildMonthBoard(bi.input, {
+        oralCycleAt: oralCycleAt, isPlanMonth: isPlanMonth, isHyoukaMonth: isHyoukaMonth,
+        sokuteiDueDate_: sokuteiDueDate_, sbNormalizeName_: sbNormalizeName_
+      });
+    });
+    if (board) {
+      // データ源が落ちたセクションに error フラグを立てる（黙って0件にしない）
+      (board.sections || []).forEach(function (s) { if (bi.errorSections[s.key]) s.error = true; });
+      out.sections = board.sections;
+      out.warnings = board.warnings;
+    } else { out.ok = false; }
+  } else { out.ok = false; }
+
+  out.errors = errors;
+  return respond(out, callback);
+}
+
+// 月次ボード用 core入力の整形（各シート読み取り→ buildMonthBoard の入力契約へ写像）。
+// 各データ源は safe() で個別に守り、失敗時は空で縮退＋該当セクションkeyを errorSections に記録。
+// 戻り値: { input, errorSections }
+function monthBoardBuildInput_(ym, year, month, safe) {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var errSec = {};
+  function markErr(keys) { keys.forEach(function (k) { errSec[k] = true; }); }
+  function mbFmt_(v) {
+    if (!v) return '';
+    if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd');
+    return String(v).trim();
+  }
+
+  var ALL_SEC = ['oralEval', 'oralPlan', 'kunPlan', 'kunEval', 'sokuteiKaigo', 'sokuteiShien', 'tsushoPlan', 'tsushoEval', 'tsushoMoni'];
+
+  // --- base roster: 利用者台帳（active全員・name/category）＝通所母集団(isTsusho=true) ---
+  var usersMap = {}, order = [];
+  var r;
+  r = safe('mb_base', function () {
+    var uSheet = ss.getSheetByName('利用者台帳');
+    if (!uSheet) throw new Error('利用者台帳シートなし');
+    var uv = uSheet.getDataRange().getValues();
+    if (uv.length < 2) return true;
+    var uh = uv[0].map(function (v) { return String(v).trim(); });
+    var nameCol = findCol(uh, ['名前', '氏名', '利用者名']);
+    var careCol = findCol(uh, ['要介護度', '介護度']);
+    var statusCol = findCol(uh, ['利用ステータス']);
+    if (statusCol < 0) statusCol = findColP(uh, 'ステータス');
+    if (statusCol < 0) statusCol = findColP(uh, '利用状況');
+    if (nameCol < 0) throw new Error('名前列なし');
+    for (var i = 1; i < uv.length; i++) {
+      var nm = String(uv[i][nameCol] || '').trim();
+      if (!nm) continue;
+      if (statusCol >= 0) {
+        var st = String(uv[i][statusCol] || '').trim();
+        if (st.indexOf('終了') >= 0 || st.indexOf('中止') >= 0 || st.indexOf('卒業') >= 0) continue;
+      }
+      var cat = careCol >= 0 ? String(uv[i][careCol] || '').trim() : '';
+      var key = _normalizeUserName(nm);
+      if (!usersMap[key]) { usersMap[key] = { userId: nm, name: nm, category: cat, isTsusho: true }; order.push(key); }
+    }
+    return true;
+  });
+  if (r === null) markErr(ALL_SEC);
+
+  // --- overlay: 個訓 planStart/planMonths（要介護・getKeikakushoTargetUsers_） ---
+  r = safe('mb_kaigo', function () {
+    getKeikakushoTargetUsers_(false).forEach(function (u) {
+      var key = _normalizeUserName(u.name);
+      var t = usersMap[key];
+      if (!t) { t = { userId: u.userId || u.name, name: u.name, category: u.category || '', isTsusho: true }; usersMap[key] = t; order.push(key); }
+      t.planStart = u.planStart; t.planMonths = u.planMonths;
+      if (!t.category) t.category = u.category || '';
+    });
+    return true;
+  });
+  if (r === null) markErr(['kunPlan', 'kunEval', 'sokuteiKaigo']);
+
+  // --- overlay: 口腔 planStart/planEnd（getOralTargetUsers_） ---
+  r = safe('mb_oralUsers', function () {
+    getOralTargetUsers_(false).forEach(function (u) {
+      var key = _normalizeUserName(u.name);
+      var t = usersMap[key];
+      if (!t) { t = { userId: u.name, name: u.name, category: u.category || '', isTsusho: true }; usersMap[key] = t; order.push(key); }
+      t.oralPlanStart = u.planStart; t.oralPlanEnd = u.planEnd;
+    });
+    return true;
+  });
+  if (r === null) markErr(['oralEval', 'oralPlan']);
+
+  // --- 口腔記録（当月・plan_date/houkoku_date） ---
+  var oralRecords = [];
+  r = safe('mb_oralRec', function () {
+    var sh = ensureOralPlansSheets_().recordSheet;
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      if ((parseInt(v[i][1], 10) || 0) !== year) continue;   // col1=year
+      if ((parseInt(v[i][2], 10) || 0) !== month) continue;  // col2=month
+      var nm = String(v[i][0] || '').trim(); if (!nm) continue; // col0=userId(=name)
+      oralRecords.push({ userId: nm, name: nm, plan_date: mbFmt_(v[i][3]), houkoku_date: mbFmt_(v[i][13]) });
+    }
+    return true;
+  });
+  if (r === null) markErr(['oralEval', 'oralPlan']);
+
+  // --- 個訓記録（当月・keikaku_date/tasseido_date）＋ 要介護測定 sokutei_date（全月・userIdキー） ---
+  var kunRecords = [], sokuteiRecords = [];
+  r = safe('mb_kunRec', function () {
+    var sh = ensureKeikakushoSheet_();
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      var uid = String(v[i][0] || '').trim(), nm = String(v[i][1] || '').trim(); // col0=userId,col1=name
+      var sok = mbFmt_(v[i][12]);                                                 // col12=sokutei_date
+      if (sok) sokuteiRecords.push({ userId: uid || nm, sokutei_date: sok });     // kaigo: userIdキー・当月判定はcore
+      if ((parseInt(v[i][2], 10) || 0) !== year) continue;   // col2=year
+      if ((parseInt(v[i][3], 10) || 0) !== month) continue;  // col3=month
+      kunRecords.push({ userId: uid || nm, name: nm, keikaku_date: mbFmt_(v[i][6]), tasseido_date: mbFmt_(v[i][15]) }); // col6=keikaku,col15=tasseido
+    }
+    return true;
+  });
+  if (r === null) markErr(['kunPlan', 'kunEval', 'sokuteiKaigo']);
+
+  // --- 要支援測定記録（全履歴・nameキー・前回測定日+4ヶ月判定用） ---
+  r = safe('mb_shienSok', function () {
+    var sh = ensureShienSokuteiSheet_();
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      var o = shienSokuteiRowToObj_(v[i]);
+      if (!o.name || !o.sokutei_date) continue;
+      sokuteiRecords.push({ name: o.name, sokutei_date: o.sokutei_date });
+    }
+    return true;
+  });
+  if (r === null) markErr(['sokuteiShien']);
+
+  // --- 通所 満了日（通所介護計画書設定・due_dateは動的列so indexOfで） ---
+  var tsushoDueMap = {};
+  r = safe('mb_due', function () {
+    var cfg = ensureTsushoPlansSheets_().configSheet;
+    var v = cfg.getDataRange().getValues();
+    var hdr = (v[0] || []).map(function (x) { return String(x).trim(); });
+    var dcol = hdr.indexOf('due_date');
+    if (dcol >= 0) {
+      for (var i = 1; i < v.length; i++) {
+        var uid = String(v[i][0] || '').trim(); if (!uid) continue;
+        var raw = v[i][dcol];
+        var s = (raw instanceof Date) ? Utilities.formatDate(raw, 'Asia/Tokyo', 'yyyy-MM-dd') : String(raw || '').trim();
+        if (s) tsushoDueMap[uid] = s;
+      }
+    }
+    return true;
+  });
+  if (r === null) markErr(['tsushoPlan', 'tsushoEval', 'tsushoMoni']);
+
+  // --- 通所送付記録: 計画書plan_date（当月）＋モニ送付日（当月）を userId で1件にマージ ---
+  var sendMap = {};
+  r = safe('mb_tsushoPlanRec', function () {
+    var sh = ensureTsushoPlansSheets_().recordSheet;
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      if ((parseInt(v[i][1], 10) || 0) !== year) continue;   // col1=year
+      if ((parseInt(v[i][2], 10) || 0) !== month) continue;  // col2=month
+      var uid = String(v[i][0] || '').trim(); if (!uid) continue;
+      var rec = sendMap[uid] || (sendMap[uid] = { userId: uid, name: uid });
+      rec.plan_date = mbFmt_(v[i][3]);  // col3=plan_date
+    }
+    return true;
+  });
+  if (r === null) markErr(['tsushoPlan']);
+
+  r = safe('mb_monRec', function () {
+    var sh = ensureMonitoringSheet_();
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      if ((parseInt(v[i][2], 10) || 0) !== year) continue;   // col2=year
+      if ((parseInt(v[i][3], 10) || 0) !== month) continue;  // col3=month
+      var uid = String(v[i][0] || '').trim(), nm = String(v[i][1] || '').trim();
+      var key = uid || nm; if (!key) continue;
+      var rec = sendMap[key] || (sendMap[key] = { userId: uid || nm, name: nm || uid });
+      if (nm && (!rec.name || rec.name === rec.userId)) rec.name = nm;
+      rec.pdfSendDate = mbFmt_(v[i][7]);    // col7=pdfSendDate
+      rec.printSendDate = mbFmt_(v[i][8]);  // col8=printSendDate
+    }
+    return true;
+  });
+  if (r === null) markErr(['tsushoEval', 'tsushoMoni']);
+
+  var tsushoSendRecords = [];
+  for (var sk in sendMap) { if (sendMap.hasOwnProperty(sk)) tsushoSendRecords.push(sendMap[sk]); }
+
+  var users = [];
+  order.forEach(function (k) { users.push(usersMap[k]); });
+
+  return {
+    input: {
+      targetMonth: ym,
+      users: users,
+      oralRecords: oralRecords,
+      kunRecords: kunRecords,
+      sokuteiRecords: sokuteiRecords,
+      tsushoDueMap: tsushoDueMap,
+      tsushoSendRecords: tsushoSendRecords
+    },
+    errorSections: errSec
   };
 }

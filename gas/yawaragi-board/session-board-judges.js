@@ -5,6 +5,21 @@
 // （scripts/test-session-board-judges.js の DG1/DG2 でdrift検知）。
 // GASランタイムはV8 (appsscript.json runtimeVersion:"V8") のため const/アロー関数はそのまま動作する。
 
+// 個訓 計画月: planStart起点。既定3ヶ月は diff%3===0、変則(planMonths 1-12)は開始月のみ。
+// 正本 shared.js §I の同名関数を byte単位で移植（月次ボードが GAS実行で使う・DG3でdrift検知）。
+function isPlanMonth(planStart, planMonths, year, month) {
+    if (!planStart) return false;
+    const m = String(planStart).match(/^(\d{4})-(\d{2})$/);
+    if (!m) return false;
+    const py = parseInt(m[1], 10);
+    const pm = parseInt(m[2], 10);
+    const diff = (year - py) * 12 + (month - pm);
+    const pmNum = parseInt(planMonths, 10);
+    const L = (pmNum >= 1 && pmNum <= 12) ? pmNum : 3;
+    if (L === 3) return diff >= 0 && diff % 3 === 0;
+    return diff === 0;
+}
+
 // 個訓 評価月: 計画スタート月の翌々月（=次計画前月）。開始前月(diff===-1)も評価月扱い。
 // ①の同名関数を移植。
 function isHyoukaMonth(planStart, planMonths, year, month) {
@@ -48,5 +63,5 @@ function oralCycleAt(planStart, planEnd, year, month) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { isHyoukaMonth: isHyoukaMonth, oralCycleAt: oralCycleAt };
+  module.exports = { isPlanMonth: isPlanMonth, isHyoukaMonth: isHyoukaMonth, oralCycleAt: oralCycleAt };
 }
