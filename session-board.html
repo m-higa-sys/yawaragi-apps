@@ -179,6 +179,29 @@
   .errcard{background:var(--crit-bg); border:1px solid var(--crit-line); border-radius:var(--radius); padding:12px 14px; margin:14px 0; font-size:.85rem; color:var(--crit); font-weight:700;}
   .loading{text-align:center; color:var(--muted); padding:40px 0; font-size:.9rem;}
   .foot{margin-top:34px; text-align:center; font-size:.72rem; color:var(--muted);}
+
+  /* 測定チェック */
+  .sec-note.gate{color:var(--warn); font-weight:800;}
+  .checkmsg{font-size:.85rem; font-weight:800; color:var(--accent); margin:4px 2px 0; min-height:1em;}
+  .ckrow{display:flex; align-items:center; gap:8px; margin-top:8px;}
+  .ckbtn{padding:7px 14px; border-radius:9px; border:1.5px solid var(--accent); background:var(--accent); color:#fff; font-size:.9rem; font-weight:800; cursor:pointer; line-height:1;}
+  .ckbtn:active{transform:translateY(1px);}
+  .ckbtn[disabled]{background:var(--surface-2); color:var(--muted); border-color:var(--line); cursor:default;}
+  .ckbtn.cancel{background:var(--surface); color:var(--crit); border-color:var(--crit-line);}
+  .ckdone{font-size:.8rem; font-weight:800; color:var(--ok);}
+  .cknote{font-size:.72rem; color:var(--muted); font-weight:700;}
+  .modal{display:none;}
+  .modal.on{display:flex; position:fixed; inset:0; background:rgba(20,28,34,.5); align-items:center; justify-content:center; padding:20px; z-index:50;}
+  .modal-box{background:var(--surface); border-radius:15px; padding:20px; max-width:400px; width:100%; box-shadow:0 8px 30px rgba(0,0,0,.3); border:1px solid var(--line);}
+  .modal-h{font-size:1.05rem; font-weight:800; color:var(--ink); margin-bottom:10px;}
+  .modal-target{font-size:1.15rem; font-weight:800; color:var(--accent); margin-bottom:14px;}
+  .modal-lbl{display:block; font-size:.8rem; font-weight:700; color:var(--ink-2); margin-bottom:5px;}
+  .modal-sel{width:100%; padding:10px; border-radius:10px; border:1.5px solid var(--line); background:var(--surface); color:var(--ink); font-size:1rem; font-weight:700; font-family:inherit;}
+  .modal-confirm{font-size:.92rem; font-weight:700; color:var(--ink); margin:14px 0; min-height:1.3em;}
+  .modal-btns{display:flex; gap:10px; margin-top:6px;}
+  .modal-cancel{flex:1; padding:11px; border-radius:10px; border:1.5px solid var(--line); background:var(--surface); color:var(--ink-2); font-size:.95rem; font-weight:800; cursor:pointer;}
+  .modal-ok{flex:2; padding:11px; border-radius:10px; border:1.5px solid var(--accent); background:var(--accent); color:#fff; font-size:.95rem; font-weight:800; cursor:pointer;}
+  .modal-ok[disabled]{background:var(--surface-2); color:var(--muted); border-color:var(--line); cursor:default;}
 </style>
 </head>
 <body>
@@ -218,9 +241,26 @@
     名（測定）
   </div>
 
+  <div id="checkMsg" class="checkmsg" aria-live="polite"></div>
+
   <div id="board"><div class="loading">読み込み中…</div></div>
 
   <div class="foot">やわらぎ セッションボード ／ 判定は当日出席（台帳曜日−欠席）に紐づく</div>
+
+  <!-- 測定者選択モーダル（要支援チェック・測定者必須） -->
+  <div id="measurerModal" class="modal">
+    <div class="modal-box">
+      <div class="modal-h">測定を記録</div>
+      <div class="modal-target"><span id="measurerTarget"></span> 様</div>
+      <label class="modal-lbl" for="measurerSelect">測定者を選ぶ（必須）</label>
+      <select id="measurerSelect" class="modal-sel"></select>
+      <div id="measurerConfirmText" class="modal-confirm"></div>
+      <div class="modal-btns">
+        <button id="measurerCancel" class="modal-cancel" type="button">やめる</button>
+        <button id="measurerConfirm" class="modal-ok" type="button" disabled>記録する</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -282,19 +322,35 @@
       + (rv? '<span class="pill'+(r.remainingVisits!=null && r.remainingVisits<=1?' hot':'')+'">'+rv+'</span>':'')
       + (absHot? '<span class="pill hot">欠席多め '+Math.round(r.absenceRate*100)+'%</span>':'')
       + '</div>';
+    // 測定チェックボタン（要支援・Phase1のみ）。要介護はPhase2so出さない。
+    var act = '';
+    if (r.track === 'shien') {
+      if (sessionChecked[r.key]) {
+        act = '<div class="ckrow"><span class="ckdone">✓ 記録済み（'+esc(sessionChecked[r.key])+'）</span>'
+            + '<button class="ckbtn cancel" onclick="sbCancelTap(\''+esc(r.key)+'\')">取消</button></div>';
+      } else if (sbCanCheck_()) {
+        act = '<div class="ckrow"><button class="ckbtn" onclick="sbCheckTap(\''+esc(r.key)+'\')">✓ 実施をチェック</button></div>';
+      } else {
+        act = '<div class="ckrow"><button class="ckbtn" disabled>✓ 実施</button><span class="cknote">今日に戻ってチェック</span></div>';
+      }
+    }
     return '<div class="'+cls+'"><div class="toprow">'
       + trk + '<span class="nm">'+esc(r.name)+'</span>'
       + '<span class="care">'+esc(r.care||'—')+'</span><span class="spacer"></span>'
       + '<span class="stat '+scls+'"><span class="lbl">'+slbl+'</span>'+esc(stat)+'</span>'
-      + '</div>' + why + '</div>';
+      + '</div>' + why + act + '</div>';
   }
 
   function measurePool(rows){
     var h = '<div class="sec"><div class="sec-h"><span class="t">📏 測定（今日やる優先）</span><span class="c">'+rows.length+'名</span></div>';
     h += '<div class="sec-note">要介護（加算必達）を上に、各層内は「今後会える残チャンスが少ない人（週回数少・欠席多・残来所少）」ほど先。この時間帯の出席者のうち上位'+Math.min(topN,rows.length)+'名が今日やる。</div>';
+    if (!sbCanCheck_()){ h += '<div class="sec-note gate">※ 今日に戻ってチェックしてください（過去・未来の日付では記録できません）</div>'; }
     if (!rows.length){ h += '<div class="empty">この時間帯の測定対象はいません</div></div>'; return h; }
-    var today = rows.slice(0, topN), rest = rows.slice(topN);
-    h += '<div class="subhead">▶ 今日やる（上位'+Math.min(topN,rows.length)+'）</div>';
+    // 測定済みの要支援（unmeasured===false）は必ず「余裕があれば」側へ降格（sbMeasureShien_ と同じ扱い＝今日やるから外す）
+    var actionable = [], demoted = [];
+    rows.forEach(function(r){ if (r.track==='shien' && r.unmeasured===false){ demoted.push(r); } else { actionable.push(r); } });
+    var today = actionable.slice(0, topN), rest = actionable.slice(topN).concat(demoted);
+    h += '<div class="subhead">▶ 今日やる（上位'+today.length+'）</div>';
     today.forEach(function(r){ h += measureCard(r, false); });
     if (rest.length){
       h += '<div class="subhead">余裕があれば（'+rest.length+'名）</div>';
@@ -473,8 +529,121 @@
   document.getElementById('todayBtn').addEventListener('click', function(){ goDate(todayYMD()); });
   document.getElementById('datePick').addEventListener('change', function(){ goDate(document.getElementById('datePick').value); });
 
-  // 本番: 起動時に今日を1回JSONPで叩き描画（初回はタブ自動判定＝keepTab=false）
+  // ===== 測定チェック（要支援・Phase1）=====
+  var MEASURER_EXCLUDE = ['代表','小野','林'];   // sokutei/計画書チェックと同値（2026-06-15社長確定）
+  var staffList = [];
+  var sessionChecked = {};   // key→測定者名（当日セッションボード発。取消可否＆降格表示に使う）
+  var checkBusy = false;     // 記録/取消の送信中フラグ（連打防止）
+  var pendingCheckKey = '', pendingCheckName = '';
+
+  function sbMeasurers_(){ return (staffList||[]).filter(function(s){ return MEASURER_EXCLUDE.indexOf(s) < 0; }); }
+  function sbCanCheck_(){ return curDate === todayYMD(); }   // 今日を表示中のときだけチェック可（要件3）
+  function sbFindSokutei_(key){ if(!DATA||!DATA.sokutei) return null; for(var i=0;i<DATA.sokutei.length;i++){ if(DATA.sokutei[i].key===key) return DATA.sokutei[i]; } return null; }
+  function sbSetMsg_(m){ var el=document.getElementById('checkMsg'); if(el) el.textContent = m||''; }
+
+  // staff_list を1回取得（名簿正本＝シフトSSスタッフ・sokutei/計画書と同経路）
+  function sbFetchStaff_(){
+    var cb='sbStaffCb_'+Date.now();
+    window[cb]=function(resp){ try{ delete window[cb]; }catch(e){ window[cb]=undefined; } if(resp && resp.staff) staffList = resp.staff; };
+    var s=document.createElement('script');
+    s.src = GAS + '?action=staff_list&callback=' + cb + '&t=' + Date.now();
+    document.head.appendChild(s);
+  }
+
+  // 汎用 JSONP（書込action用・応答をcbで受ける・no-corsでなくGET/JSONP）
+  function sbJsonp_(url, cb){
+    var name='sbCb_'+Date.now()+'_'+(reqId++);
+    var s=document.createElement('script');
+    window[name]=function(resp){ try{ delete window[name]; }catch(e){ window[name]=undefined; } if(s&&s.parentNode) s.parentNode.removeChild(s); cb(resp); };
+    s.src = url + '&callback=' + name + '&t=' + Date.now();
+    s.onerror = function(){ try{ delete window[name]; }catch(e){ window[name]=undefined; } if(s&&s.parentNode) s.parentNode.removeChild(s); cb({ ok:false, error:'通信エラー' }); };
+    document.head.appendChild(s);
+  }
+
+  function sbCheckTap(key){
+    sbSetMsg_('');
+    if(!sbCanCheck_()){ sbSetMsg_('今日に戻ってチェックしてください（過去・未来の日付では記録できません）'); return; }
+    if(checkBusy) return;
+    var row = sbFindSokutei_(key); if(!row) return;
+    pendingCheckKey = key; pendingCheckName = row.name;
+    document.getElementById('measurerTarget').textContent = row.name;
+    var opts = '<option value="">— 測定者を選ぶ —</option>' + sbMeasurers_().map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('');
+    var sel = document.getElementById('measurerSelect'); sel.innerHTML = opts; sel.value = '';
+    document.getElementById('measurerConfirmText').textContent = '';
+    var btn = document.getElementById('measurerConfirm'); btn.disabled = true; btn.textContent = '記録する';
+    document.getElementById('measurerModal').className = 'modal on';
+  }
+  function sbMeasurerChanged(){
+    var by = document.getElementById('measurerSelect').value;
+    var btn = document.getElementById('measurerConfirm');
+    if(by){
+      document.getElementById('measurerConfirmText').textContent = by + 'さんが' + pendingCheckName + '様の測定を実施。記録しますか?';
+      btn.disabled = false;
+    } else {
+      document.getElementById('measurerConfirmText').textContent = '';
+      btn.disabled = true;
+    }
+  }
+  function sbCloseModal_(){ document.getElementById('measurerModal').className = 'modal'; pendingCheckKey=''; pendingCheckName=''; }
+
+  function sbRecordConfirm(){
+    if(checkBusy) return;
+    var by = document.getElementById('measurerSelect').value;
+    if(!by){ sbSetMsg_('測定者を選んでください'); return; }   // 測定者必須（要件1・変更不可）
+    var key = pendingCheckKey, name = pendingCheckName;
+    var row = sbFindSokutei_(key); if(!row){ sbCloseModal_(); return; }
+    checkBusy = true;
+    var btn = document.getElementById('measurerConfirm'); btn.disabled = true; btn.textContent = '⟳ 記録中…';
+    var url = GAS + '?action=addShienSokutei'
+      + '&name=' + encodeURIComponent(name)
+      + '&date=' + encodeURIComponent(curDate)
+      + '&by=' + encodeURIComponent(by)
+      + '&source=' + encodeURIComponent('セッションボード');
+    sbJsonp_(url, function(resp){
+      checkBusy = false;
+      if(!resp || resp.ok === false){
+        var b2 = document.getElementById('measurerConfirm'); b2.disabled=false; b2.textContent='記録する';
+        sbSetMsg_((resp && (resp.message||resp.error)) || '記録に失敗しました');
+        return;   // 楽観更新しない＝失敗時は降格しない
+      }
+      // 成功: サーバ確定後に測定済み化（除去でなく降格）＋モーダルを閉じて再描画（2往復目を作らない）
+      sessionChecked[key] = by;
+      var rr = sbFindSokutei_(key);
+      if(rr){ rr.unmeasured = false; rr.last = curDate; if(!(rr.remaining>30)) rr.remaining = 999; }
+      sbCloseModal_();
+      sbSetMsg_(name + '様の測定を記録しました（' + by + '）');
+      render();
+    });
+  }
+
+  function sbCancelTap(key){
+    sbSetMsg_('');
+    if(!sbCanCheck_()){ sbSetMsg_('今日に戻ってから操作してください'); return; }
+    if(checkBusy) return;
+    if(!sessionChecked[key]) return;   // セッションボード発・当日のみ取消可（要件4）
+    var row = sbFindSokutei_(key); if(!row) return;
+    checkBusy = true;
+    var url = GAS + '?action=cancelSessionSokutei'
+      + '&name=' + encodeURIComponent(row.name)
+      + '&date=' + encodeURIComponent(curDate);
+    sbJsonp_(url, function(resp){
+      checkBusy = false;
+      if(!resp || resp.ok === false){ sbSetMsg_((resp && (resp.message||resp.error)) || '取消に失敗しました'); return; }
+      delete sessionChecked[key];
+      var rr = sbFindSokutei_(key);
+      if(rr){ rr.unmeasured = true; rr.last=''; rr.remaining = -999; }
+      sbSetMsg_(row.name + '様の記録を取り消しました');
+      render();
+    });
+  }
+
+  document.getElementById('measurerSelect').addEventListener('change', sbMeasurerChanged);
+  document.getElementById('measurerConfirm').addEventListener('click', sbRecordConfirm);
+  document.getElementById('measurerCancel').addEventListener('click', sbCloseModal_);
+
+  // 本番: 起動時に今日を1回JSONPで叩き描画（初回はタブ自動判定＝keepTab=false）。名簿は板の後に取得（補助）。
   fetchBoard(curDate, false);
+  sbFetchStaff_();
 </script>
 </body>
 </html>
