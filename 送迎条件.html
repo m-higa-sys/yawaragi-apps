@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭・genba型/自己完結・shared.js不要） -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) { location.replace(buildVersionedUrl(location.href, latest)); }
+                })
+                .catch(function () { /* オフラインは no-op */ });
+        } catch (e) { /* no-op */ }
+    })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>送迎条件｜やわらぎ</title>
+<style>
+  :root{ --bg:#f4f6f8; --card:#fff; --line:#e0e4e8; --ink:#222; --sub:#667; --accent:#1565c0; --warn:#d32f2f; --warnbg:#fff3e0; --ok:#2e7d32; }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;margin:0;background:var(--bg);color:var(--ink);font-size:15px;}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:8px 12px;position:sticky;top:0;z-index:10;}
+  header h1{font-size:17px;margin:0 0 4px;font-weight:800;}
+  .meta{font-size:12px;color:var(--sub);display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .tabs{display:flex;gap:4px;margin-top:6px;}
+  .tab{flex:1;padding:8px;text-align:center;border:1px solid var(--line);border-radius:6px 6px 0 0;background:#eef1f4;cursor:pointer;font-weight:700;font-size:14px;}
+  .tab.active{background:var(--card);border-bottom-color:var(--card);color:var(--accent);}
+  main{padding:8px 10px 60px;}
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}
+  .toolbar input[type=search]{flex:1;min-width:120px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:14px;}
+  .chip{padding:5px 10px;border:1px solid var(--line);border-radius:16px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;}
+  .chip.on{background:var(--warnbg);border-color:var(--warn);color:var(--warn);}
+  /* 条件カード */
+  .row{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:6px;overflow:hidden;}
+  .row.warn{border-left:5px solid var(--warn);}
+  .row.done{border-left:5px solid var(--ok);}
+  .row-head{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;}
+  .row-name{font-weight:800;font-size:15px;flex:1;}
+  .badge{font-size:11px;padding:2px 7px;border-radius:10px;font-weight:800;white-space:nowrap;}
+  .badge.warn{background:var(--warnbg);color:var(--warn);}
+  .badge.done{background:#e8f5e9;color:var(--ok);}
+  .summary{font-size:12px;color:var(--sub);white-space:nowrap;}
+  .row-body{padding:4px 10px 10px;border-top:1px dashed var(--line);display:none;}
+  .row.open .row-body{display:block;}
+  .fieldrow{display:flex;align-items:center;gap:6px;margin:7px 0;flex-wrap:wrap;}
+  .flabel{font-size:12px;color:var(--sub);min-width:78px;}
+  .seg{display:flex;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  .seg button{padding:7px 12px;border:none;background:#fff;cursor:pointer;font-size:13px;font-weight:700;border-right:1px solid var(--line);}
+  .seg button:last-child{border-right:none;}
+  .seg button.sel{background:var(--accent);color:#fff;}
+  .tgl{padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;}
+  .tgl.on{background:#ffe0b2;border-color:#ef6c00;color:#e65100;}
+  .memo{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:14px;}
+  .saverow{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;}
+  .btn{padding:8px 16px;border:none;border-radius:6px;font-weight:800;cursor:pointer;font-size:14px;}
+  .btn.save{background:var(--ok);color:#fff;}
+  .btn.save:disabled{opacity:.5;}
+  /* 定型ルート */
+  .daytabs{display:flex;gap:4px;margin-bottom:8px;}
+  .daytab{flex:1;padding:7px;text-align:center;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-weight:700;}
+  .daytab.active{background:var(--accent);color:#fff;}
+  .route-card{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-bottom:6px;padding:8px 10px;}
+  .route-card.rev-ok{border-left:5px solid var(--ok);}
+  .route-card.rev-ng{border-left:5px solid var(--warn);}
+  .route-head{display:flex;align-items:center;gap:8px;font-weight:800;}
+  .veh{font-size:16px;background:#e3f2fd;padding:2px 8px;border-radius:6px;}
+  .route-users{margin:6px 0;font-size:14px;line-height:1.7;}
+  .rev-btns{display:flex;gap:6px;}
+  .rev{padding:5px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-weight:700;font-size:13px;}
+  .rev.ok.sel{background:#e8f5e9;border-color:var(--ok);color:var(--ok);}
+  .rev.ng.sel{background:var(--warnbg);border-color:var(--warn);color:var(--warn);}
+  .empty{color:var(--sub);text-align:center;padding:24px;}
+  #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50;}
+  #toast.show{opacity:.95;}
+  .note{font-size:12px;color:var(--sub);background:#fffde7;border:1px solid #ffe082;border-radius:6px;padding:6px 8px;margin-bottom:8px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚐 送迎条件</h1>
+  <div class="meta">
+    <span id="statLine">読込中…</span>
+    <span id="warnCount"></span>
+    <button class="chip" id="reloadBtn" style="margin-left:auto">↻ 更新</button>
+  </div>
+  <div class="tabs">
+    <div class="tab active" id="tabConds" onclick="switchTab('conds')">条件入力</div>
+    <div class="tab" id="tabRoutes" onclick="switchTab('routes')">定型ルート確認</div>
+  </div>
+</header>
+<main>
+  <!-- 条件入力ビュー -->
+  <section id="viewConds">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="名前で絞り込み" oninput="renderConds()">
+      <span class="chip" id="warnOnly" onclick="toggleWarnOnly()">⚠ 要確認のみ</span>
+    </div>
+    <div class="note">プリフィル済みの行は「⚠要確認」です。行を開いて内容を確認・修正し「確認して保存」を押すと確認済み（緑）になります。乗車条件（3列目不可・ステップ・前席）は初期は空欄です。</div>
+    <div id="condsList"></div>
+  </section>
+  <!-- 定型ルート確認ビュー -->
+  <section id="viewRoutes" style="display:none">
+    <div class="daytabs" id="dayTabs"></div>
+    <div class="note">曜日ごとの定型ルート（送迎時間シートの routes）です。段階1の判定はこの定型ルートを土台にします。各便が実態と「合ってる／違う」を記録できます。実際の車・順番の修正は既存の「出勤＆送迎表」で行ってください。</div>
+    <div id="routesList"></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+  // ===== エンドポイント =====
+  var BOARD_GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec'; // yawaragi-board（条件の保存/取得）
+  var SCHED_GAS = 'https://script.google.com/macros/s/AKfycby-V66UddiWmavoKDYopA2WTU3Sl94GzXGdvRUAgCpHn96qNovOMo9YRLnVI_pgKjgsIA/exec'; // 出勤送迎表（roster/定型ルート・読み取りのみ）
+  var DAYS = ['月','火','水','木','金'];
+  var TRANSPORTS = [['normal','送迎'],['walk','徒歩'],['family','家族送迎']];
+
+  // ===== 状態 =====
+  var state = { roster: [], conds: {}, sched: null, warnOnly: false, curDay: '月', dirty: {}, routeReview: {} };
+  try { state.routeReview = JSON.parse(localStorage.getItem('sougei_route_review') || '{}'); } catch(e){}
+
+  // ===== 純ロジック（jsdomテスト対象・window露出） =====
+  // 条件の既定値
+  function schDefaultCond(){ return { transport:'normal', no3:false, step:false, frontPref:false, memo:'', confirmed:false }; }
+  // roster(名前配列) × conds(store) → 1人1行ビュー。未登録は既定・未確認。
+  function schBuildRows(roster, conds){
+    roster = roster || []; conds = conds || {};
+    return roster.map(function(name){
+      var c = conds[name] || {};
+      return {
+        name: name,
+        transport: (c.transport==='walk'||c.transport==='family') ? c.transport : 'normal',
+        no3: !!c.no3, step: !!c.step, frontPref: !!c.frontPref,
+        memo: String(c.memo||''), confirmed: !!c.confirmed
+      };
+    });
+  }
+  // 検索・要確認フィルタ
+  function schFilterRows(rows, q, warnOnly){
+    q = String(q||'').trim();
+    return rows.filter(function(r){
+      if (warnOnly && r.confirmed) return false;
+      if (q && r.name.indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  function schTransportLabel(v){ return v==='walk'?'徒歩':v==='family'?'家族送迎':'送迎'; }
+  // 送迎時間JSON.routes[曜日] → 定型ルート行（stops1件以上の便のみ・車ごと）
+  function schRouteRows(sched, weekday){
+    if(!sched || !sched.routes || !sched.routes[weekday]) return [];
+    var day = sched.routes[weekday], out = [];
+    ['am','pm'].forEach(function(ap){
+      if(!day[ap]) return;
+      ['pick','drop'].forEach(function(tp){
+        var arr = day[ap][tp];
+        if(!Array.isArray(arr)) return;
+        arr.forEach(function(rt, idx){
+          if(!rt) return;
+          var stops = Array.isArray(rt.stops)?rt.stops:[];
+          var users = []; stops.forEach(function(s){ if(s&&s.user) users.push(s.user); });
+          if(users.length===0) return;
+          out.push({ key: weekday+'_'+ap+'_'+tp+'_'+idx, ampm:ap, type:tp, vehicle:rt.vehicle||'', driver:rt.driver||'', users:users });
+        });
+      });
+    });
+    return out;
+  }
+  if (typeof window !== 'undefined') {
+    window.schBuildRows = schBuildRows; window.schFilterRows = schFilterRows;
+    window.schRouteRows = schRouteRows; window.schTransportLabel = schTransportLabel;
+    window.schDefaultCond = schDefaultCond;
+  }
+
+  // ===== 通信（JSONP） =====
+  function jsonp(url, cb){
+    var name = 'scb_' + Math.floor(performance.now()) + '_' + Math.floor(Math.random()*1e6);
+    var done = false;
+    window[name] = function(resp){ done = true; try{ cb(null, resp); }finally{ cleanup(); } };
+    var s = document.createElement('script');
+    s.src = url + (url.indexOf('?')<0?'?':'&') + 'callback=' + name + '&t=' + Date.now();
+    s.onerror = function(){ if(done) return; cleanup(); cb(new Error('通信エラー')); };
+    function cleanup(){ try{ delete window[name]; }catch(e){ window[name]=undefined; } if(s.parentNode) s.parentNode.removeChild(s); }
+    document.head.appendChild(s);
+  }
+  function todayYMD(){ var d=new Date(); function p(n){return(n<10?'0':'')+n;} return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+  function toast(msg){ var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1800); }
+
+  // ===== 読み込み =====
+  function load(){
+    document.getElementById('statLine').textContent = '読込中…';
+    var gotMembers=false, gotConds=false, gotSched=false;
+    function maybeRender(){ if(gotMembers&&gotConds){ renderConds(); updateStat(); } if(gotSched){ renderRoutes(); } }
+    // roster（在籍者・当日基準）
+    jsonp(SCHED_GAS + '?action=getMembersForApp&appType=attendance&asOfDate=' + todayYMD(), function(err, resp){
+      gotMembers = true;
+      var members = (resp && resp.members) || [];
+      state.roster = members.filter(function(m){ return m && m.displayMode !== 'hidden' && m.name; }).map(function(m){ return String(m.name).trim(); });
+      // 重複排除
+      state.roster = state.roster.filter(function(n,i){ return state.roster.indexOf(n)===i; });
+      maybeRender();
+    });
+    // 条件
+    jsonp(BOARD_GAS + '?action=sougeiCondsGet', function(err, resp){
+      gotConds = true;
+      state.conds = (resp && resp.conds) || {};
+      maybeRender();
+    });
+    // 定型ルート
+    jsonp(SCHED_GAS + '?action=getSchedTimes', function(err, resp){
+      gotSched = true;
+      state.sched = resp || null;
+      maybeRender();
+    });
+  }
+  function updateStat(){
+    var rows = schBuildRows(state.roster, state.conds);
+    var warn = rows.filter(function(r){ return !r.confirmed; }).length;
+    document.getElementById('statLine').textContent = '在籍 ' + rows.length + '名';
+    var wc = document.getElementById('warnCount');
+    wc.textContent = warn>0 ? ('⚠ 要確認 ' + warn + '件') : '✓ 全確認済み';
+    wc.style.color = warn>0 ? '#d32f2f' : '#2e7d32';
+    wc.style.fontWeight = '800';
+  }
+
+  // ===== 条件入力ビュー描画 =====
+  function renderConds(){
+    var rows = schFilterRows(schBuildRows(state.roster, state.conds), document.getElementById('q').value, state.warnOnly);
+    var host = document.getElementById('condsList');
+    if(rows.length===0){ host.innerHTML = '<div class="empty">該当なし</div>'; return; }
+    host.innerHTML = rows.map(function(r){ return condRowHtml(r); }).join('');
+  }
+  function condRowHtml(r){
+    var cls = r.confirmed ? 'done' : 'warn';
+    var badge = r.confirmed ? '<span class="badge done">✓ 確認済み</span>' : '<span class="badge warn">⚠ 要確認</span>';
+    var sum = schTransportLabel(r.transport) + (r.no3?' / 3列目不可':'') + (r.step?' / ステップ':'') + (r.frontPref?' / 前席':'');
+    var esc = escAttr(r.name);
+    var seg = TRANSPORTS.map(function(t){ return '<button class="'+(r.transport===t[0]?'sel':'')+'" onclick="setField(\''+esc+'\',\'transport\',\''+t[0]+'\')">'+t[1]+'</button>'; }).join('');
+    return '<div class="row '+cls+'" id="row_'+esc+'">'
+      + '<div class="row-head" onclick="toggleRow(\''+esc+'\')"><span class="row-name">'+escHtml(r.name)+'</span>'
+      +   '<span class="summary">'+escHtml(sum)+'</span>'+badge+'</div>'
+      + '<div class="row-body">'
+      +   '<div class="fieldrow"><span class="flabel">送迎区分</span><div class="seg">'+seg+'</div></div>'
+      +   '<div class="fieldrow"><span class="flabel">乗車条件</span>'
+      +     '<button class="tgl '+(r.no3?'on':'')+'" onclick="setField(\''+esc+'\',\'no3\',!'+r.no3+')">3列目不可</button>'
+      +     '<button class="tgl '+(r.step?'on':'')+'" onclick="setField(\''+esc+'\',\'step\',!'+r.step+')">ステップ乗降要</button>'
+      +     '<button class="tgl '+(r.frontPref?'on':'')+'" onclick="setField(\''+esc+'\',\'frontPref\',!'+r.frontPref+')">前席指定あり</button>'
+      +   '</div>'
+      +   '<div class="fieldrow"><span class="flabel">メモ</span><input class="memo" value="'+escAttr(r.memo)+'" onchange="setField(\''+esc+'\',\'memo\',this.value)" placeholder="乗降の注意・家族連絡先など"></div>'
+      +   '<div class="saverow"><button class="btn save" onclick="saveRow(\''+esc+'\')">確認して保存</button></div>'
+      + '</div></div>';
+  }
+  function escHtml(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+  function escAttr(s){ return String(s==null?'':s).replace(/['"\\]/g,'\\$&').replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+
+  function currentCond(name){
+    var c = state.conds[name] || {};
+    return { transport:(c.transport==='walk'||c.transport==='family')?c.transport:'normal', no3:!!c.no3, step:!!c.step, frontPref:!!c.frontPref, memo:String(c.memo||''), confirmed:!!c.confirmed };
+  }
+  function toggleRow(name){ var el=document.getElementById('row_'+cssId(name)); if(el) el.classList.toggle('open'); }
+  function cssId(name){ return name; }
+  // 編集はローカルstateへ（保存で確定）
+  function setField(name, field, val){
+    if(!state.conds[name]) state.conds[name] = schDefaultCond();
+    else state.conds[name] = currentCond(name);
+    if(field==='transport') state.conds[name].transport = val;
+    else if(field==='memo') state.conds[name].memo = val;
+    else state.conds[name][field] = (val===true||val==='true');
+    state.dirty[name] = true;
+    // 開いたまま再描画（該当行だけ差し替え）
+    var open = true;
+    renderConds();
+    var el=document.getElementById('row_'+cssId(name)); if(el&&open) el.classList.add('open');
+  }
+  function saveRow(name){
+    var cond = currentCond(name);
+    cond.confirmed = true; // ★確認して保存＝確認済みに
+    var payload = { name: name, cond: cond, updatedBy: '比嘉' };
+    jsonp(BOARD_GAS + '?action=sougeiCondsUpsert&p=' + encodeURIComponent(JSON.stringify(payload)), function(err, resp){
+      if(err || !resp || resp.success===false){ toast('保存失敗'); return; }
+      state.conds[name] = cond; delete state.dirty[name];
+      renderConds(); updateStat();
+      toast('✓ ' + name + ' を保存（' + resp.count + '名分）');
+    });
+  }
+
+  // ===== 定型ルート確認ビュー描画 =====
+  function renderRoutes(){
+    var dt = document.getElementById('dayTabs');
+    dt.innerHTML = DAYS.map(function(d){ return '<div class="daytab '+(d===state.curDay?'active':'')+'" onclick="setDay(\''+d+'\')">'+d+'</div>'; }).join('');
+    var rows = schRouteRows(state.sched, state.curDay);
+    var host = document.getElementById('routesList');
+    if(rows.length===0){ host.innerHTML = '<div class="empty">'+state.curDay+'曜の定型ルートは未登録です</div>'; return; }
+    host.innerHTML = rows.map(function(r){ return routeCardHtml(r); }).join('');
+  }
+  function routeCardHtml(r){
+    var rev = state.routeReview[r.key] || '';
+    var cls = rev==='ok'?'rev-ok':rev==='ng'?'rev-ng':'';
+    var lbl = (r.ampm==='am'?'午前':'午後') + (r.type==='pick'?'迎え':'送り');
+    return '<div class="route-card '+cls+'">'
+      + '<div class="route-head"><span class="veh">'+escHtml(r.vehicle||'?')+'</span><span>'+escHtml(r.driver||'(運転手未定)')+'</span><span class="summary">'+lbl+'</span></div>'
+      + '<div class="route-users">'+r.users.map(function(u){return escHtml(u)+'様';}).join('、')+'</div>'
+      + '<div class="rev-btns"><button class="rev ok '+(rev==='ok'?'sel':'')+'" onclick="setReview(\''+escAttr(r.key)+'\',\'ok\')">✓ 合ってる</button>'
+      +   '<button class="rev ng '+(rev==='ng'?'sel':'')+'" onclick="setReview(\''+escAttr(r.key)+'\',\'ng\')">✗ ここ違う</button></div>'
+      + '</div>';
+  }
+  function setDay(d){ state.curDay = d; renderRoutes(); }
+  function setReview(key, val){
+    state.routeReview[key] = (state.routeReview[key]===val ? '' : val);
+    try{ localStorage.setItem('sougei_route_review', JSON.stringify(state.routeReview)); }catch(e){}
+    renderRoutes();
+  }
+
+  // ===== タブ切替 =====
+  function switchTab(which){
+    document.getElementById('viewConds').style.display = which==='conds'?'':'none';
+    document.getElementById('viewRoutes').style.display = which==='routes'?'':'none';
+    document.getElementById('tabConds').classList.toggle('active', which==='conds');
+    document.getElementById('tabRoutes').classList.toggle('active', which==='routes');
+    if(which==='routes') renderRoutes();
+  }
+  function toggleWarnOnly(){ state.warnOnly=!state.warnOnly; document.getElementById('warnOnly').classList.toggle('on', state.warnOnly); renderConds(); }
+
+  // ===== 起動 =====
+  if (typeof document !== 'undefined' && document.getElementById('reloadBtn')) {
+    document.getElementById('reloadBtn').addEventListener('click', load);
+    load();
+  }
+</script>
+</body>
+</html>
