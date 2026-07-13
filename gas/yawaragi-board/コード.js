@@ -13324,6 +13324,16 @@ function testNewMail72() {
   Logger.log(JSON.stringify(result, null, 2));
 }
 
+// getNewMailBoard 動作確認用ラッパー（GASエディタ実行でログ確認・2026-07-14）。
+// getNewMailBoard は respond() = ContentService の TextOutput を返すため、そのまま
+// stringify すると {} になる。getContent() で中身(JSON文字列)を取り出して整形表示する。
+function testNewMailBoard() {
+  var r = getNewMailBoard();
+  var out = JSON.parse(r.getContent());
+  console.log(JSON.stringify(out, null, 2));
+  return out;
+}
+
 // =============================================================
 // 新着メール「対応済み」バックエンド（morningDigest Phase2-A・2026-07-14）
 //   teirei（定例タスク完了記録・コード.js:7314付近）の「完了記録シート方式」を下敷きにする。
