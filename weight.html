@@ -221,6 +221,40 @@
             padding: 2px 8px; border-radius: 10px; font-size: 11px;
             margin-left: 6px; font-weight: normal; vertical-align: middle;
         }
+        /* 中止者見出しの開閉トグル（既定は折りたたみ） */
+        .terminated-divider-row td { cursor: pointer; user-select: none; }
+        .terminated-divider-row .term-caret { display: inline-block; width: 1.1em; }
+        .terminated-divider-row .term-hint { color: #999; font-weight: normal; font-size: 12px; }
+        /* 台帳外（要名寄せ）小見出し */
+        .orphan-divider-row td {
+            background: #fff8e1; color: #a15c00; padding: 10px 12px;
+            text-align: left; font-size: 13px; font-weight: bold;
+            border-top: 2px dashed #f0c060; border-bottom: 1px solid #f0d890;
+        }
+        .row-orphan { background: #fffdf5; }
+        .row-orphan .name-cell { background: #fffdf5; color: #a15c00; }
+        .orphan-badge {
+            display: inline-block; background: #ffe0a0; color: #a15c00;
+            padding: 2px 8px; border-radius: 10px; font-size: 11px;
+            margin-left: 6px; font-weight: normal; vertical-align: middle;
+        }
+
+        /* 名前検索ボックス（曜日/時間フィルタと同じ行の右側） */
+        .sched-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .wt-search { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+        .wt-search input {
+            font-size: 16px; padding: 8px 10px; border: 1px solid #90caf9;
+            border-radius: 6px; min-height: 40px; width: 190px; outline: none;
+        }
+        .wt-search input:focus { border-color: #2196F3; box-shadow: 0 0 0 2px rgba(33,150,243,.2); }
+        .wt-search .search-clear {
+            border: none; background: #eee; color: #666; border-radius: 6px;
+            min-width: 44px; min-height: 40px; font-size: 16px; cursor: pointer;
+            touch-action: manipulation;
+        }
+        .wt-search .search-clear:hover { background: #e0e0e0; }
+        .search-count { font-size: 13px; color: #1565c0; font-weight: bold; margin-left: 6px; }
+        @media print { .wt-search { display: none; } }
 
         /* モーダル共通 */
         .modal-overlay {
@@ -465,6 +499,7 @@
     <div class="stats">
         登録者数: <strong id="totalCount">0</strong>名
         ｜ 今月の入力: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
+        <span class="search-count" id="searchCount"></span>
     </div>
     <div class="legend">
         <div class="legend-item"><div class="legend-color" style="background:#e3f2fd;">kg</div> 入力済</div>
@@ -475,23 +510,30 @@
 </div>
 
 <div class="filter-bar" id="filterBar" style="display:none;">
-    <span class="filter-label">曜日:</span>
-    <div class="filter-group" id="dayFilters">
-        <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
-        <button class="filter-btn" onclick="setDayFilter('月')">月</button>
-        <button class="filter-btn" onclick="setDayFilter('火')">火</button>
-        <button class="filter-btn" onclick="setDayFilter('水')">水</button>
-        <button class="filter-btn" onclick="setDayFilter('木')">木</button>
-        <button class="filter-btn" onclick="setDayFilter('金')">金</button>
-        <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+    <div class="sched-filters" id="schedFilters">
+        <span class="filter-label">曜日:</span>
+        <div class="filter-group" id="dayFilters">
+            <button class="filter-btn active" onclick="setDayFilter('')">全員</button>
+            <button class="filter-btn" onclick="setDayFilter('月')">月</button>
+            <button class="filter-btn" onclick="setDayFilter('火')">火</button>
+            <button class="filter-btn" onclick="setDayFilter('水')">水</button>
+            <button class="filter-btn" onclick="setDayFilter('木')">木</button>
+            <button class="filter-btn" onclick="setDayFilter('金')">金</button>
+            <button class="filter-btn" onclick="setDayFilter('土')">土</button>
+        </div>
+        <span class="filter-label" style="margin-left:8px;">時間:</span>
+        <div class="filter-group" id="ampmFilters">
+            <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
+            <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
+            <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+        </div>
+        <span class="filter-count" id="filterCount"></span>
     </div>
-    <span class="filter-label" style="margin-left:8px;">時間:</span>
-    <div class="filter-group" id="ampmFilters">
-        <button class="filter-btn active-ampm" onclick="setAmpmFilter('')">全</button>
-        <button class="filter-btn" onclick="setAmpmFilter('午前')">午前</button>
-        <button class="filter-btn" onclick="setAmpmFilter('午後')">午後</button>
+    <div class="wt-search">
+        <span style="font-size:18px;" aria-hidden="true">🔍</span>
+        <input type="search" id="searchBox" placeholder="名前で検索" oninput="onSearchInput()" autocomplete="off" enterkeyhint="search">
+        <button type="button" class="search-clear" id="searchClear" onclick="clearSearch()" aria-label="検索をクリア" title="クリア">✕</button>
     </div>
-    <span class="filter-count" id="filterCount"></span>
 </div>
 
 <div class="table-container">
@@ -572,7 +614,8 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbxPtSahXTDmVtSLWJcuaJ7y
 const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月','1月','2月','3月'];
 
 let appData = {
-    users: [],       // [{name, furigana, days:'', ampm:''}]
+    users: [],       // [{name, furigana, days:'', ampm:''}] ＝ 台帳の現役のみ（測定対象の正本）
+    terminated: [],  // [{name, kana, lastUseDate}] ＝ 台帳の中止者（includeEnded=1 由来・単一ソース）
     weights: {},     // { "年度": { "ユーザー名": { "4月": 65.5, ... } } }
     heights: {},     // { "年度": { "ユーザー名": { "4月": 155.0, ... } } }
     currentYear: getCurrentFiscalYear()
@@ -587,6 +630,32 @@ let editingMonth = '';
 // ============ 曜日＋午前/午後フィルター ============
 let filterDay = '';
 let filterAmpm = '';
+
+// ============ 名前検索（改修1・2026-07-13）============
+let searchQuery = '';
+function onSearchInput() {
+    searchQuery = document.getElementById('searchBox').value || '';
+    renderTable();
+}
+function clearSearch() {
+    searchQuery = '';
+    const box = document.getElementById('searchBox');
+    if (box) { box.value = ''; box.focus(); }
+    renderTable();
+}
+
+// ============ 中止者セクション折りたたみ状態（改修3-2・既定=折りたたみ）============
+const TERM_COLLAPSE_KEY = 'yawaragi_weight_terminated_collapsed';
+function isTerminatedCollapsed() {
+    try {
+        const v = localStorage.getItem(TERM_COLLAPSE_KEY);
+        return v === null ? true : v === '1'; // 既定=折りたたみ
+    } catch (e) { return true; }
+}
+function toggleTerminatedCollapse() {
+    try { localStorage.setItem(TERM_COLLAPSE_KEY, isTerminatedCollapsed() ? '0' : '1'); } catch (e) {}
+    renderTable();
+}
 
 function setDayFilter(day) {
     filterDay = day;
@@ -634,6 +703,101 @@ function showToast(msg, color) {
 
 function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escapeAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+// ============ 純ロジック（scripts/test-weight-core.js が実抽出テスト・ここが正本）============
+// 検索文字列・氏名・ふりがなを同じ土俵に正規化：ひらがな→カタカナ／全半角空白除去／英字小文字。
+function wtNormalizeText(s) {
+    var t = String(s == null ? '' : s);
+    t = t.replace(/[ぁ-ゖ]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) + 0x60); });
+    t = t.replace(/[\s　]/g, '');
+    t = t.toLowerCase();
+    return t;
+}
+// 氏名＋ふりがなの部分一致（曜日/時間フィルタと AND で使う1段）。空クエリは全通過。
+function wtMatchesSearch(name, furigana, query) {
+    var q = wtNormalizeText(query);
+    if (!q) return true;
+    // 氏名・ふりがなを個別に部分一致（連結しないので跨ぎ誤ヒットが起きない）。
+    return wtNormalizeText(name).indexOf(q) >= 0 || wtNormalizeText(furigana).indexOf(q) >= 0;
+}
+// 中止判定は台帳ステータスの単一ソース（改修2）。中止/終了/卒業 のみ中止扱い。
+function wtIsEndedStatus(status) {
+    var s = String(status == null ? '' : status);
+    return s.indexOf('終了') >= 0 || s.indexOf('中止') >= 0 || s.indexOf('卒業') >= 0;
+}
+// weights[fy][name] に非空値が1つでもあるか（年度スコープ判定・改修3-1）。
+function wtHasRecordInYear(weights, fy, name) {
+    var yd = weights && weights[fy];
+    var rec = yd && yd[name];
+    if (!rec) return false;
+    for (var k in rec) {
+        if (Object.prototype.hasOwnProperty.call(rec, k)) {
+            var v = rec[k];
+            if (v !== undefined && v !== null && v !== '') return true;
+        }
+    }
+    return false;
+}
+// その年度内の最新記録 {calYear, monthNum, value}（会計年度4月始まり）。無ければ null。
+function wtLatestInYear(weights, fy, name, months) {
+    var yd = weights && weights[fy];
+    var rec = yd && yd[name];
+    if (!rec) return null;
+    var best = null;
+    for (var i = 0; i < months.length; i++) {
+        var m = months[i];
+        var v = rec[m];
+        if (v === undefined || v === null || v === '') continue;
+        var monthNum = parseInt(m, 10);
+        var calYear = monthNum >= 4 ? fy : fy + 1;
+        var sortKey = calYear * 100 + monthNum;
+        if (!best || sortKey > best.sortKey) best = { sortKey: sortKey, calYear: calYear, monthNum: monthNum, value: v };
+    }
+    return best;
+}
+// 中止者セクションの分類（年度スコープ＋台帳外分離・改修2/3）。
+//   ledger  = 台帳の中止者のうち、選択年度に体重記録がある者
+//   orphans = weights に記録はあるが 現役でも台帳中止者でもない“台帳外・要名寄せ”の氏名
+function wtClassifyTerminated(opts) {
+    var activeSet = (opts.activeNames instanceof Set) ? opts.activeNames : new Set(opts.activeNames || []);
+    var terminated = opts.terminated || [];
+    var weights = opts.weights || {};
+    var fy = opts.fy;
+    var months = opts.months;
+
+    var termNames = new Set();
+    var ledger = [];
+    for (var i = 0; i < terminated.length; i++) {
+        var t = terminated[i];
+        termNames.add(t.name);
+        if (!wtHasRecordInYear(weights, fy, t.name)) continue;
+        var latest = wtLatestInYear(weights, fy, t.name, months);
+        ledger.push({
+            name: t.name,
+            kana: t.kana || '',
+            lastUseDate: t.lastUseDate || '',
+            badge: latest ? (latest.calYear + '/' + latest.monthNum + '月') : ''
+        });
+    }
+
+    var orphans = [];
+    var yd = weights[fy] || {};
+    Object.keys(yd).forEach(function (name) {
+        if (activeSet.has(name)) return;
+        if (termNames.has(name)) return;
+        if (!wtHasRecordInYear(weights, fy, name)) return;
+        var latest = wtLatestInYear(weights, fy, name, months);
+        orphans.push({
+            name: name, kana: '', lastUseDate: '',
+            badge: latest ? (latest.calYear + '/' + latest.monthNum + '月') : ''
+        });
+    });
+
+    var byName = function (a, b) { return String(a.name).normalize('NFKC').localeCompare(String(b.name).normalize('NFKC'), 'ja'); };
+    ledger.sort(byName);
+    orphans.sort(byName);
+    return { ledger: ledger, orphans: orphans };
+}
 
 // ============ クラウド同期 ============
 const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
@@ -724,6 +888,7 @@ function loadData() {
         if (saved) {
             const p = JSON.parse(saved);
             appData.users = p.users || [];
+            appData.terminated = p.terminated || [];
             appData.weights = p.weights || {};
             appData.heights = p.heights || {};
         }
@@ -732,7 +897,7 @@ function loadData() {
 
 function saveData() {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, weights: appData.weights, heights: appData.heights }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, terminated: appData.terminated, weights: appData.weights, heights: appData.heights }));
         cloudSync();
     } catch(e) { console.error('保存エラー:', e); }
 }
@@ -766,7 +931,8 @@ function loadFromSpreadsheet() {
     showToast('📋 利用者台帳からデータ取得中...', '#2196F3');
 
     const callbackName = 'gasCallback_' + Date.now();
-    const url = GAS_URL + '?callback=' + callbackName;
+    // includeEnded=1 で現役＋中止者（status/最終利用日つき）をまとめて取得（中止判定の単一ソース・改修2）
+    const url = GAS_URL + '?callback=' + callbackName + '&includeEnded=1';
 
     const timeout = setTimeout(() => {
         delete window[callbackName];
@@ -780,21 +946,27 @@ function loadFromSpreadsheet() {
         if (script.parentNode) script.parentNode.removeChild(script);
 
         try {
-            const users = (data.users || []).map(u => ({
-                name: u.name || '',
-                furigana: u.kana || '',
-                days: u.days || '',
-                ampm: u.ampm || ''
-            })).filter(u => u.name);
+            const all = (data.users || []).filter(u => u && u.name);
+            // 台帳ステータスで現役／中止者に振り分け（wtIsEndedStatus が単一ソース）
+            const activeUsers = [];
+            const terminated = [];
+            all.forEach(u => {
+                if (wtIsEndedStatus(u.status)) {
+                    terminated.push({ name: u.name, kana: u.kana || '', lastUseDate: u.lastUseDate || '' });
+                } else {
+                    activeUsers.push({ name: u.name, furigana: u.kana || '', days: u.days || '', ampm: u.ampm || '' });
+                }
+            });
 
-            if (users.length === 0) {
+            if (activeUsers.length === 0 && terminated.length === 0) {
                 showToast('⚠ 利用者が見つかりません', '#f44');
                 return;
             }
-            mergeUsers(users);
+            mergeUsers(activeUsers);
+            appData.terminated = terminated;
             saveData();
             renderTable();
-            showToast(`✅ ${appData.users.length}名の利用者を取得しました`, '#4CAF50');
+            showToast(`✅ ${appData.users.length}名（中止者${terminated.length}名）を取得しました`, '#4CAF50');
         } catch(err) {
             showToast('⚠ データの解析に失敗しました', '#f44');
             console.error(err);
@@ -876,36 +1048,6 @@ function changeYear() {
     renderTable();
 }
 
-// 中止者抽出：appData.weightsに測定履歴があるが、現users配列に居ない名前
-// 社長指示2026-05-27「中止になっても記録は大事だから絶対消さない」
-function getTerminatedUsers() {
-    const activeNames = new Set(appData.users.map(u => u.name));
-    const terminated = new Map();
-    Object.keys(appData.weights).forEach(fyStr => {
-        const fy = parseInt(fyStr);
-        if (isNaN(fy)) return;
-        const yearData = appData.weights[fy];
-        Object.keys(yearData || {}).forEach(name => {
-            if (activeNames.has(name)) return;
-            const userData = yearData[name];
-            for (const m of MONTHS) {
-                const v = userData[m];
-                if (v === undefined || v === null || v === '') continue;
-                const monthNum = parseInt(m);
-                const calYear = monthNum >= 4 ? fy : fy + 1;
-                const sortKey = calYear * 100 + monthNum;
-                const existing = terminated.get(name);
-                if (!existing || sortKey > existing.sortKey) {
-                    terminated.set(name, { name, sortKey, year: calYear, monthNum, value: v });
-                }
-            }
-        });
-    });
-    return Array.from(terminated.values()).sort((a, b) => {
-        return a.name.normalize('NFKC').localeCompare(b.name.normalize('NFKC'), 'ja');
-    });
-}
-
 // ============ テーブル描画 ============
 function renderTable() {
     const year = appData.currentYear;
@@ -944,16 +1086,24 @@ function renderTable() {
 
     sortUsers();
 
-    // フィルター適用
-    const filteredUsers = appData.users.filter(u => matchesSchedule(u, filterDay, filterAmpm));
+    // フィルター適用（曜日/時間フィルタ AND 名前検索・改修1）
+    const searchActive = wtNormalizeText(searchQuery) !== '';
+    const filteredUsers = appData.users.filter(u =>
+        matchesSchedule(u, filterDay, filterAmpm) && wtMatchesSearch(u.name, u.furigana, searchQuery));
     const hasScheduleData = appData.users.some(u => u.days);
-    document.getElementById('filterBar').style.display = hasScheduleData ? 'flex' : 'none';
+    // 検索は台帳データが無くても使えるよう、利用者が居ればバーは常時表示。曜日/時間群だけ台帳依存で出し分け。
+    document.getElementById('filterBar').style.display = appData.users.length > 0 ? 'flex' : 'none';
+    const sfEl = document.getElementById('schedFilters');
+    if (sfEl) sfEl.style.display = hasScheduleData ? 'flex' : 'none';
     const fcEl = document.getElementById('filterCount');
     if (filterDay || filterAmpm) {
         fcEl.textContent = filteredUsers.length + ' / ' + appData.users.length + '名 表示中';
     } else {
         fcEl.textContent = '';
     }
+    // ✕ボタンは入力があるときだけ意味を持たせる（視覚フィードバック）
+    const clrBtn = document.getElementById('searchClear');
+    if (clrBtn) clrBtn.style.visibility = (document.getElementById('searchBox') && document.getElementById('searchBox').value) ? 'visible' : 'hidden';
 
     for (const user of filteredUsers) {
         const group = getGroup(user.furigana);
@@ -1032,40 +1182,69 @@ function renderTable() {
         rowIndex++;
     }
 
-    // 中止者セクション（記録保持・社長指示2026-05-27）
-    const terminatedUsers = getTerminatedUsers();
-    if (terminatedUsers.length > 0) {
-        html += `<tr class="terminated-divider-row"><td colspan="${2 + MONTHS.length}">⛔ 中止者（記録保持・${terminatedUsers.length}名）　※測定対象判定からは除外。過去データは編集可能。</td></tr>`;
-        for (const t of terminatedUsers) {
-            if (!yearData[t.name]) yearData[t.name] = {};
-            if (!appData.heights[year]) appData.heights[year] = {};
-            if (!appData.heights[year][t.name]) appData.heights[year][t.name] = {};
-            const tHeightData = appData.heights[year][t.name];
-            html += `<tr class="row-terminated">`;
-            html += `<td class="group-cell"></td>`;
-            html += `<td class="name-cell">${escapeHtml(t.name)}<span class="terminated-badge">最終 ${t.year}/${t.monthNum}月</span></td>`;
-            for (let mi = 0; mi < MONTHS.length; mi++) {
-                const m = MONTHS[mi];
-                const weight = yearData[t.name][m];
-                const height = tHeightData[m];
-                let cls = 'weight-cell month-border';
-                let content = '';
-                if (weight !== undefined && weight !== null && weight !== '') {
-                    cls += ' has-value';
-                    content = `<span class="weight-value">${weight}</span>`;
-                    const nearestHeight = height || getNearestHeight(t.name, year, mi);
-                    if (nearestHeight) {
-                        const hm = nearestHeight / 100;
-                        const bmi = (weight / (hm * hm)).toFixed(1);
-                        content += `<span style="font-size:10px; display:block; color:#888;">BMI ${bmi}</span>`;
-                    }
+    // 中止者セクション（改修2/3：台帳status単一ソース＋年度スコープ＋台帳外分離＋折りたたみ）
+    const termCls = wtClassifyTerminated({
+        activeNames: appData.users.map(u => u.name),
+        terminated: appData.terminated,
+        weights: appData.weights, fy: year, months: MONTHS
+    });
+    // 中止者セクションも検索対象（改修1）。氏名＋ふりがな（kana）で絞り込む。
+    const ledgerShown = termCls.ledger.filter(t => wtMatchesSearch(t.name, t.kana, searchQuery));
+    const orphansShown = termCls.orphans.filter(t => wtMatchesSearch(t.name, t.kana, searchQuery));
+    const termTotal = termCls.ledger.length + termCls.orphans.length;
+    const termShownCount = ledgerShown.length + orphansShown.length;
+    // 既定は折りたたみ。検索で中止者側にヒットしたら自動展開（保存状態は変えない・改修3-2の例外）。
+    const forceExpandBySearch = searchActive && termShownCount > 0;
+    const expanded = forceExpandBySearch ? true : !isTerminatedCollapsed();
+
+    // 中止者/台帳外に共通の行描画（現役行と同じセル体裁・押下で編集可）
+    function renderTermRow(name, badgeHtml, rowClass) {
+        if (!yearData[name]) yearData[name] = {};
+        if (!appData.heights[year]) appData.heights[year] = {};
+        if (!appData.heights[year][name]) appData.heights[year][name] = {};
+        const tHeightData = appData.heights[year][name];
+        let r = `<tr class="${rowClass}">`;
+        r += `<td class="group-cell"></td>`;
+        r += `<td class="name-cell">${escapeHtml(name)}${badgeHtml}</td>`;
+        for (let mi = 0; mi < MONTHS.length; mi++) {
+            const m = MONTHS[mi];
+            const weight = yearData[name][m];
+            const height = tHeightData[m];
+            let cls = 'weight-cell month-border';
+            let content = '';
+            if (weight !== undefined && weight !== null && weight !== '') {
+                cls += ' has-value';
+                content = `<span class="weight-value">${weight}</span>`;
+                const nearestHeight = height || getNearestHeight(name, year, mi);
+                if (nearestHeight) {
+                    const hm = nearestHeight / 100;
+                    const bmi = (weight / (hm * hm)).toFixed(1);
+                    content += `<span style="font-size:10px; display:block; color:#888;">BMI ${bmi}</span>`;
                 }
-                if (height) {
-                    content += `<span style="position:absolute; top:2px; right:3px; font-size:9px; color:#4CAF50;" title="${height}cm">📏</span>`;
-                }
-                html += `<td class="${cls}" onclick="openWeightInput('${escapeAttr(t.name)}','${m}')">${content}</td>`;
             }
-            html += '</tr>';
+            if (height) {
+                content += `<span style="position:absolute; top:2px; right:3px; font-size:9px; color:#4CAF50;" title="${height}cm">📏</span>`;
+            }
+            r += `<td class="${cls}" onclick="openWeightInput('${escapeAttr(name)}','${m}')">${content}</td>`;
+        }
+        r += '</tr>';
+        return r;
+    }
+
+    if (termTotal > 0) {
+        const caret = expanded ? '▼' : '▶';
+        const countLabel = searchActive ? `表示 ${termShownCount}／${termTotal}名` : `${termTotal}名`;
+        html += `<tr class="terminated-divider-row" onclick="toggleTerminatedCollapse()"><td colspan="${2 + MONTHS.length}"><span class="term-caret">${caret}</span>⛔ 中止者（記録保持・${countLabel}）　<span class="term-hint">※測定対象判定からは除外。過去データは編集可能。タップで開閉。</span></td></tr>`;
+        if (expanded) {
+            for (const t of ledgerShown) {
+                html += renderTermRow(t.name, `<span class="terminated-badge">最終 ${t.badge || '—'}</span>`, 'row-terminated');
+            }
+            if (orphansShown.length > 0) {
+                html += `<tr class="orphan-divider-row"><td colspan="${2 + MONTHS.length}">⚠️ 台帳外・要名寄せ（${orphansShown.length}名）　※現在の利用者台帳に該当氏名なし。氏名の取り違え・改名の可能性。台帳を確認して名寄せを。</td></tr>`;
+                for (const t of orphansShown) {
+                    html += renderTermRow(t.name, `<span class="orphan-badge">最終 ${t.badge || '—'}</span>`, 'row-terminated row-orphan');
+                }
+            }
         }
     }
 
@@ -1074,6 +1253,9 @@ function renderTable() {
     document.getElementById('totalCount').textContent = appData.users.length;
     document.getElementById('progressCount').textContent = isCurrentYear ? doneCount : '-';
     document.getElementById('progressTotal').textContent = isCurrentYear ? appData.users.length : '-';
+    // 検索件数（登録者数の横・改修1）：現役の検索一致＋中止者/台帳外の検索一致の合計。
+    const scEl = document.getElementById('searchCount');
+    if (scEl) scEl.textContent = searchActive ? `｜ 検索: ${filteredUsers.length + termShownCount}件` : '';
 }
 
 // ============ 体重入力 ============
@@ -1316,7 +1498,7 @@ function exportJson() {
     const data = {
         type: 'yawaragi_weight_check', version: 1,
         exportDate: new Date().toISOString(),
-        users: appData.users, weights: appData.weights, heights: appData.heights
+        users: appData.users, terminated: appData.terminated, weights: appData.weights, heights: appData.heights
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1339,6 +1521,7 @@ function handleJsonFile(file) {
             if (data.type !== 'yawaragi_weight_check') { alert('体重チェックのバックアップファイルではありません'); return; }
             if (confirm('現在のデータを復元データで上書きします。よろしいですか？')) {
                 appData.users = data.users || [];
+                appData.terminated = data.terminated || [];
                 appData.weights = data.weights || {};
                 appData.heights = data.heights || {};
                 saveData(); renderTable();
