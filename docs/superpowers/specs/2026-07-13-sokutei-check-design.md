@@ -97,12 +97,15 @@
 - GAS: `shienAlreadyMeasuredThisMonth_(records, name, ym)` / `findCancelableShienRow_(records, name, date)`
 - フロント: `canCheck(track, curDate, todayYMD, kaigoRowExists)` / `canCancel(row, curDate, todayYMD, justChecked)` / `demoteMeasured(sokuteiRows, key, today)`（測定済み化＋降格の並べ替え）
 
-### 4.4 トークン認証台帳（enforce=OFF待機中プロジェクトへ先行登録）
-`feat/gas-token-auth` の「JSONP/no-cors 経路ギャップ分析台帳」に**3行追加**（enforce ON日の漏れ防止）:
-- source付き `addShienSokutei`（write）
-- `cancelSessionSokutei`（write/delete）
-- `recordKaigoSokutei`（write・Phase 2）
-→ 別ブランチ成果物so、該当台帳ドキュメントに追記（本Phaseで場所を特定し追記 or Issue化）。
+### 4.4 トークン認証（enforce=OFF待機中）との関係 ★実測で判明
+`feat/gas-token-auth` を実測した結果、**「対象アクション個別台帳」という実体ファイルは存在しない**。トークンゲートは **doGet/doPost 入口の共通ゲート**方式:
+- `var g = gateAndLog_(e,'GET'); if(!g.ok) return gateUnauthorizedResponse_(e);`（gas-token-auth の コード.js:811）が**全actionに一律適用**。
+- `gateAndLog_`（同6700-）は `action` を **access_log に記録するだけ**で、個別の allowlist/write分類は持たない。
+- enforce=OFF は g.ok 常時true（素通り）、enforce=ON は valid token のみ通過（read/write問わず一律）。
+
+**帰結**: 新3アクション（source付き `addShienSokutei` / `cancelSessionSokutei` / `recordKaigoSokutei`）は**共通ゲートで自動的に被覆**され、「このactionだけ漏れる」ことは構造上起きない。**個別登録は不要／登録先も存在しない**（社長の想定した per-action 台帳は実在しなかった）。この3アクション名は本設計書がその記録を兼ねる。
+
+**⚠️ enforce ON日の本当の注意点（per-action ではなく per-page）**: `session-board.html` は**自己完結型で shared.js を読まない**＝トークン注入経路が無い。enforce=ON に切替えると、session-board.html の**全JSONP呼び出し（sessionBoard / staff_list / 今回の書込含む）がまとめて弾かれる**。対策は「session-board.html にトークン注入を1箇所足す」＝ページ単位の対応であり、測定チェックの3アクション固有の問題ではない。トークン認証プロジェクト側の enforce 切替チェックリストに「self-contained ページ（genba型）へのトークン注入」を含めること。
 
 ### 4.5 鍵
 既存 board write と同水準（**追加鍵なし・genba型origin-guard踏襲**）。測定記録はPII性低め。
