@@ -439,6 +439,7 @@
 </head>
 <body>
 <script src="auto-refresh-patch.js"></script>
+<script src="stamp-dest-core.js"></script>
 
 <div class="header">
     <h1>📮 切手管理</h1>
@@ -682,24 +683,41 @@
     const SPREADSHEET_API_URL = 'https://script.google.com/macros/s/AKfycbx7tvtzuYl3FPDnaVvnt2FjU798fRTws1PoDJoLPOi3AmGwcVp-dBkj2zgblVBCEFe1pQ/exec';
     const DEST_STORAGE_KEY = 'yawaragi_stamp_destinations';
 
+    // 宛先取得。★無言returnは全廃：どの経路でも必ず renderDestSelect() を呼び切る。
+    //   → 取得に失敗・0件でも「電算システム」「その他（手入力）」は常に出る＝手入力で業務が止まらない。
+    //   データ源はボードGAS応答の patterns（実測: 全111名・22事業所）。抽出は純関数 StampDest.stampExtractOffices。
     async function fetchDestinations() {
+        let list = null;
+        let failed = false;
         try {
             const res = await fetch(SPREADSHEET_API_URL);
-            if (!res.ok) return;
-            const json = await res.json();
-            if (!json.users) return;
-            const offices = new Set();
-            json.users.forEach(u => {
-                if (u.cmOffice) offices.add(u.cmOffice);
-            });
-            const list = [...offices].sort((a, b) => a.localeCompare(b, 'ja'));
-            localStorage.setItem(DEST_STORAGE_KEY, JSON.stringify(list));
-            renderDestSelect(list);
+            if (res.ok) {
+                const json = await res.json();
+                const offices = (window.StampDest && window.StampDest.stampExtractOffices)
+                    ? window.StampDest.stampExtractOffices(json) : [];
+                if (offices.length) {
+                    list = offices;
+                    localStorage.setItem(DEST_STORAGE_KEY, JSON.stringify(list));
+                } else {
+                    failed = true; // 200だが事業所0件＝取得不全として扱う
+                }
+            } else {
+                failed = true;
+            }
         } catch (e) {
-            // オフライン時はキャッシュから
-            const cached = localStorage.getItem(DEST_STORAGE_KEY);
-            if (cached) renderDestSelect(JSON.parse(cached));
+            failed = true;
         }
+        if (list === null) {
+            // 失敗時: キャッシュがあれば使い、無ければ空でも必ず描画（固定枠は常に出す）
+            const cached = localStorage.getItem(DEST_STORAGE_KEY);
+            if (cached) {
+                try { list = JSON.parse(cached); } catch (e) { list = []; }
+            } else {
+                list = [];
+            }
+        }
+        renderDestSelect(list);              // ← 例外なく必ず呼ぶ
+        if (failed) showToast('宛先の取得に失敗しました');
     }
 
     function renderDestSelect(offices) {
