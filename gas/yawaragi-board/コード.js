@@ -13101,7 +13101,7 @@ function nmDedupeItems_(list) {
   var out = [];
   for (var i = 0; i < list.length; i++) {
     var it = list[i];
-    var key = String(it.from) + '' + String(it.subject) + '' + String(it.date);
+    var key = String(it.from) + '\u0001' + String(it.subject) + '\u0001' + String(it.date);
     if (seen[key]) continue;
     seen[key] = true;
     out.push(it);
