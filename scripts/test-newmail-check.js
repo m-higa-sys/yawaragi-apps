@@ -173,5 +173,22 @@ eqJson(classify('<x@satofull.co.jp>', '交付決定のご連絡'),
 eqJson(classify('<x@zozo.jp.evil.com>', 'お知らせ'),
   { important: false, matchedBy: [], excluded: false }, 'なりすまし: zozo.jp.evil.com は zozo.jp 自尾でない → EXCLUDEに拾わせない(others)');
 
+// ===== EXCLUDE_SUBJECT_PREFIXES（2026-07-14追加）: yawaragi自作アプリの自動通知除外 =====
+// keepfitlife.com は IMPORTANT_DOMAINS に残すため、件名プレフィックス除外を important 判定より
+// 先に評価しないと除外が効かない（自作アプリ通知は from が keepfitlife.com 自尾のため）。
+console.log('[nmClassifyMail_ / EXCLUDE_SUBJECT_PREFIXES]');
+eqJson(classify('やわらぎ <m-higa@keepfitlife.com>', '【yawaragi欠席連絡】欠席連絡 高橋義昭様'),
+  { important: false, matchedBy: [], excluded: true }, '【yawaragi欠席連絡】自作通知 除外（keepfitlife由来でもプレフィックス優先）');
+eqJson(classify('やわらぎ <r.d-yawaragi@keepfitlife.com>', '【yawaragi】7月13日(月) 細谷テツコ様 お休み連絡'),
+  { important: false, matchedBy: [], excluded: true }, '【yawaragi】お休み連絡 除外');
+eqJson(classify('やわらぎ <r.d-yawaragi@keepfitlife.com>', '【yawaragi】7月13日(月) ④業務報告（星野）'),
+  { important: false, matchedBy: [], excluded: true }, '【yawaragi】業務報告 除外');
+eqJson(classify('やわらぎ <system@keepfitlife.com>', '【見学体験新規】intakeアプリ 管理キー(adminKey)'),
+  { important: false, matchedBy: [], excluded: true }, '【見学体験新規】intake通知 除外');
+
+// --- 回帰確認: 人が書いたメールは消えない（プレフィックス非該当 → important に残る） ---
+eqJson(classify('スタッフ <staff@keepfitlife.com>', '請求書の件'),
+  { important: true, matchedBy: ['domain:keepfitlife.com', 'subject:請求書'], excluded: false }, '回帰: 「請求書の件」from keepfitlife は important に残る（プレフィックス非該当）');
+
 console.log(`RESULT pass=${pass} fail=${fail}`);
 if (fail) process.exit(1);

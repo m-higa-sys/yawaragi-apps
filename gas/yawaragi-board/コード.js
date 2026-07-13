@@ -13046,6 +13046,10 @@ function nmClassifyMail_(from, subject) {
     'apj.media', 'mail.instagram.com', 'vpass.ne.jp',
     'mail.dazn.com', 'lixiltepco-sp.co.jp'];
   var EXCLUDE_SUBJECTS = [];  // 将来用（件名でのノイズ除去。今は空）
+  // yawaragi自作アプリの自動通知（2026-07-14・社長dryRun判断）。件名がこのプレフィックスで
+  // 始まるものは important にも others にも入れない。from が keepfitlife.com 自尾のため
+  // IMPORTANT_DOMAINS で拾われる → 件名プレフィックス除外を important 判定より必ず先に評価する。
+  var EXCLUDE_SUBJECT_PREFIXES = ['【yawaragi', '【見学体験新規】'];
 
   var addr = nmExtractSender_(from);
   var subj = String(subject == null ? '' : subject);
@@ -13061,7 +13065,13 @@ function nmClassifyMail_(from, subject) {
     return (host === entry) || (host.length > entry.length + 1 && host.slice(-(entry.length + 1)) === '.' + entry);
   }
 
-  // 第1段: important判定（EXCLUDEより先に確定させる＝important優先の安全設計）
+  // 最優先: 自作アプリ通知の件名プレフィックス除外（keepfitlife.com は IMPORTANT に残すので、
+  // ここで important 判定より先に落とさないと除外が効かない）。
+  for (var pfx = 0; pfx < EXCLUDE_SUBJECT_PREFIXES.length; pfx++) {
+    if (subj.indexOf(EXCLUDE_SUBJECT_PREFIXES[pfx]) === 0) return { important: false, matchedBy: [], excluded: true };
+  }
+
+  // 第1段: important判定（EXCLUDE_DOMAINSより先に確定させる＝important優先の安全設計）
   var matchedBy = [];
   for (var i = 0; i < IMPORTANT_DOMAINS.length; i++) {
     if (hostHit(IMPORTANT_DOMAINS[i])) matchedBy.push('domain:' + IMPORTANT_DOMAINS[i]);
