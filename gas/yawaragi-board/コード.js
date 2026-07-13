@@ -2880,6 +2880,7 @@ function doGet(e) {
       var asDate = String((e && e.parameter && e.parameter.date) || '').trim();
       var asBy = String((e && e.parameter && e.parameter.by) || '').trim();
       var asNote = String((e && e.parameter && e.parameter.note) || '').trim();
+      var asSource = String((e && e.parameter && e.parameter.source) || 'app').trim() || 'app';   // 既定'app'（後方互換）。セッションボードは'セッションボード'を送る。
       if (!asName || !/^\d{4}-\d{2}-\d{2}$/.test(asDate)) {
         return respond({ ok: false, error: 'invalid params (name, date=YYYY-MM-DD required)' }, callback);
       }
@@ -2894,8 +2895,13 @@ function doGet(e) {
           if (asAllUsers[asU].name === asName) { asCare = asAllUsers[asU].category; break; }
         }
         var asSheet = ensureShienSokuteiSheet_();
+        // 重複ガード（source横断）: 同月・同人が既に記録済みなら拒否＝同サイクル二重記録の防止（社長確定・sokutei.html発も弾く）
+        var asExisting = asSheet.getDataRange().getValues();
+        if (shienAlreadyMeasuredThisMonth_(asExisting.slice(1), asName, asDate.slice(0, 7))) {
+          return respond({ ok: false, error: 'already_done', message: '今月は実施済みです' }, callback);
+        }
         var asNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
-        var asRow = [asName, asCare, asDate, asBy, 'app', asNote, asNow];
+        var asRow = [asName, asCare, asDate, asBy, asSource, asNote, asNow];
         var asWriteRow = asSheet.getLastRow() + 1;
         var asRange = asSheet.getRange(asWriteRow, 1, 1, 7);
         asRange.setNumberFormat('@');
@@ -2905,7 +2911,7 @@ function doGet(e) {
         var asVerified = String(asCheck[0]) === asName && String(asCheck[2]) === asDate;
         return respond({
           ok: true, verified: asVerified,
-          row: { name: asName, care: asCare, sokutei_date: asDate, sokutei_by: asBy, source: 'app', note: asNote }
+          row: { name: asName, care: asCare, sokutei_date: asDate, sokutei_by: asBy, source: asSource, note: asNote }
         }, callback);
       } finally {
         asLock.releaseLock();
@@ -2943,6 +2949,40 @@ function doGet(e) {
         return respond({ ok: true, deleted: dsRowIdx > 0 }, callback);
       } finally {
         dsLock.releaseLock();
+      }
+    }
+
+    // ============================================================
+    // 要支援測定記録 セッションボード発の取消（測定チェックPhase1・当日中のみ）
+    // findCancelableShienRow_ で source='セッションボード' かつ date=today かつ 同人（名寄せ）の行のみ削除。
+    // 他source（app=sokutei.html発 / 紙台帳投入）の行は削除しない＝サーバが取消範囲を強制（社長確定）。
+    // ============================================================
+    if (action === 'cancelSessionSokutei') {
+      var csName = String((e && e.parameter && e.parameter.name) || '').trim();
+      var csDate = String((e && e.parameter && e.parameter.date) || '').trim();
+      if (!csName || !/^\d{4}-\d{2}-\d{2}$/.test(csDate)) {
+        return respond({ ok: false, error: 'invalid params (name, date=YYYY-MM-DD required)' }, callback);
+      }
+      var csToday = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+      if (csDate !== csToday) {
+        return respond({ ok: false, error: 'not_today', message: '取消はセッションボードで記録した当日中のみ可能です' }, callback);
+      }
+      var csLock = LockService.getScriptLock();
+      try { csLock.waitLock(10000); } catch (csLockErr) {
+        return respond({ ok: false, error: 'lock timeout' }, callback);
+      }
+      try {
+        var csSheet = ensureShienSokuteiSheet_();
+        var csValues = csSheet.getDataRange().getValues();   // ヘッダ含む（source列は'セッションボード'に一致しないので安全）
+        var csIdx = findCancelableShienRow_(csValues, csName, csDate);   // -1 or 0-based index（sheet行 = idx+1）
+        if (csIdx < 0) {
+          return respond({ ok: false, error: 'not_found', message: 'セッションボード発の当日記録が見つかりません' }, callback);
+        }
+        csSheet.deleteRow(csIdx + 1);
+        SpreadsheetApp.flush();
+        return respond({ ok: true, deleted: true }, callback);
+      } finally {
+        csLock.releaseLock();
       }
     }
 
