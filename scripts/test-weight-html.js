@@ -120,12 +120,27 @@ ok(!!sentW['柳浦武治'], '送信: 現役(柳浦)は含む');
 ok(!!sentW['古田花子'], '送信: 台帳中止者(古田)は含む＝記録保持');
 ok(!sentW['法浦武治'], '送信: 台帳外(法浦)は除外＝再汚染しない');
 
-// 8b) 台帳未取得（ledgerLoadedAt なし）→ 従来どおり全送信（中止者消失事故を防ぐ安全側）
+// 8b) 台帳未取得（ledgerLoadedAt なし）→ 送信ブロック（クラウド上書き事故を絶対に起こさない）
 run('appData.ledgerLoadedAt = null;');
 lastPost = null;
 run('forceCloudSync();');
-const sentW2 = lastPost.body.data.weights[2026];
-ok(!!sentW2['法浦武治'], '未取得端末は全送信（法浦も含む＝データを勝手に消さない安全側）');
+ok(lastPost === null, '未取得端末は全件送信をブロック（POSTを飛ばさない）');
+ok(document.getElementById('toast').textContent.indexOf('利用者台帳から取得') >= 0, '未取得ブロック時に台帳取得を促すメッセージ');
+
+// 8c) 自動同期(cloudSync)も未取得ならスキップ（setTimeoutを即時化してdebounceコールバックを走らせる）
+window.setTimeout = (fn) => { try { fn(); } catch (e) {} return 0; };
+run('appData.ledgerLoadedAt = null;');
+lastPost = null;
+run('cloudSync();');
+ok(lastPost === null, '自動同期も未取得ならスキップ（POSTなし）');
+
+// 8d) 自動同期 取得済み → 台帳外(法浦)を除外して送信
+run('appData.ledgerLoadedAt = "2026-07-13T00:00:00.000Z";');
+lastPost = null;
+run('cloudSync();');
+ok(lastPost !== null, '取得済みなら自動同期でPOSTが飛ぶ');
+ok(!lastPost.body.data.weights[2026]['法浦武治'], '自動同期でも台帳外(法浦)は除外');
+ok(!!lastPost.body.data.weights[2026]['柳浦武治'], '自動同期で現役(柳浦)は送信');
 
 console.log('\n==== weight-html(jsdom): ' + pass + ' PASS / ' + fail + ' FAIL ====');
 process.exit(fail === 0 ? 0 : 1);

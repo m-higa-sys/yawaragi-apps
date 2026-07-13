@@ -855,11 +855,15 @@ function cloudSync() {
                 console.log('☁️ ローカルデータが空のためクラウド送信スキップ（上書き事故防止）');
                 return;
             }
-            // 台帳外キーの再汚染対策（全置換GAS向け）。台帳取得済み端末のみ台帳外を落とす。
+            // 未取得端末は自動同期もスキップ（クラウド全置換の上書き事故防止・forceCloudSyncと同方針）
+            if (!appData.ledgerLoadedAt) {
+                console.warn('☁️ 利用者台帳が未取得のため自動同期スキップ（クラウド上書き事故防止）。「利用者台帳から取得」を実行してください。');
+                return;
+            }
+            // 台帳外キーの再汚染対策（全置換GAS向け）。ここに来る時点で台帳取得済みso enabled=true。
             const _ledger = wtLedgerNameSet(appData.users, appData.terminated);
-            const _enabled = !!appData.ledgerLoadedAt;
-            const _w = wtFilterCloudWeights(appData.weights, _ledger, _enabled);
-            const _h = wtFilterCloudWeights(appData.heights, _ledger, _enabled);
+            const _w = wtFilterCloudWeights(appData.weights, _ledger, true);
+            const _h = wtFilterCloudWeights(appData.heights, _ledger, true);
             if (_w.skippedWithData.length || _h.skippedWithData.length) {
                 console.warn('☁️ 台帳外につき送信除外:', Array.from(new Set(_w.skippedWithData.concat(_h.skippedWithData))).join(', '));
             }
@@ -892,11 +896,16 @@ function forceCloudSync() {
         showToast('⚠ このデバイスにデータがありません', '#f44');
         return;
     }
-    // 台帳外キーの再汚染対策：台帳取得済み端末では台帳外を送信対象から外す（中止者は台帳に居るので残す）。
+    // 未取得端末は送信ブロック（クラウドが唯一の正本。全置換GASなので、古い端末からの上書きで
+    // クラウドの正データが消える事故を絶対に起こさない）。台帳を1回取れば許可リストが揃い送信可能になる。
+    if (!appData.ledgerLoadedAt) {
+        showToast('先に「🔄 利用者台帳から取得」を実行してください。台帳の情報がないと、安全に送信できません。', '#f44');
+        return;
+    }
+    // 台帳外キーの再汚染対策：台帳外を送信対象から外す（中止者は台帳に居るので残す）。
     const ledger = wtLedgerNameSet(appData.users, appData.terminated);
-    const enabled = !!appData.ledgerLoadedAt;
-    const fw = wtFilterCloudWeights(appData.weights, ledger, enabled);
-    const fh = wtFilterCloudWeights(appData.heights, ledger, enabled);
+    const fw = wtFilterCloudWeights(appData.weights, ledger, true);
+    const fh = wtFilterCloudWeights(appData.heights, ledger, true);
     const skippedNames = Array.from(new Set(fw.skippedWithData.concat(fh.skippedWithData)));
     let confirmMsg = 'このデバイスのデータ（体重 ' + wcount + '件 + 身長 ' + hcount + '件）を全部クラウドへ送信します。よろしいですか？';
     if (skippedNames.length) {
@@ -904,8 +913,6 @@ function forceCloudSync() {
         confirmMsg = '⚠️ 台帳外（要名寄せ）' + skippedNames.length + '名は送信されません：\n' + skippedNames.join('、') +
             '\n\nこれらは現在の利用者台帳に該当氏名がないため、クラウド再汚染防止のため送信対象から外します。\n' +
             '（台帳に戻したい場合は氏名の名寄せをしてから送信してください）\n\n' + confirmMsg;
-    } else if (!enabled) {
-        confirmMsg = '※利用者台帳が未取得のため、台帳外の絞り込みは行わず全件送信します。\n\n' + confirmMsg;
     }
     if (!confirm(confirmMsg)) return;
     if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
