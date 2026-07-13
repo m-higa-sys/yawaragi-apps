@@ -154,7 +154,8 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     text-align: left;
     padding-left: 10px;
     font-weight: bold;
-    min-width: 110px;
+    font-size: 0.95rem;
+    min-width: 120px;
     white-space: nowrap;
     cursor: pointer;
     background: #fff;
@@ -202,6 +203,23 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     background: #fef5e7;
     color: #9c4221;
 }
+/* 1ヶ月1列 口腔式セル（2026-07・高さ低く一定／バッジで一目） */
+.check-cell { vertical-align: top; }
+.kb-part { display:block; cursor:pointer; padding:2px 3px; border-radius:5px; text-align:left; }
+.kb-part + .kb-part { margin-top:2px; border-top:1px dashed #e2e8f0; }
+.kb-part:hover { background:#f7fafc; }
+.kb-cyc { display:block; font-size:0.72rem; font-weight:700; line-height:1.2; margin-bottom:2px; }
+.kb-cyc-plan { color:#2c5282; }
+.kb-cyc-eval { color:#9c4221; }
+.kb-badges { display:flex; flex-wrap:wrap; gap:2px; }
+.kb-hold { font-size:0.85rem; color:#744210; font-weight:700; }
+.kb-sm { font-size:0.72rem; font-weight:700; }
+/* 押下フィードバック（状態色/insetを塗りつぶさず filter明度+transformで重ねる・box-shadow非使用で cell-todo/ready/done/current と非競合）。
+   touchデバイスは :active が効かない場合があるため委譲JSで .kb-pressed も付与。 */
+.kb-part { transition: transform 0.08s ease, filter 0.08s ease; }
+.kb-part:active, .kb-part.kb-pressed { filter: brightness(0.82); transform: scale(0.95); }
+.name-cell { transition: filter 0.08s ease; }
+.name-cell:active, .name-cell.kb-pressed { filter: brightness(0.9); }
 .row-even { background: #f7fafc; }
 .row-even .name-cell { background: #f7fafc; }
 
@@ -482,6 +500,10 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         <input type="checkbox" id="includeCancelledChk" onchange="toggleIncludeCancelled(this.checked)" style="width:16px; height:16px;">
         <span style="font-weight:600; color:#c0392b;">🔴 中止者も表示</span>
     </label>
+    <label style="display:flex; align-items:center; gap:6px; padding:6px 12px; border:1.5px solid #f6ad55; border-radius:8px; background:#fffaf0; font-size:0.9rem; cursor:pointer;">
+        <input type="checkbox" id="needsActionChk" onchange="toggleNeedsAction(this.checked)" style="width:16px; height:16px;">
+        <span style="font-weight:600; color:#c05621;">⚠️ 要対応のみ</span>
+    </label>
     <div class="stats">
         登録: <strong id="totalUsers">0</strong> 名 ／ 今月計画該当: <strong id="thisMonthCount">0</strong> ／ 作成済: <strong id="progressCount">0</strong> / <strong id="progressTotal">0</strong>
         ／ 評価今月該当: <strong id="hyoukaMonthCount">0</strong> ／ 評価提出: <strong id="hyoukaDoneCount">0</strong> / <strong id="hyoukaTotalCount">0</strong>
@@ -716,6 +738,7 @@ let state = {
     isLoading: false,
     operator: '',         // 操作者（localStorage 経由）
     includeCancelled: false,  // 中止者も表示するか
+    needsActionOnly: false,   // ⚠️要対応のみ（未提出等が残る利用者だけ表示）・既存フィルタと併用
     staffNames: []        // 測定者/出力者プルダウン用（staff_listから除外適用後・起動時に取得）
 };
 // 測定者/出力者の選択肢（staff_listの生文字列から MEASURER_EXCLUDE を除いたもの）
@@ -857,6 +880,48 @@ async function retryPending() {
 // ============ 3ヶ月サイクル判定 ============
 // isPlanMonth / isHyoukaMonth は shared.js §I（submitCellColor 同梱）へ集約。
 // 引数・ロジックは従来と同一（無回帰）。本体は §I 参照のみ。
+
+// ============ 1ヶ月1列 口腔式バッジ 純関数（2026-07 追加・additive・renderTableで使用）============
+// 口腔 oral-plan の「1ヶ月1セル・バッジで一目」を個別へ移植。バッジ配列を返す純関数（DOM非依存）。
+// バッジ = {label, state:'done'|'todo', date, kind:'plan'|'submit'}。kind=済の色系統。
+// 計画月ノード: 計画(keikaku_date・緑)/測定(sokutei_date・緑)/提出(keikaku_sent_date・青)。
+function kbBadgeObj(label, val, kind) {
+    const has = !!(val && String(val).trim());
+    return { label: label, state: has ? 'done' : 'todo', date: has ? val : '', kind: kind };
+}
+function kbPlanBadges(rec) {
+    rec = rec || {};
+    return [
+        kbBadgeObj('計画', rec.keikaku_date, 'plan'),
+        kbBadgeObj('測定', rec.sokutei_date, 'plan'),
+        kbBadgeObj('提出', rec.keikaku_sent_date, 'submit')
+    ];
+}
+// 評価月ノード: 提出(hyouka_pdf_date||hyouka_print_date・青)/評価(tasseido_date・緑)。純関数。
+function kbEvalBadges(rec) {
+    rec = rec || {};
+    const submit = rec.hyouka_pdf_date || rec.hyouka_print_date || '';
+    return [
+        kbBadgeObj('提出', submit, 'submit'),
+        kbBadgeObj('評価', rec.tasseido_date, 'plan')
+    ];
+}
+// バッジ1個のHTML。済の色2系統（追加指示3）: plan=緑(#e8f5e9/#2e7d32/#66bb6a)・submit=青(#e3f2fd/#0d47a1/#90caf9)。
+// 未は全て赤(#ffebee/#c53030/#ef9a9a)。口腔 setsumeBox/cellChip の視覚仕様を踏襲。formatMD依存・純関数。
+function kbBadgeHtml(badge) {
+    let bg, col, bd, mark;
+    if (badge.state === 'done') {
+        if (badge.kind === 'submit') { bg = '#e3f2fd'; col = '#0d47a1'; bd = '#90caf9'; }
+        else { bg = '#e8f5e9'; col = '#2e7d32'; bd = '#66bb6a'; }
+        mark = '✓' + formatMD(badge.date);
+    } else {
+        bg = '#ffebee'; col = '#c53030'; bd = '#ef9a9a'; mark = '未';
+    }
+    return '<span style="display:inline-flex; gap:2px; align-items:center; border:1px solid ' + bd
+        + '; background:' + bg + '; color:' + col + '; border-radius:4px; padding:2px 6px; margin:1px;'
+        + ' font-size:0.78rem; font-weight:700; white-space:nowrap;">'
+        + '<span style="opacity:0.8;">' + escapeHtml(badge.label) + '</span><span>' + mark + '</span></span>';
+}
 
 // ============ ふりがなグループ ============
 function getGroup(kana) {
@@ -1041,21 +1106,13 @@ function renderTable() {
     const nowYM = nowYear + '-' + String(nowMonth).padStart(2, '0');
     const gateNames = new Set();   // 当月適用の作成済/達成済・未送付セル → 当月来所実績で⚠を出し分け（B案）
 
-    // ヘッダ
-    let h1 = '<tr><th rowspan="2" style="min-width:30px;"></th><th rowspan="2" class="name-cell" style="background:#2c7a7b; left:30px; min-width:110px;">氏名</th>';
+    // ヘッダ（1ヶ月＝1列。旧サブ列[計画/評価]は1セルへ統合＝口腔式）
+    let h1 = '<tr><th style="min-width:30px;"></th><th class="name-cell" style="background:#2c7a7b; left:30px; min-width:110px;">氏名</th>';
     MONTHS.forEach(mo => {
-        h1 += '<th class="month-header" colspan="' + SUB_COLS.length + '">' + mo.label + '</th>';
+        h1 += '<th class="month-header month-start">' + mo.label + '</th>';
     });
     h1 += '</tr>';
-    let h2 = '<tr>';
-    MONTHS.forEach(mo => {
-        SUB_COLS.forEach((sub, si) => {
-            const cls = 'sub-header' + (si === 0 ? ' month-start' : '');
-            h2 += '<th class="' + cls + '">' + sub.label + '</th>';
-        });
-    });
-    h2 += '</tr>';
-    thead.innerHTML = h1 + h2;
+    thead.innerHTML = h1;
 
     // ソート＆フィルタ
     sortUsers();
@@ -1066,190 +1123,122 @@ function renderTable() {
         ? filteredUsers.length + ' / ' + state.users.length + '名 表示中'
         : '';
 
-    // 行描画
-    let html = '';
-    let currentGroup = '';
-    let rowIndex = 0;
+    // 行描画（2パス: ①各行のセルHTMLとrowTodo算出 → ②要対応トグル適用＆グループ見出し挿入）
+    const rendered = [];
     filteredUsers.forEach(u => {
-        const group = getGroup(u.furigana);
-        if (group !== currentGroup) {
-            currentGroup = group;
-            html += '<tr><td class="group-cell">' + group + '</td><td colspan="' + (1 + MONTHS.length * SUB_COLS.length) + '" style="background:#e6fffa;"></td></tr>';
-        }
-        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
         const careMatch = (u.category || '').match(/要介護(\d)/);
         const badge = careMatch ? '<span class="care-badge">介' + careMatch[1] + '</span>' : '';
         const cancelBadge = u.cancelled ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;background:#c0392b;color:white;font-size:0.7rem;font-weight:700;">中止</span>' : '';
-        html += '<tr class="' + rowClass + '"' + (u.cancelled ? ' style="opacity:0.7;background:#fef5f5;"' : '') + '>';
-        html += '<td class="group-cell"></td>';
-        html += '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-planstart="' + escapeAttr(u.planStart || '') + '" onclick="openUsageModal(this)">'
-              + escapeHtml(u.name) + badge + cancelBadge + '</td>';
+        let cells = '<td class="group-cell"></td>'
+            + '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-planstart="' + escapeAttr(u.planStart || '') + '" onclick="openUsageModal(this)">'
+            + escapeHtml(u.name) + badge + cancelBadge + '</td>';
+        let rowTodo = false;
 
         MONTHS.forEach(mo => {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
             const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: '' };
             const isPlan = isPlanMonth(u.planStart, u.planMonths, cellYear, mo.m);
+            const isHyouka = isHyoukaMonth(u.planStart, u.planMonths, cellYear, mo.m);
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
             const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
-            const filled = ['kyoumi_date','seikatsu_date','keikaku_date'].filter(f => rec[f]).length;
-            const allDone = filled === 3;
+            const beforeStart = isBeforePlanStart(u.planStart, cellYear, mo.m);
             const isBlocked = !!rec.blocked_reason;
 
-            SUB_COLS.forEach((sub, si) => {
-                let cls = 'check-cell';
-                if (si === 0) cls += ' month-border';
+            // データ温存（#6）: 計画月/評価月でなくてもデータがあれば表示（planStart移動で過去実績が '-' に隠れるのを防ぐ）
+            const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
+                || rec.keikaku_sent_date || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason);
+            const hasHyoukaData = !!(rec.tasseido_date || rec.hyouka_pdf_date || rec.hyouka_print_date);
+            const showPlan = !beforeStart && (isPlan || hasPlanData);
+            const showEval = !beforeStart && (isHyouka || hasHyoukaData);
 
-                // ===== 評価セル（達成度＋ケアマネ提出）=====
-                if (sub.field === 'hyouka') {
-                    const isHyouka = isHyoukaMonth(u.planStart, u.planMonths, cellYear, mo.m);
-                    // データが入っているセルは評価月でなくても常に表示（planStart移動で過去評価が '-' に隠れるのを防ぐ）
-                    const hasHyoukaData = !!(rec.tasseido_date || rec.hyouka_pdf_date || rec.hyouka_print_date);
-                    // 利用開始月より前は計画/評価/PDF/色を一切描画しない（評価月判定の開始前月ルールより優先）。
-                    if (isBeforePlanStart(u.planStart, cellYear, mo.m) || (!isHyouka && !hasHyoukaData)) {
-                        cls += ' disabled';
-                        html += '<td class="' + cls + '">-</td>';
-                        return;
-                    }
-                    const pdfDate = rec.hyouka_pdf_date || '';
-                    const printDate = rec.hyouka_print_date || '';
-                    const tasseido = rec.tasseido_date || '';
-                    const blockedReason = rec.blocked_reason || '';
-                    const submitted = !!pdfDate || !!printDate;   // どちらか送付済み＝ケアマネ提出済み
-                    const hyoukaBlocked = !submitted && !tasseido && !!blockedReason;
-                    if (submitted) cls += ' hyouka-both';
-                    else if (tasseido) cls += ' hyouka-one';        // 達成度済みだが未提出
-                    else if (hyoukaBlocked) cls += ' blocked-mitei';
-                    else if (isPast) cls += ' highlight-undone';
-                    if (isCurrent) cls += ' current';
-                    // 当月の評価セル: 提出状態を3色化（§I submitCellColor）。当月のみ・他月不変。
-                    // 保留(hyoukaBlocked=未提出かつ未達成かつ保留理由あり)は保留色維持のため3色対象外。
-                    if (isCurrent && isHyouka && !hyoukaBlocked) {
-                        const _cc = submitCellColor(true, !!rec.tasseido_date, !!(rec.hyouka_pdf_date || rec.hyouka_print_date));
-                        if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
-                    }
-                    if (isPending(u.userId, cellYear, mo.m, 'hyouka_pdf_date')
-                        || isPending(u.userId, cellYear, mo.m, 'hyouka_print_date')
-                        || isPending(u.userId, cellYear, mo.m, 'tasseido_date')) cls += ' pending';
+            let cls = 'check-cell month-border';
+            if (isCurrent) cls += ' current';
+            if (!showPlan && !showEval) { cells += '<td class="' + cls + ' disabled">-</td>'; return; }
 
-                    // 送付方法バッジ（PDF=メール/FAX, 印刷=持参/郵送）。sendMethod未配信時は無表示で従来動作。
-                    const sm = u.sendMethod || '';
-                    const smBadge = sm === '印刷'
-                        ? '<span style="font-size:0.62rem; color:#9c4221; font-weight:700;">🖨印刷' + (u.sendMethodOverride ? '✎' : '') + '</span>'
-                        : sm === 'PDF'
-                            ? '<span style="font-size:0.62rem; color:#2b6cb0; font-weight:700;">📧PDF' + (u.sendMethodOverride ? '✎' : '') + '</span>'
-                            : '';
-                    let inner = '';
-                    if (hyoukaBlocked) {
-                        inner = '<div style="font-size:0.9rem;">⏸</div>';
-                    } else {
-                        if (smBadge) inner += '<div>' + smBadge + '</div>';
-                        if (tasseido) inner += '<div style="font-size:0.72rem; color:#2c3e50;">達成度 ' + formatMD(tasseido) + '</div>';
-                        // 提出ステータス（達成度実施済みのときに意味を持つ）
-                        if (submitted) {
-                            inner += '<div style="font-size:0.72rem; color:#276749; font-weight:700;">提出済✓ ' + formatMD(printDate || pdfDate) + '</div>';
-                        } else if (tasseido) {
-                            // 評価の適用月＝そのセルの評価月(cellYear/mo.m)。当月分は当月来所実績でゲート（B案）。
-                            const _ym = cellYear + '-' + String(mo.m).padStart(2, '0');
-                            if (_ym === nowYM) gateNames.add(u.name);
-                            inner += unsentLineHTML(u.name, cellYear, mo.m);
-                        }
-                        if (!inner) inner = '<div style="color:#cbd5e0;">—</div>';
-                    }
-                    const titleAttr = hyoukaBlocked ? ' title="' + escapeAttr(blockedReason) + '"' : '';
-                    html += '<td class="' + cls + '"' + titleAttr
-                          + ' data-userid="' + escapeAttr(u.userId) + '"'
-                          + ' data-name="' + escapeAttr(u.name) + '"'
-                          + ' data-year="' + cellYear + '"'
-                          + ' data-month="' + mo.m + '"'
-                          + ' data-field="hyouka"'
-                          + ' data-fieldlabel="評価"'
-                          + ' data-sendmethod="' + escapeAttr(sm) + '"'
-                          + ' onclick="onHyoukaCellTap(this)">' + inner + '</td>';
-                    return;
-                }
+            // 今月以前で未が残るバッジを要対応に集計。提出の当月未は来所ゲート(kbSubmitDue)を尊重し督促しない。
+            const collectTodo = (badges) => {
+                if (!(isPast || isCurrent)) return;
+                badges.forEach(b => {
+                    if (b.state !== 'todo') return;
+                    if (b.label === '提出' && isCurrent && !kbSubmitDue(u.name, cellYear, mo.m)) return;
+                    rowTodo = true;
+                });
+            };
+            let inner = '';
 
-                // ===== 計画セル（案1: 開始/作成/測定/出力/提出の積み上げ）=====
-                // データが入っているセルは計画月でなくても常に表示（planStart移動で過去計画が '-' に隠れるのを防ぐ）
-                const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
-                    || rec.keikaku_sent_date || rec.sokutei_date || rec.sokutei_by || rec.output_by
-                    || rec.blocked_reason);
-                // 利用開始月より前は計画セルも一切描画しない。
-                if (isBeforePlanStart(u.planStart, cellYear, mo.m) || (!isPlan && !hasPlanData)) {
-                    cls += ' disabled';
-                    html += '<td class="' + cls + '">-</td>';
-                    return;
-                }
-                const keikaku = rec.keikaku_date || '';
-                const sentDate = rec.keikaku_sent_date || '';
-                // ラベルは「実際の計画開始月」を表示。
-                //  ・このセルが計画月 → そのセルの月（例: 8月セル→8月〜）
-                //  ・計画月でないがデータがあり、翌月が計画月 → 翌月（前倒し作成: 4月セルの5月計画→5月〜）
-                //  ・どちらでもない → そのセルの月（フォールバック）
+            // 計画パート（onCellTap導線・従来data属性を踏襲＝案A）
+            if (showPlan) {
                 let labelMonth = mo.m;
-                let labelYear = cellYear;
                 if (!isPlan) {
                     const lblNextYear = (mo.m === 12) ? cellYear + 1 : cellYear;
                     const lblNextMonth = (mo.m === 12) ? 1 : mo.m + 1;
-                    if (isPlanMonth(u.planStart, u.planMonths, lblNextYear, lblNextMonth)) { labelMonth = lblNextMonth; labelYear = lblNextYear; }
+                    if (isPlanMonth(u.planStart, u.planMonths, lblNextYear, lblNextMonth)) labelMonth = lblNextMonth;
                 }
-                const startLabel = labelMonth + '月〜';
-                if (isBlocked) {
-                    cls += (rec.blocked_reason === '利用継続未確定') ? ' blocked-mitei' : ' blocked-hoken';
-                } else if (keikaku && sentDate) cls += ' all-done has-value';
-                else if (keikaku) cls += ' checked';
-                else if (isPast) cls += ' highlight-undone';
-                if (isCurrent) cls += ' current';
-                // 当月の計画セル: 提出状態を3色化（§I submitCellColor）。当月のみ・他月不変。
-                // 保留(isBlocked=保険未登録/利用継続未確定)は保留色維持のため3色対象外。
-                if (isCurrent && isPlan && !isBlocked) {
-                    const _cc = submitCellColor(true, !!rec.keikaku_date, !!rec.keikaku_sent_date);
-                    if (_cc) cls += ' cell-' + (_cc === 'red' ? 'todo' : _cc === 'green' ? 'ready' : 'done');
-                }
-                if (isPending(u.userId, cellYear, mo.m, 'keikaku_date')
-                    || isPending(u.userId, cellYear, mo.m, 'blocked_reason')
-                    || isPending(u.userId, cellYear, mo.m, 'keikaku_sent_date')
-                    || isPending(u.userId, cellYear, mo.m, 'sokutei_date')
-                    || isPending(u.userId, cellYear, mo.m, 'sokutei_by')
-                    || isPending(u.userId, cellYear, mo.m, 'output_by')) cls += ' pending';
-
-                let inner;
+                let pInner;
                 if (isBlocked) {
                     const isMitei = (rec.blocked_reason === '利用継続未確定');
-                    inner = '<div style="font-size:0.9rem;" title="' + escapeAttr(rec.blocked_reason) + '">' + (isMitei ? '⏸' : '⚠') + '</div>';
+                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + labelMonth + '月〜)</span>'
+                        + '<span class="kb-hold" title="' + escapeAttr(rec.blocked_reason) + '">' + (isMitei ? '⏸' : '⚠') + ' 保留</span>';
                 } else {
-                    inner = '<div style="font-size:0.82rem; font-weight:800; color:#1a365d;">' + startLabel + '</div>';
-                    if (keikaku) inner += '<div style="font-size:0.7rem; color:#4a5568;">' + formatMD(keikaku) + '作成</div>';
-                    if (rec.sokutei_by || rec.sokutei_date) {
-                        inner += '<div style="font-size:0.68rem; color:#4a5568;">測定 ' + escapeHtml(rec.sokutei_by || '') + (rec.sokutei_date ? ' ' + formatMD(rec.sokutei_date) : '') + '</div>';
-                    }
-                    if (rec.output_by) {
-                        inner += '<div style="font-size:0.68rem; color:#4a5568;">出力 ' + escapeHtml(rec.output_by) + '</div>';
-                    }
-                    if (keikaku) {
-                        if (sentDate) {
-                            inner += '<div style="font-size:0.7rem; color:#276749; font-weight:700;">提出済✓ ' + formatMD(sentDate) + '</div>';
-                        } else {
-                            // 適用月＝labelYear/labelMonth。当月適用分は当月来所実績でゲート（B案）。
-                            const _ym = labelYear + '-' + String(labelMonth).padStart(2, '0');
-                            if (_ym === nowYM) gateNames.add(u.name);
-                            inner += unsentLineHTML(u.name, labelYear, labelMonth);
-                        }
-                    }
+                    const pb = kbPlanBadges(rec);
+                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + labelMonth + '月〜)</span>'
+                        + '<span class="kb-badges">' + pb.map(kbBadgeHtml).join('') + '</span>';
+                    collectTodo(pb);
+                    if (rec.keikaku_date && !rec.keikaku_sent_date && (cellYear + '-' + String(mo.m).padStart(2, '0')) === nowYM) gateNames.add(u.name);
                 }
-                html += '<td class="' + cls + '"'
-                      + ' data-userid="' + escapeAttr(u.userId) + '"'
-                      + ' data-name="' + escapeAttr(u.name) + '"'
-                      + ' data-year="' + cellYear + '"'
-                      + ' data-month="' + mo.m + '"'
-                      + ' data-field="keikaku_date"'
-                      + ' data-fieldlabel="計画"'
-                      + ' onclick="onCellTap(this)">' + inner + '</td>';
-            });
+                inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
+                    + '" data-year="' + cellYear + '" data-month="' + mo.m + '" data-field="keikaku_date" data-fieldlabel="計画"'
+                    + ' onclick="onCellTap(this)">' + pInner + '</div>';
+            }
+
+            // 評価パート（onHyoukaCellTap導線・従来data属性を踏襲＝案A）
+            if (showEval) {
+                const sm = u.sendMethod || '';
+                const submitted = !!(rec.hyouka_pdf_date || rec.hyouka_print_date);
+                const tasseido = rec.tasseido_date || '';
+                const hyoukaBlocked = !submitted && !tasseido && isBlocked;
+                let eInner;
+                if (hyoukaBlocked) {
+                    eInner = '<span class="kb-cyc kb-cyc-eval">評価月</span>'
+                        + '<span class="kb-hold" title="' + escapeAttr(rec.blocked_reason) + '">⏸ 保留</span>';
+                } else {
+                    const smBadge = sm === '印刷' ? '<span class="kb-sm" style="color:#9c4221;">🖨</span>'
+                        : sm === 'PDF' ? '<span class="kb-sm" style="color:#2b6cb0;">📧</span>' : '';
+                    const eb = kbEvalBadges(rec);
+                    eInner = '<span class="kb-cyc kb-cyc-eval">評価月' + (smBadge ? ' ' + smBadge : '') + '</span>'
+                        + '<span class="kb-badges">' + eb.map(kbBadgeHtml).join('') + '</span>';
+                    collectTodo(eb);
+                    if (tasseido && !submitted && (cellYear + '-' + String(mo.m).padStart(2, '0')) === nowYM) gateNames.add(u.name);
+                }
+                inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
+                    + '" data-year="' + cellYear + '" data-month="' + mo.m + '" data-field="hyouka" data-fieldlabel="評価" data-sendmethod="' + escapeAttr(u.sendMethod || '') + '"'
+                    + ' onclick="onHyoukaCellTap(this)">' + eInner + '</div>';
+            }
+
+            cells += '<td class="' + cls + '">' + inner + '</td>';
         });
-        html += '</tr>';
+
+        rendered.push({ group: getGroup(u.furigana), cancelled: u.cancelled, cells: cells, rowTodo: rowTodo });
+    });
+
+    // 第2パス: 要対応のみトグル適用＋グループ見出し挿入（見出しは表示行にのみ付与）
+    const visible = state.needsActionOnly ? rendered.filter(r => r.rowTodo) : rendered;
+    let html = '';
+    let currentGroup = '';
+    let rowIndex = 0;
+    visible.forEach(r => {
+        if (r.group !== currentGroup) {
+            currentGroup = r.group;
+            html += '<tr><td class="group-cell">' + r.group + '</td><td colspan="' + (1 + MONTHS.length) + '" style="background:#e6fffa;"></td></tr>';
+        }
+        const rowClass = rowIndex % 2 === 0 ? '' : 'row-even';
+        html += '<tr class="' + rowClass + '"' + (r.cancelled ? ' style="opacity:0.7;background:#fef5f5;"' : '') + '>' + r.cells + '</tr>';
         rowIndex++;
     });
+    if (state.needsActionOnly && !visible.length) {
+        html = '<tr><td colspan="' + (2 + MONTHS.length) + '" style="padding:16px; text-align:center; color:#718096;">🎉 要対応（未提出等）の利用者はいません</td></tr>';
+    }
     tbody.innerHTML = html;
     updateStats();
     // 当月適用・未送付セルの来所実績を非同期取得 → 揃ったら一度だけ再描画（tried で再enqueue防止）
@@ -1377,6 +1366,11 @@ function setGroupFilter(g, ev) {
 function toggleIncludeCancelled(checked) {
     state.includeCancelled = !!checked;
     loadFiscalYearData();  // 再取得で中止者を含めた一覧に切り替え
+}
+// ⚠️要対応のみ: 再取得せず表示フィルタのみ切替（既存の曜日/時間/行フィルタと併用）。
+function toggleNeedsAction(checked) {
+    state.needsActionOnly = !!checked;
+    renderTable();
 }
 
 // ============ セルクリック処理＆日付編集ダイアログ ============
@@ -2047,7 +2041,19 @@ function ensureUsageGate(names) {
     });
 }
 
+// 提出バッジ当月未の督促可否（来所ゲート）。過去=督促(true)・当月=来所実績ありのみtrue・未来=false。
+// 旧 unsentLineHTML の「当月は来所後だけ督促」配慮を、要対応トグルの判定へ継承するためのヘルパ。usageGate参照。
+function kbSubmitDue(name, applyYear, applyMonth) {
+    const nowYM = formatTodayISO().slice(0, 7);
+    const ym = applyYear + '-' + String(applyMonth).padStart(2, '0');
+    if (ym < nowYM) return true;
+    if (ym > nowYM) return false;
+    const g = usageGate[name];
+    return !!(g && g.state === 'attended');
+}
+
 // 未送付セルの表示行HTML（適用月 applyYear/applyMonth 基準）。キャッシュ参照のみ・副作用なし。
+// ※1ヶ月1列化(2026-07)後は renderTable から未参照（提出バッジに集約）。ロジック保全のため残置。
 function unsentLineHTML(name, applyYear, applyMonth) {
     const nowYM = formatTodayISO().slice(0, 7);
     const ym = applyYear + '-' + String(applyMonth).padStart(2, '0');
@@ -2175,7 +2181,25 @@ window.addEventListener('load', async () => {
     // 測定者/出力者プルダウン用にスタッフ名簿を取得（失敗してもアプリは動く）
     fetchStaffList().then(staff => { state.staffNames = staff || []; });
     await loadFiscalYearData();
+    attachPressFeedback();
 });
+// タップ押下フィードバック（イベント委譲・touchデバイスで :active が効かない対策で .kb-pressed を付与）。
+// ロジックは触らず見た目のみ（onCellTap/onHyoukaCellTap 導線は不変＝案A厳守）。
+function attachPressFeedback() {
+    const root = document.getElementById('matrixTable');
+    if (!root || root._pressBound) return;
+    root._pressBound = true;
+    root.addEventListener('touchstart', function (e) {
+        const p = e.target.closest && e.target.closest('.kb-part, .name-cell');
+        if (p) p.classList.add('kb-pressed');
+    }, { passive: true });
+    const clear = function () {
+        const els = root.querySelectorAll('.kb-pressed');
+        for (let i = 0; i < els.length; i++) els[i].classList.remove('kb-pressed');
+    };
+    root.addEventListener('touchend', clear);
+    root.addEventListener('touchcancel', clear);
+}
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible'
         && !document.getElementById('dateDialog').classList.contains('show')
