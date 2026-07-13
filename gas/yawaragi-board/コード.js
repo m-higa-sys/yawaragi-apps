@@ -1513,6 +1513,9 @@ function doGet(e) {
     if (action === 'weekly_overlay_get') {
       return respond(weeklyOverlayGet_(ss), callback);
     }
+    if (action === 'sougeiCondsGet') { // 送迎条件（段階0・鍵なし・callback対応）
+      return respond(sougeiCondsGet_(ss), callback);
+    }
     if (action === 'weekly_seed_orders') {
       return respond(weeklySeedOrders_(ss), callback);
     }
@@ -3805,6 +3808,10 @@ function doPost(e) {
     switch (data.action) {
       case 'weekly_overlay_upsert': // P2.2: 週間予定表オーバーレイ（鍵なし・空ガード・LWW）
         return jsonResp(weeklyOverlayUpsert_(ss, data));
+      case 'sougeiCondsUpsert': // 送迎条件（段階0・1人or複数を非破壊upsert）
+        return jsonResp(sougeiCondsUpsert_(ss, data));
+      case 'sougeiCondsSeed':   // 送迎条件（段階0・プリフィル一括・冪等）
+        return jsonResp(sougeiCondsSeed_(ss, data));
       case 'appregistry_bulk_upsert':
         return jsonResp(appregistryBulkUpsert_(data));
       case 'absence':
@@ -8865,6 +8872,66 @@ function weeklySeedOrders_(ss) {
   });
   return { success: true, result: result };
 }
+
+// ═══════════════════════════════════════════════════════════
+// ===== 送迎条件（段階0・2026-07-13・additive・sougei_conds sheet）=====
+// 純判定は sougei-conds-core.js（scRowsToStore_/scStoreToRows_/scBuildPrefill_/scUpsert_）。
+// ★V66Udd送迎GAS(gas_出勤送迎表.gs)はclasp管理外＝改修不可のため、乗車条件・自力通所は
+//   ここ board GAS（clasp管理下）の専用シート sougei_conds に置く（実測根拠 2026-07-13）。
+//   既存の送迎時間シート(schedTime/routes)・weekly_overlay 等は一切触らない（非破壊）。
+// 列: name,transport,no3,step,frontPref,memo,confirmed,updatedAt,updatedBy（SC_CONDS_HEADER）
+// ═══════════════════════════════════════════════════════════
+function scEnsureCondsSheet_(ss) {
+  var sh = ss.getSheetByName(SC_CONDS_SHEET);
+  if (!sh) { sh = ss.insertSheet(SC_CONDS_SHEET); sh.getRange(1, 1, 1, SC_CONDS_HEADER.length).setValues([SC_CONDS_HEADER]); }
+  return sh;
+}
+function scReadStore_(ss) {
+  var sh = scEnsureCondsSheet_(ss);
+  var lastRow = sh.getLastRow();
+  var values = lastRow >= 1 ? sh.getRange(1, 1, lastRow, SC_CONDS_HEADER.length).getValues() : [];
+  return scRowsToStore_(values); // core（TRUE/FALSE文字列の罠も吸収）
+}
+function scWriteStore_(ss, store, by) {
+  var sh = scEnsureCondsSheet_(ss);
+  var rows = scStoreToRows_(store, nowIso(), by); // core（header付き2次元配列）
+  sh.clearContents(); // sougei_conds シート限定（他シートには触れない）
+  sh.getRange(1, 1, rows.length, SC_CONDS_HEADER.length).setValues(rows);
+}
+// action=sougeiCondsGet（鍵なし）：conds{name:cond} を返す
+function sougeiCondsGet_(ss) {
+  return { success: true, conds: scReadStore_(ss) };
+}
+// action=sougeiCondsUpsert：1人（name+cond）or 複数（conds{}）を非破壊upsert
+function sougeiCondsUpsert_(ss, data) {
+  data = data || {};
+  var store = scReadStore_(ss);
+  var by = String(data.updatedBy || data.登録者 || '');
+  if (data.conds && typeof data.conds === 'object') {
+    for (var n in data.conds) { if (Object.prototype.hasOwnProperty.call(data.conds, n)) store = scUpsert_(store, n, data.conds[n]); }
+  } else if (data.name) {
+    store = scUpsert_(store, String(data.name), data.cond || {});
+  } else {
+    return { success: false, error: 'name or conds required' };
+  }
+  scWriteStore_(ss, store, by);
+  return { success: true, count: Object.keys(store).length };
+}
+// action=sougeiCondsSeed：プリフィル一括投入（★冪等＝既存nameは触らない・社長の確認結果を壊さない）
+function sougeiCondsSeed_(ss, data) {
+  data = data || {};
+  var incoming = scBuildPrefill_(data.transportMap || {}); // core（transportだけ引継ぎ・全員未確認）
+  var store = scReadStore_(ss);
+  var added = 0;
+  for (var n in incoming) {
+    if (!Object.prototype.hasOwnProperty.call(incoming, n)) continue;
+    if (store[n]) continue; // 冪等: 既存は上書きしない
+    store = scUpsert_(store, n, incoming[n]); added++;
+  }
+  scWriteStore_(ss, store, 'seed');
+  return { success: true, added: added, total: Object.keys(store).length };
+}
+// ===== 送迎条件セクション ここまで =====
 
 function getIntakeList(ss, opts) {
   opts = opts || {};
