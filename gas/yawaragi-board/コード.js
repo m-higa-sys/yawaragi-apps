@@ -13260,6 +13260,26 @@ function nmClassifyMail_(from, subject) {
   return { important: false, matchedBy: [], excluded: false };
 }
 
+// メタデータ配列（{id, from, subject, date}）を important / others に仕分ける純関数。
+// 各要素に Gmail の messageId（id）を含める。分類は nmClassifyMail_（本文非依存）。
+// 重複排除はしない ― from/subject/date が同一でも id が違えば別メールso全部残す
+// （住信SBIの別口座2通のように、片方を消すと見落としになるため。id が一意キー）。
+function nmSortItems_(msgs) {
+  var important = [];
+  var others = [];
+  for (var i = 0; i < msgs.length; i++) {
+    var m = msgs[i];
+    var cls = nmClassifyMail_(m.from, m.subject);
+    if (cls.excluded) continue;   // EXCLUDE該当（広告/メルマガ/カード通知/自作アプリ通知）は両方に入れない
+    if (cls.important) {
+      important.push({ id: m.id, from: m.from, subject: m.subject, date: m.date, matchedBy: cls.matchedBy });
+    } else {
+      others.push({ id: m.id, from: m.from, subject: m.subject, date: m.date });
+    }
+  }
+  return { important: important, others: { count: others.length, items: others } };
+}
+
 // 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
 // sinceHours: 何時間前までの新着を見るか（既定24）。
 function checkNewMail(sinceHours) {
@@ -13268,27 +13288,23 @@ function checkNewMail(sinceHours) {
   var days = Math.max(1, Math.ceil(hours / 24));
   var threads = GmailApp.search('newer_than:' + days + 'd', 0, 50);
   var cutoff = new Date(new Date().getTime() - hours * 60 * 60 * 1000);
-  var important = [];
-  var others = [];
+  var items = [];
   for (var t = 0; t < threads.length; t++) {
     var msgs = threads[t].getMessages();
     for (var m = 0; m < msgs.length; m++) {
       var msg = msgs[m];
       var dt = msg.getDate();           // ← 本文は読まない
       if (dt < cutoff) continue;        // sinceHours より古いメッセージは除外
-      var from = msg.getFrom();
-      var subject = msg.getSubject();
-      var cls = nmClassifyMail_(from, subject);
-      if (cls.excluded) continue;   // EXCLUDE該当（広告/メルマガ/カード通知等）は important にも others にも入れない
-      var dateStr = Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
-      if (cls.important) {
-        important.push({ from: from, subject: subject, date: dateStr, matchedBy: cls.matchedBy });
-      } else {
-        others.push({ from: from, subject: subject, date: dateStr });
-      }
+      // getId() はメッセージのメタデータ（本文ではない）。morningDigest の一意キーに使う。
+      items.push({
+        id: msg.getId(),
+        from: msg.getFrom(),
+        subject: msg.getSubject(),
+        date: Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm')
+      });
     }
   }
-  var result = { important: important, others: { count: others.length, items: others } };
+  var result = nmSortItems_(items);
   Logger.log(JSON.stringify(result, null, 2));
   return result;
 }
