@@ -24,6 +24,34 @@
 
 > 要するに: **本番版上げ＝スクリプト1コマンド → 社長OKで手push → verify**。version.txt を素手で触らない。
 
+## ブランチ運用のハードルール（2026-07-13 「ブランチ回転台」事故の再発防止）
+
+**根本原因（reflog証拠あり）**: 本体ディレクトリ `C:\dev\yawaragi-apps` を「ブランチ回転台」として使い、タスクごとに本体で `git checkout` していた。07-12〜13 で `session-board → session-board-datenav → month-board → month-board-on-prod → kobetsu-status-view → kobetsu-grid-badge` と連続切替。これが**版番号衝突・作業取り違え・未コミット取りこぼし**の温床になった。同日に実際に起きた事故3件: ①版番号 `-62` が dengon 既読改修と**衝突**（push弾かれて発覚）②掃除中に別セッションが `feat/sokutei-check-shien` を**並行追加**③docs push が **non-FF 拒否** → リベースで解消。**以下を厳守する。**
+
+1. **本体は master 固定。**
+   - `C:\dev\yawaragi-apps` 本体で `git checkout <feature>` してはならない。本体は常に master を指す。
+
+2. **機能タスクは専用worktreeで。**
+   - `git worktree add C:/tmp/wt-<name> -b feat/<name> origin/master`
+   - 必ず**最新の origin/master から切る**（`git fetch` 後・先祖返り防止）。
+
+3. **着手前ゲート。**
+   - セッション開始時、本体が master 以外を指していたら**報告して止まる**（`git rev-parse --abbrev-ref HEAD` ≠ master なら中断）。`node scripts/check-orphan-branches.js` と併せて二重の網。
+
+4. **版番号は現 origin/master 起点で。**
+   - `bump-app-version.js` は必ず `git fetch` 済み・最新 origin/master 上で実行。push直前にも**再 fetch して番号が空いているか再確認**（`-62` 衝突の再発防止）。連番飛びは先祖返りシグナル。
+
+5. **push が弾かれたら（non-FF）はリベース。**
+   - non-FF は**正常**＝他セッションが master を進めた証拠。必ず `git rebase origin/master` して再push。**`--force` は絶対に使わない**（他セッションの成果を消す）。
+
+6. **枝の寿命。**
+   - master に反映されたブランチは即 `git branch -d`（＋対応 worktree も `git worktree remove`）。反映済みの棚卸しを溜めない。安全削除 `-d` が拒否＝未反映のサインso、`-D` 強制の前に中身を確認する。
+
+7. **本番書き込みは社長の手で。**
+   - `git push origin master` / `clasp deploy` は社長が実行。クロコは直前で止まって pushコマンドと verify 手順を提示する。
+
+> 要するに: **本体=master固定・機能=専用worktree(最新origin/master起点)・push弾かれたらリベース(force厳禁)・反映後は即掃除・本番書込は社長**。
+
 ## 修正タスクの完了定義（2026-07-02 伊藤直29件事故の再発防止）
 
 **完了＝master反映＋版上げ（版ゲート対象アプリのみ）＋本番反映確認まで。**
