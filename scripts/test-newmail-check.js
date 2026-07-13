@@ -44,9 +44,15 @@ function loadFns() {
   const src = extractFn(SRC, 'nmExtractSender_') + '\n' +
               extractFn(SRC, 'nmClassifyMail_') + '\n' +
               extractFn(SRC, 'nmSortItems_') + '\n' +
+              extractFn(SRC, 'nmFilterUndone_') + '\n' +
+              extractFn(SRC, 'nmShouldAppendDone_') + '\n' +
+              extractFn(SRC, 'nmOldDoneRows_') + '\n' +
               'sandbox.nmExtractSender_ = nmExtractSender_;' +
               'sandbox.nmClassifyMail_ = nmClassifyMail_;' +
-              'sandbox.nmSortItems_ = nmSortItems_;';
+              'sandbox.nmSortItems_ = nmSortItems_;' +
+              'sandbox.nmFilterUndone_ = nmFilterUndone_;' +
+              'sandbox.nmShouldAppendDone_ = nmShouldAppendDone_;' +
+              'sandbox.nmOldDoneRows_ = nmOldDoneRows_;';
   const sandbox = {};
   (function () { eval(src); })();
   return sandbox;
@@ -230,6 +236,46 @@ eq(r3.others.count, 0, 'EXCLUDE系は除外（others 0）');
 const r4 = sort([]);
 eq(r4.important.length, 0, '空 → important 0');
 eq(r4.others.count, 0, '空 → others 0');
+
+// ===== Phase2-A 純関数（対応済みバックエンド）=====
+console.log('[nmFilterUndone_ / 対応済み除外]');
+const filterUndone = F.nmFilterUndone_;
+// 未対応は残る・対応済みは除外
+eqJson(filterUndone(
+  [{ id: 'a', from: 'x', subject: 's', date: 'd' }, { id: 'b', from: 'y', subject: 't', date: 'e' }],
+  ['a']
+), [{ id: 'b', from: 'y', subject: 't', date: 'e' }], '対応済み id=a を除外・未対応 b は残る');
+eqJson(filterUndone([{ id: 'a' }], []), [{ id: 'a' }], '完了記録が空なら全部残る');
+eqJson(filterUndone([], ['a', 'b']), [], 'items が空なら空');
+// ★核心: 住信SBI ― from/subject/date 完全一致で id だけ違う2件、片方だけ対応済み→もう片方は残る
+eqJson(filterUndone(
+  [
+    { id: 'sbi-A', from: '住信SBI <post_master@netbk.co.jp>', subject: '定額自動振込サービス振込受付のお知らせ', date: '2026-07-14 02:34', matchedBy: [] },
+    { id: 'sbi-B', from: '住信SBI <post_master@netbk.co.jp>', subject: '定額自動振込サービス振込受付のお知らせ', date: '2026-07-14 02:34', matchedBy: [] }
+  ],
+  ['sbi-A']
+), [
+  { id: 'sbi-B', from: '住信SBI <post_master@netbk.co.jp>', subject: '定額自動振込サービス振込受付のお知らせ', date: '2026-07-14 02:34', matchedBy: [] }
+], '★住信SBI: from/subject/date同一でも id 単位so片方対応済みでもう片方は残る（見落とし防止の核心）');
+
+console.log('[nmShouldAppendDone_ / 冪等]');
+const shouldAppend = F.nmShouldAppendDone_;
+eq(shouldAppend([], 'a'), true, '完了記録が空 → 追記する');
+eq(shouldAppend(['b', 'c'], 'a'), true, '未登録 id → 追記する');
+eq(shouldAppend(['a', 'b'], 'a'), false, '既登録 id → 追記しない（冪等）');
+
+console.log('[nmOldDoneRows_ / 30日超掃除]');
+const oldRows = F.nmOldDoneRows_;
+const NOW = Date.parse('2026-07-14 12:00:00');
+// 40日前=刈る / 10日前=残す / 30日ちょうど手前=残す
+const rows = [
+  { messageId: 'old1', doneAt: '2026-06-04 12:00:00', by: '社長', row: 2 },   // 40日前 → 刈る
+  { messageId: 'new1', doneAt: '2026-07-04 12:00:00', by: '社長', row: 3 },   // 10日前 → 残す
+  { messageId: 'old2', doneAt: '2026-05-01 09:00:00', by: '社長', row: 4 }    // 74日前 → 刈る
+];
+eqJson(oldRows(rows, NOW, 30), [2, 4], '30日より古い行番号だけ返す（新しい行は残す）');
+eqJson(oldRows([], NOW, 30), [], '空 → 空');
+eqJson(oldRows([{ messageId: 'x', doneAt: 'ダメな日付', by: 'y', row: 5 }], NOW, 30), [], 'パース不能な doneAt は刈らない（安全側）');
 
 console.log(`RESULT pass=${pass} fail=${fail}`);
 if (fail) process.exit(1);
