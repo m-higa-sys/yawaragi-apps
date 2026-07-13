@@ -616,6 +616,7 @@ const MONTHS = ['4月','5月','6月','7月','8月','9月','10月','11月','12月
 let appData = {
     users: [],       // [{name, furigana, days:'', ampm:''}] ＝ 台帳の現役のみ（測定対象の正本）
     terminated: [],  // [{name, kana, lastUseDate}] ＝ 台帳の中止者（includeEnded=1 由来・単一ソース）
+    ledgerLoadedAt: null, // 台帳(includeEnded)取得済みの印。クラウド送信の台帳外フィルタ有効化ゲート
     weights: {},     // { "年度": { "ユーザー名": { "4月": 65.5, ... } } }
     heights: {},     // { "年度": { "ユーザー名": { "4月": 155.0, ... } } }
     currentYear: getCurrentFiscalYear()
@@ -798,6 +799,39 @@ function wtClassifyTerminated(opts) {
     orphans.sort(byName);
     return { ledger: ledger, orphans: orphans };
 }
+// 台帳の全氏名（現役＋中止者）Set。クラウド送信フィルタの許可リストに使う。
+function wtLedgerNameSet(users, terminated) {
+    var s = new Set();
+    (users || []).forEach(function (u) { if (u && u.name) s.add(u.name); });
+    (terminated || []).forEach(function (t) { if (t && t.name) s.add(t.name); });
+    return s;
+}
+// クラウド送信の再汚染対策（全置換GAS向け）：台帳外の孤立キーを送信対象から除外する。
+//   enabled=false（台帳未取得の端末）は一切除外しない＝従来どおり全送信（中止者記録の消失事故を防ぐ安全側）。
+//   enabled=true（台帳取得済み）は 現役∪中止者 に無い氏名だけ落とす（中止者は台帳に居るので必ず残る）。
+//   skipped=除外した氏名／skippedWithData=そのうち非空値を持つもの（＝黙って捨てない警告の対象）。
+function wtFilterCloudWeights(tree, ledgerNameSet, enabled) {
+    if (!enabled) return { tree: tree, skipped: [], skippedWithData: [] };
+    var out = {};
+    var skipped = {};
+    var withData = {};
+    Object.keys(tree || {}).forEach(function (fy) {
+        var yd = tree[fy] || {};
+        var keep = {};
+        Object.keys(yd).forEach(function (name) {
+            if (ledgerNameSet.has(name)) { keep[name] = yd[name]; return; }
+            skipped[name] = true;
+            var rec = yd[name] || {};
+            var hasVal = Object.keys(rec).some(function (k) {
+                var v = rec[k];
+                return v !== undefined && v !== null && v !== '';
+            });
+            if (hasVal) withData[name] = true;
+        });
+        out[fy] = keep;
+    });
+    return { tree: out, skipped: Object.keys(skipped), skippedWithData: Object.keys(withData) };
+}
 
 // ============ クラウド同期 ============
 const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyJtAHueOf4_F4EcVpXO1-6mksEcmJChCKxT7J28XNQNp9S8ZMFOMDyq4v4ML1C1qxP/exec';
@@ -821,9 +855,17 @@ function cloudSync() {
                 console.log('☁️ ローカルデータが空のためクラウド送信スキップ（上書き事故防止）');
                 return;
             }
+            // 台帳外キーの再汚染対策（全置換GAS向け）。台帳取得済み端末のみ台帳外を落とす。
+            const _ledger = wtLedgerNameSet(appData.users, appData.terminated);
+            const _enabled = !!appData.ledgerLoadedAt;
+            const _w = wtFilterCloudWeights(appData.weights, _ledger, _enabled);
+            const _h = wtFilterCloudWeights(appData.heights, _ledger, _enabled);
+            if (_w.skippedWithData.length || _h.skippedWithData.length) {
+                console.warn('☁️ 台帳外につき送信除外:', Array.from(new Set(_w.skippedWithData.concat(_h.skippedWithData))).join(', '));
+            }
             await fetch(SYNC_URL, {
                 method: 'POST', mode: 'no-cors',
-                body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: appData.weights, heights: appData.heights } }),
+                body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: _w.tree, heights: _h.tree } }),
                 keepalive: true
             });
             console.log('☁️ 体重データ同期完了');
@@ -850,14 +892,30 @@ function forceCloudSync() {
         showToast('⚠ このデバイスにデータがありません', '#f44');
         return;
     }
-    if (!confirm('このデバイスのデータ（体重 ' + wcount + '件 + 身長 ' + hcount + '件）を全部クラウドへ送信します。よろしいですか？')) return;
+    // 台帳外キーの再汚染対策：台帳取得済み端末では台帳外を送信対象から外す（中止者は台帳に居るので残す）。
+    const ledger = wtLedgerNameSet(appData.users, appData.terminated);
+    const enabled = !!appData.ledgerLoadedAt;
+    const fw = wtFilterCloudWeights(appData.weights, ledger, enabled);
+    const fh = wtFilterCloudWeights(appData.heights, ledger, enabled);
+    const skippedNames = Array.from(new Set(fw.skippedWithData.concat(fh.skippedWithData)));
+    let confirmMsg = 'このデバイスのデータ（体重 ' + wcount + '件 + 身長 ' + hcount + '件）を全部クラウドへ送信します。よろしいですか？';
+    if (skippedNames.length) {
+        // 黙って捨てない：台帳外（要名寄せ）は送信対象外であることを明示する。
+        confirmMsg = '⚠️ 台帳外（要名寄せ）' + skippedNames.length + '名は送信されません：\n' + skippedNames.join('、') +
+            '\n\nこれらは現在の利用者台帳に該当氏名がないため、クラウド再汚染防止のため送信対象から外します。\n' +
+            '（台帳に戻したい場合は氏名の名寄せをしてから送信してください）\n\n' + confirmMsg;
+    } else if (!enabled) {
+        confirmMsg = '※利用者台帳が未取得のため、台帳外の絞り込みは行わず全件送信します。\n\n' + confirmMsg;
+    }
+    if (!confirm(confirmMsg)) return;
     if (_syncTimer) { clearTimeout(_syncTimer); _syncTimer = null; }
     fetch(SYNC_URL, {
         method: 'POST', mode: 'no-cors',
-        body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: appData.weights, heights: appData.heights } }),
+        body: JSON.stringify({ type: 'weight', data: { users: appData.users, weights: fw.tree, heights: fh.tree } }),
         keepalive: true
     });
-    showToast('☁️ 体重' + wcount + '件・身長' + hcount + '件をクラウドへ送信しました', '#4CAF50');
+    const skipNote = skippedNames.length ? '（台帳外' + skippedNames.length + '名を除外）' : '';
+    showToast('☁️ 体重' + wcount + '件・身長' + hcount + '件をクラウドへ送信しました' + skipNote, '#4CAF50');
 }
 
 async function cloudLoad() {
@@ -889,6 +947,7 @@ function loadData() {
             const p = JSON.parse(saved);
             appData.users = p.users || [];
             appData.terminated = p.terminated || [];
+            appData.ledgerLoadedAt = p.ledgerLoadedAt || null;
             appData.weights = p.weights || {};
             appData.heights = p.heights || {};
         }
@@ -897,7 +956,7 @@ function loadData() {
 
 function saveData() {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, terminated: appData.terminated, weights: appData.weights, heights: appData.heights }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: appData.users, terminated: appData.terminated, ledgerLoadedAt: appData.ledgerLoadedAt, weights: appData.weights, heights: appData.heights }));
         cloudSync();
     } catch(e) { console.error('保存エラー:', e); }
 }
@@ -964,6 +1023,7 @@ function loadFromSpreadsheet() {
             }
             mergeUsers(activeUsers);
             appData.terminated = terminated;
+            appData.ledgerLoadedAt = new Date().toISOString(); // 台帳照合の許可リストが揃った印→送信フィルタ有効化
             saveData();
             renderTable();
             showToast(`✅ ${appData.users.length}名（中止者${terminated.length}名）を取得しました`, '#4CAF50');
@@ -1498,7 +1558,7 @@ function exportJson() {
     const data = {
         type: 'yawaragi_weight_check', version: 1,
         exportDate: new Date().toISOString(),
-        users: appData.users, terminated: appData.terminated, weights: appData.weights, heights: appData.heights
+        users: appData.users, terminated: appData.terminated, ledgerLoadedAt: appData.ledgerLoadedAt, weights: appData.weights, heights: appData.heights
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1522,6 +1582,7 @@ function handleJsonFile(file) {
             if (confirm('現在のデータを復元データで上書きします。よろしいですか？')) {
                 appData.users = data.users || [];
                 appData.terminated = data.terminated || [];
+                appData.ledgerLoadedAt = data.ledgerLoadedAt || null;
                 appData.weights = data.weights || {};
                 appData.heights = data.heights || {};
                 saveData(); renderTable();

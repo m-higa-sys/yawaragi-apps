@@ -18,7 +18,8 @@ function extractFn(name) {
 // 依存関数をまとめて eval できるよう、必要な純関数を1つのスコープに読み込む
 const bundle = [
   'wtNormalizeText', 'wtMatchesSearch', 'wtIsEndedStatus',
-  'wtHasRecordInYear', 'wtLatestInYear', 'wtClassifyTerminated'
+  'wtHasRecordInYear', 'wtLatestInYear', 'wtClassifyTerminated',
+  'wtLedgerNameSet', 'wtFilterCloudWeights'
 ].map(extractFn).join('\n');
 eval(bundle);
 
@@ -103,6 +104,38 @@ const resNext = wtClassifyTerminated({
   weights: weights, fy: 2027, months: MONTHS
 });
 assert('翌年度に切替えると当年度記録のない中止者は自動的に消える', resNext.ledger.length === 0 && resNext.orphans.length === 0);
+
+// ===== 再汚染対策: wtLedgerNameSet / wtFilterCloudWeights =====
+console.log('--- wtLedgerNameSet ---');
+const lset = wtLedgerNameSet(
+  [{ name: '柳浦武治' }, { name: '田中太郎' }],
+  [{ name: '古田花子' }]
+);
+assert('現役＋中止者を氏名Setに', lset.has('柳浦武治') && lset.has('田中太郎') && lset.has('古田花子'));
+assert('台帳外は含まない', !lset.has('法浦武治'));
+
+console.log('--- wtFilterCloudWeights ---');
+const cloudTree = {
+  2026: {
+    '柳浦武治': { '7月': 83.8 },   // 現役 → 送る
+    '古田花子': { '5月': 48 },      // 台帳中止者 → 送る（記録保持）
+    '法浦武治': { '7月': 70 },      // 台帳外・値あり → スキップ（警告対象）
+    '空殻': {}                       // 台帳外・空 → スキップ（警告非対象）
+  }
+};
+// enabled=false（台帳未取得）＝一切除外しない（データ消失事故防止）
+const off = wtFilterCloudWeights(cloudTree, lset, false);
+assert('未取得端末は素通し(法浦も残る)', !!off.tree[2026]['法浦武治'] && off.skipped.length === 0);
+// enabled=true（台帳取得済み）＝台帳外だけ落とす
+const on = wtFilterCloudWeights(cloudTree, lset, true);
+assert('現役(柳浦)は送信対象に残る', !!on.tree[2026]['柳浦武治']);
+assert('台帳中止者(古田)も送信対象に残る＝記録保持', !!on.tree[2026]['古田花子']);
+assert('台帳外(法浦)は送信から除外', !on.tree[2026]['法浦武治']);
+assert('台帳外(空殻)も除外', !on.tree[2026]['空殻']);
+assert('skippedに台帳外2件', on.skipped.length === 2 && on.skipped.indexOf('法浦武治') >= 0 && on.skipped.indexOf('空殻') >= 0);
+assert('警告(値あり)は法浦のみ', on.skippedWithData.length === 1 && on.skippedWithData[0] === '法浦武治');
+// 元データを破壊しない（新オブジェクトを返す）
+assert('入力treeを破壊しない', !!cloudTree[2026]['法浦武治']);
 
 console.log('\n==== weight-core: ' + pass + ' PASS / ' + fail + ' FAIL ====');
 process.exit(fail === 0 ? 0 : 1);

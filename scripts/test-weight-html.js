@@ -96,5 +96,36 @@ run('appData.currentYear = 2027; renderTable();');
 ok(!tbodyHas('古田花子'), '2027年度: 当年度記録なしの中止者は消える');
 ok(!tbodyHas('法浦武治'), '2027年度: 当年度記録なしの台帳外は消える');
 
+// ===== 8) 全件クラウド送信の再汚染対策（実POSTペイロードを捕捉して検証） =====
+// fetch を差し替えて body を捕捉、confirm は常にOKにする。
+let lastPost = null;
+window.fetch = (url, opts) => {
+  if (opts && opts.method === 'POST') { lastPost = { url, body: JSON.parse(opts.body) }; }
+  return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+};
+window.confirm = () => true;
+
+// 8a) 台帳取得済み（ledgerLoadedAt あり）→ 台帳外(法浦武治)は送信除外・中止者(古田)は残す
+run('appData.currentYear = 2026;');
+run('appData.ledgerLoadedAt = "2026-07-13T00:00:00.000Z";');
+// 現役=柳浦/田中、中止者=古田、weightsに法浦(台帳外)も混入している状態
+run('appData.weights = ' + JSON.stringify({
+  2026: { '柳浦武治': { '7月': 83.8 }, '田中太郎': { '6月': 60 }, '古田花子': { '5月': 48 }, '法浦武治': { '7月': 70 } }
+}) + ';');
+lastPost = null;
+run('forceCloudSync();');
+ok(lastPost !== null, '全件送信でPOSTが飛ぶ');
+const sentW = lastPost.body.data.weights[2026];
+ok(!!sentW['柳浦武治'], '送信: 現役(柳浦)は含む');
+ok(!!sentW['古田花子'], '送信: 台帳中止者(古田)は含む＝記録保持');
+ok(!sentW['法浦武治'], '送信: 台帳外(法浦)は除外＝再汚染しない');
+
+// 8b) 台帳未取得（ledgerLoadedAt なし）→ 従来どおり全送信（中止者消失事故を防ぐ安全側）
+run('appData.ledgerLoadedAt = null;');
+lastPost = null;
+run('forceCloudSync();');
+const sentW2 = lastPost.body.data.weights[2026];
+ok(!!sentW2['法浦武治'], '未取得端末は全送信（法浦も含む＝データを勝手に消さない安全側）');
+
 console.log('\n==== weight-html(jsdom): ' + pass + ' PASS / ' + fail + ' FAIL ====');
 process.exit(fail === 0 ? 0 : 1);
