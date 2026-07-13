@@ -13334,6 +13334,19 @@ function testNewMailBoard() {
   return out;
 }
 
+// completeNewMail 動作確認用ラッパー（GASエディタ実行・2026-07-14）。
+// completeNewMail(e) は e.parameter.id / e.parameter.by を読む＝{parameter:{id,by}} を渡す。
+// respond() の TextOutput は getContent() で取り出す。実行後にボード件数が1減ることを確認する。
+// テスト対象は Money Forward「出金のお知らせ」（業務影響ゼロの安全なメール）。
+function testCompleteNewMail() {
+  var TEST_ID = '19f5413af2a501b6';
+  var r = completeNewMail({ parameter: { id: TEST_ID, by: '比嘉' } });
+  console.log('complete: ' + JSON.stringify(JSON.parse(r.getContent()), null, 2));
+
+  var b = JSON.parse(getNewMailBoard().getContent());
+  console.log('board count after: ' + b.count);
+}
+
 // =============================================================
 // 新着メール「対応済み」バックエンド（morningDigest Phase2-A・2026-07-14）
 //   teirei（定例タスク完了記録・コード.js:7314付近）の「完了記録シート方式」を下敷きにする。
