@@ -92,6 +92,7 @@
 // --- kinki-core（フロント複製・値はgas/yawaragi-board/kinki-core.jsと一致させる）---
 var KINKI_EQUIPMENT = ['干渉波','WB','足温器','滑車','バイク','足裏マッサージ器','下肢マッサージ器','ヒップアブダクション','チェストプレス','レッグカール','レッグプレス'];
 var KINKI_RELEASE_REASONS = ['医師より運動制限解除の指示','症状改善により制限解除','術後経過良好・主治医許可','骨折治癒・荷重制限解除','期間満了（一時的制限の終了）','制限内容の変更（新規登録し直し）','誤登録・重複の取り消し','その他'];
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function knkParseEquipment_(cell){ if(!cell) return []; try{ var v=JSON.parse(cell); return Array.isArray(v)?v.filter(function(x){return !!x;}).map(String):[]; }catch(e){ return []; } }
 function knkBadgeStyle_(level){ return level==='forbid'?{icon:'🚫',cls:'kinki-forbid'}:{icon:'⚠️',cls:'kinki-caution'}; }
 function knkCanRelease_(rec){ return !!rec && rec.type==='temporary'; }
@@ -105,7 +106,7 @@ function knkGroupByEquipment_(active, equipList){
 // GASエンドポイント（session-board.html / oral-plan.html と同じ exec URL）
 var KINKI_GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 // JSONP GET
-function knkGet(params, cb){ var s=document.createElement('script'); var name='knkcb_'+Math.floor(performance.now()); window[name]=function(d){ cb(d); delete window[name]; s.remove(); }; var q=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]);}).join('&'); s.src=KINKI_GAS_URL+'?'+q+'&callback='+name; document.body.appendChild(s); }
+function knkGet(params, cb){ var s=document.createElement('script'); var name='knkcb_'+Math.floor(performance.now()); window[name]=function(d){ cb(d); delete window[name]; s.remove(); }; s.onerror=function(){ delete window[name]; s.remove(); document.getElementById('app').innerHTML = '<p>通信エラー。再読み込みしてください。</p>'; }; var q=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]);}).join('&'); s.src=KINKI_GAS_URL+'?'+q+'&callback='+name; document.body.appendChild(s); }
 // no-cors POST（genbaのPOST同様・成否はUI楽観・memory: genba-nocors-post）
 function knkPost(action, fields){ var fd=new FormData(); fd.append('action',action); Object.keys(fields).forEach(function(k){ fd.append(k, fields[k]); }); return fetch(KINKI_GAS_URL,{method:'POST',mode:'no-cors',body:fd}); }
 function knkParam(name){ var m=new RegExp('[?&]'+name+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -121,23 +122,23 @@ function renderUserDetail(){
     if(!d || !d.ok){ document.getElementById('app').innerHTML='<p>取得失敗</p>'; return; }
     var active = d.active || [];
     var released = (d.all||[]).filter(function(r){ return r.status==='released'; });
-    var h = '<h2>'+user+' 様</h2>';
+    var h = '<h2>'+esc(user)+' 様</h2>';
     if(!active.length) h += '<p>現在有効な禁忌・制限はありません。</p>';
     active.forEach(function(r){
       var st = knkBadgeStyle_(r.level);
-      h += '<div class="card"><div class="'+st.cls+'">'+st.icon+' '+r.label+(r.type==='permanent'?'（恒久）':'（期限付き）')+'</div>';
-      h += '<div>内容：'+(r.detail||'')+'</div>';
+      h += '<div class="card"><div class="'+st.cls+'">'+st.icon+' '+esc(r.label)+(r.type==='permanent'?'（恒久）':'（期限付き）')+'</div>';
+      h += '<div>内容：'+esc(r.detail||'')+'</div>';
       var eqs = knkParseEquipment_(r.targetEquipment);
-      if(eqs.length) h += '<div>対象機器：'+eqs.join(' / ')+'</div>';
-      h += '<div>情報元：'+r.sourceName+'（'+sourceLabel(r.sourceType)+'）／受領 '+r.receivedAt+'／受けた職員 '+r.receivedBy+'</div>';
-      if(r.background) h += '<div>経緯：'+r.background+'</div>';
-      if(r.type==='temporary') h += '<div>見直し予定 '+r.reviewDate+'</div>';
+      if(eqs.length) h += '<div>対象機器：'+esc(eqs.join(' / '))+'</div>';
+      h += '<div>情報元：'+esc(r.sourceName)+'（'+esc(sourceLabel(r.sourceType))+'）／受領 '+esc(r.receivedAt)+'／受けた職員 '+esc(r.receivedBy)+'</div>';
+      if(r.background) h += '<div>経緯：'+esc(r.background)+'</div>';
+      if(r.type==='temporary') h += '<div>見直し予定 '+esc(r.reviewDate)+'</div>';
       h += '<div class="actions"><a href="?user='+encodeURIComponent(user)+'&mode=new">編集はこちら（新規登録）</a>';
-      if(knkCanRelease_(r)){ h += ' <a href="?user='+encodeURIComponent(user)+'&mode=release&id='+r.id+'">解除する</a>'; }
+      if(knkCanRelease_(r)){ h += ' <a href="?user='+encodeURIComponent(user)+'&mode=release&id='+encodeURIComponent(r.id)+'">解除する</a>'; }
       h += '</div></div>';
     });
     h += '<details><summary>過去の制限（解除済み） '+released.length+'件</summary>';
-    released.forEach(function(r){ h += '<div class="card released">'+r.label+'（解除 '+r.releasedAt+'・理由：'+r.releaseReason+'）</div>'; });
+    released.forEach(function(r){ h += '<div class="card released">'+esc(r.label)+'（解除 '+esc(r.releasedAt)+'・理由：'+esc(r.releaseReason)+'）</div>'; });
     h += '</details>';
     h += '<p><a href="?user='+encodeURIComponent(user)+'&mode=new">＋ 新規登録</a></p>';
     document.getElementById('app').innerHTML = h;
@@ -158,8 +159,8 @@ function renderEquipmentView(){
     if((d.unmatched||[]).length) h += '<div class="warn">⚠️ 突合できない禁忌が '+d.unmatched.length+' 件あります（氏名を確認してください）</div>';
     Object.keys(byEq).forEach(function(eq){
       var list = byEq[eq];
-      h += '<div class="eqrow"><b>■ '+eq+'</b> ';
-      h += list.length ? list.map(function(r){ var s=knkBadgeStyle_(r.level); return '<span class="'+s.cls+'">'+r.userId+s.icon+'</span>'; }).join(' / ') : '（なし）';
+      h += '<div class="eqrow"><b>■ '+esc(eq)+'</b> ';
+      h += list.length ? list.map(function(r){ var s=knkBadgeStyle_(r.level); return '<span class="'+s.cls+'">'+esc(r.userId)+s.icon+'</span>'; }).join(' / ') : '（なし）';
       h += '</div>';
     });
     document.getElementById('app').innerHTML = h;
@@ -172,7 +173,7 @@ function renderRegister(){
   var user = knkParam('user');
   var eqBoxes = KINKI_EQUIPMENT.map(function(e){ return '<label><input type="checkbox" class="eqchk" value="'+e+'"> '+e+'</label>'; }).join(' ');
   document.getElementById('app').innerHTML =
-    '<h2>'+user+' 様 / 禁忌・制限の登録</h2>'+
+    '<h2>'+esc(user)+' 様 / 禁忌・制限の登録</h2>'+
     '<div>種別：<label><input type="radio" name="ktype" value="permanent"> 恒久禁忌</label>'+
     '<label><input type="radio" name="ktype" value="temporary" checked> 期限付き制限</label></div>'+
     '<div>レベル：<label><input type="radio" name="klevel" value="forbid" checked> 🚫禁止</label>'+
@@ -206,7 +207,7 @@ function renderRegister(){
     var err = clientValidate(payload);
     if(err){ alert(err); return; }
     document.getElementById('ksubmit').disabled = true; // 連打防止
-    knkPost('createKinki', { payload: JSON.stringify(payload) }).then(function(){ location.href = '?user='+encodeURIComponent(user); });
+    knkPost('createKinki', { payload: JSON.stringify(payload) }).then(function(){ location.href = '?user='+encodeURIComponent(user); }).catch(function(){ document.getElementById('ksubmit').disabled = false; alert('通信に失敗しました。もう一度お試しください。'); });
   });
 }
 function clientValidate(p){
@@ -225,11 +226,12 @@ function renderRelease(){
   knkGet({ action:'getKinkiByUser', userId:user }, function(d){
     var rec = ((d && d.active) || []).filter(function(r){ return r.id === id; })[0];
     if(!rec){ document.getElementById('app').innerHTML = '<p>対象が見つかりません（既に解除済みの可能性）。</p><a href="?user='+encodeURIComponent(user)+'">戻る</a>'; return; }
+    if(!knkCanRelease_(rec)){ document.getElementById('app').innerHTML = '<p>この制限は恒久禁忌のため解除できません。</p><a href="?user='+encodeURIComponent(user)+'">戻る</a>'; return; }
     var st = knkBadgeStyle_(rec.level);
     // 確認モーダル（オーバーレイ）
     document.getElementById('app').innerHTML =
       '<div class="modal-overlay"><div class="modal"><p>この禁忌を解除します。</p>'+
-      '<p class="'+st.cls+'" style="font-size:18px">'+st.icon+' '+rec.label+'</p>'+
+      '<p class="'+st.cls+'" style="font-size:18px">'+st.icon+' '+esc(rec.label)+'</p>'+
       '<p>解除後、セッションボードのバッジは消えます。</p>'+
       '<div class="modal-actions"><button id="rcancel">キャンセル</button> <button id="rok">解除する</button></div></div></div>';
     document.getElementById('rcancel').addEventListener('click', function(){ location.href = '?user='+encodeURIComponent(user); });
@@ -240,7 +242,7 @@ function renderRelease(){
 function renderReleaseForm(user, id){
   var opts = KINKI_RELEASE_REASONS.map(function(r){ return '<option>'+r+'</option>'; }).join('');
   document.getElementById('app').innerHTML =
-    '<h2>'+user+' 様 / 制限の解除</h2>'+
+    '<h2>'+esc(user)+' 様 / 制限の解除</h2>'+
     '<div>解除理由：<select id="rreason">'+opts+'</select></div>'+
     '<div id="rnotewrap">補足（「その他」選択時は必須）：<textarea id="rnote"></textarea></div>'+
     '<div>解除の指示元（氏名・続柄・口頭/文書）：<input id="rsrc"></div>'+
@@ -255,7 +257,7 @@ function renderReleaseForm(user, id){
     if(payload.releaseReason==='その他' && !payload.releaseNote){ alert('「その他」選択時は補足が必須です'); return; }
     if(!payload.releasedBy){ alert('解除操作者は必須です'); return; }
     document.getElementById('rsubmit').disabled = true;
-    knkPost('releaseKinki', { id: id, payload: JSON.stringify(payload) }).then(function(){ location.href = '?user='+encodeURIComponent(user); });
+    knkPost('releaseKinki', { id: id, payload: JSON.stringify(payload) }).then(function(){ location.href = '?user='+encodeURIComponent(user); }).catch(function(){ document.getElementById('rsubmit').disabled = false; alert('通信に失敗しました。もう一度お試しください。'); });
   });
 }
 </script>

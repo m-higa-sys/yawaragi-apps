@@ -48,5 +48,19 @@ ok(appHTML.indexOf('🚫') >= 0, 'H13: levelに応じたアイコン（forbid→
 ok(appHTML.indexOf('バッジは消えます') >= 0, 'H14: 「バッジが消える」旨を明記');
 ok(appHTML.indexOf('キャンセル') >= 0 && appHTML.indexOf('解除する') >= 0, 'H15: キャンセル/解除するの2択');
 
+// --- #1 Critical: 恒久禁忌にmode=release直リンクしても確認モーダルを出さず再ガードする ---
+sandbox.location.search = '?user=' + encodeURIComponent('比嘉太郎') + '&mode=release&id=perm1';
+sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[{ id:'perm1', userId:'比嘉太郎', type:'permanent', level:'forbid', label:'ペースメーカー', targetEquipment:'' }] }); };
+sandbox.renderRelease();
+ok(appHTML.indexOf('解除できません') >= 0, 'H16: permanent直リンクは「解除できません」で再ガード');
+ok(appHTML.indexOf('バッジは消えます') < 0, 'H17: permanent再ガード時は確認モーダルを描画しない');
+
+// --- #2 Important: 動的文字列はHTMLエスケープされる（<140 → &lt;140） ---
+sandbox.location.search = '?user=' + encodeURIComponent('比嘉太郎');
+sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[{ id:'e1', userId:'比嘉太郎', type:'temporary', level:'caution', label:'血圧<140', detail:'<140', targetEquipment:'', sourceName:'長男', sourceType:'family', receivedAt:'2026-07-10', receivedBy:'職員', reviewDate:'2026-09-10' }], all:[] }); };
+sandbox.renderUserDetail();
+ok(appHTML.indexOf('&lt;140') >= 0, 'H18: 動的文字列はエスケープして描画（&lt;140）');
+ok(appHTML.indexOf('<140') < 0, 'H19: 生の<140は描画されない（XSS対策）');
+
 console.log('kinki-html: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
