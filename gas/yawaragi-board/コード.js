@@ -16311,6 +16311,7 @@ function knkActiveUserNames_() {
   var nameCol = findCol(uh, ['名前', '氏名', '利用者名']);
   var stCol = findCol(uh, ['利用ステータス']);
   if (stCol < 0) stCol = findColP(uh, 'ステータス');
+  if (stCol < 0) stCol = findColP(uh, '利用状況');
   var names = [];
   for (var i = 1; i < uv.length; i++) {
     var nm = String(uv[i][nameCol] || '').trim();
@@ -16331,12 +16332,13 @@ function createKinki(e) {
   var v = knkValidatePayload_(p);
   if (!v.ok) return respond({ ok: false, error: v.error }, callback);
   var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  try { lock.waitLock(20000); } catch (lockErr) { return respond({ ok: false, error: 'lock timeout' }, callback); }
   try {
     var sheet = ensureKinkiSheet_();
     var now = knkNow_();
     var id = 'knk_' + Utilities.getUuid();
-    var eq = knkStringifyEquipment_(p.targetEquipment || []);
+    var eqArr = Array.isArray(p.targetEquipment) ? p.targetEquipment : [];
+    var eq = knkStringifyEquipment_(eqArr);
     var row = [
       id, p.userId, p.type, p.level, p.label, p.detail || '', eq, p.sourceType, p.sourceName,
       p.receivedAt, p.receivedBy, p.background || '', p.type === 'temporary' ? (p.reviewDate || '') : '',
@@ -16355,13 +16357,15 @@ function updateKinki(e) {
   var v = knkValidatePayload_(p);
   if (!v.ok) return respond({ ok: false, error: v.error }, callback);
   var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  try { lock.waitLock(20000); } catch (lockErr) { return respond({ ok: false, error: 'lock timeout' }, callback); }
   try {
     var sheet = ensureKinkiSheet_();
     var values = sheet.getDataRange().getValues();
     for (var i = 1; i < values.length; i++) {
       if (String(values[i][0]) !== id) continue;
-      var eq = knkStringifyEquipment_(p.targetEquipment || []);
+      if (String(values[i][13]) === 'released') return respond({ ok: false, error: '解除済みの記録は編集できません' }, callback);
+      var eqArr = Array.isArray(p.targetEquipment) ? p.targetEquipment : [];
+      var eq = knkStringifyEquipment_(eqArr);
       var updated = [
         id, p.userId, p.type, p.level, p.label, p.detail || '', eq, p.sourceType, p.sourceName,
         p.receivedAt, p.receivedBy, p.background || '',
@@ -16384,7 +16388,7 @@ function releaseKinki(e) {
   var v = knkValidateRelease_(p);
   if (!v.ok) return respond({ ok: false, error: v.error }, callback);
   var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  try { lock.waitLock(20000); } catch (lockErr) { return respond({ ok: false, error: 'lock timeout' }, callback); }
   try {
     var sheet = ensureKinkiSheet_();
     var values = sheet.getDataRange().getValues();
