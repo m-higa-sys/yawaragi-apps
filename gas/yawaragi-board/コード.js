@@ -1165,6 +1165,10 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'completeNewMail') {
     return completeNewMail(e);
   }
+  // 禁忌・運動制限管理（GET系・2026-07-14）
+  if (e && e.parameter && e.parameter.action === 'getKinkiForSession') { return getKinkiForSession(e); }
+  if (e && e.parameter && e.parameter.action === 'getKinkiByUser') { return getKinkiByUser(e); }
+  if (e && e.parameter && e.parameter.action === 'getKinkiHistory') { return getKinkiHistory(e); }
   if (e && e.parameter && e.parameter.action === 'teireiList') {
     return respond(teireiListAction_(SpreadsheetApp.openById(SS_ID), _shiftDateParam_(e)), e.parameter.callback);
   }
@@ -3825,6 +3829,10 @@ function isHaichiClearMarker_(a) {
 
 // ===== Web API: POST =====
 function doPost(e) {
+  // 禁忌・運動制限管理（POST系・2026-07-14・no-cors POST・action/payloadはURLパラメータ経由のためJSON.parse(postData)より前で分岐）
+  if (e && e.parameter && e.parameter.action === 'createKinki') { return createKinki(e); }
+  if (e && e.parameter && e.parameter.action === 'updateKinki') { return updateKinki(e); }
+  if (e && e.parameter && e.parameter.action === 'releaseKinki') { return releaseKinki(e); }
   try {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.openById(SS_ID);
@@ -16248,4 +16256,179 @@ function monthBoardBuildInput_(ym, year, month, safe) {
     },
     errorSections: errSec
   };
+}
+
+// ===== 禁忌・運動制限管理（2026-07-14・additive・物理削除しない）=====
+var KINKI_SHEET_NAME = '禁忌';
+var KINKI_HEADERS = [
+  'id', 'userId', 'type', 'level', 'label', 'detail', 'targetEquipment', 'sourceType', 'sourceName',
+  'receivedAt', 'receivedBy', 'background', 'reviewDate', 'status', 'releasedAt', 'releaseReason',
+  'releaseNote', 'releaseSource', 'releasedBy', 'createdAt', 'updatedAt'
+];
+
+function ensureKinkiSheet_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName(KINKI_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(KINKI_SHEET_NAME);
+    sheet.getRange(1, 1, 1, KINKI_HEADERS.length).setValues([KINKI_HEADERS]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, KINKI_HEADERS.length).setBackground('#9b2c2c').setFontColor('#ffffff').setFontWeight('bold');
+    // TZずれ回避：日付/日時列はテキスト書式で保持（memory: シートTZ罠）
+    sheet.getRange(1, 1, sheet.getMaxRows(), KINKI_HEADERS.length).setNumberFormat('@');
+  }
+  return sheet;
+}
+
+function knkRowToObj_(row) {
+  var o = {};
+  for (var i = 0; i < KINKI_HEADERS.length; i++) o[KINKI_HEADERS[i]] = row[i] === undefined ? '' : String(row[i]);
+  return o;
+}
+
+function knkReadAll_() {
+  var sheet = ensureKinkiSheet_();
+  var values = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    if (!values[i][0]) continue; // id空行スキップ
+    out.push(knkRowToObj_(values[i]));
+  }
+  return out;
+}
+
+function knkNow_() { return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'); }
+function knkToday_() { return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd'); }
+
+// --- 台帳の在籍利用者名一覧（unmatched突合用・非中止のみ）---
+function knkActiveUserNames_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var uSheet = ss.getSheetByName('利用者台帳');
+  if (!uSheet) return [];
+  var uv = uSheet.getDataRange().getValues();
+  if (uv.length < 2) return [];
+  var uh = uv[0].map(function (v) { return String(v).trim(); });
+  var nameCol = findCol(uh, ['名前', '氏名', '利用者名']);
+  var stCol = findCol(uh, ['利用ステータス']);
+  if (stCol < 0) stCol = findColP(uh, 'ステータス');
+  var names = [];
+  for (var i = 1; i < uv.length; i++) {
+    var nm = String(uv[i][nameCol] || '').trim();
+    if (!nm) continue;
+    if (stCol >= 0) {
+      var st = String(uv[i][stCol] || '').trim();
+      if (st.indexOf('終了') >= 0 || st.indexOf('中止') >= 0 || st.indexOf('卒業') >= 0) continue;
+    }
+    names.push(nm);
+  }
+  return names;
+}
+
+function createKinki(e) {
+  var callback = e && e.parameter ? e.parameter.callback : null;
+  var p;
+  try { p = JSON.parse(e.parameter.payload); } catch (err) { return respond({ ok: false, error: 'payload不正' }, callback); }
+  var v = knkValidatePayload_(p);
+  if (!v.ok) return respond({ ok: false, error: v.error }, callback);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ensureKinkiSheet_();
+    var now = knkNow_();
+    var id = 'knk_' + Utilities.getUuid();
+    var eq = knkStringifyEquipment_(p.targetEquipment || []);
+    var row = [
+      id, p.userId, p.type, p.level, p.label, p.detail || '', eq, p.sourceType, p.sourceName,
+      p.receivedAt, p.receivedBy, p.background || '', p.type === 'temporary' ? (p.reviewDate || '') : '',
+      'active', '', '', '', '', '', now, now
+    ];
+    sheet.appendRow(row);
+    return respond({ ok: true, id: id }, callback);
+  } finally { lock.releaseLock(); }
+}
+
+function updateKinki(e) {
+  var callback = e && e.parameter ? e.parameter.callback : null;
+  var id = e.parameter.id;
+  var p;
+  try { p = JSON.parse(e.parameter.payload); } catch (err) { return respond({ ok: false, error: 'payload不正' }, callback); }
+  var v = knkValidatePayload_(p);
+  if (!v.ok) return respond({ ok: false, error: v.error }, callback);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ensureKinkiSheet_();
+    var values = sheet.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][0]) !== id) continue;
+      var eq = knkStringifyEquipment_(p.targetEquipment || []);
+      var updated = [
+        id, p.userId, p.type, p.level, p.label, p.detail || '', eq, p.sourceType, p.sourceName,
+        p.receivedAt, p.receivedBy, p.background || '',
+        p.type === 'temporary' ? (p.reviewDate || '') : '',
+        values[i][13], values[i][14], values[i][15], values[i][16], values[i][17], values[i][18],
+        values[i][19] || knkNow_(), knkNow_()
+      ];
+      sheet.getRange(i + 1, 1, 1, KINKI_HEADERS.length).setValues([updated]);
+      return respond({ ok: true, id: id }, callback);
+    }
+    return respond({ ok: false, error: 'no_such_id' }, callback);
+  } finally { lock.releaseLock(); }
+}
+
+function releaseKinki(e) {
+  var callback = e && e.parameter ? e.parameter.callback : null;
+  var id = e.parameter.id;
+  var p;
+  try { p = JSON.parse(e.parameter.payload); } catch (err) { return respond({ ok: false, error: 'payload不正' }, callback); }
+  var v = knkValidateRelease_(p);
+  if (!v.ok) return respond({ ok: false, error: v.error }, callback);
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ensureKinkiSheet_();
+    var values = sheet.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][0]) !== id) continue;
+      if (String(values[i][2]) === 'permanent') return respond({ ok: false, error: '恒久禁忌は解除できません' }, callback);
+      // status=released を上書き（物理削除しない）
+      sheet.getRange(i + 1, 14).setValue('released');           // status
+      sheet.getRange(i + 1, 15).setValue(p.releasedAt || knkToday_()); // releasedAt
+      sheet.getRange(i + 1, 16).setValue(p.releaseReason);      // releaseReason
+      sheet.getRange(i + 1, 17).setValue(p.releaseNote || '');  // releaseNote
+      sheet.getRange(i + 1, 18).setValue(p.releaseSource);      // releaseSource
+      sheet.getRange(i + 1, 19).setValue(p.releasedBy);         // releasedBy
+      sheet.getRange(i + 1, 21).setValue(knkNow_());            // updatedAt
+      return respond({ ok: true, id: id }, callback);
+    }
+    return respond({ ok: false, error: 'no_such_id' }, callback);
+  } finally { lock.releaseLock(); }
+}
+
+function getKinkiByUser(e) {
+  var callback = e && e.parameter ? e.parameter.callback : null;
+  var userId = String((e.parameter.userId || '')).trim();
+  var all = knkReadAll_();
+  var target = String(sbNormalizeName_(userId));
+  var mine = all.filter(function (r) { return String(sbNormalizeName_(r.userId)) === target; });
+  return respond({ ok: true, userId: userId, active: knkFilterActive_(mine), all: mine, equipment: KINKI_EQUIPMENT }, callback);
+}
+
+function getKinkiHistory(e) {
+  var callback = e && e.parameter ? e.parameter.callback : null;
+  var userId = String((e.parameter.userId || '')).trim();
+  var all = knkReadAll_();
+  var target = String(sbNormalizeName_(userId));
+  var mine = all.filter(function (r) { return String(sbNormalizeName_(r.userId)) === target; });
+  return respond({ ok: true, userId: userId, history: mine }, callback);
+}
+
+function getKinkiForSession(e) {
+  var callback = e && e.parameter ? e.parameter.callback : null;
+  var all = knkReadAll_();
+  var active = knkFilterActive_(all);
+  var matched = knkGroupByUser_(active, sbNormalizeName_);
+  var users = knkActiveUserNames_();
+  var unmatched = knkDetectUnmatched_(active, users, sbNormalizeName_);
+  return respond({ ok: true, matched: matched, unmatched: unmatched, equipment: KINKI_EQUIPMENT }, callback);
 }
