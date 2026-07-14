@@ -605,6 +605,11 @@ CSS（`<style>`）に最低限:
 .kinki-forbid{color:#9b2c2c;font-weight:700}
 .kinki-caution{color:#975a16;font-weight:700}
 .kinki-badge{display:inline-block;margin-right:8px;font-size:15px}
+/* 解除の確認モーダル（自前・confirm()不使用）*/
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal{background:#fff;padding:20px;border-radius:10px;max-width:90%;width:340px;text-align:center}
+.modal-actions{margin-top:16px;display:flex;gap:12px;justify-content:center}
+.modal-actions button{padding:10px 18px;font-size:15px}
 ```
 
 - [ ] **Step 2: 詳細モーダル＋履歴（renderUserDetail）を実装**
@@ -732,14 +737,31 @@ function clientValidate(p){
 </script>
 ```
 
-- [ ] **Step 5: 解除画面（renderRelease）を実装**
+- [ ] **Step 5: 解除フロー（確認モーダル → 入力画面）を実装（D10）**
 
-プリセット8種セレクト、`その他` 選択時のみ補足必須、解除の指示元必須、解除日既定=今日。送信で `knkPost('releaseKinki', {id, payload})`→`?user=` へ戻る。
+**2段構成。まず自前の確認モーダル（`confirm()` 禁止）を出し、[解除する] で入力画面へ。** 確認モーダルは対象 `label` を動的表示し、`level` で 🚫/⚠️ を切替、「解除後バッジが消える」旨を明記、`[キャンセル]`/`[解除する]` の2択。誤タップ防止が目的。対象レコードは `getKinkiByUser` の active から `id` で引く。
 
 ```html
 <script>
+// 解除エントリ：確認モーダル（自前・confirm()は使わない）を先に出す
 function renderRelease(){
   var user = knkParam('user'); var id = knkParam('id');
+  knkGet({ action:'getKinkiByUser', userId:user }, function(d){
+    var rec = ((d && d.active) || []).filter(function(r){ return r.id === id; })[0];
+    if(!rec){ document.getElementById('app').innerHTML = '<p>対象が見つかりません（既に解除済みの可能性）。</p><a href="?user='+encodeURIComponent(user)+'">戻る</a>'; return; }
+    var st = knkBadgeStyle_(rec.level);
+    // 確認モーダル（オーバーレイ）
+    document.getElementById('app').innerHTML =
+      '<div class="modal-overlay"><div class="modal"><p>この禁忌を解除します。</p>'+
+      '<p class="'+st.cls+'" style="font-size:18px">'+st.icon+' '+rec.label+'</p>'+
+      '<p>解除後、セッションボードのバッジは消えます。</p>'+
+      '<div class="modal-actions"><button id="rcancel">キャンセル</button> <button id="rok">解除する</button></div></div></div>';
+    document.getElementById('rcancel').addEventListener('click', function(){ location.href = '?user='+encodeURIComponent(user); });
+    document.getElementById('rok').addEventListener('click', function(){ renderReleaseForm(user, id); });
+  });
+}
+// 入力画面（確認モーダルで [解除する] 押下後）
+function renderReleaseForm(user, id){
   var opts = KINKI_RELEASE_REASONS.map(function(r){ return '<option>'+r+'</option>'; }).join('');
   document.getElementById('app').innerHTML =
     '<h2>'+user+' 様 / 制限の解除</h2>'+
@@ -807,6 +829,16 @@ sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[{ id:'p1', userId:'
 sandbox.renderUserDetail();
 ok(appHTML.indexOf('mode=release') < 0, 'H9: permanent詳細に解除リンクが無い（DOM非生成）');
 ok(appHTML.indexOf('ペースメーカー') >= 0, 'H10: ラベルは描画される');
+
+// --- 解除の確認モーダル（D10・confirm()不使用・labelとバッジ消える旨・2択） ---
+ok(code.indexOf('confirm(') < 0, 'H11: ブラウザ標準confirm()を使っていない');
+sandbox.location.search = '?user=' + encodeURIComponent('比嘉太郎') + '&mode=release&id=t1';
+sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[{ id:'t1', userId:'比嘉太郎', type:'temporary', level:'forbid', label:'右膝 深屈曲NG', targetEquipment:'' }] }); };
+sandbox.renderRelease();
+ok(appHTML.indexOf('右膝 深屈曲NG') >= 0, 'H12: 確認モーダルに対象labelを動的表示');
+ok(appHTML.indexOf('🚫') >= 0, 'H13: levelに応じたアイコン（forbid→🚫）');
+ok(appHTML.indexOf('バッジは消えます') >= 0, 'H14: 「バッジが消える」旨を明記');
+ok(appHTML.indexOf('キャンセル') >= 0 && appHTML.indexOf('解除する') >= 0, 'H15: キャンセル/解除するの2択');
 
 console.log('kinki-html: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
