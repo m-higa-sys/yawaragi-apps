@@ -210,5 +210,22 @@ var ri3 = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am'
 });
 ok(ri3.getEl('board').innerHTML.indexOf('突合できない禁忌') < 0, 'I3: unmatched=[]では警告バナーが出ない');
 
+// I4: 禁忌fetch失敗（ok:false）でもボードは通常描画される＝graceful degradation
+// （fetchKinki の callback が ok:false を受けても KINKI_STATE は空のまま→バッジ/警告なし・例外なし）
+// 失敗応答に「もしok:falseを無視して取り込めばバッジ/警告が出るはずのデータ」を敢えて載せる。
+// →ok:falseを尊重して破棄する（graceful degradation）ことでのみ、バッジ/警告が出ない＝非vacuousな検証。
+var threw = false, ri4;
+try {
+  ri4 = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) }, {
+    kinkiFixture: { ok: false, matched: { '田中一郎': [{ id: 'k1', level: 'forbid', label: '右膝NG', userId: '田中一郎' }] }, unmatched: [{ id: 'z', userId: '存在しない人', level: 'forbid', label: '謎' }] }
+  });
+} catch (e) { threw = true; }
+var boardI4 = ri4 ? ri4.getEl('board').innerHTML : '';
+ok(!threw, 'I4a: 禁忌fetch失敗でも render 中に例外を投げない');
+ok(boardI4.indexOf('田中 一郎') >= 0, 'I4b: 禁忌fetch失敗でもボード本体は通常描画（出席者名が出る）');
+// （⚠️絵文字はresidue見出し等で既存使用があるため、禁忌バッジ固有の kinki-badge/kinki.html 導線と🚫の不在で判定）
+ok(boardI4.indexOf('🚫') < 0 && boardI4.indexOf('kinki-badge') < 0 && boardI4.indexOf('kinki.html?user=') < 0, 'I4c: 禁忌fetch失敗時はバッジ(🚫/kinki-badge導線)を出さない');
+ok(boardI4.indexOf('突合できない禁忌') < 0, 'I4d: 禁忌fetch失敗時はunmatched警告も出さない');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);
