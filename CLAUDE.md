@@ -75,3 +75,23 @@ node scripts/check-orphan-branches.js
 - origin/master 未マージのローカルブランチと、メイン以外のワークツリーを一覧警告する。
 - 警告が出たら放置せず、各項目を「master反映する／削除する／残す理由を memory に記録する」のいずれかに倒す。
 - 朝の報告スキル Step 4.72 でも同スクリプトを実行する（二重の網）。
+
+## 秘密情報（トークン等）流出の再発防止ハードルール（2026-07-14 LINEトークン2回目流出の教訓）
+
+**背景**: LINEチャネルアクセストークンが公開repo（GitHub `m-higa-sys/yawaragi-apps`）に平文コミットされ2回流出。2回目は `c93db3f`「本番GASスナップショット取込」(2026-07-03) で再混入。旧トークンと**同一値**だったため GitGuardian が沈黙（既知値は重複扱いで再通知しない）し、**3ヶ月気づかれなかった**。以下を厳守する。
+
+1. **秘密は必ず Script Properties。コードは参照のみ。**
+   - `PropertiesService.getScriptProperties().getProperty('KEY')` で読む。トークン/シークレットの**平文直書きは厳禁**。値はGAS画面で社長が直接入力し、クロコは値を受け取らない。
+
+2. **本番GASスナップショットをrepoに取り込む前に、必ず秘密スキャンして除去する。**
+   - `clasp pull` した本番コードに平文トークンが残っていないかを**取込コミット前に確認**。pre-commit hook（`scripts/hooks/pre-commit`）が走る状態でコミットする。これが今回の再混入経路（本番コード側に平文が残ったままスナップショット化）の封鎖策。
+
+3. **トークン再発行時は、そのトークンを使う全GAS・全ファイル・全コピーを洗い出してから交換する。1箇所直して終わりにしない。**
+   - 実例: yawaragi社内チャネルの1トークンを **板GAS / gas_LINE通知.gs / インク管理 / シフト希望LINE実装版 / 複製GAS(`1_n-UuWw…`)** が共用していた。repo・マイドライブ・バックアップ・複製プロジェクトまで棚卸ししてから交換する。
+
+4. **pre-commit hook が一次防衛線。GitGuardian を当てにしない。**
+   - 有効化（clone毎に1回）: `git config core.hooksPath scripts/hooks`
+   - hook は gitleaks があれば `gitleaks protect --staged`、無ければ正規表現フォールバックで**平文トークンを含むコミットをブロック**する。
+   - **GitGuardian は同一値の再出現時に沈黙する**ため検知を当てにしない（今回まさに3ヶ月沈黙）。GitGuardianは補助網。
+
+5. **Property キー名がプロジェクトで不統一**（板/インク=`LINE_TOKEN`、本番webhook `1Pyoag…`=`CHANNEL_ACCESS_TOKEN`）。差し替え時は各プロジェクトの**実キー名を確認**してから設定する。
