@@ -1010,24 +1010,31 @@ Bash を `dangerouslyDisableSandbox:true` で:
 cd gas/yawaragi-board && clasp pull   # 本番差分を取り込み、コード.jsに本番のみ関数が消えていないか突合
 # 突合OKなら:
 clasp push
-clasp deploy -i "<既存デプロイID>"    # 同一URL維持（新規作成禁止）
+clasp deployments                     # ★deploy前に既存デプロイIDを目視確認（下記と一致するか）
+clasp deploy -i "AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw"   # 同一URL維持（新規作成禁止）
 ```
+> **★デプロイID＝`AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw`**（session-board.html/kinki.html の exec URL `/macros/s/<ID>/exec` と同一＝本番ボードGASの現デプロイ）。
+> **⚠️ `.clasp.json` の `scriptId`（`1pJN4vjIRM9NMGxco42PjogRcjg1R3zY6AgjDKXNWqHLlXtcuw5lYTPSz`）は別物（プロジェクトID）。これを `-i` に渡すと別デプロイが作られ URL が変わり、genba/session-board 含む全アプリのバックエンドが全滅する。必ず `AKfycbwo…` の方を使う。** `-i` を省くと新規デプロイ作成so厳禁。
+
 `ensureKinkiSheet_` は初回 `getKinkiForSession`/`createKinki` 呼び出し時に「禁忌」シートを自動作成する。
 
 - [ ] **Step 5: 版bump（bump-app-version.js 経由のみ・手編集禁止）**
 
+版形式は `YYYY-MM-DD-NN`。**現本番（origin/master＝github.io）の version.txt は `2026-07-04-67`（NN=67）**。→ 次版は今日日付で **`2026-07-14-68`**。
 ```bash
-git fetch origin   # 版番号衝突の再確認
-node scripts/bump-app-version.js <新版>   # 例 2026-07-14-01。version.txt＋session-board.html/genba.htmlのshared.js?v=を同時更新しcommit
+git fetch origin
+git show origin/master:version.txt   # ★NNを再確認。weight-search/sokutei-check等が未pushで版を握っており連番衝突リスクあり
+# 出力が 2026-xx-xx-67 なら次は 68。既に68以上が入っていたら NN を+1して空き番号を使う（連番飛びは先祖返りシグナル）
+node scripts/bump-app-version.js 2026-07-14-68   # ←確認後の空き番号に置換。version.txt＋genba.htmlのshared.js?v=を更新しcommit
 ```
-> `kinki.html` も版ゲート対象なら、その `shared.js?v=` も同版に揃っていることを確認（bumpスクリプトの対象に含める）。
+> **bump対象は version.txt と genba.html のみ**（スクリプトの `TRACKED`）。session-board.html と kinki.html は自己完結版ゲートで version.txt を実行時に直読so、version.txt が上がれば自動で最新へ切替（?v= 不要）。genba.html だけ `shared.js?v=` をスクリプトが同期。→ 4ファイルとも version.txt bump で反映される。
 
 - [ ] **Step 6: 社長承認 → 手push → verify**
 
-クロコは以下を提示して停止:
+クロコは以下を提示して停止（worktreeからのFF push・`push origin master` はstale罠so `feat/…:master` 形式）:
 ```
-git push origin master
-node scripts/bump-app-version.js --verify <新版>
+git push origin feat/kinki-management:master
+node scripts/bump-app-version.js --verify 2026-07-14-68   # ←Step5で確定した実際の版に置換
 git rev-parse HEAD; git rev-parse origin/master   # 一致確認
 ```
 push 後、本番配信物（github.io の kinki.html / session-board.html / genba.html）に実際に変更が含まれることを Read で確認（memory `tool-output-corruption-trap`）。
@@ -1064,7 +1071,7 @@ push 後、本番配信物（github.io の kinki.html / session-board.html / gen
 ## Self-Review（この計画の点検結果）
 
 - **Spec coverage:** §2データ構造→Task2シート／§2.2機器→Task1 `KINKI_EQUIPMENT`／§3解除プリセット→Task1 `KINKI_RELEASE_REASONS`＋Task3解除画面／§4.1バッジ→Task4／§4.2詳細（恒久は解除非描画）→Task3 Step2＋Task3 Step6 H9／§4.3登録→Task3 Step4／§4.4解除→Task3 Step5／§5.3機器別ビュー→Task3 Step3／D7 unmatched→Task1 I＋Task2 getKinkiForSession＋Task4／D8他利用者非参照→モデルに項目を作らない（Task1/2に該当フィールド無し）で担保／D9 genba導線→Task5／§7 API 6関数（P1分）→Task2。P2（getPendingReviews/extendReview/morningDigest/伝達投稿）は本計画の対象外（別計画）。
-- **Placeholder scan:** `KINKI_GAS_URL` と `clasp deploy -i "<既存デプロイID>"` は環境値。前者は「session-board.html の exec URL と一致させる」、後者は既存デプロイIDを使う旨を明記済み（TBDではなく参照指示）。他に未定義の関数・型は無し。
+- **Placeholder scan:** 実行前に社長要求で環境値2点を確定済み → デプロイID＝`AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw`（exec URL由来・scriptId `1pJN4vj…` とは別物）、版＝`2026-07-14-68`（現本番 `2026-07-04-67` の NN+1・push直前に再確認）。`KINKI_GAS_URL` は session-board.html の exec URL と一致（実装で確定済み）。他に未定義の関数・型は無し。
 - **Type consistency:** コア関数名（`knkGroupByEquipment_`/`knkDetectUnmatched_`/`knkCanRelease_` 等）はTask1定義とTask3/4呼び出しで一致。シート列順（21列）はTask2の `KINKI_HEADERS` と `createKinki`/`updateKinki`/`releaseKinki` の列インデックスで一致（status=14列目・releasedAt=15…）。`matched`/`unmatched`/`equipment` のレスポンスキーはTask2定義とTask3/4消費で一致。
 
 ---
