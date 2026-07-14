@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭・genba型/自己完結・shared.js不要） -->
+    <!-- version.txt を取得し、現URLの ?v= と違えば1回だけ最新版へ location.replace する -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) {
+                        location.replace(buildVersionedUrl(location.href, latest));
+                    }
+                })
+                .catch(function () { /* オフライン等は no-op で固まらせない */ });
+        } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
+    })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>禁忌・運動制限</title>
+<style>
+  :root{
+    --ground:#eef2f6; --surface:#ffffff; --surface-2:#f5f8fb;
+    --ink:#243239; --ink-2:#516470; --muted:#93a3ad;
+    --accent:#2c7a7b; --accent-soft:#e2f0ef;
+    --line:#e3e9ee;
+    --shadow:0 1px 3px rgba(38,55,70,.10),0 1px 2px rgba(38,55,70,.06);
+    --radius:12px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#111820; --surface:#1b232b; --surface-2:#212b34;
+      --ink:#e7eef3; --ink-2:#a2b3bf; --muted:#6f8290;
+      --accent:#4db6ac; --accent-soft:#1e2f30;
+      --line:#2b353e;
+      --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif;
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+  }
+  .wrap{max-width:640px; margin:0 auto; padding:18px 14px 60px;}
+  h2{font-size:1.15rem; margin:0 0 12px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px; margin:0 0 12px;}
+  .card.released{opacity:.75;}
+  .card .actions{margin-top:8px; display:flex; gap:12px;}
+  .card .actions a{color:var(--accent); font-weight:700; text-decoration:none;}
+  details{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:10px 14px; margin:14px 0;}
+  summary{cursor:pointer; font-weight:700; color:var(--ink-2);}
+
+  .kinki-forbid{color:#9b2c2c;font-weight:700}
+  .kinki-caution{color:#975a16;font-weight:700}
+  .kinki-badge{display:inline-block;margin-right:8px;font-size:15px}
+
+  .warn{color:#9b2c2c;font-weight:700;border:2px solid #9b2c2c;padding:8px;margin:8px 0;border-radius:8px;background:var(--surface);}
+
+  .eqrow{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin:0 0 8px;}
+
+  form div, #app > div{margin:0 0 10px;}
+  input, select, textarea, button{font-family:inherit; font-size:.95rem;}
+  input[type=text], input[type=date], select, textarea{padding:7px 9px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink);}
+  textarea{width:100%; min-height:56px;}
+  button{padding:9px 16px; border-radius:9px; border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:800; cursor:pointer;}
+  button:disabled{opacity:.5; cursor:default;}
+  button:active{transform:translateY(1px);}
+
+  /* 解除の確認モーダル（自前実装・ブラウザ標準confirmは使わない） */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:1000}
+  .modal{background:var(--surface);padding:20px;border-radius:10px;max-width:90%;width:340px;text-align:center}
+  .modal-actions{margin-top:16px;display:flex;gap:12px;justify-content:center}
+  .modal-actions button{padding:10px 18px;font-size:15px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="app"><p>読込中…</p></div>
+</div>
+
+<script>
+// --- kinki-core（フロント複製・値はgas/yawaragi-board/kinki-core.jsと一致させる）---
+var KINKI_EQUIPMENT = ['干渉波','WB','足温器','滑車','バイク','足裏マッサージ器','下肢マッサージ器','ヒップアブダクション','チェストプレス','レッグカール','レッグプレス'];
+var KINKI_RELEASE_REASONS = ['医師より運動制限解除の指示','症状改善により制限解除','術後経過良好・主治医許可','骨折治癒・荷重制限解除','期間満了（一時的制限の終了）','制限内容の変更（新規登録し直し）','誤登録・重複の取り消し','その他'];
+function knkParseEquipment_(cell){ if(!cell) return []; try{ var v=JSON.parse(cell); return Array.isArray(v)?v.filter(function(x){return !!x;}).map(String):[]; }catch(e){ return []; } }
+function knkBadgeStyle_(level){ return level==='forbid'?{icon:'🚫',cls:'kinki-forbid'}:{icon:'⚠️',cls:'kinki-caution'}; }
+function knkCanRelease_(rec){ return !!rec && rec.type==='temporary'; }
+function knkGroupByEquipment_(active, equipList){
+  var out={}; for(var e=0;e<equipList.length;e++) out[equipList[e]]=[]; out['機器指定なし']=[];
+  for(var i=0;i<(active||[]).length;i++){ var rec=active[i]; var eqs=knkParseEquipment_(rec.targetEquipment);
+    if(!eqs.length){ out['機器指定なし'].push(rec); continue; }
+    for(var j=0;j<eqs.length;j++){ if(out.hasOwnProperty(eqs[j])) out[eqs[j]].push(rec); else out['機器指定なし'].push(rec); } }
+  return out;
+}
+// GASエンドポイント（session-board.html / oral-plan.html と同じ exec URL）
+var KINKI_GAS_URL = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+// JSONP GET
+function knkGet(params, cb){ var s=document.createElement('script'); var name='knkcb_'+Math.floor(performance.now()); window[name]=function(d){ cb(d); delete window[name]; s.remove(); }; var q=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]);}).join('&'); s.src=KINKI_GAS_URL+'?'+q+'&callback='+name; document.body.appendChild(s); }
+// no-cors POST（genbaのPOST同様・成否はUI楽観・memory: genba-nocors-post）
+function knkPost(action, fields){ var fd=new FormData(); fd.append('action',action); Object.keys(fields).forEach(function(k){ fd.append(k, fields[k]); }); return fetch(KINKI_GAS_URL,{method:'POST',mode:'no-cors',body:fd}); }
+function knkParam(name){ var m=new RegExp('[?&]'+name+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+function knkRoute(){ var view=knkParam('view'); if(view==='equipment') return renderEquipmentView(); var mode=knkParam('mode'); if(mode==='new') return renderRegister(); if(mode==='release') return renderRelease(); return renderUserDetail(); }
+window.addEventListener('DOMContentLoaded', knkRoute);
+</script>
+
+<script>
+function renderUserDetail(){
+  var user = knkParam('user');
+  document.getElementById('app').innerHTML = '<p>読込中…</p>';
+  knkGet({ action:'getKinkiByUser', userId:user }, function(d){
+    if(!d || !d.ok){ document.getElementById('app').innerHTML='<p>取得失敗</p>'; return; }
+    var active = d.active || [];
+    var released = (d.all||[]).filter(function(r){ return r.status==='released'; });
+    var h = '<h2>'+user+' 様</h2>';
+    if(!active.length) h += '<p>現在有効な禁忌・制限はありません。</p>';
+    active.forEach(function(r){
+      var st = knkBadgeStyle_(r.level);
+      h += '<div class="card"><div class="'+st.cls+'">'+st.icon+' '+r.label+(r.type==='permanent'?'（恒久）':'（期限付き）')+'</div>';
+      h += '<div>内容：'+(r.detail||'')+'</div>';
+      var eqs = knkParseEquipment_(r.targetEquipment);
+      if(eqs.length) h += '<div>対象機器：'+eqs.join(' / ')+'</div>';
+      h += '<div>情報元：'+r.sourceName+'（'+sourceLabel(r.sourceType)+'）／受領 '+r.receivedAt+'／受けた職員 '+r.receivedBy+'</div>';
+      if(r.background) h += '<div>経緯：'+r.background+'</div>';
+      if(r.type==='temporary') h += '<div>見直し予定 '+r.reviewDate+'</div>';
+      h += '<div class="actions"><a href="?user='+encodeURIComponent(user)+'&mode=new">編集はこちら（新規登録）</a>';
+      if(knkCanRelease_(r)){ h += ' <a href="?user='+encodeURIComponent(user)+'&mode=release&id='+r.id+'">解除する</a>'; }
+      h += '</div></div>';
+    });
+    h += '<details><summary>過去の制限（解除済み） '+released.length+'件</summary>';
+    released.forEach(function(r){ h += '<div class="card released">'+r.label+'（解除 '+r.releasedAt+'・理由：'+r.releaseReason+'）</div>'; });
+    h += '</details>';
+    h += '<p><a href="?user='+encodeURIComponent(user)+'&mode=new">＋ 新規登録</a></p>';
+    document.getElementById('app').innerHTML = h;
+  });
+}
+function sourceLabel(t){ return ({doctor_doc:'医師（文書）',doctor_oral:'医師（口頭伝達）',caremgr:'ケアマネ経由',family:'家族',self:'本人'})[t]||t; }
+</script>
+
+<script>
+function renderEquipmentView(){
+  var date = knkParam('date') || '';
+  knkGet({ action:'getKinkiForSession', date:date }, function(d){
+    if(!d || !d.ok){ document.getElementById('app').innerHTML='<p>取得失敗</p>'; return; }
+    var active = [];
+    Object.keys(d.matched||{}).forEach(function(k){ active = active.concat(d.matched[k]); });
+    var byEq = knkGroupByEquipment_(active, d.equipment || KINKI_EQUIPMENT);
+    var h = '<h2>機器別 禁忌・制限</h2>';
+    if((d.unmatched||[]).length) h += '<div class="warn">⚠️ 突合できない禁忌が '+d.unmatched.length+' 件あります（氏名を確認してください）</div>';
+    Object.keys(byEq).forEach(function(eq){
+      var list = byEq[eq];
+      h += '<div class="eqrow"><b>■ '+eq+'</b> ';
+      h += list.length ? list.map(function(r){ var s=knkBadgeStyle_(r.level); return '<span class="'+s.cls+'">'+r.userId+s.icon+'</span>'; }).join(' / ') : '（なし）';
+      h += '</div>';
+    });
+    document.getElementById('app').innerHTML = h;
+  });
+}
+</script>
+
+<script>
+function renderRegister(){
+  var user = knkParam('user');
+  var eqBoxes = KINKI_EQUIPMENT.map(function(e){ return '<label><input type="checkbox" class="eqchk" value="'+e+'"> '+e+'</label>'; }).join(' ');
+  document.getElementById('app').innerHTML =
+    '<h2>'+user+' 様 / 禁忌・制限の登録</h2>'+
+    '<div>種別：<label><input type="radio" name="ktype" value="permanent"> 恒久禁忌</label>'+
+    '<label><input type="radio" name="ktype" value="temporary" checked> 期限付き制限</label></div>'+
+    '<div>レベル：<label><input type="radio" name="klevel" value="forbid" checked> 🚫禁止</label>'+
+    '<label><input type="radio" name="klevel" value="caution"> ⚠️要注意</label></div>'+
+    '<div>対象機器（任意・複数可）：'+eqBoxes+'</div>'+
+    '<div>バッジ文言（15字以内・必須）：<input id="klabel" maxlength="15" oninput="document.getElementById(\'kcnt\').textContent=this.value.length"> <span id="kcnt">0</span>/15</div>'+
+    '<div>詳細：<textarea id="kdetail"></textarea></div>'+
+    '<div>情報元：<select id="ksrc"><option value="doctor_doc">医師（文書）</option><option value="doctor_oral">医師（口頭伝達）</option><option value="caremgr">ケアマネ経由</option><option value="family" selected>家族</option><option value="self">本人</option></select>'+
+    ' 氏名・続柄：<input id="ksrcname"></div>'+
+    '<div>受領日：<input id="krecv" type="date"> 受けた職員：<input id="kby"></div>'+
+    '<div>経緯（任意）：<textarea id="kbg"></textarea></div>'+
+    '<div id="kreviewwrap">見直し予定日：<input id="kreview" type="date"></div>'+
+    '<button id="ksubmit">登録する</button> <a href="?user='+encodeURIComponent(user)+'">戻る</a>';
+  document.getElementById('krecv').value = new Date().toISOString().slice(0,10);
+  document.querySelectorAll('input[name=ktype]').forEach(function(r){ r.addEventListener('change', function(){ document.getElementById('kreviewwrap').style.display = (document.querySelector('input[name=ktype]:checked').value==='temporary')?'block':'none'; }); });
+  document.getElementById('ksubmit').addEventListener('click', function(){
+    var payload = {
+      userId: user,
+      type: document.querySelector('input[name=ktype]:checked').value,
+      level: document.querySelector('input[name=klevel]:checked').value,
+      label: document.getElementById('klabel').value.trim(),
+      detail: document.getElementById('kdetail').value.trim(),
+      targetEquipment: Array.prototype.slice.call(document.querySelectorAll('.eqchk:checked')).map(function(c){ return c.value; }),
+      sourceType: document.getElementById('ksrc').value,
+      sourceName: document.getElementById('ksrcname').value.trim(),
+      receivedAt: document.getElementById('krecv').value,
+      receivedBy: document.getElementById('kby').value.trim(),
+      background: document.getElementById('kbg').value.trim(),
+      reviewDate: document.getElementById('kreview').value
+    };
+    var err = clientValidate(payload);
+    if(err){ alert(err); return; }
+    document.getElementById('ksubmit').disabled = true; // 連打防止
+    knkPost('createKinki', { payload: JSON.stringify(payload) }).then(function(){ location.href = '?user='+encodeURIComponent(user); });
+  });
+}
+function clientValidate(p){
+  if(!p.label || p.label.length>15) return 'バッジ文言は1〜15字で必須です';
+  if(!p.sourceName) return '情報元氏名は必須です';
+  if(!p.receivedBy) return '受けた職員は必須です';
+  if(p.type==='temporary' && !p.reviewDate) return '期限付きは見直し予定日が必須です';
+  return '';
+}
+</script>
+
+<script>
+// 解除エントリ：確認モーダル（自前実装・ブラウザ標準confirmは使わない）を先に出す
+function renderRelease(){
+  var user = knkParam('user'); var id = knkParam('id');
+  knkGet({ action:'getKinkiByUser', userId:user }, function(d){
+    var rec = ((d && d.active) || []).filter(function(r){ return r.id === id; })[0];
+    if(!rec){ document.getElementById('app').innerHTML = '<p>対象が見つかりません（既に解除済みの可能性）。</p><a href="?user='+encodeURIComponent(user)+'">戻る</a>'; return; }
+    var st = knkBadgeStyle_(rec.level);
+    // 確認モーダル（オーバーレイ）
+    document.getElementById('app').innerHTML =
+      '<div class="modal-overlay"><div class="modal"><p>この禁忌を解除します。</p>'+
+      '<p class="'+st.cls+'" style="font-size:18px">'+st.icon+' '+rec.label+'</p>'+
+      '<p>解除後、セッションボードのバッジは消えます。</p>'+
+      '<div class="modal-actions"><button id="rcancel">キャンセル</button> <button id="rok">解除する</button></div></div></div>';
+    document.getElementById('rcancel').addEventListener('click', function(){ location.href = '?user='+encodeURIComponent(user); });
+    document.getElementById('rok').addEventListener('click', function(){ renderReleaseForm(user, id); });
+  });
+}
+// 入力画面（確認モーダルで [解除する] 押下後）
+function renderReleaseForm(user, id){
+  var opts = KINKI_RELEASE_REASONS.map(function(r){ return '<option>'+r+'</option>'; }).join('');
+  document.getElementById('app').innerHTML =
+    '<h2>'+user+' 様 / 制限の解除</h2>'+
+    '<div>解除理由：<select id="rreason">'+opts+'</select></div>'+
+    '<div id="rnotewrap">補足（「その他」選択時は必須）：<textarea id="rnote"></textarea></div>'+
+    '<div>解除の指示元（氏名・続柄・口頭/文書）：<input id="rsrc"></div>'+
+    '<div>解除日：<input id="rdate" type="date"></div>'+
+    '<div>解除操作者：<input id="rby"></div>'+
+    '<button id="rsubmit">解除する</button> <a href="?user='+encodeURIComponent(user)+'">戻る</a>';
+  document.getElementById('rdate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('rsubmit').addEventListener('click', function(){
+    var payload = { releaseReason: document.getElementById('rreason').value, releaseNote: document.getElementById('rnote').value.trim(),
+      releaseSource: document.getElementById('rsrc').value.trim(), releasedAt: document.getElementById('rdate').value, releasedBy: document.getElementById('rby').value.trim() };
+    if(!payload.releaseSource){ alert('解除の指示元は必須です'); return; }
+    if(payload.releaseReason==='その他' && !payload.releaseNote){ alert('「その他」選択時は補足が必須です'); return; }
+    if(!payload.releasedBy){ alert('解除操作者は必須です'); return; }
+    document.getElementById('rsubmit').disabled = true;
+    knkPost('releaseKinki', { id: id, payload: JSON.stringify(payload) }).then(function(){ location.href = '?user='+encodeURIComponent(user); });
+  });
+}
+</script>
+</body>
+</html>
