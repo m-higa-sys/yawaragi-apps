@@ -110,7 +110,7 @@ function knkGet(params, cb){ var s=document.createElement('script'); var name='k
 // no-cors POST（genbaのPOST同様・成否はUI楽観・memory: genba-nocors-post）
 function knkPost(action, fields){ var fd=new FormData(); fd.append('action',action); Object.keys(fields).forEach(function(k){ fd.append(k, fields[k]); }); return fetch(KINKI_GAS_URL,{method:'POST',mode:'no-cors',body:fd}); }
 function knkParam(name){ var m=new RegExp('[?&]'+name+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
-function knkRoute(){ var view=knkParam('view'); if(view==='equipment') return renderEquipmentView(); var mode=knkParam('mode'); if(mode==='new') return renderRegister(); if(mode==='release') return renderRelease(); return renderUserDetail(); }
+function knkRoute(){ var view=knkParam('view'); if(view==='equipment') return renderEquipmentView(); var mode=knkParam('mode'); if(mode==='new') return renderRegister(); if(mode==='edit') return renderEdit(); if(mode==='release') return renderRelease(); return renderUserDetail(); }
 window.addEventListener('DOMContentLoaded', knkRoute);
 </script>
 
@@ -133,7 +133,7 @@ function renderUserDetail(){
       h += '<div>情報元：'+esc(r.sourceName)+'（'+esc(sourceLabel(r.sourceType))+'）／受領 '+esc(r.receivedAt)+'／受けた職員 '+esc(r.receivedBy)+'</div>';
       if(r.background) h += '<div>経緯：'+esc(r.background)+'</div>';
       if(r.type==='temporary') h += '<div>見直し予定 '+esc(r.reviewDate)+'</div>';
-      h += '<div class="actions"><a href="?user='+encodeURIComponent(user)+'&mode=new">編集はこちら（新規登録）</a>';
+      h += '<div class="actions"><a href="?user='+encodeURIComponent(user)+'&mode=edit&id='+encodeURIComponent(r.id)+'">編集</a>';
       if(knkCanRelease_(r)){ h += ' <a href="?user='+encodeURIComponent(user)+'&mode=release&id='+encodeURIComponent(r.id)+'">解除する</a>'; }
       h += '</div></div>';
     });
@@ -169,26 +169,44 @@ function renderEquipmentView(){
 </script>
 
 <script>
-function renderRegister(){
-  var user = knkParam('user');
-  var eqBoxes = KINKI_EQUIPMENT.map(function(e){ return '<label><input type="checkbox" class="eqchk" value="'+e+'"> '+e+'</label>'; }).join(' ');
+// 登録・編集で共有するフォーム描画（rec=null で新規／rec ありで編集プリフィル・DRY）
+function renderKinkiForm(mode, user, rec){
+  rec = rec || {};
+  var isEdit = mode === 'edit';
+  var id = rec.id || '';
+  var recEqs = knkParseEquipment_(rec.targetEquipment);
+  var typeVal = rec.type || 'temporary';
+  var levelVal = rec.level || 'forbid';
+  var srcVal = rec.sourceType || 'family';
+  var labelVal = rec.label || '';
+  function ck(cond){ return cond ? ' checked' : ''; }
+  function sel(cond){ return cond ? ' selected' : ''; }
+  var eqBoxes = KINKI_EQUIPMENT.map(function(e){ return '<label><input type="checkbox" class="eqchk" value="'+esc(e)+'"'+ck(recEqs.indexOf(e)>=0)+'> '+esc(e)+'</label>'; }).join(' ');
+  var srcOptions =
+    '<option value="doctor_doc"'+sel(srcVal==='doctor_doc')+'>医師（文書）</option>'+
+    '<option value="doctor_oral"'+sel(srcVal==='doctor_oral')+'>医師（口頭伝達）</option>'+
+    '<option value="caremgr"'+sel(srcVal==='caremgr')+'>ケアマネ経由</option>'+
+    '<option value="family"'+sel(srcVal==='family')+'>家族</option>'+
+    '<option value="self"'+sel(srcVal==='self')+'>本人</option>';
   document.getElementById('app').innerHTML =
-    '<h2>'+esc(user)+' 様 / 禁忌・制限の登録</h2>'+
-    '<div>種別：<label><input type="radio" name="ktype" value="permanent"> 恒久禁忌</label>'+
-    '<label><input type="radio" name="ktype" value="temporary" checked> 期限付き制限</label></div>'+
-    '<div>レベル：<label><input type="radio" name="klevel" value="forbid" checked> 🚫禁止</label>'+
-    '<label><input type="radio" name="klevel" value="caution"> ⚠️要注意</label></div>'+
+    '<h2>'+esc(user)+' 様 / 禁忌・制限の'+(isEdit?'編集':'登録')+'</h2>'+
+    '<div>種別：<label><input type="radio" name="ktype" value="permanent"'+ck(typeVal==='permanent')+'> 恒久禁忌</label>'+
+    '<label><input type="radio" name="ktype" value="temporary"'+ck(typeVal==='temporary')+'> 期限付き制限</label></div>'+
+    '<div>レベル：<label><input type="radio" name="klevel" value="forbid"'+ck(levelVal==='forbid')+'> 🚫禁止</label>'+
+    '<label><input type="radio" name="klevel" value="caution"'+ck(levelVal==='caution')+'> ⚠️要注意</label></div>'+
     '<div>対象機器（任意・複数可）：'+eqBoxes+'</div>'+
-    '<div>バッジ文言（15字以内・必須）：<input id="klabel" maxlength="15" oninput="document.getElementById(\'kcnt\').textContent=this.value.length"> <span id="kcnt">0</span>/15</div>'+
-    '<div>詳細：<textarea id="kdetail"></textarea></div>'+
-    '<div>情報元：<select id="ksrc"><option value="doctor_doc">医師（文書）</option><option value="doctor_oral">医師（口頭伝達）</option><option value="caremgr">ケアマネ経由</option><option value="family" selected>家族</option><option value="self">本人</option></select>'+
-    ' 氏名・続柄：<input id="ksrcname"></div>'+
-    '<div>受領日：<input id="krecv" type="date"> 受けた職員：<input id="kby"></div>'+
-    '<div>経緯（任意）：<textarea id="kbg"></textarea></div>'+
-    '<div id="kreviewwrap">見直し予定日：<input id="kreview" type="date"></div>'+
-    '<button id="ksubmit">登録する</button> <a href="?user='+encodeURIComponent(user)+'">戻る</a>';
-  document.getElementById('krecv').value = new Date().toISOString().slice(0,10);
-  document.querySelectorAll('input[name=ktype]').forEach(function(r){ r.addEventListener('change', function(){ document.getElementById('kreviewwrap').style.display = (document.querySelector('input[name=ktype]:checked').value==='temporary')?'block':'none'; }); });
+    '<div>バッジ文言（15字以内・必須）：<input id="klabel" maxlength="15" value="'+esc(labelVal)+'" oninput="document.getElementById(\'kcnt\').textContent=this.value.length"> <span id="kcnt">'+String(labelVal).length+'</span>/15</div>'+
+    '<div>詳細：<textarea id="kdetail">'+esc(rec.detail||'')+'</textarea></div>'+
+    '<div>情報元：<select id="ksrc">'+srcOptions+'</select>'+
+    ' 氏名・続柄：<input id="ksrcname" value="'+esc(rec.sourceName||'')+'"></div>'+
+    '<div>受領日：<input id="krecv" type="date" value="'+esc(rec.receivedAt||'')+'"> 受けた職員：<input id="kby" value="'+esc(rec.receivedBy||'')+'"></div>'+
+    '<div>経緯（任意）：<textarea id="kbg">'+esc(rec.background||'')+'</textarea></div>'+
+    '<div id="kreviewwrap">見直し予定日：<input id="kreview" type="date" value="'+esc(rec.reviewDate||'')+'"></div>'+
+    '<button id="ksubmit">'+(isEdit?'更新する':'登録する')+'</button> <a href="?user='+encodeURIComponent(user)+'">戻る</a>';
+  if(!(rec.receivedAt)) document.getElementById('krecv').value = new Date().toISOString().slice(0,10); // 新規/空は今日を既定
+  function syncReview(){ document.getElementById('kreviewwrap').style.display = (document.querySelector('input[name=ktype]:checked').value==='temporary')?'block':'none'; }
+  document.querySelectorAll('input[name=ktype]').forEach(function(r){ r.addEventListener('change', syncReview); });
+  syncReview();
   document.getElementById('ksubmit').addEventListener('click', function(){
     var payload = {
       userId: user,
@@ -207,7 +225,19 @@ function renderRegister(){
     var err = clientValidate(payload);
     if(err){ alert(err); return; }
     document.getElementById('ksubmit').disabled = true; // 連打防止
-    knkPost('createKinki', { payload: JSON.stringify(payload) }).then(function(){ location.href = '?user='+encodeURIComponent(user); }).catch(function(){ document.getElementById('ksubmit').disabled = false; alert('通信に失敗しました。もう一度お試しください。'); });
+    var action = isEdit ? 'updateKinki' : 'createKinki';
+    var fields = isEdit ? { id: id, payload: JSON.stringify(payload) } : { payload: JSON.stringify(payload) };
+    knkPost(action, fields).then(function(){ location.href = '?user='+encodeURIComponent(user); }).catch(function(){ document.getElementById('ksubmit').disabled = false; alert('通信に失敗しました。もう一度お試しください。'); });
+  });
+}
+function renderRegister(){ renderKinkiForm('new', knkParam('user'), null); }
+function renderEdit(){
+  var user = knkParam('user'); var id = knkParam('id');
+  document.getElementById('app').innerHTML = '<p>読込中…</p>';
+  knkGet({ action:'getKinkiByUser', userId:user }, function(d){
+    var rec = ((d && d.active) || []).filter(function(r){ return r.id === id; })[0];
+    if(!rec){ document.getElementById('app').innerHTML = '<p>対象が見つかりません（既に解除済みの可能性）。</p><a href="?user='+encodeURIComponent(user)+'">戻る</a>'; return; }
+    renderKinkiForm('edit', user, rec);
   });
 }
 function clientValidate(p){

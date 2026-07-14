@@ -62,5 +62,31 @@ sandbox.renderUserDetail();
 ok(appHTML.indexOf('&lt;140') >= 0, 'H18: 動的文字列はエスケープして描画（&lt;140）');
 ok(appHTML.indexOf('<140') < 0, 'H19: 生の<140は描画されない（XSS対策）');
 
+// --- Edit導線: 詳細の「編集」はmode=edit&id（mode=newへは飛ばさない）＝重複active作成を根絶 ---
+sandbox.location.search = '?user=' + encodeURIComponent('比嘉太郎');
+sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[{ id:'t1', userId:'比嘉太郎', type:'temporary', level:'forbid', label:'右膝NG', targetEquipment:'', sourceName:'長男', sourceType:'family', receivedAt:'2026-07-10', receivedBy:'職員', reviewDate:'2026-09-10' }], all:[] }); };
+sandbox.renderUserDetail();
+ok(appHTML.indexOf('mode=edit&id=t1') >= 0, 'H20: 詳細の編集リンクはmode=edit&idを指す');
+ok(appHTML.indexOf('mode=edit') >= 0, 'H21: temporary activeに編集導線あり');
+
+// --- Edit導線: permanentも編集可（editリンクは出る／releaseは出ない）---
+sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[{ id:'p9', userId:'比嘉太郎', type:'permanent', level:'forbid', label:'ペースメーカー', targetEquipment:'', sourceName:'長男', sourceType:'family', receivedAt:'2026-07-10', receivedBy:'職員' }], all:[] }); };
+sandbox.renderUserDetail();
+ok(appHTML.indexOf('mode=edit&id=p9') >= 0, 'H22: permanentも編集可（mode=edit導線あり）');
+ok(appHTML.indexOf('mode=release') < 0, 'H23: permanentは解除導線なし（編集可・解除不可を両立）');
+
+// --- Edit画面: getKinkiByUserからidで引いた記録でフォームをプリフィルし、updateKinkiへ配線 ---
+sandbox.location.search = '?user=' + encodeURIComponent('比嘉太郎') + '&mode=edit&id=t1';
+sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[{ id:'t1', userId:'比嘉太郎', type:'temporary', level:'forbid', label:'右膝NG', detail:'深屈曲は避ける', targetEquipment:'["バイク"]', sourceName:'長男', sourceType:'family', receivedAt:'2026-07-10', receivedBy:'職員', reviewDate:'2026-09-10' }], all:[] }); };
+sandbox.renderEdit();
+ok(appHTML.indexOf('value="右膝NG"') >= 0, 'H24: 編集フォームのlabel入力に既存値をプリフィル');
+ok(appHTML.indexOf('編集') >= 0, 'H25: 編集フォームの見出しは「編集」');
+ok(code.indexOf("'updateKinki'") >= 0 && code.indexOf('isEdit ?') >= 0, 'H26: 編集保存はupdateKinkiへ配線（createKinkiでない）');
+
+// --- Edit画面: 対象が既に解除済み等でactiveに無ければ行き止まり ---
+sandbox.knkGet = function(params, cb){ cb({ ok:true, active:[], all:[] }); };
+sandbox.renderEdit();
+ok(appHTML.indexOf('対象が見つかりません') >= 0, 'H27: active不在時は行き止まり表示');
+
 console.log('kinki-html: pass=' + pass + ' fail=' + fail);
 process.exit(fail ? 1 : 0);
