@@ -1,0 +1,52 @@
+#!/bin/sh
+# ============================================================
+# yawaragi-apps pre-commit 秘密スキャン（一次防衛線）
+# 目的: LINE等のトークン平文を「push前」に自分たちで止める。
+#   ※GitGuardianは同一値の再出現時に沈黙するため当てにしない（2026-07 教訓）。
+# 有効化: git config core.hooksPath scripts/hooks
+# 迂回（誤検知時のみ・要判断）: git commit --no-verify
+# ============================================================
+set -u
+
+# --- gitleaks があれば本命で走らせる ---
+if command -v gitleaks >/dev/null 2>&1; then
+  if gitleaks protect --staged --redact -c .gitleaks.toml; then
+    exit 0
+  else
+    echo "" >&2
+    echo "❌ gitleaks が秘密情報を検出しました。コミットを中止します。" >&2
+    echo "   値を除去し PropertiesService.getScriptProperties().getProperty('...') 参照へ。" >&2
+    echo "   誤検知なら .gitleaks.toml の allowlist を調整、または git commit --no-verify。" >&2
+    exit 1
+  fi
+fi
+
+# --- gitleaks 未導入時のフォールバック（簡易正規表現） ---
+echo "⚠️  gitleaks 未導入 → 簡易スキャンで代替します（本命は gitleaks 導入: https://github.com/gitleaks/gitleaks ）" >&2
+
+files=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$files" ] && exit 0
+
+# 検出パターン: TOKEN/SECRET系への長base64直書き / Bearer直書き / Google APIキー
+PAT='(LINE_TOKEN|CHANNEL_ACCESS_TOKEN|ACCESS_TOKEN|API_KEY|CLIENT_SECRET|PASSWORD|SECRET)[^=]{0,24}=[[:space:]]*["'"'"'][A-Za-z0-9+/=_-]{20,}["'"'"']|["'"'"']Bearer[[:space:]]+[A-Za-z0-9._/+=-]{30,}["'"'"']|AIza[0-9A-Za-z_-]{35}'
+
+hit=0
+for f in $files; do
+  # 追加行(+)のみ対象。正規の Properties 参照・伏字は除外。
+  added=$(git diff --cached -U0 -- "$f" | grep '^+' | grep -v '^+++' \
+          | grep -viE 'getScriptProperties|setProperty|\[REDACTED|__ROTATED|__REMOVED')
+  m=$(printf '%s\n' "$added" | grep -nEi "$PAT")
+  if [ -n "$m" ]; then
+    echo "❌ 秘密情報の可能性を検出: $f" >&2
+    printf '%s\n' "$m" | sed -E "s/(['\"])[A-Za-z0-9+/=_-]{12,}(['\"])/\1[REDACTED]\2/g" | sed 's/^/     /' >&2
+    hit=1
+  fi
+done
+
+if [ "$hit" -ne 0 ]; then
+  echo "" >&2
+  echo "コミットを中止しました。トークンは Script Properties へ、コードは getProperty 参照へ。" >&2
+  echo "誤検知が確実なときのみ: git commit --no-verify" >&2
+  exit 1
+fi
+exit 0

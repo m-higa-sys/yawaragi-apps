@@ -1,0 +1,37 @@
+# yawaragi-apps gitleaks 設定
+# 目的: LINE等のトークン平文コミットを push 前に検出・ブロックする
+# 使い方: pre-commit hook (scripts/hooks/pre-commit) から自動実行される
+#   gitleaks が PATH にあれば `gitleaks protect --staged -c .gitleaks.toml`
+
+title = "yawaragi-apps secret scan"
+
+[extend]
+# gitleaks 標準ルール（AWS/GCP/GitHub/一般高エントロピー等）を土台に使う
+useDefault = true
+
+# --- 追加ルール（yawaragi固有の秘密形状） ---
+
+[[rules]]
+id = "line-channel-access-token-hardcoded"
+description = "LINE Messaging API チャネルアクセストークンの直書き"
+# LINE_TOKEN / CHANNEL_ACCESS_TOKEN 等に長い base64 を代入している行
+regex = '''(?i)(LINE_TOKEN|CHANNEL_ACCESS_TOKEN|ACCESS_TOKEN)\s*[:=]\s*['"][A-Za-z0-9+/=_-]{80,}['"]'''
+keywords = ["line_token", "channel_access_token", "access_token"]
+tags = ["line", "token"]
+
+[[rules]]
+id = "hardcoded-bearer-literal"
+description = "Authorization ヘッダに Bearer トークンを直書き"
+regex = '''['"]Bearer\s+[A-Za-z0-9\-_./+=]{40,}['"]'''
+keywords = ["bearer"]
+tags = ["token"]
+
+# --- 許可（正規の参照は誤検知させない） ---
+[allowlist]
+description = "Script Properties 参照・ドキュメント内の伏字は許可"
+regexes = [
+  '''getScriptProperties\(\)\.getProperty''',
+  '''\[REDACTED[^\]]*\]''',
+  '''__ROTATED[^']*__''',
+  '''__REMOVED__''',
+]
