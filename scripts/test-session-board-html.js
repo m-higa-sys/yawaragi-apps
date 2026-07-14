@@ -41,8 +41,12 @@ function ok(cond, label) { if (cond) pass++; else { fail++; console.error('  [FA
 
 // session-board.html を起動（JSONPをモックしFIXTUREを返す）→ 操作ハンドルを返す
 // opts.manual=true: 初回ロード後の fetch は自動発火せず fireAt() で手動発火（reqId検証用）
+// getKinkiForSession の既定fixture（badge/warnなし＝既存テストへの影響ゼロ）。opts.kinkiFixture で上書き可。
+function defaultKinkiFixture() { return { ok: true, matched: {}, unmatched: [] }; }
+
 function runBoard(initialStore, opts) {
   opts = opts || {};
+  const kinkiFixture = opts.kinkiFixture || defaultKinkiFixture();
   const els = {};
   function mkEl(id) {
     return {
@@ -81,8 +85,14 @@ function runBoard(initialStore, opts) {
       appendChild(elm) {
         var src = String(elm.src || '');
         var cbm = src.match(/[?&]callback=([^&]+)/);
+        var cbName = cbm ? cbm[1] : '';
+        if (src.indexOf('action=getKinkiForSession') >= 0) {
+          // 禁忌フェッチ（sessionBoardのpending/requestedDatesとは別経路・常に即時発火）
+          if (typeof sandbox[cbName] === 'function') sandbox[cbName](kinkiFixture);
+          return;
+        }
         var dm = src.match(/[?&]date=([^&]+)/);
-        var rec = { cb: cbm ? cbm[1] : '', date: dm ? decodeURIComponent(dm[1]) : '' };
+        var rec = { cb: cbName, date: dm ? decodeURIComponent(dm[1]) : '' };
         requestedDates.push(rec.date);
         pending.push(rec);
         if (!opts.manual || !inited) fireRec(rec);  // 初回は必ず自動発火
@@ -179,6 +189,26 @@ rh.getEl('nextDay').fire('click');   // 応答は保留(manual)
 ok(/読み込み|読込|⟳/.test(rh.getEl('loadInd').textContent), 'H2: 日付変更中は読み込み中表示が出る');
 rh.fireAt(rh.pending.length - 1);    // 応答受領
 ok(rh.getEl('loadInd').textContent === '', 'H3: 応答受領で読み込み表示クリア');
+
+// ===== I. 禁忌バッジ＋unmatched赤字警告（getKinkiForSession・row.keyで突合・drift防止） =====
+// I1: matched（田中一郎=sokutei行のkey）があればバッジ(🚫+label)が描画される
+var ri = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) }, {
+  kinkiFixture: { ok: true, matched: { '田中一郎': [{ id: 'k1', level: 'forbid', label: '右膝NG', userId: '田中一郎' }] }, unmatched: [] }
+});
+var boardI1 = ri.getEl('board').innerHTML;
+ok(boardI1.indexOf('🚫') >= 0 && boardI1.indexOf('右膝NG') >= 0, 'I1: matchedユーザーにバッジ(🚫+label)が描画される');
+
+// I2: unmatched>0 のとき警告バナーが出る
+var ri2 = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) }, {
+  kinkiFixture: { ok: true, matched: {}, unmatched: [{ id: 'z', userId: '存在しない人', level: 'forbid', label: '謎' }] }
+});
+ok(ri2.getEl('board').innerHTML.indexOf('突合できない禁忌') >= 0, 'I2: unmatched>0で警告バナーが出る');
+
+// I3: unmatched=[] のとき警告バナーは出ない
+var ri3 = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) }, {
+  kinkiFixture: { ok: true, matched: {}, unmatched: [] }
+});
+ok(ri3.getEl('board').innerHTML.indexOf('突合できない禁忌') < 0, 'I3: unmatched=[]では警告バナーが出ない');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

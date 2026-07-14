@@ -179,6 +179,12 @@
   .errcard{background:var(--crit-bg); border:1px solid var(--crit-line); border-radius:var(--radius); padding:12px 14px; margin:14px 0; font-size:.85rem; color:var(--crit); font-weight:700;}
   .loading{text-align:center; color:var(--muted); padding:40px 0; font-size:.9rem;}
   .foot{margin-top:34px; text-align:center; font-size:.72rem; color:var(--muted);}
+
+  /* 禁忌・運動制限バッジ＋unmatched警告（2026-07-14 追加・最小改修） */
+  .kinki-forbid{color:#9b2c2c;font-weight:700}
+  .kinki-caution{color:#975a16;font-weight:700}
+  .kinki-badge{text-decoration:none;margin-left:4px}
+  .kinki-warn{color:#9b2c2c;font-weight:700;border:2px solid #9b2c2c;padding:8px;margin:8px 0;border-radius:6px}
 </style>
 </head>
 <body>
@@ -241,6 +247,42 @@
   function inTab(x){ return x && x.session===selTab; }
   function filt(arr){ return (arr||[]).filter(inTab); }
 
+  // ===== 禁忌・運動制限バッジ＋unmatched警告（2026-07-14 追加・最小改修） =====
+  // matched は row.key（sbNormalizeName_(userId)・サーバと同一正規化）で突合する（クライアント再正規化しない＝drift防止）。
+  var KINKI_STATE = { matched: {}, unmatched: [] };
+  var kinkiFetched = false;   // 1日1コール（設計§4.1）：初回のボード取得完了後に1回だけ取得
+  function kinkiBadgeHTML(row){
+    var key = row && row.key;
+    if (!key) return '';
+    var list = KINKI_STATE.matched[key] || [];
+    if (!list.length) return '';
+    return list.map(function(r){
+      var icon = r.level==='forbid' ? '🚫' : '⚠️';
+      var cls = r.level==='forbid' ? 'kinki-forbid' : 'kinki-caution';
+      return ' <a class="kinki-badge '+cls+'" href="kinki.html?user='+encodeURIComponent(row.name)+'">'+icon+esc(r.label)+'</a>';
+    }).join('');
+  }
+  function kinkiWarnHTML(){
+    if (!KINKI_STATE.unmatched || !KINKI_STATE.unmatched.length) return '';
+    return '<div class="kinki-warn">⚠️ 突合できない禁忌が '+KINKI_STATE.unmatched.length+' 件あります（氏名を確認してください）</div>';
+  }
+  // 禁忌データ取得（board GAS と同じ exec URL・JSONP・失敗してもボード自体は継続＝badgeなしに退化するだけ）
+  function fetchKinki(date, done){
+    var cbName = 'knkcb_' + Date.now();
+    var finished = false;
+    var s = document.createElement('script');
+    var timer = setTimeout(function(){ if (finished) return; finished = true; cleanup(); if (done) done(); }, 12000);
+    function cleanup(){ try { delete window[cbName]; } catch(e){ window[cbName] = undefined; } if (s && s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
+    window[cbName] = function(resp){
+      if (finished) return; finished = true; cleanup();
+      if (resp && resp.ok){ KINKI_STATE.matched = resp.matched || {}; KINKI_STATE.unmatched = resp.unmatched || []; }
+      if (done) done();
+    };
+    s.onerror = function(){ if (finished) return; finished = true; cleanup(); if (done) done(); };
+    s.src = GAS + '?action=getKinkiForSession&date=' + encodeURIComponent(date) + '&callback=' + cbName;
+    document.head.appendChild(s);
+  }
+
   // 当日日付（Asia/Tokyo。demo/実運用ともサーバ返却のdateを主に使う）
   function todayYMD(){
     var d = new Date();
@@ -283,7 +325,7 @@
       + (absHot? '<span class="pill hot">欠席多め '+Math.round(r.absenceRate*100)+'%</span>':'')
       + '</div>';
     return '<div class="'+cls+'"><div class="toprow">'
-      + trk + '<span class="nm">'+esc(r.name)+'</span>'
+      + trk + '<span class="nm">'+esc(r.name)+'</span>' + kinkiBadgeHTML(r)
       + '<span class="care">'+esc(r.care||'—')+'</span><span class="spacer"></span>'
       + '<span class="stat '+scls+'"><span class="lbl">'+slbl+'</span>'+esc(stat)+'</span>'
       + '</div>' + why + '</div>';
@@ -311,7 +353,7 @@
     var h = '<div class="sec"><div class="sec-h"><span class="t">'+title+'</span><span class="c">'+arr.length+'名</span></div>';
     if (!arr.length){ h += '<div class="empty">この時間帯の対象はいません</div></div>'; return h; }
     h += '<div class="chips">';
-    arr.forEach(function(r){ h += '<span class="chip">'+esc(r.name)+'</span>'; });
+    arr.forEach(function(r){ h += '<span class="chip">'+esc(r.name)+'</span>' + kinkiBadgeHTML(r); });
     h += '</div></div>'; return h;
   }
 
@@ -378,7 +420,7 @@
     h += '<div class="sec"><div class="sec-h"><span class="t">🦷 口腔モニタリング</span><span class="c">'+moni.length+'名</span></div>';
     if (!moni.length) h += '<div class="empty">この時間帯の対象はいません</div>';
     moni.forEach(function(r){
-      h += '<div class="card"><span class="nm">'+esc(r.name)+'</span>'
+      h += '<div class="card"><span class="nm">'+esc(r.name)+'</span>' + kinkiBadgeHTML(r)
          + '<span class="role">'+esc(ROLE_LABEL[r.role]||r.role)+'</span>'
          + '<span class="spacer"></span><span class="stat ok"><span class="lbl">未実施</span>要対応</span></div>';
     });
@@ -393,20 +435,20 @@
     if (!(b.birthday||[]).length) h += '<div class="empty">今月の対象はいません</div>';
     (b.birthday||[]).forEach(function(r){
       h += '<div class="bd"><span class="md">'+r.month+'/'+r.day+'</span>'
-         + '<span class="nm">'+esc(r.name)+'</span><span class="spacer"></span>'
+         + '<span class="nm">'+esc(r.name)+'</span>' + kinkiBadgeHTML(r) + '<span class="spacer"></span>'
          + '<span class="todo">📷 未撮影</span></div>';
     });
     h += '</div></div>';
 
     // residue（当該タブ）
     if (res && res.length){
-      var names = res.map(function(r){ return esc(r.name); }).join('、');
+      var names = res.map(function(r){ return esc(r.name) + kinkiBadgeHTML(r); }).join('、');
       h += '<div class="residue"><div class="rh">⚠️ 名寄せ不能（要確認）：'+res.length+'名</div>'
          + '<div class="rn">'+names+'</div>'
          + '<div class="rx">出席しているが、氏名がどの業務台帳とも一致しなかった人。別人へ誤って割り当てないよう、拾い漏れとして表示しています。</div></div>';
     }
 
-    document.getElementById('board').innerHTML = h;
+    document.getElementById('board').innerHTML = kinkiWarnHTML() + h;
   }
 
   function setN(n){
@@ -456,6 +498,7 @@
       setLoad(false);
       if (resp && resp.ok === false){ showError(resp.error || '不明なエラー'); return; }
       boot(resp, keepTab);
+      if (!kinkiFetched){ kinkiFetched = true; fetchKinki(date, render); }
     };
     var s = document.createElement('script');
     s.src = GAS + '?action=sessionBoard&date=' + encodeURIComponent(date) + '&callback=' + cbName + '&t=' + Date.now();
