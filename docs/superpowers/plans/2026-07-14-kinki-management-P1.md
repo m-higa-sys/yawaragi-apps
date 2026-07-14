@@ -979,9 +979,11 @@ git commit -m "feat(kinki): 配置登録genba.htmlに機器別ビュー導線ボ
 - Modify: portal のアプリ台帳（`getAppRegistry`）
 - Modify: `version.txt` ほか版ゲート（`bump-app-version.js` 経由のみ）
 
-- [ ] **Step 1: portal台帳に kinki.html を登録**
+- [ ] **Step 1: portal台帳に kinki.html を登録（★コードではなくデータ作業）**
 
-`getAppRegistry`（コード.js内）に kinki.html のタイル1行を additive 追記（既存アプリ行に倣う。カテゴリ＝現場系、URL＝GitHub Pages上の `kinki.html`）。
+> **訂正（実装時に判明）**: `getAppRegistry_`（コード.js:15234）は**ハードコード配列ではなく、社長専用SSのシート「アプリ台帳」を実行時に読む**動的レジストリ。コードに追記する行は存在しない。よってportal登録は**git コミットではなく「アプリ台帳」シートへの1行追加**（過去の month-board 等と同型：append）。
+> - シート「アプリ台帳」に1行追加：アプリ名＝`禁忌・運動制限`／カテゴリ＝session-board と同じ現場/ボード系／スタッフ用URL＝GitHub Pages 上の `kinki.html`／icon＝🚫/⚠️／表示順＝末尾 append（既存を renumber しない）。
+> - 手段は (a) 社長が Sheets で直接1行追加、または (b) 既存の `appregistry_*` 系を使った一度きりの行追加。**本番書き込みなので社長の手**。コード側の変更は不要。
 
 - [ ] **Step 2: 全テスト緑を確認（リリース前ゲート）**
 
