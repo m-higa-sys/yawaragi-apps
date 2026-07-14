@@ -291,6 +291,8 @@ function normalizeMonth_(val) {
 // --- google.script.run用（GAS Webアプリ画面から呼ばれる） ---
 function handleAction(params) {
   const action = params.action;
+  var __g = adminGuard_(action, params);
+  if (__g) return __g;
   switch (action) {
     case 'getAllData': return getAllData(params.month, params.staff);
     case 'getAllDataAdmin': return getAllDataAdmin(params.month);
@@ -335,6 +337,12 @@ function doGet(e) {
   }
   try {
     ensureLineSetup_();
+    // 管理者API認可ガード（enforce=ON時のみ拒否・OFFは素通り）
+    var __guardErr = adminGuard_(action, e.parameter);
+    if (__guardErr) {
+      if (callback) return ContentService.createTextOutput(callback + '(' + JSON.stringify(__guardErr) + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
+      return ContentService.createTextOutput(JSON.stringify(__guardErr)).setMimeType(ContentService.MimeType.JSON);
+    }
     let result;
     switch (action) {
       case 'getAllData':
@@ -500,10 +508,57 @@ function verifyPin(staffName, pin) {
 }
 
 // --- 管理者PIN認証 ---
+// ============================================
+// 管理者セッション認可（2026-07-14 セキュリティ強化）
+// core: admin-session-core.js（checkAdminAuth / ADMIN_SESSION_TTL_SEC）
+// 目的: getAllDataAdmin / getBossRests 等を無認証で叩けなくする（社長の休み秘匿の実装）。
+// enforce=OFF 既定（素通り＋ログ）→ 実測後 ADMIN_TOKEN_ENFORCE=ON で漏洩クローズ。
+// ============================================
+var ADMIN_GUARDED_ACTIONS_ = [
+  'getAllDataAdmin', 'getBossRests', 'addBossRest', 'removeBossRest',
+  'approveCondition', 'rejectCondition', 'autoConfirmAll'
+];
+
+function adminEnforceOn_() {
+  return String(PropertiesService.getScriptProperties().getProperty('ADMIN_TOKEN_ENFORCE') || '') === 'ON';
+}
+
+// PIN成功時にランダムトークンを発行し CacheService(TTL) に保存。
+function issueAdminToken_() {
+  var token = Utilities.getUuid();
+  CacheService.getScriptCache().put('adm_' + token, '1', ADMIN_SESSION_TTL_SEC);
+  return token;
+}
+
+// トークンを検証。valid なら TTL を延長（スライディング期限＝操作中に切れない）。
+function verifyAdminToken_(token) {
+  var cached = token ? CacheService.getScriptCache().get('adm_' + token) : null;
+  var res = checkAdminAuth(token, cached, adminEnforceOn_());
+  if (res.reason === 'valid' && token) {
+    CacheService.getScriptCache().put('adm_' + token, '1', ADMIN_SESSION_TTL_SEC);
+  }
+  return res;
+}
+
+// 管理者actionなら認可を要求。NGは {error:'auth_required'}、素通り時は null。
+function adminGuard_(action, params) {
+  var isAdminAction = ADMIN_GUARDED_ACTIONS_.indexOf(action) >= 0
+    || (action === 'getConditions' && (!params.staff || String(params.staff).length === 0)); // 全件版のみ管理者
+  if (!isAdminAction) return null;
+  var res = verifyAdminToken_(params.token);
+  try { Logger.log('adminGuard action=' + action + ' reason=' + res.reason + ' enforce=' + adminEnforceOn_()); } catch (e) {}
+  if (!res.ok) return { error: 'auth_required', reason: res.reason };
+  return null;
+}
+
+// enforce切替（社長がGASエディタから実行 or Script Properties直接設定）
+function setAdminEnforceOn() { PropertiesService.getScriptProperties().setProperty('ADMIN_TOKEN_ENFORCE', 'ON'); return 'ADMIN_TOKEN_ENFORCE=ON'; }
+function setAdminEnforceOff() { PropertiesService.getScriptProperties().setProperty('ADMIN_TOKEN_ENFORCE', 'OFF'); return 'ADMIN_TOKEN_ENFORCE=OFF'; }
+
 function verifyAdminPin(pin) {
   const settings = getSettings();
   if (String(pin) === String(settings.adminPin)) {
-    return { success: true };
+    return { success: true, token: issueAdminToken_(), expiresInSec: ADMIN_SESSION_TTL_SEC };
   }
   return { success: false, message: '管理者PINが違います' };
 }

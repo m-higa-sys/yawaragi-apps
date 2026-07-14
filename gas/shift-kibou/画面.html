@@ -788,6 +788,7 @@ const IS_GAS = (typeof google !== 'undefined' && google.script && google.script.
 // ============================
 let currentUser = localStorage.getItem('shift_wish_user') || '';
 let isAdmin = localStorage.getItem('shift_wish_admin') === 'true';
+let adminToken = localStorage.getItem('shift_wish_admin_token') || ''; // 管理者セッショントークン（サーバ認可）
 let currentMonth = '';
 let staffList = [];
 let myWishes = [];
@@ -847,6 +848,8 @@ window.addEventListener('DOMContentLoaded', () => {
 // ============================
 let jsonpCounter = 0;
 function apiCall(params) {
+  // 管理者トークンがあれば全リクエストに付与（サーバは管理者actionのみ検証）
+  if (adminToken && !params.token) params.token = adminToken;
   if (IS_GAS) {
     // GAS Webアプリから実行時 → google.script.runを使用
     return new Promise((resolve, reject) => {
@@ -923,11 +926,21 @@ async function loadData() {
 // ============================
 let bossRests = [];
 
+// 管理者セッション期限切れ／未認可 → PIN再入力を促す
+function requireAdminReauth() {
+  adminToken = '';
+  localStorage.removeItem('shift_wish_admin_token');
+  showToast('管理者セッションの期限が切れました。PINを入れ直してください');
+  pendingPinAction = { type: 'admin' };
+  showPinModal('管理者PINを入力');
+}
+
 async function loadDataAdmin() {
   try {
     document.getElementById('loading').style.display = 'block';
     const data = await apiCall({ action: 'getAllDataAdmin', month: currentMonth });
 
+    if (data.error === 'auth_required') { requireAdminReauth(); return; }
     if (data.error) { showToast('エラー: ' + data.error); return; }
 
     staffList = data.staff || [];
@@ -1586,7 +1599,9 @@ async function submitPin() {
       if (data.success) {
         isAdmin = true;
         currentUser = '';
+        adminToken = data.token || '';
         localStorage.setItem('shift_wish_admin', 'true');
+        if (adminToken) localStorage.setItem('shift_wish_admin_token', adminToken);
         localStorage.removeItem('shift_wish_user');
         document.getElementById('pinModal').classList.remove('show');
         applyAdminUI();
@@ -1681,8 +1696,10 @@ function showCondToggle() {
 function logout() {
   currentUser = '';
   isAdmin = false;
+  adminToken = '';
   localStorage.removeItem('shift_wish_user');
   localStorage.removeItem('shift_wish_admin');
+  localStorage.removeItem('shift_wish_admin_token');
   myWishes = [];
   allWishes = [];
   conditionsData = [];
