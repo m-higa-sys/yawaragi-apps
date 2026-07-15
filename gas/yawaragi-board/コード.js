@@ -13302,26 +13302,10 @@ function nmSortItems_(msgs) {
 //   ScriptProperties 'LAST_MAILCHECK_AT' に ISO8601(UTC) を保存。
 //   起点は「既読/未読」ではなく「届いた日時」。日時の前進は自動でなく、
 //   社長の完了合図で set_mailcheck を叩いた時だけ更新（忘れても翌朝へ持ち越し）。
-//   純ロジック正本: gas/yawaragi-board/mailcheck-core.js（GAS単一ファイルのため以下に内包）
+//   純ロジック正本: gas/yawaragi-board/mailcheck-core.js（同ディレクトリ＝同一GASプロジェクトへ
+//   push され、MAILCHECK_PROP / mcResolveLastCheck_ / mcComputeSetValue_ / mcIsValidIso_ / mcToIso_
+//   を提供する。intake-auth-core.js と同じ「core定義・ここは呼ぶだけ」流儀。内包しない＝二重宣言回避）
 // =============================================================
-var MAILCHECK_PROP = 'LAST_MAILCHECK_AT';
-var MAILCHECK_DEFAULT_HOURS = 24;
-function mcIsValidIso_(s) {
-  if (typeof s !== 'string') return false;
-  var t = s.trim();
-  if (!t) return false;
-  return !isNaN(Date.parse(t));
-}
-function mcToIso_(ms) { return new Date(ms).toISOString(); }
-function mcResolveLastCheck_(stored, nowMs, defaultHours) {
-  var h = (typeof defaultHours === 'number' && defaultHours > 0) ? defaultHours : MAILCHECK_DEFAULT_HOURS;
-  if (mcIsValidIso_(stored)) return mcToIso_(Date.parse(stored));
-  return mcToIso_(nowMs - h * 3600 * 1000);
-}
-function mcComputeSetValue_(atParam, nowMs) {
-  if (mcIsValidIso_(atParam)) return mcToIso_(Date.parse(atParam));
-  return mcToIso_(nowMs);
-}
 // GET last_mailcheck: 最終報告日時を返す（未設定なら既定=24h前）。epochSecはGmail検索の after: 用。
 function lastMailcheckAction_(e) {
   var callback = (e && e.parameter) ? e.parameter.callback : null;
