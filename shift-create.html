@@ -342,21 +342,22 @@
 
 <script>
 // ============ 設定 ============
-const STAFF = ["勝又裕子", "星野友太", "下浦理絵", "工藤経子", "髙山奈緒美", "春山忍", "石井祐子", "大久保好美", "小野重次郎", "林秀明", "比嘉学"];
-const STAFF_KEY = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "石井", "大久保", "小野", "林", "比嘉"];
+const STAFF = ["勝又裕子", "星野友太", "下浦理絵", "工藤経子", "髙山奈緒美", "春山忍", "石井祐子", "大久保好美", "小野重次郎", "林秀明", "比嘉学", "喜多美咲"];
+const STAFF_KEY = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "石井", "大久保", "小野", "林", "比嘉", "喜多"];
 const NURSE = ["髙山", "春山", "石井"]; // 下浦は介護福祉士・メイン相談員（看護師ではない）
 const KAIGOFUKUSHI = ["比嘉", "星野", "勝又", "下浦", "大久保"];
-const SODANIN = ["星野", "勝又", "下浦", "工藤"]; // 生活相談員（兼務含む）
+const SODANIN = ["星野", "勝又", "下浦", "工藤", "喜多"]; // 生活相談員（兼務含む）
 const ESCORT = ["小野", "林"]; // 送迎専属（1号便）
 const ESCORT_KENMU = ["勝又", "星野"]; // 送迎兼務（2号便・B2でも送迎にカウント）
 const ESCORT_BACKUP = ["勝又", "星野"];
-const FLOOR_STAFF = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "大久保", "石井"];
+const FLOOR_STAFF = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "大久保", "石井", "喜多"];
 const TRIPLE_BAN = ["石井", "下浦", "春山", "髙山"];
 const KUDO_LIMIT = 3;
 const HARUYAMA_F_RATIO = 2/3; // 春山さんの16時(F)上限＝当月出勤日数×この割合(切り捨て)。社長が調整可。
 
 // 仮時給（社長が後で修正）
 const HOURLY_WAGE = {
+  "喜多": 1100,
   "比嘉": 0,        // 役員報酬・計算外
   "勝又": 1500,    // 月給制（MONTHLY_SALARY参照）
   "星野": 1500,    // 月給制（MONTHLY_SALARY参照）
@@ -1763,6 +1764,8 @@ function reload(forceReset, blankMode) {
     const saved = loadFromLocal(yearMonth);
     if (saved && saved.data) {
       shiftData = saved.data;
+      // 新スタッフ等、保存データに無いスタッフ列を空で補完（既存データは維持・強制初期化しない）
+      STAFF_KEY.forEach(s => { if (!shiftData[s]) shiftData[s] = {}; });
       calendar = buildCalendar(yearMonth);
       const savedDate = new Date(saved.savedAt);
       const ago = Math.round((Date.now() - savedDate.getTime()) / 60000);
