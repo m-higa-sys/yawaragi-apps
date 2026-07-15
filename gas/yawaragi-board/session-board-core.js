@@ -93,11 +93,13 @@ function sbMeasureShien_(shienUsers, lastByName, todayStr, usageByKey) {
     var last = lastByKey[key] || '';
     var due = '', remaining = -999, unmeasured = !last;
     if (last) { due = sokuteiDueDate_(last, u.care || ''); remaining = sokuteiRemaining_(due, todayStr); }
+    // done方式: 前回測定日(last)の年月が当月なら「今月測定済み」＝done（feat/sokutei-check-shien 反映不要）。
+    var done = !!last && String(last).slice(0, 7) === String(todayStr).slice(0, 7);
     var uRate = (usageNorm[key] != null) ? usageNorm[key] : 1.0;
     var absRate = 1 - uRate; if (absRate < 0) absRate = 0; if (absRate > 1) absRate = 1;
     return {
       name: u.name, key: key, care: u.care || '', last: last, due: due, remaining: remaining,
-      unmeasured: unmeasured, track: 'shien', careLayer: 1,
+      unmeasured: unmeasured, done: done, track: 'shien', careLayer: 1,
       weeklyVisits: sbCountWeeklyVisits_(u.days), remainingVisits: sbCountRemainingVisits_(u.days, todayStr),
       absenceRate: absRate
     };
@@ -133,12 +135,13 @@ function sbMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaM
   (kaigoUsers || []).forEach(function (u) {
     if (!isHyoukaMonthFn(u.planStart, u.planMonths, year, month)) return;
     var key = sbNormalizeName_(u.name);
-    if (doneNorm[key]) return;
+    // done方式: 当評価月に sokutei_date 済みでも消さず done:true で残す（グレー化はフロント）。
+    var done = !!doneNorm[key];
     var uRate = (usageNorm[key] != null) ? usageNorm[key] : 1.0;
     var absRate = 1 - uRate; if (absRate < 0) absRate = 0; if (absRate > 1) absRate = 1;
     rows.push({
       name: u.name, key: key, care: u.category || '', remaining: sokuteiRemaining_(monthEnd, todayStr),
-      track: 'kaigo', careLayer: 0,
+      done: done, track: 'kaigo', careLayer: 0,
       weeklyVisits: sbCountWeeklyVisits_(u.days), remainingVisits: sbCountRemainingVisits_(u.days, todayStr),
       absenceRate: absRate
     });
@@ -168,18 +171,28 @@ function sbKoukuMoni_(oralUsers, oralRecByKey, year, month, oralCycleAtFn) {
     if (res.role === 'moni1') done = !!rec.moni1_date;
     else if (res.role === 'moni2') done = !!rec.moni2_date;
     else done = !!(rec.houkoku_date && rec.plan_date); // setsume
-    if (done) return;
-    rows.push({ name: u.name, key: key, role: res.role });
+    // done方式: 当月入力済みでも消さず done:true で残す（グレー化はフロント）。
+    rows.push({ name: u.name, key: key, role: res.role, done: done });
   });
   return rows;
 }
 
 // 口腔体操対象。isTarget/is_target が明示 false 以外は対象（未設定=既定true）。
 // 実源getOralTargetUsers_はキャメルケースisTargetを返す。is_targetは生シート列名（互換のため両対応）。
-// 返り値: [{ name, key }]
-function sbKoukuTaisou_(oralSettings) {
+// done方式: 1aの count/required/remaining を組込み、残>0のみ未実施（done=remaining<=0）。
+//   oralChecks=口腔①実施記録の checks[年度][氏名]["{月}月_{回目}"]（G0でGASが供給・未供給時は全員未実施の安全既定）。
+//   u.care=介護度 / u.kubunChangeDate=区変適用日('YYYY-MM-DD')（GASがjoinして供給）。
+// 返り値: [{ name, key, care, doneCount, required, remaining, done }]
+function sbKoukuTaisou_(oralSettings, oralChecks, year, month) {
+  var targetMonth = (year != null && month != null) ? (year + '-' + (month < 10 ? '0' : '') + month) : '';
   return (oralSettings || []).filter(function (u) { return u.isTarget !== false && u.is_target !== false; })
-    .map(function (u) { return { name: u.name, key: sbNormalizeName_(u.name) }; });
+    .map(function (u) {
+      var key = sbNormalizeName_(u.name);
+      var doneCount = countOralTaisou_(oralChecks, key, year, month);
+      var required = requiredOralTaisou_(u.care || '', u.kubunChangeDate || '', targetMonth);
+      var remaining = remainingOralTaisou_(required, doneCount);
+      return { name: u.name, key: key, care: u.care || '', doneCount: doneCount, required: required, remaining: remaining, done: remaining <= 0 };
+    });
 }
 
 // 個訓対象。介護度「要介護」前方一致かつ非中止。返り値: [{ name, key, care }]
@@ -257,8 +270,8 @@ function sbBuildBoard_(input, judges) {
   var kaigo = sbMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth, input.usageByKey);
   var shien = sbMeasureShien_(input.shienUsers, input.shienLastByName, input.today, input.usageByKey);
   var sokutei = sbSokuteiSort_(sbIntersectPresent_(kaigo, present).concat(sbIntersectPresent_(shien, present)), SOKUTEI_WEIGHTS);
-  var koukuMoni = sbIntersectPresent_(sbKoukuMoni_(input.oralUsers, input.oralRecByKey, input.year, input.month, judges.oralCycleAt), present);
-  var koukuTaisou = sbIntersectPresent_(sbKoukuTaisou_(input.oralSettings), present);
+  var koukuMoni = sbDoneLast_(sbIntersectPresent_(sbKoukuMoni_(input.oralUsers, input.oralRecByKey, input.year, input.month, judges.oralCycleAt), present));
+  var koukuTaisou = sbDoneLast_(sbIntersectPresent_(sbKoukuTaisou_(input.oralSettings, input.oralChecks, input.year, input.month), present));
   var kotan = sbIntersectPresent_(sbKotan_(input.allUsers), present);
   var birthday = sbBirthday_(input.bdUsers, input.month, input.bdStatusByKey);
 
@@ -328,6 +341,9 @@ function sbMeasureUrgency_(row, weights) {
 function sbSokuteiSort_(pool, weights) {
   var arr = (pool || []).slice();
   arr.sort(function (a, b) {
+    // done方式: 実施済みは最下位（未実施を上に沈めない）。careLayer/urgency より優先。
+    var da = a.done ? 1 : 0, db = b.done ? 1 : 0;
+    if (da !== db) return da - db;
     var la = a.careLayer || 0, lb = b.careLayer || 0;
     if (la !== lb) return la - lb;
     var ua = sbMeasureUrgency_(a, weights), ub = sbMeasureUrgency_(b, weights);
@@ -343,6 +359,75 @@ function sbSokuteiSort_(pool, weights) {
     return String(a.key || '').localeCompare(String(b.key || ''));
   });
   return arr;
+}
+
+// ============================================================
+// 口腔体操（口腔①実施記録）当月回数の純関数（GAS/node 両用）。
+// 土台: oral-record.html の checks[年度][氏名]["{月}月_{回目}"]=日付。
+//   年度(nendo)=カレンダー月>=4 ? year : year-1（getCurrentFiscalYear 相当）。キー={month}月_1回目/2回目。
+//   区変ゲートは isOralTwiceMonthly を踏襲（要介護=常2 / 要支援=区変適用月以降のみ2）。
+// ============================================================
+
+// 当月に実施済み（1回目/2回目）のキー数を数える。氏名は正規化済み normName を受け取り、
+// 保存側氏名も sbNormalizeName_ で正規化して照合（drift吸収・§3.4）。該当年度/該当者なしは 0（未実施扱い）。
+function countOralTaisou_(oralChecks, normName, year, month) {
+  if (!oralChecks) return 0;
+  var nendo = (month >= 4) ? year : year - 1;
+  var yearData = oralChecks[nendo] || oralChecks[String(nendo)] || null;
+  if (!yearData) return 0;
+  var rec = null;
+  for (var storedName in yearData) {
+    if (!yearData.hasOwnProperty(storedName)) continue;
+    if (sbNormalizeName_(storedName) === normName) { rec = yearData[storedName]; break; }
+  }
+  if (!rec) return 0;
+  var label = month + '月';
+  var c = 0;
+  if (rec[label + '_1回目']) c++;
+  if (rec[label + '_2回目']) c++;
+  return c;
+}
+
+// 当月の規定回数。要介護=2 / 要支援・事業対象=1。ただし要支援は区変(要介護化)の適用月「以降」のみ2
+// （oral-record.html isOralTwiceMonthly の区変ゲート踏襲）。kubunChangeDate='YYYY-MM-DD' or ''、targetMonth='YYYY-MM'。
+function requiredOralTaisou_(careLevel, kubunChangeDate, targetMonth) {
+  var cl = String(careLevel || '');
+  if (cl.indexOf('要介護') === 0) return 2;  // 要介護は区変判定不要で常に月2回
+  var kubunYm = String(kubunChangeDate || '').slice(0, 7);
+  var tgt = String(targetMonth || '');
+  if (/^\d{4}-\d{2}$/.test(kubunYm) && /^\d{4}-\d{2}$/.test(tgt) && tgt >= kubunYm) return 2;
+  return 1;  // 要支援/事業対象の既定＝月1回
+}
+
+// 残り回数（下限0）。required=requiredOralTaisou_ の値／done=countOralTaisou_ の値。
+function remainingOralTaisou_(required, done) {
+  var r = (required || 0) - (done || 0);
+  return r < 0 ? 0 : r;
+}
+
+// ============================================================
+// done方式の並べ替え・残数カウント（フロント カード数=未実施のみ / 上位N=未実施のみ の土台）。
+// ============================================================
+
+// 未実施(!done)を上・済み(done)を下に沈める安定ソート（元順序は保持）。非破壊。
+function sbDoneLast_(arr) {
+  var a = (arr || []).map(function (r, i) { return [r, i]; });
+  a.sort(function (x, y) {
+    var dx = x[0] && x[0].done ? 1 : 0, dy = y[0] && y[0].done ? 1 : 0;
+    if (dx !== dy) return dx - dy;
+    return x[1] - y[1];  // 安定化（同区分は元順序）
+  });
+  return a.map(function (p) { return p[0]; });
+}
+
+// カード人数＝未実施のみの残数（対象者総数ではない）。
+function sbUndoneCount_(arr) {
+  return (arr || []).filter(function (r) { return !(r && r.done); }).length;
+}
+
+// 「今日やる上位N」の枠取りも未実施のみで数える。arr は事前に優先順ソート済み前提（sbSokuteiSort_）。
+function sbTopUndone_(arr, n) {
+  return (arr || []).filter(function (r) { return !(r && r.done); }).slice(0, n);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -365,6 +450,12 @@ if (typeof module !== 'undefined' && module.exports) {
     sbCountWeeklyVisits_: sbCountWeeklyVisits_,
     sbCountRemainingVisits_: sbCountRemainingVisits_,
     sbMeasureUrgency_: sbMeasureUrgency_,
-    sbSokuteiSort_: sbSokuteiSort_
+    sbSokuteiSort_: sbSokuteiSort_,
+    countOralTaisou_: countOralTaisou_,
+    requiredOralTaisou_: requiredOralTaisou_,
+    remainingOralTaisou_: remainingOralTaisou_,
+    sbDoneLast_: sbDoneLast_,
+    sbUndoneCount_: sbUndoneCount_,
+    sbTopUndone_: sbTopUndone_
   };
 }

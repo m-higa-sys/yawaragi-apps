@@ -15912,8 +15912,8 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     }
   });
 
-  // --- 利用者台帳を1回読み: shienUsers（要支援/事業対象・days付き）＋ bdUsers（誕生日M/D） ---
-  var shienUsers = [], bdUsers = [];
+  // --- 利用者台帳を1回読み: shienUsers（要支援/事業対象・days付き）＋ bdUsers（誕生日M/D）＋ careByName/kubunChangeByName（口腔体操の規定回数・区変ゲート用・名寄せ正規化キー） ---
+  var shienUsers = [], bdUsers = [], careByName = {}, kubunChangeByName = {};
   safe('daichoScan', function () {
     var uSheet = ss.getSheetByName('利用者台帳');
     if (!uSheet) return;
@@ -15927,6 +15927,8 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     if (uStatusCol < 0) uStatusCol = findColP(uh, 'ステータス');
     if (uStatusCol < 0) uStatusCol = findColP(uh, '利用状況');
     var uBdCol = findCol(uh, ['誕生日', '生年月日']);
+    var uKubunFlagCol = findCol(uh, ['区変中フラグ']);
+    var uApplyCol = findCol(uh, ['申請日']);
     if (uNameCol < 0) return;
     for (var ui = 1; ui < uv.length; ui++) {
       var urow = uv[ui];
@@ -15938,6 +15940,12 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
       }
       var ucare = uCareCol >= 0 ? String(urow[uCareCol] || '').trim() : '';
       var udays = uDaysCol >= 0 ? String(urow[uDaysCol] || '').trim() : '';
+      // 口腔体操の規定回数(要介護2/要支援1)・区変ゲート用: 名寄せ正規化キーで care と 区変申請日 を index。
+      var _unk = sbNormalizeName_(uname);
+      careByName[_unk] = ucare;
+      if (uKubunFlagCol >= 0 && uApplyCol >= 0 && String(urow[uKubunFlagCol] || '').trim().toUpperCase() === 'TRUE') {
+        kubunChangeByName[_unk] = fmtDate_(urow[uApplyCol]);
+      }
       if (ucare.indexOf('要支援') === 0 || ucare.indexOf('事業対象') === 0) {
         shienUsers.push({ name: uname, care: ucare, days: udays });
       }
@@ -15987,12 +15995,26 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     });
   });
 
-  // --- 口腔: oralUsers（planStart/planEnd）/ oralSettings（isTarget）/ oralRecByKey（当年月行のmoni/houkoku/plan日） ---
+  // --- oralChecks: 口腔①実施記録の checks[年度][氏名]["{月}月_{回目}"]（DriveApp直読 oral_data.json）。G0-α実測≈0.9s／キャッシュなし=常に最新（社長決定A）。 ---
+  var oralChecks = {};
+  safe('oralChecks', function () {
+    var folders = DriveApp.getFoldersByName('健康チェック同期データ');
+    if (!folders.hasNext()) return;
+    var files = folders.next().getFilesByName('oral_data.json');
+    if (!files.hasNext()) return;
+    var parsed = JSON.parse(files.next().getBlob().getDataAsString());
+    if (parsed && parsed.checks) oralChecks = parsed.checks;
+  });
+
+  // --- 口腔: oralUsers（planStart/planEnd）/ oralSettings（isTarget+care+区変日）/ oralRecByKey（当年月行のmoni/houkoku/plan日） ---
   var oralUsers = [], oralSettings = [], oralRecByKey = {};
   safe('oral', function () {
     var oralList = getOralTargetUsers_(false);
     oralUsers = oralList.map(function (u) { return { name: u.name, planStart: u.planStart, planEnd: u.planEnd }; });
-    oralSettings = oralList.map(function (u) { return { name: u.name, isTarget: u.isTarget }; });
+    oralSettings = oralList.map(function (u) {
+      var _nk = sbNormalizeName_(u.name);
+      return { name: u.name, isTarget: u.isTarget, care: careByName[_nk] || '', kubunChangeDate: kubunChangeByName[_nk] || '' };
+    });
     var oralSheets = ensureOralPlansSheets_();
     var orValues = oralSheets.recordSheet.getDataRange().getValues();
     for (var oi = 1; oi < orValues.length; oi++) {
@@ -16016,7 +16038,7 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     kaigoUsers: kaigoUsers, kaigoDoneByKey: kaigoDoneByKey,
     shienUsers: shienUsers, shienLastByName: shienLastByName,
     usageByKey: usageByKey,
-    oralUsers: oralUsers, oralRecByKey: oralRecByKey, oralSettings: oralSettings,
+    oralUsers: oralUsers, oralRecByKey: oralRecByKey, oralSettings: oralSettings, oralChecks: oralChecks,
     allUsers: allUsers,
     bdUsers: bdUsers, bdStatusByKey: {}  // 初版フォールバック（撮影status除外なし・§3.3）
   };
