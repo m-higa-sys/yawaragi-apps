@@ -364,6 +364,37 @@ input, select, textarea { font-family: inherit; }
     line-height: 1.5;
 }
 
+/* ============ リードタイム（起点日→通所介護計画書の完成） ============ */
+.lead-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    margin: 0 0 14px 0;
+    padding: 6px 11px;
+    border: 2.5px solid var(--navy-0);
+    border-radius: 4px;
+    background: var(--paper-deep);
+    box-shadow: 3px 3px 0 var(--navy-0);
+    font-family: var(--jp);
+}
+.lead-badge .lead-icon { font-size: 15px; line-height: 1; }
+.lead-badge .lead-days {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 19px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--navy-0);
+}
+.lead-badge .lead-note { font-size: 11px; font-weight: 700; color: #5b6477; }
+.lead-badge.lead-sun   { background: #fff8d9; }
+.lead-badge.lead-cloud { background: #eef1f5; }
+.lead-badge.lead-rain  { background: #ffe9d6; }
+.lead-badge.lead-storm { background: #ffdcdc; border-color: #c53030; box-shadow: 3px 3px 0 #c53030; }
+.lead-badge.lead-storm .lead-days { color: #c53030; }
+.lead-badge.is-open { border-style: dashed; }
+.card.is-done .lead-badge { opacity: 0.6; }
+
 .progress-block { }
 .progress-top {
     display: flex;
@@ -673,7 +704,9 @@ input, select, textarea { font-family: inherit; }
     <button class="btn btn-primary" onclick="evtOpenModal('contract_after')">
         <span class="plus">＋</span>契約後
     </button>
-    <!-- 担会後ボタンは設計見直し中（2026/4/29） -->
+    <button class="btn btn-secondary" onclick="evtOpenModal('meeting_after')">
+        <span class="plus">＋</span>担会後
+    </button>
     <button class="btn btn-reload" onclick="evtLoadList()">🔄 再読込</button>
 </section>
 
@@ -701,12 +734,13 @@ input, select, textarea { font-family: inherit; }
                 <input type="text" id="event-userName" required>
             </label>
 
-            <label>
-                契約日 <span class="req">*</span>
+            <label id="event-eventDate-label">
+                <span id="event-eventDate-text">契約日</span> <span class="req">*</span>
                 <input type="date" id="event-eventDate" required>
             </label>
 
-            <label>
+            <!-- 担会後は既存利用者のため利用開始日を持たない（evtOpenModal で表示制御） -->
+            <label id="event-startDate-label">
                 利用開始日 <span class="req">*</span>
                 <input type="date" id="event-meta-startDate" required>
             </label>
@@ -798,6 +832,90 @@ function escapeHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// ===== LEADTIME-CORE-START =====
+// リードタイム（起点日 → 通所介護計画書の完成）と天気マークの純関数。2026-07-17
+//   数字＝「何日かかったか」＝書類の遅さの可視化（未完は今日までの経過日数）。
+//   天気＝「間に合ったか」。契約後は利用開始日が締切（翌日利用なら1日で揃えないと雨）。
+//   担会後は既存利用者で締切が無いため経過日数で判定する。
+//   ※テストは scripts/test-after-contract-lead-time.js が本マーカー間を実抽出して検証する。
+function acDaysBetween(fromStr, toStr) {
+    if (!fromStr || !toStr) return null;
+    var a = String(fromStr).slice(0, 10).split('-');
+    var b = String(toStr).slice(0, 10).split('-');
+    if (a.length !== 3 || b.length !== 3) return null;
+    var t1 = Date.UTC(+a[0], +a[1] - 1, +a[2]);
+    var t2 = Date.UTC(+b[0], +b[1] - 1, +b[2]);
+    if (isNaN(t1) || isNaN(t2)) return null;
+    return Math.round((t2 - t1) / 86400000);
+}
+
+// 「通所介護計画書作成」項目を探す。契約後は「…(リハプラン)」付き、担会後は付かない。
+// 前方一致にするのは「通所介護・訓練計画書一覧表に月を赤で記入」を誤って拾わないため。
+function acFindPlanItem(items) {
+    if (!items || !items.length) return null;
+    for (var i = 0; i < items.length; i++) {
+        var label = String((items[i] && items[i].label) || '');
+        if (label.indexOf('通所介護計画書作成') === 0) return items[i];
+    }
+    return null;
+}
+
+// 締切が無い場合の天気：起点からの経過日数
+function acWeatherByElapsed(days) {
+    if (days <= 1) return '☀';
+    if (days <= 3) return '⛅';
+    if (days <= 5) return '☔';
+    return '⛈';
+}
+
+// 締切がある場合の天気：締切までの余裕日数（マイナス＝間に合わなかった）
+function acWeatherByDeadline(deadlineStr, judgeStr) {
+    var slack = acDaysBetween(judgeStr, deadlineStr);
+    if (slack === null) return null;
+    if (slack >= 4) return '☀';
+    if (slack >= 1) return '⛅';
+    if (slack === 0) return '☔';
+    return '⛈';
+}
+
+// カード表示用の統合。表示すべきものが無ければ null（＝バッジを出さない）。
+function acLeadInfo(evt, todayStr) {
+    if (!evt) return null;
+    var base = String(evt.eventDate || '').slice(0, 10);
+    if (!base) return null;
+    var plan = acFindPlanItem(evt.items);
+    if (!plan) return null;
+    var doneAt = String(plan.doneAt || '').slice(0, 10);
+    var done = plan.status === 'done' && !!doneAt;
+    var judge = done ? doneAt : String(todayStr || '').slice(0, 10);
+    var days = acDaysBetween(base, judge);
+    if (days === null) return null;
+    var meta = evt.metadata || {};
+    var deadline = String(meta['利用開始日'] || '').slice(0, 10);
+    var weather = deadline ? acWeatherByDeadline(deadline, judge) : acWeatherByElapsed(days);
+    if (weather === null) weather = acWeatherByElapsed(days);
+    return { days: days, done: done, weather: weather, deadline: deadline || null };
+}
+// ===== LEADTIME-CORE-END =====
+
+// 今日（JST）を YYYY-MM-DD で返す。端末TZがズレていても日本時間で判定するため。
+// ※Date依存なので純関数ではない＝LEADTIME-CORE の外に置く。
+function acTodayJst() {
+    var d = new Date();
+    var jst = new Date(d.getTime() + (d.getTimezoneOffset() + 540) * 60000);
+    var mm = ('0' + (jst.getMonth() + 1)).slice(-2);
+    var dd = ('0' + jst.getDate()).slice(-2);
+    return jst.getFullYear() + '-' + mm + '-' + dd;
+}
+
+// 天気→CSSクラス（絵文字をclass名に使えないため）
+function acWeatherClass(w) {
+    if (w === '☀') return 'sun';
+    if (w === '⛅') return 'cloud';
+    if (w === '☔') return 'rain';
+    return 'storm';
 }
 
 // ===== リトライ付きGAS POST送信 =====
@@ -933,10 +1051,20 @@ function evtBuildCard(evt) {
 
     const meta = evt.metadata || {};
     const metaParts = [];
-    if (evt.eventDate) metaParts.push(typeLabel + '日: ' + escapeHtml(evt.eventDate));
+    if (evt.eventDate) metaParts.push((evt.eventType === 'meeting_after' ? '担会参加' : typeLabel) + '日: ' + escapeHtml(evt.eventDate));
     if (meta['利用開始日']) metaParts.push('利用開始: ' + escapeHtml(meta['利用開始日']));
     if (meta['要介護度']) metaParts.push(escapeHtml(meta['要介護度']));
     const metaLine = metaParts.length ? '<div class="card-meta">' + metaParts.join(' / ') + '</div>' : '';
+
+    // リードタイム：起点日→通所介護計画書の完成までの日数と、締切に間に合ったかの天気
+    const lead = acLeadInfo(evt, acTodayJst());
+    const leadHtml = lead
+        ? '<div class="lead-badge lead-' + acWeatherClass(lead.weather) + (lead.done ? '' : ' is-open') + '">' +
+              '<span class="lead-icon">' + lead.weather + '</span>' +
+              '<span class="lead-days">' + lead.days + '日</span>' +
+              '<span class="lead-note">' + (lead.done ? '計画書完成' : '計画書まだ') + '</span>' +
+          '</div>'
+        : '';
 
     card.innerHTML =
         '<div class="card-head">' +
@@ -945,6 +1073,7 @@ function evtBuildCard(evt) {
         '</div>' +
         '<div class="card-name">' + escapeHtml(evt.userName) + ' 様</div>' +
         metaLine +
+        leadHtml +
         '<div class="progress-block">' +
             '<div class="progress-top">' +
                 '<span class="progress-num">' + done + '<span class="of">/' + total + '</span></span>' +
@@ -959,8 +1088,16 @@ function evtBuildCard(evt) {
 // ----- 登録モーダル -----
 function evtOpenModal(eventType) {
     document.getElementById('event-type').value = eventType;
-    document.getElementById('event-modal-title').textContent =
-        eventType === 'meeting_after' ? '＋ 担会後' : '＋ 契約後';
+    const isMeeting = eventType === 'meeting_after';
+    document.getElementById('event-modal-title').textContent = isMeeting ? '＋ 担会後' : '＋ 契約後';
+    // 起点日の呼び名を実運用xlsに合わせる（契約後＝契約日／担会後＝担会参加日）
+    document.getElementById('event-eventDate-text').textContent = isMeeting ? '担会参加日' : '契約日';
+    // 担会後は既存利用者なので利用開始日を取らない（モーダル使い回しの取り違え防止で毎回復元する）
+    const startLabel = document.getElementById('event-startDate-label');
+    const startInput = document.getElementById('event-meta-startDate');
+    startLabel.style.display = isMeeting ? 'none' : '';
+    startInput.required = !isMeeting;
+    if (isMeeting) startInput.value = '';
     // ログインスタッフを受付者初期値に
     try {
         const staff = localStorage.getItem('yawaragi_staff') || '';
@@ -981,7 +1118,9 @@ async function evtSubmitForm(ev) {
     const startDate = document.getElementById('event-meta-startDate').value;
     const careLevel = document.getElementById('event-meta-careLevel').value;
     const createdBy = document.getElementById('event-createdBy').value.trim();
-    if (!userName || !eventDate || !startDate || !careLevel || !createdBy) {
+    // 担会後は既存利用者なので利用開始日を必須にしない
+    const isMeeting = document.getElementById('event-type').value === 'meeting_after';
+    if (!userName || !eventDate || (!isMeeting && !startDate) || !careLevel || !createdBy) {
         alert('必須項目をすべて入力してください');
         return false;
     }
@@ -989,12 +1128,14 @@ async function evtSubmitForm(ev) {
     const _btn = lockSubmitBtn('evt-btn-submit', '保存中…');
     if (_btn === false) return false;   // 送信中の2回目押下は無視
     try {
+        const metadata = { '要介護度': careLevel };
+        if (!isMeeting) metadata['利用開始日'] = startDate;
         const payload = {
             action: 'add_user_event',
             eventType: document.getElementById('event-type').value,
             userName: userName,
             eventDate: eventDate,
-            metadata: { '利用開始日': startDate, '要介護度': careLevel },
+            metadata: metadata,
             createdBy: createdBy
         };
         const ok = await gasPost(payload, '利用者イベント登録');

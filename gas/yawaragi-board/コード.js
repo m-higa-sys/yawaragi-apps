@@ -101,11 +101,32 @@ var EVENT_TEMPLATE_USAGE_DAYS_CHANGE = [
   { seq: 1, label: 'リハブクラウドの提供票更新（曜日・回数）',           ownerTag: 'boss',       isUrgent: true  }
 ];
 
+// 担会後テンプレート（2026-07-17追加・13項目）
+//   正本: 実運用xls「担会後の作業2022.8.1.xlsx」。項目・順序はxls実物どおり。
+//   ownerTag は契約後テンプレの規則に準拠。seq9 は契約後seq11（個別機能訓練計画書作成）と
+//   同じ boss（訓練計画書は社長が作る）。seq5 のみ anyone＝今日のタスクボードへ自動起票される。
+//   xls の「急」2個 = seq8/seq9 の isUrgent:true。
+var EVENT_TEMPLATE_MEETING_AFTER = [
+  { seq: 1,  label: 'サービス担当者会議の要点（未開催なら理由記入）',     ownerTag: 'consultant', isUrgent: false },
+  { seq: 2,  label: '担会・契約日時記入表',                               ownerTag: 'consultant', isUrgent: false },
+  { seq: 3,  label: 'ケアプラン（期間／期限切れ・内容変更・延長・暫定）', ownerTag: 'consultant', isUrgent: false },
+  { seq: 4,  label: '通所介護・訓練計画書一覧表に月を赤で記入',           ownerTag: 'consultant', isUrgent: false },
+  { seq: 5,  label: '今月の測定一覧表に名前を記入',                       ownerTag: 'anyone',     isUrgent: false },
+  { seq: 6,  label: '基本情報修正(保険情報・ケアプラン期間)',             ownerTag: 'consultant', isUrgent: false },
+  { seq: 7,  label: '利用パターン等修正',                                 ownerTag: 'consultant', isUrgent: false },
+  { seq: 8,  label: '通所介護計画書作成',                                 ownerTag: 'consultant', isUrgent: true  },
+  { seq: 9,  label: '訓練計画書作成',                                     ownerTag: 'boss',       isUrgent: true  },
+  { seq: 10, label: '生活機能チェック・自宅写真含む(要介護のみ)',         ownerTag: 'consultant', isUrgent: false },
+  { seq: 11, label: '興味関心チェック(要介護のみ)',                       ownerTag: 'consultant', isUrgent: false },
+  { seq: 12, label: '介護保険負担割合証 確認',                            ownerTag: 'consultant', isUrgent: false },
+  { seq: 13, label: '保険証 確認(保険更新時)',                            ownerTag: 'consultant', isUrgent: false }
+];
+
 function getEventTemplate(eventType) {
   if (eventType === 'contract_after') return EVENT_TEMPLATE_CONTRACT_AFTER;
+  if (eventType === 'meeting_after') return EVENT_TEMPLATE_MEETING_AFTER;
   if (eventType === 'caremanager_change') return EVENT_TEMPLATE_CAREMANAGER_CHANGE;
   if (eventType === 'usage_days_change') return EVENT_TEMPLATE_USAGE_DAYS_CHANGE;
-  // 担会後は Phase 2 で追加
   return [];
 }
 
