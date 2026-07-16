@@ -2459,6 +2459,10 @@ const EXCLUDED_STAFF = ['比嘉'];
 const NURSES   = ['髙山', '春山', '石井'];  // 1番（看護師専用枠）に入る想定の看護師
 const POS4_GREY = ['下浦'];                  // 4番=相談員の正規業務。赤にしない（グレー固定）
 
+// この枠だけ複数人を配置できる（2026-07-16 追加）。他の枠(1/2/3/5)は1枠1人・入れ替え式のまま。
+// 4番=事務・作業（下浦＋喜多の育成同行）／6番=体操サポート（勝又独占の解消で2人運用）。
+const MULTI_POS = [4, 6];
+
 const STAFF_COLORS = {};
 function assignStaffColors() {
     const staff = getStaff();
@@ -3279,11 +3283,14 @@ function selectStaff(name, posId) {
     if (!currentAssignment.positions[posId]) currentAssignment.positions[posId] = [];
     const arr = currentAssignment.positions[posId];
     if (arr.indexOf(name) >= 0) {
-        // 本人が既にこの枠 → 解除（かるた札も山へ戻す）
+        // 本人が既にこの枠 → 解除（かるた札も山へ戻す）※複数可の枠でも共通
         arr.splice(arr.indexOf(name), 1);
         returnAllCardsOfStaff(name);
+    } else if (MULTI_POS.includes(posId)) {
+        // 4/6番=複数人可：既存者を戻さず追加（同じ人の二重追加は上の indexOf ガードで防止済）
+        arr.push(name);
     } else {
-        // 1枠1人・入れ替え式：既存者（過去データの複数人も全員）の札を戻してから1人だけに置換
+        // 1/2/3/5番=1枠1人・入れ替え式：既存者（過去データの複数人も全員）の札を戻して1人だけに置換
         arr.forEach(existing => returnAllCardsOfStaff(existing));
         currentAssignment.positions[posId] = [name];
     }
@@ -3356,10 +3363,16 @@ function catchCard(taskId, staffName) {
     const currentPos = findStaffPosition(staffName);
 
     if (currentPos === null) {
-        // 未配置 → 推奨配置に1人だけ配置（selectStaffと同じ入れ替え式・既存者の札は山へ戻す）
-        const recArr = currentAssignment.positions[card.recommendedPos] || [];
-        recArr.forEach(existing => { if (existing !== staffName) returnAllCardsOfStaff(existing); });
-        currentAssignment.positions[card.recommendedPos] = [staffName];
+        // 未配置 → 推奨配置へ（selectStaffと同じ分岐：4/6番=複数可so追加・他は入れ替え式で置換）
+        if (MULTI_POS.includes(card.recommendedPos)) {
+            if (!currentAssignment.positions[card.recommendedPos]) currentAssignment.positions[card.recommendedPos] = [];
+            const recArr = currentAssignment.positions[card.recommendedPos];
+            if (recArr.indexOf(staffName) < 0) recArr.push(staffName); // 既存者は戻さず追加（二重追加ガード）
+        } else {
+            const recArr = currentAssignment.positions[card.recommendedPos] || [];
+            recArr.forEach(existing => { if (existing !== staffName) returnAllCardsOfStaff(existing); });
+            currentAssignment.positions[card.recommendedPos] = [staffName];
+        }
         showToast(`✅ ${staffName}さんを${card.recommendedPos}に配置しました`, 2500);
     } else if (currentPos !== card.recommendedPos) {
         // 既に別配置 → 警告のみ（強制移動はしない）
