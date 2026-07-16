@@ -14501,23 +14501,14 @@ function getMonthlyUsage(ss, name, yearMonth) {
   // 注意: yawaragi は地域密着型通所介護で同日午前午後の両方利用なし運用なので、
   // 出欠変更シートに欠席記録がある日は、出勤送迎表側で予定が残っていても来館扱いしない。
   // （欠席登録後に出勤送迎表側の予定が削除されないままになるケースを補正）
+  // 緑(来館)は「実績日」限定＝ date < today(JST) かつ 送迎表に non-absent の記録がある日のみ。
+  // 出勤送迎表は先の日まで予定で埋まるため、予定のみ／今日／未来は緑にしない（monthly-usage-core.js）。
+  // サマリー(利用回数・利用率)は従来通り予定込みで数える。
   var dailyOps = _muFetchDailyOpsForMonth(yearMonth);
-  var attended = 0;
-  var noPickup = 0;
-  Object.keys(dailyOps).forEach(function(date) {
-    if (dayMap[date] && dayMap[date].absent) return;  // 欠席登録ある日はスキップ
-    var st = _muExtractUserDayState(dailyOps[date], name);
-    if (!st.attended) return;
-    if (!dayMap[date]) {
-      // 利用予定外の日に来館（イレギュラー出席）→ days に追加
-      dayMap[date] = { date: date, attended: true, absent: false, noPickup: st.noPickup, reason: '' };
-    } else {
-      dayMap[date].attended = true;
-      dayMap[date].noPickup = st.noPickup;
-    }
-    attended++;
-    if (st.noPickup) noPickup++;
-  });
+  var muTodayStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var muCounters = muMergeDailyOpsIntoDayMap_(dayMap, dailyOps, name, muTodayStr, _muExtractUserDayState);
+  var attended = muCounters.attended;
+  var noPickup = muCounters.noPickup;
 
   // days を並び替え
   var sortedKeys = Object.keys(dayMap).sort();
