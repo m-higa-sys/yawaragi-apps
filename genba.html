@@ -303,6 +303,14 @@
         .stats-table .count-high { background: #fed7d7; color: #c53030; font-weight: 700; border-radius: 6px; }
         .stats-table .count-zero { color: #cbd5e0; }
         .stats-table .total-col { background: #f7fafc; font-weight: 700; }
+        /* 倍率判定（期待値比）: 多すぎ=赤 / 少なすぎ・未経験=青 / 判定対象外=グレー固定 */
+        .stats-table .count-over    { background: #fed7d7; color: #c53030; font-weight: 700; border-radius: 6px; }
+        .stats-table .count-under   { background: #bee3f8; color: #2b6cb0; font-weight: 700; border-radius: 6px; }
+        .stats-table .count-neutral { background: #edf2f7; color: #a0aec0; }
+        /* 枠サマリ行（担当人数／独占率）。属人化=赤 */
+        .stats-table .stats-summary-row td { background: #fffaf0; font-weight: 700; font-size: 0.82rem; color: #744210; }
+        .stats-table .stats-summary-row td.summary-hot { background: #fed7d7; color: #c53030; }
+        .stats-table .stats-summary-row td:first-child { background: #fffaf0; }
         /* 配置登録タブに常設する集計パネル（折りたたみ可） */
         .stats-panel {
             background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
@@ -2446,6 +2454,11 @@ const DEFAULT_STAFF = [
 // スタッフ管理画面・クラウドの staff 配列・過去データは一切変更しない＝表示側で出さないだけ）
 const EXCLUDED_STAFF = ['比嘉'];
 
+// 配置バランスの倍率判定で使う役割マスタ（2026-07-16 追加）。
+// 1番=全体サポートは看護師専用枠so期待値計算から丸ごと除外し、セルはグレー固定（赤にしない）。
+const NURSES   = ['髙山', '春山', '石井'];  // 1番（看護師専用枠）に入る想定の看護師
+const POS4_GREY = ['下浦'];                  // 4番=相談員の正規業務。赤にしない（グレー固定）
+
 const STAFF_COLORS = {};
 function assignStaffColors() {
     const staff = getStaff();
@@ -3609,17 +3622,53 @@ function showStats() {
         }
     });
 
+    // ===== 派生集計（倍率判定用・2〜6番のみ）＝取得ロジックは変えず集計済み counts から導出 =====
+    const CALC_POS = POSITIONS.filter(p => p.id !== 1).map(p => p.id); // 期待値計算は2〜6番のみ（1番=看護師専用枠を除外）
+    const colSum = {}; // 各枠の列合計（全スタッフ・全枠。サマリ行と期待値で使う）
+    POSITIONS.forEach(p => { colSum[p.id] = staff.reduce((sum, s) => sum + counts[s][p.id], 0); });
+    const rowSum2 = {}; // その人の行合計（2〜6番のみ）
+    staff.forEach(s => { rowSum2[s] = CALC_POS.reduce((sum, pid) => sum + counts[s][pid], 0); });
+    const grand2 = CALC_POS.reduce((sum, pid) => sum + colSum[pid], 0); // 全体合計（2〜6番のみ）
+    // 倍率 = 実績セル ÷ 期待。期待 = (列合計 × 行合計) ÷ 全体合計（すべて2〜6番）。判定不能は null。
+    function posRatio(s, pid) {
+        if (pid === 1) return null;                                    // 1番は計算から丸ごと除外
+        if (rowSum2[s] === 0 || colSum[pid] === 0 || grand2 === 0) return null; // 行合計0（例:喜多）等は判定しない
+        const expected = (colSum[pid] * rowSum2[s]) / grand2;
+        if (expected === 0) return null;
+        return counts[s][pid] / expected;
+    }
+
     let html = '<div class="stats-table-wrap"><table class="stats-table"><thead><tr><th>スタッフ</th>';
     POSITIONS.forEach(p => { html += `<th style="color:${p.color}">${p.id} ${p.name}</th>`; });
     html += '<th class="total-col">合計</th></tr></thead><tbody>';
+
+    // ===== 枠サマリ行（最上部）＝担当人数／独占率で属人化を可視化 =====
+    html += '<tr class="stats-summary-row"><td>👥 担当/独占</td>';
+    POSITIONS.forEach(p => {
+        const handlers = staff.filter(s => counts[s][p.id] > 0).length;         // 1回以上入った人数
+        const maxOne = staff.reduce((mx, s) => Math.max(mx, counts[s][p.id]), 0);
+        const monop = colSum[p.id] > 0 ? Math.round(maxOne / colSum[p.id] * 100) : 0; // 独占率（最多の人÷列合計）
+        // 属人化=独占率≥70% or 担当人数≤1。ただし1番は看護師専用枠so中立色（数字は出すが赤にしない）。
+        const isHot = (p.id !== 1) && (colSum[p.id] > 0) && (monop >= 70 || handlers <= 1);
+        html += `<td class="${isHot ? 'summary-hot' : ''}">${handlers}人<br><span style="font-size:0.72rem; font-weight:600;">独占${monop}%</span></td>`;
+    });
+    html += '<td class="total-col"></td></tr>';
+
     staff.forEach(s => {
         const c = counts[s];
         html += `<tr><td>${s}</td>`;
-        const maxPos = Math.max(...POSITIONS.map(p => c[p.id]));
         for (let pid = 1; pid <= POSITIONS.length; pid++) {
             const val = c[pid]; let cls = '';
-            if (val === 0) cls = 'count-zero';
-            else if (val === maxPos && c.total > 3 && maxPos > c.total * 0.6) cls = 'count-high';
+            if (pid === 1 || (pid === 4 && POS4_GREY.includes(s))) {
+                cls = 'count-neutral'; // 1番セル全員・相談員の4番はグレー固定（赤にしない）
+            } else if (rowSum2[s] === 0) {
+                cls = 'count-zero';    // その人の行合計=0（例:喜多）→判定しない・淡色
+            } else {
+                const r = posRatio(s, pid);
+                if (r !== null && r >= 2.0) cls = 'count-over';        // 倍率≥2.0 多すぎ🔴
+                else if (r !== null && r <= 0.5) cls = 'count-under';  // 倍率≤0.5 少なすぎ・未経験🔵
+                else if (val === 0) cls = 'count-zero';
+            }
             const pct = c.total > 0 ? Math.round(val / c.total * 100) : 0;
             const display = val === 0 ? '0' : `${val} <span style="font-size:0.75rem; color:#718096; font-weight:600;">(${pct}%)</span>`;
             html += `<td class="${cls}">${display}</td>`;
@@ -3648,17 +3697,19 @@ function showStats() {
         html += '</div></div>';
     }
 
+    // 偏り警告（倍率ベース）＝「期待の2倍以上（多すぎ）」を人単位で列挙。
+    // 1番はposRatioがnullで自然に除外／下浦の4番は正規業務so除外／行合計0も除外。
     let warnings = [];
     staff.forEach(s => {
-        const c = counts[s];
-        if (c.total < 4) return;
-        for (let pid = 1; pid <= POSITIONS.length; pid++) {
-            const ratio = c[pid] / c.total;
-            if (ratio >= 0.7) {
+        if (rowSum2[s] === 0) return;
+        CALC_POS.forEach(pid => {
+            if (pid === 4 && POS4_GREY.includes(s)) return;
+            const r = posRatio(s, pid);
+            if (r !== null && r >= 2.0) {
                 const posName = POSITIONS.find(p => p.id === pid).name;
-                warnings.push(`${s}さんは配置の${Math.round(ratio*100)}%が「${pid} ${posName}」に偏っています`);
+                warnings.push(`${s}さんは「${pid} ${posName}」が期待の${r.toFixed(1)}倍（多すぎ）です`);
             }
-        }
+        });
     });
     if (warnings.length > 0) {
         html += '<div class="bias-warnings">';
