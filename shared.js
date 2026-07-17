@@ -502,3 +502,55 @@ function isBeforePlanStart(planStart, year, month) {
     const diff = (year - parseInt(m[1], 10)) * 12 + (month - parseInt(m[2], 10));
     return diff < 0;
 }
+
+// 測定の共通読み関数（測定の「測定済み判定」正本＝これ1本）。
+// 現在「測定済み判定」は3箇所に再実装されている（sessionBoardBuildInput_ / mb_kunRec・mb_shienSok /
+//   個訓の直読み）。それを集約するための土台。要介護「個別機能訓練計画書記録」＋要支援「要支援測定記録」
+//   の両シート由来レコードを1つの正規形へ統合する純関数（DOM/GAS API非依存）。
+//   - paper除外★: source:'paper'（紙台帳投入・日付が月初仮置き）は実測定から除外（スタッフ別集計を壊さない）
+//   - 日付名正規化: 入力の sokutei_date / last / doneDate を、出力は sokutei_date 1本に統一
+//   - 結合キー: 要介護は必ず userId（無ければ name フォールバック）／要支援は構造上 name のみ（userId列なし）
+//   - 測定日の無い行（計画のみ等）は測定実績でないため除外
+// 返り値: [{ key, matchedBy:'userId'|'name', sokutei_date, sokutei_by, output_by, careType:'要介護'|'要支援系', source }]
+//   output_by は要介護のみ（要支援シートに列なし＝null）。source は要介護シートに列なし＝''。
+// GAS(session-board-core.js)に同一挙動のミラーあり。test-sokutei-merge.js が両者のドリフトを検知する。
+function mergeSokuteiRecords(kaigoRecords, shienRecords) {
+    function pickDate(r) {
+        return String((r && (r.sokutei_date || r.last || r.doneDate)) || '').trim();
+    }
+    const out = [];
+    const kaigo = kaigoRecords || [];
+    for (let i = 0; i < kaigo.length; i++) {
+        const kr = kaigo[i];
+        const kd = pickDate(kr);
+        if (!kd) continue;
+        const uid = String((kr && kr.userId) || '').trim();
+        const knm = String((kr && kr.name) || '').trim();
+        out.push({
+            key: uid || knm,
+            matchedBy: uid ? 'userId' : 'name',
+            sokutei_date: kd,
+            sokutei_by: String((kr && kr.sokutei_by) || ''),
+            output_by: String((kr && kr.output_by) || ''),
+            careType: '要介護',
+            source: ''
+        });
+    }
+    const shien = shienRecords || [];
+    for (let j = 0; j < shien.length; j++) {
+        const sr = shien[j];
+        if (String((sr && sr.source) || '').trim() === 'paper') continue;
+        const sd = pickDate(sr);
+        if (!sd) continue;
+        out.push({
+            key: String((sr && sr.name) || '').trim(),
+            matchedBy: 'name',
+            sokutei_date: sd,
+            sokutei_by: String((sr && sr.sokutei_by) || ''),
+            output_by: null,
+            careType: '要支援系',
+            source: String((sr && sr.source) || '').trim()
+        });
+    }
+    return out;
+}

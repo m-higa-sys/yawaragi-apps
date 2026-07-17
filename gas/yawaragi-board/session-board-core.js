@@ -68,6 +68,57 @@ function sokuteiRemaining_(dueDateStr, todayStr) {
   return Math.round((due - today) / 86400000);
 }
 
+// 測定の共通読み関数（shared.js §I の mergeSokuteiRecords と同一挙動のミラー）。
+// 「測定済み判定」の3箇所再実装（sessionBoardBuildInput_ / mb_kunRec・mb_shienSok / 個訓直読み）を
+//   集約するための土台。要介護「個別機能訓練計画書記録」＋要支援「要支援測定記録」を1つの正規形へ統合。
+//   - paper除外★: source:'paper'（紙台帳投入・日付が月初仮置き）は実測定から除外
+//   - 日付名正規化: 入力の sokutei_date / last / doneDate を、出力は sokutei_date 1本に統一
+//   - 結合キー: 要介護は必ず userId（無ければ name フォールバック）／要支援は構造上 name のみ
+//   - 測定日の無い行は測定実績でないため除外
+// 返り値: [{ key, matchedBy, sokutei_date, sokutei_by, output_by, careType, source }]
+//   output_by は要介護のみ（要支援は null）。source は要介護は ''（列なし）。
+// shared.js とのドリフトは scripts/test-sokutei-merge.js が検知する。純関数・GAS API非依存。
+function mergeSokuteiRecords(kaigoRecords, shienRecords) {
+  function pickDate(r) {
+    return String((r && (r.sokutei_date || r.last || r.doneDate)) || '').trim();
+  }
+  var out = [];
+  var kaigo = kaigoRecords || [];
+  for (var i = 0; i < kaigo.length; i++) {
+    var kr = kaigo[i];
+    var kd = pickDate(kr);
+    if (!kd) continue;
+    var uid = String((kr && kr.userId) || '').trim();
+    var knm = String((kr && kr.name) || '').trim();
+    out.push({
+      key: uid || knm,
+      matchedBy: uid ? 'userId' : 'name',
+      sokutei_date: kd,
+      sokutei_by: String((kr && kr.sokutei_by) || ''),
+      output_by: String((kr && kr.output_by) || ''),
+      careType: '要介護',
+      source: ''
+    });
+  }
+  var shien = shienRecords || [];
+  for (var j = 0; j < shien.length; j++) {
+    var sr = shien[j];
+    if (String((sr && sr.source) || '').trim() === 'paper') continue;
+    var sd = pickDate(sr);
+    if (!sd) continue;
+    out.push({
+      key: String((sr && sr.name) || '').trim(),
+      matchedBy: 'name',
+      sokutei_date: sd,
+      sokutei_by: String((sr && sr.sokutei_by) || ''),
+      output_by: null,
+      careType: '要支援系',
+      source: String((sr && sr.source) || '').trim()
+    });
+  }
+  return out;
+}
+
 // 要支援・事業対象の測定対象行（enriched・未ソート）。前回実測定日+4ヶ月。並びは sbSokuteiSort_ が担当。
 // usageByKey: 名前→出席率U（内部正規化・§3.4）。返り値行に careLayer:1 / weeklyVisits / remainingVisits / absenceRate / unmeasured を付与。
 // 返り値: [{ name, key, care, last, due, remaining, unmeasured, track:'shien', careLayer:1, weeklyVisits, remainingVisits, absenceRate }]
@@ -365,6 +416,7 @@ if (typeof module !== 'undefined' && module.exports) {
     sbCountWeeklyVisits_: sbCountWeeklyVisits_,
     sbCountRemainingVisits_: sbCountRemainingVisits_,
     sbMeasureUrgency_: sbMeasureUrgency_,
-    sbSokuteiSort_: sbSokuteiSort_
+    sbSokuteiSort_: sbSokuteiSort_,
+    mergeSokuteiRecords: mergeSokuteiRecords
   };
 }
