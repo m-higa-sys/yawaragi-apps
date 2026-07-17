@@ -64,10 +64,11 @@ const rs = [
   {section:'加算', order:9999, code:'999999', item:'表示順なし'},
   {section:'加算', order:10, code:'A61111', item:'総合本体'}
 ];
+// ★スナップショットは kasanSortRows を1度も呼ぶ前に撮る。
+//   呼び出し後に撮ると、破壊的な実装でも「ソート済み同士の比較」になって通ってしまう（偽陰性）。
+const before = rs.map(function(x){return x.code;});
 eq(c.kasanSortRows(rs).map(function(x){return x.code;}), ['781241','A61111','785053','999999'],
    '表示順昇順／同値はコード順（781241 < A61111）／9999は末尾');
-const before = rs.map(function(x){return x.code;});
-c.kasanSortRows(rs);
 eq(rs.map(function(x){return x.code;}), before, '★非破壊（引数の配列を並べ替えない）');
 eq(c.kasanSortRows([]), [], '空→[]');
 eq(c.kasanSortRows(null), [], 'null→[]');
