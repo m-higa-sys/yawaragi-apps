@@ -22,7 +22,8 @@ new Function('sb',
   extractFn('sbParseLine') +
   extractFn('sbDecode') +
   extractFn('sbToRows') +
-  '\nsb.parseLine = sbParseLine; sb.decode = sbDecode; sb.toRows = sbToRows;'
+  extractFn('sbResolveColumns') +
+  '\nsb.parseLine = sbParseLine; sb.decode = sbDecode; sb.toRows = sbToRows; sb.resolve = sbResolveColumns;'
 )(sb);
 
 let pass = 0, fail = 0;
@@ -44,6 +45,18 @@ ok(txt5.indexOf('�') === -1 && /利用者/.test(txt5), 'B2: 文字化け(U+FFF
 const rows5 = sb.toRows(txt5);
 ok(rows5[1][0] === '事業所名', 'B3: rows[1] が本ヘッダ行（先頭=事業所名）');
 ok(Array.isArray(rows5[0]) && rows5.length > 100, 'B4: 全行が2次元配列で得られる');
+
+// ===== C. sbResolveColumns（位置でなく列名一致）=====
+const header5 = rows5[1];
+const col5 = sb.resolve(header5);
+ok(header5[col5.hken] === '被保険者番号', 'C1: hken 列を名前で解決');
+ok(header5[col5.riyou] === '利用者請求額総額（3+4-5+6+7+8-9）', 'C2: 利用者請求額 列を解決');
+ok(header5[col5.jihi1] === '7保険外サービス費（税抜）', 'C3: 自費税抜 列を解決');
+ok(header5[col5.jihi2] === '8保険外サービス費（消費税額）', 'C4: 自費消費税 列を解決');
+ok(header5[col5.nyukin] === '入金状況', 'C5: 入金状況 列を解決');
+let threw = false;
+try { sb.resolve(['関係ない列', 'ダミー']); } catch (e) { threw = true; }
+ok(threw, 'C6: 必須列が無ければ例外（黙って壊れない）');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
