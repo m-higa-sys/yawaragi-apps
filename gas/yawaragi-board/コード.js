@@ -15402,7 +15402,9 @@ var DENGON_MIGRATE_SEED = [
   { id: 'nyukin-dashboard', createdAt: '2026-06-14', body: '🔴 入金管理ダッシュボード（返戻側）未実装｜設計確定済み（取りこぼし集中／PDF自動＋手入力保険／4段階ステータス／返戻・引落を朝報告で監視）' },
   { id: 'furikae-kaizen', createdAt: '2026-06-14', body: '🔴 振替不能アプリ改修＋繰越確認｜未回収サマリー最上段／表2段階／放置アラート＋「4月の未回収者が5月画面に繰り越されるか」要確認' },
   { id: 'tanka-chosa', createdAt: '2026-06-14', body: '🔴 東松山市の総合事業/介護予防の正確な単価を調べる｜返戻金額を概算→正確化。6級地。出所＝市の総合事業の手引き／運営推進会議資料' },
-  { id: 'kobetsu-phase1-verify', createdAt: '2026-06-15', body: '🟡 個別機能訓練計画書チェックPhase1 実装完了・社長のiPad実機確認待ち｜GAS @252／確認＝計画/評価2列・測定者プルダウン8名・📮ケアマネ未提出ビュー' }
+  { id: 'kobetsu-phase1-verify', createdAt: '2026-06-15', body: '🟡 個別機能訓練計画書チェックPhase1 実装完了・社長のiPad実機確認待ち｜GAS @252／確認＝計画/評価2列・測定者プルダウン8名・📮ケアマネ未提出ビュー' },
+  { id: 'line-token-heisei', createdAt: '2026-07-16', body: '🔴 LINE平文トークン是正｜本番コード.js 6003-6004 のLINE_TOKEN/OWNER_USER_IDが平文ハードコード(repo正本はProperties化済)。順序厳守=①本番Script Propertiesに両キー有無を確認→②有れば平文2行をProperties版に是正しdeploy→③共用先(板/gas_LINE通知/インク/シフト)棚卸し。未設定のまま是正するとLINE通知が壊れる' },
+  { id: 'nakayama-cm-fudatsu', createdAt: '2026-07-16', body: '🔴 仲山洋子様 ケアマネ宛欠席連絡が不達(実害)｜reha-staff@wakabanooka.jp に550 User Unknown。対応=わかばの丘(担当:吉野あけみ様)の正しい欠席連絡先を確認し電話で直接連絡＋台帳アドレス修正' }
 ];
 
 // --- 純関数（scripts/test-dengon-board.js と同一実装）---
