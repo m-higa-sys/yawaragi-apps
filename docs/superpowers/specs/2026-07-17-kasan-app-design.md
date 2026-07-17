@@ -217,9 +217,35 @@ clasp の `rootDir="."` なので `kasan-core.js` も一緒に push される。
 
 1. worktree `C:/tmp/wt-kasan`（`origin/master` 起点・`feat/kasan-app`）
 2. TDD で `kasan-core.js` → コード.js additive → `kasan.html`
-3. **`clasp pull` で本番@327と突合** ← ★平文LINEトークン（コード.js 6003-6004）・dengon seed のドリフトを消さない
+3. 🔴 **worktree で `clasp pull` してはならない**（§8.2）。本番反映は git の外のステージングdirで行う
 4. 社長: GASエディタで `setupKasanMaster` 実行（引数なしで動く）→ シート目視
-5. 社長: `clasp push` → `clasp deploy -i AKfycbwo…`（URL維持）
+5. 社長: ステージングdirから `clasp push` → `clasp deploy -i AKfycbwo…`（URL維持）
+
+### 8.2 🔴 GAS本番反映は「本番現物ベースのステージング」で（2026-07-17 実測で判明）
+
+git の外の使い捨てdirへ読み取り専用 pull して実測した結果、**git と本番が双方向に乖離**している。
+
+**本番にあって git に無いもの**（＝git から push すると壊れるもの）:
+
+| 本番のみに在る | git から push すると |
+|---|---|
+| `access-log-core.js` / `mailcheck-core.js` / `token-auth-core.js` | 3ファイルごと消える |
+| `lastMailcheckAction_` / `setMailcheckAction_` | 朝報告のメール起点が死ぬ（@326 で反映済みの機能） |
+| `DENGON_MIGRATE_SEED` が **6件**（repo は4件） | 伝達ボードの2件が消える |
+| **平文 LINE_TOKEN**（平文代入=1件・repo は PropertiesService 化済みで0件） | 除去されるが Script Properties に値が無ければ LINE通知が死ぬ |
+
+**git にあって本番に無いもの: なし**（`kasan-core.js` は今回の新規）。
+
+そして**逆方向がさらに危険**: worktree で `clasp pull` すると本番の平文トークンが git 作業ツリーに落ち、
+commit すれば **2026-07-14 の流出事故（`c93db3f`・GitGuardian が同一値で沈黙し3ヶ月不検知）と同じ経路**を踏む。
+pre-commit hook は gitleaks 未導入の正規表現フォールバックで防げる保証がない。
+
+→ **git の外の使い捨てdirに本番を pull し、そこへ kasan の追加だけを載せて push する**
+（memory の R1復旧 `/c/tmp/recovery-clasp` と同じ方式）。push 後は必ず dir を削除する。
+具体手順は実装計画 Task 8 の runbook に記載。
+
+**宿題（別トラック・本アプリのスコープ外）**: この乖離自体が根本問題。平文トークンの Script Properties 化と
+mailcheck / access-log / token-auth の git 反映を済ませれば、この危険な手作業は不要になる。
 6. 版bump `node scripts/bump-app-version.js 2026-07-04-71`（現 `2026-07-04-70`）→ 社長がFF push → `--verify`
    - ★**日付プレフィックスは `2026-07-04` 固定・連番のみ進める**。直近15回すべてこの形式（実測）。
      今日の日付で `2026-07-17-71` としてはならない。`bump-app-version.js:50` の検証は
