@@ -23,14 +23,19 @@ function extractFn(name) {
 }
 
 const sandbox = {};
-new Function('sb', extractFn('absReasonCategory') +
-  '\nsb.absReasonCategory = absReasonCategory;')(sandbox);
-const { absReasonCategory } = sandbox;
+new Function('sb', extractFn('absReasonCategory') + '\n' + extractFn('absPrevAbsentView') +
+  '\nsb.absReasonCategory = absReasonCategory; sb.absPrevAbsentView = absPrevAbsentView;')(sandbox);
+const { absReasonCategory, absPrevAbsentView } = sandbox;
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {
   if (actual === expected) { pass++; }
   else { fail++; console.error('  [FAIL] ' + label + '\n    expected: ' + expected + '\n    actual:   ' + actual); }
+}
+function eqJson(actual, expected, label) {
+  const A = JSON.stringify(actual), E = JSON.stringify(expected);
+  if (A === E) { pass++; }
+  else { fail++; console.error('  [FAIL] ' + label + '\n    expected: ' + E + '\n    actual:   ' + A); }
 }
 
 // ----- health 11項目 -----
@@ -59,6 +64,26 @@ eq(absReasonCategory('  体調不良  '), 'health', 'trim: 前後空白付き');
 // ----- 部分一致の誤爆防止（最重要）-----
 eq(absReasonCategory('家族の体調不良'), 'personal',
    '誤爆防止: 「家族の体調不良」が「体調不良」に部分マッチして health にならないこと');
+
+// ----- absPrevAbsentView: 3分類 × {label,bg,text,icon} 完全一致 -----
+eqJson(absPrevAbsentView('health'),
+  { label: '前回休・体調', bg: '#FAECE7', text: '#993C1D', icon: '🩺' }, 'view: health');
+eqJson(absPrevAbsentView('personal'),
+  { label: '前回休・私用', bg: '#F1EFE8', text: '#5F5E5A', icon: '' }, 'view: personal（アイコンなし）');
+eqJson(absPrevAbsentView('unknown'),
+  { label: '前回休・不明', bg: '#FAEEDA', text: '#854F0B', icon: '❓' }, 'view: unknown');
+
+// ----- 未知 category は unknown へフォールバック（例外を投げない）-----
+eqJson(absPrevAbsentView('zzz'),
+  { label: '前回休・不明', bg: '#FAEEDA', text: '#854F0B', icon: '❓' }, 'view: 未知categoryはunknownへ');
+eqJson(absPrevAbsentView(undefined),
+  { label: '前回休・不明', bg: '#FAEEDA', text: '#854F0B', icon: '❓' }, 'view: undefinedはunknownへ');
+
+// ----- 分類→表示の合成（実際の使われ方）-----
+eqJson(absPrevAbsentView(absReasonCategory('通院')),
+  { label: '前回休・体調', bg: '#FAECE7', text: '#993C1D', icon: '🩺' }, '合成: 通院 → 体調バッジ');
+eqJson(absPrevAbsentView(absReasonCategory('')),
+  { label: '前回休・不明', bg: '#FAEEDA', text: '#854F0B', icon: '❓' }, '合成: 理由なし → 不明バッジ');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
