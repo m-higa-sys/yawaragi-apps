@@ -22,6 +22,13 @@ function extractFn(name) {
   throw new Error(name + ' の閉じ括弧が見つからない');
 }
 
+// genba.html から const ABS_REASONS = [...] の実体を抽出（網羅性ガード用）
+function extractAbsReasons() {
+  const m = html.match(/const ABS_REASONS = (\[[\s\S]*?\]);/);
+  if (!m) throw new Error('genba.html に const ABS_REASONS が無い');
+  return new Function('return ' + m[1])();
+}
+
 const sandbox = {};
 new Function('sb', extractFn('absReasonCategory') + '\n' + extractFn('absPrevAbsentView') +
   '\nsb.absReasonCategory = absReasonCategory; sb.absPrevAbsentView = absPrevAbsentView;')(sandbox);
@@ -84,6 +91,22 @@ eqJson(absPrevAbsentView(absReasonCategory('通院')),
   { label: '前回休・体調', bg: '#FAECE7', text: '#993C1D', icon: '🩺' }, '合成: 通院 → 体調バッジ');
 eqJson(absPrevAbsentView(absReasonCategory('')),
   { label: '前回休・不明', bg: '#FAEEDA', text: '#854F0B', icon: '❓' }, '合成: 理由なし → 不明バッジ');
+
+// ----- 網羅性ガード: ABS_REASONS 20項目が想定どおり3分類に落ちること -----
+// 将来 ABS_REASONS に項目が増えたら、ここで unknown 落ちを検知できる。
+const ABS_REASONS = extractAbsReasons();
+eq(ABS_REASONS.length, 20, '網羅性: ABS_REASONS は20項目');
+
+const tally = { health: 0, personal: 0, unknown: 0 };
+ABS_REASONS.forEach(function (r) { tally[absReasonCategory(r)]++; });
+eq(tally.health, 11, '網羅性: health は11項目');
+eq(tally.personal, 8, '網羅性: personal は8項目');
+eq(tally.unknown, 1, '網羅性: unknown は「その他」の1項目のみ');
+
+// unknown に落ちるのは「その他」だけ＝新項目の追加を検知する
+const unknownItems = ABS_REASONS.filter(function (r) { return absReasonCategory(r) === 'unknown'; });
+eqJson(unknownItems, ['その他'],
+  '網羅性: unknown 落ちは「その他」のみ（他が混ざったら ABS_REASONS に未分類の新項目がある）');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
