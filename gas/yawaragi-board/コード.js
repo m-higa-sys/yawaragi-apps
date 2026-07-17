@@ -1178,6 +1178,10 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'monthBoard') {
     return monthBoard(e);
   }
+  // 加算・事業所情報（kasan_master 読み取り専用・整形はkasan-core.jsの純関数）2026-07-17
+  if (e && e.parameter && e.parameter.action === 'kasan') {
+    return kasan(e);
+  }
   // 新着メールボード（checkNewMail(168)のimportantから対応済みを除外・morningDigest Phase2-A）2026-07-14
   if (e && e.parameter && e.parameter.action === 'getNewMailBoard') {
     return getNewMailBoard(e);
@@ -16260,4 +16264,122 @@ function monthBoardBuildInput_(ym, year, month, safe) {
     },
     errorSections: errSec
   };
+}
+
+// =============================================================
+// 加算・事業所情報（2026-07-17）
+//   ?action=kasan&callback=cb  … kasan_master 読み取り専用（JSONP）
+//   純関数正本: gas/yawaragi-board/kasan-core.js
+//     （rootDir="." で一緒に push される。KASAN_HEADER 等はそちらの定義を使う＝ここに内包しない）
+//   設計書: docs/superpowers/specs/2026-07-17-kasan-app-design.md
+// =============================================================
+var KASAN_SHEET = 'kasan_master';
+
+// [section, 表示順, 系統, コード, 項目, 値, 最終確認日, 備考]
+// ★値は全てテキスト書式のセルへ setValues で入れる（appendRow は使わない）。
+var KASAN_MASTER_SEED = [
+  ['基本情報', 10, '', '', '法人名', '株式会社キープフィットライフ', '2026-07-17', ''],
+  ['基本情報', 20, '', '', '事業所名', 'リハビリデイサービス やわらぎ', '2026-07-17', ''],
+  ['基本情報', 30, '', '', 'サービス種類', '地域密着型通所介護', '2026-07-17', ''],
+  ['基本情報', 40, '', '', '事業所番号', '1173300995', '2026-07-17', ''],
+  ['基本情報', 50, '', '', '所在地', '東松山市高坂', '2026-07-17', ''],
+  ['基本情報', 60, '', '', '保険者（介護給付）', '東松山市', '2026-07-17', ''],
+  ['基本情報', 70, '', '', '保険者（総合事業）', '東松山市・嵐山町・川島町', '2026-07-17', ''],
+
+  ['運営体制', 10, '', '', '営業時間（1単位）', '9:00–12:00', '2026-07-17', ''],
+  ['運営体制', 20, '', '', '営業時間（2単位）', '13:30–16:30', '2026-07-17', ''],
+  ['運営体制', 30, '', '', '定員', '各18名', '2026-07-17', ''],
+
+  ['地域区分', 10, '', '', '東松山市の地域区分', '6級地', '2026-07-17', ''],
+  ['地域区分', 20, '', '', '1単位単価（介護給付）', '10.27円', '2026-07-17', '6級地の上乗せ6%×通所介護の人件費割合45%＝10円×1.027'],
+  ['地域区分', 30, '', '', '地域区分の見直し', '令和6〜8年度は見直しなし', '2026-07-17', ''],
+  ['地域区分', 40, '', '', '1単位単価（総合事業）', '未取得', '', '東松山市・嵐山町・川島町の3保険者分。出所＝市の総合事業の手引き／運営推進会議資料'],
+  ['地域区分', 50, '', '', '嵐山町・川島町の地域区分', '未取得', '', '総合事業の保険者。東松山市（6級地）のみ確定'],
+
+  ['加算', 10, '介護給付', '781241', '本体（地域通所介護11）', '', '2026-07-17', ''],
+  ['加算', 20, '介護給付', '785053', '個別機能訓練加算Ⅰ2', '', '2026-07-17', ''],
+  ['加算', 30, '介護給付', '785052', '個別機能訓練加算Ⅱ', '', '2026-07-17', ''],
+  ['加算', 40, '介護給付', '786339', 'ADL維持等加算Ⅱ', '', '2026-07-17', ''],
+  ['加算', 50, '介護給付', '785608', '口腔機能向上加算Ⅱ', '', '2026-07-17', ''],
+  ['加算', 60, '介護給付', '786361', '科学的介護推進体制加算', '', '2026-07-17', ''],
+  ['加算', 70, '介護給付', '786099', 'サービス提供体制強化加算Ⅰ', '', '2026-07-17', 'システム表記は「地域通所介護サービス提供体制加算Ⅰ」（略称）'],
+  ['加算', 80, '介護給付', '786108', '処遇改善加算Ⅰ', '', '2026-07-17', '令和8年6月〜Ⅰロ 12.7%（令和8年4〜5月分は旧・9.2%）'],
+
+  ['加算', 110, '総合事業', 'A61111', '本体（通所型独自サービス11）', '', '2026-07-17', ''],
+  ['加算', 120, '総合事業', 'A65011', '口腔機能向上加算Ⅱ', '', '2026-07-17', ''],
+  ['加算', 130, '総合事業', 'A66311', '科学的介護推進体制加算', '', '2026-07-17', ''],
+  ['加算', 140, '総合事業', 'A66011', 'サービス提供体制強化加算Ⅰ1', '', '2026-07-17', 'システム表記は「通所型独自サービス提供体制加算Ⅰ１」（略称）'],
+  ['加算', 150, '総合事業', 'A66100', '処遇改善加算Ⅰ', '', '2026-07-17', '加算率は未確認（介護給付は12.7%だが総合事業も同率かは未確認）']
+];
+
+// kasan_master を作り、未投入のシード行だけを足す（冪等＝何度実行しても重複しない）。
+// 社長がGASエディタから引数なしで実行する想定（setupDengonBoard と同型）。
+function setupKasanMaster(ss) {
+  ss = ss || SpreadsheetApp.openById(SS_ID); // エディタ手動実行（引数なし）でも動く
+  var sheet = ss.getSheetByName(KASAN_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(KASAN_SHEET);
+    sheet.getRange(1, 1, 1, KASAN_HEADER.length).setValues([KASAN_HEADER]);
+    sheet.getRange(1, 1, 1, KASAN_HEADER.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  // ★全列テキスト書式。781241 と 1173300995 の数値化、最終確認日の Date化(+16hずれ)を
+  //   同時に封じる。setValues の前に必ず適用する。
+  sheet.getRange(1, 1, sheet.getMaxRows(), KASAN_HEADER.length).setNumberFormat('@');
+
+  var values = sheet.getDataRange().getValues();
+  var seen = {};
+  for (var i = 1; i < values.length; i++) seen[kasanSeedKey_(values[i])] = true;
+
+  var toAdd = KASAN_MASTER_SEED.filter(function (row) { return !seen[kasanSeedKey_(row)]; });
+  if (toAdd.length) {
+    // ★appendRow は使わない（テキスト書式を貫通して型強制が起きる・teishutsu の教訓）
+    sheet.getRange(sheet.getLastRow() + 1, 1, toAdd.length, KASAN_HEADER.length).setValues(toAdd);
+  }
+  return {
+    ok: true,
+    sheet: KASAN_SHEET,
+    added: toAdd.map(function (r) { return kasanSeedKey_(r); }),
+    totalRows: Math.max(0, sheet.getLastRow() - 1)
+  };
+}
+
+// 認証フック。現状は版ゲートのみ運用のため常に true（素通し）＝設計書 §2.1。
+// feat/gas-token-auth が master 反映されたら、ここで checkToken() を呼ぶだけで
+// kasan も全アプリ横並びで有効化できる（呼び出し側を触らない）。
+function kasanAuthOk_(e) { return true; }
+
+// action=kasan : kasan_master を読んでカテゴリ別に返す（読み取り専用・JSONP）。
+function kasan(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  if (!kasanAuthOk_(e)) return respond({ ok: false, error: 'auth_required' }, callback);
+  try {
+    var sheet = SpreadsheetApp.openById(SS_ID).getSheetByName(KASAN_SHEET);
+    if (!sheet) {
+      return respond({ ok: false, error: KASAN_SHEET + ' シートがありません。setupKasanMaster を実行してください。' }, callback);
+    }
+    var values = sheet.getDataRange().getValues();
+    var rows = kasanSortRows(kasanParseRows(values));
+    // ★シートに行があるのに解析結果が0件＝ヘッダを認識できていない（section 列が
+    //   改名・削除された等）。ここで沈黙すると画面が黙って空になり原因が分からない。
+    //   社長が直接シートを編集する運用なので、現実に起きうる。
+    if (rows.length === 0 && values.length > 1) {
+      return respond({
+        ok: false,
+        error: KASAN_SHEET + ' のヘッダを認識できません（1行目に ' + KASAN_HEADER.join(' / ') + ' が必要。section 列の改名・削除を確認してください）'
+      }, callback);
+    }
+    var g = kasanGroupBySection(rows);
+    return respond({
+      ok: true,
+      '基本情報': g['基本情報'],
+      '運営体制': g['運営体制'],
+      '地域区分': g['地域区分'],
+      '加算': kasanSplitKeitou(g['加算']),   // ★契約: 加算行だけを渡す
+      '不明': g['不明'],   // 未知sectionも返す＝画面から黙って消さない
+      updatedAt: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm')
+    }, callback);
+  } catch (err) {
+    return respond({ ok: false, error: String((err && err.message) || err) }, callback);
+  }
 }
