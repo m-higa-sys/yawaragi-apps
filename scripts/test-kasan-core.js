@@ -57,5 +57,20 @@ console.log('\n[kasanParseRows] ★最終確認日のTZずれ防止（Date化さ
 eq(c.kasanParseRows([H, ['加算', 10, '介護給付', '781241', '本体', '', new Date(2026, 6, 17), '']])[0].checkedAt,
    '2026-07-17', 'Dateはローカル年月日で yyyy-MM-dd 化（UTC変換しない＝日付がずれない）');
 
+console.log('\n[kasanSortRows] 表示順→コード の安定ソート・非破壊');
+const rs = [
+  {section:'加算', order:20, code:'785053', item:'個訓Ⅰ2'},
+  {section:'加算', order:10, code:'781241', item:'本体'},
+  {section:'加算', order:9999, code:'999999', item:'表示順なし'},
+  {section:'加算', order:10, code:'A61111', item:'総合本体'}
+];
+eq(c.kasanSortRows(rs).map(function(x){return x.code;}), ['781241','A61111','785053','999999'],
+   '表示順昇順／同値はコード順（781241 < A61111）／9999は末尾');
+const before = rs.map(function(x){return x.code;});
+c.kasanSortRows(rs);
+eq(rs.map(function(x){return x.code;}), before, '★非破壊（引数の配列を並べ替えない）');
+eq(c.kasanSortRows([]), [], '空→[]');
+eq(c.kasanSortRows(null), [], 'null→[]');
+
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);

@@ -77,6 +77,14 @@ function kasanParseRows(values) {
   return out;
 }
 
+// 表示順 → コード の安定ソート（非破壊＝呼び出し側の配列を壊さない）。
+function kasanSortRows(rows) {
+  return (rows || []).slice().sort(function (a, b) {
+    if (a.order !== b.order) return a.order - b.order;
+    return a.code < b.code ? -1 : (a.code > b.code ? 1 : 0);
+  });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     KASAN_HEADER: KASAN_HEADER,
@@ -86,6 +94,7 @@ if (typeof module !== 'undefined' && module.exports) {
     kasanSeedKey_: kasanSeedKey_,
     kasanOrderNum_: kasanOrderNum_,
     kasanFormatDate_: kasanFormatDate_,
-    kasanParseRows: kasanParseRows
+    kasanParseRows: kasanParseRows,
+    kasanSortRows: kasanSortRows
   };
 }
