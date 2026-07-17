@@ -37,15 +37,28 @@ function getUsers(callback) {
   var wbOtherCol = findColPartial(headers, 'WBその他');
   var daysCol = findCol(headers, ['利用曜日']);
   var ampmCol = findCol(headers, ['午前/午後', '午前午後']);
+  // 中止/終了/卒業の除外は利用者台帳_v2・利用者台帳APIと同一基準（findColPartial→部分一致）
+  var statusCol = findColPartial(headers, 'ステータス');
+  if (statusCol < 0) statusCol = findColPartial(headers, '利用状況');
 
   if (nameCol < 0) return respond({ error: '「名前」または「氏名」列が見つかりません' }, callback);
 
   var hasWBCols = (wbHeightCol >= 0 && wbStrengthCol >= 0 && wbOtherCol >= 0);
 
   var users = [];
+  var excluded = 0; // 診断: 中止等で除外した人数（additive・既存挙動に影響なし）
   for (var i = 1; i < data.length; i++) {
     var name = String(data[i][nameCol] || '').trim();
     if (!name) continue;
+
+    // 終了・中止・卒業はスキップ（利用者台帳_v2 / riyousha-daichou-api と同一ロジック）
+    if (statusCol >= 0) {
+      var status = String(data[i][statusCol] || '').trim();
+      if (status.indexOf('終了') >= 0 || status.indexOf('中止') >= 0 || status.indexOf('卒業') >= 0) {
+        excluded++;
+        continue;
+      }
+    }
 
     var user = {
       name: name,
@@ -70,7 +83,7 @@ function getUsers(callback) {
     return sortA.localeCompare(sortB, 'ja');
   });
 
-  return respond({ success: true, users: users, count: users.length, hasWBCols: hasWBCols }, callback);
+  return respond({ success: true, users: users, count: users.length, excluded: excluded, hasWBCols: hasWBCols }, callback);
 }
 
 // === WB設定を保存 ===
