@@ -6831,6 +6831,27 @@ function attPrevScheduledDate(weekdaysRaw, baseDate) {
     return null;
 }
 
+// 欠席理由（出欠変更シートE列の生文字列）→ 3分類。ABS_REASONS 20項目を過不足なく網羅する。
+// 未知・空・自由入力（「その他」選択時の実保存値）は全て 'unknown' に落とす＝過去データでも壊れない。
+// ※マッピング表を関数内に置くのは、テストが関数単体を抽出して走らせるため（外部定数だと ReferenceError）。
+function absReasonCategory(reasonText) {
+    var s = String(reasonText == null ? '' : reasonText).trim();
+    if (!s) return 'unknown';
+    var HEALTH = [
+        '体調不良', '痛み（腰痛・膝痛等）', '転倒', '骨折', 'ケガ',
+        '感染症（コロナ・インフル等）', '通院', '入院', '退院後の自宅療養', 'ワクチン接種',
+        '本人の意欲低下'
+    ];
+    var PERSONAL = [
+        'ショートステイ中', '他サービス利用', '家族の都合', '家族の体調不良',
+        '冠婚葬祭', '天候不良', '外出・旅行', '私用'
+    ];
+    // 完全一致のみ。部分一致にすると「家族の体調不良」が「体調不良」に誤マッチする。
+    if (HEALTH.indexOf(s) >= 0) return 'health';
+    if (PERSONAL.indexOf(s) >= 0) return 'personal';
+    return 'unknown';
+}
+
 // 2026-06-20: 介護度を略語化（バッジの冗長語を削る）。事業対象者→事／要支援N→支N／要介護N→介N
 function attCareAbbrev(care) {
     var s = String(care || '').trim();
