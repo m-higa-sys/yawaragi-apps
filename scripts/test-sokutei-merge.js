@@ -153,6 +153,29 @@ function runOn(merge, tag) {
     eq(merge(null, null).length, 0, '両方 null →空');
     eq(merge(undefined, undefined).length, 0, '両方 undefined →空');
   }
+
+  // --- オプション includePaper（案A・期限計算は紙seedをアンカーに含める） ---
+  console.log('[includePaper] 既定/false は除外・true は含む');
+  {
+    const shien = [
+      { name: '鈴木次郎', care: '要支援2', sokutei_date: '2026-05-01', sokutei_by: '', source: 'paper', note: '' },
+      { name: '鈴木次郎', care: '要支援2', sokutei_date: '2026-06-14', sokutei_by: '勝又', source: 'app', note: '' },
+    ];
+    // 既定（第3引数なし）＝除外＝既存挙動と同じ
+    eq(merge([], shien).length, 1, '既定は paper 除外（app 1件）');
+    // includePaper:false 明示＝除外
+    eq(merge([], shien, { includePaper: false }).length, 1, 'false 明示も除外');
+    // includePaper:true＝紙seedも含む（期限計算用・前回測定日アンカー）
+    const withPaper = merge([], shien, { includePaper: true });
+    eq(withPaper.length, 2, 'true は paper 含む（2件）');
+    const paperRow = withPaper.find(r => r.source === 'paper');
+    ok(paperRow, 'paper 行が source で判別できる');
+    eq(paperRow.sokutei_date, '2026-05-01', 'paper 行の測定日（月初仮置き）が前回アンカー候補');
+    eq(paperRow.careType, '要支援系', 'paper 行も要支援系');
+    // 要介護には source 概念が無い＝includePaper に依らず不変
+    const kaigo = [{ userId: 'K', name: 'K', sokutei_date: '2026-06-10', sokutei_by: '', output_by: '' }];
+    eq(merge(kaigo, [], { includePaper: true }).length, 1, '要介護は includePaper に影響されない');
+  }
 }
 
 runOn(mergeShared, 'shared.js');

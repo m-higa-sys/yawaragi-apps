@@ -71,14 +71,16 @@ function sokuteiRemaining_(dueDateStr, todayStr) {
 // 測定の共通読み関数（shared.js §I の mergeSokuteiRecords と同一挙動のミラー）。
 // 「測定済み判定」の3箇所再実装（sessionBoardBuildInput_ / mb_kunRec・mb_shienSok / 個訓直読み）を
 //   集約するための土台。要介護「個別機能訓練計画書記録」＋要支援「要支援測定記録」を1つの正規形へ統合。
-//   - paper除外★: source:'paper'（紙台帳投入・日付が月初仮置き）は実測定から除外
+//   - paper除外★: source:'paper'（紙台帳投入・日付が月初仮置き）は既定で除外（スタッフ別集計・個訓の✓印）。
+//     opts.includePaper=true のときは含める（期限計算＝前回測定日アンカーに紙seedを使う用途）。
 //   - 日付名正規化: 入力の sokutei_date / last / doneDate を、出力は sokutei_date 1本に統一
 //   - 結合キー: 要介護は必ず userId（無ければ name フォールバック）／要支援は構造上 name のみ
 //   - 測定日の無い行は測定実績でないため除外
 // 返り値: [{ key, matchedBy, sokutei_date, sokutei_by, output_by, careType, source }]
-//   output_by は要介護のみ（要支援は null）。source は要介護は ''（列なし）。
+//   output_by は要介護のみ（要支援は null）。source は要介護は ''（列なし）。paper は source で判別可。
 // shared.js とのドリフトは scripts/test-sokutei-merge.js が検知する。純関数・GAS API非依存。
-function mergeSokuteiRecords(kaigoRecords, shienRecords) {
+function mergeSokuteiRecords(kaigoRecords, shienRecords, opts) {
+  var includePaper = !!(opts && opts.includePaper);
   function pickDate(r) {
     return String((r && (r.sokutei_date || r.last || r.doneDate)) || '').trim();
   }
@@ -103,7 +105,8 @@ function mergeSokuteiRecords(kaigoRecords, shienRecords) {
   var shien = shienRecords || [];
   for (var j = 0; j < shien.length; j++) {
     var sr = shien[j];
-    if (String((sr && sr.source) || '').trim() === 'paper') continue;
+    var ssrc = String((sr && sr.source) || '').trim();
+    if (!includePaper && ssrc === 'paper') continue;
     var sd = pickDate(sr);
     if (!sd) continue;
     out.push({
@@ -113,7 +116,7 @@ function mergeSokuteiRecords(kaigoRecords, shienRecords) {
       sokutei_by: String((sr && sr.sokutei_by) || ''),
       output_by: null,
       careType: '要支援系',
-      source: String((sr && sr.source) || '').trim()
+      source: ssrc
     });
   }
   return out;

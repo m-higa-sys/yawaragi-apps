@@ -507,14 +507,17 @@ function isBeforePlanStart(planStart, year, month) {
 // 現在「測定済み判定」は3箇所に再実装されている（sessionBoardBuildInput_ / mb_kunRec・mb_shienSok /
 //   個訓の直読み）。それを集約するための土台。要介護「個別機能訓練計画書記録」＋要支援「要支援測定記録」
 //   の両シート由来レコードを1つの正規形へ統合する純関数（DOM/GAS API非依存）。
-//   - paper除外★: source:'paper'（紙台帳投入・日付が月初仮置き）は実測定から除外（スタッフ別集計を壊さない）
+//   - paper除外★: source:'paper'（紙台帳投入・日付が月初仮置き）は既定で実測定から除外（スタッフ別集計・
+//     個訓の測定✓印はこちら）。ただし opts.includePaper=true のときは含める（期限計算＝前回測定日アンカーに
+//     紙seedを使う用途。コード.js:3013 の紙seed意図）。要介護には source 概念が無く includePaper に不変。
 //   - 日付名正規化: 入力の sokutei_date / last / doneDate を、出力は sokutei_date 1本に統一
 //   - 結合キー: 要介護は必ず userId（無ければ name フォールバック）／要支援は構造上 name のみ（userId列なし）
 //   - 測定日の無い行（計画のみ等）は測定実績でないため除外
 // 返り値: [{ key, matchedBy:'userId'|'name', sokutei_date, sokutei_by, output_by, careType:'要介護'|'要支援系', source }]
-//   output_by は要介護のみ（要支援シートに列なし＝null）。source は要介護シートに列なし＝''。
+//   output_by は要介護のみ（要支援シートに列なし＝null）。source は要介護シートに列なし＝''。paper は source で判別可。
 // GAS(session-board-core.js)に同一挙動のミラーあり。test-sokutei-merge.js が両者のドリフトを検知する。
-function mergeSokuteiRecords(kaigoRecords, shienRecords) {
+function mergeSokuteiRecords(kaigoRecords, shienRecords, opts) {
+    const includePaper = !!(opts && opts.includePaper);
     function pickDate(r) {
         return String((r && (r.sokutei_date || r.last || r.doneDate)) || '').trim();
     }
@@ -539,7 +542,8 @@ function mergeSokuteiRecords(kaigoRecords, shienRecords) {
     const shien = shienRecords || [];
     for (let j = 0; j < shien.length; j++) {
         const sr = shien[j];
-        if (String((sr && sr.source) || '').trim() === 'paper') continue;
+        const ssrc = String((sr && sr.source) || '').trim();
+        if (!includePaper && ssrc === 'paper') continue;
         const sd = pickDate(sr);
         if (!sd) continue;
         out.push({
@@ -549,7 +553,7 @@ function mergeSokuteiRecords(kaigoRecords, shienRecords) {
             sokutei_by: String((sr && sr.sokutei_by) || ''),
             output_by: null,
             careType: '要支援系',
-            source: String((sr && sr.source) || '').trim()
+            source: ssrc
         });
     }
     return out;
