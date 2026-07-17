@@ -87,6 +87,9 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
     </div>
   </div>
 </div>
+<!-- 期限計算 sokuteiCycleMonths_/sokuteiDueDate_ は shared.js §I に単一化（①測定アプリと共用）。
+     no-store方式のため ?v= は付けない（版ゲート非対象・intake/kubun等と同流儀）。 -->
+<script src="shared.js"></script>
 <script>
 const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 // 測定者候補の除外（個訓アプリ MEASURER_EXCLUDE と同値・2026-06-15社長確定）
@@ -96,23 +99,9 @@ const YOUBI_ARR = ['日', '月', '火', '水', '木', '金', '土'];
 
 // ===== 優先度純関数（正本 = my-project/scripts/test-sokutei-priority.js から同一コード転記・1文字も変えない） =====
 
-function sokuteiCycleMonths_(care) {
-  return String(care || '').indexOf('要介護') === 0 ? 3 : 4;
-}
-
-function sokuteiDueDate_(baseDateStr, care) {
-  var y = parseInt(String(baseDateStr).slice(0, 4), 10);
-  var m = parseInt(String(baseDateStr).slice(5, 7), 10);
-  var d = parseInt(String(baseDateStr).slice(8, 10), 10);
-  var add = sokuteiCycleMonths_(care);
-  var m0 = (m - 1) + add;               // 0始まり月に加算
-  var ny = y + Math.floor(m0 / 12);
-  var nm = (m0 % 12) + 1;               // 1-12
-  var lastDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate(); // 翌月0日=当月末日
-  var nd = d > lastDay ? lastDay : d;
-  function pad(n) { return (n < 10 ? '0' : '') + n; }
-  return ny + '-' + pad(nm) + '-' + pad(nd);
-}
+// sokuteiCycleMonths_(care) / sokuteiDueDate_(baseDate, care) は shared.js §I へ単一化（①測定アプリと共用）。
+// 上部で <script src="shared.js"> を先に読み込むためグローバルに存在する。挙動は移設前と同一
+// （scripts/test-sokutei-duedate.js が golden 88組合せで結線前後の不変を実測）。
 
 function sokuteiRemaining_(dueDateStr, todayStr) {
   var due = Date.parse(String(dueDateStr) + 'T00:00:00Z');

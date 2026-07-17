@@ -7,7 +7,7 @@
 //   - shared.js §I の mergeSokuteiRecords（ブラウザ用・ブレース対応抽出）
 //   - gas/yawaragi-board/session-board-core.js の同名（GAS用・逐語コピー / module.exports 経由）
 //   両者が同一挙動であることも突合する（逐語コピーのドリフト検知）。
-// サイクル月数は既存 sokuteiCycleMonths_（sokutei.html:99-101・新コピーを増やさない）を実抽出して連携確認。
+// サイクル月数は sokuteiCycleMonths_（shared.js §I へ単一化済み）を実抽出して連携確認。
 //
 // 実行: node scripts/test-sokutei-merge.js
 
@@ -51,8 +51,8 @@ const mergeShared = loadFromSource('shared.js', 'mergeSokuteiRecords');
 // GAS（session-board-core.js の逐語コピー・module.exports 経由で取得）
 const core = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'session-board-core.js'));
 const mergeGas = core.mergeSokuteiRecords;
-// 既存サイクル月数（新コピーを作らず sokutei.html の実バイトを使う）
-const sokuteiCycleMonths_ = loadFromSource('sokutei.html', 'sokuteiCycleMonths_');
+// サイクル月数（shared.js §I へ単一化済み。移設前は sokutei.html ローカルだった）
+const sokuteiCycleMonths_ = loadFromSource('shared.js', 'sokuteiCycleMonths_');
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {

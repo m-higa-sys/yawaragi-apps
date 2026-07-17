@@ -558,3 +558,26 @@ function mergeSokuteiRecords(kaigoRecords, shienRecords, opts) {
     }
     return out;
 }
+
+// 測定サイクル月数: 要介護=3ヶ月（個訓加算・厳守）／要支援・事業対象・その他=4ヶ月（目安）。
+// sokutei.html:99-101 から挙動を1ミリも変えず移設（front-end単一化・①測定アプリと共用）。
+// GAS側 session-board-core.js にも同関数あり（今回は触らない・別スコープ）。純関数・DOM非依存。
+function sokuteiCycleMonths_(care) {
+  return String(care || '').indexOf('要介護') === 0 ? 3 : 4;
+}
+
+// 次回測定期限: 基準日(YYYY-MM-DD)＋サイクル月数。加算先の月末日でクランプ（1/31+3ヶ月→4/30 等）。
+// sokutei.html:103-115 から挙動を1ミリも変えず移設。純関数・DOM非依存。
+function sokuteiDueDate_(baseDateStr, care) {
+  var y = parseInt(String(baseDateStr).slice(0, 4), 10);
+  var m = parseInt(String(baseDateStr).slice(5, 7), 10);
+  var d = parseInt(String(baseDateStr).slice(8, 10), 10);
+  var add = sokuteiCycleMonths_(care);
+  var m0 = (m - 1) + add;               // 0始まり月に加算
+  var ny = y + Math.floor(m0 / 12);
+  var nm = (m0 % 12) + 1;               // 1-12
+  var lastDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate(); // 翌月0日=当月末日
+  var nd = d > lastDay ? lastDay : d;
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  return ny + '-' + pad(nm) + '-' + pad(nd);
+}
