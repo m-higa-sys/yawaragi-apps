@@ -90,7 +90,12 @@ function kasanSortRows(rows) {
 // ★ KASAN_SECTIONS.indexOf で判定する。out[s] の存在確認だと section='constructor' 等で
 //    Object.prototype 由来の値を掴んで .push が例外になる。
 function kasanGroupBySection(rows) {
-  var out = { '基本情報': [], '運営体制': [], '地域区分': [], '加算': [], '不明': [] };
+  // ★バケツは KASAN_SECTIONS から動的に作る。リテラルで二重管理すると、
+  //   KASAN_SECTIONS に値を足して out の追加を忘れたとき indexOf は真になるのに
+  //   out[s] が undefined で .push が TypeError → 応答全体が落ちる（実測済み）。
+  var out = {};
+  KASAN_SECTIONS.forEach(function (s2) { out[s2] = []; });
+  out['不明'] = [];
   (rows || []).forEach(function (r) {
     var s = (r && r.section) || '';
     if (KASAN_SECTIONS.indexOf(s) >= 0) out[s].push(r);
@@ -100,8 +105,14 @@ function kasanGroupBySection(rows) {
 }
 
 // 加算行を系統で分ける。系統が空/未知の行は「系統不明」へ入れる＝落とさない。
+// ★契約: 引数には kasanGroupBySection(rows)['加算'] の結果**だけ**を渡すこと。
+//   全行を直接渡すと、基本情報/運営体制/地域区分の行（keitou が常に空）が
+//   「系統不明」に混入し、警告がノイズになる（本当に直すべき加算行が埋もれる）。
 function kasanSplitKeitou(rows) {
-  var out = { '介護給付': [], '総合事業': [], '系統不明': [] };
+  // ★同上。KASAN_KEITOU を唯一の情報源にする。
+  var out = {};
+  KASAN_KEITOU.forEach(function (k2) { out[k2] = []; });
+  out['系統不明'] = [];
   (rows || []).forEach(function (r) {
     var k = (r && r.keitou) || '';
     if (KASAN_KEITOU.indexOf(k) >= 0) out[k].push(r);
