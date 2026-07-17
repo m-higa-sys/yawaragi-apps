@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭） -->
+    <!-- version.txt を取得し、現URLの ?v= と違えば1回だけ最新版へ location.replace する -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) {
+                        location.replace(buildVersionedUrl(location.href, latest));
+                    }
+                })
+                .catch(function () { /* オフライン等は no-op で固まらせない */ });
+        } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -41,10 +61,6 @@
         .btn-print {
             background: #fff;
             color: #1a73e8;
-        }
-        .btn-settings {
-            background: rgba(255,255,255,0.2);
-            color: white;
         }
         .btn-sync {
             background: #4caf50;
@@ -193,7 +209,7 @@
             gap: 4px;
         }
 
-        /* ===== 設定モーダル ===== */
+        /* ===== モーダル（非表示管理で使用） ===== */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -408,7 +424,6 @@
             <a class="btn-ledger" href="https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0" target="_blank">利用者台帳</a>
             <button class="btn-sync" onclick="syncUsers()">利用者を同期</button>
             <button class="btn-print" onclick="printTable()">印刷</button>
-            <button class="btn-settings" onclick="openSettings()">設定</button>
         </div>
     </div>
 
@@ -477,30 +492,6 @@
     <!-- 印刷エリア -->
     <div class="print-area" id="printArea"></div>
 
-    <!-- 設定モーダル -->
-    <div class="modal-overlay" id="settingsModal">
-        <div class="modal">
-            <h2>設定</h2>
-            <label>GAS WebアプリURL</label>
-            <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/xxxxx/exec">
-            <p style="font-size:12px; color:#888; margin-top:-12px; margin-bottom:16px;">
-                利用者台帳から名前を取得するためのURLです
-            </p>
-            <label>自動同期間隔</label>
-            <select id="autoSyncSelect" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:16px;">
-                <option value="30">30秒ごと</option>
-                <option value="60">1分ごと</option>
-                <option value="180">3分ごと</option>
-                <option value="300">5分ごと</option>
-                <option value="0">手動のみ</option>
-            </select>
-            <div class="modal-buttons">
-                <button class="btn-cancel" onclick="closeSettings()">キャンセル</button>
-                <button class="btn-save" onclick="saveSettings()">保存</button>
-            </div>
-        </div>
-    </div>
-
     <!-- 非表示管理モーダル -->
     <div class="modal-overlay" id="hiddenModal">
         <div class="modal">
@@ -514,11 +505,12 @@
 
     <script>
         // ===== 定数 =====
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzybYfuBLM14V9YrSqJvwvPVEGh9ixEuh-S8W7nnfoFbJf0dCMLmSgJq_DJsL2rwwq6/exec";
+        const AUTO_SYNC_SEC = 60;
+
         const STORAGE_KEY = 'wb_settings_data';
-        const STORAGE_GAS = 'wb_settings_gas_url';
         const STORAGE_BLANK = 'wb_settings_blank_rows';
         const STORAGE_LAST_SYNC = 'wb_settings_last_sync';
-        const STORAGE_AUTO_SYNC = 'wb_settings_auto_sync';
 
         // ===== 状態 =====
         let users = [];         // [{name, kana, wbHeight, wbStrength, wbOther}]
@@ -540,18 +532,8 @@
             loadHiddenUsers();
             document.getElementById('blankCount').textContent = blankRows;
 
-            const gasUrl = localStorage.getItem(STORAGE_GAS);
-            if (gasUrl) {
-                fetchUsers();
-                startAutoSync();
-            } else {
-                document.getElementById('userList').innerHTML =
-                    '<div style="text-align:center; padding:40px;">' +
-                    '<p style="font-size:16px; margin-bottom:12px;">GAS URLが未設定です</p>' +
-                    '<p style="font-size:14px; color:#888;">右上の「設定」からGAS WebアプリのURLを入力してください</p>' +
-                    '</div>';
-                renderFromLocal();
-            }
+            fetchUsers();
+            startAutoSync();
             updateSyncStatus();
         });
 
@@ -569,9 +551,6 @@
 
         // ===== GASから利用者取得 =====
         function fetchUsers(silent) {
-            const gasUrl = localStorage.getItem(STORAGE_GAS);
-            if (!gasUrl) return;
-
             if (!silent) {
                 document.getElementById('userList').innerHTML = '<div class="loading">利用者データを読み込み中...</div>';
             }
@@ -623,7 +602,7 @@
 
             const script = document.createElement('script');
             script.id = 'jsonpScript';
-            script.src = gasUrl + '?callback=' + callbackName;
+            script.src = GAS_URL + '?callback=' + callbackName;
             script.onerror = function() {
                 delete window[callbackName];
                 script.remove();
@@ -865,8 +844,7 @@
 
         // ===== スプレッドシートに保存（1.5秒後に自動保存） =====
         function saveToGAS(name) {
-            var gasUrl = localStorage.getItem(STORAGE_GAS);
-            if (!gasUrl || !hasWBCols) return;
+            if (!hasWBCols) return;
 
             // 前の保存タイマーをキャンセル（連続操作に対応）
             if (saveTimers[name]) clearTimeout(saveTimers[name]);
@@ -886,7 +864,7 @@
                     }
                 };
 
-                var url = gasUrl +
+                var url = GAS_URL +
                     '?action=save' +
                     '&name=' + encodeURIComponent(name) +
                     '&wbHeight=' + encodeURIComponent(s.height || '') +
@@ -916,21 +894,12 @@
 
         // ===== 同期ボタン =====
         function syncUsers() {
-            const gasUrl = localStorage.getItem(STORAGE_GAS);
-            if (!gasUrl) {
-                openSettings();
-                return;
-            }
             fetchUsers();
         }
 
         function updateSyncStatus() {
             const lastSync = localStorage.getItem(STORAGE_LAST_SYNC);
-            var syncInterval = parseInt(localStorage.getItem(STORAGE_AUTO_SYNC) || '60');
-            var syncLabel = '';
-            if (syncInterval > 0) {
-                syncLabel = syncInterval < 60 ? '（' + syncInterval + '秒ごと自動同期）' : '（' + (syncInterval / 60) + '分ごと自動同期）';
-            }
+            var syncLabel = '（' + (AUTO_SYNC_SEC / 60) + '分ごと自動同期）';
             document.getElementById('lastSync').textContent = (lastSync ? '最終同期: ' + lastSync : '未同期') + syncLabel;
         }
 
@@ -1136,13 +1105,10 @@
         // ===== 自動同期 =====
         function startAutoSync() {
             if (autoSyncTimer) clearInterval(autoSyncTimer);
-            var interval = parseInt(localStorage.getItem(STORAGE_AUTO_SYNC) || '60') * 1000;
-            if (interval <= 0) return; // 0 = 手動のみ
             autoSyncTimer = setInterval(function() {
                 if (document.hidden) return; // タブ非表示中は止める
-                var gasUrl = localStorage.getItem(STORAGE_GAS);
-                if (gasUrl) fetchUsers(true);
-            }, interval);
+                fetchUsers(true);
+            }, AUTO_SYNC_SEC * 1000);
         }
 
         // ===== ロック/編集モード切替 =====
@@ -1158,31 +1124,6 @@
                 btn.textContent = '🔒 ロック中';
                 btn.classList.remove('editing');
                 container.classList.add('locked');
-            }
-        }
-
-        // ===== 設定モーダル =====
-        function openSettings() {
-            document.getElementById('gasUrlInput').value = localStorage.getItem(STORAGE_GAS) || '';
-            document.getElementById('autoSyncSelect').value = localStorage.getItem(STORAGE_AUTO_SYNC) || '60';
-            document.getElementById('settingsModal').classList.add('active');
-        }
-        function closeSettings() {
-            document.getElementById('settingsModal').classList.remove('active');
-        }
-        function saveSettings() {
-            const url = document.getElementById('gasUrlInput').value.trim();
-            var syncInterval = document.getElementById('autoSyncSelect').value;
-            localStorage.setItem(STORAGE_AUTO_SYNC, syncInterval);
-            if (url) {
-                localStorage.setItem(STORAGE_GAS, url);
-                closeSettings();
-                fetchUsers();
-                startAutoSync();
-            } else {
-                localStorage.removeItem(STORAGE_GAS);
-                if (autoSyncTimer) clearInterval(autoSyncTimer);
-                closeSettings();
             }
         }
 
