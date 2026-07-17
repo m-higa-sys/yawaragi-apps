@@ -1186,6 +1186,13 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'completeNewMail') {
     return completeNewMail(e);
   }
+  // 最終メール報告日時（永続保持）: 取得 last_mailcheck / 更新 set_mailcheck（追加のみ）2026-07-16
+  if (e && e.parameter && e.parameter.action === 'last_mailcheck') {
+    return lastMailcheckAction_(e);
+  }
+  if (e && e.parameter && e.parameter.action === 'set_mailcheck') {
+    return setMailcheckAction_(e);
+  }
   if (e && e.parameter && e.parameter.action === 'teireiList') {
     return respond(teireiListAction_(SpreadsheetApp.openById(SS_ID), _shiftDateParam_(e)), e.parameter.callback);
   }
@@ -13311,6 +13318,48 @@ function nmSortItems_(msgs) {
 
 // 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
 // sinceHours: 何時間前までの新着を見るか（既定24）。
+// =============================================================
+// 最終メール報告日時（永続保持） 2026-07-16
+//   ScriptProperties 'LAST_MAILCHECK_AT' に ISO8601(UTC) を保存。
+//   起点は「既読/未読」ではなく「届いた日時」。日時の前進は自動でなく、
+//   社長の完了合図で set_mailcheck を叩いた時だけ更新（忘れても翌朝へ持ち越し）。
+//   純ロジック正本: gas/yawaragi-board/mailcheck-core.js（同ディレクトリ＝同一GASプロジェクトへ
+//   push され、MAILCHECK_PROP / mcResolveLastCheck_ / mcComputeSetValue_ / mcIsValidIso_ / mcToIso_
+//   を提供する。intake-auth-core.js と同じ「core定義・ここは呼ぶだけ」流儀。内包しない＝二重宣言回避）
+// =============================================================
+// GET last_mailcheck: 最終報告日時を返す（未設定なら既定=24h前）。epochSecはGmail検索の after: 用。
+function lastMailcheckAction_(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var stored = PropertiesService.getScriptProperties().getProperty(MAILCHECK_PROP);
+  var iso = mcResolveLastCheck_(stored, Date.now(), MAILCHECK_DEFAULT_HOURS);
+  return respond({
+    ok: true,
+    lastMailcheck: iso,
+    isDefault: !mcIsValidIso_(stored),
+    defaultHours: MAILCHECK_DEFAULT_HOURS,
+    epochSec: Math.floor(Date.parse(iso) / 1000)
+  }, callback);
+}
+// set_mailcheck: 最終報告日時を「今」に更新（?at=ISO で明示指定も可）。社長の完了合図でクロが叩く。read-back検証つき。
+function setMailcheckAction_(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var atParam = (e && e.parameter) ? e.parameter.at : null;
+  var props = PropertiesService.getScriptProperties();
+  var prev = props.getProperty(MAILCHECK_PROP);
+  var iso = mcComputeSetValue_(atParam, Date.now());
+  props.setProperty(MAILCHECK_PROP, iso);
+  var after = props.getProperty(MAILCHECK_PROP);
+  if (after !== iso) {
+    return respond({ ok: false, error: 'verify_failed', lastMailcheck: after }, callback);
+  }
+  return respond({
+    ok: true,
+    lastMailcheck: iso,
+    previous: mcIsValidIso_(prev) ? mcToIso_(Date.parse(prev)) : null,
+    epochSec: Math.floor(Date.parse(iso) / 1000)
+  }, callback);
+}
+
 function checkNewMail(sinceHours) {
   var hours = (typeof sinceHours === 'number' && sinceHours > 0) ? sinceHours : 24;
   // newer_than は日単位。時間単位で絞れないので広めに取り、getDate() で二次フィルタする。
