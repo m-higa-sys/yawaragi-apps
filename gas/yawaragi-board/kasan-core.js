@@ -85,6 +85,31 @@ function kasanSortRows(rows) {
   });
 }
 
+// section 別に束ねる。未知 section は「不明」へ入れる＝黙って捨てない
+// （シートに想定外の値が入ったとき、画面から消えるより見えた方が直せる）。
+// ★ KASAN_SECTIONS.indexOf で判定する。out[s] の存在確認だと section='constructor' 等で
+//    Object.prototype 由来の値を掴んで .push が例外になる。
+function kasanGroupBySection(rows) {
+  var out = { '基本情報': [], '運営体制': [], '地域区分': [], '加算': [], '不明': [] };
+  (rows || []).forEach(function (r) {
+    var s = (r && r.section) || '';
+    if (KASAN_SECTIONS.indexOf(s) >= 0) out[s].push(r);
+    else out['不明'].push(r);
+  });
+  return out;
+}
+
+// 加算行を系統で分ける。系統が空/未知の行は「系統不明」へ入れる＝落とさない。
+function kasanSplitKeitou(rows) {
+  var out = { '介護給付': [], '総合事業': [], '系統不明': [] };
+  (rows || []).forEach(function (r) {
+    var k = (r && r.keitou) || '';
+    if (KASAN_KEITOU.indexOf(k) >= 0) out[k].push(r);
+    else out['系統不明'].push(r);
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     KASAN_HEADER: KASAN_HEADER,
@@ -95,6 +120,8 @@ if (typeof module !== 'undefined' && module.exports) {
     kasanOrderNum_: kasanOrderNum_,
     kasanFormatDate_: kasanFormatDate_,
     kasanParseRows: kasanParseRows,
-    kasanSortRows: kasanSortRows
+    kasanSortRows: kasanSortRows,
+    kasanGroupBySection: kasanGroupBySection,
+    kasanSplitKeitou: kasanSplitKeitou
   };
 }
