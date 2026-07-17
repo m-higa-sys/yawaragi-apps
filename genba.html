@@ -6906,11 +6906,17 @@ function attRenderUser(u) {
     }
 
     // 前回お休みマーク（前回の利用予定日に欠席していた出席者に表示・声かけトリガー）
+    // 2026-07-17: 欠席理由を体調/私用/不明の3分類で表示。出す/出さない条件は従来と同一
+    //   （.some → .find は述語が同じ＝ヒット有無は同値。掴んだ reason を捨てずに使うだけ）。
+    //   色は .att-prev-absent の既定をインラインstyleで上書きする（🌱利用再開バッジと同じ流儀）。
     var prevAbsentBadge = '';
     if (!isAbsent && ua && ua.weekdaysRaw && ua.recentAbsences && ua.recentAbsences.length) {
         var prevSchedDate = attPrevScheduledDate(ua.weekdaysRaw, attCurrentDate);
-        if (prevSchedDate && ua.recentAbsences.some(function(a) { return a.date === prevSchedDate; })) {
-            prevAbsentBadge = '<span class="att-prev-absent">🌼 前回お休み</span>';
+        var prevAbsHit = prevSchedDate && ua.recentAbsences.find(function(a) { return a.date === prevSchedDate; });
+        if (prevAbsHit) {
+            var pav = absPrevAbsentView(absReasonCategory(prevAbsHit.reason));
+            prevAbsentBadge = '<span class="att-prev-absent" style="background:' + pav.bg + ';color:' + pav.text + ';">' +
+                (pav.icon ? pav.icon + ' ' : '') + pav.label + '</span>';
         }
     }
 
