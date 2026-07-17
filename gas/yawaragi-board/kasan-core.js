@@ -29,12 +29,63 @@ function kasanSeedKey_(row) {
           String(row[4] == null ? '' : row[4]).trim()].join('|');
 }
 
+// 表示順。数値化できない（空・文字）なら末尾へ落とす。
+function kasanOrderNum_(v) {
+  var n = parseInt(v, 10);
+  return isNaN(n) ? 9999 : n;
+}
+
+// 最終確認日。全列テキスト書式なので通常は文字列で来るが、書式適用前の行が Date で
+// 来た場合に備える。★toISOString を使わない＝UTC変換で日付が1日ずれるため
+// （シートTZ=米西海岸／スクリプトTZ=東京の +16h ずれと同種の罠）。ローカル年月日で組む。
+function kasanFormatDate_(v) {
+  if (!v) return '';
+  if (v instanceof Date) {
+    var m = v.getMonth() + 1, d = v.getDate();
+    return v.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d;
+  }
+  return String(v).trim();
+}
+
+// シート2次元配列 → オブジェクト配列。ヘッダ「名」で列を解決する（列順の入替・列追加に強い）。
+function kasanParseRows(values) {
+  if (!values || values.length < 2) return [];
+  var header = (values[0] || []).map(function (h) { return String(h == null ? '' : h).trim(); });
+  var idx = {};
+  KASAN_HEADER.forEach(function (name) { idx[name] = header.indexOf(name); });
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i] || [];
+    var cell = function (name) {
+      var j = idx[name];
+      if (j < 0 || j >= r.length) return '';
+      return r[j] == null ? '' : r[j];
+    };
+    var section = String(cell('section')).trim();
+    if (!section) continue;  // 空行スキップ
+    out.push({
+      section: section,
+      order: kasanOrderNum_(cell('表示順')),
+      keitou: String(cell('系統')).trim(),
+      code: kasanNormalizeCode(cell('コード')),
+      item: String(cell('項目')).trim(),
+      value: String(cell('値')).trim(),
+      checkedAt: kasanFormatDate_(cell('最終確認日')),
+      note: String(cell('備考')).trim()
+    });
+  }
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     KASAN_HEADER: KASAN_HEADER,
     KASAN_SECTIONS: KASAN_SECTIONS,
     KASAN_KEITOU: KASAN_KEITOU,
     kasanNormalizeCode: kasanNormalizeCode,
-    kasanSeedKey_: kasanSeedKey_
+    kasanSeedKey_: kasanSeedKey_,
+    kasanOrderNum_: kasanOrderNum_,
+    kasanFormatDate_: kasanFormatDate_,
+    kasanParseRows: kasanParseRows
   };
 }
