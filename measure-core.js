@@ -69,6 +69,7 @@ function msBuildMeasurementTargets(universe, prevMeasuredByKey, todayAttendees, 
     out.push({
       key: u.key, name: u.name, care: u.care,
       planStart: u.planStart || '', planMonths: (u.planMonths != null ? u.planMonths : 0), // msRouteWrite(要介護)の計画月算出に必要
+      days: u.days || '',  // 優先順ソート(週回数/残来所)に必要
       前回測定日: last, 次回期限: due, status: status,
       attendingToday: !!att, session: att ? att.session : ''
     });
@@ -108,12 +109,79 @@ function msRouteWrite(target, values, today) {
   return { action: 'addShienSokutei', name: target.key, date: date, by: by };
 }
 
+// ===== 改修①②③（セッションボード流用）=====
+
+// ①日付移動（◀▶）: YYYY-MM-DD ± n日。月跨ぎ・年跨ぎ・うるうはDateに委ねる。
+function msAddDays(ymd, n) {
+  var p = String(ymd).split('-');
+  var d = new Date(Date.UTC(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10)));
+  d.setUTCDate(d.getUTCDate() + n);
+  function pad(x) { return (x < 10 ? '0' : '') + x; }
+  return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+}
+
+// ①今日以外を見ているときの警告（過去/未来・N日）。文言は session-board.html:336-337 と一致。
+// 返り: { show, kind:'past'|'future'|'', label }
+function msDateWarning(selectedDate, todayYMD) {
+  if (!selectedDate || !todayYMD || selectedDate === todayYMD) return { show: false, kind: '', label: '' };
+  var past = selectedDate < todayYMD;
+  var sp = String(selectedDate).split('-'), tp = String(todayYMD).split('-');
+  var ad = Math.abs(Math.round((Date.UTC(+sp[0], +sp[1] - 1, +sp[2]) - Date.UTC(+tp[0], +tp[1] - 1, +tp[2])) / 86400000));
+  var label = (past ? '⏪ 過去の日付を表示中' : '⏩ 未来の日付を表示中')
+    + '（今日ではありません・' + ad + '日' + (past ? '前' : '後') + '）';
+  return { show: true, kind: past ? 'past' : 'future', label: label };
+}
+
+// ②「今日測れる人」を午前/午後の2カラムへ振り分け（不在は除外）。返り: { am, pm, amCount, pmCount }
+function msSplitBySession(targets) {
+  var am = [], pm = [];
+  (targets || []).forEach(function (t) {
+    if (!t.attendingToday) return;
+    if (t.session === 'am') am.push(t);
+    else if (t.session === 'pm') pm.push(t);
+  });
+  return { am: am, pm: pm, amCount: am.length, pmCount: pm.length };
+}
+
+// ③優先順ソート: セッションボードの sbSokuteiSort_/sbMeasureUrgency_ を注入流用（逐語コピーを増やさない）。
+// overdue(赤・期限切れ)を最上部に固定し、overdue群・due群それぞれを sbSokuteiSort_ で並べる
+//   （careLayer↑=要介護上／urgency↓=残チャンス少・週回数少・欠席多ほど先）。
+// deps = { weeklyVisits: sbCountWeeklyVisits_, remainingVisits: sbCountRemainingVisits_, sokuteiSort: sbSokuteiSort_ }。
+// usageByKey: 名前(またはnormalized)→出席率U（0-1）。無ければU=1（欠席0＝ペナルティなし・sbMeasureShien_と同既定）。
+function msPrioritySort(targets, usageByKey, today, deps) {
+  var weights = { chance: 1.0, freq: 0.6, absence: 0.6, unmeasuredBoost: 2.0 }; // = SOKUTEI_WEIGHTS
+  var usage = usageByKey || {};
+  var wv = (deps && deps.weeklyVisits) || function () { return 0; };
+  var rv = (deps && deps.remainingVisits) || function () { return 0; };
+  var sortFn = (deps && deps.sokuteiSort) || function (a) { return (a || []).slice(); };
+  var enriched = (targets || []).map(function (t) {
+    var nkey = msNormalizeName_(t.name != null ? t.name : t.key);
+    var rate = (usage[t.key] != null) ? usage[t.key] : (usage[nkey] != null ? usage[nkey] : 1.0);
+    var abs = 1 - rate; if (abs < 0) abs = 0; if (abs > 1) abs = 1;
+    var e = {};
+    for (var k in t) { if (t.hasOwnProperty(k)) e[k] = t[k]; }
+    e.careLayer = (String(t.care).indexOf('要介護') === 0) ? 0 : 1;
+    e.weeklyVisits = wv(t.days);
+    e.remainingVisits = rv(t.days, today);
+    e.absenceRate = abs;
+    e.unmeasured = !t.前回測定日;
+    return e;
+  });
+  var overdue = enriched.filter(function (r) { return r.status === 'overdue'; });
+  var due = enriched.filter(function (r) { return r.status !== 'overdue'; });
+  return sortFn(overdue, weights).concat(sortFn(due, weights));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     msNormalizeName_: msNormalizeName_,
     msCurrentPlanMonth: msCurrentPlanMonth,
     msMonthEnd_: msMonthEnd_,
     msBuildMeasurementTargets: msBuildMeasurementTargets,
-    msRouteWrite: msRouteWrite
+    msRouteWrite: msRouteWrite,
+    msAddDays: msAddDays,
+    msDateWarning: msDateWarning,
+    msSplitBySession: msSplitBySession,
+    msPrioritySort: msPrioritySort
   };
 }

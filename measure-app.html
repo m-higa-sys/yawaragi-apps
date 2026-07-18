@@ -8,8 +8,10 @@
 <meta http-equiv="Expires" content="0">
 <title>📐 身体機能評価(体力測定)</title>
 <!-- 期限計算(sokuteiCycleMonths_/sokuteiDueDate_)・測定統合(mergeSokuteiRecords)は shared.js §I、
-     ①判定純関数(ms*)は measure-core.js。no-store方式のため ?v= は付けない（版ゲート非対象）。 -->
+     ①判定純関数(ms*)は measure-core.js、優先順ソート(sbSokuteiSort_等)は session-board-core.js を流用。
+     no-store方式のため ?v= は付けない（版ゲート非対象）。純関数のみ・副作用なし。 -->
 <script src="shared.js"></script>
+<script src="gas/yawaragi-board/session-board-core.js"></script>
 <script src="measure-core.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -18,6 +20,22 @@ body { font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; backgrou
 h1 { text-align: center; color: #2c3e50; font-size: 1.35em; margin-bottom: 2px; }
 .subtitle { text-align: center; color: #78909c; font-size: .8em; margin-bottom: 12px; }
 .status { text-align: center; color: #78909c; font-size: .85em; min-height: 18px; margin-bottom: 8px; }
+/* ① 日付ナビ */
+.datenav { display: flex; align-items: center; gap: 8px; margin: 0 2px 10px; }
+.dnav { border: none; background: #fff; color: #2c3e50; font-size: 1.2em; font-weight: 800; width: 48px; height: 48px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); cursor: pointer; }
+.dpick { flex: 1; padding: 12px; font-size: 1em; border: 1.5px solid #cfd8dc; border-radius: 12px; font-family: inherit; min-height: 48px; text-align: center; background: #fff; }
+.dtoday { border: none; background: #2c3e50; color: #fff; font-weight: 700; padding: 0 14px; height: 48px; border-radius: 12px; cursor: pointer; font-family: inherit; font-size: .9em; }
+.dstate { display: none; align-items: center; gap: 8px; margin: 0 2px 12px; padding: 10px 12px; border-radius: 10px; font-size: .86em; font-weight: 800; }
+.dstate.on { display: flex; }
+.dstate.past { background: #fdf1df; border: 1.5px solid #f0a83a; color: #e08a1e; }
+.dstate.future { background: #fdecea; border: 1.5px solid #ef9a9a; color: #c62828; }
+/* ② 午前午後2カラム（横向き/広幅で並列・狭幅で縦積み） */
+.cols { display: flex; gap: 10px; align-items: flex-start; }
+.col { flex: 1; min-width: 0; }
+.colhead { font-size: .82em; font-weight: 800; padding: 7px 10px; border-radius: 10px; margin-bottom: 6px; text-align: center; }
+.colhead.am { background: #e3f2fd; color: #1565c0; }
+.colhead.pm { background: #fff3e0; color: #e65100; }
+@media (max-width: 620px) { .cols { flex-direction: column; } }
 .errbar { background: #fff3e0; border: 1px solid #ffcc80; color: #e65100; border-radius: 8px; padding: 8px 10px; font-size: .8em; margin-bottom: 10px; display: none; }
 .tabs { display: flex; gap: 8px; margin-bottom: 12px; position: sticky; top: 0; z-index: 5; padding: 4px 0; background: #eef2f6; }
 .tab-btn { flex: 1; padding: 14px 6px; border: none; border-radius: 12px; background: #fff; color: #546e7a; font-weight: 700; font-size: .95em; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-family: inherit; min-height: 48px; }
@@ -64,6 +82,13 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.35em; margin-bottom: 2px; 
 <div class="wrap">
   <h1>📐 身体機能評価(体力測定)</h1>
   <div class="subtitle">機能訓練の測定（測定日・測定者・出力者）／赤=期限超過（早めに）</div>
+  <div class="datenav">
+    <button class="dnav" id="prevDay" type="button" aria-label="前日">◀</button>
+    <input type="date" id="datePick" class="dpick" aria-label="日付を選ぶ">
+    <button class="dnav" id="nextDay" type="button" aria-label="翌日">▶</button>
+    <button class="dtoday" id="todayBtn" type="button">今日</button>
+  </div>
+  <div id="dstate" class="dstate"></div>
   <div id="status" class="status">読み込み中…</div>
   <div id="errbar" class="errbar"></div>
   <div class="tabs">
@@ -104,12 +129,20 @@ const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Q
 // 測定者・出力者プルダウンの除外（個訓/sokutei と同値・2026-06-15社長確定）
 const MEASURER_EXCLUDE = ['代表', '小野', '林'];
 
-const state = { today: '', tab: 'today', targets: [], staff: [], sunk: {}, errs: {} };
+const state = { today: '', selectedDate: '', tab: 'today', targets: [], staff: [], usageByKey: {}, sunk: {}, errs: {} };
+// ③優先順ソートの依存（session-board-core.js の既存関数を注入流用・逐語コピーを増やさない）
+const SORT_DEPS = { weeklyVisits: sbCountWeeklyVisits_, remainingVisits: sbCountRemainingVisits_, sokuteiSort: sbSokuteiSort_ };
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 function fmtYMD(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
 function todayStr() { return fmtYMD(new Date()); }
 function fiscalYear() { const n = new Date(); return (n.getMonth() + 1) >= 4 ? n.getFullYear() : n.getFullYear() - 1; }
+// 前月から遡って n ヶ月分の 'YYYY-MM'（昇順・当月は含めない＝月途中の予定歪み回避。sokutei と同流儀）
+function prevMonthsList(n) {
+  const now = new Date(); const arr = [];
+  for (let i = n; i >= 1; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); arr.push(d.getFullYear() + '-' + pad2(d.getMonth() + 1)); }
+  return arr;
+}
 function esc(s) { const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
 async function fetchJson(url) {
   const res = await fetch(url, { redirect: 'follow' });
@@ -119,20 +152,25 @@ async function fetchJson(url) {
 function errMsg(r) { return (r && r.status === 'rejected') ? String(r.reason && r.reason.message || r.reason) : '応答不正'; }
 
 // ===== 取得 → 対象抽出 =====
-async function loadAll() {
+async function loadAll(dateStr) {
   const st = document.getElementById('status');
   st.textContent = '読み込み中…';
   state.errs = {};
-  const t = state.today = todayStr();
+  state.today = todayStr();
+  const t = state.selectedDate = (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) ? dateStr : state.today;  // ①選択日（既定=今日）
+  state.sunk = {};  // 日付を切り替えたら保存済みマークはリセット（その日視点で見直す）
+  updateDateNav();
   const fy = fiscalYear();
+  const mk = prevMonthsList(3);
   const R = await Promise.allSettled([
-    fetchJson(GAS + '?action=sessionBoard&date=' + t + '&t=' + Date.now()),      // 0: universe(母集団)
-    fetchJson(GAS + '?action=attendance&date=' + t + '&t=' + Date.now()),        // 1: 来所(名前+session)
+    fetchJson(GAS + '?action=sessionBoard&date=' + t + '&t=' + Date.now()),      // 0: universe(母集団・選択日)
+    fetchJson(GAS + '?action=attendance&date=' + t + '&t=' + Date.now()),        // 1: 来所(選択日・名前+session)
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + fy + '&t=' + Date.now()),     // 2: 要介護履歴
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy - 1) + '&t=' + Date.now()), // 3
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy + 1) + '&t=' + Date.now()), // 4
     fetchJson(GAS + '?action=getShienSokutei&t=' + Date.now()),                  // 5: 要支援履歴
-    fetchJson(GAS + '?action=staff_list&t=' + Date.now())                        // 6: スタッフ
+    fetchJson(GAS + '?action=staff_list&t=' + Date.now()),                       // 6: スタッフ
+    fetchJson(GAS + '?action=usage_stats&from=' + mk[0] + '&to=' + mk[mk.length - 1] + '&t=' + Date.now()) // 7: 出席率(欠席多の優先順)
   ]);
 
   // universe（決定B・母集団）
@@ -166,13 +204,35 @@ async function loadAll() {
   if (R[6].status === 'fulfilled' && R[6].value && Array.isArray(R[6].value.staff)) state.staff = R[6].value.staff.filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
   else { state.staff = []; state.errs.staff = errMsg(R[6]); }
 
-  // 対象抽出（Phase1純関数・期限は shared.js の sokuteiDueDate_ を注入）
-  state.targets = msBuildMeasurementTargets(universe, prevMeasuredByKey, attendees, t, sokuteiDueDate_);
+  // 出席率U（欠席多の優先順用）= Σ(予定−欠席)/Σ予定（当月除く3ヶ月・sokutei と同式）。無ければU=1（ペナルティなし）
+  state.usageByKey = {};
+  if (R[7].status === 'fulfilled' && R[7].value && R[7].value.usageStats) {
+    (R[7].value.usageStats.users || []).forEach(u => {
+      let s = 0, a = 0;
+      if (u.monthly) mk.forEach(m => { const mo = u.monthly[m]; if (mo) { const sch = Number(mo.scheduled) || 0; if (sch > 0) { s += sch; a += sch - (Number(mo.absences) || 0); } } });
+      state.usageByKey[u.name] = s > 0 ? a / s : 1.0;
+    });
+  } else state.errs.usage = errMsg(R[7]);
+
+  // 対象抽出（Phase1純関数・期限は shared.js の sokuteiDueDate_ を注入・today＝選択日）
+  const targets = msBuildMeasurementTargets(universe, prevMeasuredByKey, attendees, t, sokuteiDueDate_);
+  // ③優先順ソート（sbSokuteiSort_ 流用・overdue最上部・要介護上・残チャンス少い順）
+  state.targets = msPrioritySort(targets, state.usageByKey, t, SORT_DEPS);
 
   st.textContent = '';
   renderErrs();
   render();
 }
+
+// ① 日付ナビ表示更新（ピッカー値・今日以外の警告バナー）
+function updateDateNav() {
+  document.getElementById('datePick').value = state.selectedDate;
+  const w = msDateWarning(state.selectedDate, state.today);
+  const el = document.getElementById('dstate');
+  el.className = 'dstate' + (w.show ? ' on ' + w.kind : '');
+  el.textContent = w.label;
+}
+function goDate(d) { if (/^\d{4}-\d{2}-\d{2}$/.test(d)) loadAll(d); }
 
 function renderErrs() {
   const keys = Object.keys(state.errs);
@@ -195,22 +255,31 @@ function render() {
   const today = all.filter(r => r.attendingToday);
   document.getElementById('cntToday').textContent = today.length ? '(' + today.length + ')' : '';
   document.getElementById('cntAll').textContent = all.length ? '(' + all.length + ')' : '';
-  const rows = (state.tab === 'today') ? today : all;
   const listEl = document.getElementById('list');
 
-  if (!rows.length) {
-    listEl.innerHTML = '<div class="empty">' + (state.tab === 'today' ? '今日測る対象はいません（お疲れさまです）' : '今月の測定対象はありません') + '</div>';
+  if (state.tab === 'today') {
+    // ② 午前/午後の2カラム（横向き/広幅で並列・狭幅で縦積み・各列人数付き）
+    const sp = msSplitBySession(all);
+    if (!sp.amCount && !sp.pmCount) { listEl.innerHTML = '<div class="empty">今日測る対象はいません（お疲れさまです）</div>'; return; }
+    listEl.innerHTML = '<div class="cols">' + colHtml('am', '午前', sp.am) + colHtml('pm', '午後', sp.pm) + '</div>';
     return;
   }
-  // overdue（赤・最上部）→ due の順は msBuildMeasurementTargets で確定済み。見出しで区切る。
-  let html = '';
-  let lastGrp = null;
-  rows.forEach(r => {
+  // 「今月の残り」タブ: 単一リスト（overdue→due・優先順・見出し区切り）
+  if (!all.length) { listEl.innerHTML = '<div class="empty">今月の測定対象はありません</div>'; return; }
+  let html = '', lastGrp = null;
+  all.forEach(r => {
     const grp = r.status === 'overdue' ? '🔴 期限超過（スライド・早めに）' : '🟡 今月が期限';
     if (grp !== lastGrp) { html += '<div class="grp">' + grp + '</div>'; lastGrp = grp; }
     html += cardHtml(r);
   });
   listEl.innerHTML = html;
+}
+
+function colHtml(cls, label, rows) {
+  let inner = '<div class="colhead ' + cls + '">' + label + '　' + rows.length + '名</div>';
+  if (!rows.length) inner += '<div class="empty" style="padding:16px 6px">なし</div>';
+  else rows.forEach(r => { inner += cardHtml(r); });
+  return '<div class="col">' + inner + '</div>';
 }
 
 function cardHtml(r) {
@@ -239,7 +308,7 @@ function openDialog(encKey) {
   dlgTarget = r;
   document.getElementById('dlgName').textContent = r.name;
   document.getElementById('dlgSub').textContent = r.care + '　/　前回 ' + (r.前回測定日 || 'なし') + '　/　期限 ' + r.次回期限;
-  document.getElementById('fDate').value = state.today;   // 既定=今日・過去日も選べる
+  document.getElementById('fDate').value = state.selectedDate;   // 既定=選択日・過去日も選べる
   const byOpts = '<option value="">（測定者を選択）</option>' + state.staff.map(s => '<option value="' + esc(s) + '">' + esc(s) + '</option>').join('');
   document.getElementById('fBy').innerHTML = byOpts;
   const isKaigo = String(r.care).indexOf('要介護') === 0;
@@ -258,11 +327,12 @@ async function saveMeasurement() {
   const btn = document.getElementById('saveBtn');
   const by = document.getElementById('fBy').value;
   if (!by) { alert('測定者を選択してください'); return; }
-  const date = document.getElementById('fDate').value || state.today;
+  const date = document.getElementById('fDate').value || state.selectedDate;
   const outputBy = (String(dlgTarget.care).indexOf('要介護') === 0) ? document.getElementById('fOutput').value : '';
   btn.disabled = true; btn.textContent = '保存中…';   // 二重タップ抑止（追記系の二重行防止）
 
-  const spec = msRouteWrite(dlgTarget, { sokuteiDate: date, sokuteiBy: by, outputBy: outputBy }, state.today);
+  // 計画月の算出は選択日基準（その日視点でのサイクル）。measure-core が planStart/planMonths から算出。
+  const spec = msRouteWrite(dlgTarget, { sokuteiDate: date, sokuteiBy: by, outputBy: outputBy }, state.selectedDate);
   try {
     if (spec.action === 'updateKeikakusho') {
       if (!spec.year || !spec.month) throw new Error('計画月が特定できません（planStart未設定の可能性）');
@@ -289,6 +359,12 @@ async function saveMeasurement() {
     btn.disabled = false; btn.textContent = '📐 保存する';
   }
 }
+
+// ① 日付ナビのイベント
+document.getElementById('prevDay').addEventListener('click', () => goDate(msAddDays(state.selectedDate, -1)));
+document.getElementById('nextDay').addEventListener('click', () => goDate(msAddDays(state.selectedDate, 1)));
+document.getElementById('todayBtn').addEventListener('click', () => goDate(todayStr()));
+document.getElementById('datePick').addEventListener('change', function () { goDate(this.value); });
 
 loadAll();
 </script>

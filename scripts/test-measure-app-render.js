@@ -62,6 +62,7 @@ function fetchStub(url) {
   }
   else if (url.indexOf('action=getShienSokutei') >= 0) data = { ok: true, records: [] }; // ダミー支援=前回なし=即due
   else if (url.indexOf('action=staff_list') >= 0) data = { staff: ['勝又', '小林', '代表', '小野', '林'] };
+  else if (url.indexOf('action=usage_stats') >= 0) data = { usageStats: { users: [{ name: 'ダミー介護', monthly: {} }] } }; // ③欠席多の優先順（空でU=1）
   else if (url.indexOf('action=updateKeikakusho') >= 0) { captured.writes.push(url); data = { ok: true }; }
   else if (url.indexOf('action=addShienSokutei') >= 0) { captured.writes.push(url); data = { ok: true, verified: true }; }
   else data = {};
@@ -75,12 +76,15 @@ const sandbox = {
   fetch: fetchStub, alert: (m) => { captured.lastAlert = m; }, console,
   Date: FixedDate, encodeURIComponent, decodeURIComponent, Math, JSON, Promise, Array, String, Object
 };
-// shared.js / measure-core.js を注入
+// shared.js / measure-core.js / session-board-core.js を注入（本番は各<script src>で読む）
+const sbcore = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'session-board-core.js'));
 const inject = extractFn(shared, 'sokuteiCycleMonths_') + '\n' + extractFn(shared, 'sokuteiDueDate_') + '\n' +
   extractFn(shared, 'mergeSokuteiRecords') + '\n' +
-  'var msBuildMeasurementTargets=S.msBuildMeasurementTargets, msRouteWrite=S.msRouteWrite;';
-sandbox.msBuildMeasurementTargets = mcore.msBuildMeasurementTargets;
-sandbox.msRouteWrite = mcore.msRouteWrite;
+  'var msBuildMeasurementTargets=S.msBuildMeasurementTargets, msRouteWrite=S.msRouteWrite,' +
+  ' msAddDays=S.msAddDays, msDateWarning=S.msDateWarning, msSplitBySession=S.msSplitBySession, msPrioritySort=S.msPrioritySort,' +
+  ' sbCountWeeklyVisits_=S.sbCountWeeklyVisits_, sbCountRemainingVisits_=S.sbCountRemainingVisits_, sbSokuteiSort_=S.sbSokuteiSort_;';
+['msBuildMeasurementTargets', 'msRouteWrite', 'msAddDays', 'msDateWarning', 'msSplitBySession', 'msPrioritySort'].forEach(n => { sandbox[n] = mcore[n]; });
+['sbCountWeeklyVisits_', 'sbCountRemainingVisits_', 'sbSokuteiSort_'].forEach(n => { sandbox[n] = sbcore[n]; });
 
 const ctx = 'with (S) {\n' + inject + '\n' + script0 +
   '\n; S.__loadAll = loadAll; S.__render = render; S.__open = openDialog; S.__save = saveMeasurement; S.__state = state; }';
@@ -102,12 +106,24 @@ new Function('S', ctx)(sandbox);
   ok(sandbox.__state.staff.indexOf('代表') < 0 && sandbox.__state.staff.indexOf('小野') < 0 && sandbox.__state.staff.indexOf('林') < 0, '測定者から代表・小野・林を除外');
   eq(sandbox.__state.staff.length, 2, '除外後2名（勝又・小林）');
 
-  console.log('[render] 今日タブ=出席のみ / 全タブ=不在含む');
-  sandbox.__render(); // 既定=今日タブ
-  ok(els['list']._in.indexOf('ダミー介護') >= 0, '今日タブに出席の要介護');
+  console.log('[② render] 今日タブ=午前午後2カラム / 全タブ=不在含む');
+  sandbox.__state.tab = 'today'; sandbox.__render();
+  ok(els['list']._in.indexOf('午前') >= 0 && els['list']._in.indexOf('午後') >= 0, '今日タブは午前/午後2カラム見出し');
+  ok(els['list']._in.indexOf('ダミー介護') >= 0, '今日タブ(午前列)に出席の要介護');
   ok(els['list']._in.indexOf('ダミー支援') < 0, '今日タブに不在の要支援は出さない（主=今日測れる人）');
-  sandbox.__state.tab = 'all'; sandbox.__render(); // 全タブ（不在含む）
+  sandbox.__state.tab = 'all'; sandbox.__render();
   ok(els['list']._in.indexOf('ダミー介護') >= 0 && els['list']._in.indexOf('ダミー支援') >= 0, '全タブは不在の要支援も描画（副=今月の残り）');
+
+  console.log('[① 日付切替] 選択日を未来に→再取得・選択日反映・警告バナー');
+  await sandbox.__loadAll('2026-06-22');
+  eq(sandbox.__state.selectedDate, '2026-06-22', 'selectedDate=選択日に更新');
+  eq(els['datePick'].value, '2026-06-22', 'ピッカーに選択日');
+  ok(String(els['dstate']._tx).indexOf('未来の日付') >= 0 && String(els['dstate']._tx).indexOf('2日後') >= 0, '今日以外→警告バナー(未来2日後)');
+  ok(String(els['dstate'].className).indexOf('future') >= 0, 'バナー種別=future');
+  // 今日に戻す（後続の保存テストが選択日基準で動くため）
+  await sandbox.__loadAll();
+  eq(sandbox.__state.selectedDate, '2026-06-20', '今日に戻る');
+  ok(String(els['dstate'].className).indexOf('on') < 0, '今日=警告バナー非表示');
 
   console.log('[save 要介護] updateKeikakusho×3・計画月キー・出力者初期=測定者');
   captured.writes = [];
