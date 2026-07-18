@@ -300,6 +300,38 @@ function sbResidue_(present, allTargetKeys) {
 // 測定プール優先順位の重み（spec §2.4・実データ確認後に調整可）。
 var SOKUTEI_WEIGHTS = { chance: 1.0, freq: 0.6, absence: 0.6, unmeasuredBoost: 2.0 };
 
+// 決定B（測定アプリ①用）: sbIntersectPresent_ の手前＝当日出席で絞る前の「全母集団」。
+// 要介護(kaigoUsers・planStart/planMonths付)＋要支援(shienUsers・days付)を1形に統合する純関数。
+// ①はこれで「今日不在の未測定者(スライド超過)」も拾える。既存の交差済み sokutei とは別物・additive。
+// 返り: [{ key, name, care, planStart, planMonths, days, track:'kaigo'|'shien' }]
+//   要介護 key=userId(=name)・care=category・planStart/planMonths有。要支援 key=name・planStart''・planMonths0。
+function sbBuildUniverse_(kaigoUsers, shienUsers) {
+  var out = [];
+  (kaigoUsers || []).forEach(function (u) {
+    out.push({
+      key: u.userId != null ? u.userId : u.name,
+      name: u.name,
+      care: u.category != null ? u.category : (u.care || ''),
+      planStart: u.planStart || '',
+      planMonths: (u.planMonths != null ? u.planMonths : 3),
+      days: u.days || '',
+      track: 'kaigo'
+    });
+  });
+  (shienUsers || []).forEach(function (u) {
+    out.push({
+      key: u.name,
+      name: u.name,
+      care: u.care || '',
+      planStart: '',
+      planMonths: 0,
+      days: u.days || '',
+      track: 'shien'
+    });
+  });
+  return out;
+}
+
 function sbBuildBoard_(input, judges) {
   var present = sbUniquePresent_(input.attendance);
   // session別のdistinct人数と異常（am/pm衝突）を集計（§2.5）。presentAm+presentPm=presentCount 恒等。
@@ -326,7 +358,8 @@ function sbBuildBoard_(input, judges) {
     date: input.today, year: input.year, month: input.month,
     presentCount: present.length, presentAm: presentAm, presentPm: presentPm,
     sokutei: sokutei, koukuMoni: koukuMoni, koukuTaisou: koukuTaisou,
-    kotan: kotan, birthday: birthday, residue: residue, ampmConflict: ampmConflict
+    kotan: kotan, birthday: birthday, residue: residue, ampmConflict: ampmConflict,
+    universe: sbBuildUniverse_(input.kaigoUsers, input.shienUsers)  // 決定B: 全母集団(交差前・今日不在含む)
   };
 }
 
@@ -420,6 +453,7 @@ if (typeof module !== 'undefined' && module.exports) {
     sbCountRemainingVisits_: sbCountRemainingVisits_,
     sbMeasureUrgency_: sbMeasureUrgency_,
     sbSokuteiSort_: sbSokuteiSort_,
-    mergeSokuteiRecords: mergeSokuteiRecords
+    mergeSokuteiRecords: mergeSokuteiRecords,
+    sbBuildUniverse_: sbBuildUniverse_
   };
 }

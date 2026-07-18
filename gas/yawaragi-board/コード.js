@@ -15932,7 +15932,7 @@ function sessionBoard(e) {
       return sbBuildBoard_(built, { isHyoukaMonth: isHyoukaMonth, oralCycleAt: oralCycleAt });
     });
     if (board) {
-      ['presentCount', 'presentAm', 'presentPm', 'sokutei', 'koukuMoni', 'koukuTaisou', 'kotan', 'birthday', 'residue', 'ampmConflict']
+      ['presentCount', 'presentAm', 'presentPm', 'sokutei', 'koukuMoni', 'koukuTaisou', 'kotan', 'birthday', 'residue', 'ampmConflict', 'universe']
         .forEach(function (k) { out[k] = board[k]; });
     } else { out.ok = false; }
   } else { out.ok = false; }
