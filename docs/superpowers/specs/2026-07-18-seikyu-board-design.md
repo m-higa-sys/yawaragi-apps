@@ -85,8 +85,8 @@
      const riyou  = cell.riyou;                 // 数値（利用者請求額）
      const nyukin = String(cell.nyukin || '').trim(); // '入金済' | '未入金' | ''
 
-     if (riyou === 0) return 'exempt';          // ⬜ 対象外（公費のみ・利用者負担ゼロ）
-     //   ↑ 請求0を全部吸収。「請求0×未入金」「請求0×空欄」もここで exempt。
+     if (riyou <= 0) return 'exempt';           // ⬜ 対象外（公費のみ・利用者負担ゼロ＝0、返金・調整の負値も）
+     //   ↑ 請求0以下を全部吸収。「請求0×未入金」「請求0×空欄」も、負の請求額(返金月)もここで exempt（赤にしない）。
      if (nyukin === '')     return 'pending';   // 🟡 判定前（請求確定前＝空欄・引落し結果まだ）
      if (nyukin === '未入金') return 'unpaid';   // 🔴 未入金（riyou>0 が保証済み）
      if (nyukin === '入金済') return 'paid';     // 🟩 入金済
