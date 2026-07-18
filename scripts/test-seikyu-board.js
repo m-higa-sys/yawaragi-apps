@@ -26,8 +26,10 @@ new Function('sb',
   extractFn('sbIsSubtotalRow') +
   extractFn('sbNormalize') +
   extractFn('sbExtractRows') +
+  extractFn('sbClassify') +
   '\nsb.parseLine = sbParseLine; sb.decode = sbDecode; sb.toRows = sbToRows; sb.resolve = sbResolveColumns;'
   + ' sb.isSub = sbIsSubtotalRow; sb.normalize = sbNormalize; sb.extract = sbExtractRows;'
+  + ' sb.classify = sbClassify;'
 )(sb);
 
 let pass = 0, fail = 0;
@@ -85,6 +87,17 @@ const nrec = sb.normalize(fakeRow, colF);
 ok(nrec.riyou === 2920, 'F1: "2,920"→2920（カンマ除去して数値化）');
 ok(nrec.jihi === 120, 'F2: jihi=税抜120+消費税0=120');
 ok(nrec.nyukin === '未入金', 'F3: 入金状況を保持');
+
+// ===== G. sbClassify（5状態＋空・評価順による排他）=====
+ok(sb.classify(null) === 'empty', 'G1: 行なし→empty');
+ok(sb.classify({ riyou: 2920, nyukin: '未入金' }) === 'unpaid', 'G2: 請求>0×未入金→unpaid');
+ok(sb.classify({ riyou: 3197, nyukin: '入金済' }) === 'paid', 'G3: 請求>0×入金済→paid');
+ok(sb.classify({ riyou: 4535, nyukin: '' }) === 'pending', 'G4: 請求>0×空欄→pending');
+// 境界4ケース
+ok(sb.classify({ riyou: 0, nyukin: '未入金' }) === 'exempt', 'G5境界: 請求0×未入金→exempt（赤にしない）');
+ok(sb.classify({ riyou: 0, nyukin: '' }) === 'exempt', 'G6境界: 請求0×空欄→exempt');
+ok(sb.classify({ riyou: 0, nyukin: '入金済' }) === 'exempt', 'G7: 請求0×入金済→exempt');
+ok(sb.classify({ riyou: 5000, nyukin: '保留' }) === 'unknown', 'G8境界: 請求>0×想定外値→unknown');
 
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

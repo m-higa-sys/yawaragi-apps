@@ -101,6 +101,17 @@ function sbExtractRows(rows) {
   return out;
 }
 
+function sbClassify(cell) {
+  if (!cell) return 'empty';
+  var riyou = cell.riyou;
+  var nyukin = String(cell.nyukin || '').trim();
+  if (riyou === 0) return 'exempt';        // 請求0は入金状況を問わず対象外（生活保護等）
+  if (nyukin === '') return 'pending';     // 請求確定前＝判定不能
+  if (nyukin === '未入金') return 'unpaid'; // ここに来る時点で riyou>0 保証
+  if (nyukin === '入金済') return 'paid';
+  return 'unknown';                         // 想定外の入金状況値
+}
+
 // ===== DOM 配線（以降のタスクで実装）=====
 </script>
 </body>
