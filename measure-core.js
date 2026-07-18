@@ -68,6 +68,7 @@ function msBuildMeasurementTargets(universe, prevMeasuredByKey, todayAttendees, 
     var att = attByKey[nkey];
     out.push({
       key: u.key, name: u.name, care: u.care,
+      planStart: u.planStart || '', planMonths: (u.planMonths != null ? u.planMonths : 0), // msRouteWrite(要介護)の計画月算出に必要
       前回測定日: last, 次回期限: due, status: status,
       attendingToday: !!att, session: att ? att.session : ''
     });
