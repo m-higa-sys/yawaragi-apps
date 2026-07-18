@@ -92,10 +92,10 @@
     function infoRows(arr){ return (arr || []).map(kasanInfoLine).join(''); }
     function addonRows(arr){ return (arr || []).map(kasanAddonLine).join(''); }
 
-    // 応答 → カード4枚（設計書§7）。未知 section / 系統不明 も黙って消さず表示する。
-    function render(resp){
-      if (!resp){ showError('応答がありません'); return; }
-      var kasan = resp['加算'] || {};
+    // 応答 → カード4枚のHTML文字列（DOM非依存の純関数＝テストで挙動検証可能）。設計書§7。
+    // 未知 section / 系統不明 も黙って消さず表示する（設計書の「沈黙させない」）。
+    function kasanCardsHtml(resp){
+      var kasan = (resp && resp['加算']) || {};
       var html = '';
       html += cardHtml('事業所基本情報', infoRows(resp['基本情報']));
       html += cardHtml('運営体制', infoRows(resp['運営体制']));
@@ -108,8 +108,14 @@
       if ((kasan['系統不明'] || []).length) addon += '<h3 class="warn">系統不明（要確認）</h3>' + addonRows(kasan['系統不明']);
       html += cardHtml('加算', addon);
       if ((resp['不明'] || []).length) html += cardHtml('不明な区分（要確認）', infoRows(resp['不明']));
-      html += '<p class="updated">最終更新: ' + esc(resp.updatedAt || '') + '</p>';
-      document.getElementById('app').innerHTML = html;
+      html += '<p class="updated">最終更新: ' + esc((resp && resp.updatedAt) || '') + '</p>';
+      return html;
+    }
+
+    // DOM への反映は薄いラッパに限定（組み立ては kasanCardsHtml が純関数で担う）。
+    function render(resp){
+      if (!resp){ showError('応答がありません'); return; }
+      document.getElementById('app').innerHTML = kasanCardsHtml(resp);
     }
 
     function showError(msg){ document.getElementById('app').innerHTML = '<p class="err">読み込みに失敗しました: ' + esc(msg) + '</p>'; }
