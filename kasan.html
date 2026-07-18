@@ -48,6 +48,7 @@
         .knote { display: block; margin-left: 74px; font-size: 12.5px; color: var(--muted); }
         .note { margin: 10px 0 0; padding: 8px 10px; background: #fffaf0; border: 1px solid #f6e05e; border-radius: 6px; font-size: 13px; color: #744210; }
         .updated { text-align: right; color: var(--muted); font-size: 12px; margin: 8px 4px 0; }
+        .unknown { color: #9c4221; font-weight: 700; }  /* 未取得/未確認の強調。白背景コントラスト約5.9:1（WCAG AA余裕） */
         .err { padding: 16px; color: #c53030; text-align: center; }
         .loading { padding: 40px 16px; text-align: center; color: var(--muted); }
     </style>
@@ -83,10 +84,13 @@
     }
 
     // 加算1行 → 「コード␣名称（＋備考）」の HTML。全出力 esc 経由（XSS防止）。設計書§7-4。
-    function kasanAddonLine(r){ return '<div class="krow"><span class="kcode">' + esc(r.code) + '</span> <span class="kname">' + esc(r.item) + '</span>' + (r.note ? ' <span class="knote">' + esc(r.note) + '</span>' : '') + '</div>'; }
+    function kasanAddonLine(r){ return '<div class="krow"><span class="kcode">' + esc(r.code) + '</span> <span class="kname">' + esc(r.item) + '</span>' + (r.note ? ' <span class="knote">' + kasanMark(r.note) + '</span>' : '') + '</div>'; }
 
-    // 基本情報等の1行 → 「項目：値」HTML。全出力 esc 経由。
-    function kasanInfoLine(r){ return '<div class="irow"><span class="ilabel">' + esc(r.item) + '</span><span class="ival">' + esc(r.value) + '</span></div>'; }
+    // 未取得/未確認を含む値を警告色で強調（esc内包）。スタッフが「未確定」と一目で分かる。設計書§7-3。
+    function kasanMark(v){ var t = esc(v); return /未取得|未確認/.test(t) ? '<span class="unknown">' + t + '</span>' : t; }
+
+    // 基本情報等の1行 → 「項目：値」HTML。全出力 esc 経由（値は kasanMark で未取得を強調）。
+    function kasanInfoLine(r){ return '<div class="irow"><span class="ilabel">' + esc(r.item) + '</span><span class="ival">' + kasanMark(r.value) + '</span></div>'; }
 
     function cardHtml(title, bodyHtml){ return '<section class="card"><h2>' + esc(title) + '</h2>' + bodyHtml + '</section>'; }
     function infoRows(arr){ return (arr || []).map(kasanInfoLine).join(''); }

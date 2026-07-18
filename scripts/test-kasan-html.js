@@ -133,10 +133,11 @@ ok(/delete\s+window\[[^\]]+\]|window\[[^\]]+\]\s*=\s*undefined/.test(KASAN), 'cl
 console.log('[加算行フォーマット]');
 function loadAddonLine(html) {
   const escM = html.match(/function\s+esc\s*\([^)]*\)\s*\{.*\}/);
+  const markM = html.match(/function\s+kasanMark\s*\([^)]*\)\s*\{.*\}/);
   const m = html.match(/function\s+kasanAddonLine\s*\([^)]*\)\s*\{.*\}/);
   if (!m) throw new Error('kasan.html に function kasanAddonLine が見つからない（未実装＝RED）');
   const sandbox = {};
-  (function () { eval(escM[0] + '\n' + m[0] + '\nsandbox.f = kasanAddonLine;'); })();
+  (function () { eval(escM[0] + '\n' + (markM ? markM[0] : '') + '\n' + m[0] + '\nsandbox.f = kasanAddonLine;'); })();
   return sandbox.f;
 }
 try {
@@ -164,10 +165,11 @@ try {
 console.log('[基本情報行フォーマット]');
 function loadInfoLine(html) {
   const escM = html.match(/function\s+esc\s*\([^)]*\)\s*\{.*\}/);
+  const markM = html.match(/function\s+kasanMark\s*\([^)]*\)\s*\{.*\}/);
   const m = html.match(/function\s+kasanInfoLine\s*\([^)]*\)\s*\{.*\}/);
   if (!m) throw new Error('kasan.html に function kasanInfoLine が見つからない（未実装＝RED）');
   const sandbox = {};
-  (function () { eval(escM[0] + '\n' + m[0] + '\nsandbox.f = kasanInfoLine;'); })();
+  (function () { eval(escM[0] + '\n' + (markM ? markM[0] : '') + '\n' + m[0] + '\nsandbox.f = kasanInfoLine;'); })();
   return sandbox.f;
 }
 try {
@@ -241,6 +243,37 @@ try {
 } catch (e) {
   fail++; console.log('  FAIL ' + e.message);
 }
+
+// ===== 9. 未取得/未確認の警告強調（レビュー#1・社長判断で採用） =====
+console.log('[未取得/未確認の警告強調]');
+function loadMark(html) {
+  const escM = html.match(/function\s+esc\s*\([^)]*\)\s*\{.*\}/);
+  const m = html.match(/function\s+kasanMark\s*\([^)]*\)\s*\{.*\}/);
+  if (!m) throw new Error('kasan.html に function kasanMark が見つからない（未実装＝RED）');
+  const sandbox = {};
+  (function () { eval(escM[0] + '\n' + m[0] + '\nsandbox.f = kasanMark;'); })();
+  return sandbox.f;
+}
+try {
+  const mark = loadMark(KASAN);
+  ok(/class="unknown"/.test(mark('未取得')), '「未取得」を警告 span で囲む');
+  ok(/class="unknown"/.test(mark('加算率は未確認（介護給付は12.7%だが総合事業も同率かは未確認）')), '「未確認」を含む値を警告 span で囲む');
+  ok(!/class="unknown"/.test(mark('6級地')), '通常値は囲まない');
+  eq(mark('10.27円'), '10.27円', '通常値は素の esc（span なし）');
+  ok(mark('<b>未取得</b>').indexOf('<b>') < 0 && mark('<b>未取得</b>').indexOf('&lt;b&gt;') >= 0, '警告時も esc される（XSS）');
+} catch (e) {
+  fail++; console.log('  FAIL ' + e.message);
+}
+// 実データ経路: 未取得を含む値が kasanCardsHtml で unknown span になる
+try {
+  const mod = loadModule(KASAN);
+  const h = mod.kasanCardsHtml({
+    '基本情報': [], '運営体制': [],
+    '地域区分': [{ item: '総合事業の単価', value: '未取得' }],
+    '加算': { '介護給付': [], '総合事業': [], '系統不明': [] }, '不明': []
+  });
+  ok(/class="unknown"/.test(h), '地域区分の「未取得」値が警告色で描画される');
+} catch (e) { fail++; console.log('  FAIL ' + e.message); }
 
 console.log('\n===== ' + pass + ' passed / ' + fail + ' failed =====');
 process.exit(fail ? 1 : 0);
