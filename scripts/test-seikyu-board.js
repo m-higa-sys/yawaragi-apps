@@ -122,5 +122,39 @@ const mDup = sb.merge([dupA]);
 ok(mDup.people[0].months['202605'].riyou === 300, 'H5: 同一(番号×月)複数行→請求額を加算(100+200)');
 ok(mDup.people[0].months['202605'].jihi === 30, 'H6: 自費も加算(10+20)');
 
+// ===== I. 統合：各フィクスチャの状態別件数（実データ固定値・差替時は更新）=====
+function loadRecs(name) {
+  return sb.extract(sb.toRows(sb.decode(fs.readFileSync(path.join(__dirname, 'fixtures', 'seikyu', name)))));
+}
+function tally(recs) {
+  var t = { unpaid: 0, pending: 0, exempt: 0, paid: 0, unknown: 0 };
+  recs.forEach(function (r) { t[sb.classify(r)]++; });
+  return t;
+}
+const t3 = tally(loadRecs('fixture-2026-03-kakuteimae.csv'));
+const t4 = tally(loadRecs('fixture-2026-04.csv'));
+const t5 = tally(loadRecs('fixture-2026-05.csv'));
+const t6 = tally(loadRecs('fixture-2026-06-hikiotoshimae.csv'));
+
+// 3月旧（全空欄・請求確定前）：pending=110 / exempt=5 / unpaid=0 / paid=0 ← 空欄=pending の核心
+ok(loadRecs('fixture-2026-03-kakuteimae.csv').length === 115, 'I1: 3旧 個人115');
+ok(t3.pending === 110 && t3.exempt === 5 && t3.unpaid === 0 && t3.paid === 0,
+   'I2: 3旧 pending110/exempt5/unpaid0/paid0（誰も赤にならない）: ' + JSON.stringify(t3));
+
+// 4月（引落し後）：unpaid=2 / exempt=5 / paid=111 / pending=0
+ok(loadRecs('fixture-2026-04.csv').length === 118, 'I3: 4月 個人118');
+ok(t4.unpaid === 2 && t4.exempt === 5 && t4.paid === 111 && t4.pending === 0,
+   'I4: 4月 unpaid2/exempt5/paid111/pending0: ' + JSON.stringify(t4));
+
+// 5月（引落し後）：unpaid=2 / exempt=4 / paid=110 / pending=0
+ok(loadRecs('fixture-2026-05.csv').length === 116, 'I5: 5月 個人116');
+ok(t5.unpaid === 2 && t5.exempt === 4 && t5.paid === 110 && t5.pending === 0,
+   'I6: 5月 unpaid2/exempt4/paid110/pending0: ' + JSON.stringify(t5));
+
+// 6月（請求確定済・引落し前・全未入金）：unpaid=106 / exempt=5 / pending=0 / paid=0
+ok(loadRecs('fixture-2026-06-hikiotoshimae.csv').length === 111, 'I7: 6月 個人111');
+ok(t6.unpaid === 106 && t6.exempt === 5 && t6.pending === 0 && t6.paid === 0,
+   'I8: 6月 unpaid106/exempt5/pending0/paid0: ' + JSON.stringify(t6));
+
 console.log('\n' + (fail === 0 ? '[OK] ' : '[NG] ') + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
