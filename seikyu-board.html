@@ -112,6 +112,29 @@ function sbClassify(cell) {
   return 'unknown';                         // 想定外の入金状況値
 }
 
+function sbMergeMonths(recordArrays) {
+  var byKey = {};       // hken -> { hken, name, months: { tsuki: cell } }
+  var monthsSet = {};
+  recordArrays.forEach(function (recs) {
+    recs.forEach(function (rec) {
+      var k = rec.hken || ('__noid_' + rec.name);
+      if (!byKey[k]) byKey[k] = { hken: rec.hken, name: rec.name, months: {} };
+      monthsSet[rec.tsuki] = true;
+      var cell = byKey[k].months[rec.tsuki];
+      if (!cell) {
+        byKey[k].months[rec.tsuki] = { tsuki: rec.tsuki, riyou: rec.riyou, jihi: rec.jihi, pay: rec.pay, nyukin: rec.nyukin };
+      } else {
+        cell.riyou += rec.riyou;  // 同一(番号×月)複数行→加算（実データは重複ゼロ・堅牢性で残す）
+        cell.jihi += rec.jihi;
+      }
+      if (rec.name) byKey[k].name = rec.name;
+    });
+  });
+  var months = Object.keys(monthsSet).sort();
+  var people = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  return { people: people, months: months };
+}
+
 // ===== DOM 配線（以降のタスクで実装）=====
 </script>
 </body>
