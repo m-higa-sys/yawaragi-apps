@@ -45,7 +45,9 @@ function elFor(id) {
 const FIXT = {
   universe: [
     { key: 'ダミー介護', name: 'ダミー介護', care: '要介護1', planStart: '2026-03', planMonths: 3, days: '月', track: 'kaigo' },
-    { key: 'ダミー支援', name: 'ダミー支援', care: '要支援2', planStart: '', planMonths: 0, days: '火', track: 'shien' }
+    { key: 'ダミー支援', name: 'ダミー支援', care: '要支援2', planStart: '', planMonths: 0, days: '火', track: 'shien' },
+    // ③スライド組の検証用: 前回2026-01-10・要介護3ヶ月→期限2026-04-10＝先月以前＝overdue
+    { key: 'ダミー先月', name: 'ダミー先月', care: '要介護2', planStart: '2026-01', planMonths: 3, days: '水', track: 'kaigo' }
   ]
 };
 const captured = { writes: [], reads: [] };
@@ -57,7 +59,10 @@ function fetchStub(url) {
   else if (url.indexOf('action=getKeikakushoYear') >= 0) {
     // ダミー介護 前回2026-03-20 → 要介護3ヶ月 → due 2026-06-20（当月due）
     data = url.indexOf('year=2026') >= 0
-      ? { ok: true, records: [{ userId: 'ダミー介護', name: 'ダミー介護', sokutei_date: '2026-03-20', sokutei_by: '', output_by: '' }], users: [] }
+      ? { ok: true, records: [
+          { userId: 'ダミー介護', name: 'ダミー介護', sokutei_date: '2026-03-20', sokutei_by: '', output_by: '' },
+          { userId: 'ダミー先月', name: 'ダミー先月', sokutei_date: '2026-01-10', sokutei_by: '', output_by: '' }
+        ], users: [] }
       : { ok: true, records: [], users: [] };
   }
   else if (url.indexOf('action=getShienSokutei') >= 0) data = { ok: true, records: [] }; // ダミー支援=前回なし=即due
@@ -81,9 +86,9 @@ const sbcore = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'sess
 const inject = extractFn(shared, 'sokuteiCycleMonths_') + '\n' + extractFn(shared, 'sokuteiDueDate_') + '\n' +
   extractFn(shared, 'mergeSokuteiRecords') + '\n' +
   'var msBuildMeasurementTargets=S.msBuildMeasurementTargets, msRouteWrite=S.msRouteWrite,' +
-  ' msAddDays=S.msAddDays, msDateWarning=S.msDateWarning, msSplitBySession=S.msSplitBySession, msPrioritySort=S.msPrioritySort,' +
+  ' msAddDays=S.msAddDays, msDateWarning=S.msDateWarning, msSplitBySession=S.msSplitBySession, msPrioritySort=S.msPrioritySort, msCountCarryOver=S.msCountCarryOver,' +
   ' sbCountWeeklyVisits_=S.sbCountWeeklyVisits_, sbCountRemainingVisits_=S.sbCountRemainingVisits_, sbSokuteiSort_=S.sbSokuteiSort_;';
-['msBuildMeasurementTargets', 'msRouteWrite', 'msAddDays', 'msDateWarning', 'msSplitBySession', 'msPrioritySort'].forEach(n => { sandbox[n] = mcore[n]; });
+['msBuildMeasurementTargets', 'msRouteWrite', 'msAddDays', 'msDateWarning', 'msSplitBySession', 'msPrioritySort', 'msCountCarryOver'].forEach(n => { sandbox[n] = mcore[n]; });
 ['sbCountWeeklyVisits_', 'sbCountRemainingVisits_', 'sbSokuteiSort_'].forEach(n => { sandbox[n] = sbcore[n]; });
 
 const ctx = 'with (S) {\n' + inject + '\n' + script0 +
@@ -95,7 +100,7 @@ new Function('S', ctx)(sandbox);
 
   console.log('[loadAll] universe＋履歴 → 対象抽出');
   const t = sandbox.__state.targets;
-  eq(t.length, 2, '対象2件（介護・支援とも当月due）');
+  eq(t.length, 3, '対象3件（当月due2件＋スライド組1件）');
   const kaigo = t.find(r => r.key === 'ダミー介護'), shien = t.find(r => r.key === 'ダミー支援');
   ok(kaigo, '要介護が対象に居る'); ok(shien, '要支援が対象に居る');
   eq(kaigo.attendingToday, true, '要介護は今日出席（attendance反映）');
@@ -113,6 +118,16 @@ new Function('S', ctx)(sandbox);
   ok(els['list']._in.indexOf('ダミー支援') < 0, '今日タブに不在の要支援は出さない（主=今日測れる人）');
   sandbox.__state.tab = 'all'; sandbox.__render();
   ok(els['list']._in.indexOf('ダミー介護') >= 0 && els['list']._in.indexOf('ダミー支援') >= 0, '全タブは不在の要支援も描画（副=今月の残り）');
+
+  // ===== ③ スライド組は「区別はする、でも急かさない」（2026-07-18 方針変更） =====
+  console.log('[③ スライド表示] 控えめバッジのみ・赤や見出しで急かさない・件数に内訳');
+  const allHtml = els['list']._in;
+  ok(allHtml.indexOf('先月から') >= 0, 'スライド組に控えめバッジ「先月から」が付く');
+  ok(allHtml.indexOf('b-red') < 0, '赤枠(b-red)を使わない＝急かさない');
+  ok(allHtml.indexOf('期限超過') < 0, '「期限超過」の見出し区切りを出さない');
+  ok(allHtml.indexOf('（<span class="over">超過</span>）') < 0, '「（超過）」の赤字を出さない');
+  eq(els['cntAll']._tx, '(3・うち先月から1)', 'タブ件数に内訳を添える（3名・うち先月から1名）');
+  ok(els['cntToday']._tx.indexOf('先月から') < 0, '「今日測れる人」タブには内訳を出さない（対象は今月の残りのみ）');
 
   console.log('[① 日付切替] 選択日を未来に→再取得・選択日反映・警告バナー');
   await sandbox.__loadAll('2026-06-22');

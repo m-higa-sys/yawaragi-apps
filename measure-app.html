@@ -46,6 +46,8 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.35em; margin-bottom: 2px; 
 .card:active { transform: scale(.995); }
 .card.b-red { border-left-color: #ef5350; }
 .card.b-yellow { border-left-color: #ffa726; }
+/* ③スライド組（先月から持ち越し）の控えめバッジ。急かさない＝赤・警告色は使わない（2026-07-18 方針） */
+.carry { display: inline-block; background: #eceff1; color: #78909c; font-size: .72em; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-left: 6px; white-space: nowrap; }
 .card.sunk { opacity: .42; cursor: default; }
 .rowline { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .bdg { font-size: 1.2em; }
@@ -254,7 +256,10 @@ function render() {
   const all = state.targets;
   const today = all.filter(r => r.attendingToday);
   document.getElementById('cntToday').textContent = today.length ? '(' + today.length + ')' : '';
-  document.getElementById('cntAll').textContent = all.length ? '(' + all.length + ')' : '';
+  // ③人数に内訳を添える（例: (75・うち先月から12)）。0名なら内訳は出さない
+  const carryN = msCountCarryOver(all);
+  document.getElementById('cntAll').textContent = all.length
+    ? '(' + all.length + (carryN ? '・うち先月から' + carryN : '') + ')' : '';
   const listEl = document.getElementById('list');
 
   if (state.tab === 'today') {
@@ -264,14 +269,11 @@ function render() {
     listEl.innerHTML = '<div class="cols">' + colHtml('am', '午前', sp.am) + colHtml('pm', '午後', sp.pm) + '</div>';
     return;
   }
-  // 「今月の残り」タブ: 単一リスト（overdue→due・優先順・見出し区切り）
+  // 「今月の残り」タブ: 単一リスト（優先順のみ）。
+  // ③スライド組を先頭に集める見出し区切り（🔴期限超過/🟡今月が期限）は廃止＝並びに混ぜて急かさない。
   if (!all.length) { listEl.innerHTML = '<div class="empty">今月の測定対象はありません</div>'; return; }
-  let html = '', lastGrp = null;
-  all.forEach(r => {
-    const grp = r.status === 'overdue' ? '🔴 期限超過（スライド・早めに）' : '🟡 今月が期限';
-    if (grp !== lastGrp) { html += '<div class="grp">' + grp + '</div>'; lastGrp = grp; }
-    html += cardHtml(r);
-  });
+  let html = '';
+  all.forEach(r => { html += cardHtml(r); });
   listEl.innerHTML = html;
 }
 
@@ -284,18 +286,20 @@ function colHtml(cls, label, rows) {
 
 function cardHtml(r) {
   const sunk = !!state.sunk[r.key];
-  const bcls = sunk ? 'sunk' : (r.status === 'overdue' ? 'b-red' : 'b-yellow');
-  const bdg = sunk ? '✅' : (r.status === 'overdue' ? '🔴' : '🟡');
+  // ③スライド組でも見た目は同じ（赤にしない）。区別は控えめな「先月から」バッジのみ（2026-07-18 方針）
+  const bcls = sunk ? 'sunk' : 'b-yellow';
+  const bdg = sunk ? '✅' : '🟡';
+  const carry = (!sunk && r.status === 'overdue') ? '<span class="carry">先月から</span>' : '';
   let pill;
   if (r.attendingToday) pill = '<span class="pill ' + r.session + '">' + (r.session === 'am' ? '午前来所' : '午後来所') + '</span>';
   else pill = '<span class="pill absent">今日は不在</span>';
   const prev = r.前回測定日 ? '前回 ' + esc(r.前回測定日) : '<span class="over">前回なし（要測定）</span>';
-  const due = '次回期限 ' + esc(r.次回期限) + (r.status === 'overdue' ? '（<span class="over">超過</span>）' : '');
+  const due = '次回期限 ' + esc(r.次回期限);   // ③「（超過）」の赤字は出さない＝急かさない
   const doneTag = sunk ? '<span class="done-tag">✅ 保存済み</span>' : '';
   return '<div class="card ' + bcls + '" ' + (sunk ? '' : 'onclick="openDialog(\'' + encodeURIComponent(r.key) + '\')"') + '>' +
     '<div class="rowline"><span class="bdg">' + bdg + '</span>' +
     '<span class="nm">' + esc(r.name) + '</span>' +
-    '<span class="cr">' + esc(r.care) + '</span>' + pill + ' ' + doneTag + '</div>' +
+    '<span class="cr">' + esc(r.care) + '</span>' + carry + pill + ' ' + doneTag + '</div>' +
     '<div class="meta">' + prev + '　/　' + due + '</div></div>';
 }
 

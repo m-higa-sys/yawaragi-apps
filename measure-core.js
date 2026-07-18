@@ -49,7 +49,9 @@ function msMonthEnd_(today) {
 //   dueDateFn: sokuteiDueDate_（shared.js）を注入
 // 次回期限=dueDateFn(前回,care)。前回なし=today(即due)。次回期限>当月末＝今サイクル中(sunk)＝除外。
 // 返り: [{ key, name, care, 前回測定日, 次回期限, status:'overdue'|'due', attendingToday, session }]
-//   status: 次回期限が今月より前=overdue(赤・最上部) / 今月内=due。並び: overdue先→due、各群 次回期限昇順。
+//   status: 次回期限が今月より前=overdue(スライド組) / 今月内=due。
+//   ※ここでの並び(overdue先→due・次回期限昇順)は素の既定。画面では msPrioritySort が全件を並べ直すため、
+//     スライド組が上に来るわけではない（2026-07-18 方針変更・急かさない）。
 function msBuildMeasurementTargets(universe, prevMeasuredByKey, todayAttendees, today, dueDateFn) {
   var prev = prevMeasuredByKey || {};
   var attByKey = {};
@@ -144,8 +146,10 @@ function msSplitBySession(targets) {
 }
 
 // ③優先順ソート: セッションボードの sbSokuteiSort_/sbMeasureUrgency_ を注入流用（逐語コピーを増やさない）。
-// overdue(赤・期限切れ)を最上部に固定し、overdue群・due群それぞれを sbSokuteiSort_ で並べる
-//   （careLayer↑=要介護上／urgency↓=残チャンス少・週回数少・欠席多ほど先）。
+// 全件を1回の sbSokuteiSort_ に通す（careLayer↑=要介護上／urgency↓=残チャンス少・週回数少・欠席多ほど先）。
+// 【2026-07-18 方針変更】以前は overdue(スライド組)を最上部に固定していたが、その分岐を外した。
+//   理由: スライド＝「その月のうちにやればいい」運用で緊急ではなく、最上部固定＋赤は急かしすぎ。
+//   区別は控えめバッジ（先月から）と件数内訳（msCountCarryOver）だけで行い、並び順は変えない。
 // deps = { weeklyVisits: sbCountWeeklyVisits_, remainingVisits: sbCountRemainingVisits_, sokuteiSort: sbSokuteiSort_ }。
 // usageByKey: 名前(またはnormalized)→出席率U（0-1）。無ければU=1（欠席0＝ペナルティなし・sbMeasureShien_と同既定）。
 function msPrioritySort(targets, usageByKey, today, deps) {
@@ -167,9 +171,15 @@ function msPrioritySort(targets, usageByKey, today, deps) {
     e.unmeasured = !t.前回測定日;
     return e;
   });
-  var overdue = enriched.filter(function (r) { return r.status === 'overdue'; });
-  var due = enriched.filter(function (r) { return r.status !== 'overdue'; });
-  return sortFn(overdue, weights).concat(sortFn(due, weights));
+  return sortFn(enriched, weights);   // status で群分けしない＝スライド組も通常の優先順に混ざる
+}
+
+// ③スライド組（先月以前が期限で未測定＝status:'overdue'）の件数。
+// 「今月の残り」タブの人数に内訳を添えるため（例: 75名（うち先月から12名））。急かす目的ではなく把握用。
+function msCountCarryOver(targets) {
+  var n = 0;
+  (targets || []).forEach(function (t) { if (t && t.status === 'overdue') n++; });
+  return n;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -182,6 +192,7 @@ if (typeof module !== 'undefined' && module.exports) {
     msAddDays: msAddDays,
     msDateWarning: msDateWarning,
     msSplitBySession: msSplitBySession,
-    msPrioritySort: msPrioritySort
+    msPrioritySort: msPrioritySort,
+    msCountCarryOver: msCountCarryOver
   };
 }
