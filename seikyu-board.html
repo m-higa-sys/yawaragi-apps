@@ -155,23 +155,28 @@ function sbHandleFiles(fileList) {
   if (!pending) return;
   arr.forEach(function (file) {
     var reader = new FileReader();
+    var done = function () { pending--; if (pending === 0) sbRender(); };
     reader.onload = function (e) {
       try {
         var recs = sbExtractRows(sbToRows(sbDecode(e.target.result)));
         var tsuki = recs.length ? recs[0].tsuki : file.name;
+        // 同じ月を再取込したら差し替える（append しない）。sbMergeMonthsは同一(番号×月)を加算するため
+        // 二重pushすると金額だけ倍化する（赤/緑は正しいまま気づきにくい）。1ファイル=1月前提でlabel(tsuki)をキーに重複排除。
+        sbFiles = sbFiles.filter(function (f) { return f.label !== tsuki; });
         sbFiles.push({ label: tsuki, recs: recs });
       } catch (err) {
         alert('取込失敗（' + file.name + '）: ' + err.message);
       }
-      pending--;
-      if (pending === 0) sbRender();
+      done();
     };
+    reader.onerror = function () { alert('読取り失敗（' + file.name + '）'); done(); };
     reader.readAsArrayBuffer(file);
   });
 }
 
 function sbYen(n) { return '¥' + (n || 0).toLocaleString(); }
 function sbPayIcon(pay) { return pay === '口座振替' ? '🏦' : (pay === '現金' ? '💵' : (pay === '振込' ? '🏧' : '')); }
+function sbEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 function sbRender() {
   var merged = sbMergeMonths(sbFiles.map(function (f) { return f.recs; }));
@@ -200,7 +205,7 @@ function sbRender() {
   months.forEach(function (m) { html += '<th>' + m.slice(0, 4) + '/' + m.slice(4) + '</th>'; });
   html += '</tr></thead><tbody>';
   merged.people.forEach(function (p) {
-    html += '<tr><td class="name">' + p.name + '</td>';
+    html += '<tr><td class="name">' + sbEsc(p.name) + '</td>';
     months.forEach(function (m) {
       var cell = p.months[m];
       var st = sbClassify(cell);
