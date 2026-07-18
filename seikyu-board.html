@@ -139,8 +139,11 @@ function sbMergeMonths(recordArrays) {
 // ===== DOM 配線（以降のタスクで実装）=====
 
 var sbFiles = []; // { label, recs }
+// 常設注意書き（設計§5）。ロード時から表示し、描画後も同文言を維持する。
+var SB_NOTE = '入金状況が空欄の月＝請求確定前は「—（判定前）」表示で入金判定しません。「未入金」は引落し失敗 or 引落し待ちを含みます。確定した入金/未入金は引落し後のCSVで反映されます。';
 
 function sbSetupDrop() {
+  document.getElementById('note').textContent = SB_NOTE; // 投下前から常設
   var dz = document.getElementById('dropZone');
   var input = document.getElementById('fileInput');
   dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.style.background = '#d4e9f7'; });
@@ -196,13 +199,12 @@ function sbRender() {
   unpaidPeople.forEach(function (p) { months.forEach(function (m) { if (sbClassify(p.months[m]) === 'unpaid') unpaidSum += p.months[m].riyou; }); });
   document.getElementById('summary').innerHTML =
     '<p><strong>未入金の利用者: ' + unpaidPeople.length + '人 / 合計 ' + sbYen(unpaidSum) + '</strong></p>';
-  document.getElementById('note').textContent =
-    '入金状況が空欄の月＝請求確定前は「—（判定前）」表示で入金判定しません。「未入金」は引落し失敗 or 引落し待ちを含みます。確定した入金/未入金は引落し後のCSVで反映されます。';
+  document.getElementById('note').textContent = SB_NOTE;
 
   // マトリクス
   var labelOf = { unpaid: '未入金', pending: '—（判定前）', paid: '入金済', exempt: '対象外', unknown: '要確認', empty: '' };
   var html = '<table><thead><tr><th>利用者</th>';
-  months.forEach(function (m) { html += '<th>' + m.slice(0, 4) + '/' + m.slice(4) + '</th>'; });
+  months.forEach(function (m) { html += '<th>' + sbEsc(m.slice(0, 4) + '/' + m.slice(4)) + '</th>'; });
   html += '</tr></thead><tbody>';
   merged.people.forEach(function (p) {
     html += '<tr><td class="name">' + sbEsc(p.name) + '</td>';
