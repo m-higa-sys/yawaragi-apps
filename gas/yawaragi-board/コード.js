@@ -6033,7 +6033,7 @@ function _test_sendCancelEmail_a_case() {
 // ここでは sendLine 本体を変更せず、同じ LINE Push API を muteHttpExceptions 付きで
 // 直接叩き、HTTPステータス（200=成功 / 401=トークン不正 / 400=宛先不正）を実行ログに残す。
 // 送る文面は「【テスト】」で始まる固定文＋日時のみ。利用者情報は一切含めない。
-function _test_sendLine_() {
+function AAA_LINEテスト() {
   // 1) sendLine が実際に使うグローバル（スクリプト読込時に Properties から取得）の状態
   Logger.log('LINE_TOKEN    : ' + (LINE_TOKEN ? 'あり（' + String(LINE_TOKEN).length + '文字）' : '❌ なし'));
   Logger.log('OWNER_USER_ID : ' + (OWNER_USER_ID ? 'あり' : '❌ なし'));
