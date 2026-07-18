@@ -48,6 +48,31 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.35em; margin-bottom: 2px; 
 .card.b-yellow { border-left-color: #ffa726; }
 /* ③スライド組（先月から持ち越し）の控えめバッジ。急かさない＝赤・警告色は使わない（2026-07-18 方針） */
 .carry { display: inline-block; background: #eceff1; color: #78909c; font-size: .72em; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-left: 6px; white-space: nowrap; }
+/* v3① スタッフ選択シート（2タップ記録）: タブレットのタッチ前提で大きめの格子 */
+.sheet-head { font-size: 1.05em; font-weight: 800; color: #2c3e50; margin-bottom: 2px; }
+.sheet-sub { font-size: .85em; color: #78909c; margin-bottom: 14px; }
+.sgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 420px) { .sgrid { grid-template-columns: repeat(2, 1fr); } }
+.sbtn { min-height: 64px; border: 1.5px solid #cfd8dc; border-radius: 14px; background: #fff; color: #2c3e50; font-size: 1.05em; font-weight: 700; font-family: inherit; cursor: pointer; padding: 8px 4px; }
+.sbtn:active { background: #e3f2fd; }
+.sbtn.recent { border-color: #90caf9; background: #f3f9ff; }
+.sheet-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+.linkbtn { background: none; border: none; color: #1565c0; font-size: .9em; font-weight: 700; font-family: inherit; cursor: pointer; padding: 10px 4px; text-decoration: underline; }
+/* v3① 取り消しバー（誤タップの保険・直前の1件のみ） */
+.undobar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom)); background: #2c3e50; color: #fff; border-radius: 12px; padding: 12px 14px; display: none; align-items: center; gap: 14px; z-index: 60; box-shadow: 0 4px 16px rgba(0,0,0,.3); font-size: .9em; max-width: 92vw; }
+.undobar.show { display: flex; }
+.undobar button { background: #fff; color: #2c3e50; border: none; border-radius: 8px; font-weight: 800; font-family: inherit; padding: 8px 14px; min-height: 40px; cursor: pointer; }
+/* v3② 測定済み一覧 */
+.lctl { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.lctl input, .lctl select { flex: 1; min-width: 120px; padding: 11px; font-size: .95em; border: 1.5px solid #cfd8dc; border-radius: 10px; font-family: inherit; min-height: 44px; background: #fff; }
+.tally { background: #fff; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: .85em; color: #546e7a; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.tally b { color: #2c3e50; }
+.tally .tsep { color: #cfd8dc; margin: 0 6px; }
+.hrow { background: #fff; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.hrow .hd { font-weight: 800; color: #2c3e50; font-size: .9em; }
+.hrow .hn { font-weight: 700; flex: 1; }
+.hrow .hb { color: #546e7a; font-size: .85em; }
+.hrow .hc { color: #90a4ae; font-size: .78em; }
 .card.sunk { opacity: .42; cursor: default; }
 .rowline { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .bdg { font-size: 1.2em; }
@@ -96,9 +121,26 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.35em; margin-bottom: 2px; 
   <div class="tabs">
     <button class="tab-btn active" id="tabToday" onclick="switchTab('today')">今日測れる人<span class="cnt" id="cntToday"></span></button>
     <button class="tab-btn" id="tabAll" onclick="switchTab('all')">今月の残り（不在含む）<span class="cnt" id="cntAll"></span></button>
+    <button class="tab-btn" id="tabDone" onclick="switchTab('done')">測定済み一覧<span class="cnt" id="cntDone"></span></button>
   </div>
   <div id="list"></div>
 </div>
+
+<!-- v3① スタッフ選択シート（名前タップ→ここでスタッフをタップ＝2タップで保存） -->
+<div class="overlay" id="sheetOverlay" onclick="if(event.target===this)closeStaffSheet()">
+  <div class="dialog">
+    <div class="sheet-head" id="shName">—</div>
+    <div class="sheet-sub" id="shSub">—</div>
+    <div class="sgrid" id="shGrid"></div>
+    <div class="sheet-foot">
+      <button class="linkbtn" type="button" onclick="openDetailFromSheet()">詳細（過去日・出力者を変える）</button>
+      <button class="linkbtn" type="button" onclick="closeStaffSheet()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- v3① 取り消しバー（直前の1件のみ） -->
+<div class="undobar" id="undobar"><span id="undoMsg">保存しました</span><button type="button" onclick="undoLast()">取り消し</button></div>
 
 <!-- 記録ダイアログ -->
 <div class="overlay" id="overlay" onclick="if(event.target===this)closeDialog()">
@@ -131,7 +173,16 @@ const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Q
 // 測定者・出力者プルダウンの除外（個訓/sokutei と同値・2026-06-15社長確定）
 const MEASURER_EXCLUDE = ['代表', '小野', '林'];
 
-const state = { today: '', selectedDate: '', tab: 'today', targets: [], staff: [], usageByKey: {}, sunk: {}, errs: {} };
+const state = {
+  today: '', selectedDate: '', tab: 'today', targets: [], staff: [], usageByKey: {}, sunk: {}, errs: {},
+  // v3② 測定済み一覧: measuredAll=履歴全件（paper除外）／listAnchor=表示中の月／listMonths=表示ヶ月数（既定6）
+  measuredAll: [], nameByKey: {}, listAnchor: '', listMonths: 6, listQ: '', listBy: '',
+  // v3① 直近使った測定者（端末内のみ・localStorage）／undo=直前の1件だけ
+  recentStaff: [], undo: null
+};
+const RECENT_KEY = 'measureRecentStaff';   // 端末内保存。名前だけ＝画面に出ている情報と同じ（持ち出さない）
+function loadRecent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') || []; } catch (e) { return []; } }
+function saveRecent(list) { try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) { /* 保存できなくても機能は動く */ } }
 // ③優先順ソートの依存（session-board-core.js の既存関数を注入流用・逐語コピーを増やさない）
 const SORT_DEPS = { weeklyVisits: sbCountWeeklyVisits_, remainingVisits: sbCountRemainingVisits_, sokuteiSort: sbSokuteiSort_ };
 
@@ -196,6 +247,12 @@ async function loadAll(dateStr) {
   else state.errs.shien = errMsg(R[5]);
 
   const merged = mergeSokuteiRecords(kaigoRecords, shienRecords, { includePaper: true });
+  // v3② 測定済み一覧は「実際に測った記録」だけ＝紙seed(paper)を除外して別に持つ（期限アンカーとは用途が違う）。
+  // 取得は fy-1/fy/fy+1 の3年度分なので既定6ヶ月には十分足りる（追加リクエストなし）。
+  state.measuredAll = mergeSokuteiRecords(kaigoRecords, shienRecords, { includePaper: false });
+  state.nameByKey = {};
+  universe.forEach(u => { if (u && u.key) state.nameByKey[u.key] = u.name || u.key; });
+  if (!state.listAnchor) state.listAnchor = t;   // 一覧の基準月（◀▶で動かす・日付ナビとは独立）
   const prevMeasuredByKey = {};
   merged.forEach(r => {
     if (!r.sokutei_date) return;
@@ -249,7 +306,15 @@ function switchTab(tab) {
   state.tab = tab;
   document.getElementById('tabToday').classList.toggle('active', tab === 'today');
   document.getElementById('tabAll').classList.toggle('active', tab === 'all');
+  document.getElementById('tabDone').classList.toggle('active', tab === 'done');
   render();
+}
+
+// v3② 表示中の一覧行（期間→絞り込み）。集計もタブ件数もこれに追随させる＝表示と数字がずれない。
+function measuredRows() {
+  const range = msMonthsBack(state.listAnchor || state.selectedDate || todayStr(), state.listMonths);
+  const base = msBuildMeasuredList(state.measuredAll, state.nameByKey, range);
+  return { range: range, rows: msFilterMeasured(base, { q: state.listQ, by: state.listBy }) };
 }
 
 function render() {
@@ -261,6 +326,10 @@ function render() {
   document.getElementById('cntAll').textContent = all.length
     ? '(' + all.length + (carryN ? '・うち先月から' + carryN : '') + ')' : '';
   const listEl = document.getElementById('list');
+  const mr = measuredRows();
+  document.getElementById('cntDone').textContent = mr.rows.length ? '(' + mr.rows.length + ')' : '';
+
+  if (state.tab === 'done') { listEl.innerHTML = doneHtml(mr); return; }
 
   if (state.tab === 'today') {
     // ② 午前/午後の2カラム（横向き/広幅で並列・狭幅で縦積み・各列人数付き）
@@ -276,6 +345,44 @@ function render() {
   all.forEach(r => { html += cardHtml(r); });
   listEl.innerHTML = html;
 }
+
+// v3② 測定済み一覧: 期間ナビ＋名前検索＋測定者絞り＋測定者別件数（偏りの可視化）＋履歴行
+function doneHtml(mr) {
+  const from = mr.range.from.slice(0, 7).replace('-', '/'), to = mr.range.to.slice(0, 7).replace('-', '/');
+  const byOpts = ['<option value="">測定者すべて</option>']
+    .concat(msCountByMeasurer(msBuildMeasuredList(state.measuredAll, state.nameByKey, mr.range))
+      .map(c => '<option value="' + esc(c.name) + '"' + (state.listBy === c.name ? ' selected' : '') + '>' + esc(c.name) + '</option>')).join('');
+  let h = '<div class="datenav">' +
+    '<button class="dnav" type="button" onclick="moveListMonth(-1)" aria-label="前の月へ">◀</button>' +
+    '<div class="dpick" style="line-height:24px">' + from + '〜' + to + '（' + state.listMonths + 'ヶ月）</div>' +
+    '<button class="dnav" type="button" onclick="moveListMonth(1)" aria-label="次の月へ">▶</button>' +
+    '<button class="dtoday" type="button" onclick="expandListMonths()">もっと見る</button>' +
+    '</div>';
+  h += '<div class="lctl">' +
+    '<input id="lq" type="search" placeholder="名前で探す（この人の前回いつ？）" value="' + esc(state.listQ) + '" oninput="onListQ(this.value)">' +
+    '<select id="lby" onchange="onListBy(this.value)">' + byOpts + '</select></div>';
+  // 測定者別の件数＝表示中の範囲・絞り込みに追随（「直近使った人が左上」で偏る分を数字で見えるように）
+  const tally = msCountByMeasurer(mr.rows);
+  h += '<div class="tally">測定者別　' + (tally.length
+    ? tally.map(c => '<b>' + esc(c.name) + '</b> ' + c.count).join('<span class="tsep">/</span>')
+    : '（該当なし）') + '</div>';
+  if (!mr.rows.length) return h + '<div class="empty">該当する測定記録はありません</div>';
+  mr.rows.forEach(r => {
+    h += '<div class="hrow"><span class="hd">' + esc(r.date.slice(5).replace('-', '/')) + '</span>' +
+      '<span class="hn">' + esc(r.name) + '</span>' +
+      '<span class="hb">' + (r.by ? esc(r.by) : '<span class="hc">測定者未記入</span>') + '</span>' +
+      '<span class="hc">' + esc(r.care) + '</span></div>';
+  });
+  return h;
+}
+function onListQ(v) { state.listQ = v; render(); document.getElementById('lq').focus(); }
+function onListBy(v) { state.listBy = v; render(); }
+function moveListMonth(n) {
+  const d = new Date(state.listAnchor.slice(0, 4), Number(state.listAnchor.slice(5, 7)) - 1 + n, 1);
+  state.listAnchor = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-01';
+  render();
+}
+function expandListMonths() { state.listMonths += 6; render(); }   // 「もっと見る」＝過去へ6ヶ月ずつ広げる
 
 function colHtml(cls, label, rows) {
   let inner = '<div class="colhead ' + cls + '">' + label + '　' + rows.length + '名</div>';
@@ -296,14 +403,117 @@ function cardHtml(r) {
   const prev = r.前回測定日 ? '前回 ' + esc(r.前回測定日) : '<span class="over">前回なし（要測定）</span>';
   const due = '次回期限 ' + esc(r.次回期限);   // ③「（超過）」の赤字は出さない＝急かさない
   const doneTag = sunk ? '<span class="done-tag">✅ 保存済み</span>' : '';
-  return '<div class="card ' + bcls + '" ' + (sunk ? '' : 'onclick="openDialog(\'' + encodeURIComponent(r.key) + '\')"') + '>' +
+  // v3① 既定の動線はスタッフ選択シート（2タップ）。過去日・出力者変更はシート内の「詳細」から既存ダイアログへ。
+  return '<div class="card ' + bcls + '" ' + (sunk ? '' : 'onclick="openStaffSheet(\'' + encodeURIComponent(r.key) + '\')"') + '>' +
     '<div class="rowline"><span class="bdg">' + bdg + '</span>' +
     '<span class="nm">' + esc(r.name) + '</span>' +
     '<span class="cr">' + esc(r.care) + '</span>' + carry + pill + ' ' + doneTag + '</div>' +
     '<div class="meta">' + prev + '　/　' + due + '</div></div>';
 }
 
-// ===== 記録ダイアログ =====
+// ===== v3① スタッフ選択シート（名前タップ→スタッフタップの2タップで保存）=====
+// 測定日＝選択中の日付（入力させない）／測定者＝タップした人／出力者＝測定者と同じ（画面に出さない）。
+// 押す直前の二重確認は見出しの「氏名 ／ 日付」で行う（確認ダイアログを挟まない＝2タップを守る）。
+let sheetTarget = null;
+function openStaffSheet(encKey) {
+  const key = decodeURIComponent(encKey);
+  const r = state.targets.find(x => x.key === key);
+  if (!r || state.sunk[key]) return;
+  sheetTarget = r;
+  document.getElementById('shName').textContent = r.name;
+  document.getElementById('shSub').textContent = fmtJP(state.selectedDate) + ' に測定　/　' + r.care;
+  const order = msStaffOrder(state.staff, state.recentStaff);
+  document.getElementById('shGrid').innerHTML = order.length
+    ? order.map(s => '<button type="button" class="sbtn' + (state.recentStaff.indexOf(s) >= 0 ? ' recent' : '') +
+      '" onclick="pickStaff(\'' + encodeURIComponent(s) + '\')">' + esc(s) + '</button>').join('')
+    : '<div class="empty">スタッフ一覧を取得できませんでした</div>';
+  document.getElementById('sheetOverlay').classList.add('show');
+}
+function closeStaffSheet() { document.getElementById('sheetOverlay').classList.remove('show'); sheetTarget = null; }
+function openDetailFromSheet() {
+  const r = sheetTarget; closeStaffSheet();
+  if (r) openDialog(encodeURIComponent(r.key));   // 例外用（過去日・出力者変更）は既存ダイアログへ
+}
+function fmtJP(ymd) {
+  const w = ['日', '月', '火', '水', '木', '金', '土'];
+  const d = new Date(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
+  return (d.getMonth() + 1) + '/' + d.getDate() + '(' + w[d.getDay()] + ')';
+}
+
+async function pickStaff(encName) {
+  const by = decodeURIComponent(encName);
+  const r = sheetTarget;
+  if (!r || state.sunk[r.key]) return;
+  document.querySelectorAll('#shGrid .sbtn').forEach(b => { b.disabled = true; });  // 二重タップ抑止
+  // 保存前の値を控える（取り消しで元へ戻すため。通常は空＝未測定だから対象に出ている）
+  const prev = { sokuteiDate: r.前回測定日 && r.status === 'sunk' ? r.前回測定日 : '', sokuteiBy: '', outputBy: '' };
+  const spec = msRouteWrite(r, { sokuteiDate: state.selectedDate, sokuteiBy: by, outputBy: by }, state.selectedDate);
+  try {
+    await sendSpec(spec);
+    state.sunk[r.key] = true;
+    state.recentStaff = msRecentStaffPush(state.recentStaff, by, 6);
+    saveRecent(state.recentStaff);
+    state.undo = { target: r, spec: spec, prev: prev, name: r.name, by: by };
+    closeStaffSheet();
+    render();
+    showUndo(r.name + ' / ' + by + ' で保存しました');
+  } catch (e) {
+    document.querySelectorAll('#shGrid .sbtn').forEach(b => { b.disabled = false; });
+    alert('保存に失敗しました：' + (e && e.message || e) + '\nもう一度お試しください。');
+  }
+}
+
+// 取り消し（直前の1件のみ）。新actionは作らず、要介護=updateKeikakushoで元値へ／要支援=既存 deleteShienSokutei。
+let undoTimer = null;
+function showUndo(msg) {
+  document.getElementById('undoMsg').textContent = msg;
+  document.getElementById('undobar').classList.add('show');
+  if (undoTimer) clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndo, 8000);   // 8秒で消える＝誤タップに気づける長さ
+}
+function hideUndo() { document.getElementById('undobar').classList.remove('show'); state.undo = null; }
+async function undoLast() {
+  const u = state.undo;
+  if (!u) { hideUndo(); return; }
+  try {
+    await sendSpec(msBuildUndo(u.target, u.spec, u.prev));
+    delete state.sunk[u.target.key];
+    hideUndo();
+    render();
+  } catch (e) {
+    alert('取り消しに失敗しました：' + (e && e.message || e) + '\n画面を再読み込みして状態を確認してください。');
+  }
+}
+
+// 既存actionの送信を1箇所に集約（保存・取り消し・ダイアログ保存で共用＝逐語コピーを増やさない）
+async function sendSpec(spec) {
+  if (spec.action === 'updateKeikakusho') {
+    if (!spec.year || !spec.month) throw new Error('計画月が特定できません（planStart未設定の可能性）');
+    // 3項目を逐次（既存の updateKeikakusho＝1リクエスト1フィールド・部分更新）
+    for (const j of spec.jobs) {
+      const url = GAS + '?action=updateKeikakusho&userId=' + encodeURIComponent(spec.userId) +
+        '&year=' + spec.year + '&month=' + spec.month + '&field=' + encodeURIComponent(j.field) +
+        '&value=' + encodeURIComponent(j.value) + '&operator=' + encodeURIComponent('測定アプリ') + '&t=' + Date.now();
+      const res = await fetchJson(url);
+      if (res && res.ok === false) throw new Error(res.error || '保存失敗(' + j.field + ')');
+    }
+    return;
+  }
+  if (spec.action === 'deleteShienSokutei') {
+    const url = GAS + '?action=deleteShienSokutei&name=' + encodeURIComponent(spec.name) +
+      '&date=' + encodeURIComponent(spec.date) + '&by=' + encodeURIComponent(spec.by) + '&t=' + Date.now();
+    const res = await fetchJson(url);
+    if (!res || res.ok === false) throw new Error((res && res.error) || '取り消しに失敗しました');
+    return;
+  }
+  // addShienSokutei（追記・verified 必須）
+  const url = GAS + '?action=addShienSokutei&name=' + encodeURIComponent(spec.name) +
+    '&date=' + encodeURIComponent(spec.date) + '&by=' + encodeURIComponent(spec.by) + '&t=' + Date.now();
+  const res = await fetchJson(url);
+  if (!res || !res.ok || !res.verified) throw new Error((res && res.error) || '保存の確認が取れませんでした');
+}
+
+// ===== 記録ダイアログ（例外用: 過去日・出力者を変えるとき）=====
 let dlgTarget = null;
 function openDialog(encKey) {
   const key = decodeURIComponent(encKey);
@@ -338,24 +548,11 @@ async function saveMeasurement() {
   // 計画月の算出は選択日基準（その日視点でのサイクル）。measure-core が planStart/planMonths から算出。
   const spec = msRouteWrite(dlgTarget, { sokuteiDate: date, sokuteiBy: by, outputBy: outputBy }, state.selectedDate);
   try {
-    if (spec.action === 'updateKeikakusho') {
-      if (!spec.year || !spec.month) throw new Error('計画月が特定できません（planStart未設定の可能性）');
-      // 3項目を逐次（既存の updateKeikakusho＝1リクエスト1フィールド・部分更新）
-      for (const j of spec.jobs) {
-        const url = GAS + '?action=updateKeikakusho&userId=' + encodeURIComponent(spec.userId) +
-          '&year=' + spec.year + '&month=' + spec.month + '&field=' + encodeURIComponent(j.field) +
-          '&value=' + encodeURIComponent(j.value) + '&operator=' + encodeURIComponent('測定アプリ') + '&t=' + Date.now();
-        const res = await fetchJson(url);
-        if (res && res.ok === false) throw new Error(res.error || '保存失敗(' + j.field + ')');
-      }
-    } else { // addShienSokutei（追記・verified 必須）
-      const url = GAS + '?action=addShienSokutei&name=' + encodeURIComponent(spec.name) +
-        '&date=' + encodeURIComponent(spec.date) + '&by=' + encodeURIComponent(spec.by) + '&t=' + Date.now();
-      const res = await fetchJson(url);
-      if (!res || !res.ok || !res.verified) throw new Error((res && res.error) || '保存の確認が取れませんでした');
-    }
+    await sendSpec(spec);
     // 成功 → sunk（グレーアウトで沈める・消さない）
     state.sunk[dlgTarget.key] = true;
+    state.recentStaff = msRecentStaffPush(state.recentStaff, by, 6);
+    saveRecent(state.recentStaff);
     closeDialog();
     render();
   } catch (e) {
@@ -370,6 +567,7 @@ document.getElementById('nextDay').addEventListener('click', () => goDate(msAddD
 document.getElementById('todayBtn').addEventListener('click', () => goDate(todayStr()));
 document.getElementById('datePick').addEventListener('change', function () { goDate(this.value); });
 
+state.recentStaff = loadRecent();   // v3① 直近使った測定者（端末内）
 loadAll();
 </script>
 </body>

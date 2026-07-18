@@ -70,6 +70,7 @@ function fetchStub(url) {
   else if (url.indexOf('action=usage_stats') >= 0) data = { usageStats: { users: [{ name: 'ダミー介護', monthly: {} }] } }; // ③欠席多の優先順（空でU=1）
   else if (url.indexOf('action=updateKeikakusho') >= 0) { captured.writes.push(url); data = { ok: true }; }
   else if (url.indexOf('action=addShienSokutei') >= 0) { captured.writes.push(url); data = { ok: true, verified: true }; }
+  else if (url.indexOf('action=deleteShienSokutei') >= 0) { captured.writes.push(url); data = { ok: true, deleted: 1 }; }
   else data = {};
   return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
 }
@@ -77,7 +78,12 @@ function fetchStub(url) {
 class FixedDate extends Date { constructor(...a) { if (!a.length) super('2026-06-20T09:00:00+09:00'); else super(...a); } }
 
 const sandbox = {
-  document: { getElementById: elFor, createElement: () => ({ set textContent(v) { this._t = v; }, get innerHTML() { return this._t; } }) },
+  document: {
+    getElementById: elFor,
+    createElement: () => ({ set textContent(v) { this._t = v; }, get innerHTML() { return this._t; } }),
+    querySelectorAll: () => []        // v3① スタッフボタンの二重タップ抑止（DOM無しでも落ちない）
+  },
+  setTimeout: () => 1, clearTimeout: () => {},   // v3① 取り消しバーの自動非表示
   fetch: fetchStub, alert: (m) => { captured.lastAlert = m; }, console,
   Date: FixedDate, encodeURIComponent, decodeURIComponent, Math, JSON, Promise, Array, String, Object
 };
@@ -87,12 +93,18 @@ const inject = extractFn(shared, 'sokuteiCycleMonths_') + '\n' + extractFn(share
   extractFn(shared, 'mergeSokuteiRecords') + '\n' +
   'var msBuildMeasurementTargets=S.msBuildMeasurementTargets, msRouteWrite=S.msRouteWrite,' +
   ' msAddDays=S.msAddDays, msDateWarning=S.msDateWarning, msSplitBySession=S.msSplitBySession, msPrioritySort=S.msPrioritySort, msCountCarryOver=S.msCountCarryOver,' +
+  ' msRecentStaffPush=S.msRecentStaffPush, msStaffOrder=S.msStaffOrder, msBuildUndo=S.msBuildUndo,' +
+  ' msMonthsBack=S.msMonthsBack, msBuildMeasuredList=S.msBuildMeasuredList, msFilterMeasured=S.msFilterMeasured,' +
+  ' msCountByMeasurer=S.msCountByMeasurer,' +
   ' sbCountWeeklyVisits_=S.sbCountWeeklyVisits_, sbCountRemainingVisits_=S.sbCountRemainingVisits_, sbSokuteiSort_=S.sbSokuteiSort_;';
-['msBuildMeasurementTargets', 'msRouteWrite', 'msAddDays', 'msDateWarning', 'msSplitBySession', 'msPrioritySort', 'msCountCarryOver'].forEach(n => { sandbox[n] = mcore[n]; });
+['msBuildMeasurementTargets', 'msRouteWrite', 'msAddDays', 'msDateWarning', 'msSplitBySession', 'msPrioritySort', 'msCountCarryOver',
+ 'msRecentStaffPush', 'msStaffOrder', 'msBuildUndo', 'msMonthsBack', 'msBuildMeasuredList',
+ 'msFilterMeasured', 'msCountByMeasurer'].forEach(n => { sandbox[n] = mcore[n]; });
 ['sbCountWeeklyVisits_', 'sbCountRemainingVisits_', 'sbSokuteiSort_'].forEach(n => { sandbox[n] = sbcore[n]; });
 
 const ctx = 'with (S) {\n' + inject + '\n' + script0 +
-  '\n; S.__loadAll = loadAll; S.__render = render; S.__open = openDialog; S.__save = saveMeasurement; S.__state = state; }';
+  '\n; S.__loadAll = loadAll; S.__render = render; S.__open = openDialog; S.__save = saveMeasurement; S.__state = state;' +
+  ' S.__sheet = openStaffSheet; S.__pick = pickStaff; S.__undo = undoLast; S.__tab = switchTab; }';
 new Function('S', ctx)(sandbox);
 
 (async function run() {
@@ -171,6 +183,71 @@ new Function('S', ctx)(sandbox);
   ok(w.indexOf('date=2026-06-19') >= 0, 'date=測定日');
   ok(w.indexOf('output') < 0, '出力者パラメータを持たない（要支援）');
   eq(sandbox.__state.sunk['ダミー支援'], true, '保存成功→sunk化');
+
+  // ===== v3① 記録の2タップ化 =====
+  console.log('[v3① 2タップ] 名前タップ→スタッフ選択シート→スタッフタップで即保存');
+  await sandbox.__loadAll();   // sunk をリセット
+  captured.writes = [];
+  sandbox.__sheet(encodeURIComponent('ダミー介護'));
+  ok(els['shName']._tx === 'ダミー介護', 'シート見出しに氏名（押す直前の確認）');
+  ok(String(els['shSub']._tx).indexOf('6/20') >= 0 && String(els['shSub']._tx).indexOf('に測定') >= 0,
+    'シート見出しに選択中の日付（6/20(土) に測定）＝二重確認');
+  ok(els['shGrid']._in.indexOf('勝又') >= 0 && els['shGrid']._in.indexOf('小林') >= 0, 'スタッフ格子にボタン');
+  ok(els['shGrid']._in.indexOf('代表') < 0, '除外スタッフ（代表）は出さない');
+
+  await sandbox.__pick(encodeURIComponent('勝又'));
+  eq(captured.writes.length, 3, '要介護=3リクエスト（測定日・測定者・出力者）');
+  ok(captured.writes.some(u => u.indexOf('field=sokutei_date') >= 0 && u.indexOf('value=2026-06-20') >= 0),
+    '測定日＝選択中の日付（入力させない）');
+  ok(captured.writes.some(u => u.indexOf('field=sokutei_by') >= 0 && u.indexOf('value=' + encodeURIComponent('勝又')) >= 0), '測定者＝タップした人');
+  ok(captured.writes.some(u => u.indexOf('field=output_by') >= 0 && u.indexOf('value=' + encodeURIComponent('勝又')) >= 0),
+    '出力者＝測定者と同じ（自動・画面に出さない）');
+  eq(sandbox.__state.sunk['ダミー介護'], true, '保存後はグレーアウトで沈める');
+  // 直前のダイアログ保存テストで 勝又→小林 の順に積まれている。ここで 勝又 を使うと先頭へ移動する（重複させない）
+  eq(sandbox.__state.recentStaff, ['勝又', '小林'], '直近使った人を先頭へ（次回そのスタッフが左上・重複しない）');
+  ok(String(els['undoMsg']._tx).indexOf('勝又') >= 0, '取り消しバーに「誰で保存したか」を出す');
+
+  console.log('[v3① 取り消し] 要介護は元値へ戻す（新action無し・updateKeikakusho）');
+  captured.writes = [];
+  await sandbox.__undo();
+  eq(captured.writes.length, 3, '3項目を戻す');
+  ok(captured.writes.every(u => u.indexOf('action=updateKeikakusho') >= 0), '既存の updateKeikakusho だけを使う');
+  ok(captured.writes.every(u => /[&?]value=(&|$)/.test(u)), '保存前の値（空）へ戻す＝行は GAS 側で消える');
+  eq(sandbox.__state.sunk['ダミー介護'], undefined, '取り消し後はカードが戻る');
+
+  console.log('[v3① 取り消し] 要支援は既存 deleteShienSokutei で1行だけ消す');
+  captured.writes = [];
+  sandbox.__sheet(encodeURIComponent('ダミー支援'));
+  await sandbox.__pick(encodeURIComponent('小林'));
+  eq(captured.writes.length, 1, '追記=1リクエスト');
+  captured.writes = [];
+  await sandbox.__undo();
+  eq(captured.writes.length, 1, '取り消し=1リクエスト');
+  const du = captured.writes[0];
+  ok(du.indexOf('action=deleteShienSokutei') >= 0, '既存 deleteShienSokutei（新actionを作らない）');
+  ok(du.indexOf('name=' + encodeURIComponent('ダミー支援')) >= 0 && du.indexOf('date=2026-06-20') >= 0
+    && du.indexOf('by=' + encodeURIComponent('小林')) >= 0, 'name+date+by 一致＝いま書いた1行だけ');
+  eq(sandbox.__state.recentStaff, ['小林', '勝又'], '直近リストは新しい順');
+
+  // ===== v3② 測定済み一覧タブ =====
+  console.log('[v3② 一覧] 履歴を新しい順・名前検索・測定者絞り・測定者別件数');
+  await sandbox.__loadAll();
+  sandbox.__tab('done');
+  const done = els['list']._in;
+  ok(done.indexOf('ダミー介護') >= 0, '一覧に測定済みの人が出る（要介護は氏名へ解決）');
+  ok(done.indexOf('測定者別') >= 0, '測定者別の件数（偏りの可視化）を上に出す');
+  ok(done.indexOf('もっと見る') >= 0, '「もっと見る」で過去へ広げられる');
+  ok(done.indexOf('3/20') >= 0, '測定日を表示（3/20）');
+  eq(els['cntDone']._tx, '(2)', 'タブ件数=表示中の件数（直近6ヶ月・paper除外）');
+
+  sandbox.__state.listQ = 'ダミー先月'; sandbox.__render();
+  ok(els['list']._in.indexOf('ダミー先月') >= 0 && els['list']._in.indexOf('1/10') >= 0, '名前の部分一致で絞れる');
+  ok(els['list']._in.indexOf('3/20') < 0, '一致しない人は消える');
+  sandbox.__state.listQ = '';
+
+  sandbox.__state.listBy = '居ない測定者'; sandbox.__render();
+  ok(els['list']._in.indexOf('該当する測定記録はありません') >= 0, '測定者で絞って0件なら空表示');
+  sandbox.__state.listBy = ''; sandbox.__render();
 
   console.log('[安全] 本番書込は一切発生していない（fetchは全てスタブ経由）');
   ok(captured.reads.length > 0, 'reads はスタブ経由でのみ発生');

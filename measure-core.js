@@ -182,6 +182,124 @@ function msCountCarryOver(targets) {
   return n;
 }
 
+// ===== v3① 記録の2タップ化（スタッフ選択シート）=====
+
+// 直近使った測定者リストの更新（端末内保存＝localStorage想定・同期しない）。
+// 重複は先頭へ移動、上限超過は古いものから落とす。空名は積まない（誤保存の混入防止）。
+function msRecentStaffPush(recent, name, max) {
+  var nm = String(name == null ? '' : name).trim();
+  var list = (recent || []).slice();
+  if (!nm) return list;
+  var out = [nm];
+  for (var i = 0; i < list.length; i++) { if (list[i] !== nm) out.push(list[i]); }
+  var lim = (max > 0) ? max : 5;
+  return out.slice(0, lim);
+}
+
+// スタッフ格子の並び: 直近使った人を左上（recent の順を保つ）→ 残りは元の順。
+// recent に在籍しない名前（退職・除外設定変更）が混ざっていても無視する＝押せないボタンを作らない。
+function msStaffOrder(staff, recent) {
+  var all = (staff || []).slice();
+  var head = [];
+  (recent || []).forEach(function (n) { if (all.indexOf(n) >= 0 && head.indexOf(n) < 0) head.push(n); });
+  var tail = all.filter(function (n) { return head.indexOf(n) < 0; });
+  return head.concat(tail);
+}
+
+// 保存の取り消し引数を組む（新actionは作らない・既存actionのみ）。
+//   target: 対象者 / saved: msRouteWrite が返した保存引数 / prev: 保存前の値 { sokuteiDate, sokuteiBy, outputBy }
+// 要介護: updateKeikakusho で3項目を保存前の値へ戻す。通常 prev は空＝セルが消え、
+//   行が全部空になれば GAS 側が行ごと削除する（＝保存前の状態に戻る）。再測定なら元値へ戻すのでデータを消さない。
+// 要支援系: 追記型なので既存 deleteShienSokutei で「いま書いた1行」(name+date+by 一致)だけ消す。
+function msBuildUndo(target, saved, prev) {
+  var p = prev || {};
+  if (saved && saved.action === 'updateKeikakusho') {
+    return {
+      action: 'updateKeikakusho',
+      userId: saved.userId,
+      year: saved.year,
+      month: saved.month,
+      jobs: [
+        { field: 'sokutei_date', value: p.sokuteiDate || '' },
+        { field: 'sokutei_by', value: p.sokuteiBy || '' },
+        { field: 'output_by', value: p.outputBy || '' }
+      ]
+    };
+  }
+  return { action: 'deleteShienSokutei', name: saved.name, date: saved.date, by: saved.by };
+}
+
+// ===== v3② 測定済み一覧 =====
+
+// 一覧の期間: anchor 日を含む月から n ヶ月分（当月末まで）。既定n=6＝測定周期3〜4ヶ月をまたいで「前回いつ？」に answers。
+function msMonthsBack(anchorYMD, n) {
+  var y = parseInt(String(anchorYMD).slice(0, 4), 10);
+  var mo = parseInt(String(anchorYMD).slice(5, 7), 10);
+  var back = (n > 0 ? n : 6) - 1;
+  var m0 = (mo - 1) - back;
+  var fy = y + Math.floor(m0 / 12);
+  var fm = ((m0 % 12) + 12) % 12 + 1;
+  function pad(x) { return (x < 10 ? '0' : '') + x; }
+  return { from: fy + '-' + pad(fm) + '-01', to: msMonthEnd_(String(anchorYMD).slice(0, 7) + '-01') };
+}
+
+// 履歴（mergeSokuteiRecords の返り）→ 一覧行。測定日の新しい順。期間 [from,to] 外と日付なしは落とす。
+//   紙seed(paper)の除外は mergeSokuteiRecords(includePaper:false) 側の責務＝ここでは二重に判定しない。
+//   nameByKey: 要介護の userId → 氏名。解決できなければ key をそのまま出す（行を消さない＝取りこぼしを見せる）。
+function msBuildMeasuredList(records, nameByKey, range) {
+  var nb = nameByKey || {};
+  var from = (range && range.from) || '';
+  var to = (range && range.to) || '';
+  var out = [];
+  (records || []).forEach(function (r) {
+    var d = String((r && r.sokutei_date) || '').trim();
+    if (!d) return;
+    if (from && d < from) return;
+    if (to && d > to) return;
+    var key = String((r && r.key) || '');
+    out.push({
+      key: key,
+      name: nb[key] || key,
+      date: d,
+      by: String((r && r.sokutei_by) || ''),
+      care: String((r && r.careType) || '')
+    });
+  });
+  out.sort(function (a, b) {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;   // 新しい順
+    return String(a.name).localeCompare(String(b.name));       // 同日は名前順（並びを安定させる）
+  });
+  return out;
+}
+
+// 一覧の絞り込み: 氏名の部分一致(q)と測定者(by)のAND。空文字は条件なし扱い。
+function msFilterMeasured(rows, cond) {
+  var c = cond || {};
+  var q = String(c.q == null ? '' : c.q).replace(/[\s　]+/g, '');
+  var by = String(c.by == null ? '' : c.by).trim();
+  return (rows || []).filter(function (r) {
+    if (q && String(r.name).indexOf(q) < 0) return false;
+    if (by && String(r.by) !== by) return false;
+    return true;
+  });
+}
+
+// 測定者別の件数（偏りの可視化）。件数の多い順→同数は名前順。測定者空欄は数えない。
+function msCountByMeasurer(rows) {
+  var map = {};
+  (rows || []).forEach(function (r) {
+    var n = String((r && r.by) || '').trim();
+    if (!n) return;
+    map[n] = (map[n] || 0) + 1;
+  });
+  var out = Object.keys(map).map(function (n) { return { name: n, count: map[n] }; });
+  out.sort(function (a, b) {
+    if (a.count !== b.count) return b.count - a.count;
+    return a.name.localeCompare(b.name);
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     msNormalizeName_: msNormalizeName_,
@@ -193,6 +311,13 @@ if (typeof module !== 'undefined' && module.exports) {
     msDateWarning: msDateWarning,
     msSplitBySession: msSplitBySession,
     msPrioritySort: msPrioritySort,
-    msCountCarryOver: msCountCarryOver
+    msCountCarryOver: msCountCarryOver,
+    msRecentStaffPush: msRecentStaffPush,
+    msStaffOrder: msStaffOrder,
+    msBuildUndo: msBuildUndo,
+    msMonthsBack: msMonthsBack,
+    msBuildMeasuredList: msBuildMeasuredList,
+    msFilterMeasured: msFilterMeasured,
+    msCountByMeasurer: msCountByMeasurer
   };
 }
