@@ -71,6 +71,36 @@ function sbResolveColumns(headerFields) {
   };
 }
 
+function sbIsSubtotalRow(name) {
+  return ['総額', '保険外のみ', ''].indexOf(String(name || '').trim()) >= 0;
+}
+
+function sbNormalize(fields, col) {
+  var num = function (v) { var n = parseInt(String(v == null ? '' : v).replace(/[^\d-]/g, ''), 10); return isNaN(n) ? 0 : n; };
+  return {
+    tsuki: String(fields[col.tsuki] || '').trim(),
+    hken: String(fields[col.hken] || '').trim(),
+    name: String(fields[col.name] || '').trim(),
+    riyou: num(fields[col.riyou]),
+    jihi: num(fields[col.jihi1]) + num(fields[col.jihi2]),
+    pay: String(fields[col.pay] || '').trim(),
+    nyukin: String(fields[col.nyukin] || '').trim()
+  };
+}
+
+function sbExtractRows(rows) {
+  if (!rows || rows.length < 2) throw new Error('行が不足（メタ行＋ヘッダ行が必要）');
+  var col = sbResolveColumns(rows[1]);
+  var out = [];
+  for (var r = 2; r < rows.length; r++) {
+    var f = rows[r];
+    if (!f || f.length < 3) continue;
+    if (sbIsSubtotalRow(f[col.name])) continue;
+    out.push(sbNormalize(f, col));
+  }
+  return out;
+}
+
 // ===== DOM 配線（以降のタスクで実装）=====
 </script>
 </body>
