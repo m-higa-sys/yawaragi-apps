@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭） -->
+    <!-- version.txt を取得し、現URLの ?v= と違えば1回だけ最新版へ location.replace する -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) {
+                        location.replace(buildVersionedUrl(location.href, latest));
+                    }
+                })
+                .catch(function () { /* オフライン等は no-op で固まらせない */ });
+        } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
+    })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>加算・事業所情報</title>
+    <style>
+        :root { --accent: #2c7a7b; --ink: #2d3748; --muted: #5b6477; --line: #e2e8f0; --bg: #f7fafc; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; color: var(--ink); background: var(--bg); line-height: 1.6; -webkit-text-size-adjust: 100%; }
+        header { background: var(--accent); color: #fff; padding: 14px 16px; font-size: 18px; font-weight: 700; position: sticky; top: 0; }
+        #app { max-width: 720px; margin: 0 auto; padding: 12px 12px 40px; }
+        .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+        .card h2 { margin: 0 0 10px; font-size: 16px; color: var(--accent); border-bottom: 2px solid var(--line); padding-bottom: 6px; }
+        .card h3 { margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+        .card h3.warn { color: #c53030; }
+        .irow { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px dotted var(--line); }
+        .irow:last-child { border-bottom: 0; }
+        .ilabel { flex: 0 0 42%; color: var(--muted); font-size: 14px; }
+        .ival { flex: 1; font-weight: 600; font-size: 15px; word-break: break-word; }
+        .krow { padding: 6px 0; border-bottom: 1px dotted var(--line); font-size: 15px; }
+        .krow:last-child { border-bottom: 0; }
+        .kcode { display: inline-block; min-width: 64px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 700; color: var(--accent); }
+        .kname { font-weight: 600; }
+        .knote { display: block; margin-left: 74px; font-size: 12.5px; color: var(--muted); }
+        .note { margin: 10px 0 0; padding: 8px 10px; background: #fffaf0; border: 1px solid #f6e05e; border-radius: 6px; font-size: 13px; color: #744210; }
+        .updated { text-align: right; color: var(--muted); font-size: 12px; margin: 8px 4px 0; }
+        .err { padding: 16px; color: #c53030; text-align: center; }
+        .loading { padding: 40px 16px; text-align: center; color: var(--muted); }
+    </style>
+</head>
+<body>
+    <header>加算・事業所情報</header>
+    <div id="app"><p class="loading">読み込み中…</p></div>
+    <script>
+    // 全出力エスケープ（session-board.html と同型）。null/undefined安全・数値も文字列化。
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+    // board GAS（AKfycbwo…＝session-board/genba と同一エンドポイント）。GET=JSONP。
+    var GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
+
+    // JSONP の URL 構築（純関数＝テスト可能）。action=kasan・callback・キャッシュバスター。
+    function kasanApiUrl(gas, cb, ts){ return gas + '?action=kasan&callback=' + cb + '&t=' + ts; }
+
+    // JSONP 取得（session-board.html fetchBoard と同型・fetch は board GAS で動かない）。
+    function fetchKasan(){
+      var cbName = 'kasanCb_' + Date.now();
+      var done = false, s = null;
+      var timer = setTimeout(function(){ if (done) return; done = true; cleanup(); showError('タイムアウト（20秒）'); }, 20000);
+      function cleanup(){ try { delete window[cbName]; } catch(e){ window[cbName] = undefined; } if (s && s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
+      window[cbName] = function(resp){
+        if (done) return; done = true; cleanup();
+        if (resp && resp.ok === false){ showError(resp.error || '不明なエラー'); return; }
+        render(resp);
+      };
+      s = document.createElement('script');
+      s.src = kasanApiUrl(GAS, cbName, Date.now());
+      s.onerror = function(){ if (done) return; done = true; cleanup(); showError('通信エラー'); };
+      document.head.appendChild(s);
+    }
+
+    // 加算1行 → 「コード␣名称（＋備考）」の HTML。全出力 esc 経由（XSS防止）。設計書§7-4。
+    function kasanAddonLine(r){ return '<div class="krow"><span class="kcode">' + esc(r.code) + '</span> <span class="kname">' + esc(r.item) + '</span>' + (r.note ? ' <span class="knote">' + esc(r.note) + '</span>' : '') + '</div>'; }
+
+    // 基本情報等の1行 → 「項目：値」HTML。全出力 esc 経由。
+    function kasanInfoLine(r){ return '<div class="irow"><span class="ilabel">' + esc(r.item) + '</span><span class="ival">' + esc(r.value) + '</span></div>'; }
+
+    function cardHtml(title, bodyHtml){ return '<section class="card"><h2>' + esc(title) + '</h2>' + bodyHtml + '</section>'; }
+    function infoRows(arr){ return (arr || []).map(kasanInfoLine).join(''); }
+    function addonRows(arr){ return (arr || []).map(kasanAddonLine).join(''); }
+
+    // 応答 → カード4枚（設計書§7）。未知 section / 系統不明 も黙って消さず表示する。
+    function render(resp){
+      if (!resp){ showError('応答がありません'); return; }
+      var kasan = resp['加算'] || {};
+      var html = '';
+      html += cardHtml('事業所基本情報', infoRows(resp['基本情報']));
+      html += cardHtml('運営体制', infoRows(resp['運営体制']));
+      html += cardHtml('地域区分',
+        infoRows(resp['地域区分']) +
+        '<p class="note">総合事業の単価（東松山市・嵐山町・川島町の級地）は未取得です。市の総合事業の手引き入手後にシートへ入れると表示されます。</p>');
+      var addon = '';
+      addon += '<h3>介護給付</h3>' + addonRows(kasan['介護給付']);
+      addon += '<h3>総合事業</h3>' + addonRows(kasan['総合事業']);
+      if ((kasan['系統不明'] || []).length) addon += '<h3 class="warn">系統不明（要確認）</h3>' + addonRows(kasan['系統不明']);
+      html += cardHtml('加算', addon);
+      if ((resp['不明'] || []).length) html += cardHtml('不明な区分（要確認）', infoRows(resp['不明']));
+      html += '<p class="updated">最終更新: ' + esc(resp.updatedAt || '') + '</p>';
+      document.getElementById('app').innerHTML = html;
+    }
+
+    function showError(msg){ document.getElementById('app').innerHTML = '<p class="err">読み込みに失敗しました: ' + esc(msg) + '</p>'; }
+
+    // 起動（版ゲートは <head> 最先頭で既に走っている）。
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fetchKasan);
+    else fetchKasan();
+    </script>
+</body>
+</html>
