@@ -11946,7 +11946,13 @@ function getMonitoringTargetUsers_() {
     }
     var careRaw = String(row[careCol] || '').trim();
     var careNorm = normalize(careRaw);
-    if (TARGETS.indexOf(careNorm) < 0) continue;
+    // 台帳の生値は「事業対象者」（末尾「者」あり）。完全一致では TARGETS の '事業対象' に
+    // 一致せず事業対象者が全員落ちるため前方一致で拾う。要介護は前方一致しないので入らない。
+    var careMatched = false;
+    for (var ti = 0; ti < TARGETS.length; ti++) {
+      if (careNorm.indexOf(TARGETS[ti]) === 0) { careMatched = true; break; }
+    }
+    if (!careMatched) continue;
     var cfg = configMap[name] || { planStart: '', finalEvalMonth: '' };
     users.push({
       userId: name,
