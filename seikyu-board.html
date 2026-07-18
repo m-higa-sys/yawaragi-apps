@@ -137,6 +137,86 @@ function sbMergeMonths(recordArrays) {
 }
 
 // ===== DOM 配線（以降のタスクで実装）=====
+
+var sbFiles = []; // { label, recs }
+
+function sbSetupDrop() {
+  var dz = document.getElementById('dropZone');
+  var input = document.getElementById('fileInput');
+  dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.style.background = '#d4e9f7'; });
+  dz.addEventListener('dragleave', function () { dz.style.background = ''; });
+  dz.addEventListener('drop', function (e) { e.preventDefault(); dz.style.background = ''; sbHandleFiles(e.dataTransfer.files); });
+  input.addEventListener('change', function (e) { sbHandleFiles(e.target.files); });
+}
+
+function sbHandleFiles(fileList) {
+  var arr = Array.prototype.slice.call(fileList);
+  var pending = arr.length;
+  if (!pending) return;
+  arr.forEach(function (file) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var recs = sbExtractRows(sbToRows(sbDecode(e.target.result)));
+        var tsuki = recs.length ? recs[0].tsuki : file.name;
+        sbFiles.push({ label: tsuki, recs: recs });
+      } catch (err) {
+        alert('取込失敗（' + file.name + '）: ' + err.message);
+      }
+      pending--;
+      if (pending === 0) sbRender();
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function sbYen(n) { return '¥' + (n || 0).toLocaleString(); }
+function sbPayIcon(pay) { return pay === '口座振替' ? '🏦' : (pay === '現金' ? '💵' : (pay === '振込' ? '🏧' : '')); }
+
+function sbRender() {
+  var merged = sbMergeMonths(sbFiles.map(function (f) { return f.recs; }));
+  var months = merged.months;
+  // 未入金がある人を上へ（主目的）。pending は赤の下。次に名前順。
+  var hasUnpaid = function (p) { return months.some(function (m) { return sbClassify(p.months[m]) === 'unpaid'; }); };
+  var hasPending = function (p) { return months.some(function (m) { return sbClassify(p.months[m]) === 'pending'; }); };
+  merged.people.sort(function (a, b) {
+    var au = hasUnpaid(a) ? 0 : (hasPending(a) ? 1 : 2), bu = hasUnpaid(b) ? 0 : (hasPending(b) ? 1 : 2);
+    if (au !== bu) return au - bu;
+    return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+  });
+
+  // サマリ（未入金の人数・合計額）
+  var unpaidPeople = merged.people.filter(hasUnpaid);
+  var unpaidSum = 0;
+  unpaidPeople.forEach(function (p) { months.forEach(function (m) { if (sbClassify(p.months[m]) === 'unpaid') unpaidSum += p.months[m].riyou; }); });
+  document.getElementById('summary').innerHTML =
+    '<p><strong>未入金の利用者: ' + unpaidPeople.length + '人 / 合計 ' + sbYen(unpaidSum) + '</strong></p>';
+  document.getElementById('note').textContent =
+    '入金状況が空欄の月＝請求確定前は「—（判定前）」表示で入金判定しません。「未入金」は引落し失敗 or 引落し待ちを含みます。確定した入金/未入金は引落し後のCSVで反映されます。';
+
+  // マトリクス
+  var labelOf = { unpaid: '未入金', pending: '—（判定前）', paid: '入金済', exempt: '対象外', unknown: '要確認', empty: '' };
+  var html = '<table><thead><tr><th>利用者</th>';
+  months.forEach(function (m) { html += '<th>' + m.slice(0, 4) + '/' + m.slice(4) + '</th>'; });
+  html += '</tr></thead><tbody>';
+  merged.people.forEach(function (p) {
+    html += '<tr><td class="name">' + p.name + '</td>';
+    months.forEach(function (m) {
+      var cell = p.months[m];
+      var st = sbClassify(cell);
+      var txt = cell ? (st === 'exempt' ? '—' : sbYen(cell.riyou)) : '';
+      var jihi = (cell && cell.jihi) ? '<div style="font-size:11px;color:#888">自費' + sbYen(cell.jihi) + '</div>' : '';
+      var icon = cell ? sbPayIcon(cell.pay) : '';
+      var title = cell ? labelOf[st] : '';
+      html += '<td class="st-' + st + '" title="' + title + '">' + txt + ' ' + icon + jihi + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('tableWrap').innerHTML = html;
+}
+
+sbSetupDrop();
 </script>
 </body>
 </html>
