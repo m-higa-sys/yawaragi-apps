@@ -117,6 +117,7 @@ function sbMergeMonths(recordArrays) {
   var monthsSet = {};
   recordArrays.forEach(function (recs) {
     recs.forEach(function (rec) {
+      // hken空(自費のみ)は氏名でフォールバック。前提: 同名別人の空hkenは併合／月で保険→自費切替は別行に割れる（実データは安定小集団で許容）
       var k = rec.hken || ('__noid_' + rec.name);
       if (!byKey[k]) byKey[k] = { hken: rec.hken, name: rec.name, months: {} };
       monthsSet[rec.tsuki] = true;
@@ -124,7 +125,7 @@ function sbMergeMonths(recordArrays) {
       if (!cell) {
         byKey[k].months[rec.tsuki] = { tsuki: rec.tsuki, riyou: rec.riyou, jihi: rec.jihi, pay: rec.pay, nyukin: rec.nyukin };
       } else {
-        cell.riyou += rec.riyou;  // 同一(番号×月)複数行→加算（実データは重複ゼロ・堅牢性で残す）
+        cell.riyou += rec.riyou;  // 同一(番号×月)複数行→riyou/jihiは加算。nyukin/pay は先勝ち（実データ重複ゼロ前提の防御コード）
         cell.jihi += rec.jihi;
       }
       if (rec.name) byKey[k].name = rec.name;
