@@ -13,6 +13,45 @@
 // ★ 注意: 既存のGAS（利用者台帳v2等）とは別のデプロイになります
 //   既存のデプロイURLは変わりません
 
+// 2026-07-19: LINE疎通確認（平文トークン→Script Properties 是正後の検証用）
+// GASエディタから引数なしで実行できる。sendLine は内部で例外を握り潰し、
+// トークンが誤っていても無音で失敗する（Gmailだけ届く）ため成否が分からない。
+// ここでは sendLine 本体を変更せず、同じ LINE Push API を muteHttpExceptions 付きで
+// 直接叩き、HTTPステータス（200=成功 / 401=トークン不正 / 400=宛先不正）を実行ログに残す。
+// 送る文面は「【テスト】」で始まる固定文＋日時のみ。利用者情報は一切含めない。
+function AAA_LINEテスト() {
+  // 1) sendLine が実際に使うグローバル（スクリプト読込時に Properties から取得）の状態
+  Logger.log('LINE_TOKEN    : ' + (LINE_TOKEN ? 'あり（' + String(LINE_TOKEN).length + '文字）' : '❌ なし'));
+  Logger.log('OWNER_USER_ID : ' + (OWNER_USER_ID ? 'あり' : '❌ なし'));
+  if (!LINE_TOKEN || !OWNER_USER_ID) {
+    Logger.log('❌ Script Properties が未設定。プロジェクトの設定→スクリプト プロパティを確認');
+    return;
+  }
+
+  // 2) 実際に送ってステータスを取る
+  var msg = '【テスト】LINE疎通確認 '
+    + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer ' + LINE_TOKEN },
+    payload: JSON.stringify({ to: OWNER_USER_ID, messages: [{ type: 'text', text: msg }] }),
+    muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  Logger.log('HTTPステータス: ' + code);
+  Logger.log('レスポンス本文: ' + res.getContentText());
+  if (code === 200) {
+    Logger.log('✅ 送信成功。社長のLINEに「' + msg + '」が届いているはず');
+  } else if (code === 401) {
+    Logger.log('❌ 401＝トークン不正。Script Properties の LINE_TOKEN を確認');
+  } else if (code === 400) {
+    Logger.log('❌ 400＝宛先不正の可能性。OWNER_USER_ID を確認');
+  } else {
+    Logger.log('❌ 想定外のステータス。上のレスポンス本文を確認');
+  }
+}
+
 // ===== 設定 =====
 var SS_ID = '1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0';
 var OWNER_EMAIL = 'm-higa@keepfitlife.com';
@@ -6025,45 +6064,6 @@ function _test_sendCancelEmail_a_case() {
     'テスト 太郎', '2026-05-10', 'm-higa@keepfitlife.com', 'テスト 花子', 'テスト居宅介護支援事業所'
   );
   Logger.log('実行完了');
-}
-
-// 2026-07-19: LINE疎通確認（平文トークン→Script Properties 是正後の検証用）
-// GASエディタから引数なしで実行できる。sendLine は内部で例外を握り潰し、
-// トークンが誤っていても無音で失敗する（Gmailだけ届く）ため成否が分からない。
-// ここでは sendLine 本体を変更せず、同じ LINE Push API を muteHttpExceptions 付きで
-// 直接叩き、HTTPステータス（200=成功 / 401=トークン不正 / 400=宛先不正）を実行ログに残す。
-// 送る文面は「【テスト】」で始まる固定文＋日時のみ。利用者情報は一切含めない。
-function AAA_LINEテスト() {
-  // 1) sendLine が実際に使うグローバル（スクリプト読込時に Properties から取得）の状態
-  Logger.log('LINE_TOKEN    : ' + (LINE_TOKEN ? 'あり（' + String(LINE_TOKEN).length + '文字）' : '❌ なし'));
-  Logger.log('OWNER_USER_ID : ' + (OWNER_USER_ID ? 'あり' : '❌ なし'));
-  if (!LINE_TOKEN || !OWNER_USER_ID) {
-    Logger.log('❌ Script Properties が未設定。プロジェクトの設定→スクリプト プロパティを確認');
-    return;
-  }
-
-  // 2) 実際に送ってステータスを取る
-  var msg = '【テスト】LINE疎通確認 '
-    + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
-  var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'Authorization': 'Bearer ' + LINE_TOKEN },
-    payload: JSON.stringify({ to: OWNER_USER_ID, messages: [{ type: 'text', text: msg }] }),
-    muteHttpExceptions: true
-  });
-  var code = res.getResponseCode();
-  Logger.log('HTTPステータス: ' + code);
-  Logger.log('レスポンス本文: ' + res.getContentText());
-  if (code === 200) {
-    Logger.log('✅ 送信成功。社長のLINEに「' + msg + '」が届いているはず');
-  } else if (code === 401) {
-    Logger.log('❌ 401＝トークン不正。Script Properties の LINE_TOKEN を確認');
-  } else if (code === 400) {
-    Logger.log('❌ 400＝宛先不正の可能性。OWNER_USER_ID を確認');
-  } else {
-    Logger.log('❌ 想定外のステータス。上のレスポンス本文を確認');
-  }
 }
 
 // ===== 社長に通知（LINE + Gmail 両方送信）=====
