@@ -3904,6 +3904,12 @@ function doPost(e) {
     switch (data.action) {
       case 'weekly_overlay_upsert': // P2.2: 週間予定表オーバーレイ（鍵なし・空ガード・LWW）
         return jsonResp(weeklyOverlayUpsert_(ss, data));
+      case 'yukyu_grant_done': // 有給付与を済ませた印（adminKey必須・関数内でゲート）
+        return jsonResp(yukyuGrantDone_(ss, data));
+      case 'yukyu_setup_kijun': // 有給基準日シートの作成（冪等・adminKey必須）
+        return jsonResp(intakeAdminAuthorized_(null, data)
+          ? setupYukyuKijunSheet_(ss)
+          : { error: 'unauthorized', status: 401 });
       case 'appregistry_bulk_upsert':
         return jsonResp(appregistryBulkUpsert_(data));
       case 'absence':
@@ -7033,6 +7039,11 @@ function morningDigest(e) {
   safe('chushi', function () {
     return _digestChushi_(ss, dateStr);
   });
+  // 有給の付与予定（当月＋翌月・終わるまで方式・2026-07-19 純追加）
+  //   シート未作成なら空セクション。既存フィールドには一切触れない。
+  safe('yukyuGrant', function () {
+    return buildYukyuGrantSection_(_getYukyuGrantRows_(ss), dateStr);
+  });
 
   return respond({
     ok: errors.length === 0,
@@ -7585,6 +7596,128 @@ function _digestNextYm_(dateStr) {
   var y = parseInt(dateStr.slice(0, 4), 10), m = parseInt(dateStr.slice(5, 7), 10);
   var ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
   return ny + '-' + ('0' + nm).slice(-2);
+}
+
+// ===== 有給付与予定（朝報告 yukyuGrant セクション・2026-07-19 純追加）=====
+// 目的: 社長が有給の付与承認を忘れず、日数の誤りにも気づける状態にする。
+// 正本は有給管理GAS（別プロジェクト）。ここは「基準日が近い人を朝報告に出す」だけの
+// リマインダで、日数の計算は一切しない（次回付与日数は下記シートに人が入れた値をそのまま出す）。
+// 個人の有給残日数・取得実績はここでは扱わない（PIIをboard側に持ち込まないため）。
+//
+// シート「有給基準日」列: 氏名 / 基準日月 / 基準日日 / 週区分 / 次回付与日数 / 完了年 / 備考
+// テスト: scripts/test-yukyu-grant-digest.js（実物ロード方式）
+var YUKYU_KIJUN_SHEET = '有給基準日';
+var YUKYU_KIJUN_HEADER = ['氏名', '基準日月', '基準日日', '週区分', '次回付与日数', '完了年', '備考'];
+// 列インデックス（0始まり）
+var YK = { name: 0, month: 1, day: 2, kubun: 3, days: 4, doneYear: 5, note: 6 };
+
+// 基準日月が「当月または翌月」か。年跨ぎ（12月に1月分を出す）を含む。
+//   月だけで判定する（日は表示にのみ使う）。付与日が月内のどこでも、その月に入ったら出す。
+function yukyuGrantIsDue_(kijunMonth, dateStr) {
+  var m = parseInt(String(dateStr).slice(5, 7), 10);
+  var mo = parseInt(kijunMonth, 10);
+  if (!mo || mo < 1 || mo > 12) return false;
+  var next = m === 12 ? 1 : m + 1;
+  return mo === m || mo === next;
+}
+
+// 「完了年」が今年でなければ未完了＝出し続ける（終わるまで方式）。
+//   翌年になれば自動でまた出る（毎年の付与を1行で回すため）。
+function yukyuGrantNotDone_(doneYear, dateStr) {
+  var y = String(dateStr).slice(0, 4);
+  if (doneYear === null || doneYear === undefined || doneYear === '') return true;
+  return String(doneYear).trim() !== y;
+}
+
+// 表示文を組み立てる。例: '8/6 工藤経子さん 有給付与予定（週3日→5日）'
+//   備考に「年5日義務」を含む人には注記を足す。
+function yukyuGrantLabel_(row) {
+  var mo = parseInt(row[YK.month], 10), day = parseInt(row[YK.day], 10);
+  var s = mo + '/' + day + ' ' + String(row[YK.name]).trim() + 'さん 有給付与予定（'
+    + String(row[YK.kubun]).trim() + '→' + row[YK.days] + '日）';
+  if (String(row[YK.note] || '').indexOf('年5日義務') >= 0) s += '　※年5日義務の対象';
+  return s;
+}
+
+// 行配列 → 朝報告セクション。基準日の早い順（当月→翌月、年跨ぎも自然に並ぶ）。
+//   純関数。シート読み取りは _getYukyuGrantRows_ 側に分離してある。
+function buildYukyuGrantSection_(rows, dateStr) {
+  if (!rows || !rows.length) return { count: 0, items: [] };
+  var m = parseInt(String(dateStr).slice(5, 7), 10);
+  var out = [];
+  rows.forEach(function (r) {
+    if (!r || !String(r[YK.name] || '').trim()) return;          // 氏名なしはスキップ
+    if (!yukyuGrantIsDue_(r[YK.month], dateStr)) return;
+    if (!yukyuGrantNotDone_(r[YK.doneYear], dateStr)) return;
+    var mo = parseInt(r[YK.month], 10);
+    // 当月=0 / 翌月=1 で並べる（12月→1月の跨ぎでも順序が壊れない）
+    var order = (mo === m) ? 0 : 1;
+    out.push({
+      name: String(r[YK.name]).trim(),
+      month: mo,
+      day: parseInt(r[YK.day], 10),
+      kubun: String(r[YK.kubun]).trim(),
+      days: r[YK.days],
+      gono5: String(r[YK.note] || '').indexOf('年5日義務') >= 0,
+      label: yukyuGrantLabel_(r),
+      _o: order
+    });
+  });
+  out.sort(function (a, b) { return (a._o - b._o) || (a.day - b.day); });
+  out.forEach(function (o) { delete o._o; });
+  return { count: out.length, items: out };
+}
+
+// シート「有給基準日」を作る（冪等・既にあれば何もしない）。初期データは2026-07-19時点の確定分。
+//   ※比嘉学は役員のため対象外（シートに入れない）。
+function setupYukyuKijunSheet_(ss) {
+  var sheet = ss.getSheetByName(YUKYU_KIJUN_SHEET);
+  if (sheet) return { created: false, sheet: YUKYU_KIJUN_SHEET };
+  sheet = ss.insertSheet(YUKYU_KIJUN_SHEET);
+  var seed = [
+    ['小野重次郎', 1, 19, '週5日(通常付与)', 14, '', '年5日義務あり'],
+    ['喜多美咲', 1, 16, '週3日', 5, '', ''],
+    ['髙山奈緒美', 3, 1, '週3日', 9, '', ''],
+    ['下浦理絵', 3, 3, '週3日', 6, '', ''],
+    ['勝又裕子', 5, 3, '週5日(通常付与)', 11, '', '年5日義務あり'],
+    ['林秀明', 7, 30, '週3日', 5, '', ''],
+    ['工藤経子', 8, 6, '週3日', 5, '', ''],
+    ['星野友太', 8, 13, '週5日(通常付与)', 10, '', '年5日義務あり'],
+    ['大久保好美', 9, 2, '週2日', 3, '', ''],
+    ['石井祐子', 10, 1, '週3日', 5, '', ''],
+    ['春山忍', 10, 7, '週3日', 6, '', '']
+  ];
+  var rows = [YUKYU_KIJUN_HEADER].concat(seed);
+  sheet.getRange(1, 1, rows.length, YUKYU_KIJUN_HEADER.length).setValues(rows);
+  sheet.setFrozenRows(1);
+  return { created: true, sheet: YUKYU_KIJUN_SHEET, seeded: seed.length };
+}
+
+// シートから行を読む（ヘッダ除く）。シートが無ければ空配列（digestを止めない）。
+function _getYukyuGrantRows_(ss) {
+  var sheet = ss.getSheetByName(YUKYU_KIJUN_SHEET);
+  if (!sheet) return [];
+  var vals = sheet.getDataRange().getValues();
+  return vals.length > 1 ? vals.slice(1) : [];
+}
+
+// action=yukyu_grant_done : 氏名を受けて「完了年」に今年を書く（社長が付与を済ませたとき）。
+//   既存の intake 管理系と同じ adminKey ゲートを流用する（新しい穴を開けない）。
+function yukyuGrantDone_(ss, data) {
+  if (!intakeAdminAuthorized_(null, data)) return { error: 'unauthorized', status: 401 };
+  var name = String((data && data.name) || '').trim();
+  if (!name) return { success: false, error: 'name_required' };
+  var sheet = ss.getSheetByName(YUKYU_KIJUN_SHEET);
+  if (!sheet) return { success: false, error: 'sheet_not_found: ' + YUKYU_KIJUN_SHEET };
+  var vals = sheet.getDataRange().getValues();
+  var year = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd').slice(0, 4);
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][YK.name]).trim() === name) {
+      sheet.getRange(i + 1, YK.doneYear + 1).setValue(year);
+      return { success: true, name: name, doneYear: year };
+    }
+  }
+  return { success: false, error: 'name_not_found', name: name };
 }
 
 // 個訓計画書 保留中データ（getBlockedKeikakushoCount アクションから切り出し・挙動不変）
