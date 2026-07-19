@@ -919,6 +919,24 @@ function doGet(e) {
     return jsonResp(appregistryDropLegacy_());
   }
 
+  // メンテナンス用: 雇用契約期限シートの作成（2026-07-19追加）。
+  //   GASエディタの関数プルダウンにキャッシュで新関数が出ないことがあるため、
+  //   ブラウザでURLを開くだけで実行できる経路を用意する。冪等（既にあれば何もしない）。
+  //   認可は既存の intakeAdminAuthorized_（adminKey）を流用＝新しい穴を開けない。
+  if (e && e.parameter && e.parameter.action === 'setup_koyou_sheet') {
+    if (!intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, e.parameter.callback);
+    }
+    return respond(setupKoyouKeiyakuSheet_(SpreadsheetApp.openById(SS_ID)), e.parameter.callback);
+  }
+  // 同上: 有給基準日シートの作成（同じ理由・同じ認可・冪等）
+  if (e && e.parameter && e.parameter.action === 'setup_yukyu_sheet') {
+    if (!intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, e.parameter.callback);
+    }
+    return respond(setupYukyuKijunSheet_(SpreadsheetApp.openById(SS_ID)), e.parameter.callback);
+  }
+
   // メンテナンス用: setupSheets を実行（2026/5/3追加・送付用居宅一覧シート作成用）
   if (e && e.parameter && e.parameter.action === 'maintenance_setup_sheets') {
     try {
