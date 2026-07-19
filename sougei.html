@@ -529,8 +529,6 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <div class="week-nav" id="week-nav"></div>
   <button onclick="openCalendar()" style="margin-left:4px">📅 カレンダー</button>
   <button onclick="openMonthShift()" id="btn-mshift" style="background:#fff3e0;border-color:#ff9800;color:#e65100">📋 今月のシフト</button>
-  <button onclick="document.getElementById('shiftImportFile').click()" id="btn-shift-import" style="background:#e8f5e9;border-color:#43a047;color:#2e7d32">📅 シフト表を取込</button>
-  <input type="file" id="shiftImportFile" accept=".json,application/json" style="display:none" onchange="importShiftJSON(this)">
 
   <span class="ctrl-sep" style="display:inline-block;width:1px;height:18px;background:#ccc;margin:0 6px;vertical-align:middle"></span>
 
@@ -3505,47 +3503,6 @@ const SHIFT_DEFAULT_CODE = {
   takayama:'E1', haruyama:'E1', ishikawa:'E1', tanaka:'F', higa:'-',
   ono:'7②', hayashi:'7②'
 };
-
-function importShiftJSON(input){
-  // シフト作成(github.io)のエクスポートJSONを取り込み、出勤送迎表が読む localStorage(yawaragi_shift_YYYY-MM) を置換する。
-  // 対応形式: {yearMonth, shiftData, savedAt}(手動export) / {data, savedAt}(autosave)
-  const file = input && input.files && input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e){
-    try {
-      const obj = JSON.parse(e.target.result);
-      const sd = obj.shiftData || obj.data;
-      if(!sd || typeof sd !== "object"){ alert("シフトデータが見つかりません（shiftData/data キーがありません）"); return; }
-      let ym = obj.yearMonth;
-      if(!ym){
-        for(const name of Object.keys(sd)){
-          const dk = Object.keys(sd[name]||{}).find(k=>/^\d{4}-\d{2}-\d{2}$/.test(k));
-          if(dk){ ym = dk.slice(0,7); break; }
-        }
-      }
-      if(!ym || !/^\d{4}-\d{2}$/.test(ym)){ alert("対象月を判定できませんでした（yearMonthも日付キーも無し）"); return; }
-      const staffNames = Object.keys(sd);
-      const dayCount = staffNames.reduce((mx,n)=>Math.max(mx, Object.keys(sd[n]||{}).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).length), 0);
-      if(!confirm(ym + " のシフトを取り込みます。\nスタッフ " + staffNames.length + "名 / 最大 " + dayCount + "日分\n\n既存の " + ym + " シフト表データは置換されます（自動バックアップを取ります）。\nよろしいですか？")) return;
-      const key = "yawaragi_shift_" + ym;
-      const old = localStorage.getItem(key);
-      if(old){
-        const d = new Date();
-        const stamp = d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+"_"+String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0");
-        try { localStorage.setItem(key + "__bak_" + stamp, old); } catch(be){ console.warn("バックアップ保存失敗:", be); }
-      }
-      localStorage.setItem(key, JSON.stringify({ data: sd, savedAt: (obj.savedAt || new Date().toISOString()) }));
-      alert("✓ 取込完了: " + ym + "（スタッフ " + staffNames.length + "名）\n\n画面を再読み込みして反映します。");
-      location.reload();
-    } catch(err){
-      alert("取込に失敗しました: " + err.message);
-    } finally {
-      input.value = "";
-    }
-  };
-  reader.readAsText(file);
-}
 
 function loadShiftFromTable(){
   let loaded = 0;
