@@ -52,6 +52,20 @@ function AAA_LINEテスト() {
   }
 }
 
+// 2026-07-19: 有給基準日シートの作成（GASエディタから引数なしで実行するための入口）。
+// setupYukyuKijunSheet_ は末尾 _ の private かつ ss 引数が必須で、エディタの関数プルダウンから
+// 直接実行できない。ここで SS_ID を解決して呼ぶだけの薄いラッパー。冪等（既にあれば何もしない）。
+function AAA_有給基準日シート作成() {
+  var r = setupYukyuKijunSheet_(SpreadsheetApp.openById(SS_ID));
+  if (r.created) {
+    Logger.log('✅ シート「' + r.sheet + '」を作成し、初期 ' + r.seeded + ' 名を投入しました');
+  } else {
+    Logger.log('ℹ️ シート「' + r.sheet + '」は既に存在します（何もしていません）');
+  }
+  Logger.log(JSON.stringify(r));
+  return r;
+}
+
 // ===== 設定 =====
 var SS_ID = '1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0';
 var OWNER_EMAIL = 'm-higa@keepfitlife.com';
