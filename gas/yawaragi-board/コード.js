@@ -1186,6 +1186,13 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'completeNewMail') {
     return completeNewMail(e);
   }
+  // 最終メール報告日時（永続保持）: 取得 last_mailcheck / 更新 set_mailcheck（追加のみ）2026-07-16
+  if (e && e.parameter && e.parameter.action === 'last_mailcheck') {
+    return lastMailcheckAction_(e);
+  }
+  if (e && e.parameter && e.parameter.action === 'set_mailcheck') {
+    return setMailcheckAction_(e);
+  }
   if (e && e.parameter && e.parameter.action === 'teireiList') {
     return respond(teireiListAction_(SpreadsheetApp.openById(SS_ID), _shiftDateParam_(e)), e.parameter.callback);
   }
@@ -6021,8 +6028,8 @@ function _test_sendCancelEmail_a_case() {
 }
 
 // ===== 社長に通知（LINE + Gmail 両方送信）=====
-var LINE_TOKEN = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
-var OWNER_USER_ID = PropertiesService.getScriptProperties().getProperty('OWNER_USER_ID');
+var LINE_TOKEN = 'uwL+AkshOnTUGkFn+vx7QejtZK7LRYkNmMw19nlM1Iyr84d2SFiHe/vgg0MXSc3U9UmvDl7kaQPGx6Cyv+JzDmag9E0WupZQNpEVoAqFqBhCHUMXVb+CBT2bBSnMyseaHONSMh7ieuWZFrHvDu147gdB04t89/1O/w1cDnyilFU=';
+var OWNER_USER_ID = 'Ue54376b8f1aa48fd139962c33b54affe';
 
 // 2026-05-22 → 2026-05-23: 欠席通知に出すケアマネ連絡手段の1行を組み立てる
 // cmInfo = { status: cmNotified値, office, name, method, phone }
@@ -11939,7 +11946,13 @@ function getMonitoringTargetUsers_() {
     }
     var careRaw = String(row[careCol] || '').trim();
     var careNorm = normalize(careRaw);
-    if (TARGETS.indexOf(careNorm) < 0) continue;
+    // 台帳の生値は「事業対象者」（末尾「者」あり）。完全一致では TARGETS の '事業対象' に
+    // 一致せず事業対象者が全員落ちるため前方一致で拾う。要介護は前方一致しないので入らない。
+    var careMatched = false;
+    for (var ti = 0; ti < TARGETS.length; ti++) {
+      if (careNorm.indexOf(TARGETS[ti]) === 0) { careMatched = true; break; }
+    }
+    if (!careMatched) continue;
     var cfg = configMap[name] || { planStart: '', finalEvalMonth: '' };
     users.push({
       userId: name,
@@ -13311,6 +13324,48 @@ function nmSortItems_(msgs) {
 
 // 新着メールを important / others に仕分けして返す。本文は読まない（メタデータのみ）。
 // sinceHours: 何時間前までの新着を見るか（既定24）。
+// =============================================================
+// 最終メール報告日時（永続保持） 2026-07-16
+//   ScriptProperties 'LAST_MAILCHECK_AT' に ISO8601(UTC) を保存。
+//   起点は「既読/未読」ではなく「届いた日時」。日時の前進は自動でなく、
+//   社長の完了合図で set_mailcheck を叩いた時だけ更新（忘れても翌朝へ持ち越し）。
+//   純ロジック正本: gas/yawaragi-board/mailcheck-core.js（同ディレクトリ＝同一GASプロジェクトへ
+//   push され、MAILCHECK_PROP / mcResolveLastCheck_ / mcComputeSetValue_ / mcIsValidIso_ / mcToIso_
+//   を提供する。intake-auth-core.js と同じ「core定義・ここは呼ぶだけ」流儀。内包しない＝二重宣言回避）
+// =============================================================
+// GET last_mailcheck: 最終報告日時を返す（未設定なら既定=24h前）。epochSecはGmail検索の after: 用。
+function lastMailcheckAction_(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var stored = PropertiesService.getScriptProperties().getProperty(MAILCHECK_PROP);
+  var iso = mcResolveLastCheck_(stored, Date.now(), MAILCHECK_DEFAULT_HOURS);
+  return respond({
+    ok: true,
+    lastMailcheck: iso,
+    isDefault: !mcIsValidIso_(stored),
+    defaultHours: MAILCHECK_DEFAULT_HOURS,
+    epochSec: Math.floor(Date.parse(iso) / 1000)
+  }, callback);
+}
+// set_mailcheck: 最終報告日時を「今」に更新（?at=ISO で明示指定も可）。社長の完了合図でクロが叩く。read-back検証つき。
+function setMailcheckAction_(e) {
+  var callback = (e && e.parameter) ? e.parameter.callback : null;
+  var atParam = (e && e.parameter) ? e.parameter.at : null;
+  var props = PropertiesService.getScriptProperties();
+  var prev = props.getProperty(MAILCHECK_PROP);
+  var iso = mcComputeSetValue_(atParam, Date.now());
+  props.setProperty(MAILCHECK_PROP, iso);
+  var after = props.getProperty(MAILCHECK_PROP);
+  if (after !== iso) {
+    return respond({ ok: false, error: 'verify_failed', lastMailcheck: after }, callback);
+  }
+  return respond({
+    ok: true,
+    lastMailcheck: iso,
+    previous: mcIsValidIso_(prev) ? mcToIso_(Date.parse(prev)) : null,
+    epochSec: Math.floor(Date.parse(iso) / 1000)
+  }, callback);
+}
+
 function checkNewMail(sinceHours) {
   var hours = (typeof sinceHours === 'number' && sinceHours > 0) ? sinceHours : 24;
   // newer_than は日単位。時間単位で絞れないので広めに取り、getDate() で二次フィルタする。
@@ -15353,7 +15408,10 @@ var DENGON_MIGRATE_SEED = [
   { id: 'nyukin-dashboard', createdAt: '2026-06-14', body: '🔴 入金管理ダッシュボード（返戻側）未実装｜設計確定済み（取りこぼし集中／PDF自動＋手入力保険／4段階ステータス／返戻・引落を朝報告で監視）' },
   { id: 'furikae-kaizen', createdAt: '2026-06-14', body: '🔴 振替不能アプリ改修＋繰越確認｜未回収サマリー最上段／表2段階／放置アラート＋「4月の未回収者が5月画面に繰り越されるか」要確認' },
   { id: 'tanka-chosa', createdAt: '2026-06-14', body: '🔴 東松山市の総合事業/介護予防の正確な単価を調べる｜返戻金額を概算→正確化。6級地。出所＝市の総合事業の手引き／運営推進会議資料' },
-  { id: 'kobetsu-phase1-verify', createdAt: '2026-06-15', body: '🟡 個別機能訓練計画書チェックPhase1 実装完了・社長のiPad実機確認待ち｜GAS @252／確認＝計画/評価2列・測定者プルダウン8名・📮ケアマネ未提出ビュー' }
+  { id: 'kobetsu-phase1-verify', createdAt: '2026-06-15', body: '🟡 個別機能訓練計画書チェックPhase1 実装完了・社長のiPad実機確認待ち｜GAS @252／確認＝計画/評価2列・測定者プルダウン8名・📮ケアマネ未提出ビュー' },
+  // 2026-07-16 後回しタスク2件（社長宛・終わるまで方式・日付では消えず伝達ボード完了でのみ消える）
+  { id: 'line-token-heisei', createdAt: '2026-07-16', body: '🔴 LINE平文トークン是正｜本番コード.js 6003-6004 のLINE_TOKEN/OWNER_USER_IDが平文ハードコード(repo正本はProperties化済)。順序厳守=①本番Script Propertiesに両キー有無を確認→②有れば平文2行をProperties版に是正しdeploy→③共用先(板/gas_LINE通知/インク/シフト)棚卸し。未設定のまま是正するとLINE通知が壊れる' },
+  { id: 'nakayama-cm-fudatsu', createdAt: '2026-07-16', body: '🔴 仲山洋子様 ケアマネ宛欠席連絡が不達(実害)｜reha-staff@wakabanooka.jp に550 User Unknown。対応=わかばの丘(担当:吉野あけみ様)の正しい欠席連絡先を確認し電話で直接連絡＋台帳アドレス修正' }
 ];
 
 // --- 純関数（scripts/test-dengon-board.js と同一実装）---
