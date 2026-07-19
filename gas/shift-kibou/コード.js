@@ -4,6 +4,54 @@
 // PIN認証＋管理者モード対応
 // ============================================
 
+// ============================================
+// 【疎通テスト】LINE送信の生死をエディタから確認する（2026-07-19 純追加）
+//   関数プルダウンの最上部に出すため、名前を AAA_ で始めファイル先頭に置く。
+//   引数なし・冪等・既存の通知ロジックには一切触れない。
+//   送信先は本番と同じ「LINE登録」シートの userId（このGASはこれしか使っていない）。
+// ============================================
+function AAA_LINEテスト() {
+  const token = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
+  Logger.log('LINE_TOKEN: ' + (token ? 'あり（' + String(token).length + '文字）' : '❌ なし'));
+  if (!token) {
+    Logger.log('→ 「プロジェクトの設定 → スクリプト プロパティ」で LINE_TOKEN を設定してください。');
+    return;
+  }
+
+  // 送信先: LINE登録シートの1件目（氏名 / userId）。本番の sendLineToStaff_ と同じ参照先。
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_LINE_REG);
+  if (!sheet) { Logger.log('❌ 「' + SHEET_LINE_REG + '」シートがありません。'); return; }
+  const rows = sheet.getDataRange().getValues().slice(1)
+    .filter(function (r) { return String(r[0] || '').trim() && String(r[1] || '').trim(); });
+  Logger.log('LINE登録の有効件数: ' + rows.length + '件');
+  if (!rows.length) { Logger.log('❌ 送信先IDが1件もありません。'); return; }
+  const toName = String(rows[0][0]).trim();
+  const toId = String(rows[0][1]).trim();
+  Logger.log('送信先: ' + toName + '（userId: ' + toId.length + '文字）');
+
+  // 文面は固定。個人情報・業務内容は含めない。
+  const text = '【テスト】シフト希望GAS 疎通確認 '
+             + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+  const res = UrlFetchApp.fetch(LINE_PUSH_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer ' + token },
+    payload: JSON.stringify({ to: toId, messages: [{ type: 'text', text: text }] }),
+    muteHttpExceptions: true
+  });
+  const code = res.getResponseCode();
+  Logger.log('HTTP ' + code);
+  if (code === 200) {
+    Logger.log('✅ 送信成功。' + toName + 'さんのLINEに届いているか確認してください。');
+  } else if (code === 401) {
+    Logger.log('❌ 401＝トークン不正。Script Properties の LINE_TOKEN を新トークンに更新してください。');
+    Logger.log(res.getContentText());
+  } else {
+    Logger.log('❌ 想定外の応答: ' + res.getContentText());
+  }
+}
+
 const SHEET_WISHES = 'シフト希望';
 const SHEET_STAFF_SHIFT = 'スタッフ';
 const SHEET_SETTINGS = '設定';
