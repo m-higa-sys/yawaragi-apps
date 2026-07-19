@@ -925,6 +925,15 @@ function doGet(e) {
     return jsonResp(appregistryDropLegacy_());
   }
 
+  // 観測(Phase B-1): access_log / origin_log の集計を返す（読み取り専用・副作用なし・2026-07-19）。
+  //   生ログ全件は返さない（URL/パラメータに利用者名が乗りうるため集計値のみ）。認可は adminKey。
+  if (e && e.parameter && e.parameter.action === 'access_log_summary') {
+    if (!intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, e.parameter.callback);
+    }
+    return respond(accessLogSummary_(), e.parameter.callback);
+  }
+
   // セキュリティ: access_log シートの作成／列移行＋日次トリムトリガ設置（冪等・2026-07-19）。
   //   認可は上と同じ adminKey を流用＝新しい穴を開けない（f52ff6c は無認可だったが揃える）。
   if (e && e.parameter && e.parameter.action === 'maintenance_setup_access_log') {
@@ -6954,6 +6963,29 @@ function setupAccessLog_() {
     dataRows: shAfter ? Math.max(0, shAfter.getLastRow() - 1) : 0,
     trimTriggerInstalled: !hasTrigger, retentionDays: ACCESS_LOG_RETENTION_DAYS
   };
+}
+
+// 観測(Phase B-1): access_log / origin_log をシートから読み、集計だけを返す。
+//   読み取り専用（シートを一切書き換えない）。シートが無ければ exists:false を返して落ちない。
+//   純集計は access-log-core.js（buildAccessLogSummary_ / buildOriginLogSummary_）。
+function accessLogSummary_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  function readRows_(name, cols) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return null;
+    var last = sh.getLastRow();
+    if (last < 2) return [];
+    return sh.getRange(2, 1, last - 1, cols).getValues();
+  }
+  var out = { ok: true, generatedAt: accessLogStamp_(new Date()), retentionDays: ACCESS_LOG_RETENTION_DAYS };
+  var acc = readRows_(ACCESS_LOG_SHEET, ACCESS_LOG_HEADER.length);
+  out.accessLog = (acc === null)
+    ? { exists: false }
+    : (function (s) { s.exists = true; return s; })(buildAccessLogSummary_(acc, { topActions: 20 }));
+  var org = readRows_('origin_log', 5);
+  out.originLog = (org === null) ? { exists: false }
+    : (function (s) { s.exists = true; return s; })(buildOriginLogSummary_(org));
+  return out;
 }
 
 // =============================================================

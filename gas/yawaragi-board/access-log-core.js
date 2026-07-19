@@ -146,8 +146,104 @@ function planAccessLogHeaderMigration_(header) {
   return { action: 'manual', reason: 'unexpected_header' };
 }
 
+// ===== 観測用の集計（Phase B-1・2026-07-19）=====
+// 生ログ全件は返さない。URL/パラメータに利用者名が乗りうるため、集計値だけを外に出す。
+// note 列は集計に一切含めない（原因追跡用の自由記述で、将来PIIが混ざる余地があるため）。
+
+// Date → 'YYYY-MM-DD HH:mm'（Asia/Tokyo・通年UTC+9）。読めなければ null。
+function accessLogStamp_(v) {
+  if (Object.prototype.toString.call(v) !== '[object Date]') return null;
+  var t = v.getTime();
+  if (isNaN(t)) return null;
+  var j = new Date(t + 9 * 3600000);
+  function p(n) { return ('0' + n).slice(-2); }
+  return j.getUTCFullYear() + '-' + p(j.getUTCMonth() + 1) + '-' + p(j.getUTCDate())
+       + ' ' + p(j.getUTCHours()) + ':' + p(j.getUTCMinutes());
+}
+
+// origin を性格で分類する。Phase B で「合言葉を配れない経路」を炙り出すための軸。
+//   none : クライアントが origin を送っていない（shared.js 未経由の直接fetch）
+//   file : file:// 直開き。localStorage がオリジンごとに分かれるため合言葉を保存できない
+//   prod : 本番の github.io
+//   other: それ以外（未知の配布経路）
+function classifyAccessLogOrigin_(origin) {
+  var s = String(origin === null || origin === undefined ? '' : origin).trim();
+  if (s === '' || s === ACCESS_LOG_ORIGIN_NONE) return 'none';
+  if (s.indexOf('file:') === 0 || s === 'null') return 'file';
+  if (s.indexOf('github.io') >= 0) return 'prod';
+  return 'other';
+}
+
+function _tally_(map, key) { map[key] = (map[key] || 0) + 1; }
+function _toSortedList_(map, keyName) {
+  var out = [];
+  for (var k in map) { if (Object.prototype.hasOwnProperty.call(map, k)) { var o = {}; o[keyName] = k; o.count = map[k]; out.push(o); } }
+  out.sort(function (a, b) { return (b.count - a.count) || (a[keyName] < b[keyName] ? -1 : 1); });
+  return out;
+}
+
+// access_log のデータ行（ヘッダ除く）→ 集計。opts.topActions で action 上位N件（既定20）。
+function buildAccessLogSummary_(rows, opts) {
+  opts = opts || {};
+  var topActions = (opts.topActions === undefined) ? 20 : opts.topActions;
+  var empty = {
+    totalRows: 0, period: null, byMethod: {}, byTokenStatus: {}, byResult: {},
+    byOrigin: [], originAlert: { none: 0, file: 0 }, byAction: [], actionKindsTotal: 0
+  };
+  if (!rows || !rows.length) return empty;
+  var method = {}, status = {}, result = {}, origin = {}, originKind = {}, action = {};
+  var alert = { none: 0, file: 0 };
+  var from = null, to = null;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i] || [];
+    var stamp = accessLogStamp_(r[0]);
+    if (stamp) {
+      if (from === null || stamp < from) from = stamp;
+      if (to === null || stamp > to) to = stamp;
+    }
+    if (r[1]) _tally_(method, String(r[1]));
+    if (r[2]) _tally_(action, String(r[2]));
+    if (r[4]) _tally_(status, String(r[4]));
+    if (r[6]) _tally_(result, String(r[6]));
+    var o = sanitizeAccessLogOrigin_(r[3]);   // クエリ除去・生トークン除去を再適用（防御的）
+    _tally_(origin, o);
+    var kind = classifyAccessLogOrigin_(o);
+    originKind[o] = kind;
+    if (kind === 'none' || kind === 'file') alert[kind]++;
+  }
+  var originList = _toSortedList_(origin, 'origin');
+  for (var j = 0; j < originList.length; j++) originList[j].kind = originKind[originList[j].origin];
+  var actionList = _toSortedList_(action, 'action');
+  return {
+    totalRows: rows.length,
+    period: (from && to) ? { from: from, to: to } : null,
+    byMethod: method, byTokenStatus: status, byResult: result,
+    byOrigin: originList, originAlert: alert,
+    byAction: actionList.slice(0, topActions),
+    actionKindsTotal: actionList.length
+  };
+}
+
+// origin_log のデータ行（ヘッダ除く）→ 集計。
+//   列は [サーバ受信時刻, origin, href, userAgent, クライアント時刻]。
+//   href と userAgent は返さない（href のクエリに利用者名・日付が乗りうるため）。
+function buildOriginLogSummary_(rows) {
+  if (!rows || !rows.length) return { totalRows: 0, origins: [] };
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i] || [];
+    var o = sanitizeAccessLogOrigin_(r[1]);
+    out.push({ origin: o, kind: classifyAccessLogOrigin_(o), firstSeen: accessLogStamp_(r[0]) });
+  }
+  return { totalRows: rows.length, origins: out };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    accessLogStamp_: accessLogStamp_,
+    classifyAccessLogOrigin_: classifyAccessLogOrigin_,
+    buildAccessLogSummary_: buildAccessLogSummary_,
+    buildOriginLogSummary_: buildOriginLogSummary_,
     ACCESS_LOG_RETENTION_DAYS: ACCESS_LOG_RETENTION_DAYS,
     computeAccessLogAgeTrim_: computeAccessLogAgeTrim_,
     planAccessLogHeaderMigration_: planAccessLogHeaderMigration_,
