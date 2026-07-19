@@ -17,6 +17,13 @@ ok(/case 'sougeiCondsSeed'/.test(src), "doPost に sougeiCondsSeed case");
 ok(/sougeiCondsUpsert_\(ss, ?data\)/.test(src), "sougeiCondsUpsert_(ss, data) 呼び出し");
 ok(/sougeiCondsSeed_\(ss, ?data\)/.test(src), "sougeiCondsSeed_(ss, data) 呼び出し");
 
+console.log('\n[doGet(JSONP)保存] 応答を読むため Upsert/Seed も GET で叩ける');
+ok(/action === 'sougeiCondsUpsert'/.test(src), "doGet に sougeiCondsUpsert 分岐(JSONP保存)");
+ok(/action === 'sougeiCondsSeed'/.test(src), "doGet に sougeiCondsSeed 分岐(JSONP保存)");
+ok(/respond\(sougeiCondsUpsert_\(ss, ?[a-zA-Z_]+\), ?callback\)/.test(src), "Upsert を respond(...,callback) で返す");
+ok(/respond\(sougeiCondsSeed_\(ss, ?[a-zA-Z_]+\), ?callback\)/.test(src), "Seed を respond(...,callback) で返す");
+ok(/JSON\.parse\(e\.parameter\.p/.test(src), "GET時は e.parameter.p(JSON文字列)からデータ復元");
+
 console.log('\n[ハンドラ定義] 5関数がある');
 ['sougeiCondsGet_','sougeiCondsUpsert_','sougeiCondsSeed_','scEnsureCondsSheet_','scReadStore_','scWriteStore_'].forEach(function(fn){
   ok(new RegExp('function\\s+'+fn+'\\s*\\(').test(src), '定義: '+fn);

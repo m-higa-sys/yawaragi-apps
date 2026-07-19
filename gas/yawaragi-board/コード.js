@@ -1516,6 +1516,14 @@ function doGet(e) {
     if (action === 'sougeiCondsGet') { // 送迎条件（段階0・鍵なし・callback対応）
       return respond(sougeiCondsGet_(ss), callback);
     }
+    if (action === 'sougeiCondsUpsert') { // 保存もGET(JSONP)可＝応答(count)を読むため。p=JSON文字列
+      var scUp = {}; try { scUp = JSON.parse(e.parameter.p || '{}'); } catch (_scE) { scUp = {}; }
+      return respond(sougeiCondsUpsert_(ss, scUp), callback);
+    }
+    if (action === 'sougeiCondsSeed') { // プリフィル一括もGET(JSONP)可（冪等）。p=JSON文字列
+      var scSd = {}; try { scSd = JSON.parse(e.parameter.p || '{}'); } catch (_scE2) { scSd = {}; }
+      return respond(sougeiCondsSeed_(ss, scSd), callback);
+    }
     if (action === 'weekly_seed_orders') {
       return respond(weeklySeedOrders_(ss), callback);
     }
