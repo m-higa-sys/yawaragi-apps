@@ -7787,10 +7787,28 @@ var KOYOU_SOON_DAYS = 45;      // 満了何日前から出すか
 var KOYOU_MUKI_YEARS = 5;      // 無期転換申込権の通算年数
 var KOYOU_MUKI_LEAD_MONTHS = 6; // 5年到達の何ヶ月前から出すか
 
+// セル値を 'YYYY-MM-DD' に正規化する。判定不能なら ''。
+//   Sheets は setValues('2025-09-30') を自動で日付型に変換するため、getValues() では
+//   Date が返る。文字列前提のまま扱うと日付判定が全滅する（2026-07-19 本番不具合）。
+//   Date は Asia/Tokyo（通年 UTC+9・サマータイムなし）で日付に落とす。
+//   ※ instanceof は vm/別realm で false になり得るため toString で判定する。
+function koyouYmd_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    var t = v.getTime();
+    if (isNaN(t)) return '';
+    var j = new Date(t + 9 * 3600000);
+    return j.getUTCFullYear() + '-'
+         + ('0' + (j.getUTCMonth() + 1)).slice(-2) + '-'
+         + ('0' + j.getUTCDate()).slice(-2);
+  }
+  var s = String(v == null ? '' : v).trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
+
 // 'YYYY-MM-DD' を UTC のミリ秒に。タイムゾーンの影響を受けずに日数差を出すため。
 function _koyouUtc_(ymd) {
-  var s = String(ymd || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  var s = koyouYmd_(ymd);
+  if (!s) return null;
   return Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
 }
 
@@ -7812,8 +7830,8 @@ function koyouExpiryState_(endYmd, dateStr) {
 // 無期転換申込権: 入社日から通算5年に到達するか、到達6ヶ月前まで来ていれば true。
 //   ※退職後の再入社者は通算がリセットされるため、シートの入社日（＝再入社日）を起点にする。
 function koyouMukiTenkanDue_(joinYmd, dateStr) {
-  var j = String(joinYmd || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(j)) return false;
+  var j = koyouYmd_(joinYmd);   // Date型でも受ける
+  if (!j) return false;
   // 到達日＝入社日＋5年。その6ヶ月前＝到達日−6ヶ月 から表示する。
   var y = +j.slice(0, 4) + KOYOU_MUKI_YEARS, m = +j.slice(5, 7), d = +j.slice(8, 10);
   m -= KOYOU_MUKI_LEAD_MONTHS;
@@ -7835,7 +7853,7 @@ function koyouKeiyakuLabel_(row, dateStr) {
   } else if (status === '要確認') {
     s = '🟡' + name + 'さん 契約書の内容が未確認';
   } else {
-    var end = String(row[KK.end] || '').trim();
+    var end = koyouYmd_(row[KK.end]);   // 表示にDateのシリアライズを漏らさない
     var st = koyouExpiryState_(end, dateStr);
     var d = koyouDaysUntil_(end, dateStr);
     if (st === 'expired') s = '🔴【至急】' + name + 'さん 契約が' + end + 'に満了・' + (-d) + '日経過';
@@ -7868,7 +7886,7 @@ function buildKoyouKeiyakuSection_(rows, dateStr) {
     out.push({
       name: String(r[KK.name]).trim(),
       shubetsu: String(r[KK.shubetsu] || '').trim(),
-      end: String(r[KK.end] || '').trim(),
+      end: koyouYmd_(r[KK.end]),
       status: status,
       daysLeft: koyouDaysUntil_(r[KK.end], dateStr),
       level: level,

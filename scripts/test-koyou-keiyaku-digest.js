@@ -152,6 +152,79 @@ ok(typeof sandbox.buildYukyuGrantSection_ === 'function', '★buildYukyuGrantSec
 eq(sandbox.buildYukyuGrantSection_([['林秀明', 7, 30, '週3日', 5, '', '']], '2026-07-19').count, 1,
   '★有給側の判定が従来どおり動く');
 
+// ===== 6) Date型の入力（2026-07-19 本番不具合の再発防止）=====
+// Sheets は setValues('2025-09-30') を自動で日付型に変換する。getValues() で読み戻すと
+// Date オブジェクトになり、文字列前提の正規表現に一致せず日付判定が全滅していた。
+// （本番実測: end が "Sun May 31 2026 16:00:00 GMT+0900" とシリアライズされていた）
+console.log('[6] Date型の入力を受け付ける');
+
+// 本番シートの実測に合わせ、シートのタイムゾーン基準の0時＝JST 16:00 の瞬間で再現する。
+function sheetDate(ymd) {
+  var p = ymd.split('-');
+  return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 7, 0, 0)); // = 同日 16:00 JST
+}
+
+ok(typeof sandbox.koyouYmd_ === 'function', '★正規化関数 koyouYmd_ が存在する');
+eq(sandbox.koyouYmd_(sheetDate('2025-09-30')), '2025-09-30', '★Date型 → YYYY-MM-DD');
+eq(sandbox.koyouYmd_('2025-09-30'), '2025-09-30', '文字列は従来どおり（回帰）');
+eq(sandbox.koyouYmd_(''), '', '空文字は空');
+eq(sandbox.koyouYmd_(null), '', 'null は空');
+eq(sandbox.koyouYmd_(undefined), '', 'undefined は空');
+eq(sandbox.koyouYmd_('2025/09/30'), '', '不正な書式は空（従来どおり弾く）');
+eq(sandbox.koyouYmd_(new Date('invalid')), '', '不正なDateは空');
+
+console.log('[6-2] タイムゾーン境界（JSTで日付が変わる瞬間）');
+eq(sandbox.koyouYmd_(new Date(Date.UTC(2026, 6, 31, 15, 0, 0))), '2026-08-01', '★UTC 7/31 15:00 = JST 8/1 00:00 → 8/1');
+eq(sandbox.koyouYmd_(new Date(Date.UTC(2026, 6, 31, 14, 59, 59))), '2026-07-31', '★UTC 7/31 14:59 = JST 7/31 23:59 → 7/31');
+eq(sandbox.koyouYmd_(new Date(Date.UTC(2026, 6, 31, 0, 0, 0))), '2026-07-31', 'UTC 7/31 00:00 = JST 7/31 09:00 → 7/31');
+
+console.log('[6-3] 月末・年跨ぎの境界');
+eq(sandbox.koyouYmd_(sheetDate('2026-02-28')), '2026-02-28', '月末（2月）');
+eq(sandbox.koyouYmd_(sheetDate('2024-02-29')), '2024-02-29', '★閏日');
+eq(sandbox.koyouYmd_(sheetDate('2025-12-31')), '2025-12-31', '★年末');
+eq(sandbox.koyouYmd_(sheetDate('2026-01-01')), '2026-01-01', '★年始');
+eq(sandbox.koyouDaysUntil_(sheetDate('2026-01-01'), '2025-12-31'), 1, '★年跨ぎの残日数');
+
+console.log('[6-4] Date型でも日数・状態・無期転換が正しく出る');
+eq(sandbox.koyouDaysUntil_(sheetDate('2025-09-30'), '2026-07-19'), -292, '★小野さん: Date型でも292日経過');
+eq(sandbox.koyouDaysUntil_(sheetDate('2026-07-31'), '2026-07-19'), 12, '★春山さん: Date型でもあと12日');
+eq(sandbox.koyouExpiryState_(sheetDate('2025-09-30'), '2026-07-19'), 'expired', '★Date型でも expired');
+eq(sandbox.koyouExpiryState_(sheetDate('2026-07-31'), '2026-07-19'), 'soon', '★Date型でも soon');
+ok(sandbox.koyouMukiTenkanDue_(sheetDate('2021-07-19'), '2026-07-19') === true, '★入社日がDate型でも無期転換が立つ');
+ok(sandbox.koyouMukiTenkanDue_(sheetDate('2024-09-03'), '2026-07-19') === false, 'Date型・まだ出さない例');
+
+console.log('[6-5] 表示文にDateのシリアライズが漏れない');
+eq(sandbox.koyouKeiyakuLabel_(
+  [ '小野重次郎', '有期', '', sheetDate('2025-09-30'), '未更新', sheetDate('2023-07-19'), '' ], '2026-07-19'),
+  '🔴【至急】小野重次郎さん 契約が2025-09-30に満了・292日経過', '★Date型でも表示文は YYYY-MM-DD');
+
+console.log('[6-6] 本番シートと同じ全行Date型で 8件そろう');
+function rowD(name, shubetsu, start, end, status, join, note) {
+  return [name, shubetsu, start ? sheetDate(start) : '', end ? sheetDate(end) : '',
+          status || '', join ? sheetDate(join) : '', note || ''];
+}
+var ROWS_D = [
+  rowD('小野重次郎', '有期', '', '2025-09-30', '未更新', '2023-07-19', '満了から10ヶ月経過・最優先'),
+  rowD('春山忍', '有期', '2025-08-01', '2026-07-31', '未更新', '2025-04-07'),
+  rowD('工藤経子', '有期', '2026-05-01', '2026-07-31', '未更新', '2026-02-06'),
+  rowD('林秀明', '有期', '2026-05-01', '2026-07-31', '未更新', '2026-01-30'),
+  rowD('勝又裕子', '有期', '2026-05-01', '2026-08-31', '未更新', '2025-11-03'),
+  rowD('下浦理絵', '有期', '2025-10-01', '2026-09-30', '未更新', '2024-09-03', '退職後の再入社'),
+  rowD('大久保好美', '有期', '2026-03-01', '2026-05-31', '更新済・未スキャン', '2026-03-02'),
+  rowD('石井祐子', '有期', '2026-04-01', '2026-06-30', '更新済・未スキャン', '2026-04-01'),
+  rowD('星野友太', '無期', '2026-02-13', '', '対象外', '2026-02-13', '退職後の再入社'),
+  rowD('喜多美咲', '無期', '2026-07-16', '', '対象外', '2026-07-16'),
+  rowD('髙山奈緒美', '未確認', '', '', '要確認', '2022-09-01', '契約書が読み取れず')
+];
+var sD = sandbox.buildKoyouKeiyakuSection_(ROWS_D, '2026-07-19');
+console.log('  （対象: ' + JSON.stringify(sD.items.map(function (i) { return i.name; })) + '）');
+eq(sD.count, 8, '★本番と同じDate型シートで 8件');
+eq(sD.expired, 1, '★満了済みは1件（小野さん）');
+eq(sD.items[0].name, '小野重次郎', '★満了済みが最上位');
+eq(sD.items[0].daysLeft, -292, '★daysLeft が null にならない');
+eq(sD.items[0].end, '2025-09-30', '★end が YYYY-MM-DD で返る');
+ok(sD.items.map(function (i) { return i.name; }).indexOf('下浦理絵') < 0, '45日超は従来どおり出さない');
+
 console.log('');
 console.log('=========================================');
 console.log('  pass: ' + pass + ' / fail: ' + fail);
