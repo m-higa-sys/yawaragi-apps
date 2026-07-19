@@ -484,6 +484,23 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
 .lp-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:10px;}
 .lp-footer button{padding:6px 16px;border:1px solid #ccc;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;}
 @media print{.layout-overlay{display:none!important;}}
+
+/* ── 担会・契約の担当2（2026-07-16追加） ──
+   1名時は .ev-staff2-row 自体を描画しないので、既存の印刷1枚レイアウトには影響しない。 */
+.ev-staff2-row{display:block;margin-top:2px;white-space:nowrap;}
+.ev-staff2-add{margin-left:3px;padding:0 4px;font-size:10px;line-height:1.5;background:#fff;border:1px solid #bbb;border-radius:3px;cursor:pointer;color:#555;font-family:inherit;}
+.ev-staff2-add:hover{background:#eee;}
+.ev-staff-print{display:none;}
+@media print{
+  /* 担当セルは83pxしかなくセレクタ2つ(74px×2)は横に並ばない。2名時だけセレクタを隠して
+     「担当1／担当2」のテキスト1行に差し替え、行が縦に伸びない＝ページ数を増やさない。
+     1名時はこれらの要素自体を描画しないので、従来の印刷レイアウトは一切変わらない。 */
+  .ev-staff-cell2 select{display:none!important;}
+  .ev-staff-cell2 .ev-staff2-row{display:none!important;}
+  /* 見た目は隣の担当セレクタ（.ev-type-select は 11px / 印刷時 font-weight:900）に揃える。
+     セル(td)のフォントを継承すると16pxになり1名の行より大きく見えてしまうため。 */
+  .ev-staff-print{display:inline!important;font-size:11px!important;font-weight:900!important;line-height:1.2!important;white-space:nowrap;}
+}
 </style>
 </head>
 <body>
@@ -512,6 +529,8 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <div class="week-nav" id="week-nav"></div>
   <button onclick="openCalendar()" style="margin-left:4px">📅 カレンダー</button>
   <button onclick="openMonthShift()" id="btn-mshift" style="background:#fff3e0;border-color:#ff9800;color:#e65100">📋 今月のシフト</button>
+  <button onclick="document.getElementById('shiftImportFile').click()" id="btn-shift-import" style="background:#e8f5e9;border-color:#43a047;color:#2e7d32">📅 シフト表を取込</button>
+  <input type="file" id="shiftImportFile" accept=".json,application/json" style="display:none" onchange="importShiftJSON(this)">
 
   <span class="ctrl-sep" style="display:inline-block;width:1px;height:18px;background:#ccc;margin:0 6px;vertical-align:middle"></span>
 
@@ -1968,6 +1987,37 @@ function renderTelCalls(){
   return h;
 }
 
+// ── 担会・契約の担当2（2026-07-16追加） ──
+// 「＋担当を押したがまだ未選択」の開閉状態はここで持つ。D に入れないので保存されず、
+// 日付を読み込み直すと events が作り直されて自然に閉じる。イベント実体で覚えるので並び替えにも追従する。
+const evStaff2Open = new WeakSet();
+function evStaff2Visible(ev){
+  return !!(ev && ((ev.staff2 && ev.staff2!=='') || evStaff2Open.has(ev)));
+}
+function openEvStaff2(i){
+  const ev=D.events&&D.events[i];
+  if(!ev) return;
+  evStaff2Open.add(ev);
+  render();
+}
+function setEvStaff2(i,v){
+  const ev=D.events&&D.events[i];
+  if(!ev) return;
+  ev.staff2=v;
+  if(!v) evStaff2Open.delete(ev); // 「--」に戻したら1名に戻す
+  autoSave();
+  render();
+}
+function closeEvStaff2(i){
+  const ev=D.events&&D.events[i];
+  if(!ev) return;
+  pushUndo();
+  ev.staff2='';
+  evStaff2Open.delete(ev);
+  autoSave();
+  render();
+}
+
 function renderEvents(){
   if(!D.events) D.events=[];
   // 時間順にソート（未入力は末尾）
@@ -2013,8 +2063,12 @@ function renderEvents(){
   }
   otherEvents.forEach(({ev,i})=>{
     const hasCar=needsCar.includes(ev.type);
+    // 担当2を出している行だけ担当列が2段になるので、他セルを上揃えにして左右のズレを防ぐ（1名時は従来のまま）
+    const s2=hasCar&&evStaff2Visible(ev);
+    const va=s2?'top':'middle';
+    const vaTop=s2?';vertical-align:top':'';
     h+='<tr>';
-    h+='<td style="vertical-align:middle"><select class="ev-type-select ev-type-'+ev.type+'" onchange="D.events['+i+'].type=this.value;if(D.events['+i+'].time)calcBackTime('+i+');autoSave();render()">';
+    h+='<td style="vertical-align:'+va+'"><select class="ev-type-select ev-type-'+ev.type+'" onchange="D.events['+i+'].type=this.value;if(D.events['+i+'].time)calcBackTime('+i+');autoSave();render()">';
     h+='<option value=""'+(ev.type===''?' selected':'')+'> -- </option>';
     ['担会','契約','メモ'].forEach(t=>{
       h+='<option value="'+t+'"'+(ev.type===t?' selected':'')+'>'+t+'</option>';
@@ -2024,25 +2078,42 @@ function renderEvents(){
       const staffList=ev.type==='担会'?activeCareWorkers():allStaff;
       const cn=ev.clientName?ev.clientName.replace(/様$/,''):'';
       const cnDisp=cn?cn+'様':'';
-      h+='<td style="vertical-align:middle"><input type="text" value="'+cnDisp.replace(/"/g,'&quot;')+'" placeholder="利用者名" style="width:70px;font-size:12px;border:1px solid #ccc;border-radius:3px;padding:2px 4px" onfocus="this.value=this.value.replace(/様$/,\'\')" onblur="var v=this.value.replace(/様$/,\'\').trim();D.events['+i+'].clientName=v;this.value=v?v+\'様\':\'\';autoSave()"></td>';
-      h+='<td style="text-align:center"><div class="ev-time-label" style="font-size:10px;color:#888;line-height:1">開始</div><input class="ev-time-input" type="time" value="'+(ev.time||'')+'" style="width:70px" onchange="D.events['+i+'].time=this.value;calcBackTime('+i+');autoSave();render()"></td>';
-      h+='<td style="vertical-align:middle"><select class="ev-type-select" onchange="D.events['+i+'].staff=this.value;autoSave()">';
+      h+='<td style="vertical-align:'+va+'"><input type="text" value="'+cnDisp.replace(/"/g,'&quot;')+'" placeholder="利用者名" style="width:70px;font-size:12px;border:1px solid #ccc;border-radius:3px;padding:2px 4px" onfocus="this.value=this.value.replace(/様$/,\'\')" onblur="var v=this.value.replace(/様$/,\'\').trim();D.events['+i+'].clientName=v;this.value=v?v+\'様\':\'\';autoSave()"></td>';
+      h+='<td style="text-align:center'+vaTop+'"><div class="ev-time-label" style="font-size:10px;color:#888;line-height:1">開始</div><input class="ev-time-input" type="time" value="'+(ev.time||'')+'" style="width:70px" onchange="D.events['+i+'].time=this.value;calcBackTime('+i+');autoSave();render()"></td>';
+      h+='<td'+(s2?' class="ev-staff-cell2"':'')+' style="vertical-align:'+va+'"><select class="ev-type-select" onchange="D.events['+i+'].staff=this.value;autoSave()">';
       h+='<option value="">担当--</option>';
       staffList.forEach(n=>{
+        if(n===ev.staff2&&n!==ev.staff) return; // 担当2で選択中の人は担当1の候補から外す（二重選択の防止）
         h+='<option value="'+n+'"'+(ev.staff===n?' selected':'')+'>'+n+'</option>';
       });
-      h+='</select></td>';
-      h+='<td style="vertical-align:middle"><select class="ev-type-select" onchange="D.events['+i+'].vehicle=this.value;autoSave();render()">';
+      h+='</select>';
+      if(!s2){
+        h+='<button class="ev-staff2-add no-print" onclick="openEvStaff2('+i+')">＋担当</button>';
+      } else {
+        // 担当2は担当1の真下に縦積み（画面）。
+        h+='<div class="ev-staff2-row"><select class="ev-type-select" onchange="setEvStaff2('+i+',this.value)">';
+        h+='<option value="">担当2--</option>';
+        staffList.forEach(n=>{
+          if(n===ev.staff) return; // 担当1で選択中の人は担当2の候補から外す
+          h+='<option value="'+n+'"'+(ev.staff2===n?' selected':'')+'>'+n+'</option>';
+        });
+        h+='</select><span class="del-btn no-print" onclick="closeEvStaff2('+i+')">✕</span></div>';
+        // 印刷用。担当セルは83pxしかなくセレクタ2つ(74px×2)は横に並ばず折り返して行が伸びるため、
+        // 印刷時だけセレクタを隠してこのテキスト1行に差し替える（1名時は出力しないので従来の印刷は不変）。
+        h+='<span class="ev-staff-print">'+(ev.staff||'--')+'／'+(ev.staff2||'--')+'</span>';
+      }
+      h+='</td>';
+      h+='<td style="vertical-align:'+va+'"><select class="ev-type-select" onchange="D.events['+i+'].vehicle=this.value;autoSave();render()">';
       h+='<option value="">車--</option>';
       VEHICLES.forEach(v=>{
         h+='<option value="'+v+'"'+(ev.vehicle===v?' selected':'')+'>'+v+'</option>';
       });
       h+='</select></td>';
-      h+='<td style="text-align:center"><div class="ev-time-label" style="font-size:10px;color:#888;line-height:1">戻り</div><input class="ev-time-input" type="time" value="'+(ev.backTime||'')+'" style="width:70px;font-size:11px" onchange="D.events['+i+'].backTime=this.value;autoSave();render()"></td>';
+      h+='<td style="text-align:center'+vaTop+'"><div class="ev-time-label" style="font-size:10px;color:#888;line-height:1">戻り</div><input class="ev-time-input" type="time" value="'+(ev.backTime||'')+'" style="width:70px;font-size:11px" onchange="D.events['+i+'].backTime=this.value;autoSave();render()"></td>';
     } else {
       h+='<td colspan="6" style="vertical-align:middle"><input class="ev-note-input" style="width:100%" type="text" value="'+((ev.note||'').replace(/"/g,'&quot;'))+'" placeholder="内容を入力" onchange="D.events['+i+'].note=this.value;autoSave()"></td>';
     }
-    h+='<td class="del-col" style="vertical-align:middle"><span class="del-btn no-print" onclick="pushUndo();D.events.splice('+i+',1);render()">✕</span></td>';
+    h+='<td class="del-col" style="vertical-align:'+va+'"><span class="del-btn no-print" onclick="pushUndo();D.events.splice('+i+',1);render()">✕</span></td>';
     h+='</tr>';
     // 担会・契約のスタッフ名・時間未入力チェック
     if(hasCar){
@@ -2138,25 +2209,29 @@ function renderBreakClean(){
   if(!D.eventBreakOk) D.eventBreakOk={};
   if(D.events && D.breaks){
     D.events.forEach((ev,i)=>{
-      if(!ev.staff || !ev.time || (ev.type!=='担会'&&ev.type!=='契約')) return;
-      const staffBreak=D.breaks.find(b=>b.name===ev.staff && b.time && b.time!=='送迎後' && b.time!=='担会後' && b.time!=='契約後');
-      if(!staffBreak) return;
-      const evMin=timeToMin(ev.time);
-      const departMin=evMin-30;
-      const backMin=ev.backTime?timeToMin(ev.backTime):evMin+90;
-      const bStart=timeToMin(staffBreak.time);
-      const bDur=staffBreak.duration==='１時間'?60:staffBreak.duration==='45分'?45:60;
-      const bEnd=bStart+bDur;
-      const wk='break_'+i+'_'+ev.staff;
-      if(bStart<backMin && bEnd>departMin){
-        if(!D.eventBreakOk[wk]){
-          const dH=Math.floor(departMin/60);const dM=String(departMin%60).padStart(2,'0');
-          const rH=Math.floor(backMin/60);const rM=String(backMin%60).padStart(2,'0');
-          h+='<tr class="no-print"><td colspan="4" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:11px;padding:4px;font-weight:700">⚠ '+ev.staff+'の休憩（'+staffBreak.time+'～'+bDur+'分間）が外出（'+dH+':'+dM+'～'+rH+':'+rM+'）と重なります <button class="no-print" style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.eventBreakOk)D.eventBreakOk={};D.eventBreakOk[\''+wk+'\']=true;autoSave();render()">OK</button></td></tr>';
+      if(!ev.time || (ev.type!=='担会'&&ev.type!=='契約')) return;
+      // 担当2も担当1と同じく外出するので同じ判定にかける（staff2が空なら従来と同一）
+      [ev.staff, ev.staff2].forEach(mem=>{
+        if(!mem) return;
+        const staffBreak=D.breaks.find(b=>b.name===mem && b.time && b.time!=='送迎後' && b.time!=='担会後' && b.time!=='契約後');
+        if(!staffBreak) return;
+        const evMin=timeToMin(ev.time);
+        const departMin=evMin-30;
+        const backMin=ev.backTime?timeToMin(ev.backTime):evMin+90;
+        const bStart=timeToMin(staffBreak.time);
+        const bDur=staffBreak.duration==='１時間'?60:staffBreak.duration==='45分'?45:60;
+        const bEnd=bStart+bDur;
+        const wk='break_'+i+'_'+mem;
+        if(bStart<backMin && bEnd>departMin){
+          if(!D.eventBreakOk[wk]){
+            const dH=Math.floor(departMin/60);const dM=String(departMin%60).padStart(2,'0');
+            const rH=Math.floor(backMin/60);const rM=String(backMin%60).padStart(2,'0');
+            h+='<tr class="no-print"><td colspan="4" style="color:#b71c1c;background:#fff0f0;border-left:4px solid #d32f2f;font-size:11px;padding:4px;font-weight:700">⚠ '+mem+'の休憩（'+staffBreak.time+'～'+bDur+'分間）が外出（'+dH+':'+dM+'～'+rH+':'+rM+'）と重なります <button class="no-print" style="margin-left:8px;padding:1px 10px;background:#28a745;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:11px" onclick="if(!D.eventBreakOk)D.eventBreakOk={};D.eventBreakOk[\''+wk+'\']=true;autoSave();render()">OK</button></td></tr>';
+          }
+        } else {
+          delete D.eventBreakOk[wk];
         }
-      } else {
-        delete D.eventBreakOk[wk];
-      }
+      });
     });
   }
   // フロア人数チェック（3人未満で警告）
@@ -2665,14 +2740,18 @@ function checkFloorStaffCount(){
   // 担会・契約イベント {staff, start, end}
   const eventAway=[];
   (D.events||[]).forEach(ev=>{
-    if(!ev.staff||!ev.time) return;
-    if(!floorNames.includes(ev.staff)) return;
+    if(!ev.time) return;
     if(ev.type!=='担会'&&ev.type!=='契約') return;
     const s=timeToMin(ev.time);
     if(s==null||s<=0) return;
     const back=ev.backTime?timeToMin(ev.backTime):null;
     const end=(back!=null&&back>s)?back:s+60; // 戻り時間があればそれを使用、なければ1時間
-    eventAway.push({name:ev.staff,start:s,end:end,type:ev.type});
+    // 担当2も担当1と同じく外出中として数える（staff2が空なら従来と同一）
+    [ev.staff, ev.staff2].forEach(mem=>{
+      if(!mem) return;
+      if(!floorNames.includes(mem)) return;
+      eventAway.push({name:mem,start:s,end:end,type:ev.type});
+    });
   });
 
   // 利用時間のみチェック（AM 9:00-11:30 / PM 13:30-16:00）※送り開始前まで
@@ -3426,6 +3505,47 @@ const SHIFT_DEFAULT_CODE = {
   takayama:'E1', haruyama:'E1', ishikawa:'E1', tanaka:'F', higa:'-',
   ono:'7②', hayashi:'7②'
 };
+
+function importShiftJSON(input){
+  // シフト作成(github.io)のエクスポートJSONを取り込み、出勤送迎表が読む localStorage(yawaragi_shift_YYYY-MM) を置換する。
+  // 対応形式: {yearMonth, shiftData, savedAt}(手動export) / {data, savedAt}(autosave)
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      const obj = JSON.parse(e.target.result);
+      const sd = obj.shiftData || obj.data;
+      if(!sd || typeof sd !== "object"){ alert("シフトデータが見つかりません（shiftData/data キーがありません）"); return; }
+      let ym = obj.yearMonth;
+      if(!ym){
+        for(const name of Object.keys(sd)){
+          const dk = Object.keys(sd[name]||{}).find(k=>/^\d{4}-\d{2}-\d{2}$/.test(k));
+          if(dk){ ym = dk.slice(0,7); break; }
+        }
+      }
+      if(!ym || !/^\d{4}-\d{2}$/.test(ym)){ alert("対象月を判定できませんでした（yearMonthも日付キーも無し）"); return; }
+      const staffNames = Object.keys(sd);
+      const dayCount = staffNames.reduce((mx,n)=>Math.max(mx, Object.keys(sd[n]||{}).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).length), 0);
+      if(!confirm(ym + " のシフトを取り込みます。\nスタッフ " + staffNames.length + "名 / 最大 " + dayCount + "日分\n\n既存の " + ym + " シフト表データは置換されます（自動バックアップを取ります）。\nよろしいですか？")) return;
+      const key = "yawaragi_shift_" + ym;
+      const old = localStorage.getItem(key);
+      if(old){
+        const d = new Date();
+        const stamp = d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+"_"+String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0");
+        try { localStorage.setItem(key + "__bak_" + stamp, old); } catch(be){ console.warn("バックアップ保存失敗:", be); }
+      }
+      localStorage.setItem(key, JSON.stringify({ data: sd, savedAt: (obj.savedAt || new Date().toISOString()) }));
+      alert("✓ 取込完了: " + ym + "（スタッフ " + staffNames.length + "名）\n\n画面を再読み込みして反映します。");
+      location.reload();
+    } catch(err){
+      alert("取込に失敗しました: " + err.message);
+    } finally {
+      input.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
 
 function loadShiftFromTable(){
   let loaded = 0;
@@ -6730,12 +6850,26 @@ function applyBoardTrials(dateStr){
     if(!D.events) D.events=[];
     const before=JSON.stringify(D.events);
     // ボード由来(source==='board')の体験イベントだけ全削除して入れ直す。手動「＋追加」分は温存
+    // 担当(staff/staff2)は画面で入れた値でボードには無いため、氏名で引き継ぐ（作り直しで消さない）
+    const prevStaff={};
+    D.events.forEach(ev=>{
+      if(ev.source!=='board') return;
+      const k=String(ev.name||'').trim();
+      if(!k) return;
+      if(ev.staff||ev.staff2) prevStaff[k]={staff:ev.staff||'', staff2:ev.staff2||''};
+    });
     D.events=D.events.filter(ev=>ev.source!=='board');
     trials.forEach(t=>{
       const nm=String(t.氏名||'').trim();
       if(!nm) return;
       const unit=(t.ampm==='pm')?'pm':(t.ampm==='both')?'both':'am';
-      D.events.push({type:'体験', time:String(t.お迎え時間||''), name:nm, note:'', unit:unit, source:'board'});
+      const e={type:'体験', time:String(t.お迎え時間||''), name:nm, note:'', unit:unit, source:'board'};
+      const keep=prevStaff[nm];
+      if(keep){
+        if(keep.staff) e.staff=keep.staff;
+        if(keep.staff2) e.staff2=keep.staff2;
+      }
+      D.events.push(e);
     });
     if(JSON.stringify(D.events)!==before){
       syncTrialUsers();
