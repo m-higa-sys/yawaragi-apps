@@ -66,6 +66,19 @@ function AAA_有給基準日シート作成() {
   return r;
 }
 
+// 2026-07-19: 雇用契約期限シートの作成（GASエディタから引数なしで実行するための入口）。
+// AAA_有給基準日シート作成 と同じ薄いラッパー。冪等（既にあれば何もしない）。
+function AAA_雇用契約期限シート作成() {
+  var r = setupKoyouKeiyakuSheet_(SpreadsheetApp.openById(SS_ID));
+  if (r.created) {
+    Logger.log('✅ シート「' + r.sheet + '」を作成し、初期 ' + r.seeded + ' 名を投入しました');
+  } else {
+    Logger.log('ℹ️ シート「' + r.sheet + '」は既に存在します（何もしていません）');
+  }
+  Logger.log(JSON.stringify(r));
+  return r;
+}
+
 // ===== 設定 =====
 var SS_ID = '1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0';
 var OWNER_EMAIL = 'm-higa@keepfitlife.com';
@@ -3920,6 +3933,8 @@ function doPost(e) {
         return jsonResp(weeklyOverlayUpsert_(ss, data));
       case 'yukyu_grant_done': // 有給付与を済ませた印（adminKey必須・関数内でゲート）
         return jsonResp(yukyuGrantDone_(ss, data));
+      case 'koyou_keiyaku_done': // 契約更新を済ませた印（adminKey必須・関数内でゲート）
+        return jsonResp(koyouKeiyakuDone_(ss, data));
       case 'yukyu_setup_kijun': // 有給基準日シートの作成（冪等・adminKey必須）
         return jsonResp(intakeAdminAuthorized_(null, data)
           ? setupYukyuKijunSheet_(ss)
@@ -7058,6 +7073,11 @@ function morningDigest(e) {
   safe('yukyuGrant', function () {
     return buildYukyuGrantSection_(_getYukyuGrantRows_(ss), dateStr);
   });
+  // 雇用契約の期限（満了済み／45日以内／スキャン待ち／要確認／無期転換・2026-07-19 純追加）
+  //   シート未作成なら空セクション。yukyuGrant と並べて表示できる（互いに独立）。
+  safe('koyouKeiyaku', function () {
+    return buildKoyouKeiyakuSection_(_getKoyouKeiyakuRows_(ss), dateStr);
+  });
 
   return respond({
     ok: errors.length === 0,
@@ -7729,6 +7749,182 @@ function yukyuGrantDone_(ss, data) {
     if (String(vals[i][YK.name]).trim() === name) {
       sheet.getRange(i + 1, YK.doneYear + 1).setValue(year);
       return { success: true, name: name, doneYear: year };
+    }
+  }
+  return { success: false, error: 'name_not_found', name: name };
+}
+
+// ===== 雇用契約の期限（朝報告 koyouKeiyaku セクション・2026-07-19 純追加）=====
+// 目的: 有期契約の満了前に必ず気づける状態にする。契約書の期限切れ（黙示更新）は
+//       実地指導・労務リスクに直結するため、朝報告に出し続ける（終わるまで方式）。
+// 45日にする理由: 有期契約を更新しない場合、30日前の予告が必要になるケースがあるため、
+//       準備期間を含めて余裕を持たせる。
+//
+// シート「雇用契約期限」列: 氏名 / 契約種別 / 契約開始日 / 契約終了日 / 更新状況 / 入社日 / 備考
+// テスト: scripts/test-koyou-keiyaku-digest.js（実物ロード方式）
+var KOYOU_SHEET = '雇用契約期限';
+var KOYOU_HEADER = ['氏名', '契約種別', '契約開始日', '契約終了日', '更新状況', '入社日', '備考'];
+var KK = { name: 0, shubetsu: 1, start: 2, end: 3, status: 4, join: 5, note: 6 };
+var KOYOU_SOON_DAYS = 45;      // 満了何日前から出すか
+var KOYOU_MUKI_YEARS = 5;      // 無期転換申込権の通算年数
+var KOYOU_MUKI_LEAD_MONTHS = 6; // 5年到達の何ヶ月前から出すか
+
+// 'YYYY-MM-DD' を UTC のミリ秒に。タイムゾーンの影響を受けずに日数差を出すため。
+function _koyouUtc_(ymd) {
+  var s = String(ymd || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+}
+
+// 基準日から終了日までの残日数。過ぎていれば負値。判定不能なら null。
+function koyouDaysUntil_(endYmd, dateStr) {
+  var a = _koyouUtc_(endYmd), b = _koyouUtc_(dateStr);
+  if (a === null || b === null) return null;
+  return Math.round((a - b) / 86400000);
+}
+
+// 満了状態: 'expired'（過ぎている）/ 'soon'（45日以内・当日含む）/ 'ok' / 'none'（終了日なし＝無期）
+function koyouExpiryState_(endYmd, dateStr) {
+  var d = koyouDaysUntil_(endYmd, dateStr);
+  if (d === null) return 'none';
+  if (d < 0) return 'expired';
+  return d <= KOYOU_SOON_DAYS ? 'soon' : 'ok';
+}
+
+// 無期転換申込権: 入社日から通算5年に到達するか、到達6ヶ月前まで来ていれば true。
+//   ※退職後の再入社者は通算がリセットされるため、シートの入社日（＝再入社日）を起点にする。
+function koyouMukiTenkanDue_(joinYmd, dateStr) {
+  var j = String(joinYmd || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(j)) return false;
+  // 到達日＝入社日＋5年。その6ヶ月前＝到達日−6ヶ月 から表示する。
+  var y = +j.slice(0, 4) + KOYOU_MUKI_YEARS, m = +j.slice(5, 7), d = +j.slice(8, 10);
+  m -= KOYOU_MUKI_LEAD_MONTHS;
+  if (m <= 0) { m += 12; y -= 1; }
+  var showFrom = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2);
+  var a = _koyouUtc_(showFrom), b = _koyouUtc_(dateStr);
+  if (a === null || b === null) return false;
+  return b >= a;
+}
+
+// 表示文。更新状況が「更新済・未スキャン」「要確認」の場合はそちらを優先して出す
+//   （期限そのものより「書類が手元に無い」ことが問題のため）。
+function koyouKeiyakuLabel_(row, dateStr) {
+  var name = String(row[KK.name]).trim();
+  var status = String(row[KK.status] || '').trim();
+  var s;
+  if (status.indexOf('更新済') === 0) {
+    s = '🟡' + name + 'さん 新契約書のスキャン待ち';
+  } else if (status === '要確認') {
+    s = '🟡' + name + 'さん 契約書の内容が未確認';
+  } else {
+    var end = String(row[KK.end] || '').trim();
+    var st = koyouExpiryState_(end, dateStr);
+    var d = koyouDaysUntil_(end, dateStr);
+    if (st === 'expired') s = '🔴【至急】' + name + 'さん 契約が' + end + 'に満了・' + (-d) + '日経過';
+    else if (st === 'soon') s = '🟠' + name + 'さん 契約満了まであと' + d + '日（' + end + '）';
+    else s = '🟡' + name + 'さん 雇用契約の確認';
+  }
+  if (koyouMukiTenkanDue_(row[KK.join], dateStr)) s += '　※通算5年で無期転換申込権が発生します';
+  return s;
+}
+
+// 行配列 → 朝報告セクション。🔴満了済み → 🟠期限間近 → 🟡その他 の順。
+function buildKoyouKeiyakuSection_(rows, dateStr) {
+  if (!rows || !rows.length) return { count: 0, expired: 0, items: [] };
+  var order = { expired: 0, soon: 1, other: 2 };
+  var out = [];
+  rows.forEach(function (r) {
+    if (!r || !String(r[KK.name] || '').trim()) return;      // 氏名なしはスキップ
+    var status = String(r[KK.status] || '').trim();
+    if (status === '対象外') return;                          // 無期は出さない
+    var st = koyouExpiryState_(r[KK.end], dateStr);
+    var muki = koyouMukiTenkanDue_(r[KK.join], dateStr);
+    var needScan = status.indexOf('更新済') === 0;
+    var needCheck = status === '要確認';
+    // 出す条件: 満了済み / 45日以内 / スキャン待ち / 要確認 / 無期転換が近い
+    if (st !== 'expired' && st !== 'soon' && !needScan && !needCheck && !muki) return;
+    // 更新済（スキャン待ち）・要確認は、終了日が過ぎていても🔴満了扱いにしない。
+    //   契約自体は更新されており、問題は「書類が手元に無い／中身が不明」であるため。
+    var level = (needScan || needCheck) ? 'other'
+      : (st === 'expired') ? 'expired' : (st === 'soon' ? 'soon' : 'other');
+    out.push({
+      name: String(r[KK.name]).trim(),
+      shubetsu: String(r[KK.shubetsu] || '').trim(),
+      end: String(r[KK.end] || '').trim(),
+      status: status,
+      daysLeft: koyouDaysUntil_(r[KK.end], dateStr),
+      level: level,
+      mukiTenkan: muki,
+      label: koyouKeiyakuLabel_(r, dateStr),
+      note: String(r[KK.note] || '').trim()
+    });
+  });
+  out.sort(function (a, b) {
+    var o = order[a.level] - order[b.level];
+    if (o !== 0) return o;
+    // 同じレベル内は期限の早い順（null は後ろ）
+    var da = (a.daysLeft === null) ? 1e9 : a.daysLeft;
+    var db = (b.daysLeft === null) ? 1e9 : b.daysLeft;
+    return da - db;
+  });
+  return {
+    count: out.length,
+    expired: out.filter(function (o) { return o.level === 'expired'; }).length,
+    items: out
+  };
+}
+
+// シート「雇用契約期限」を作る（冪等・既にあれば何もしない）。
+//   初期データは2026-07-19時点。入社日の出典はケアズの職員基本情報画面（社長が実測確認）。
+//   ※比嘉学は役員のため対象外（シートに入れない）。
+function setupKoyouKeiyakuSheet_(ss) {
+  var sheet = ss.getSheetByName(KOYOU_SHEET);
+  if (sheet) return { created: false, sheet: KOYOU_SHEET };
+  sheet = ss.insertSheet(KOYOU_SHEET);
+  var seed = [
+    ['小野重次郎', '有期', '', '2025-09-30', '未更新', '2023-07-19', '満了から10ヶ月経過・最優先'],
+    ['春山忍', '有期', '2025-08-01', '2026-07-31', '未更新', '2025-04-07', '週所定日数を明記すること'],
+    ['工藤経子', '有期', '2026-05-01', '2026-07-31', '未更新', '2026-02-06', '週所定日数を明記すること'],
+    ['林秀明', '有期', '2026-05-01', '2026-07-31', '未更新', '2026-01-30', '週所定日数を明記すること'],
+    ['勝又裕子', '有期', '2026-05-01', '2026-08-31', '未更新', '2025-11-03', ''],
+    ['下浦理絵', '有期', '2025-10-01', '2026-09-30', '未更新', '2024-09-03', '退職後の再入社。無期転換の通算は再入社日起点（以前の在籍期間は通算しない）'],
+    ['大久保好美', '有期', '2026-03-01', '2026-05-31', '更新済・未スキャン', '2026-03-02', '新契約書のスキャン待ち'],
+    ['石井祐子', '有期', '2026-04-01', '2026-06-30', '更新済・未スキャン', '2026-04-01', '新契約書のスキャン待ち'],
+    ['星野友太', '無期', '2026-02-13', '', '対象外', '2026-02-13', '退職後の再入社。無期転換の通算は再入社日起点（以前の在籍期間は通算しない）'],
+    ['喜多美咲', '無期', '2026-07-16', '', '対象外', '2026-07-16', ''],
+    ['髙山奈緒美', '未確認', '', '', '要確認', '2022-09-01', '契約書が読み取れず・種別と期限が不明']
+  ];
+  var rows = [KOYOU_HEADER].concat(seed);
+  sheet.getRange(1, 1, rows.length, KOYOU_HEADER.length).setValues(rows);
+  sheet.setFrozenRows(1);
+  return { created: true, sheet: KOYOU_SHEET, seeded: seed.length };
+}
+
+// シートから行を読む（ヘッダ除く）。シートが無ければ空配列（digestを止めない）。
+function _getKoyouKeiyakuRows_(ss) {
+  var sheet = ss.getSheetByName(KOYOU_SHEET);
+  if (!sheet) return [];
+  var vals = sheet.getDataRange().getValues();
+  return vals.length > 1 ? vals.slice(1) : [];
+}
+
+// action=koyou_keiyaku_done : 氏名と新しい契約終了日を受けて行を更新し、更新状況を「更新済」に戻す。
+//   既存の intake 管理系と同じ adminKey ゲートを流用する（新しい穴を開けない）。
+function koyouKeiyakuDone_(ss, data) {
+  if (!intakeAdminAuthorized_(null, data)) return { error: 'unauthorized', status: 401 };
+  var name = String((data && data.name) || '').trim();
+  var newEnd = String((data && data.end) || '').trim();
+  if (!name) return { success: false, error: 'name_required' };
+  if (newEnd && !/^\d{4}-\d{2}-\d{2}$/.test(newEnd)) return { success: false, error: 'bad_end_format' };
+  var sheet = ss.getSheetByName(KOYOU_SHEET);
+  if (!sheet) return { success: false, error: 'sheet_not_found: ' + KOYOU_SHEET };
+  var vals = sheet.getDataRange().getValues();
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][KK.name]).trim() === name) {
+      if (newEnd) sheet.getRange(i + 1, KK.end + 1).setValue(newEnd);
+      if (data && data.start) sheet.getRange(i + 1, KK.start + 1).setValue(String(data.start).trim());
+      sheet.getRange(i + 1, KK.status + 1).setValue('更新済');
+      return { success: true, name: name, end: newEnd || String(vals[i][KK.end] || ''), status: '更新済' };
     }
   }
   return { success: false, error: 'name_not_found', name: name };
