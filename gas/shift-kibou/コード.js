@@ -133,15 +133,25 @@ function notifyConflictAll_(conflictingStaff, applicantName, monthStr, day, reas
   sendOwnerEmail_(subject, body);
 }
 
+// 上書きしてよい値かを判定する（誤実行で通知を止めないためのガード）
+// 実トークンは170文字前後。空文字・未指定・短すぎる値はすべて拒否する。
+function isValidLineTokenValue_(v) {
+  return typeof v === 'string' && v.trim().length >= 100;
+}
+
 // 【初回セットアップ専用】LINE tokenをScript Propertiesに保存
-// Apps Scriptエディタで1回だけ実行してください。その後この関数は不要
-function setupLineToken() {
-  // [DEPRECATED 2026-07] トークンはGASのScript Properties画面で直接入力する。値の直書きは廃止（流出再発防止）。
-  PropertiesService.getScriptProperties().setProperty(
-    'LINE_TOKEN',
-    ''
-  );
+// [DEPRECATED 2026-07] 通常はGASのScript Properties画面で直接入力する。値の直書きは廃止（流出再発防止）。
+// エディタから引数なしで誤実行しても、既存トークンを壊さず何もしない。
+function setupLineToken(token) {
+  if (!isValidLineTokenValue_(token)) {
+    Logger.log('⚠️ 何もしませんでした。既存の LINE_TOKEN は変更していません。\n'
+             + 'トークンは Apps Script の「プロジェクトの設定 → スクリプト プロパティ」で '
+             + 'LINE_TOKEN に直接入力してください。');
+    return { ok: false, reason: 'invalid_token' };
+  }
+  PropertiesService.getScriptProperties().setProperty('LINE_TOKEN', token.trim());
   Logger.log('LINE_TOKENをScript Propertiesに保存しました');
+  return { ok: true };
 }
 
 // 【初回セットアップ専用】LINE登録シートを作成
