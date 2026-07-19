@@ -91,8 +91,66 @@ function computeAccessLogTrim_(lastRow, opts) {
   return { deleteStartRow: headerRows + 1, deleteCount: deleteCount };
 }
 
+var ACCESS_LOG_RETENTION_DAYS = 30;   // 観測に必要な期間だけ残す（社長要件・肥大対策の主）
+
+// 保持期間トリムの計画を返す純関数。日次トリガから呼ぶ。
+//   timestamps: timestamp列の値（ヘッダ除く・古い順＝appendRow の順）。
+//   now: 基準時刻（呼び出し元が new Date() を渡す。テストのため引数化する）。
+//   「now から retentionDays より古い」行が先頭から連続している分だけ削除する。
+//
+//   【安全側の設計】先頭から連続する古い行だけを対象にし、日付として読めない値に
+//   当たったらそこで打ち切る。access_log は追記のみで時系列に並ぶ前提だが、手作業で
+//   並べ替え・行挿入された場合に「新しい行を巻き込んで消す」ほうが被害が大きいため、
+//   判断がつかないときは消さない。
+function computeAccessLogAgeTrim_(timestamps, now, opts) {
+  opts = opts || {};
+  var retentionDays = (opts.retentionDays === undefined) ? ACCESS_LOG_RETENTION_DAYS : opts.retentionDays;
+  var headerRows = (opts.headerRows === undefined) ? 1 : opts.headerRows;
+  if (!timestamps || !timestamps.length) return null;
+  var nowMs = (Object.prototype.toString.call(now) === '[object Date]') ? now.getTime() : NaN;
+  if (isNaN(nowMs)) return null;
+  var cutoff = nowMs - retentionDays * 86400000;
+  var count = 0;
+  for (var i = 0; i < timestamps.length; i++) {
+    var v = timestamps[i];
+    // Date 以外（空文字・文字列・数値）は「読めない」とみなして打ち切る（消しすぎ防止）。
+    if (Object.prototype.toString.call(v) !== '[object Date]') break;
+    var t = v.getTime();
+    if (isNaN(t)) break;
+    if (!(t < cutoff)) break;   // 保持期間内に入ったら以降は残す
+    count++;
+  }
+  if (count <= 0) return null;
+  return { deleteStartRow: headerRows + 1, deleteCount: count };
+}
+
+// 既存 access_log シートのヘッダを見て、どう揃えるかを決める純関数。
+//   null/空        → 'create'（新規8列で作る）
+//   現行8列と一致  → 'none'
+//   origin だけ無い旧7列 → 'insertColumn'（4列目に挿入。既存値は右へずれるだけで消えない）
+//   それ以外       → 'manual'（見知らぬ形は自動でいじらない）
+function planAccessLogHeaderMigration_(header) {
+  if (!header || !header.length) return { action: 'create' };
+  var got = [];
+  for (var i = 0; i < header.length; i++) got.push(String(header[i] === null || header[i] === undefined ? '' : header[i]).trim());
+  while (got.length && got[got.length - 1] === '') got.pop();   // 右端の空セルは無視
+  if (got.join('') === ACCESS_LOG_HEADER.join('')) return { action: 'none' };
+  // origin を抜いた並びと一致するなら、origin 列だけを足せば現行と揃う
+  var withoutOrigin = [];
+  for (var j = 0; j < ACCESS_LOG_HEADER.length; j++) {
+    if (ACCESS_LOG_HEADER[j] !== 'origin') withoutOrigin.push(ACCESS_LOG_HEADER[j]);
+  }
+  if (got.join('') === withoutOrigin.join('')) {
+    return { action: 'insertColumn', insertAt: ACCESS_LOG_HEADER.indexOf('origin') + 1, columnName: 'origin' };
+  }
+  return { action: 'manual', reason: 'unexpected_header' };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    ACCESS_LOG_RETENTION_DAYS: ACCESS_LOG_RETENTION_DAYS,
+    computeAccessLogAgeTrim_: computeAccessLogAgeTrim_,
+    planAccessLogHeaderMigration_: planAccessLogHeaderMigration_,
     ACCESS_LOG_SHEET: ACCESS_LOG_SHEET,
     ACCESS_LOG_HEADER: ACCESS_LOG_HEADER,
     ACCESS_LOG_MAX_ROWS: ACCESS_LOG_MAX_ROWS,

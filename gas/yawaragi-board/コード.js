@@ -892,6 +892,12 @@ function addMissingIntakeColumns() {
 // ===== Web API: GET（JSONP対応）=====
 function doGet(e) {
   try {
+  // --- セキュリティ: トークン検証＋アクセスログ（enforce=OFF初期・additive・2026-07-19）---
+  //   doGet の入口1箇所で全 action 分岐を被覆する（分岐ごとに配線しない＝付け忘れが起きない）。
+  //   全リクエストを access_log に1行記録。enforce=OFF の間は g.ok が常に true＝既存挙動は不変
+  //   （ログが増えるだけ）。log_origin より前に置き、log_origin 自身も記録対象にする。
+  var g = gateAndLog_(e, 'GET');
+  if (!g.ok) { return gateUnauthorizedResponse_(e); }
   // 2026-07-04 非本番オリジンのログ取得（第1段階・テレメトリのみ）。
   //   URL/UA/時刻だけを origin_log シートに追記。個人情報・利用者データは一切扱わない。
   //   暴走防止: 上限1000行 + origin単位の重複排除（クライアントのセッションdedupと二重）。
@@ -917,6 +923,15 @@ function doGet(e) {
   }
   if (e && e.parameter && e.parameter.action === 'appregistry_drop_legacy') {
     return jsonResp(appregistryDropLegacy_());
+  }
+
+  // セキュリティ: access_log シートの作成／列移行＋日次トリムトリガ設置（冪等・2026-07-19）。
+  //   認可は上と同じ adminKey を流用＝新しい穴を開けない（f52ff6c は無認可だったが揃える）。
+  if (e && e.parameter && e.parameter.action === 'maintenance_setup_access_log') {
+    if (!intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, e.parameter.callback);
+    }
+    return respond(setupAccessLog_(), e.parameter.callback);
   }
 
   // メンテナンス用: 雇用契約期限シートの作成（2026-07-19追加）。
@@ -3939,6 +3954,11 @@ function isHaichiClearMarker_(a) {
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+    // --- セキュリティ: トークン検証＋アクセスログ（enforce=OFF初期・additive・2026-07-19）---
+    //   doPost の入口1箇所で全 action 分岐を被覆する。enforce=OFF の間は g.ok が常に true＝
+    //   既存の intake鍵ゲート以下は一切不変（ログのみ増）。
+    var g = gateAndLog_(e, 'POST');
+    if (!g.ok) { return gateUnauthorizedResponse_(e); }
     var ss = SpreadsheetApp.openById(SS_ID);
 
     // P2.1: PIIを変更/参照する intake_* POST は adminKey 必須（欠席・furikae等の他actionには影響なし）
@@ -6803,6 +6823,137 @@ function respond(data, callback) {
 function jsonResp(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ===== セキュリティ強化: 共有トークン検証＋アクセスログ（2026-07-19・enforce=OFF初期・additive）=====
+// 純判定は token-auth-core.js(checkToken) / access-log-core.js(buildAccessLogRow_ ほか)。
+// ここは GAS API（PropertiesService / SpreadsheetApp / ScriptApp）との配線のみ。
+//
+// 【origin(pageUrl)の性格】access_log の origin 列に載るのはクライアントが自己申告した
+//   location.origin+pathname であり偽装可能＝「診断機構」であって「セキュリティ機構」ではない。
+//   防御を担うのは token のみ。origin は「どのアプリがトークン未送信か探す道具」であって、
+//   認可判断には一切使わない（将来も gateAndLog_ の ok 判定に origin を混ぜないこと）。
+
+// 拒否レスポンス。JSONP経路(callback有)では既存 respond() でラップして返す（JSONPクライアントが
+// コールバック未発火で沈黙するのを防ぐ）。callback 無しは素の JSON。
+function gateUnauthorizedResponse_(e) {
+  var cb = (e && e.parameter) ? e.parameter.callback : null;
+  return respond({ error: 'unauthorized', status: 401 }, cb);
+}
+
+// doGet/doPost 冒頭で1回呼ぶ。トークン検証結果を判定に使い、全リクエストを access_log に1行記録。
+// ログ書き込み失敗は握りつぶし本処理は止めない。enforce=OFF の間は常に ok:true（挙動不変）。
+//
+// 【重要・ロールバック要件】TOKEN_ENFORCE と API_TOKEN は「リクエストのたびに」読む。
+//   キャッシュも定数化もしないこと。ON にして事故ったとき、Script Properties を false に
+//   戻すだけで（deploy 無しで）即時ロールバックが成立する必要があるため。
+function gateAndLog_(e, method) {
+  var provided = '', action = '', origin = '';
+  try {
+    if (method === 'POST') {
+      var d = (e && e.postData && e.postData.contents) ? JSON.parse(e.postData.contents) : {};
+      provided = d.token || ''; action = d.action || ''; origin = d.origin || d.pageUrl || '';
+    } else {
+      var p = (e && e.parameter) ? e.parameter : {};
+      provided = p.token || ''; action = p.action || ''; origin = p.origin || p.pageUrl || '';
+    }
+  } catch (ignore) {}
+  var enforce = false, expected = null;
+  try {
+    var props = PropertiesService.getScriptProperties();   // ← 毎リクエスト読む（キャッシュ禁止）
+    expected = props.getProperty(API_TOKEN_PROP);          // token-auth-core.js の定数
+    enforce = props.getProperty(TOKEN_ENFORCE_PROP) === 'true';
+  } catch (ignore2) {}
+  var res = checkToken(provided, expected, enforce);       // {ok, reason}
+  try { appendAccessLog_(method, action, origin, res.reason, enforce, res.ok ? 'ok' : 'unauthorized', ''); } catch (logErr) {}
+  return { ok: res.ok, reason: res.reason, enforce: enforce };
+}
+
+// access_log に1行追記。トリムはしない（日次トリガ dailyTrimAccessLog に隔離）。
+// シート未作成なら作る（ヘッダ＝access-log-core.js の ACCESS_LOG_HEADER）。
+function appendAccessLog_(method, action, origin, tokenStatus, enforce, result, note) {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sh = ss.getSheetByName(ACCESS_LOG_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(ACCESS_LOG_SHEET);
+    sh.appendRow(ACCESS_LOG_HEADER);
+    sh.setFrozenRows(1);
+  }
+  sh.appendRow(buildAccessLogRow_({
+    timestamp: new Date(), method: method, action: action, origin: origin,
+    tokenStatus: tokenStatus, enforce: enforce, result: result, note: note
+  }));
+}
+
+// access_log の日次トリム（時間主導トリガから1日1回・深夜3時台）。appendのたびには走らせない
+// （getLastRow/削除コストを朝ピークに乗せない）。
+//   主: 保持期間30日より古い行を削除（観測に必要な期間だけ残す）。
+//   副: それでも1万行を超えていれば行数上限でも削る（急増時の保険）。
+function dailyTrimAccessLog() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sh = ss.getSheetByName(ACCESS_LOG_SHEET);
+  if (!sh) return;
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    // ① 保持期間トリム（timestamp列のみ読む）
+    var last = sh.getLastRow();
+    if (last > 1) {
+      var stamps = sh.getRange(2, 1, last - 1, 1).getValues().map(function (r) { return r[0]; });
+      var agePlan = computeAccessLogAgeTrim_(stamps, new Date(), { retentionDays: ACCESS_LOG_RETENTION_DAYS, headerRows: 1 });
+      if (agePlan) sh.deleteRows(agePlan.deleteStartRow, agePlan.deleteCount);
+    }
+    // ② 行数上限トリム（保険）
+    var plan = computeAccessLogTrim_(sh.getLastRow(), { maxRows: ACCESS_LOG_MAX_ROWS, headerRows: 1 });
+    if (plan) sh.deleteRows(plan.deleteStartRow, plan.deleteCount);
+  } catch (lockErr) {
+    // ロック取得失敗等は次回日次で回収
+  } finally {
+    try { lock.releaseLock(); } catch (relErr) {}
+  }
+}
+
+// access_log シート作成／列移行＋日次トリムトリガ設置（冪等・additive・既存 maintenance_* と同型）。
+//   既存シートが旧7列（origin 無し）なら、4列目に origin を挿入して現行8列に揃える。
+//   挿入は既存値を右へずらすだけで、データは1件も失われない。
+//   見知らぬヘッダなら自動でいじらず 'manual' を返して報告のみ（他人のシートを壊さない）。
+function setupAccessLog_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sh = ss.getSheetByName(ACCESS_LOG_SHEET);
+  var header = null;
+  if (sh && sh.getLastColumn() > 0) {
+    header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  }
+  var plan = planAccessLogHeaderMigration_(sh ? header : null);
+  var migrated = plan.action;
+  if (plan.action === 'create') {
+    if (!sh) { sh = ss.insertSheet(ACCESS_LOG_SHEET); }
+    sh.getRange(1, 1, 1, ACCESS_LOG_HEADER.length).setValues([ACCESS_LOG_HEADER]);
+    sh.setFrozenRows(1);
+  } else if (plan.action === 'insertColumn') {
+    sh.insertColumnBefore(plan.insertAt);                        // 既存値は右へずれる（非破壊）
+    sh.getRange(1, plan.insertAt).setValue(plan.columnName);
+    sh.setFrozenRows(1);
+  }
+  var hasTrigger = false;
+  var trigs = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < trigs.length; i++) {
+    if (trigs[i].getHandlerFunction() === 'dailyTrimAccessLog') { hasTrigger = true; break; }
+  }
+  if (!hasTrigger) {
+    ScriptApp.newTrigger('dailyTrimAccessLog').timeBased().everyDays(1).atHour(3).create();
+  }
+  var after = null;
+  var shAfter = ss.getSheetByName(ACCESS_LOG_SHEET);
+  if (shAfter && shAfter.getLastColumn() > 0) {
+    after = shAfter.getRange(1, 1, 1, shAfter.getLastColumn()).getValues()[0];
+  }
+  return {
+    ok: true, sheet: ACCESS_LOG_SHEET,
+    headerBefore: header, headerAfter: after, migration: migrated,
+    dataRows: shAfter ? Math.max(0, shAfter.getLastRow() - 1) : 0,
+    trimTriggerInstalled: !hasTrigger, retentionDays: ACCESS_LOG_RETENTION_DAYS
+  };
 }
 
 // =============================================================
