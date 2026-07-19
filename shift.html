@@ -843,6 +843,14 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// 初期描画/bfcache復元/ブラウザのフォーム値復元では onchange が発火せず、
+// 外せない予定の日付入力に値があっても曜日span（「2026/08/01（）」）が空のままになる。
+// ページが表示されるたびに曜日を再計算して埋める（表示のみ・値やロジックは変更しない）。
+window.addEventListener('pageshow', function() {
+  if (document.getElementById('absenceStart')) showDateDay('absenceStart', 'absenceStartDay');
+  if (document.getElementById('absenceEnd')) showDateDay('absenceEnd', 'absenceEndDay');
+});
+
 // ============================
 // API通信（GAS環境 → google.script.run、ローカル → JSONP）
 // ============================
@@ -1558,7 +1566,8 @@ function showPinModal(title) {
 function closePinModal() {
   document.getElementById('pinModal').classList.remove('show');
   pendingPinAction = null;
-  showStaffModal();
+  // staffList が未取得（管理者経路等）でも名前が出るよう、取得してから表示する
+  if (staffList && staffList.length > 0) { showStaffModal(); } else { loadStaffOnly(); }
 }
 
 async function submitPin() {
@@ -1725,7 +1734,8 @@ function logout() {
   document.getElementById('notifBanner').style.display = 'none';
   document.getElementById('employeeRules').style.display = 'none';
   document.getElementById('calGrid').innerHTML = '';
-  showStaffModal();
+  // staffList が未取得でも名前が出るよう、取得してから表示する
+  if (staffList && staffList.length > 0) { showStaffModal(); } else { loadStaffOnly(); }
 }
 
 // ============================
