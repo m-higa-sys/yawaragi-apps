@@ -133,9 +133,23 @@ node scripts/check-orphan-branches.js
 ## GAS 運用
 
 - **`clasp push` は必ず本番を `clasp pull` してから。** いきなり push しない（本番側の手直しを踏み潰す）。
-- yawaragi-board の正しいソースは **`origin/master` の `gas/yawaragi-board/`**。古いブランチやルート直下のスタブは使わない。
 - GASの変更は原則 **additive**。既存関数の破壊的変更を避ける。
 - board GAS の **clasp認証枠は全体で1個**。別プロジェクトのGASは別枠。
+
+### 正本ファイル一覧（clasp管理下のGAS）
+
+**`gas/<プロジェクト>/` 配下だけが正本。**`.clasp.json` の rootDir が指すディレクトリの中身がそのまま `clasp push` で本番へ送られる。ここに無いファイルは、どれだけ本物に見えても本番に繋がっていない。
+
+| GASプロジェクト | 正本 |
+|---|---|
+| yawaragi-board（板GAS） | `gas/yawaragi-board/コード.js` |
+| shift-kibou（シフト希望GAS） | **`gas/shift-kibou/コード.js`** |
+| riyousha-daichou-api（利用者台帳API） | `gas/riyousha-daichou-api/コード.gs` |
+| yukyu-kanri（有給管理） | `gas/yukyu-kanri/コード.js` |
+
+- yawaragi-board の正しいソースは **`origin/master` の `gas/yawaragi-board/`**。古いブランチやルート直下のスタブ（`gas_yawaragiボード.gs`＝廃止済み墓標）は使わない。
+- **シフト希望GASの正本は `gas/shift-kibou/コード.js`。** `gas/gas_シフト希望.gs` は本番未接続の古いバックアップだったため 2026-07-20 に削除した（実害: 指示書がこちらを対象に指定し、直しても本番に1バイトも届かないところだった）。
+- `gas/` **直下**の単体 `.gs`（`gas_出勤送迎表.gs` 等）は、clasp管理ディレクトリを持たないGASの手動コピー。**編集しても本番へは自動反映されない**。触る前に、対応する `gas/<プロジェクト>/` が存在しないかを必ず確認する。
 
 ## 実装の原則
 
