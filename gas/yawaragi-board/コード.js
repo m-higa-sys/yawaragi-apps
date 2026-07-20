@@ -13094,8 +13094,8 @@ function getOnLongLeaveSet(ss, today) {
 //   highList = 要介護・週1〜2回・全体>=highOverall かつ 全曜日>=highWorst（増回おすすめ）。週回数昇順→利用率降順
 // 集計窓内に「実際の曜日変更」があった利用者の正規化名セットを返す（利用率の参考値化用）。
 // 曜日変更があると、変更前の期間に現在の契約曜日を遡及適用してしまい利用率が幻になる
-// （例: 伊東玄太郎=月→火6/2 で火曜の幻100%）。窓内に発効した変更があれば利用率アラート対象から外す。
-// ※ newDays を持たないイベント（区分変更フォローが usage_days_change に誤ラベルされたもの＝本郷安子の例）は
+// （例: 利用者005=月→火6/2 で火曜の幻100%）。窓内に発効した変更があれば利用率アラート対象から外す。
+// ※ newDays を持たないイベント（区分変更フォローが usage_days_change に誤ラベルされたもの＝利用者084の例）は
 //   曜日変更ではないので対象外にする（誤検出防止）。
 function getWeekdayChangeUsersSince(ss, sinceYmd) {
   var set = {};
@@ -13780,7 +13780,7 @@ function scanCmMailBounces() {
 }
 
 // 件名から利用者名と日付配列を抽出
-// 例: 【yawaragi】5月21日(木) 成田繁子様 お休み連絡
+// 例: 【yawaragi】5月21日(木) 利用者065様 お休み連絡
 function _parseAbsenceMailSubject_(subject, origDate) {
   var body = String(subject).replace('【yawaragi】', '').replace('お休み連絡', '');
   var year = origDate ? origDate.getFullYear() : new Date().getFullYear();

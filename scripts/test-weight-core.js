@@ -42,8 +42,8 @@ console.log('--- wtMatchesSearch ---');
 assert('空クエリは全通過', wtMatchesSearch('田中太郎', 'タナカタロウ', '') === true);
 assert('空白のみクエリも全通過', wtMatchesSearch('田中太郎', 'タナカタロウ', '　 ') === true);
 assert('漢字部分一致', wtMatchesSearch('田中太郎', 'タナカタロウ', '田中') === true);
-assert('ふりがな(ひらがな)で漢字名にヒット', wtMatchesSearch('柳浦武治', 'ヤナギウラタケハル', 'やなぎ') === true);
-assert('ふりがな途中一致', wtMatchesSearch('柳浦武治', 'ヤナギウラタケハル', 'たけはる') === true);
+assert('ふりがな(ひらがな)で漢字名にヒット', wtMatchesSearch('利用者110', 'リヨウシャ110', 'りよう') === true);
+assert('ふりがな途中一致', wtMatchesSearch('利用者110', 'リヨウシャ110', 'しゃ') === true);
 assert('非該当はfalse', wtMatchesSearch('田中太郎', 'タナカタロウ', 'すずき') === false);
 assert('氏名とふりがなを跨いだ誤ヒットを起こさない', wtMatchesSearch('田中', 'スズキ', '中スズ') === false);
 
@@ -60,9 +60,9 @@ assert('null安全', wtIsEndedStatus(null) === false);
 console.log('--- wtHasRecordInYear ---');
 const W = {
   2025: { '古田': { '7月': 60 } },
-  2026: { '柳浦武治': { '7月': 83.8 }, '空井戸': { '4月': '' }, '法浦武治': { '7月': 70 } }
+  2026: { '利用者110': { '7月': 83.8 }, '空井戸': { '4月': '' }, '法浦武治': { '7月': 70 } }
 };
-assert('該当年度に値あり', wtHasRecordInYear(W, 2026, '柳浦武治') === true);
+assert('該当年度に値あり', wtHasRecordInYear(W, 2026, '利用者110') === true);
 assert('該当年度に行なし', wtHasRecordInYear(W, 2026, '不在') === false);
 assert('別年度のみの人は当年度false', wtHasRecordInYear(W, 2026, '古田') === false);
 assert('空文字だけはfalse', wtHasRecordInYear(W, 2026, '空井戸') === false);
@@ -78,13 +78,13 @@ assert('記録なしはnull', wtLatestInYear(W2, 2026, 'X', MONTHS) === null);
 
 // ===== 改修3: wtClassifyTerminated（年度スコープ＋台帳外分離） =====
 console.log('--- wtClassifyTerminated ---');
-// シナリオ: 現役=柳浦武治(記録あり) / 台帳中止=古田(当年度記録なし)・辞田(当年度記録あり) / 台帳外=法浦武治(記録あり)
+// シナリオ: 現役=利用者110(記録あり) / 台帳中止=古田(当年度記録なし)・辞田(当年度記録あり) / 台帳外=法浦武治(記録あり)
 const weights = {
   2025: { '古田': { '3月': 60 } },
-  2026: { '柳浦武治': { '7月': 83.8 }, '辞田': { '5月': 48 }, '法浦武治': { '7月': 70 } }
+  2026: { '利用者110': { '7月': 83.8 }, '辞田': { '5月': 48 }, '法浦武治': { '7月': 70 } }
 };
 const res = wtClassifyTerminated({
-  activeNames: ['柳浦武治'],
+  activeNames: ['利用者110'],
   terminated: [
     { name: '古田', kana: 'フルタ', lastUseDate: '2026-03-31' },
     { name: '辞田', kana: 'ジタ', lastUseDate: '2026-05-20' }
@@ -93,14 +93,14 @@ const res = wtClassifyTerminated({
 });
 assert('台帳中止で当年度記録ありのみledger入り(辞田)', res.ledger.length === 1 && res.ledger[0].name === '辞田');
 assert('当年度に記録なしの台帳中止(古田)は年度スコープで除外', res.ledger.every(x => x.name !== '古田'));
-assert('現役(柳浦武治)はledgerにもorphanにも出ない',
-  res.ledger.every(x => x.name !== '柳浦武治') && res.orphans.every(x => x.name !== '柳浦武治'));
+assert('現役(利用者110)はledgerにもorphanにも出ない',
+  res.ledger.every(x => x.name !== '利用者110') && res.orphans.every(x => x.name !== '利用者110'));
 assert('台帳外の孤立記録(法浦武治)はorphansへ', res.orphans.length === 1 && res.orphans[0].name === '法浦武治');
 assert('orphanのbadgeは最終測定月', res.orphans[0].badge === '2026/7月');
 assert('ledgerのbadgeも最終測定月', res.ledger[0].badge === '2026/5月');
 // 翌年度(2027)表示に切替えると、当年度に記録がある者が居ない→両方空（肥大化しない）
 const resNext = wtClassifyTerminated({
-  activeNames: ['柳浦武治'], terminated: [{ name: '辞田', kana: '', lastUseDate: '' }],
+  activeNames: ['利用者110'], terminated: [{ name: '辞田', kana: '', lastUseDate: '' }],
   weights: weights, fy: 2027, months: MONTHS
 });
 assert('翌年度に切替えると当年度記録のない中止者は自動的に消える', resNext.ledger.length === 0 && resNext.orphans.length === 0);
@@ -108,16 +108,16 @@ assert('翌年度に切替えると当年度記録のない中止者は自動的
 // ===== 再汚染対策: wtLedgerNameSet / wtFilterCloudWeights =====
 console.log('--- wtLedgerNameSet ---');
 const lset = wtLedgerNameSet(
-  [{ name: '柳浦武治' }, { name: '田中太郎' }],
+  [{ name: '利用者110' }, { name: '田中太郎' }],
   [{ name: '古田花子' }]
 );
-assert('現役＋中止者を氏名Setに', lset.has('柳浦武治') && lset.has('田中太郎') && lset.has('古田花子'));
+assert('現役＋中止者を氏名Setに', lset.has('利用者110') && lset.has('田中太郎') && lset.has('古田花子'));
 assert('台帳外は含まない', !lset.has('法浦武治'));
 
 console.log('--- wtFilterCloudWeights ---');
 const cloudTree = {
   2026: {
-    '柳浦武治': { '7月': 83.8 },   // 現役 → 送る
+    '利用者110': { '7月': 83.8 },   // 現役 → 送る
     '古田花子': { '5月': 48 },      // 台帳中止者 → 送る（記録保持）
     '法浦武治': { '7月': 70 },      // 台帳外・値あり → スキップ（警告対象）
     '空殻': {}                       // 台帳外・空 → スキップ（警告非対象）
@@ -128,7 +128,7 @@ const off = wtFilterCloudWeights(cloudTree, lset, false);
 assert('未取得端末は素通し(法浦も残る)', !!off.tree[2026]['法浦武治'] && off.skipped.length === 0);
 // enabled=true（台帳取得済み）＝台帳外だけ落とす
 const on = wtFilterCloudWeights(cloudTree, lset, true);
-assert('現役(柳浦)は送信対象に残る', !!on.tree[2026]['柳浦武治']);
+assert('現役(柳浦)は送信対象に残る', !!on.tree[2026]['利用者110']);
 assert('台帳中止者(古田)も送信対象に残る＝記録保持', !!on.tree[2026]['古田花子']);
 assert('台帳外(法浦)は送信から除外', !on.tree[2026]['法浦武治']);
 assert('台帳外(空殻)も除外', !on.tree[2026]['空殻']);

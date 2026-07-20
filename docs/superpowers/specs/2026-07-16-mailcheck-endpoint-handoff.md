@@ -49,7 +49,7 @@ GAS実行時挙動（PropertiesService読み書き）はローカル不可。デ
 
 ## Gmail検索クエリ設計（endpointの返り値の使い方・in:inbox限定にしない）
 last_mailcheck の `epochSec` を Gmail `after:` に入れて検索する。**`in:inbox` で絞らない**
-（バウンス=Delivery Status Notification/mailer-daemon や yawaragi自動送信メールはINBOXラベルに入らず取りこぼす。実測: 仲山洋子様の欠席連絡が reha-staff@wakabanooka.jp に 550 User Unknown で不達をinbox検索が見落とした）。
+（バウンス=Delivery Status Notification/mailer-daemon や yawaragi自動送信メールはINBOXラベルに入らず取りこぼす。実測: 利用者064様の欠席連絡が reha-staff@wakabanooka.jp に 550 User Unknown で不達をinbox検索が見落とした）。
 
 - **クエリA（全体スイープ・inbox限定しない）**: `after:{epochSec} -in:chats`
   ※コネクタ search_threads は既定で inbox+archive+sent を含む（in:inbox で絞らなければケアマネ宛送信/バウンスも対象）

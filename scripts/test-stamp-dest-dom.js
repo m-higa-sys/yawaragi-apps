@@ -49,7 +49,7 @@ async function run(label, fetchImpl) {
   ok(offices.length === 22, '成功時: 事業所22件が宛先に出る（実測母数一致）');
   ok(r1.opts.includes('電算システム'), '成功時: 電算システムが出る');
   ok(r1.opts.includes('__other__'), '成功時: その他（手入力）が出る');
-  ok(r1.opts.includes('ふるさとの杜'), '成功時: 実事業所（ふるさとの杜）が出る');
+  ok(r1.opts.includes('事業所06'), '成功時: 実事業所（事業所06）が出る');
   ok(r1.opts[0] === '', '先頭は -- 選択してください -- のプレースホルダ');
 
   // ② 失敗: fetch が reject（サーバ落ち/オフライン）でも固定枠は必ず出す＋トースト

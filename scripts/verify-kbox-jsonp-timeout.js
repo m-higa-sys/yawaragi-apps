@@ -118,9 +118,9 @@ console.log('■ kbJsonp_（前進窓GET）');
     const cbName = cbNameFromLastScript(env);
     let resolved = 'PENDING';
     p.then(v => { resolved = v; });
-    env.window[cbName]({ absences: { absences: [{ name: '根岸君男' }] } });   // 正常応答
+    env.window[cbName]({ absences: { absences: [{ name: '利用者066' }] } });   // 正常応答
     return Promise.resolve().then(() => {
-      ok(resolved && resolved.absences && resolved.absences.absences[0].name === '根岸君男', 'J5: 正常応答はデータで解決（回帰なし）');
+      ok(resolved && resolved.absences && resolved.absences.absences[0].name === '利用者066', 'J5: 正常応答はデータで解決（回帰なし）');
     });
   })
   .then(function () {

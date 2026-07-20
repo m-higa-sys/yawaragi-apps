@@ -57,11 +57,11 @@ const RESV_SHIEN = { active: false, kubunHiYm: '', reservedCare: '要支援2', r
 assert('予約が要支援は据置=全月1回', isOralTwiceMonthly('shien', '2026-09', RESV_SHIEN) === false);
 
 // ===== buildKubunIndex（区変日 applyDate→YYYY-MM を索引化・本番drift耐性） =====
-const realKubunList = { count: 1, active: [{ name: '水戸忠', applyDate: '2026-07-01', expectDate: '2026-08-15', prevCareLevel: '要支援２', daysOver: 0 }] };
+const realKubunList = { count: 1, active: [{ name: '利用者089', applyDate: '2026-07-01', expectDate: '2026-08-15', prevCareLevel: '要支援２', daysOver: 0 }] };
 const realScheduledGarbage = { success: true, date: '2026-07-06', dayOfWeek: '月' };
 const idx1 = buildKubunIndex(realKubunList, realScheduledGarbage);
-assert('区変中の氏名がactiveSetに入る', idx1.activeSet['水戸忠'] === true);
-assert('区変日がkubunHiMapに YYYY-MM で入る', idx1.kubunHiMap['水戸忠'] === '2026-07');
+assert('区変中の氏名がactiveSetに入る', idx1.activeSet['利用者089'] === true);
+assert('区変日がkubunHiMapに YYYY-MM で入る', idx1.kubunHiMap['利用者089'] === '2026-07');
 assert('壊れた予約応答でもreservedMapは空', Object.keys(idx1.reservedMap).length === 0);
 
 const goodScheduled = { count: 1, scheduled: [{ name: '予約太郎', currentCare: '要支援1', reservedCare: '要介護2', applyMonth: '2026-09' }] };
@@ -72,9 +72,9 @@ assert('予約適用月がreservedApplyMapに入る', idx2.reservedApplyMap['予
 const idx3 = buildKubunIndex(null, null);
 assert('両方nullでも空索引', Object.keys(idx3.activeSet).length === 0 && Object.keys(idx3.kubunHiMap).length === 0);
 
-const infoMito = { active: !!idx1.activeSet['水戸忠'], kubunHiYm: idx1.kubunHiMap['水戸忠'] || '', reservedCare: '', reservedApplyYm: '' };
-assert('結合: 水戸忠 2026-07 は2回', isOralTwiceMonthly('shien', '2026-07', infoMito) === true);
-assert('結合: 水戸忠 2026-06 は1回', isOralTwiceMonthly('shien', '2026-06', infoMito) === false);
+const infoMito = { active: !!idx1.activeSet['利用者089'], kubunHiYm: idx1.kubunHiMap['利用者089'] || '', reservedCare: '', reservedApplyYm: '' };
+assert('結合: 利用者089 2026-07 は2回', isOralTwiceMonthly('shien', '2026-07', infoMito) === true);
+assert('結合: 利用者089 2026-06 は1回', isOralTwiceMonthly('shien', '2026-06', infoMito) === false);
 
 // ===== oralKubunBadge（区変中バッジ・Phase3） =====
 assert('要支援・区変中は区変中バッジを出す', oralKubunBadge('shien', true).indexOf('区変中') >= 0);
@@ -82,14 +82,14 @@ assert('通常要支援はバッジ空', oralKubunBadge('shien', false) === '');
 assert('要介護はバッジ空', oralKubunBadge('kaigo', true) === '');
 
 // ===== oralCellHtml（DOM出力・実測A/B/C） =====
-const cellA7 = oralCellHtml({ userName: '水戸忠', key: '7月_2回目', si: 1, checked: '', twiceMonthly: true, isCurrentMonth: true });
-assert('A: 水戸忠 7月2回目が開く', cellA7.indexOf("onclick=\"toggleCheck('水戸忠','7月_2回目')\"") >= 0 && cellA7.indexOf('>-<') < 0);
-assert('A: 水戸忠 7月2回目・当月未実施は赤', cellA7.indexOf('highlight-undone') >= 0);
-const cellA4 = oralCellHtml({ userName: '水戸忠', key: '4月_2回目', si: 1, checked: '', twiceMonthly: false, isCurrentMonth: false });
-assert('A: 水戸忠 4月2回目は閉じる(disabled -)', cellA4.indexOf('disabled') >= 0 && cellA4.indexOf('>-<') >= 0);
-const cellA5rec = oralCellHtml({ userName: '水戸忠', key: '5月_2回目', si: 1, checked: '2026-05-08', twiceMonthly: false, isCurrentMonth: false });
+const cellA7 = oralCellHtml({ userName: '利用者089', key: '7月_2回目', si: 1, checked: '', twiceMonthly: true, isCurrentMonth: true });
+assert('A: 利用者089 7月2回目が開く', cellA7.indexOf("onclick=\"toggleCheck('利用者089','7月_2回目')\"") >= 0 && cellA7.indexOf('>-<') < 0);
+assert('A: 利用者089 7月2回目・当月未実施は赤', cellA7.indexOf('highlight-undone') >= 0);
+const cellA4 = oralCellHtml({ userName: '利用者089', key: '4月_2回目', si: 1, checked: '', twiceMonthly: false, isCurrentMonth: false });
+assert('A: 利用者089 4月2回目は閉じる(disabled -)', cellA4.indexOf('disabled') >= 0 && cellA4.indexOf('>-<') >= 0);
+const cellA5rec = oralCellHtml({ userName: '利用者089', key: '5月_2回目', si: 1, checked: '2026-05-08', twiceMonthly: false, isCurrentMonth: false });
 assert('A: 過去2回目に記録があっても閉月は - 表示(非破壊は表示のみ)', cellA5rec.indexOf('>-<') >= 0);
-const cellB = oralCellHtml({ userName: '町田和子', key: '7月_2回目', si: 1, checked: '', twiceMonthly: false, isCurrentMonth: true });
+const cellB = oralCellHtml({ userName: '利用者108', key: '7月_2回目', si: 1, checked: '', twiceMonthly: false, isCurrentMonth: true });
 assert('B: 通常要支援の2回目は閉(disabled)', cellB.indexOf('disabled') >= 0 && cellB.indexOf('onclick=') < 0);
 const cellC = oralCellHtml({ userName: '介護者', key: '4月_2回目', si: 1, checked: '', twiceMonthly: true, isCurrentMonth: false });
 assert('C: 要介護の2回目は開く', cellC.indexOf('onclick=') >= 0 && cellC.indexOf('>-<') < 0);

@@ -50,8 +50,8 @@ function buildEnv(opts) {
     document: { getElementById: id => els[id] || null, body: {}, },
     kbState: {
       viewDate: o.viewDate || '2026-07-08',
-      checked: { '根岸君男': true },
-      items: [{ name: '根岸君男', email: 'x@example.test', cmStaff: '大野勝己', cmOffice: '梨花',
+      checked: { '利用者066': true },
+      items: [{ name: '利用者066', email: 'x@example.test', cmStaff: '大野勝己', cmOffice: '梨花',
                 unit: '午後', date: '2026-07-08', toOverride: '', customBody: '',
                 cls: { kind: 'mail', done: false } }],
     },

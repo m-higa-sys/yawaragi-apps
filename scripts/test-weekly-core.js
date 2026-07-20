@@ -29,21 +29,21 @@ ok(c.weeklyFeedInclude_({フェーズ:'受付', 利用者台帳反映済:''})===
 console.log('\n[weeklyLastName_] 姓のみ抽出');
 eq(c.weeklyLastName_('山田 太郎'), '山田', '半角空白→姓');
 eq(c.weeklyLastName_('鈴木　花子'), '鈴木', '全角空白→姓');
-eq(c.weeklyLastName_('柳浦武治'), '柳浦', '空白なし→先頭2文字');
+eq(c.weeklyLastName_('利用者110'), '利用', '空白なし→先頭2文字');
 eq(c.weeklyLastName_(''), '', '空→空');
 eq(c.weeklyLastName_(null), '', 'null→空(落ちない)');
 
 console.log('\n[weeklyFeedRow_] PII一切なし・5キーのみ');
 const row = c.weeklyFeedRow_({
   種別:'trial', フェーズ:'体験', 利用意向:'', 最終決定曜日:'第1:火AM, 第2:木AM', 予定日:'2026-07-20',
-  氏名:'柳浦武治', ふりがな:'やなぎうら', 住所詳細:'小松原4-13', TEL:'090-xxxx', 生年月日:'昭和34年', 年齢:67,
-  介護度:'支2', 主訴:'腰痛', ペースメーカー:'有', ケアマネ氏名:'関口', フェーズ遷移履歴:'[...]'
+  氏名:'利用者110', ふりがな:'りようしゃ', 住所詳細:'中央1-1-1', TEL:'090-xxxx', 生年月日:'昭和34年', 年齢:67,
+  介護度:'支2', 主訴:'腰痛', ペースメーカー:'有', ケアマネ氏名:'ケアマネ', フェーズ遷移履歴:'[...]'
 });
 eq(Object.keys(row).sort(), ['ampm','category','days','displayName','予定日'].sort(), '★キーは5つのみ（PII列ゼロ）');
 eq(row.category, '体験', 'category=体験');
 eq(row.days, '火木', 'days=火木（最終決定曜日から抽出）');
 eq(row.ampm, '午前', 'ampm=午前');
-eq(row.displayName, '柳浦', 'trialは姓のみ');
+eq(row.displayName, '利用', 'trialは姓のみ');
 eq(row.予定日, '2026-07-20', '予定日そのまま');
 const PII = ['氏名','ふりがな','住所詳細','TEL','生年月日','年齢','介護度','主訴','ペースメーカー','ケアマネ氏名','フェーズ遷移履歴'];
 ok(PII.every(k => !(k in row)), '★PII列（氏名/住所/TEL/生年月日/主訴等）が構造的に存在しない');

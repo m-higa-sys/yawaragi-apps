@@ -58,7 +58,7 @@ function ok(name, cond) {
   else { fail++; console.log('  FAIL ' + name); }
 }
 
-const base = { date: '2026-06-15', name: '本郷安子', unit: '午前', reason: '通院', reporter: '工藤', contactDate: '2026-06-15', cmNotified: '送信済' };
+const base = { date: '2026-06-15', name: '利用者084', unit: '午前', reason: '通院', reporter: '工藤', contactDate: '2026-06-15', cmNotified: '送信済' };
 
 // 1. 4項目すべて一致 → true
 ok('全4項目一致でtrue', _absenceValueMatches_(base, { reason: '通院', unit: '午前', contact: '工藤', contactDate: '2026-06-15' }) === true);
@@ -104,10 +104,10 @@ ok('null入力で空配列', JSON.stringify(_pickAbsenceList_(null)) === JSON.st
 // 旧コードは data.absences.some をオブジェクトに呼んで TypeError でハングしていた。
 const liveResp = {
   success: true, date: '2026-06-25',
-  absences: { absences: [{ name: '吉田美ち子', date: '2026-06-25', unit: '午前' }], longTerm: [], resumedToday: [] }
+  absences: { absences: [{ name: '利用者104', date: '2026-06-25', unit: '午前' }], longTerm: [], resumedToday: [] }
 };
 // 15. ネスト応答で一致 → true（修正で検証が通る）
-ok('検証: live nest形で一致true', _pickAbsenceList_(liveResp).some(a => a.name === '吉田美ち子' && a.date === '2026-06-25') === true);
+ok('検証: live nest形で一致true', _pickAbsenceList_(liveResp).some(a => a.name === '利用者104' && a.date === '2026-06-25') === true);
 // 16. 不一致 → false（誤検証しない）
 ok('検証: 不一致でfalse', _pickAbsenceList_(liveResp).some(a => a.name === '居ない人' && a.date === '2026-06-25') === false);
 

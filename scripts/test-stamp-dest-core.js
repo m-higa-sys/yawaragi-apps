@@ -18,8 +18,8 @@ function ok(c, m) { if (c) { pass++; console.log('  PASS ' + m); } else { fail++
 const real = M.stampExtractOffices(FX);
 ok(Array.isArray(real), '配列を返す');
 eq(real.length, 22, '実応答から distinct 事業所 = 22');
-ok(real.includes('ふるさとの杜'), 'ふるさとの杜 を含む');
-ok(real.includes('わかばの丘地域包括支援センター'), 'わかばの丘地域包括支援センター を含む');
+ok(real.includes('事業所06'), '既知の事業所を含む（匿名化fixture）');
+ok(real.includes('事業所09'), '別の既知事業所を含む（匿名化fixture）');
 
 // 2) 電算システム/その他は抽出物に混ぜない（それらは renderDestSelect が付与する固定枠）
 ok(!real.includes('電算システム'), '電算システムは抽出しない（固定枠の責務）');

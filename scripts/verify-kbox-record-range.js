@@ -114,7 +114,7 @@ function renderList(viewDate, today, item) {
 }
 // 未対応（done=false・電話派）カード
 function pendingCard(date) {
-  return { name: '根岸君男', unit: '午後', cmStaff: '大野', cmOffice: '梨花', care: '要介護',
+  return { name: '利用者066', unit: '午後', cmStaff: '大野', cmOffice: '梨花', care: '要介護',
     cmNotified: '', lastOperator: '', date: date, note: '', cls: { kind: 'phone', done: false } };
 }
 const RECBTN = '送らず記録';   // 記録ボタンの識別子（onclick=kbMarkContactedPast_ のボタン文言）
@@ -131,7 +131,7 @@ okSafe(() => renderList('2025-07-07', '2026-07-08', pendingCard('2025-07-07')).i
   'R5(★境界): 12ヶ月と1日前 → 記録ボタンを出さない');
 okSafe(() => {
   // done（連絡済み）には記録ボタンを出さない（else節の中＝未対応のみ）
-  const doneCard = { name: '根岸君男', unit: '午後', cmStaff: '大野', cmOffice: '梨花', care: '要介護',
+  const doneCard = { name: '利用者066', unit: '午後', cmStaff: '大野', cmOffice: '梨花', care: '要介護',
     cmNotified: '連絡済み（その他）', lastOperator: '下浦', date: '2026-07-02', note: '', cls: { kind: 'mail', done: true } };
   return renderList('2026-07-02', '2026-07-08', doneCard).indexOf(RECBTN) < 0;
 }, 'R6(★): done（連絡済み）の過去日には記録ボタンを出さない（未対応のみ）');

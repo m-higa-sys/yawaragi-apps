@@ -1,10 +1,10 @@
 // 月次利用状況モーダル：緑(来館)を「実績日」限定にする実績ゲートのテスト。
-// 事案: 2026-07-16 小倉京子（契約曜日=金・月）で未来日 17・24 が緑=来館になっていた。
+// 事案: 2026-07-16 利用者021（契約曜日=金・月）で未来日 17・24 が緑=来館になっていた。
 // 出勤送迎表(dailyOps)は先の日まで「予定」で埋まるため、users に居るだけで attended=true に
 // していたのが原因。緑は「date < today(JST) の実績(non-absent)」限定にする。
 //
 // 実データ由来のフィクスチャ（2026-07-16 に getOps を実取得して確認した値）:
-//   小倉京子 pm.users 在籍日 = 07-03, 06, 10, 13, 17, 24（status="" ＝ non-absent）
+//   利用者021 pm.users 在籍日 = 07-03, 06, 10, 13, 17, 24（status="" ＝ non-absent）
 //   今日 07-16 は am/pm どちらにも不在
 //   day.confirmed は過去の実実績日(03/06/10/13)でも false ＝ 実績フラグとして使えない
 //   → ゲートは date < today を採用
@@ -13,14 +13,14 @@ const assert = require('assert');
 const core = require('./gas/yawaragi-board/monthly-usage-core.js');
 
 const TODAY = '2026-07-16';
-const NAME = '小倉京子';
+const NAME = '利用者021';
 
 // 実データの構造を再現した dailyOps フィクスチャ
 function mkDay(date, pmUsers, pmStatus) {
   return {
     date: date,
     confirmed: false, // 実データ通り: 過去実績日でも false
-    am: { users: ['小倉都'], userStatus: {} },
+    am: { users: ['利用者022'], userStatus: {} },
     pm: { users: pmUsers || [], userStatus: pmStatus || {} }
   };
 }

@@ -28,8 +28,8 @@ const OLD_SRC = execFileSync('git', ['-c', 'core.quotepath=false', 'show', `${BA
 // ---- 実データに寄せた台帳（列名は本番ヘッダの候補に合わせる） ----
 const LEDGER = [
   ['氏名', '氏名（カナ）', '介護度', '利用ステータス', '利用曜日', '午前/午後', '計画書開始月', '利用開始日', 'ケアマネ事業所名', 'ケアマネ担当者名'],
-  ['荒谷宗親', 'アラタニ ムネチカ', '要支援1', '',     '火木', '午前', '', '', 'わかばの丘地域包括支援センター', '中里　礼子'],
-  ['平野啓二', 'ヒラノ ケイジ',     '要支援1', '中止', '月水', '午前', '2026-04', '', 'わかばの丘地域包括支援センター', '中里　礼子'],
+  ['利用者001', 'リヨウシャ001', '要支援1', '',     '火木', '午前', '', '', '事業所09', 'ケアマネ01'],
+  ['利用者112', 'リヨウシャ112',     '要支援1', '中止', '月水', '午前', '2026-04', '', '事業所09', 'ケアマネ01'],
   ['空欄太郎', 'クウランタロウ',     '要介護2', '中止', '金',   '午後', '', '', 'テスト居宅', '担当A'],
   ['卒業花子', 'ソツギョウハナコ',   '要介護1', '卒業', '火',   '午前', '', '', 'テスト居宅', '担当A'],
   ['終了次郎', 'シュウリョウジロウ', '要介護3', '終了', '水',   '午後', '', '', 'テスト居宅', '担当B'],
@@ -39,7 +39,7 @@ const LEDGER = [
 
 const CHUSHI = [
   ['最終利用日', '中止日', '連絡日', '利用者名', '理由'],
-  ['2026-06-30', '2026-06-30', '2026-07-01', '平野啓二', '本人意思'],
+  ['2026-06-30', '2026-06-30', '2026-07-01', '利用者112', '本人意思'],
   ['',           '',           '2026-05-01', '空欄太郎', ''],          // ★最終利用日 空欄
   ['2025-03-31', '2025-03-31', '',           '再開三郎', '転居'],      // 再開者の古い行
   ['2024-01-31', '2024-01-31', '',           '退所済子', ''],          // 台帳に居ない
@@ -111,7 +111,7 @@ const dflt = JSON.parse(newDefault);
 eq(Object.keys(dflt), ['users'], '既定応答のトップレベルキーは users のみ');
 eq(Object.keys(dflt.users[0]), ['name', 'kana', 'care', 'days', 'ampm', 'planStart', 'startDate', 'cmOffice', 'cmName'],
   '既定応答の user キーは9個（cmName 含む）');
-eq(dflt.users.map(u => u.name), ['荒谷宗親', '再開三郎'], '既定応答は稼働中のみ（中止/終了/卒業を除外）・カナ順');
+eq(dflt.users.map(u => u.name), ['利用者001', '再開三郎'], '既定応答は稼働中のみ（中止/終了/卒業を除外）・カナ順');
 
 // ===== ②includeEnded=1: 中止者が status と lastUseDate 付きで返る =====
 console.log('[includeEnded=1]');
@@ -120,10 +120,10 @@ const byName = {};
 inc.users.forEach(u => { byName[u.name] = u; });
 
 eq(inc.users.length, 6, '中止/終了/卒業を含めて6人返る');
-ok(byName['平野啓二'], '平野啓二 が含まれる');
-eq(byName['平野啓二'].status, '中止', '平野啓二 の status=中止');
-eq(byName['平野啓二'].lastUseDate, '2026-06-30', '平野啓二 の lastUseDate=2026-06-30');
-eq(byName['平野啓二'].hasChushiRow, true, '平野啓二 は中止履歴に行あり');
+ok(byName['利用者112'], '利用者112 が含まれる');
+eq(byName['利用者112'].status, '中止', '利用者112 の status=中止');
+eq(byName['利用者112'].lastUseDate, '2026-06-30', '利用者112 の lastUseDate=2026-06-30');
+eq(byName['利用者112'].hasChushiRow, true, '利用者112 は中止履歴に行あり');
 
 eq(byName['空欄太郎'].lastUseDate, '', '空欄の中止者は lastUseDate=""（行は存在）');
 eq(byName['空欄太郎'].hasChushiRow, true, '空欄の中止者も hasChushiRow=true');
@@ -135,7 +135,7 @@ eq(byName['再開三郎'].status, '', '再開者の status は空（稼働中）
 eq(byName['再開三郎'].lastUseDate, '2025-03-31', '再開者にも古い lastUseDate は付く（隠すか否かはフロントの判断）');
 
 // 既定の9キーは順序も含めて保持し、追加3キーのみ増える
-eq(Object.keys(byName['平野啓二']),
+eq(Object.keys(byName['利用者112']),
   ['name', 'kana', 'care', 'days', 'ampm', 'planStart', 'startDate', 'cmOffice', 'cmName', 'status', 'hasChushiRow', 'lastUseDate'],
   'includeEnded 時のキーは既定9キー + status/hasChushiRow/lastUseDate');
 

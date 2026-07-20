@@ -185,9 +185,9 @@ eqJson(classify('<x@zozo.jp.evil.com>', 'お知らせ'),
 // keepfitlife.com は IMPORTANT_DOMAINS に残すため、件名プレフィックス除外を important 判定より
 // 先に評価しないと除外が効かない（自作アプリ通知は from が keepfitlife.com 自尾のため）。
 console.log('[nmClassifyMail_ / EXCLUDE_SUBJECT_PREFIXES]');
-eqJson(classify('やわらぎ <m-higa@keepfitlife.com>', '【yawaragi欠席連絡】欠席連絡 高橋義昭様'),
+eqJson(classify('やわらぎ <m-higa@keepfitlife.com>', '【yawaragi欠席連絡】欠席連絡 利用者052様'),
   { important: false, matchedBy: [], excluded: true }, '【yawaragi欠席連絡】自作通知 除外（keepfitlife由来でもプレフィックス優先）');
-eqJson(classify('やわらぎ <r.d-yawaragi@keepfitlife.com>', '【yawaragi】7月13日(月) 細谷テツコ様 お休み連絡'),
+eqJson(classify('やわらぎ <r.d-yawaragi@keepfitlife.com>', '【yawaragi】7月13日(月) 利用者083様 お休み連絡'),
   { important: false, matchedBy: [], excluded: true }, '【yawaragi】お休み連絡 除外');
 eqJson(classify('やわらぎ <r.d-yawaragi@keepfitlife.com>', '【yawaragi】7月13日(月) ④業務報告（星野）'),
   { important: false, matchedBy: [], excluded: true }, '【yawaragi】業務報告 除外');

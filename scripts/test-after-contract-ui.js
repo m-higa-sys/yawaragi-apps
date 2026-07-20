@@ -102,7 +102,7 @@ console.log('[カード：リードタイムバッジ]');
 
   // 計画書項目が無いカード → バッジを出さない
   const ev3 = {
-    id: 'evt_3', eventType: 'usage_days_change', userName: '鈴木菊枝', eventDate: '2026-06-22',
+    id: 'evt_3', eventType: 'usage_days_change', userName: '利用者045', eventDate: '2026-06-22',
     status: 'in_progress', metadata: {}, itemDone: 0, itemTotal: 1,
     items: [{ id: 'i3', seq: 1, label: 'リハブクラウドの提供票更新（曜日・回数）', status: 'pending' }]
   };

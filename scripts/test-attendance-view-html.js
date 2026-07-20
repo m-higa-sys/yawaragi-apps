@@ -15,10 +15,10 @@ const mock = {
   displayMonths: ['2026-04', '2026-05', '2026-06'], kaigoAvgRate: 87.7, capacity: 18,
   slotsFree: { '月': { am: 1, pm: 1 }, '火': { am: 1, pm: 2 }, '水': { am: 0, pm: 0 }, '木': { am: 0, pm: 0 }, '金': { am: 1, pm: 1 } },
   users: [
-    { name: '井草進英', care: '要介護１', days: '木', unit: '午前', contractN: 1, displayState: 'normal', stateLabel: '', rate: 100, actualPerWeek: 1, diverge: 0, monthly: { '2026-04': null, '2026-05': 100, '2026-06': 100 }, isUpsizeCandidate: true, addableSlots: ['月AM', '火AM', '金AM'] },
-    { name: '太田賢', care: '要介護1', days: '木', unit: '午前', contractN: 1, displayState: 'chouki', stateLabel: '算出不可', rate: null, actualPerWeek: null, diverge: null, monthly: { '2026-04': null, '2026-05': null, '2026-06': null }, isUpsizeCandidate: false, addableSlots: [] },
-    { name: '菅井一浩', care: '要介護２', days: '月木', unit: '午前', contractN: 2, displayState: 'sanko', stateLabel: '参考値（率が不正確）', rate: 52.9, actualPerWeek: 1.06, diverge: 0.94, monthly: { '2026-04': null, '2026-05': 50, '2026-06': 55 }, isUpsizeCandidate: false, addableSlots: [] },
-    { name: '有野久美', care: '要介護1', days: '金', unit: '午前', contractN: 1, displayState: 'hanteichu', stateLabel: '判定中（データ蓄積中）', rate: null, actualPerWeek: null, diverge: null, monthly: { '2026-04': null, '2026-05': null, '2026-06': null }, isUpsizeCandidate: false, addableSlots: [] }
+    { name: '利用者003', care: '要介護１', days: '木', unit: '午前', contractN: 1, displayState: 'normal', stateLabel: '', rate: 100, actualPerWeek: 1, diverge: 0, monthly: { '2026-04': null, '2026-05': 100, '2026-06': 100 }, isUpsizeCandidate: true, addableSlots: ['月AM', '火AM', '金AM'] },
+    { name: '利用者017', care: '要介護1', days: '木', unit: '午前', contractN: 1, displayState: 'chouki', stateLabel: '算出不可', rate: null, actualPerWeek: null, diverge: null, monthly: { '2026-04': null, '2026-05': null, '2026-06': null }, isUpsizeCandidate: false, addableSlots: [] },
+    { name: '利用者043', care: '要介護２', days: '月木', unit: '午前', contractN: 2, displayState: 'sanko', stateLabel: '参考値（率が不正確）', rate: 52.9, actualPerWeek: 1.06, diverge: 0.94, monthly: { '2026-04': null, '2026-05': 50, '2026-06': 55 }, isUpsizeCandidate: false, addableSlots: [] },
+    { name: '利用者111', care: '要介護1', days: '金', unit: '午前', contractN: 1, displayState: 'hanteichu', stateLabel: '判定中（データ蓄積中）', rate: null, actualPerWeek: null, diverge: null, monthly: { '2026-04': null, '2026-05': null, '2026-06': null }, isUpsizeCandidate: false, addableSlots: [] }
   ],
   diag: { opsFetched: true, opDaysCount: 43, kaigoCount: 4 }, warnings: []
 };
@@ -47,14 +47,14 @@ setTimeout(function () {
   ok(body.indexOf('52.9%') >= 0, 'sanko(菅井)は率も表示52.9%＝approxは数字を出す');
   // hanteichu/chouki は率セルが「—」（並び順に依存しないよう氏名で行を特定）
   function rowByName(nm) { return [].slice.call(doc.querySelectorAll('#tbody tr')).find(function (r) { return r.querySelector('td').textContent === nm; }); }
-  ok(rowByName('太田賢').querySelectorAll('td')[6].textContent.trim() === '—', 'chouki(太田) 出席率セル=—（数字出さない）');
-  ok(rowByName('有野久美').querySelectorAll('td')[6].textContent.trim() === '—', 'hanteichu(有野) 出席率セル=—（数字出さない）');
+  ok(rowByName('利用者017').querySelectorAll('td')[6].textContent.trim() === '—', 'chouki(太田) 出席率セル=—（数字出さない）');
+  ok(rowByName('利用者111').querySelectorAll('td')[6].textContent.trim() === '—', 'hanteichu(有野) 出席率セル=—（数字出さない）');
   ok(doc.getElementById('slots').textContent.indexOf('火 AM1/PM2') >= 0, '空き枠サマリ 火AM1/PM2（台帳ベース）');
   const btns = [].slice.call(doc.querySelectorAll('#controls button'));
   btns.find(b => b.getAttribute('data-mode') === 'lowrate').click();
   const lr = doc.querySelectorAll('#tbody tr');
   const lastName = lr[lr.length - 1].querySelector('td').textContent;
-  ok(lastName === '太田賢' || lastName === '有野久美', 'lowrate:率null行が末尾(' + lastName + ')');
+  ok(lastName === '利用者017' || lastName === '利用者111', 'lowrate:率null行が末尾(' + lastName + ')');
 
   // XSS・rate:0 の描画安全性（別インスタンス）
   const dom3 = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://y.github.io/a?v=x' });
