@@ -660,7 +660,7 @@ body {
 <div class="notif-banner" id="notifBanner" style="display:none">
   <h3>お知らせ</h3>
   <div id="notifContent"></div>
-  <button class="notif-dismiss" onclick="dismissNotifications()">確認しました</button>
+  <button class="notif-dismiss" id="notifDismissBtn" onclick="dismissNotifications()">確認しました</button>
 </div>
 
 <!-- 社長休みUI（管理者のみ） -->
@@ -669,7 +669,7 @@ body {
   <div class="boss-rest-chips" id="bossRestChips"></div>
   <div class="boss-rest-add">
     <input type="date" id="bossRestDate">
-    <button onclick="addBossRest()">追加</button>
+    <button id="bossRestAddBtn" onclick="addBossRest()">追加</button>
   </div>
 </div>
 
@@ -700,7 +700,7 @@ body {
   <div id="condList"></div>
   <div class="cond-add-area" id="condAddArea">
     <textarea id="condInput" placeholder="例：連続3日勤務は避けたい"></textarea>
-    <button class="cond-add-btn" onclick="submitCondition()">条件を追加する</button>
+    <button class="cond-add-btn" id="condAddBtn" onclick="submitCondition()">条件を追加する</button>
   </div>
 </div>
 
@@ -720,7 +720,7 @@ body {
     <span id="absenceEndDay" style="font-size:14px;font-weight:600;color:#1a73e8;margin:-4px 0 4px;display:block;"></span>
     <label>理由</label>
     <input type="text" id="absenceReason" placeholder="例：家族旅行">
-    <button class="absence-submit-btn" onclick="submitAbsence()">登録する</button>
+    <button class="absence-submit-btn" id="absenceSubmitBtn" onclick="submitAbsence()">登録する</button>
   </div>
 </div>
 
@@ -895,6 +895,46 @@ function apiCall(params) {
     };
     document.body.appendChild(script);
   });
+}
+
+// ============================
+// 送信中ロック（2026-07-20 追加・連打による多重登録の入口側の防御）
+// ============================
+// 背景: 2026-05-24 に「外せない予定」が2秒以内に3行登録された。サーバ側は
+//   GAS の LockService で塞いだ（デプロイ@23）が、そもそも連打でリクエストを
+//   飛ばさないのが本筋。書き込み系の送信関数をこれで包む。
+//
+// 契約:
+//   ・key が処理中なら即 return（2回目以降のクリックは何もしない）
+//   ・ボタンを disabled にし、ラベルを busyLabel へ差し替える
+//     （押せないことが目に見えること。無反応は「壊れた」と誤解される）
+//   ・解除は finally。成功・サーバエラー・通信断(reject)・タイムアウトの
+//     すべてで元に戻す。戻し忘れるとボタンが永久に押せなくなり、
+//     二重登録より重い障害になる
+const _submitLocks = new Set();
+async function withSubmitLock(key, btnOrId, busyLabel, task) {
+  if (_submitLocks.has(key)) return; // 連打の2回目以降
+  _submitLocks.add(key);
+
+  const btn = (typeof btnOrId === 'string') ? document.getElementById(btnOrId) : btnOrId;
+  let prevLabel = null;
+  let prevDisabled = false;
+  if (btn) {
+    prevDisabled = btn.disabled;
+    prevLabel = btn.textContent;
+    btn.disabled = true;
+    if (busyLabel) btn.textContent = busyLabel;
+  }
+
+  try {
+    return await task();
+  } finally {
+    _submitLocks.delete(key);
+    if (btn) {
+      btn.disabled = prevDisabled;
+      if (busyLabel) btn.textContent = prevLabel;
+    }
+  }
 }
 
 // ============================
@@ -1869,6 +1909,8 @@ async function submitAbsence() {
   const staff = isAdmin ? prompt('スタッフ名を入力：') : currentUser;
   if (!staff) return;
 
+  // 送信中ロック。2026-05-24 の3行重複はこの経路で起きた
+  return withSubmitLock('addAbsence', 'absenceSubmitBtn', '送信中…', async () => {
   try {
     const data = await apiCall({ action: 'addAbsence', staff: staff, startDate: startVal, endDate: endVal, reason: reason });
     if (data.success) {
@@ -1886,15 +1928,20 @@ async function submitAbsence() {
       if (isAdmin) { loadDataAdmin(); } else { loadData(); }
       setTimeout(() => { if (absencesVisible) renderAbsenceList(); }, 1500);
     } else {
+      // サーバが競合でロックを取れなかった場合はここに来る
+      //   { success:false, message:'混み合っています。もう一度お試しください' }
       alert(data.message || 'エラー');
     }
   } catch (e) {
     showToast('通信エラー');
   }
+  });
 }
 
 async function deleteAbsence(id) {
   if (!confirm('この外せない予定を取り消しますか？')) return;
+  // id は行インデックス依存のため、連打で「ずれた別の行」を消す事故が起き得る
+  return withSubmitLock('removeAbsence:' + id, null, null, async () => {
   try {
     const data = await apiCall({ action: 'removeAbsence', id: id });
     if (data.success) {
@@ -1905,6 +1952,7 @@ async function deleteAbsence(id) {
   } catch (e) {
     showToast('通信エラー');
   }
+  });
 }
 
 // ============================
@@ -2032,6 +2080,7 @@ async function submitCondition() {
   const content = input.value.trim();
   if (!content) { showToast('条件を入力してください'); return; }
 
+  return withSubmitLock('addCondition', 'condAddBtn', '送信中…', async () => {
   try {
     const data = await apiCall({ action: 'addCondition', staff: currentUser, content: content });
     if (data.success) {
@@ -2044,10 +2093,12 @@ async function submitCondition() {
   } catch (e) {
     showToast('通信エラー');
   }
+  });
 }
 
 async function doApprove(id) {
   const comment = prompt('コメント（任意）：') || '';
+  return withSubmitLock('approveCondition:' + id, null, null, async () => {
   try {
     const data = await apiCall({ action: 'approveCondition', id: id, comment: comment });
     if (data.success) {
@@ -2057,11 +2108,13 @@ async function doApprove(id) {
   } catch (e) {
     showToast('通信エラー');
   }
+  });
 }
 
 async function doReject(id) {
   const comment = prompt('却下の理由を入力：');
   if (comment === null) return;
+  return withSubmitLock('rejectCondition:' + id, null, null, async () => {
   try {
     const data = await apiCall({ action: 'rejectCondition', id: id, comment: comment });
     if (data.success) {
@@ -2071,6 +2124,7 @@ async function doReject(id) {
   } catch (e) {
     showToast('通信エラー');
   }
+  });
 }
 
 function updateCondBadge() {
@@ -2124,11 +2178,13 @@ function showNotifications(notifications) {
 
 async function dismissNotifications() {
   if (!currentUser) return;
+  return withSubmitLock('markNotificationRead', 'notifDismissBtn', '送信中…', async () => {
   try {
     await apiCall({ action: 'markNotificationRead', staff: currentUser });
   } catch (e) { /* 既読失敗しても閉じる */ }
   document.getElementById('notifBanner').style.display = 'none';
   currentNotifications = [];
+  });
 }
 
 // ============================
@@ -2172,6 +2228,7 @@ async function addBossRest() {
   const dateVal = dateInput.value;
   if (!dateVal) { showToast('日付を選択してください'); return; }
 
+  return withSubmitLock('addBossRest', 'bossRestAddBtn', '送信中…', async () => {
   try {
     const data = await apiCall({ action: 'addBossRest', date: dateVal });
     if (data.success) {
@@ -2183,11 +2240,13 @@ async function addBossRest() {
   } catch (e) {
     showToast('通信エラー');
   }
+  });
 }
 
 async function removeBossRest(y, m, day) {
   if (!confirm(m + '/' + day + ' を削除しますか？')) return;
   const dateStr = y + '-' + String(m).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  return withSubmitLock('removeBossRest:' + dateStr, null, null, async () => {
   try {
     const data = await apiCall({ action: 'removeBossRest', date: dateStr });
     if (data.success) {
@@ -2199,6 +2258,7 @@ async function removeBossRest(y, m, day) {
   } catch (e) {
     showToast('通信エラー');
   }
+  });
 }
 </script>
 </body>
