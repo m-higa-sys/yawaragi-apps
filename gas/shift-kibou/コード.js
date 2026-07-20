@@ -713,7 +713,40 @@ function getAllDataAdmin(monthStr) {
 }
 
 // --- 希望の追加 ---
+// 【2026-07-20 競合状態の根治】addAbsence と同じ穴が addWish にもあった。
+//   実害（変更履歴シートの実データ）:
+//     2026-04-19 8:59:16/:17/:18/:18 下浦 登録 2026-05 8日（3秒で4件）
+//     2026-06-02 14:29:55/:56       下浦 登録 2026-07 6日（1秒で2件）
+//   対策: 「重複チェック → 社員被り判定 → 人員基準 → appendRow → 変更履歴」を
+//         スクリプトロックの臨界区間に閉じる。tryLock(10000)・try/finally で解放。
+//   通知(notifyConflictAll_)だけはロック外へ出す。LINE/Gmail は外部HTTPで秒単位かかり、
+//   ロック内で撃つと保持時間が伸びて他スタッフの tryLock がタイムアウトしやすくなるため。
+//   通知は重複防止の判定に一切関与しない（元々 try/catch で握り潰す副作用）ので、
+//   臨界区間の外へ遅延させても判定結果・文面・戻り値は変わらない。
+//   判定ロジックそのものは変更していない（発火タイミングのみ後ろへ動かした）。
 function addWish(data) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: '混み合っています。もう一度お試しください' };
+  }
+  const pendingNotifies = []; // [conflictingStaff, applicantName, monthStr, day, reason] の配列
+  let result;
+  try {
+    result = addWishLocked_(data, pendingNotifies);
+  } finally {
+    lock.releaseLock(); // 例外時もロックを残さない
+  }
+  // ここから先はロック外。通知が長引いても他リクエストを待たせない。
+  for (let n = 0; n < pendingNotifies.length; n++) {
+    try {
+      const a = pendingNotifies[n];
+      notifyConflictAll_(a[0], a[1], a[2], a[3], a[4]);
+    } catch (e) { Logger.log('通知失敗: ' + e.message); }
+  }
+  return result;
+}
+
+function addWishLocked_(data, pendingNotifies) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_WISHES);
   if (!sheet) return { error: 'シートが見つかりません' };
@@ -753,10 +786,8 @@ function addWish(data) {
             Number(allData[i][2]) === Number(data.day) &&
             otherEmployees.indexOf(String(allData[i][1])) >= 0) {
           var conflictName = String(allData[i][1]);
-          // LINE・Gmail通知（社員同士の被り）
-          try {
-            notifyConflictAll_([conflictName], data.staff, data.month, Number(data.day), '社員同士の被り');
-          } catch (e) { Logger.log('通知失敗: ' + e.message); }
+          // LINE・Gmail通知（社員同士の被り）※ロック解放後に撃つ
+          pendingNotifies.push([[conflictName], data.staff, data.month, Number(data.day), '社員同士の被り']);
           return {
             success: false,
             blocked: true,
@@ -780,11 +811,9 @@ function addWish(data) {
         addNotification_(c.staff, data.staff + 'さんが' + cm + '月' + data.day + '日の希望休を申請しましたが、' + c.reason + 'のため登録できませんでした。相談してください。', data.month, Number(data.day));
       });
     }
-    // LINE・Gmail通知（人員基準ブロック）
+    // LINE・Gmail通知（人員基準ブロック）※ロック解放後に撃つ
     if (conflictNames.length > 0) {
-      try {
-        notifyConflictAll_(conflictNames, data.staff, data.month, Number(data.day), staffCheck.message || '人員基準のため登録不可');
-      } catch (e) { Logger.log('通知失敗: ' + e.message); }
+      pendingNotifies.push([conflictNames, data.staff, data.month, Number(data.day), staffCheck.message || '人員基準のため登録不可']);
     }
     var msg = staffCheck.message;
     if (conflictNames.length > 0) {
@@ -812,11 +841,9 @@ function addWish(data) {
     if (conflictNames.length > 0) {
       addNotification_(data.staff, conflictNames.join('さん、') + 'さんと' + cm + '月' + data.day + '日の希望休が被っています（' + staffCheck.message + '）。相談してください。', data.month, Number(data.day));
     }
-    // LINE・Gmail通知（人員基準警告）
+    // LINE・Gmail通知（人員基準警告）※ロック解放後に撃つ
     if (conflictNames.length > 0) {
-      try {
-        notifyConflictAll_(conflictNames, data.staff, data.month, Number(data.day), staffCheck.message || '人員基準の警告');
-      } catch (e) { Logger.log('通知失敗: ' + e.message); }
+      pendingNotifies.push([conflictNames, data.staff, data.month, Number(data.day), staffCheck.message || '人員基準の警告']);
     }
     var msg = staffCheck.message;
     if (conflictNames.length > 0) {
@@ -1037,7 +1064,27 @@ function getAbsences(monthStr) {
 }
 
 // --- 外せない予定の追加 ---
+// 【2026-07-20 競合状態の根治】
+//   実害: 2026-05-24 19:04:05 / :07 / :07 に春山さんの同一予定が3行登録された。
+//   原因: 「重複チェック → checkStaffing_ → appendRow」が不可分でないため、
+//         同時実行が互いの appendRow を見ないまま全部チェックを通過していた。
+//   対策: スクリプトロック（getScriptLock）で判定〜書込を1つの臨界区間に閉じる。
+//         ユーザーロックでは別端末からの同時操作を防げないためスクリプトロックを使う。
+//         waitLock ではなく tryLock(10000) を使い、取れなければ書かずに返す。
+//   判定ロジックそのものは一切変更していない（addAbsenceLocked_ に丸ごと移しただけ）。
 function addAbsence(data) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: '混み合っています。もう一度お試しください' };
+  }
+  try {
+    return addAbsenceLocked_(data);
+  } finally {
+    lock.releaseLock(); // 例外時もロックを残さない
+  }
+}
+
+function addAbsenceLocked_(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_ABSENCES);
   if (!sheet) {
