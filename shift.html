@@ -793,6 +793,7 @@ let currentMonth = '';
 let staffList = [];
 let myWishes = [];
 let allWishes = [];
+let wishCounts = {}; // 日→希望者数（氏名なしの集計。スタッフ画面の被り人数表示に使う）
 let isProcessing = false;
 let pendingPinAction = null; // { type: 'staff'|'admin', staffName: '' }
 let currentStaffType = localStorage.getItem('shift_wish_type') || '';
@@ -955,6 +956,9 @@ async function loadData() {
 
     allWishes = data.wishes || [];
     myWishes = allWishes.filter(w => w.staff === currentUser);
+    // 新サーバは wishCounts(日→人数)を返す。旧サーバ互換で無ければ {} のまま
+    // （getOthersCount が allWishes からの算出にフォールバックする）
+    wishCounts = data.wishCounts || {};
 
     renderAll();
 
@@ -1145,6 +1149,18 @@ function renderCalendar() {
   }
 }
 
+// 指定日の「本人以外の希望者数」。氏名は一切扱わない。
+// 新サーバ: wishCounts[day]（全希望者数）から本人分を引く。
+// 旧サーバ互換: wishCounts が空なら allWishes（旧応答は全員分）から人数だけ数える。
+function getOthersCount(day) {
+  if (wishCounts && Object.keys(wishCounts).length > 0) {
+    const total = Number(wishCounts[day] || 0);
+    const meOnDay = myWishes.some(w => w.day === day) ? 1 : 0;
+    return Math.max(0, total - meOnDay);
+  }
+  return allWishes.filter(x => x.day === day && x.staff !== currentUser).length;
+}
+
 function renderMySummary() {
   const section = document.getElementById('mySummary');
   if (!currentUser) { section.style.display = 'none'; return; }
@@ -1160,9 +1176,11 @@ function renderMySummary() {
   } else {
     const [y, m] = currentMonth.split('-').map(Number);
     sorted.forEach(w => {
-      // その日の他の希望者を取得
-      const others = allWishes.filter(x => x.day === w.day && x.staff !== currentUser).map(x => x.staff);
-      const hasConflict = others.length > 0;
+      // その日の「本人以外の希望者数」。プライバシー保護のため氏名は扱わず人数のみ。
+      // 新サーバは wishCounts(日→人数) を返す。旧サーバ互換で、無ければ allWishes から数える
+      // （表示は人数のみ・氏名は出さないため、どちらの経路でも他人名は画面に出ない）。
+      const othersCount = getOthersCount(w.day);
+      const hasConflict = othersCount > 0;
 
       const wrap = document.createElement('span');
       wrap.style.cssText = 'display:inline-flex; align-items:center; gap:4px; margin:4px;';
@@ -1176,7 +1194,7 @@ function renderMySummary() {
         chip.style.background = '#ffebee';
         chip.style.color = '#c62828';
         chip.style.border = '1px solid #ef9a9a';
-        chip.title = others.join('さん、') + 'さんと被っています';
+        chip.title = 'この日は他に' + othersCount + '人が希望しています';
       }
       wrap.appendChild(chip);
 
@@ -1184,8 +1202,8 @@ function renderMySummary() {
         const yuzuruBtn = document.createElement('button');
         yuzuruBtn.textContent = 'ゆずる';
         yuzuruBtn.style.cssText = 'background:#fff3e0; color:#e65100; border:1px solid #e65100; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; cursor:pointer;';
-        yuzuruBtn.title = others.join('さん、') + 'さんに譲る';
-        yuzuruBtn.onclick = () => concedeDay(w.day, others);
+        yuzuruBtn.title = 'この日をほかの希望者にゆずる';
+        yuzuruBtn.onclick = () => concedeDay(w.day, othersCount);
         wrap.appendChild(yuzuruBtn);
       }
 
@@ -1201,10 +1219,12 @@ function renderMySummary() {
 // ============================
 // ゆずる処理
 // ============================
-async function concedeDay(day, otherStaff) {
+async function concedeDay(day, othersCount) {
   if (!currentUser || isProcessing) return;
-  const others = (otherStaff || []).join('さん、') + 'さん';
-  if (!confirm(day + '日の希望休をゆずります。\n（' + others + 'に譲歩）\n\nよろしいですか？')) return;
+  // othersCount は人数のみ（氏名は扱わない）。誰に譲るかはサーバが判定する。
+  const n = Number(othersCount) || 0;
+  const who = n > 0 ? ('他の' + n + '人') : '他の希望者';
+  if (!confirm(day + '日の希望休をゆずります。\n（' + who + 'に譲歩）\n\nよろしいですか？')) return;
   isProcessing = true;
   try {
     const data = await apiCall({ action: 'concedeDay', staff: currentUser, month: currentMonth, day: day });
@@ -1751,6 +1771,7 @@ function logout() {
   localStorage.removeItem('shift_wish_admin_token');
   myWishes = [];
   allWishes = [];
+  wishCounts = {};
   conditionsData = [];
   conditionsVisible = false;
   allAbsences = [];

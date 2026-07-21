@@ -677,13 +677,41 @@ function getAllData(monthStr, staffName) {
   var absencesFiltered = (absences.absences || []).map(function(a) {
     return { days: a.days };
   });
+
+  // 【2026-07-21 プライバシー強化（案A）】
+  //   従来はスタッフ用でも全員の希望休(wishes)・確定(confirmations)を素通しにしており、
+  //   画面で隠しても開発者ツールのNetworkタブで他スタッフの氏名が読めてしまった。
+  //   → スタッフ用は wishes / confirmations を本人分のみに絞る。
+  //   被り情報は氏名・タイムスタンプを含まない「日付ごとの希望者数」の集計値だけ返す。
+  //   これで応答本文に他スタッフの氏名が一切含まれなくなる。
+  //   管理者用 getAllDataAdmin は従来どおり全員分を返す（別関数・変更なし）。
+  var allWishes = wishesResult.wishes || [];
+  var myWishes = staffName
+    ? allWishes.filter(function(w) { return String(w.staff) === String(staffName); })
+    : [];
+
+  // 日付ごとの希望者数（全スタッフ集計・氏名は含めない）。
+  //   本人以外の被り人数は「wishCounts[day] − (本人がその日に出していれば1)」で画面が算出する。
+  //   全日を返す（本人未申請の日の混雑状況も知りたい要件に対応できる・氏名は出ないので漏れない）。
+  var wishCounts = {};
+  for (var wi = 0; wi < allWishes.length; wi++) {
+    var wd = Number(allWishes[wi].day);
+    wishCounts[wd] = (wishCounts[wd] || 0) + 1;
+  }
+
+  var allConfirmations = getConfirmations(wishesResult.month).confirmations || [];
+  var myConfirmations = staffName
+    ? allConfirmations.filter(function(c) { return String(c.staff) === String(staffName); })
+    : [];
+
   var result = {
     staff: staffResult.staff || [],
-    wishes: wishesResult.wishes || [],
+    wishes: myWishes,                 // 本人分のみ（他スタッフの氏名を含めない）
+    wishCounts: wishCounts,           // 日→人数の集計（氏名なし）。被り表示の材料
     month: wishesResult.month,
     settings: { deadline: settings.deadline, maxPerDay: settings.maxPerDay },
     absences: absencesFiltered,
-    confirmations: getConfirmations(wishesResult.month).confirmations || []
+    confirmations: myConfirmations    // 本人分のみ
   };
   // 通知を含める
   if (staffName) {
