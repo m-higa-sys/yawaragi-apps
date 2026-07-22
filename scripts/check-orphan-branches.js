@@ -14,6 +14,7 @@
 
 const { execSync } = require('child_process');
 const path = require('path');
+const core = require('./orphan-branch-core.js'); // 純関数コア（テスト: test-orphan-branch-core.js）
 
 const ROOT = path.join(__dirname, '..');
 const STRICT = process.argv.includes('--strict');
@@ -48,10 +49,17 @@ const branchToWt = {};
 for (const w of worktrees) { if (w.branch) branchToWt[w.branch] = w.path; }
 
 // 2) origin/master 未マージのローカルブランチ
-const unmergedRaw = shTry("git branch --no-merged origin/master --format=%(refname:short)");
-const unmerged = unmergedRaw.ok
-  ? unmergedRaw.out.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-  : [];
+//    ⚠️ 書式指定 `--format=%(refname:short)` は /bin/sh で丸括弧がメタ文字と解釈され
+//    syntax error になる（2026-07-23 near-miss の真因）。素の出力を自前パースする。
+const unmergedRaw = shTry(core.UNMERGED_CMD);
+const unmergedKnown = unmergedRaw.ok;
+const unmerged = unmergedKnown ? core.parseBranchList(unmergedRaw.out) : [];
+if (!unmergedKnown) {
+  // 判定不能を「未マージなし」と見せない。ここを黙って通すと削除して良いものに化ける。
+  console.warn('🛑 未マージブランチの判定に失敗しました（削除可否は判定できません）');
+  console.warn('   コマンド: ' + core.UNMERGED_CMD);
+  console.warn('   出力: ' + (unmergedRaw.out || '(なし)').split(/\r?\n/)[0]);
+}
 
 let warnCount = 0;
 
@@ -59,7 +67,10 @@ console.log('===== 孤立ブランチ / 残留ワークツリー チェック ==
 console.log('基準: origin/master = ' + sh('git rev-parse --short origin/master'));
 console.log('');
 
-if (unmerged.length === 0) {
+if (!unmergedKnown) {
+  console.log('⚠️ origin/master 未マージのローカルブランチ: 判定不能（上記エラー参照）');
+  warnCount++;
+} else if (unmerged.length === 0) {
   console.log('✅ origin/master 未マージのローカルブランチ: なし');
 } else {
   console.log('⚠️ origin/master 未マージのローカルブランチ: ' + unmerged.length + ' 件');
@@ -83,19 +94,13 @@ if (extraWts.length === 0) {
   for (const w of extraWts) {
     const st = shTry('git -C "' + w.path + '" status --porcelain');
     const dirtyN = st.ok ? st.out.split(/\r?\n/).filter(Boolean).length : -1;
-    const merged = w.branch && !unmerged.includes(w.branch);
     const label = w.detached ? '(detached)' : (w.branch || '(?)');
-    let note;
-    if (dirtyN > 0) {
-      // ブランチが反映済みでも未コミット差分は未反映の実作業かもしれない
-      // （2026-07-02: 連続欠席バッジ撤去がWTの未コミット差分に眠っていた教訓）
-      note = ' / 未コミット作業 ' + dirtyN + ' 件 ⚠️要確認（中身を反映するまで削除しない）';
-    } else if (dirtyN === 0) {
-      note = ' / クリーン' + (w.detached ? '' : (merged ? ' / master反映済み→削除候補' : ' / 未マージ'));
-    } else {
-      note = ' / 状態取得失敗';
-    }
-    console.log('  - ' + w.path + '  [' + label + ']' + note);
+    // 判定は純関数へ集約（fail-closed＝迷ったら削除候補にしない）
+    const verdict = core.classifyWorktree({
+      branch: w.branch, detached: w.detached, dirtyN: dirtyN,
+      unmergedKnown: unmergedKnown, unmerged: unmerged
+    });
+    console.log('  - ' + w.path + '  [' + label + ']' + verdict.note);
     warnCount++;
   }
   console.log('  → クリーン＆master反映済みのWTは `git worktree remove <path>` で削除。');
