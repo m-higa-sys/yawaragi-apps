@@ -16740,7 +16740,16 @@ function addDengonMessage(ss, data) {
   var idx = dbFindRowIndex_(sheet.getDataRange().getValues(), id);
   if (idx === -1) return { success: false, error: 'verify_failed', verified: false };
   sheet.getRange(idx + 1, DB_COL.DONE + 1).insertCheckboxes();
-  return { success: true, id: id, verified: true };
+  // 社長宛て投稿は投稿された“その場”で notify@ へ通知（Apple Watch着信用）。2026-07-24 追記。
+  // dupガード(dupId 早期return)より後ろ＝重複投稿では飛ばない。verify成功後・return直前に置く。
+  // sendDengonCompletionMail_ と同じ流儀：try/catchで囲み、送信失敗でも投稿は success のまま。
+  // 条件は to==='社長' のみ（to は 16279 で trim 済み）。スタッフ・グループ宛ては従来通り無通知。
+  var notified = false;
+  if (to === '社長') {
+    try { sendDengonOwnerPostMail_({ from: from, body: body, deadline: deadline }); notified = true; }
+    catch (err) { Logger.log('伝達ボード社長宛投稿通知メール失敗: ' + err.message); }
+  }
+  return { success: true, id: id, verified: true, notified: notified };
 }
 
 // ===== 既読機能 I/O（2026-07-12）=====
@@ -16927,6 +16936,23 @@ function sendDengonCompletionMail_(item, doneBy) {
     '内容: ' + (item.body || ''),
     '投稿者: ' + (item.from || ''),
     '宛先: ' + (item.to || ''),
+    '期限: ' + (item.deadline || 'なし'),
+    '',
+    '▼yawaragiボードで確認:',
+    ScriptApp.getService().getUrl()
+  ].join('\n');
+  GmailApp.sendEmail(NOTIFY_EMAIL, subject, body, { charset: 'UTF-8' });
+}
+
+// 社長宛て投稿の“投稿時”通知メール（sendDengonCompletionMail_ と同じ流儀・完了通知に非干渉）。2026-07-24。
+// 社長宛て（to==='社長'）のみ・投稿されたその場で notify@ へ。to 判定は呼び出し側 addDengonMessage が持つ。
+function sendDengonOwnerPostMail_(item) {
+  var subject = '[伝達] 社長宛：' + String(item.body || '').slice(0, 30);
+  var body = [
+    '社長宛の伝達が投稿されました。',
+    '',
+    '投稿者: ' + (item.from || ''),
+    '内容: ' + (item.body || ''),
     '期限: ' + (item.deadline || 'なし'),
     '',
     '▼yawaragiボードで確認:',
