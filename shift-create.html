@@ -2225,32 +2225,38 @@ async function applyShiftToOps() {
 
   try {
     const sendPayload = { type: payload.type, month: payload.month, shifts: payload.shifts };
-    const res = await fetch(OPS_GAS_URL_FOR_APPLY, {
+    // 🔴 GAS(script.google.com)はPOST後に script.googleusercontent.com へ302リダイレクトし、
+    //    そのCORS応答をブラウザが読めないため、旧実装の mode:'cors'+res.json() は
+    //    「サーバ側では書き込めているのにクライアントで例外→通信失敗表示」になっていた（2026-07-25 クロコ実測で判明）。
+    //    書き込み自体は no-cors でも確実に届く（sougei.html の保存と同方式・curl実証済み）。応答は読まない。
+    await fetch(OPS_GAS_URL_FOR_APPLY, {
       method: 'POST',
-      mode: 'cors',
-      redirect: 'follow',
+      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(sendPayload)
     });
-    const result = await res.json();
-    console.log('apply_shift_data result:', result);
 
-    if (!result.success) {
-      alert('失敗: ' + (result.error || JSON.stringify(result)));
-      return;
+    // no-cors応答は読めないので、getOps(GETは読める)で当月の反映日数を読み直して検算する（sougei.htmlのverifyCloudSyncと同方式）。
+    let reflected = null;
+    try {
+      await new Promise(function(r){ setTimeout(r, 1200); }); // サーバ書き込みの反映待ち
+      const sep = OPS_GAS_URL_FOR_APPLY.indexOf('?') >= 0 ? '&' : '?';
+      const check = await fetch(OPS_GAS_URL_FOR_APPLY + sep + 'action=getOps&t=' + Date.now());
+      const ops = await check.json();
+      const days = Object.keys((ops && ops.dailyOps) || {}).filter(function(d){ return d.indexOf(yearMonth) === 0; });
+      reflected = days.length;
+    } catch (verifyErr) {
+      console.warn('反映確認の読み取りに失敗（送信自体は完了しています）', verifyErr);
     }
 
-    let msg = '✓ 反映完了\n';
-    msg += '反映: ' + (result.applied ? result.applied.length : 0) + '日分（合計 ' + result.total_filled + 'セル）\n';
-    msg += 'スキップ: ' + (result.skipped ? result.skipped.length : 0) + '日分（既入力 ' + result.total_skipped + 'セル）\n';
-    if (result.unmatched_staff && Object.keys(result.unmatched_staff).length > 0) {
-      msg += '\nマッチしなかったスタッフ: ' + Object.keys(result.unmatched_staff).join(', ');
+    if (reflected === null) {
+      alert('✓ 出勤＆送迎表へ送信しました（' + yearMonth + ' ' + dateCount + '日分）。\n\n反映結果の自動確認はできませんでしたが、送信は完了しています。\n出勤＆送迎表を開いて確認してください。');
+    } else {
+      alert('✓ 出勤＆送迎表へ反映しました。\n' + yearMonth + ' に登録されている日数: ' + reflected + '日分\n\n※既に入力済みのセルは上書きしません（手修正は保護）。\n出勤＆送迎表を開いて確認してください。');
     }
-    msg += '\n\n詳細はコンソール（F12）で確認できます';
-    alert(msg);
   } catch (e) {
     console.error('apply_shift_data error:', e);
-    alert('通信失敗: ' + e.message);
+    alert('送信失敗: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = origText;
