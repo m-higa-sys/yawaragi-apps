@@ -18,7 +18,7 @@ function extractFrom(src, name) {
   let i = src.indexOf('{', s), d = 0;
   for (let j = i; j < src.length; j++) { if (src[j] === '{') d++; else if (src[j] === '}') { d--; if (!d) return src.slice(s, j + 1); } }
 }
-const HTML_FNS = ['renderTable', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
+const HTML_FNS = ['renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
   'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
 const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
@@ -139,6 +139,45 @@ ok(outB.indexOf('ハツ江') >= 0, 'B0: 過去温存の対象ユーザーが描�
 ok(outB.indexOf('計画(') >= 0, 'B1: planStartより前でも計画実績のあるセルは表示される（"-"に隠れない）');
 ok(outB.indexOf('kb-cyc-eval') >= 0, 'B1b: planStartより前でも評価実績のあるセルは表示される');
 ok(outB.indexOf('disabled">-') >= 0, 'B2: 実績のない開始前セルは従来どおり "-"（disabled）のまま');
+
+// ===== 11. フェーズ2a: 作業月(前月)化。planStart=2026-07 → 6月に計画・測定・評価が揃い、7月に計画バッジが二重に出ない =====
+// 会計年度を2026に固定（4月2026〜3月2027を描画）＝6月・7月とも枠内で決定的。表示判定は実行日非依存。
+const W = { userId: 'W', name: 'ワク人', furigana: 'ワ', category: '要介護1', planStart: '2026-07', planMonths: 3, days: '月', ampm: '午前', sendMethod: 'PDF' };
+sandbox.state = { fiscalYear: 2026, users: [W], records: {}, isLoading: false, includeCancelled: false, needsActionOnly: false };
+sandbox.renderTable();
+let outW = tbody.innerHTML;
+ok(outW.indexOf('計画(7月〜)') >= 0, 'W1: 作業月(6月)に計画パート「計画(7月〜)」が node(計画月)ラベルで出る');
+ok((outW.match(/計画\(7月〜\)/g) || []).length === 1, 'W2: 「計画(7月〜)」は1個だけ＝計画月(7月)に対話バッジを二重表示しない');
+// 行をtd分割してセル位置を特定（[3]=4月,[4]=5月,[5]=6月,[6]=7月）。計画パートが6月にあり7月に無いこと＝移動を証明。
+const rowW = (outW.split('</tr>').find(r => r.indexOf('ワク人') >= 0) || '');
+const cellsW = rowW.split('<td');
+ok(!!cellsW[5] && cellsW[5].indexOf('計画(7月〜)') >= 0, 'W2b: 計画パートは6月セル(前月＝作業月)に出る');
+ok(!!cellsW[6] && cellsW[6].indexOf('計画(') < 0, 'W2c: 7月セル(計画月)には計画パートが出ない（作業月へ移譲＝二重表示なし）');
+ok(!!cellsW[5] && cellsW[5].indexOf('kb-cyc-eval') >= 0, 'W3: 作業月(6月)に評価スロットが同居（計画・測定・評価が揃う）');
+ok(/data-month="7"[^>]*data-field="keikaku_date"/.test(outW), 'W4: 計画パートの書込先 data-month=7（node=計画月＝格納位置は計画月のまま不変）');
+ok(!/data-month="6"[^>]*data-field="keikaku_date"/.test(outW), 'W5: 前月(6月)自身の行へは計画を書き込まない＝格納位置を移さない');
+
+// ===== 12. 年跨ぎ（12月作業月→翌1月計画月）を純関数で検証 =====
+const cyc12 = sandbox.kobetsuCycleAt('2026-10', 3, 2026, 12);
+ok(cyc12.role === 'work' && cyc12.nodeYear === 2027 && cyc12.nodeMonth === 1,
+  'Y1: 12月は作業月・node=翌2027年1月（年跨ぎ計算が正しい）');
+ok(sandbox.kobetsuCycleAt('2026-10', 3, 2027, 1).role === 'none', 'Y2: 計画月(1月)自身は role=none（作業月ではない）');
+
+// ===== 13. 変則 planMonths=1: 作業月は開始前月1個だけ =====
+ok(sandbox.kobetsuCycleAt('2026-07', 1, 2026, 6).role === 'work', 'V1: 変則(1ヶ月)でも開始前月(6月)は作業月');
+ok(sandbox.kobetsuCycleAt('2026-07', 1, 2026, 9).role === 'none', 'V2: 変則(1ヶ月)は他月(9月)は作業月でない');
+const V = { userId: 'V', name: 'ヘン子', furigana: 'ワ', category: '要介護1', planStart: '2026-07', planMonths: 1, days: '月', ampm: '午前' };
+sandbox.state = { fiscalYear: 2026, users: [V], records: {}, isLoading: false, includeCancelled: false, needsActionOnly: false };
+sandbox.renderTable();
+ok(((tbody.innerHTML.match(/計画\(/g) || []).length) === 1, 'V3: 変則(1ヶ月)は計画パートが年間1個だけ（作業月=開始前月のみ）');
+
+// ===== 14. planStart前月がグリッド範囲外（4月開始→前月は前年度3月）でもエラーにならず従来表示 =====
+const A = { userId: 'A', name: 'エイ子', furigana: 'ワ', category: '要介護1', planStart: '2026-04', planMonths: 3, days: '月', ampm: '午前' };
+sandbox.state = { fiscalYear: 2026, users: [A], records: {}, isLoading: false, includeCancelled: false, needsActionOnly: false };
+let threw = false;
+try { sandbox.renderTable(); } catch (e) { threw = true; }
+ok(!threw, 'X1: 作業月がグリッド範囲外の利用者でもエラーにならない');
+ok(tbody.innerHTML.indexOf('計画(4月〜)') >= 0, 'X2: 前月が範囲外の計画月(4月)は従来どおり自セルに計画パートを出す（フォールバック）');
 
 console.log('個別機能訓練 1ヶ月1列グリッド DOM: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

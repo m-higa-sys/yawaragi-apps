@@ -1084,6 +1084,17 @@ async function loadFiscalYearData() {
 }
 
 // ============ テーブル描画 ============
+// フェーズ2a: 作業月(前月)化の純関数。翌月が計画月なら、このセルは「作業月」で、
+// 格納行(node)はその翌月＝計画月。計画パートを node 行で読み書きし、表示だけ前月へ寄せる。
+// 返り: { role:'work'|'none', nodeYear, nodeMonth }。isPlanMonth を読むだけ（shared.js 無改修）。DOM非依存・年跨ぎ対応。
+function kobetsuCycleAt(planStart, planMonths, year, month) {
+    const nY = (month === 12) ? year + 1 : year;
+    const nM = (month === 12) ? 1 : month + 1;
+    if (isPlanMonth(planStart, planMonths, nY, nM)) {
+        return { role: 'work', nodeYear: nY, nodeMonth: nM };
+    }
+    return { role: 'none', nodeYear: year, nodeMonth: month };
+}
 function renderTable() {
     const fy = state.fiscalYear;
     const thead = document.querySelector('#matrixTable thead');
@@ -1134,6 +1145,15 @@ function renderTable() {
             + escapeHtml(u.name) + badge + cancelBadge + '</td>';
         let rowTodo = false;
 
+        // フェーズ2a: このユーザーの「作業月」が指す node(計画月) の集合を先に集める。
+        // 計画月セル側で「前月(作業月)へ計画パートを移譲済みか」を判定し、二重表示を防ぐのに使う。
+        const claimedNodes = {};
+        MONTHS.forEach(mo2 => {
+            const cy2 = mo2.nextYear ? fy + 1 : fy;
+            const c2 = kobetsuCycleAt(u.planStart, u.planMonths, cy2, mo2.m);
+            if (c2.role === 'work') claimedNodes[c2.nodeYear + '_' + c2.nodeMonth] = true;
+        });
+
         MONTHS.forEach(mo => {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
@@ -1145,13 +1165,30 @@ function renderTable() {
             const beforeStart = isBeforePlanStart(u.planStart, cellYear, mo.m);
             const isBlocked = !!rec.blocked_reason;
 
-            // データ温存（#6）: 計画月/評価月でなくても、また planStart より前でも、実績があれば表示する。
-            // （planStart を後ろへ動かしても過去実績のセルが '-' に隠れてデータ喪失に見えるのを防ぐ＝フェーズ1改修）
+            // データ温存（#6・フェーズ1）: 実績のある行は計画月/評価月でなくても、planStart より前でも表示する。
             const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
                 || rec.keikaku_sent_date || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason);
             const hasHyoukaData = !!(rec.tasseido_date || rec.hyouka_pdf_date || rec.hyouka_print_date);
-            const showPlan = hasPlanData || (!beforeStart && isPlan);
-            const showEval = hasHyoukaData || (!beforeStart && isHyouka);
+
+            // フェーズ2a: 作業月(前月)化。翌月が計画月ならこのセルは作業月で、計画パートを node(計画月)行から読み書きする。
+            const cyc = kobetsuCycleAt(u.planStart, u.planMonths, cellYear, mo.m);
+            const isWork = cyc.role === 'work';
+            const planClaimedByWork = isPlan && !!claimedNodes[cellYear + '_' + mo.m]; // この計画月は前月(作業月)へ移譲済み→二重表示しない
+            // 計画パートをどの行(node)で描くか。作業月=計画月行(表示は前月・書込は計画月＝格納位置不変) /
+            // 前月がグリッド範囲外の計画月=自セル(従来どおり) / 実績のある非計画・非作業月=温存(自セル)。
+            let planSrc = null;
+            if (isWork) {
+                const nk = u.userId + '_' + cyc.nodeYear + '_' + cyc.nodeMonth;
+                planSrc = { year: cyc.nodeYear, month: cyc.nodeMonth,
+                    rec: state.records[nk] || { keikaku_date: '', sokutei_date: '', keikaku_sent_date: '', blocked_reason: '' } };
+            } else if (isPlan && !planClaimedByWork) {
+                planSrc = { year: cellYear, month: mo.m, rec: rec };
+            } else if (!isPlan && hasPlanData) {
+                planSrc = { year: cellYear, month: mo.m, rec: rec };
+            }
+            const showPlan = planSrc !== null;
+            // 評価は無改修（isHyoukaMonth・格納行=自セルのまま）。作業月に評価スロットを同居させるため isWork&&isHyouka を加算のみ。
+            const showEval = hasHyoukaData || (!beforeStart && isHyouka) || (isWork && isHyouka);
 
             let cls = 'check-cell month-border';
             if (isCurrent) cls += ' current';
@@ -1168,28 +1205,25 @@ function renderTable() {
             };
             let inner = '';
 
-            // 計画パート（onCellTap導線・従来data属性を踏襲＝案A）
+            // 計画パート（onCellTap導線・書込先 data-year/month は planSrc=node行＝格納位置は計画月のまま不変）
             if (showPlan) {
-                let labelMonth = mo.m;
-                if (!isPlan) {
-                    const lblNextYear = (mo.m === 12) ? cellYear + 1 : cellYear;
-                    const lblNextMonth = (mo.m === 12) ? 1 : mo.m + 1;
-                    if (isPlanMonth(u.planStart, u.planMonths, lblNextYear, lblNextMonth)) labelMonth = lblNextMonth;
-                }
+                const pRec = planSrc.rec;
+                const pBlocked = !!pRec.blocked_reason;
+                const pYM = planSrc.year + '-' + String(planSrc.month).padStart(2, '0');
                 let pInner;
-                if (isBlocked) {
-                    const isMitei = (rec.blocked_reason === '利用継続未確定');
-                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + labelMonth + '月〜)</span>'
-                        + '<span class="kb-hold" title="' + escapeAttr(rec.blocked_reason) + '">' + (isMitei ? '⏸' : '⚠') + ' 保留</span>';
+                if (pBlocked) {
+                    const isMitei = (pRec.blocked_reason === '利用継続未確定');
+                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
+                        + '<span class="kb-hold" title="' + escapeAttr(pRec.blocked_reason) + '">' + (isMitei ? '⏸' : '⚠') + ' 保留</span>';
                 } else {
-                    const pb = kbPlanBadges(rec);
-                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + labelMonth + '月〜)</span>'
+                    const pb = kbPlanBadges(pRec);
+                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
                         + '<span class="kb-badges">' + pb.map(kbBadgeHtml).join('') + '</span>';
                     collectTodo(pb);
-                    if (rec.keikaku_date && !rec.keikaku_sent_date && (cellYear + '-' + String(mo.m).padStart(2, '0')) === nowYM) gateNames.add(u.name);
+                    if (pRec.keikaku_date && !pRec.keikaku_sent_date && pYM === nowYM) gateNames.add(u.name);
                 }
                 inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
-                    + '" data-year="' + cellYear + '" data-month="' + mo.m + '" data-field="keikaku_date" data-fieldlabel="計画"'
+                    + '" data-year="' + planSrc.year + '" data-month="' + planSrc.month + '" data-field="keikaku_date" data-fieldlabel="計画"'
                     + ' onclick="onCellTap(this)">' + pInner + '</div>';
             }
 
@@ -1209,7 +1243,8 @@ function renderTable() {
                     const eb = kbEvalBadges(rec);
                     eInner = '<span class="kb-cyc kb-cyc-eval">評価月' + (smBadge ? ' ' + smBadge : '') + '</span>'
                         + '<span class="kb-badges">' + eb.map(kbBadgeHtml).join('') + '</span>';
-                    collectTodo(eb);
+                    // 開始前(diff-1)の評価は前サイクルの空スロット。表示はするが要対応には数えない（幻の督促を防ぐ）。
+                    if (!beforeStart) collectTodo(eb);
                     if (tasseido && !submitted && (cellYear + '-' + String(mo.m).padStart(2, '0')) === nowYM) gateNames.add(u.name);
                 }
                 inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
