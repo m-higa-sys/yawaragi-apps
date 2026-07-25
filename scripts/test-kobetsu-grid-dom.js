@@ -179,5 +179,25 @@ try { sandbox.renderTable(); } catch (e) { threw = true; }
 ok(!threw, 'X1: 作業月がグリッド範囲外の利用者でもエラーにならない');
 ok(tbody.innerHTML.indexOf('計画(4月〜)') >= 0, 'X2: 前月が範囲外の計画月(4月)は従来どおり自セルに計画パートを出す（フォールバック）');
 
+// ===== 15. 回帰(クロ指摘): planStartを後ろへ動かし、旧データが作業月“自身の行”に残るケースで隠れない =====
+// M: planStart=2026-07 だが 6月(作業月)自身の行に旧・計画/測定データ。node(7月)は空 → 温存フォールバックで6月に表示。
+const M = { userId: 'M', name: 'ムー太', furigana: 'ワ', category: '要介護1', planStart: '2026-07', planMonths: 3, days: '月', ampm: '午前' };
+sandbox.state = { fiscalYear: 2026, users: [M], records: { 'M_2026_6': { keikaku_date: '2026-06-10', sokutei_date: '2026-06-12' } }, isLoading: false, includeCancelled: false, needsActionOnly: false };
+sandbox.renderTable();
+let outM = tbody.innerHTML;
+ok(outM.indexOf('6/10') >= 0, 'M1: 作業月自身の行の旧・計画データ(6/10)が隠れず表示される（フェーズ1温存の維持）');
+ok(outM.indexOf('6/12') >= 0, 'M2: 作業月自身の行の旧・測定データ(6/12)が隠れず表示される');
+// 旧データは6月(自セル)行のまま＝格納位置を動かさない（書込先data-month=6）。
+const rowM = (outM.split('</tr>').find(r => r.indexOf('ムー太') >= 0) || '');
+const cellsM = rowM.split('<td');
+ok(!!cellsM[5] && cellsM[5].indexOf('6/10') >= 0, 'M3: 旧データは6月セルに温存表示される');
+ok(/data-month="6"[^>]*data-field="keikaku_date"/.test(outM), 'M4: 温存フォールバック時の書込先は自セル(6月)＝旧データの位置を動かさない');
+
+// 別パターン: planStart 5月→8月 で旧6月データ（6月は作業月でないので従来の温存で拾う）
+const M2 = { userId: 'M2', name: 'ニー美', furigana: 'ワ', category: '要介護1', planStart: '2026-08', planMonths: 3, days: '月', ampm: '午前' };
+sandbox.state = { fiscalYear: 2026, users: [M2], records: { 'M2_2026_6': { keikaku_date: '2026-06-20' } }, isLoading: false, includeCancelled: false, needsActionOnly: false };
+sandbox.renderTable();
+ok(tbody.innerHTML.indexOf('6/20') >= 0, 'M5: planStart 5月→8月の旧6月データも隠れない（従来の温存で表示）');
+
 console.log('個別機能訓練 1ヶ月1列グリッド DOM: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

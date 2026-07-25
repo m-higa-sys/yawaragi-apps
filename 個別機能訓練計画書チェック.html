@@ -1179,8 +1179,16 @@ function renderTable() {
             let planSrc = null;
             if (isWork) {
                 const nk = u.userId + '_' + cyc.nodeYear + '_' + cyc.nodeMonth;
-                planSrc = { year: cyc.nodeYear, month: cyc.nodeMonth,
-                    rec: state.records[nk] || { keikaku_date: '', sokutei_date: '', keikaku_sent_date: '', blocked_reason: '' } };
+                const nodeRec = state.records[nk] || { keikaku_date: '', sokutei_date: '', keikaku_sent_date: '', blocked_reason: '' };
+                const nodeHasPlanData = !!(nodeRec.keikaku_date || nodeRec.kyoumi_date || nodeRec.seikatsu_date
+                    || nodeRec.keikaku_sent_date || nodeRec.sokutei_date || nodeRec.sokutei_by || nodeRec.output_by || nodeRec.blocked_reason);
+                if (!nodeHasPlanData && hasPlanData) {
+                    // planStartを後ろへ動かした等で node(計画月)は空だが、作業月“自身の行”に旧データが残るケース。
+                    // フェーズ1の温存を優先し、自セルの旧データを隠さず表示する（書込先も自セル＝旧データの位置は動かさない）。
+                    planSrc = { year: cellYear, month: mo.m, rec: rec };
+                } else {
+                    planSrc = { year: cyc.nodeYear, month: cyc.nodeMonth, rec: nodeRec };
+                }
             } else if (isPlan && !planClaimedByWork) {
                 planSrc = { year: cellYear, month: mo.m, rec: rec };
             } else if (!isPlan && hasPlanData) {
