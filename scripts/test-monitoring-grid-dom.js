@@ -21,7 +21,7 @@ function extractFrom(src, name) {
 }
 // isPending / sortUsers は本体の保存状態・並び替えに依存するためスタブ（sandbox 側）に任せる。
 const HTML_FNS = ['renderTable', 'getGroup', 'matchesSchedule', 'matchesSearch', 'matchesRow',
-  'escapeHtml', 'escapeAttr', 'formatMD'];
+  'escapeHtml', 'escapeAttr', 'formatMD', 'isPreFinalEvalMonth'];
 const SHARED_FNS = ['isBeforePlanStart', 'monitoringFinalEvalMonth', 'submitCellColor'];
 const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
 

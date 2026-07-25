@@ -230,6 +230,8 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
 .check-cell.final-eval { box-shadow: inset 0 0 0 2px #f9a825; }
 .check-cell.final-eval.current { box-shadow: inset 0 0 0 3px #1976d2, inset 0 0 0 5px #f9a825; }
 .check-cell.final-eval.highlight-undone { box-shadow: inset 0 0 0 2px #f9a825, inset 0 0 0 4px #f44336; }
+/* 最終評価月の前月＝来月サイン予告。final-eval(2px実線枠)より弱い＝細い破線＋薄い黄背景で控えめに。 */
+.check-cell.pre-final-eval { box-shadow: inset 0 0 0 1px #f9a825; background: #fffbe6; }
 
 #pendingBanner {
     background: #fff3e0; color: #e65100; padding: 10px 20px;
@@ -532,6 +534,7 @@ th.sub-header.month-start { border-left: 3px solid #1B5E20; }
         <div class="legend-item"><div class="legend-color" style="background:#ffebee;border:2px solid #f44336;"></div> 過去未送付⚠</div>
         <div class="legend-item"><div class="legend-color" style="border:3px solid #1976d2;"></div> 当月</div>
         <div class="legend-item"><div class="legend-color" style="border:3px solid #f9a825;"></div> 最終評価月✍</div>
+        <div class="legend-item"><div class="legend-color" style="border:1px solid #f9a825;background:#fffbe6;"></div> 🔜✍ 来月サイン予告</div>
     </div>
 </div>
 
@@ -859,6 +862,19 @@ function getGroup(kana) {
 // （override優先・算出不能時は '' を返す。旧ローカル版は null を返していたが、
 //  両呼び出しとも ymKey === ... の一致判定のみで '' でも非一致＝挙動不変。）
 
+// 最終評価月(✍サイン要)の「前月」か: その (year,month) の翌月が最終評価月なら true。
+// 年1回サインの1ヶ月前に「🔜✍来月サイン」と予告するための判定。翌月nextYm（年跨ぎ込み）を作り、
+// monitoringFinalEvalMonth（上書き優先・planStart+11）と一致するかを見るだけ。無改修で呼ぶ。
+// 最終評価月が算出不能('')なら false。純関数・DOM非依存。
+function isPreFinalEvalMonth(planStart, finalEvalMonth, year, month) {
+    const fe = monitoringFinalEvalMonth(planStart, finalEvalMonth);
+    if (!fe) return false;
+    const nextY = month === 12 ? year + 1 : year;
+    const nextM = month === 12 ? 1 : month + 1;
+    const nextYm = nextY + '-' + String(nextM).padStart(2, '0');
+    return nextYm === fe;
+}
+
 function sortUsers() {
     monitoringState.users.sort((a, b) =>
         (a.furigana || '').normalize('NFKC').localeCompare((b.furigana || '').normalize('NFKC'), 'ja')
@@ -1142,6 +1158,8 @@ function renderTable() {
             const isBeforeStart = (cellYear < START_YEAR) || (cellYear === START_YEAR && mo.m < START_MONTH);
             const ymKey = cellYear + '-' + String(mo.m).padStart(2, '0');
             const isFinalEval = (ymKey === monitoringFinalEvalMonth(u.planStart, u.finalEvalMonth));
+            // 翌月が最終評価月のセル＝1ヶ月前の「来月サイン」予告対象（最終評価月そのものは対象外）。
+            const isPreFinalEval = isPreFinalEvalMonth(u.planStart, u.finalEvalMonth, cellYear, mo.m);
 
             // 送付実績（PDF/印刷いずれか）があるセルは開始前でも隠さない（データ喪失の誤解防止＝フェーズ1改修）
             const hasSendData = !!(pdfSend || printSend);
@@ -1170,6 +1188,10 @@ function renderTable() {
             if (isFinalEval) {
                 cls += ' final-eval';
                 text = (!pdfSend && !printSend && !isPast) ? '✍' : ('✍' + text);
+            } else if (isPreFinalEval) {
+                // 最終評価月の前月だけ「来月サイン」を予告（既存の送付表示 📧/🖨/⚠ は消さず先頭に併記）。
+                cls += ' pre-final-eval';
+                text = '🔜✍' + text;
             }
             if (isCurrent) {
                 cls += ' current';
