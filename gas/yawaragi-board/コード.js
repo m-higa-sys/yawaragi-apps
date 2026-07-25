@@ -7279,6 +7279,13 @@ function morningDigest(e) {
   safe('koyouKeiyaku', function () {
     return buildKoyouKeiyakuSection_(_getKoyouKeiyakuRows_(ss), dateStr);
   });
+  // 今月のやり残し（口腔・個訓・測定・通所の当月未実施を氏名付きで／未0で消える＝終わるまで方式）。
+  // 済/未判定は buildMonthBoard に一任（_computeMonthBoard_ 経由）＝単一の正。純追加。
+  safe('yarinokoshi', function () {
+    var ym = dateStr.slice(0, 7);
+    var comp = _computeMonthBoard_(ym);
+    return _digestYarinokoshi_({ month: ym, sections: comp.sections, warnings: comp.warnings });
+  });
 
   return respond({
     ok: errors.length === 0,
@@ -16731,6 +16738,52 @@ function monthBoard(e) {
 
   out.errors = errors;
   return respond(out, callback);
+}
+
+// morningDigest「今月のやり残し」用: monthBoard(e) と同一計算を独立配線で行い {sections,warnings,errorSections} を返す。
+// action=monthBoard の出力契約を1バイトも変えないため monthBoard(e) 本体は無改修とし、計算をここへ複製した。
+// ★deps 同期必須: 下の buildMonthBoard へ渡す deps は monthBoard(e)(この直前の関数) の deps と完全一致させること
+//   （済/未 判定ロジックの二重定義防止）。monthBoard(e) 側の deps を変えたら、ここも必ず同じに変える。
+function _computeMonthBoard_(ym) {
+  var year = parseInt(String(ym).slice(0, 4), 10);
+  var month = parseInt(String(ym).slice(5, 7), 10);
+  var innerSafe = function (name, fn) { try { return fn(); } catch (err) { return null; } };
+  var bi = monthBoardBuildInput_(ym, year, month, innerSafe);
+  if (!bi || !bi.input) return { sections: [], warnings: [], errorSections: (bi && bi.errorSections) || {} };
+  var board = buildMonthBoard(bi.input, {
+    oralCycleAt: oralCycleAt, isPlanMonth: isPlanMonth, isHyoukaMonth: isHyoukaMonth,
+    sokuteiDueDate_: sokuteiDueDate_, sbNormalizeName_: sbNormalizeName_
+  });
+  var sections = (board && board.sections) || [];
+  sections.forEach(function (s) { if (bi.errorSections[s.key]) s.error = true; });
+  return { sections: sections, warnings: (board && board.warnings) || [], errorSections: bi.errorSections };
+}
+
+// 純関数: 月次ボード（buildMonthBoard の出力形 board={month,sections,warnings}）から「今月のやり残し」を氏名付きで抽出する。
+// 済/未 の判定は一切持たない（section.targets[].done をそのまま読む＝二重定義しない）。未0の分野は domains に含めない。
+function _digestYarinokoshi_(board) {
+  board = board || {};
+  var sectionsIn = board.sections || [];
+  var domains = [], totalUndone = 0;
+  sectionsIn.forEach(function (s) {
+    var undone = (s.targets || []).filter(function (t) { return !t.done; })
+      .map(function (t) { return { userId: t.userId, name: t.name }; });
+    if (undone.length > 0) {
+      domains.push({ key: s.key, label: s.label, count: undone.length, undone: undone });
+      totalUndone += undone.length;
+    }
+  });
+  var neverMeasured = [], noDueDate = [];
+  (board.warnings || []).forEach(function (w) {
+    if (w.type === 'neverMeasured') neverMeasured.push({ userId: w.userId, name: w.name });
+    else if (w.type === 'noDueDate') noDueDate.push({ userId: w.userId, name: w.name });
+  });
+  return {
+    month: board.month,
+    totalUndone: totalUndone,
+    domains: domains,
+    warnings: { neverMeasured: neverMeasured, noDueDate: noDueDate }
+  };
 }
 
 // 月次ボード用 core入力の整形（各シート読み取り→ buildMonthBoard の入力契約へ写像）。
