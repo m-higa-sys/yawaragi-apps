@@ -67,11 +67,11 @@ ok(tbodyHas('台帳外・要名寄せ'), '台帳外の小見出しが出る');
 ok(tbodyHas('法浦武治'), '展開で台帳外(法浦武治)が出る');
 ok(tbodyText().indexOf('orphan-badge') >= 0, '法浦武治は orphan-badge 付きで台帳外扱い');
 
-// ===== 3) 名前検索: ふりがな「やなぎ」→ 現役1名・空グループ非表示 =====
+// ===== 3) 名前検索: ふりがな「りようしゃ」→ 現役1名・空グループ非表示 =====
 window.localStorage.setItem('yawaragi_weight_terminated_collapsed', '1');
-setSearch('やなぎ');
-ok(tbodyHas('利用者110'), '検索やなぎ: 利用者110ヒット');
-ok(!tbodyHas('田中太郎'), '検索やなぎ: 田中太郎は除外');
+setSearch('りようしゃ');
+ok(tbodyHas('利用者110'), '検索りようしゃ: 利用者110ヒット');
+ok(!tbodyHas('田中太郎'), '検索りようしゃ: 田中太郎は除外');
 ok(document.getElementById('searchCount').textContent.indexOf('検索: 1件') >= 0, '検索件数=1件');
 ok(tbodyText().indexOf('>た<') < 0, '該当0の五十音グループ(た)見出しは非表示');
 
