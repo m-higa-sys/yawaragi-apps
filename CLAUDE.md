@@ -181,6 +181,20 @@ node scripts/check-orphan-branches.js
 - 逆にクロは数値の再掲をしない。両方がやると同じ内容が二重に報告され、朝が長くなる
 - ただし「これをやらないと後続が止まる」という**依存関係は報告してよい**（優先順位ではなく事実のため）
 
+## テストの回し方（dev基盤）
+
+テストは **`npm test`** 一発で回す（内部で `node scripts/run-all-tests.js`）。
+
+- 初回のみ **`npm install`**（jsdom を導入。`node_modules/` は git 管理外、`package-lock.json` はコミット対象）。
+- ランナーは `scripts/test-*.js` を名前順で列挙し、各テストを**子プロセスで実行**する。以下を注入して「見せかけの赤」を消す:
+  - **`TZ=Asia/Tokyo`**（TZはプロセス起動前に効かせる必要があるため子プロセス env で注入）。
+  - **`NODE_PATH=<repo>/node_modules`**（一部テストが `require.resolve('jsdom',{paths:[...]})` で外部パスを指すため、テスト無改修のまま jsdom を解決させる保険）。
+- **SKIP（黙って落とさず理由付きで明示）**:
+  - `test-workrules-phase0.js` / `test-workrules-phase1.js` … 道具系（引数必須の回帰ツール。テストではない）
+  - `test-users-api-default-unchanged.js` … 履歴依存（`BASE_COMMIT f6df131` を git show する。当該commitが存在する clone でのみ手動実行可）
+- 1件でも FAIL なら `npm test` は exit 1。最後に **`PASS n / FAIL m / SKIP k`** を出す。
+- product（`*.html` / `gas/` / `shared.js`）と既存 `scripts/test-*.js` は**無改修**。本土台は「回し方」だけを足したもの。
+
 ## 用語
 
 | 語 | 意味 |
