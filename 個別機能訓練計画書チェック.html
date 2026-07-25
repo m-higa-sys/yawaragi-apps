@@ -1145,12 +1145,13 @@ function renderTable() {
             const beforeStart = isBeforePlanStart(u.planStart, cellYear, mo.m);
             const isBlocked = !!rec.blocked_reason;
 
-            // データ温存（#6）: 計画月/評価月でなくてもデータがあれば表示（planStart移動で過去実績が '-' に隠れるのを防ぐ）
+            // データ温存（#6）: 計画月/評価月でなくても、また planStart より前でも、実績があれば表示する。
+            // （planStart を後ろへ動かしても過去実績のセルが '-' に隠れてデータ喪失に見えるのを防ぐ＝フェーズ1改修）
             const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
                 || rec.keikaku_sent_date || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason);
             const hasHyoukaData = !!(rec.tasseido_date || rec.hyouka_pdf_date || rec.hyouka_print_date);
-            const showPlan = !beforeStart && (isPlan || hasPlanData);
-            const showEval = !beforeStart && (isHyouka || hasHyoukaData);
+            const showPlan = hasPlanData || (!beforeStart && isPlan);
+            const showEval = hasHyoukaData || (!beforeStart && isHyouka);
 
             let cls = 'check-cell month-border';
             if (isCurrent) cls += ' current';

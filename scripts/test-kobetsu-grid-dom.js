@@ -124,5 +124,21 @@ let outF = tbody.innerHTML;
 ok(outF.indexOf('イー子') >= 0 && outF.indexOf('ピー太') < 0, 'F1: 曜日フィルタ(火)が従来どおり効く');
 sandbox.filterDay = '';
 
+// ===== 10. 過去を隠さない（フェーズ1）: planStartより前でも実績があれば表示／実績なしの開始前は '-' のまま =====
+// planStart を遠い未来に置き、描画される全月を「開始前(beforeStart=true)」にする。
+// 当月セルにだけ計画・評価の実績を入れ、それが '-' に隠れず表示されること（本改修の本命）、
+// 実績のない開始前セルは従来どおり '-' のままであることを、実物 renderTable で確認する。
+const far = ymOf(60);  // 5年後 → 描画される12ヶ月すべてが planStart より前
+const H = { userId: 'H', name: 'ハツ江', furigana: 'ハ', category: '要介護1', planStart: far.s, planMonths: 3, days: '月', ampm: '午前', sendMethod: 'PDF' };
+const recH = {};
+recH[key('H', cur)] = { keikaku_date: cur.s + '-04', hyouka_pdf_date: cur.s + '-08' };  // 当月=開始前だが計画・評価の実績あり
+sandbox.state = { fiscalYear: fy, users: [H], records: recH, isLoading: false, includeCancelled: false, needsActionOnly: false };
+sandbox.renderTable();
+let outB = tbody.innerHTML;
+ok(outB.indexOf('ハツ江') >= 0, 'B0: 過去温存の対象ユーザーが描画される');
+ok(outB.indexOf('計画(') >= 0, 'B1: planStartより前でも計画実績のあるセルは表示される（"-"に隠れない）');
+ok(outB.indexOf('kb-cyc-eval') >= 0, 'B1b: planStartより前でも評価実績のあるセルは表示される');
+ok(outB.indexOf('disabled">-') >= 0, 'B2: 実績のない開始前セルは従来どおり "-"（disabled）のまま');
+
 console.log('個別機能訓練 1ヶ月1列グリッド DOM: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

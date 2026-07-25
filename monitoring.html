@@ -1143,9 +1143,12 @@ function renderTable() {
             const ymKey = cellYear + '-' + String(mo.m).padStart(2, '0');
             const isFinalEval = (ymKey === monitoringFinalEvalMonth(u.planStart, u.finalEvalMonth));
 
+            // 送付実績（PDF/印刷いずれか）があるセルは開始前でも隠さない（データ喪失の誤解防止＝フェーズ1改修）
+            const hasSendData = !!(pdfSend || printSend);
+
             let cls = 'check-cell send-cell month-border';
-            // 全体運用開始前、または個別の利用開始(planStart)より前は一切描画しない。
-            if (isBeforeStart || isBeforePlanStart(u.planStart, cellYear, mo.m)) {
+            // 全体運用開始前、または個別の利用開始(planStart)より前は一切描画しない。ただし送付実績があれば温存表示する。
+            if (!hasSendData && (isBeforeStart || isBeforePlanStart(u.planStart, cellYear, mo.m))) {
                 html += '<td class="' + cls + ' disabled">―</td>';
                 return;
             }
