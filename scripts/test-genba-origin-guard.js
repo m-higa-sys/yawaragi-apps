@@ -73,7 +73,8 @@ ok(gThrow.guard('t') === false, 'B4: location参照が例外 → fail-safeでfal
 // kbMarkPhoneDone は「開くだけ（fetch不在）」soここ(実POST関数の一覧)からは外し、下の C2 で別途ガードを固定する。
 const SENDERS = ['gasPost', 'gasPostAbsenceWithVerify', '_postHaichiToCloud', 'sendWorkReport',
   'jsCreateDrafts', 'rmdSyncWeight', 'rmdToggleOral', 'dengonSubmit',
-  'kbExecuteSend', 'kbConfirmPhoneDone_'];   // 欠席連絡ボックスの書込POST2本
+  'kbExecuteSend', 'kbConfirmPhoneDone_',   // 欠席連絡ボックスの書込POST2本
+  'kbSubmitPastContact_'];   // 過去日の連絡記録（後から追加・L8058。ガードL8059→POST/fetchL8082＝ガード前置は担保）
 SENDERS.forEach(function (name) {
   const src = extractFn(name);
   const g = src.indexOf('gnbGuardProdWrite(');
@@ -98,7 +99,7 @@ const senderPosts = SENDERS.reduce(function (n, name) {
   return n + (extractFn(name).match(POST_RE) || []).length;
 }, 0);
 ok(totalPosts === senderPosts,
-  'C網羅: 全POST行(' + totalPosts + ')がガード済み8関数内(' + senderPosts + ')に収まる');
+  'C網羅: 全POST行(' + totalPosts + ')がガード済み関数内(' + senderPosts + ')に収まる');
 ok(html.indexOf('sendBeacon') < 0 && html.indexOf('XMLHttpRequest') < 0,
   'C裏口: sendBeacon/XHRによる書込経路が存在しない');
 
