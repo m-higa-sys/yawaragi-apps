@@ -342,12 +342,12 @@
 
 <script>
 // ============ 設定 ============
-const STAFF = ["勝又裕子", "星野友太", "下浦理絵", "工藤経子", "髙山奈緒美", "春山忍", "石井祐子", "大久保好美", "小野重次郎", "林秀明", "比嘉学", "喜多美咲"];
-const STAFF_KEY = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "石井", "大久保", "小野", "林", "比嘉", "喜多"];
+const STAFF = ["勝又裕子", "星野友太", "下浦理絵", "工藤経子", "髙山奈緒美", "春山忍", "石井祐子", "大久保好美", "小野重次郎", "林秀明", "伊澤博", "比嘉学", "喜多美咲"];
+const STAFF_KEY = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "石井", "大久保", "小野", "林", "伊澤", "比嘉", "喜多"];
 const NURSE = ["髙山", "春山", "石井"]; // 下浦は介護福祉士・メイン相談員（看護師ではない）
 const KAIGOFUKUSHI = ["比嘉", "星野", "勝又", "下浦", "大久保"];
 const SODANIN = ["星野", "勝又", "下浦", "工藤", "喜多"]; // 生活相談員（兼務含む）
-const ESCORT = ["小野", "林"]; // 送迎専属（1号便）
+const ESCORT = ["小野", "林", "伊澤"]; // 送迎専属（1号便）※伊澤=2026-08-03入社
 const ESCORT_KENMU = ["勝又", "星野"]; // 送迎兼務（2号便・B2でも送迎にカウント）
 const ESCORT_BACKUP = ["勝又", "星野"];
 const FLOOR_STAFF = ["勝又", "星野", "下浦", "工藤", "髙山", "春山", "大久保", "石井", "喜多"];
@@ -368,7 +368,8 @@ const HOURLY_WAGE = {
   "石井": 1650,    // 確定
   "大久保": 1100,
   "小野": 1100,
-  "林": 1050
+  "林": 1050,
+  "伊澤": 1200    // 確定（入社時の説明_伊澤博様・時給1,200円）
 };
 
 // 月給制スタッフ（時給計算ではなく固定額表示）
@@ -409,6 +410,7 @@ const PATTERNS = {
   "B4": {time: "08:15-17:15", category: "full"},
   "B5": {time: "08:30-17:30", category: "full"},
   "C":  {time: "08:45-17:00", category: "full"},
+  "C2": {time: "08:45-17:15", category: "full"},   // 喜多（新人相談員）
   // 短時間勤務
   "D":  {time: "08:00-09:15", category: "short"},
   "E1": {time: "08:45-15:00", category: "short"},
@@ -448,7 +450,7 @@ const PATTERNS = {
 
 // パターングループ（ポップアップ表示順）
 const PATTERN_GROUPS = [
-  {title: "通常勤務 (A〜C)", patterns: ["A","B1","B2","B3","B4","B5","C"]},
+  {title: "通常勤務 (A〜C)", patterns: ["A","B1","B2","B3","B4","B5","C","C2"]},
   {title: "短時間勤務", patterns: ["D","E1","F","H","健診","昼","昼夕"]},
   {title: "送迎 7時台", patterns: ["7①","7②","7③"]},
   {title: "送迎 8時台", patterns: ["8①","8②","8③"]},
@@ -512,8 +514,17 @@ const WEEKLY_RULES = {
   "下浦": { count:3, prefDays:[2,3,5], maxConsec:3,    pattern:"H",  noHolidayWeekday:false },
   "工藤": { count:3, prefDays:[1,3,4], maxConsec:null, pattern:"H",  noHolidayWeekday:false },
   "小野": { count:4, prefDays:[1,2,3,4,5], maxConsec:null, pattern:"7①", noHolidayWeekday:false },
-  "林":   { count:2, prefDays:[1,2,3,4,5], maxConsec:null, pattern:"7①", noHolidayWeekday:false }
+  // 林は2026-08は自動割当を外しINDIVIDUAL_DAYSで手当て（伊澤ノーカウント化で「小野が送迎に出ない日」を林で確実に埋めるため）。
+  // 伊澤=送迎ドライバー・2026-08-03入社。週3・朝＋昼(ド⑦2)・曜日固定NG（初月は全曜日を散らす）。startDate前の日には配置しない。
+  // ⚠️伊澤は新人のため8月は送迎人員カウントから除外（NO_COUNT_STAFF）。出勤(週3)は入れるが戦力に数えない。
+  "伊澤": { count:3, prefDays:[1,2,3,4,5], maxConsec:null, pattern:"ド⑦2", noHolidayWeekday:false, startDate:"2026-08-03" },
+  // 喜多=新人・正社員生活相談員。8:45-17:15・週3・曜日ローテ。新人のためフロア頭数からは除外(NO_COUNT_STAFF)。
+  "喜多": { count:3, prefDays:[1,2,3,4,5], maxConsec:null, pattern:"C2", noHolidayWeekday:false }
 };
+
+// 🔴 新人のため「人員カウント」から除外するスタッフ（出勤表には出すが頭数に数えない）。
+// 伊澤=送迎3名以上のカウント除外／喜多=フロア5名・15時以降4名のカウント除外。独り立ちしたら空配列に戻す。
+const NO_COUNT_STAFF = ["伊澤", "喜多"];
 
 // weekly型を週N回・連勤上限・希望休除外で割り当てる（既存fixed展開分は上書き）。
 // 仮置き(安全側): 候補=平日(月〜金, dow1..5)。按分=round(count * その週の平日数 / 5)。希望曜日が無い月は既定prefDaysを使用。
@@ -537,20 +548,26 @@ function assignWeekly(yearMonth, data, cal, wd) {
     const r = WEEKLY_RULES[name];
     if (!data[name]) return;
     cal.forEach(function(c){ delete data[name][c.date]; }); // 既存(fixed/個別)をクリアして再配置
-    weeks.forEach(function(week){
-      const weekdays = week.filter(function(c){ var d=dnum(c); return d>=1 && d<=5; }); // 平日のみ(土日は休館扱い)
+    weeks.forEach(function(week, wi){
+      // 営業平日のみ(土日・夏季休業・年末年始は c.isOpen=false で除外)
+      const weekdays = week.filter(function(c){ var d=dnum(c); return d>=1 && d<=5 && c.isOpen; });
       const cand = weekdays.filter(function(c){
         if (r.noHolidayWeekday && c.isHoliday) return false; // 髙山:祝日除外
+        if (r.startDate && c.date < r.startDate) return false; // 入社日前は配置しない(伊澤)
         if (wishSet[name] && wishSet[name][c.date]) return false; // 希望休除外
         return true;
       });
       var weekCount = Math.round(r.count * weekdays.length / 5);
       weekCount = Math.max(0, Math.min(weekCount, cand.length));
-      const pref = [], rest = [];
-      cand.forEach(function(c){ (r.prefDays.indexOf(dnum(c)) >= 0 ? pref : rest).push(c); });
-      pref.sort(function(a,b){ return (r.prefDays.indexOf(dnum(a)) - r.prefDays.indexOf(dnum(b))) || (a.day - b.day); });
-      rest.sort(function(a,b){ return a.day - b.day; });
-      const ordered = pref.concat(rest);
+      // 🔴曜日固定NG（大久保以外・feedback_シフト曜日は大久保以外固定NG）:
+      // 週ごと(wi)＋スタッフごと(staffOffset)に開始曜日をずらして候補を並べ、毎週違う曜日に出勤させる。
+      // prefDays固定順で埋めると count==prefDays数のとき毎週同じ曜日に固定化するため廃止し、回転式に変更。
+      const staffOffset = Object.keys(WEEKLY_RULES).indexOf(name);
+      const rot = (((wi + staffOffset) % 5) + 5) % 5;
+      const weekdayOrder = [0,1,2,3,4].map(function(i){ return ((i + rot) % 5) + 1; }); // 月〜金(1..5)を回転
+      const ordered = cand.slice().sort(function(a,b){
+        return (weekdayOrder.indexOf(dnum(a)) - weekdayOrder.indexOf(dnum(b))) || (a.day - b.day);
+      });
       const chosenDays = {}; var picked = 0;
       for (var i=0;i<ordered.length && picked<weekCount;i++){
         const c = ordered[i];
@@ -566,8 +583,44 @@ function assignWeekly(yearMonth, data, cal, wd) {
   });
 }
 
+// 🔴 有給消化日（assignWeekly の後に上書きするので確実に反映される）
+// 年5日取得義務の進捗管理用。ここに書いた日は出勤案があっても「有給」で上書きされる。
+// 送迎ドライバーの有給は、送迎3名以上を保つ日（伊澤・林・勝又・星野で埋まる日）に充てること。
+const LEAVE_DAYS = {
+  "2026-08": {
+    // 小野=年5日取得義務の進捗。伊澤(週3)が出勤する日に充当し送迎3名以上を維持（社長確認2026-07-25）
+    "小野": [10, 25]
+  }
+};
+
+// 🔴 勤務パターンの上書き（assignWeekly の後に適用）。
+// 主用途＝15時以降フロア4名未満の日に春山 E1→F(16時延長)で+1（社長×春山LINE合意・2026/4/26）。
+// 安全策: 既に「その日に出勤(空でも休でもない)」場合のみ上書き＝希望休で休みの日に勤務を生やさない。
+// ⚠️春山は扶養内。F延長は延長分の収入が乗るため、年収枠に余裕があるか社長確認のうえ確定する。
+const OVERRIDE_DAYS = {
+  "2026-08": {
+    // ⏸️春山F延長は「年収(扶養枠)進捗を確認してから」（社長2026-07-25）→ 確認後に下記を有効化。
+    // 有効化すると15時以降フロアが 5・7・12・17・21 の各日で3→4に上がる（25火は2→3）。
+    // "春山": [ {day:5,pattern:"F"}, {day:7,pattern:"F"}, {day:12,pattern:"F"}, {day:17,pattern:"F"}, {day:21,pattern:"F"}, {day:25,pattern:"F"} ]
+  }
+};
+
 // 曜日パターンに収まらないスタッフの個別出勤日
 const INDIVIDUAL_DAYS = {
+  "2026-08": {
+    // 林=送迎専属・週2程度(総7日)。伊澤ノーカウント化に対応し「小野が送迎に出ない日」を林で確実に埋める。
+    // 小野が送迎に出ない日=3(月)・10(月/小野有給)・11(火)・19(水)・25(火/小野有給)・27(木) → 全て林で送迎3名確保。
+    // ＋バランスで21(金)を1日。曜日は月火水木金に分散(固定NG)。総7日＝従来の林の日数を維持。
+    "林": [
+      {day: 3,  pattern: "7①"},
+      {day: 10, pattern: "7①"},
+      {day: 11, pattern: "7①"},
+      {day: 19, pattern: "7①"},
+      {day: 21, pattern: "7①"},
+      {day: 25, pattern: "7①"},
+      {day: 27, pattern: "7①"}
+    ]
+  },
   "2026-05": {
     "林": [
       // 林は送迎専属。送迎=2の薄い日（星野休 等）に優先配置
@@ -834,6 +887,22 @@ const HOLIDAYS = {
   "2028-11-23": "勤労感謝の日"
 };
 
+// 🔴 所定休日として休館する日（夏季休業・年末年始）— 就業規則第32〜40条・雇用契約書
+// 祝日(HOLIDAYS)は通常営業だが、この2期間だけは全スタッフ休み＝休館。
+// 土日は buildCalendar が自動で休館にするため、ここには平日のみ書けばよい（土日を書いても害なし）。
+// 参照: feedback_お盆と正月は休館（2026-05-24 社長確認済み）
+const CLOSED_DAYS = {
+  "2026-08-13": "夏季休業",  // 木
+  "2026-08-14": "夏季休業",  // 金（8/15は土曜で自動休館）
+  "2026-12-30": "年末年始",  // 水
+  "2026-12-31": "年末年始",  // 木
+  "2027-01-01": "年末年始",  // 金（元日・この期間は祝日でも休館）
+  "2027-08-13": "夏季休業",
+  "2027-08-16": "夏季休業",  // 2027は8/14,15が土日→8/16(月)を休館に
+  "2027-12-30": "年末年始",
+  "2027-12-31": "年末年始"
+};
+
 // ============ 状態 ============
 // shiftData[staff][dateStr] = "B2" 等
 let shiftData = {};
@@ -994,9 +1063,10 @@ function buildCalendar(yearMonth) {
     const dateStr = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
     const isWeekend = (dow === "土" || dow === "日");
     const isHoliday = !!HOLIDAYS[dateStr];
-    // 営業日判定: 土日のみ休館、祝日は営業
-    const isOpen = !isWeekend;
-    cal.push({day: d, date: dateStr, dow, isOpen, isWeekend, isHoliday});
+    const closedReason = CLOSED_DAYS[dateStr] || null; // 夏季休業・年末年始
+    // 営業日判定: 土日＋所定休館日(夏季休業・年末年始)は休館、祝日は営業
+    const isOpen = !isWeekend && !closedReason;
+    cal.push({day: d, date: dateStr, dow, isOpen, isWeekend, isHoliday, closedReason});
   }
   return cal;
 }
@@ -1035,6 +1105,27 @@ function initShiftData(yearMonth, blankMode) {
 
     // Phase1: weekly型の自動割当（本番既定OFF・社長承認後にON）
     if (USE_WEEKLY_ASSIGN) assignWeekly(yearMonth, data, cal, wd);
+
+    // 1c. 有給消化日を上書き（assignWeeklyの後に適用＝出勤案を「有給」で確実に上書き）
+    const leave = LEAVE_DAYS[yearMonth] || {};
+    Object.entries(leave).forEach(([staff, days]) => {
+      if (!data[staff]) return;
+      days.forEach(d => {
+        const ds = `${yearMonth}-${String(d).padStart(2,"0")}`;
+        data[staff][ds] = "有給";
+      });
+    });
+
+    // 1d. 勤務パターン上書き（春山F延長など）。既に出勤している日だけ上書き＝休みに勤務を生やさない。
+    const ovr = OVERRIDE_DAYS[yearMonth] || {};
+    Object.entries(ovr).forEach(([staff, entries]) => {
+      if (!data[staff]) return;
+      entries.forEach(e => {
+        const ds = `${yearMonth}-${String(e.day).padStart(2,"0")}`;
+        const cur = data[staff][ds];
+        if (cur && cur !== "休" && cur !== "有給") data[staff][ds] = e.pattern;
+      });
+    });
   }
 
   // 2. 希望休 → "休"（初期案を上書き）
@@ -1073,9 +1164,11 @@ function render() {
   let h1 = `<th class="staff-h" rowspan="2">スタッフ</th>`;
   calendar.forEach(c => {
     let cls = "";
-    if (c.dow === "土") cls = "dow-sat";
+    if (c.closedReason) cls = "dow-holiday";
+    else if (c.dow === "土") cls = "dow-sat";
     else if (c.dow === "日" || c.isHoliday) cls = "dow-sun";
-    h1 += `<th class="${cls}">${c.day}</th>`;
+    const title = c.closedReason ? ` title="${c.closedReason}（休館）"` : "";
+    h1 += `<th class="${cls}"${title}>${c.day}</th>`;
   });
   h1 += `<th class="summary" rowspan="2">勤務</th><th class="summary" rowspan="2">休日</th><th class="summary" rowspan="2">有給</th><th class="summary" rowspan="2">出勤</th><th class="summary" rowspan="2">月人件費</th>`;
   tr1.innerHTML = h1;
@@ -1085,9 +1178,12 @@ function render() {
   let h2 = "";
   calendar.forEach(c => {
     let cls = "";
-    if (c.dow === "土") cls = "dow-sat";
+    if (c.closedReason) cls = "dow-holiday";
+    else if (c.dow === "土") cls = "dow-sat";
     else if (c.dow === "日" || c.isHoliday) cls = "dow-sun";
-    h2 += `<th class="${cls}">${c.dow}</th>`;
+    const label = c.closedReason ? "休" : c.dow;
+    const title = c.closedReason ? ` title="${c.closedReason}（休館）"` : "";
+    h2 += `<th class="${cls}"${title}>${label}</th>`;
   });
   tr2.innerHTML = h2;
   thead.appendChild(tr2);
@@ -1109,8 +1205,8 @@ function render() {
         cls = "cell closed";
         display = "-";
       }
-      // 小野・林は送迎専属だが、見た目はフロアと同じ黄色で表示
-    if ((skey === "小野" || skey === "林") && cls.includes("escort")) {
+      // 小野・林・伊澤は送迎専属だが、見た目はフロアと同じ黄色で表示
+    if ((skey === "小野" || skey === "林" || skey === "伊澤") && cls.includes("escort")) {
       cls = cls.replace("escort", "full");
     }
     html += `<td class="${cls}" data-staff="${skey}" data-date="${c.date}">${display}</td>`;
@@ -1146,8 +1242,8 @@ function render() {
     html += `<td class="summary">${work}</td><td class="summary">${off}</td><td class="summary">${leave}</td><td class="summary">${attend}</td><td class="summary" style="text-align:right;padding-right:6px">${wageDisplay}</td>`;
     tr.innerHTML = html;
 
-    // 小野・林は本体には追加せず、後でフッターに挿入
-    if (skey === "小野" || skey === "林") {
+    // 小野・林・伊澤は本体には追加せず、後でフッターに挿入
+    if (skey === "小野" || skey === "林" || skey === "伊澤") {
       escortSpecialRows[skey] = tr;
     } else {
       tbody.appendChild(tr);
@@ -1225,6 +1321,7 @@ function render() {
       let cnt = 0;
       let haruyamaE1 = false;
       FLOOR_STAFF.forEach(s => {
+        if (NO_COUNT_STAFF.includes(s)) return; // 新人(喜多)は頭数除外
         const v = shiftData[s][c.date];
         if (endsAfter15(v)) cnt++;
         if (s === "春山" && v === "E1") haruyamaE1 = true;
@@ -1346,6 +1443,7 @@ function render() {
     } else {
       let cnt = 0;
       FLOOR_STAFF.forEach(s => {
+        if (NO_COUNT_STAFF.includes(s)) return; // 新人(喜多)は頭数除外
         const v = shiftData[s][c.date];
         const cat = PATTERNS[v]?.category;
         if (cat === "full" || cat === "short") cnt++;
@@ -1369,6 +1467,7 @@ function render() {
   // 4b. 小野・林の本体行をフッターに移植（送迎エリアにグループ化）
   if (escortSpecialRows["小野"]) tfoot.appendChild(escortSpecialRows["小野"]);
   if (escortSpecialRows["林"]) tfoot.appendChild(escortSpecialRows["林"]);
+  if (escortSpecialRows["伊澤"]) tfoot.appendChild(escortSpecialRows["伊澤"]);
 
   // 5. 送迎カウント行（小野・林=送迎専属 + 勝又・星野=送迎兼務、目標3+）
   const escortRow = document.createElement("tr");
@@ -1381,6 +1480,7 @@ function render() {
       let cnt = 0;
       STAFF_KEY.forEach(s => {
         if (s === "比嘉") return;
+        if (NO_COUNT_STAFF.includes(s)) return; // 新人(伊澤)は送迎人員カウント除外
         const v = shiftData[s][c.date];
         const cat = PATTERNS[v]?.category;
         if (cat === "escort") cnt++;
@@ -1625,17 +1725,18 @@ function checkAlerts() {
     if (!c.isOpen) return;
 
     const onDuty = STAFF_KEY.filter(s => s !== "比嘉" && isWorking(shiftData[s][c.date]));
-    const escortOn = onDuty.filter(s => ESCORT.includes(s));
+    // 新人(伊澤=送迎/喜多=フロア)は8月は人員カウント除外（NO_COUNT_STAFF）
+    const escortOn = onDuty.filter(s => ESCORT.includes(s) && !NO_COUNT_STAFF.includes(s));
     const escortBackupOn = onDuty.filter(s => ESCORT_BACKUP.includes(s));
     const nurseOn = onDuty.filter(s => NURSE.includes(s));
 
     // 🔴 フロア：15時まで在席する人の生の頭数（FLOOR_STAFF＝専門役も1人として数える・差し引きなし）
-    const floorUntil15 = FLOOR_STAFF.filter(s => staysUntil15(shiftData[s][c.date]));
+    const floorUntil15 = FLOOR_STAFF.filter(s => !NO_COUNT_STAFF.includes(s) && staysUntil15(shiftData[s][c.date]));
     if (floorUntil15.length < 5) {
       alerts.push({type:"error", msg:`${c.day}日(${c.dow}): フロア${floorUntil15.length}名（5名必要）`});
     }
     // ⚠️ 15時以降フロア：3名以下の日だけ注意（4名は基準内＝出さない・tfoot行は別途情報表示で残す）
-    const floorAfter15 = FLOOR_STAFF.filter(s => staysAfter15(shiftData[s][c.date]));
+    const floorAfter15 = FLOOR_STAFF.filter(s => !NO_COUNT_STAFF.includes(s) && staysAfter15(shiftData[s][c.date]));
     if (floorAfter15.length <= 3) {
       alerts.push({type:"warn", msg:`${c.day}日(${c.dow}): 15時以降フロア${floorAfter15.length}名`});
     }
