@@ -540,15 +540,8 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         <h3 id="dateTitle">日付</h3>
         <div class="sub" id="dateSub"></div>
         <input type="date" id="dateInput">
-        <!-- 計画書のみ表示: 対象期間の器（開始月＋終了月）。今日は保存しない＝GAS列追加(11日)まで器のみ。 -->
-        <div id="planExtras" style="display:none; margin-top:10px; padding:9px 11px; background:#f7fafc; border:1px dashed #cbd5e0; border-radius:8px;">
-            <div style="font-size:0.8rem; color:#2c7a7b; font-weight:700; margin-bottom:6px;">📅 計画書の対象期間</div>
-            <label style="font-size:0.75rem; color:#718096; display:block;">開始月</label>
-            <input type="month" id="planStartInput" oninput="onPlanStartInput(this.value)" style="width:100%; margin-bottom:6px; min-height:34px;">
-            <label style="font-size:0.75rem; color:#718096; display:block;">終了月（空欄なら開始＋3ヶ月を自動表示・手入力で上書き可）</label>
-            <input type="month" id="planEndInput" oninput="onPlanEndInput()" style="width:100%; min-height:34px;">
-            <div style="font-size:0.72rem; color:#9c4221; margin-top:6px; line-height:1.4;">※ この対象期間は<strong>まだ保存されません</strong>（11日以降のGAS対応で保存が有効になります。今日は表示・自動計算の確認用です）</div>
-        </div>
+        <!-- 計画書の対象期間(planStart/planEnd)UIは「サイクル元期」ダイアログ(#cycleAnchorDialog)へ分離。
+             計画書の入力ではアンカーを一切書き込まない（方式①分離・先行作成のズレ再発防止）。 -->
         <label style="font-size:0.8rem; color:#4a5568; display:block; margin-top:8px;">担当（この作業をした看護師）</label>
         <select id="dateByInput" style="width:100%; margin-bottom:10px; min-height:38px;"></select>
         <div class="btn-row">
@@ -557,6 +550,26 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         </div>
         <div class="btn-row" style="margin-top:6px;">
             <button class="cancel" onclick="closeDateDialog()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
+<!-- サイクル元期 設定ダイアログ（元期＝3ヶ月サイクルの起点。計画書入力から分離した唯一のアンカー書込経路＝updateOralConfig） -->
+<div class="modal-overlay" id="cycleAnchorDialog">
+    <div class="modal">
+        <h3 id="cycleAnchorTitle">サイクル元期の設定</h3>
+        <div class="sub" style="color:#9c4221; line-height:1.4;">サイクル元期（3ヶ月の起点・<strong>通常は変更しない</strong>）。計画書・報告書の入力ではここは動きません。</div>
+        <div id="planExtras" style="margin-top:10px; padding:9px 11px; background:#f7fafc; border:1px dashed #cbd5e0; border-radius:8px;">
+            <label style="font-size:0.75rem; color:#718096; display:block;">元期＝計画開始月（YYYY-MM）</label>
+            <input type="month" id="planStartInput" oninput="onPlanStartInput(this.value)" style="width:100%; margin-bottom:6px; min-height:34px;">
+            <label style="font-size:0.75rem; color:#718096; display:block;">終了月（空欄＝継続。実際に終了する場合のみ入力）</label>
+            <input type="month" id="planEndInput" oninput="onPlanEndInput()" style="width:100%; min-height:34px;">
+        </div>
+        <div id="anchorPreview" style="margin-top:10px; font-size:0.8rem; color:#2c5282; line-height:1.5;"></div>
+        <div id="anchorWarn" style="margin-top:8px; font-size:0.78rem; color:#c53030; display:none; line-height:1.4;">⚠ 元期を変えると提出月（節目）がずれます。上のプレビューで変更後の提出月を確認してください。</div>
+        <div class="btn-row" style="margin-top:12px;">
+            <button class="clear" onclick="closeCycleAnchorDialog()">キャンセル</button>
+            <button class="ok" onclick="saveCycleAnchor()">保存</button>
         </div>
     </div>
 </div>
@@ -1116,8 +1129,14 @@ function renderTable() {
         const rowStyle = (sec === 2 ? ' style="opacity:0.5;"' : (u.cancelled ? ' style="opacity:0.7;background:#fef5f5;"' : ''));
         html += '<tr class="' + rowClass + '"' + rowStyle + '>';
         html += '<td class="group-cell"></td>';
+        const anchorBtn = u.isTarget
+            ? '<button data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '"'
+              + ' onclick="event.stopPropagation();openCycleAnchorDialog(this)"'
+              + ' title="サイクル元期（3ヶ月の起点・通常は変更しない）"'
+              + ' style="margin-left:6px;padding:1px 6px;border:1px solid #b7791f;background:#fffaf0;color:#744210;border-radius:8px;font-size:0.66rem;font-weight:700;cursor:pointer;">元期</button>'
+            : '';
         html += '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" onclick="openUsageModal(this)">'
-              + escapeHtml(u.name) + badge + psBadge + cancelBadge + '</td>';
+              + escapeHtml(u.name) + badge + psBadge + cancelBadge + anchorBtn + '</td>';
         months.forEach(mo => { html += renderMonthCell(u, mo); });
         html += '</tr>';
         rowIndex++;
@@ -1451,11 +1470,13 @@ function addMonths(ym, n) {
 // 計画書の対象期間の器: 開始月を入れると終了月を自動「開始＋3ヶ月」に（A案）。終了月を手入力したら優先し以後自動上書きしない（B案）。
 let planEndManual = false;
 function onPlanStartInput(v) {
-    if (planEndManual) return;
-    const endEl = document.getElementById('planEndInput');
-    if (endEl) endEl.value = addMonths(v || (document.getElementById('planStartInput') || {}).value || '', 3);
+    if (!planEndManual) {
+        const endEl = document.getElementById('planEndInput');
+        if (endEl) endEl.value = addMonths(v || (document.getElementById('planStartInput') || {}).value || '', 3);
+    }
+    renderAnchorPreview();
 }
-function onPlanEndInput() { planEndManual = true; }
+function onPlanEndInput() { planEndManual = true; renderAnchorPreview(); }
 
 function onDateCheck(el) {
     const d = el.dataset;
@@ -1467,25 +1488,7 @@ function onDateCheck(el) {
     document.getElementById('dateTitle').textContent = name + '  ' + label + '（' + month + '月ノード）';
     document.getElementById('dateSub').textContent = '現在: ' + (rec[field] || '(未入力)') + (isMoni ? '（内部モニタリング・送付なし）' : '（ケアマネ提出物）');
     document.getElementById('dateInput').value = rec[field] || formatTodayISO();
-    // 計画書のときだけ対象期間の器を出す。開始月(plan_start)/終了月(plan_end)は利用者ごと（口腔機能向上設定・updateOralConfig）。
-    const pe = document.getElementById('planExtras');
-    if (pe) {
-        if (field === 'plan_date') {
-            planEndManual = false;
-            const u = (displayUsers() || []).find(x => x.userId === userId) || {};
-            const psEl = document.getElementById('planStartInput');
-            const peEl = document.getElementById('planEndInput');
-            if (psEl) psEl.value = u.planStart || '';
-            if (peEl) {
-                peEl.value = u.planEnd || '';
-                if (u.planEnd) planEndManual = true;                    // 保存済みの手動終了月は優先
-                else if (psEl && psEl.value) peEl.value = addMonths(psEl.value, 3);  // 自動 +3ヶ月
-            }
-            pe.style.display = 'block';
-        } else {
-            pe.style.display = 'none';
-        }
-    }
+    // 計画書ダイアログには開始月/終了月（アンカー）欄を出さない。アンカー設定は「サイクル元期」専用UIのみ。
     fillByOptions('dateByInput', getLastBy());
     document.getElementById('dateDialog').classList.add('show');
 }
@@ -1496,17 +1499,10 @@ async function saveDateCheck() {
     const by = document.getElementById('dateByInput').value || '';
     if (by) setLastBy(by);
     const ds = dateCheckState;
-    // 計画書のときは器の開始月/終了月（利用者ごとサイクル）を先に読む（closeで消える前に）
-    let planStart = null, planEnd = null;
-    if (ds.field === 'plan_date') {
-        planStart = (document.getElementById('planStartInput') || {}).value || '';
-        planEnd = (document.getElementById('planEndInput') || {}).value || '';
-    }
     closeDateDialog();
+    // 計画書/報告書/モニの保存は該当ノード月への日付書込のみ。アンカー(planStart/planEnd)は一切書かない
+    // （方式①分離：計画書入力で元期が動かないようにし、先行作成のズレ再発を止める）。
     await applyOralValue(ds.userId, ds.name, ds.year, ds.month, ds.field, ds.label, v, by);
-    if (ds.field === 'plan_date' && (planStart !== null || planEnd !== null)) {
-        await saveOralCycleConfig(ds.userId, ds.name, planStart, planEnd);  // plan_start/plan_end を config へ→サイクル即反映
-    }
 }
 // 利用者ごとの計画開始月/終了月を口腔機能向上設定へ保存（updateOralConfig・楽観更新＋即再描画でサイクル反映）
 async function saveOralCycleConfig(userId, name, planStart, planEnd) {
@@ -1532,6 +1528,71 @@ async function saveOralCycleConfig(userId, name, planStart, planEnd) {
         console.error('updateOralConfig error:', e);
         showToast('⚠ ' + name + ' 開始月の保存に失敗（ネット確認）', 'error');
     }
+}
+
+// ===== サイクル元期（planStart/planEnd）専用UI =====
+// アンカー書込はここ1か所からのみ（saveOralCycleConfig 経由）。計画書入力からは完全分離。
+let cycleAnchorState = null;
+function openCycleAnchorDialog(el) {
+    const userId = el.dataset.userid, name = el.dataset.name;
+    const u = (displayUsers() || []).find(x => x.userId === userId) || {};
+    cycleAnchorState = { userId: userId, name: name, origStart: u.planStart || '', origEnd: u.planEnd || '' };
+    planEndManual = !!u.planEnd;
+    const psEl = document.getElementById('planStartInput');
+    const peEl = document.getElementById('planEndInput');
+    if (psEl) psEl.value = u.planStart || '';
+    if (peEl) {
+        peEl.value = u.planEnd || '';
+        if (!u.planEnd && u.planStart) peEl.value = addMonths(u.planStart, 3);  // 未設定終了は開始+3を目安表示
+    }
+    const t = document.getElementById('cycleAnchorTitle');
+    if (t) t.textContent = name + '  サイクル元期の設定';
+    renderAnchorPreview();
+    document.getElementById('cycleAnchorDialog').classList.add('show');
+}
+function closeCycleAnchorDialog() { document.getElementById('cycleAnchorDialog').classList.remove('show'); }
+function renderAnchorPreview() {
+    const ps = (document.getElementById('planStartInput') || {}).value || '';
+    const pe = (document.getElementById('planEndInput') || {}).value || '';
+    const warn = document.getElementById('anchorWarn');
+    if (warn) warn.style.display = (cycleAnchorState && ps !== (cycleAnchorState.origStart || '')) ? 'block' : 'none';
+    const prev = document.getElementById('anchorPreview');
+    if (!prev) return;
+    if (!/^\d{4}-\d{2}$/.test(ps)) { prev.textContent = '元期（開始月）を入れると、提出月（節目＝結果報告書＋計画書）のプレビューを表示します。'; return; }
+    const months = nextSetsumeMonths(ps, pe, ps, 4);
+    prev.innerHTML = '📅 この元期での提出月（節目・結果報告書＋計画書）：<strong>' + (months.length ? months.join('　→　') : '（なし）') + '</strong>';
+}
+async function saveCycleAnchor() {
+    if (!cycleAnchorState) return;
+    const ps = (document.getElementById('planStartInput') || {}).value || '';
+    const pe = (document.getElementById('planEndInput') || {}).value || '';
+    const okFmt = s => s === '' || /^\d{4}-\d{2}$/.test(s);
+    if (!okFmt(ps) || !okFmt(pe)) { showToast('⚠ 元期/終了月は YYYY-MM 形式です', 'error'); return; }
+    if (ps !== (cycleAnchorState.origStart || '')) {
+        const months = nextSetsumeMonths(ps, pe, ps, 4);
+        const ok = confirm('元期を「' + (cycleAnchorState.origStart || '未設定') + '」→「' + (ps || '未設定') + '」に変更します。\n'
+            + '提出月（節目）が次のようにずれます：\n' + (months.join(' → ') || '（なし）') + '\n\n変更してよいですか？');
+        if (!ok) return;
+    }
+    closeCycleAnchorDialog();
+    await saveOralCycleConfig(cycleAnchorState.userId, cycleAnchorState.name, ps, pe);
+}
+// 純関数: 元期(planStart)/終了(planEnd) から fromYM 以降の setsume 月を最大 n 件返す（プレビュー用）。判定は oralCycleAt を再利用。
+function nextSetsumeMonths(planStart, planEnd, fromYM, n) {
+    const out = [];
+    if (!/^\d{4}-\d{2}$/.test(String(planStart || ''))) return out;
+    const m = String(fromYM || planStart).match(/^(\d{4})-(\d{2})$/);
+    if (!m) return out;
+    let total = parseInt(m[1], 10) * 12 + (parseInt(m[2], 10) - 1);
+    const limit = total + 12 * 6;  // 最大6年先まで探索して打ち切り
+    while (out.length < n && total <= limit) {
+        const y = Math.floor(total / 12), mo = (total % 12) + 1;
+        if (oralCycleAt(planStart, planEnd, y, mo).role === 'setsume') {
+            out.push(y + '-' + String(mo).padStart(2, '0'));
+        }
+        total++;
+    }
+    return out;
 }
 async function clearDateCheck() {
     const ds = dateCheckState;
