@@ -511,7 +511,7 @@ const WEEKLY_RULES = {
   "春山": { count:3, prefDays:[2,4,5], maxConsec:2,    pattern:"E1", noHolidayWeekday:false },
   "髙山": { count:3, prefDays:[1,3,5], maxConsec:2,    pattern:"E1", noHolidayWeekday:true  },
   "石井": { count:3, prefDays:[2,4],   maxConsec:null, pattern:"E1", noHolidayWeekday:false },
-  "下浦": { count:3, prefDays:[2,3,5], maxConsec:3,    pattern:"H",  noHolidayWeekday:false },
+  "下浦": { count:2, prefDays:[2,3,5], maxConsec:3,    pattern:"H",  noHolidayWeekday:false }, // 扶養対策で週3→週2に縮小(社長2026-07-25・課税累計91万で年132万ペースのため月7-8日目標)
   "工藤": { count:3, prefDays:[1,3,4], maxConsec:null, pattern:"H",  noHolidayWeekday:false },
   "小野": { count:4, prefDays:[1,2,3,4,5], maxConsec:null, pattern:"7①", noHolidayWeekday:false },
   // 林は2026-08は自動割当を外しINDIVIDUAL_DAYSで手当て（伊澤ノーカウント化で「小野が送迎に出ない日」を林で確実に埋めるため）。
@@ -524,7 +524,7 @@ const WEEKLY_RULES = {
 
 // 🔴 新人のため「人員カウント」から除外するスタッフ（出勤表には出すが頭数に数えない）。
 // 伊澤=送迎3名以上のカウント除外／喜多=フロア5名・15時以降4名のカウント除外。独り立ちしたら空配列に戻す。
-const NO_COUNT_STAFF = ["伊澤", "喜多"];
+const NO_COUNT_STAFF = ["伊澤"]; // 喜多=2026-08途中で研修中扱い解除・フロア5名の頭数にカウント可(社長判断2026-07-25)。伊澤=送迎頭数からは引き続き除外。
 
 // weekly型を週N回・連勤上限・希望休除外で割り当てる（既存fixed展開分は上書き）。
 // 仮置き(安全側): 候補=平日(月〜金, dow1..5)。按分=round(count * その週の平日数 / 5)。希望曜日が無い月は既定prefDaysを使用。
@@ -614,16 +614,12 @@ const FORCE_WORK_DAYS = {
       {day: 19, pattern: "7①"},          // 勝又8/19休で送迎2名化→小野を振替追加し送迎3名確保
       {day: 11, pattern: "7①"}            // 8/11(火)送迎2名化(林=希望休11)→小野振替で送迎3名確保
     ],
-    // 🔴フロア5名未満の是正(assignWeekly後に確実適用)。実API希望休を実測して非希望日にのみ充当(2026-07-25 クロコ実測)。
-    // 追加者は全員その日が希望休でないことを確認済み(下浦12/17/21・工藤26・髙山26)。
-    "下浦": [
-      {day: 12, pattern: "H"},            // 12(水)フロア4→5(髙山12=希望休の穴埋め)
-      {day: 17, pattern: "H"},            // 17(月)フロア4→5(髙山17=希望休の穴埋め)
-      {day: 21, pattern: "H"}             // 21(金)フロア4→5(星野21=希望休の穴埋め)
-    ],
-    // 26(水)フロア3→4(星野26・大久保26=希望休)。工藤は週3上限のため同週の余裕日24(フロア7)を1日落として週3を維持。
-    "工藤": [{day: 26, pattern: "H"}, {day: 24, pattern: ""}],
-    "髙山": [{day: 26, pattern: "E1"}]     // 26(水)フロア4→5＋看護1→2(春山26=希望休の穴埋め・E1は15時上がり)
+    // 🔴フロア5名未満の是正(assignWeekly後に確実適用)。実API希望休を実測して非希望日にのみ充当(2026-07-25)。
+    // 下浦=扶養対策で最小化のため穴埋めに使わない。髙山・春山・大久保も増やさない(社長2026-07-25)。
+    // 5(水)・12(水)は工藤が既出勤・石井は追加すると連勤化するため、喜多(正社員・扶養制約なし・カウント可)で+1。
+    "喜多": [{day: 5, pattern: "C2"}, {day: 12, pattern: "C2"}],
+    // 26(水)フロア4→5。工藤で+1、週3上限維持のため同週の余裕日24(フロア6)を1日落として週3を維持。
+    "工藤": [{day: 26, pattern: "H"}, {day: 24, pattern: ""}]
   }
 };
 
