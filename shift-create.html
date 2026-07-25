@@ -605,6 +605,15 @@ const OVERRIDE_DAYS = {
   }
 };
 
+// 🔴 出勤を強制する日（希望休/外せない予定より後に適用＝APIの休も上書きして出勤にする）。
+// 用途: ①本人が「やっぱり出勤する」と言った日（勝又8/7=検査通院キャンセル）②送迎振替（勝又8/19休の穴埋めで小野を追加）。
+const FORCE_WORK_DAYS = {
+  "2026-08": {
+    "勝又": [{day: 7, pattern: "B2"}],   // 8/7検査通院→本人「出勤する」(社長2026-07-25)。API休を上書き
+    "小野": [{day: 19, pattern: "7①"}]   // 勝又8/19休で送迎2名化→小野を振替追加し送迎3名確保
+  }
+};
+
 // 曜日パターンに収まらないスタッフの個別出勤日
 const INDIVIDUAL_DAYS = {
   "2026-08": {
@@ -776,6 +785,18 @@ const SHIFT_WISHES_API = 'https://script.google.com/macros/s/AKfycby-Btc1XdsqKAg
 
 // 5月希望データ（取得済み・APIで自動上書きされる）
 const WISH_DATA = {
+  "2026-08": {
+    // 勝又8/19=LINEで社長へ直接連絡(アプリ未登録)。喜多8/19=希望休。
+    // API取得(getWishes)を押すと wishes は上書きされるが absences は保持されるため、両方に入れて確実に「休」にする。
+    wishes: [
+      {staff: "勝又", day: 19},
+      {staff: "喜多", day: 19}
+    ],
+    absences: [
+      {staff: "勝又", days: [19]},
+      {staff: "喜多", days: [19]}
+    ]
+  },
   "2026-05": {
     wishes: [
       {staff: "星野", day: 5}, {staff: "星野", day: 6},
@@ -1140,6 +1161,18 @@ function initShiftData(yearMonth, blankMode) {
       data[a.staff][ds] = "休";
     });
   });
+
+  // 4. 出勤強制（希望休/外せない予定より後＝APIの休も上書きして出勤にする）
+  if (!blankMode) {
+    const fw = FORCE_WORK_DAYS[yearMonth] || {};
+    Object.entries(fw).forEach(([staff, entries]) => {
+      if (!data[staff]) return;
+      entries.forEach(e => {
+        const ds = `${yearMonth}-${String(e.day).padStart(2,"0")}`;
+        data[staff][ds] = e.pattern;
+      });
+    });
+  }
 
   return {data, calendar: cal};
 }
