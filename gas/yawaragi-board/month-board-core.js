@@ -153,9 +153,12 @@ function buildMonthBoard(input, deps) {
       // 個訓評価: isHyoukaMonth（短縮 planMonths を反映）
       var isEvalMonth = d.isHyoukaMonth && d.isHyoukaMonth(u.planStart, u.planMonths, y, m);
       if (isEvalMonth) {
-        var ke = _mbFieldDone_(kRec, 'tasseido_date', ym);
-        kunEval.push({ userId: u.userId, name: u.name, done: ke.done, doneDate: ke.doneDate });
-        // 測定(要介護)＝個訓評価月と同期・userIdキーで済判定（短縮も自動反映）
+        // 保留=blocked_reason 有りの評価月は kunPlan と同じく対象外（督促しない）＝理由の種類で分岐しない truthy 判定
+        if (!(kRec && kRec.blocked_reason)) {
+          var ke = _mbFieldDone_(kRec, 'tasseido_date', ym);
+          kunEval.push({ userId: u.userId, name: u.name, done: ke.done, doneDate: ke.doneDate });
+        }
+        // 測定(要介護)＝個訓評価月と同期・userIdキーで済判定（短縮も自動反映。測定はkunEval除外のスコープ外＝現状維持）
         var ks = _mbListDone_(sokById[u.userId], ym);
         sokuteiKaigo.push({ userId: u.userId, name: u.name, done: ks.done, doneDate: ks.doneDate });
       }

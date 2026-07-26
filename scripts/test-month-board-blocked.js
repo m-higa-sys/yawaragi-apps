@@ -25,6 +25,20 @@ function build(users, kunRecords) {
 function kunPlan(board) { return board.sections.find(s => s.key === 'kunPlan'); }
 function names(sec) { return sec.targets.map(t => t.name); }
 
+// 評価月(kunEval)検証用: 当月を評価月扱い・計画月ではない状態に固定
+const depsEval = {
+  isPlanMonth: () => false,
+  isHyoukaMonth: (planStart) => !!planStart,
+  sbNormalizeName_: (s) => String(s == null ? '' : s).replace(/[\s　]+/g, '')
+};
+function buildEval(users, kunRecords) {
+  return buildMonthBoard({
+    targetMonth: '2026-07', users: users, kunRecords: kunRecords,
+    oralRecords: [], sokuteiRecords: [], tsushoSendRecords: [], tsushoDueMap: {}
+  }, depsEval);
+}
+function kunEval(board) { return board.sections.find(s => s.key === 'kunEval'); }
+
 let pass = 0, fail = 0;
 const ok = (name, cond) => { if (cond) { pass++; console.log('  PASS', name); } else { fail++; console.log('  FAIL', name); } };
 const eq = (name, got, want) => ok(name + '  (got=' + JSON.stringify(got) + ')', JSON.stringify(got) === JSON.stringify(want));
@@ -80,6 +94,45 @@ const U = (id, name) => ({ userId: id, name: name, category: '要介護1', planS
   const noPlan = { userId: 'z', name: '非計画月', category: '要介護1', planStart: '', planMonths: 3 };
   const b = build([noPlan], [{ userId: 'z', name: '非計画月', blocked_reason: '長期休み' }]);
   eq('S1 非計画月は保留有無に関わらず対象外', kunPlan(b).targets.length, 0);
+}
+
+// ===== 6) 評価やり残し(kunEval)も保留は対象外（kunPlanと同じ考え方）=====
+// 6a) 回帰: 保留なしの評価挙動は不変（達成度なし=done:false / 達成度あり=done:true）
+{
+  const b = buildEval(
+    [U('en', '評価未'), U('ed', '評価済')],
+    [{ userId: 'ed', name: '評価済', tasseido_date: '2026-07-08' }]
+  );
+  const s = kunEval(b);
+  eq('E1 評価対象は2名（評価未・評価済）', names(s), ['評価未', '評価済']);
+  eq('E1 評価未 done=false', s.targets.find(t => t.name === '評価未').done, false);
+  eq('E1 評価済 done=true', s.targets.find(t => t.name === '評価済').done, true);
+}
+// 6b) 保留は kunEval から除外
+{
+  const b = buildEval(
+    [U('en', '評価未'), U('eb', '評価保留')],
+    [{ userId: 'eb', name: '評価保留', blocked_reason: '入院・入所' }]
+  );
+  const s = kunEval(b);
+  ok('E2 保留者は kunEval に出ない', !names(s).includes('評価保留'));
+  eq('E2 残るのは評価未のみ', names(s), ['評価未']);
+  eq('E2 countTarget=1（保留は分母外）', s.countTarget, 1);
+}
+// 6c) 理由6種すべてで kunEval からも除外
+{
+  const REASONS = ['保険未登録', '利用継続未確定', '長期休み', '入院・入所', 'ケアマネ未提出', '利用終了・中止'];
+  REASONS.forEach((reason, i) => {
+    const b = buildEval([U('ex' + i, '評保' + i)], [{ userId: 'ex' + i, name: '評保' + i, blocked_reason: reason }]);
+    ok('E3[' + reason + '] は kunEval から除外', kunEval(b).targets.length === 0);
+  });
+}
+// 6d) 取消/解除: blocked_reason='' なら評価やり残しに復活
+{
+  const b = buildEval([U('ec', '評解除')], [{ userId: 'ec', name: '評解除', blocked_reason: '', tasseido_date: '' }]);
+  const s = kunEval(b);
+  eq('E4 解除後は kunEval に復活', names(s), ['評解除']);
+  eq('E4 解除後 done=false（督促対象に戻る）', s.targets[0].done, false);
 }
 
 console.log('\n月次ボード 保留除外: ' + (fail === 0 ? 'ALL GREEN' : fail + ' FAILED') + '  (pass=' + pass + ')');
