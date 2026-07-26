@@ -13852,7 +13852,7 @@ function _fmtDateForBounce_(v) {
 // バウンス検知の定期トリガー設置（初回は既存バウンスを処理済みにしてスキップ）
 function installBounceTrigger() {
   var label = GmailApp.getUserLabelByName(BOUNCE_LABEL_NAME) || GmailApp.createLabel(BOUNCE_LABEL_NAME);
-  // 初期化: 既存のバウンス通知（成田・貝原など対応済み）は全て処理済みラベルを付与
+  // 初期化: 既存のバウンス通知（対応済みの既知分）は全て処理済みラベルを付与
   var existing = GmailApp.search('from:mailer-daemon -label:' + BOUNCE_LABEL_NAME, 0, 80);
   for (var i = 0; i < existing.length; i++) existing[i].addLabel(label);
   // 既存トリガー削除 → 1時間ごとのトリガー作成
@@ -14820,8 +14820,8 @@ function shienSokuteiRowToObj_(row) {
 
 // 紙台帳投入元データ（sokutei-paper-2026.json・社長提供2026-07-03・照合承認済み・60名）
 // anchorYm = 紙台帳の測定予定月アンカー（周期=アンカー月+4ヶ月ローリング）。
-// 字体2件は台帳表記に正規化済み（円城寺弘江→圓城寺弘江／成田繫子→成田繁子）。
-// 平野啓二=利用終了（履歴として投入・アクティブ利用者一覧には出ないため表示対象外）。
+// 字体2件は台帳表記に正規化済み（旧字体→新字体で台帳表記に合わせた・氏名は非掲載）。
+// 1名=利用終了（履歴として投入・アクティブ利用者一覧には出ないため表示対象外）。
 var SHIEN_SOKUTEI_PAPER_SEED = [
   { name: '荒谷宗親', anchorYm: '2026-07' }, { name: '飯田邦子', anchorYm: '2026-07' },
   { name: '大槻尚子', anchorYm: '2026-07' }, { name: '貝原信子', anchorYm: '2026-07' },
