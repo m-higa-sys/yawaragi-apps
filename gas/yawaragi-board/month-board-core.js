@@ -76,6 +76,25 @@ function _mbFieldDone_(rec, field, ym) {
   return _mbInMonth_(v, ym) ? { done: true, doneDate: v } : { done: false, doneDate: '' };
 }
 
+// ym('YYYY-MM') の前月を 'YYYY-MM' で返す（年跨ぎ対応）。不正入力は '' を返す。
+function _mbPrevYm_(ym) {
+  var m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return '';
+  var y = parseInt(m[1], 10), mo = parseInt(m[2], 10);
+  mo -= 1; if (mo <= 0) { mo = 12; y -= 1; }
+  return y + '-' + ('0' + mo).slice(-2);
+}
+
+// 作業月対応の済判定：日付が ym（当月）または ym-1（前月＝作業月）にあれば done。
+// 個訓計画書は「作業月＝前月」に作成し前月日付を持つ運用（グリッド kobetsuCycleAt）のため、
+// 当月日付のみを済とする _mbFieldDone_ だと前月付けの作成済みが「偽の未」になる。これを是正する。
+// 対象は前月付け運用のある keikaku_date（kunPlan）のみ。tasseido_date(kunEval) 等は _mbFieldDone_ 据置。
+function _mbFieldDoneWorkMonth_(rec, field, ym) {
+  var v = rec ? rec[field] : '';
+  if (_mbInMonth_(v, ym) || _mbInMonth_(v, _mbPrevYm_(ym))) return { done: true, doneDate: v };
+  return { done: false, doneDate: '' };
+}
+
 // 送付日（pdf優先→print）の済判定
 function _mbSendDone_(rec, ym) {
   if (rec) {
@@ -147,7 +166,8 @@ function buildMonthBoard(input, deps) {
       // 督促は止めるが keikakushoBlocked digest 側で別掲。サイクル(isPlanMonth)自体は動かさない）
       if (d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, y, m)
           && !(kRec && kRec.blocked_reason)) {
-        var kp = _mbFieldDone_(kRec, 'keikaku_date', ym);
+        // keikaku_date は「作業月＝前月」に作成し前月日付を持つ運用のため、当月/前月いずれかで済判定（偽の未の是正）。
+        var kp = _mbFieldDoneWorkMonth_(kRec, 'keikaku_date', ym);
         kunPlan.push({ userId: u.userId, name: u.name, done: kp.done, doneDate: kp.doneDate });
       }
       // 個訓評価: isHyoukaMonth（短縮 planMonths を反映）
@@ -236,6 +256,8 @@ function _mbListDone_(dates, ym) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     buildMonthBoard: buildMonthBoard,
-    mbShienMeasureDue_: mbShienMeasureDue_
+    mbShienMeasureDue_: mbShienMeasureDue_,
+    _mbFieldDoneWorkMonth_: _mbFieldDoneWorkMonth_,
+    _mbPrevYm_: _mbPrevYm_
   };
 }
