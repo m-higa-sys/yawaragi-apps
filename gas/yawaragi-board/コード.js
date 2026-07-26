@@ -2474,6 +2474,58 @@ function doGet(e) {
     }
 
     // ============================================================
+    // 個別機能訓練計画書 期限（2026-07-20 新案D / additive）
+    // 設計: planStart(既存) を正とし、導出値とズレる分だけ due_ym で上書きする。
+    //   実測 50件中46件(92%) は planStart から導出できるため、新規シートは作らない。
+    //   保存先は既存「利用者台帳」の計画書開始列の隣に冪等増設した3列。
+    //   ログは既存「個別機能訓練計画書記録_ログ」に相乗り（field に due_ym / excluded）。
+    // ★用語を厳密に分ける: 台帳の要介護=52名 / 計画書対象=51名（＝52 − 恒久的対象外1）
+    // ★中止の判断・操作は一切行わない（leave-terminate.html の責務）。
+    // ============================================================
+
+    // --- 読取: due_ym / excluded の一覧 ---
+    if (action === 'getKunrenDueYms') {
+      var kdRes = kdReadDaicho_();
+      if (kdRes.error) return respond({ ok: false, error: kdRes.error }, callback);
+      return respond({ ok: true, rows: kdRes.rows }, callback);
+    }
+
+    // --- 書込: due_ym の設定・解除（空文字で解除＝導出値に戻す）---
+    if (action === 'updateKunrenDueYm') {
+      return kdWriteDaicho_(e, callback, 'due_ym');
+    }
+
+    // --- 書込: 恒久的な計画書対象外の設定・解除 ---
+    if (action === 'setKunrenExcluded') {
+      return kdWriteDaicho_(e, callback, 'excluded');
+    }
+
+    // --- 読取: 操作ログ（planStart / due_ym / excluded の変更履歴）---
+    // updatePlanStart は既に logKeikakushoOp_ を呼んでいるが読み口が無かった。
+    // これが「4件がなぜズレたか」を追えなかった原因。読取のみ・追記はしない。
+    if (action === 'getKeikakushoLog') {
+      var glUser  = String((e && e.parameter && e.parameter.userId) || '').trim();
+      var glField = String((e && e.parameter && e.parameter.field) || '').trim();
+      var glLimit = parseInt((e && e.parameter && e.parameter.limit) || '200', 10) || 200;
+      var glSheet = ensureKeikakushoLogSheet_();
+      var glVals = glSheet.getDataRange().getValues();
+      var glOut = [];
+      for (var glI = glVals.length - 1; glI >= 1 && glOut.length < glLimit; glI--) {
+        var gr = glVals[glI];
+        if (glUser && String(gr[2] || '').trim() !== glUser) continue;
+        if (glField && String(gr[7] || '').trim() !== glField) continue;
+        glOut.push({
+          timestamp: String(gr[0] || ''), operator: String(gr[1] || ''),
+          userId: String(gr[2] || ''), name: String(gr[3] || ''),
+          year: gr[4], month: gr[5], action: String(gr[6] || ''),
+          field: String(gr[7] || ''), old_value: String(gr[8] || ''), new_value: String(gr[9] || '')
+        });
+      }
+      return respond({ ok: true, rows: glOut }, callback);
+    }
+
+
+    // ============================================================
     // 通所介護計画書 シート初期化（テスト用・冪等）
     // Phase 1-B（2026-05-27追加）
     // ============================================================
@@ -17026,4 +17078,139 @@ function monthBoardBuildInput_(ym, year, month, safe) {
     },
     errorSections: errSec
   };
+}
+
+// ============================================================
+// 個別機能訓練計画書 期限（2026-07-20 新案D）
+// 既存「利用者台帳」の計画書開始列の隣に3列を冪等増設して使う。新規シートは作らない。
+// 列増設は setTsushoDueDate（indexOf で存在確認）の型を踏襲。
+// ============================================================
+
+var KD_COL_DUE  = '計画書期限';        // due_ym: 導出値とズレる場合のみ入る実データ
+var KD_COL_EXCL = '計画書対象外';      // excluded: 恒久的な対象外フラグ
+var KD_COL_RSN  = '計画書対象外理由';  // excl_reason: 自費利用 / その他
+
+// 値 → 'YYYY-MM'。テキスト書式を敷いても既存行がDate化していた場合に備える。
+function kdFmtYm_(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM');
+  return String(v).trim().slice(0, 7);
+}
+
+// 台帳を開き、必要な列を冪等増設して {sheet, header, col*} を返す。
+// ★この関数の実行＝シートへの列追加。実装フェーズB以降で初めて走る。
+function kdEnsureDaichoCols_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName('利用者台帳');
+  if (!sheet) return { error: '利用者台帳なし' };
+  var header = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]
+    .map(function (h) { return String(h || '').trim(); });
+  var nameCol = findCol(header, ['名前', '氏名', '利用者名']);
+  var careCol = findCol(header, ['要介護度', '介護度']);
+  if (nameCol < 0) return { error: '名前列なし' };
+
+  // 冪等増設（既存列は一切触らない）
+  function ensureCol(title) {
+    var i = header.indexOf(title);
+    if (i >= 0) return i;
+    var newIdx = sheet.getLastColumn();          // 0-based の新列index
+    sheet.getRange(1, newIdx + 1).setValue(title);
+    sheet.getRange(1, newIdx + 1).setBackground('#2c5282').setFontColor('#ffffff').setFontWeight('bold');
+    header.push(title);
+    return newIdx;
+  }
+  var dueCol  = ensureCol(KD_COL_DUE);
+  var exclCol = ensureCol(KD_COL_EXCL);
+  var rsnCol  = ensureCol(KD_COL_RSN);
+  // 期限列はテキスト書式（'2026-07' のDate自動解釈を根絶する）。冪等。
+  sheet.getRange(1, dueCol + 1, sheet.getMaxRows(), 1).setNumberFormat('@');
+  return { sheet: sheet, header: header, nameCol: nameCol, careCol: careCol,
+           dueCol: dueCol, exclCol: exclCol, rsnCol: rsnCol };
+}
+
+// 台帳から due_ym / excluded を読む。
+function kdReadDaicho_() {
+  var d = kdEnsureDaichoCols_();
+  if (d.error) return d;
+  var vals = d.sheet.getDataRange().getValues();
+  var rows = [];
+  for (var i = 1; i < vals.length; i++) {
+    var nm = String(vals[i][d.nameCol] || '').trim();
+    if (!nm) continue;
+    rows.push({
+      userId: nm, name: nm,
+      care: d.careCol >= 0 ? String(vals[i][d.careCol] || '').trim() : '',
+      due_ym: kdFmtYm_(vals[i][d.dueCol]),
+      excluded: String(vals[i][d.exclCol] || '').trim() === 'TRUE'
+             || String(vals[i][d.exclCol] || '').trim() === '1'
+             || String(vals[i][d.exclCol] || '').trim() === '対象外',
+      excl_reason: String(vals[i][d.rsnCol] || '').trim()
+    });
+  }
+  return { rows: rows };
+}
+
+// due_ym / excluded の書込。読み取り→判定→書き込みを1ロック内に収める。
+// tryLock を使う（waitLock だと待たされた2人目がそのまま書き、重複登録が起きる）。
+function kdWriteDaicho_(e, callback, kind) {
+  var p = (e && e.parameter) || {};
+  var userId = String(p.userId || '').trim();
+  var by     = String(p.updated_by || p.operator || '').trim();
+  var dueYm  = String(p.due_ym || '').trim();
+  var on     = String(p.excluded || '') === '1' || String(p.excluded || '').toLowerCase() === 'true';
+  var reason = String(p.reason || '').trim();
+
+  if (!userId) return respond({ ok: false, error: 'userId は必須です' }, callback);
+  if (!by)     return respond({ ok: false, error: '更新者（updated_by）は必須です' }, callback);
+  if (kind === 'due_ym' && dueYm && !/^\d{4}-\d{2}$/.test(dueYm)) {
+    return respond({ ok: false, error: '期限は YYYY-MM 形式で指定してください（空で解除）' }, callback);
+  }
+  if (kind === 'excluded' && on && ['自費利用', 'その他'].indexOf(reason) < 0) {
+    return respond({ ok: false, error: '理由は「自費利用」または「その他」から選んでください' }, callback);
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(3000)) {
+    return respond({ ok: false, error: '他の職員が編集中です。少し待ってからもう一度お試しください。' }, callback);
+  }
+  try {
+    var d = kdEnsureDaichoCols_();
+    if (d.error) return respond({ ok: false, error: d.error }, callback);
+    var vals = d.sheet.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][d.nameCol] || '').trim() === userId) { rowIdx = i + 1; break; }
+    }
+    if (rowIdx < 0) return respond({ ok: false, error: 'user not found: ' + userId }, callback);
+
+    var oldV, newV, field, act;
+    if (kind === 'due_ym') {
+      oldV = kdFmtYm_(vals[rowIdx - 1][d.dueCol]);
+      newV = dueYm;
+      if (oldV === newV) return respond({ ok: false, error: '値が変わっていません' }, callback);
+      if (newV) d.sheet.getRange(rowIdx, d.dueCol + 1).setValue(newV);
+      else d.sheet.getRange(rowIdx, d.dueCol + 1).clearContent();
+      field = 'due_ym';
+      act = newV ? 'set_due_ym' : 'clear_due_ym';
+    } else {
+      oldV = String(vals[rowIdx - 1][d.exclCol] || '').trim() ? '対象外' : '';
+      newV = on ? '対象外' : '';
+      if (oldV === newV) return respond({ ok: false, error: '値が変わっていません' }, callback);
+      if (on) {
+        d.sheet.getRange(rowIdx, d.exclCol + 1).setValue('対象外');
+        d.sheet.getRange(rowIdx, d.rsnCol + 1).setValue(reason);
+      } else {
+        d.sheet.getRange(rowIdx, d.exclCol + 1).clearContent();
+        d.sheet.getRange(rowIdx, d.rsnCol + 1).clearContent();
+      }
+      field = 'excluded';
+      act = on ? 'set_excluded' : 'clear_excluded';
+      newV = on ? ('対象外(' + reason + ')') : '';
+    }
+    // 既存ログシートへ相乗り（追記専用）。本体書込が成功してから残す。
+    logKeikakushoOp_(by, userId, userId, '', '', act, field, oldV, newV);
+    return respond({ ok: true, userId: userId, field: field, old_value: oldV, new_value: newV }, callback);
+  } finally {
+    lock.releaseLock();
+  }
 }
