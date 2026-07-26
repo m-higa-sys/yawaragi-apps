@@ -14822,39 +14822,9 @@ function shienSokuteiRowToObj_(row) {
 // anchorYm = 紙台帳の測定予定月アンカー（周期=アンカー月+4ヶ月ローリング）。
 // 字体2件は台帳表記に正規化済み（旧字体→新字体で台帳表記に合わせた・氏名は非掲載）。
 // 1名=利用終了（履歴として投入・アクティブ利用者一覧には出ないため表示対象外）。
-var SHIEN_SOKUTEI_PAPER_SEED = [
-  { name: '荒谷宗親', anchorYm: '2026-07' }, { name: '飯田邦子', anchorYm: '2026-07' },
-  { name: '大槻尚子', anchorYm: '2026-07' }, { name: '貝原信子', anchorYm: '2026-07' },
-  { name: '加藤彰', anchorYm: '2026-07' }, { name: '亀山常子', anchorYm: '2026-07' },
-  { name: '亀山實子', anchorYm: '2026-07' }, { name: '圓城寺弘江', anchorYm: '2026-07' },
-  { name: '小倉都', anchorYm: '2026-07' }, { name: '久保田富子', anchorYm: '2026-07' },
-  { name: '齋藤セイ子', anchorYm: '2026-07' }, { name: '小谷野進', anchorYm: '2026-07' },
-  { name: '高嶋京子', anchorYm: '2026-07' }, { name: '塩島孝子', anchorYm: '2026-07' },
-  { name: '成田繁子', anchorYm: '2026-07' }, { name: '長谷川正', anchorYm: '2026-07' },
-  { name: '長谷部としみ', anchorYm: '2026-07' }, { name: '平井和子', anchorYm: '2026-07' },
-  { name: '藤江由子', anchorYm: '2026-07' }, { name: '細谷テツコ', anchorYm: '2026-07' },
-  { name: '本郷安子', anchorYm: '2026-07' }, { name: '水戸忠', anchorYm: '2026-07' },
-  { name: '山岡澄子', anchorYm: '2026-07' }, { name: '中村美恵子', anchorYm: '2026-07' },
-  { name: '柳浦武治', anchorYm: '2026-07' },
-  { name: '大里よし子', anchorYm: '2026-08' }, { name: '佐藤千代子', anchorYm: '2026-08' },
-  { name: '鈴木菊枝', anchorYm: '2026-08' }, { name: '高橋喜久子', anchorYm: '2026-08' },
-  { name: '知久淑子', anchorYm: '2026-08' }, { name: '中馬マツミ', anchorYm: '2026-08' },
-  { name: '登山京子', anchorYm: '2026-08' }, { name: '登山孝', anchorYm: '2026-08' },
-  { name: '中島千枝子', anchorYm: '2026-08' }, { name: '町田和子', anchorYm: '2026-08' },
-  { name: '吉田美ち子', anchorYm: '2026-08' }, { name: '松田照子', anchorYm: '2026-08' },
-  { name: '吉崎洋子', anchorYm: '2026-08' }, { name: '南靜子', anchorYm: '2026-08' },
-  { name: '山中和子', anchorYm: '2026-08' },
-  { name: '今村禮子', anchorYm: '2026-09' }, { name: '川邊アキ子', anchorYm: '2026-09' },
-  { name: '木村光夫', anchorYm: '2026-09' }, { name: '鈴木みつ', anchorYm: '2026-09' },
-  { name: '関口榮', anchorYm: '2026-09' }, { name: '根本カツエ', anchorYm: '2026-09' },
-  { name: '高橋義昭', anchorYm: '2026-09' }, { name: '橋本優子', anchorYm: '2026-09' },
-  { name: '柳瀬さと', anchorYm: '2026-09' }, { name: '野口英子', anchorYm: '2026-09' },
-  { name: '野澤喜治', anchorYm: '2026-09' }, { name: '芳賀和子', anchorYm: '2026-09' },
-  { name: '吉橋年子', anchorYm: '2026-09' }, { name: '平野啓二', anchorYm: '2026-09' },
-  { name: '福島春代', anchorYm: '2026-09' }, { name: '古川照子', anchorYm: '2026-09' },
-  { name: '松嵜由子', anchorYm: '2026-09' }, { name: '村田幸子', anchorYm: '2026-09' },
-  { name: '森仁子', anchorYm: '2026-09' }, { name: '山下操子', anchorYm: '2026-09' }
-];
+// 投入完了（2026-07-03・照合承認済み60名）。名簿は本番「支援測定」シートへ移行済みのため配列は空にした。
+// seedShienSokuteiPaper は残置（no-op：全員シート在籍済みで toInsert=0）。公開コードからの氏名露出を解消。
+var SHIEN_SOKUTEI_PAPER_SEED = [];
 
 // スタッフマスタ（Phase 2・ケアマネ提出物統合管理の操作者リスト）
 // 名前の正本は既存 staff_list（シフト希望SS）＝入退社はそちらの更新で足りる。
