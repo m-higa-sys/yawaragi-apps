@@ -14,7 +14,7 @@
 //   targetMonth: 'YYYY-MM',
 //   users: [{ userId, name, category(介護度), planStart, planMonths, oralPlanStart, oralPlanEnd, isTsusho }],
 //   oralRecords:  [{ userId, name, houkoku_date, plan_date }],
-//   kunRecords:   [{ userId, name, keikaku_date, tasseido_date }],
+//   kunRecords:   [{ userId, name, keikaku_date, tasseido_date, blocked_reason }],  // blocked_reason 有り=保留（計画書やり残し対象外）
 //   sokuteiRecords: [{ userId, name, sokutei_date }],           // 人ごと複数可
 //   tsushoDueMap: { userId: 'YYYY-MM-DD' },                     // 通所計画書の実満了日（手入力/リハブ実値）
 //   tsushoSendRecords: [{ userId, name, plan_date, pdfSendDate, printSendDate }]
@@ -143,8 +143,10 @@ function buildMonthBoard(input, deps) {
     // --- 個訓（要介護のみ） ---
     if (_mbIsKaigo_(cat)) {
       var kRec = _mbPick_(input.kunRecords, u, norm);
-      // 個訓計画書: isPlanMonth
-      if (d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, y, m)) {
+      // 個訓計画書: isPlanMonth（保留=blocked_reason 有りの月は対象外＝やり残しに出さない。
+      // 督促は止めるが keikakushoBlocked digest 側で別掲。サイクル(isPlanMonth)自体は動かさない）
+      if (d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, y, m)
+          && !(kRec && kRec.blocked_reason)) {
         var kp = _mbFieldDone_(kRec, 'keikaku_date', ym);
         kunPlan.push({ userId: u.userId, name: u.name, done: kp.done, doneDate: kp.doneDate });
       }

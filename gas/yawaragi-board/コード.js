@@ -16882,7 +16882,7 @@ function monthBoardBuildInput_(ym, year, month, safe) {
       if (sok) sokuteiRecords.push({ userId: uid || nm, sokutei_date: sok });     // kaigo: userIdキー・当月判定はcore
       if ((parseInt(v[i][2], 10) || 0) !== year) continue;   // col2=year
       if ((parseInt(v[i][3], 10) || 0) !== month) continue;  // col3=month
-      kunRecords.push({ userId: uid || nm, name: nm, keikaku_date: mbFmt_(v[i][6]), tasseido_date: mbFmt_(v[i][15]) }); // col6=keikaku,col15=tasseido
+      kunRecords.push({ userId: uid || nm, name: nm, keikaku_date: mbFmt_(v[i][6]), tasseido_date: mbFmt_(v[i][15]), blocked_reason: String(v[i][8] || '').trim() }); // col6=keikaku,col15=tasseido,col8=blocked_reason(保留=やり残し対象外)
     }
     return true;
   });
