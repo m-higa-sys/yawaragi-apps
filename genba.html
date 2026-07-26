@@ -2149,6 +2149,11 @@
     <div id="kh-list-wrap"></div>
 </div>
 <div id="tab-dengon" class="tab-content active">
+    <!-- 今月のやり残し（Phase2・board GAS monthBoard を読むだけ・GAS無改修） -->
+    <div class="abs-today-card" id="yarinokoshi-card" style="border-left:4px solid #c0392b;">
+        <h3 class="abs-section-title" style="color:#c0392b;">📋 今月のやり残し</h3>
+        <div id="yarinokoshi-body"><div style="color:#888;">読み込み中…</div></div>
+    </div>
     <h2 style="font-size:1.1rem; margin:0 0 12px;">📢 伝達ボード</h2>
     <p style="font-size:0.8rem; color:#718096; margin:0 0 12px;">社長⇄スタッフ⇄スタッフの連絡板。完了したらタップで消える。期限を過ぎても、完了するまで残ります。</p>
 
@@ -7219,6 +7224,7 @@ function muCloseModal() {
 
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof dengonLoad === 'function') { try { dengonLoad(); } catch(e) {} }
+    if (typeof loadYarinokoshiCard === 'function') { try { loadYarinokoshiCard(); } catch(e) {} }
     var modal = document.getElementById('mu-modal');
     if (modal) {
         modal.addEventListener('click', function(e) { if (e.target === modal) muCloseModal(); });
@@ -7612,6 +7618,87 @@ function kbJsonp_(action, idSuffix) {
         script.onerror = function () { finish(null); };
         document.body.appendChild(script);
         setTimeout(function () { finish(null); }, 20000);   // GAS実測8秒台に負けない保険（旧8000msは境界競合でReferenceError）
+    });
+}
+
+// ===== 今月のやり残しカード（やり残し見張りPhase2・board GAS monthBoard を読むだけ・GAS無改修） =====
+// 判定は作らない＝buildMonthBoard 出力（section.countUndone/countTarget・warnings）を4分野に集計するだけ。
+// 分野の集計対象キー（月次ボードの section.key）。判定ロジックは持たない。
+var YARI_DOMAINS = [
+    { key: 'oral', label: '口腔', secs: ['oralEval', 'oralPlan'] },
+    { key: 'kun', label: '個訓', secs: ['kunPlan', 'kunEval'] },
+    { key: 'sokutei', label: '測定', secs: ['sokuteiKaigo', 'sokuteiShien'] },
+    { key: 'tsusho', label: '通所', secs: ['tsushoPlan', 'tsushoEval', 'tsushoMoni'] }
+];
+
+// 純関数: monthBoard の sections/warnings を4分野に集計。テスト: scripts/test-genba-yarinokoshi.js
+//   各分野 undone=Σ countUndone、total=Σ countTarget。全体 totalUndone/totalTarget。warnings件数（neverMeasured/noDueDate）。
+function buildYarinokoshiSummary(sections, warnings) {
+    sections = sections || [];
+    warnings = warnings || [];
+    var byKey = {};
+    sections.forEach(function (s) { if (s && s.key) byKey[s.key] = s; });
+    var domains = YARI_DOMAINS.map(function (d) {
+        var undone = 0, total = 0;
+        d.secs.forEach(function (k) {
+            var s = byKey[k];
+            if (s) { undone += (s.countUndone || 0); total += (s.countTarget || 0); }
+        });
+        return { key: d.key, label: d.label, undone: undone, total: total };
+    });
+    var totalUndone = domains.reduce(function (a, d) { return a + d.undone; }, 0);
+    var totalTarget = domains.reduce(function (a, d) { return a + d.total; }, 0);
+    var neverMeasured = 0, noDueDate = 0;
+    warnings.forEach(function (w) {
+        if (!w) return;
+        if (w.type === 'neverMeasured') neverMeasured++;
+        else if (w.type === 'noDueDate') noDueDate++;
+    });
+    return {
+        domains: domains, totalUndone: totalUndone, totalTarget: totalTarget,
+        warnings: { neverMeasured: neverMeasured, noDueDate: noDueDate }
+    };
+}
+
+// カード描画（未>0=赤・未0=緑・total0=完了✅・warnings併記・詳しく見る→month-board.html）。
+function renderYarinokoshiCard(summary) {
+    var body = document.getElementById('yarinokoshi-body');
+    if (!body) return;
+    var h = '';
+    if (summary.totalUndone === 0) {
+        h += '<div style="color:#38a169; font-weight:700; font-size:1.05rem;">今月ぶん完了 ✅</div>';
+    } else {
+        h += '<div style="display:flex; flex-wrap:wrap; gap:12px 18px; font-size:1.05rem; font-weight:700;">';
+        summary.domains.forEach(function (d) {
+            var col = d.undone > 0 ? '#c0392b' : '#38a169';
+            h += '<a href="month-board.html" target="_blank" rel="noopener" style="text-decoration:none; color:' + col + ';">'
+               + d.label + ' 未' + d.undone + '</a>';
+        });
+        h += '</div>';
+    }
+    var w = summary.warnings || {};
+    if ((w.neverMeasured || 0) > 0 || (w.noDueDate || 0) > 0) {
+        var parts = [];
+        if (w.neverMeasured > 0) parts.push('測定履歴なし ' + w.neverMeasured + '名');
+        if (w.noDueDate > 0) parts.push('通所満了日 未設定 ' + w.noDueDate + '名');
+        h += '<div style="margin-top:10px; font-size:0.82rem; color:#b7791f;">⚠ ' + parts.join(' ／ ') + '</div>';
+    }
+    h += '<div style="margin-top:12px;"><a href="month-board.html" target="_blank" rel="noopener" style="font-size:0.9rem; color:#2c7a7b; font-weight:700;">詳しく見る →</a></div>';
+    body.innerHTML = h;
+}
+
+// 非同期ロード（genba初期表示をブロックしない・失敗/タイムアウトはタップ再読込・当月はJST）。
+function loadYarinokoshiCard() {
+    var body = document.getElementById('yarinokoshi-body');
+    if (!body) return;
+    body.innerHTML = '<div style="color:#888;">読み込み中…</div>';
+    var ym = jstTodayStr().slice(0, 7);   // 端末TZ非依存（toLocalDateStr は使わない）
+    kbJsonp_('monthBoard&month=' + ym, 'yari').then(function (resp) {
+        if (!resp || !resp.sections) {
+            body.innerHTML = '<div style="color:#c0392b; cursor:pointer;" onclick="loadYarinokoshiCard()">読み込めませんでした（タップで再読込）</div>';
+            return;
+        }
+        renderYarinokoshiCard(buildYarinokoshiSummary(resp.sections, resp.warnings));
     });
 }
 
