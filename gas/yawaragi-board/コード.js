@@ -2306,7 +2306,8 @@ function doGet(e) {
       try { kuLock.waitLock(10000); } catch (kuLockErr) {
         return respond({ ok: false, error: 'lock timeout' }, callback);
       }
-      var kuTaskBoardResult = null;  // タスクボード登録結果
+      // 2026-07-26 タスクボード自動起票は撤去。保険未登録の相談員通知は伝達ボードに一本化し、
+      //   フロントの確認ダイアログ→ action=kunren_hold_notify（doPost）で送る（updateKeikakusho は保留の保存のみ）。
       try {
         var kuSheet = ensureKeikakushoSheet_();
         var kuValues = kuSheet.getDataRange().getValues();
@@ -2342,10 +2343,7 @@ function doGet(e) {
           var kuNewRow = [kuUserId, kuName, kuYear, kuMonth, '', '', '', kuNow, '', '', '', '', '', '', '', ''];
           kuNewRow[kuCol - 1] = kuValue;
           kuSheet.appendRow(kuNewRow);
-          // blocked_reason 付与（INSERT時）→ 保険未登録のみタスクボード登録
-          if (kuField === 'blocked_reason' && kuValue === '保険未登録') {
-            kuTaskBoardResult = addBlockedKeikakushoTask_(kuUserId, kuName, kuCategory, kuYear, kuMonth, kuValue);
-          }
+          // 2026-07-26 タスクボード起票を撤去（相談員通知は伝達ボード action=kunren_hold_notify に一本化）。
         } else {
           kuSheet.getRange(kuRowIdx, kuCol).setValue(kuValue);
           kuSheet.getRange(kuRowIdx, 8).setValue(kuNow);
@@ -2364,19 +2362,8 @@ function doGet(e) {
               && !String(kuRowAfter[14] || '').trim()
               && !String(kuRowAfter[15] || '').trim()) {
             kuSheet.deleteRow(kuRowIdx);
-          } else if (kuField === 'blocked_reason' && kuValue === '保険未登録') {
-            // blocked_reason 付与（UPDATE時）→ 保険未登録のみタスクボード登録
-            var kuName2 = String(kuRowAfter[1] || '') || kuUserId;
-            var kuCategory2 = '';
-            var kuTargets2 = getKeikakushoTargetUsers_();
-            for (var kuT2 = 0; kuT2 < kuTargets2.length; kuT2++) {
-              if (kuTargets2[kuT2].userId === kuUserId) {
-                kuCategory2 = kuTargets2[kuT2].category;
-                break;
-              }
-            }
-            kuTaskBoardResult = addBlockedKeikakushoTask_(kuUserId, kuName2, kuCategory2, kuYear, kuMonth, kuValue);
           }
+          // 2026-07-26 タスクボード起票（UPDATE時）を撤去（相談員通知は伝達ボード action=kunren_hold_notify に一本化）。
         }
         // ログ書き込み（actionは field 別に決定）
         var kuLogAction = '';
@@ -2393,7 +2380,6 @@ function doGet(e) {
         }
         logKeikakushoOp_(kuOperator, kuUserId, kuLogName, kuYear, kuMonth, kuLogAction, kuField, kuOldValue, kuValue);
         var kuResp = { ok: true, updatedAt: kuNow };
-        if (kuTaskBoardResult) kuResp.taskBoard = kuTaskBoardResult;
         return respond(kuResp, callback);
       } finally {
         kuLock.releaseLock();
@@ -4023,6 +4009,11 @@ function doPost(e) {
       // 2026-07-06 振替不能トラッカー：伝達ボードの月次通知を件数のみで冪等 upsert／0件で締め
       case 'upsert_furikae_notice':
         return jsonResp(upsertFurikaeNotice(ss, data));
+      // 2026-07-26 個訓「保険未登録・作成不可」保留 → 伝達ボードで相談員へ確認依頼（決定的キー upsert／解除で done化）
+      case 'kunren_hold_notify':
+        return jsonResp(kunrenHoldNotify(ss, data));
+      case 'kunren_hold_clear':
+        return jsonResp(kunrenHoldClear(ss, data));
       // 2026-07-10 振替不能トラッカー③：連絡済み記録（furikae連絡履歴に追記のみ・メール送信なし）
       case 'recordFurikaeContact':
         return jsonResp(recordFurikaeContact(ss, data));
@@ -14973,6 +14964,8 @@ function getKeikakushoTargetUsers_(includeCancelled) {
   return users;
 }
 
+// 【2026-07-26 以降 未使用】保留の相談員通知は伝達ボード（kunrenHoldNotify）に一本化したため、
+//   updateKeikakusho からの呼び出しを撤去した。呼び出し元は現在0（他機能への影響回避のため関数本体は残置）。
 // 保留マーク付与時に、タスクボードへ自動登録（相談員への依頼として）
 // 既に同じ年月・利用者で未完了タスクがあればスキップ（重複登録防止）
 function addBlockedKeikakushoTask_(userId, name, category, year, month, reason) {
@@ -16257,6 +16250,68 @@ function upsertFurikaeNotice(ss, data) {
     sheet.appendRow([key, '振替不能', '全員', body, '', now, false, '', '']);
     SpreadsheetApp.flush();
     return { ok: true, key: key, added: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 2026-07-26 個訓「保険未登録・作成不可」保留 → 伝達ボードで相談員へ確認依頼。
+// 判定は純関数 kunrenHoldDecide_（テスト: scripts/test-kunren-hold.js）に集約。
+// キーは 'kunren-hold-<userId>-<year>-<month>' に厳格化し、他メッセージ（db_*・furikae-funou-* 等）に触れない。
+// upsert=同月に何度保留してもキー1件（本文置換・done解除で復活）。宛先は「相談員」グループ（recipients自動確定）。
+function kunrenHoldNotify(ss, data) {
+  data = data || {};
+  var key = kunrenHoldKey_(data.userId, data.year, data.month);
+  var body = String(data.body == null ? '' : data.body).trim();
+  if (!body) return { ok: false, error: 'empty_body', key: key };
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return { ok: false, error: 'lock_timeout' }; }
+  try {
+    var sheet = ss.getSheetByName(DENGON_SHEET);
+    if (!sheet) { setupDengonBoard(ss); sheet = ss.getSheetByName(DENGON_SHEET); }
+    var values = sheet.getDataRange().getValues();
+    var decision = kunrenHoldDecide_(values, key, body);
+    if (decision.op === 'reject') return { ok: false, error: 'bad_key', key: key };
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    if (decision.op === 'update') {
+      var rowNum = decision.rowIndex + 1;
+      sheet.getRange(rowNum, DB_COL.BODY + 1).setValue(body);
+      sheet.getRange(rowNum, DB_COL.CREATED + 1).setValue(now);
+      sheet.getRange(rowNum, DB_COL.DONE + 1).setValue(false); // 再保留でも未完了で復活
+      SpreadsheetApp.flush();
+      return { ok: true, key: key, updated: true };
+    }
+    // add: 宛先=相談員（recipients はマスタから確定・グループ宛て）。readBy は '[]' で開始。
+    var recipients = dengonComputeRecipients_(getDengonStaffMaster(ss), '相談員');
+    sheet.appendRow([key, '個訓保留', '相談員', body, '', now, false, '', '', JSON.stringify(recipients), '[]']);
+    SpreadsheetApp.flush();
+    return { ok: true, key: key, added: true, recipients: recipients.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 保留解除に連動して当該（利用者×年×月）の確認依頼を締める（done=true でアクティブ板から下げ、完了履歴に残す）。
+// 対象キーの行が無ければ noop。キー厳格化により他メッセージには絶対に触れない。
+function kunrenHoldClear(ss, data) {
+  data = data || {};
+  var key = kunrenHoldKey_(data.userId, data.year, data.month);
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return { ok: false, error: 'lock_timeout' }; }
+  try {
+    var sheet = ss.getSheetByName(DENGON_SHEET);
+    if (!sheet) return { ok: true, key: key, noop: true };
+    var values = sheet.getDataRange().getValues();
+    var decision = kunrenHoldDecide_(values, key, ''); // 空本文＝close 要求
+    if (decision.op === 'reject') return { ok: false, error: 'bad_key', key: key };
+    if (decision.op === 'noop') return { ok: true, key: key, noop: true };
+    var rowNum = decision.rowIndex + 1;
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    sheet.getRange(rowNum, DB_COL.DONE + 1).setValue(true);
+    sheet.getRange(rowNum, DB_COL.DONEAT + 1).setValue(now);
+    sheet.getRange(rowNum, DB_COL.DONEBY + 1).setValue('システム(保留解除)');
+    SpreadsheetApp.flush();
+    return { ok: true, key: key, closed: true };
   } finally {
     lock.releaseLock();
   }

@@ -384,6 +384,32 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .check-cell.blocked-mitei::before { content: '⏸ '; }
 .check-cell.blocked-mitei.current { box-shadow: inset 0 0 0 3px #2b6cb0, inset 0 0 0 5px #4a5568 !important; }
 
+/* 相談員への確認依頼 送信ダイアログ（編集可プレビュー） */
+.khs-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: flex; align-items: center; justify-content: center; z-index: 9999;
+}
+.khs-box {
+    background: #fff; border-radius: 12px; padding: 18px;
+    width: min(92vw, 460px); box-shadow: 0 8px 30px rgba(0,0,0,.3);
+}
+.khs-title { font-size: 1.05rem; font-weight: 700; color: #2d3748; margin-bottom: 10px; }
+.khs-textarea {
+    width: 100%; min-height: 120px; font-size: 1rem; line-height: 1.6;
+    padding: 10px; border: 2px solid #cbd5e0; border-radius: 8px;
+    box-sizing: border-box; resize: vertical;
+}
+.khs-note { font-size: 0.82rem; color: #718096; margin: 8px 0 14px; }
+.khs-btnrow { display: flex; gap: 10px; justify-content: flex-end; }
+.khs-cancel {
+    padding: 10px 18px; border: none; border-radius: 8px;
+    background: #e2e8f0; color: #2d3748; font-size: 1rem; cursor: pointer;
+}
+.khs-send {
+    padding: 10px 22px; border: none; border-radius: 8px;
+    background: #dd6b20; color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer;
+}
+
 .toast {
     position: fixed;
     bottom: 30px;
@@ -720,10 +746,16 @@ const MEASURER_EXCLUDE = ['代表', '小野', '林'];
 // ※GAS側 KEIKAKUSHO_SOUFU_CUTOFF と同値で管理すること。
 const KEIKAKUSHO_SOUFU_CUTOFF = '2026-06-15';
 // 保留（作れない月）の理由コード6種。既存2値（保険未登録／利用継続未確定）は文字列そのまま先頭に維持し
-// 過去データ互換（移行スクリプト不要）。保険未登録のみ相談員依頼を自動起票（GAS:2346）、他5種は起票しない。
+// 過去データ互換（移行スクリプト不要）。保険未登録は相談員へ伝達ボードで確認依頼（送信は確認ダイアログでOK時のみ）、他5種は通知しない。
 const BLOCKED_REASONS = ['保険未登録', '利用継続未確定', '長期休み', '入院・入所', 'ケアマネ未提出', '利用終了・中止'];
-// 保険未登録だけ⚠（要対応・自動起票）、それ以外は⏸（社長メモ扱いの保留）。
+// 保険未登録だけ⚠（要対応）、それ以外は⏸（社長メモ扱いの保留）。
 function blockedIcon(reason) { return reason === '保険未登録' ? '⚠' : '⏸'; }
+// 表示ラベル：保険未登録は画面上だけ「保険未登録・作成不可」と出す（stored の blocked_reason は "保険未登録" のまま維持＝過去互換）。他5理由は不変。
+function blockedLabel(reason) { return reason === '保険未登録' ? '保険未登録・作成不可' : reason; }
+// 相談員への確認依頼メッセージ（純関数・やわらか依頼型）。テスト: scripts/test-kunren-hold.js
+function buildKunrenHoldMessage(name, month) {
+    return '相談員さんへ ― ' + name + 'さんの' + month + '月計画書が、介護保険情報の未登録で作成できません。ご確認・登録をお願いします。';
+}
 const MONTHS = [
     { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
     { m: 7, label: '7月' }, { m: 8, label: '8月' }, { m: 9, label: '9月' },
@@ -1230,7 +1262,7 @@ function renderTable() {
                 let pInner;
                 if (pBlocked) {
                     pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
-                        + '<span class="kb-hold" title="' + escapeAttr(pRec.blocked_reason) + '">' + blockedIcon(pRec.blocked_reason) + '保留（' + escapeHtml(pRec.blocked_reason) + '）</span>';
+                        + '<span class="kb-hold" title="' + escapeAttr(pRec.blocked_reason) + '">' + blockedIcon(pRec.blocked_reason) + '保留（' + escapeHtml(blockedLabel(pRec.blocked_reason)) + '）</span>';
                 } else {
                     const pb = kbPlanBadges(pRec);
                     pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
@@ -1252,7 +1284,7 @@ function renderTable() {
                 let eInner;
                 if (hyoukaBlocked) {
                     eInner = '<span class="kb-cyc kb-cyc-eval">評価月</span>'
-                        + '<span class="kb-hold" title="' + escapeAttr(rec.blocked_reason) + '">' + blockedIcon(rec.blocked_reason) + '保留（' + escapeHtml(rec.blocked_reason) + '）</span>';
+                        + '<span class="kb-hold" title="' + escapeAttr(rec.blocked_reason) + '">' + blockedIcon(rec.blocked_reason) + '保留（' + escapeHtml(blockedLabel(rec.blocked_reason)) + '）</span>';
                 } else {
                     const smBadge = sm === '印刷' ? '<span class="kb-sm" style="color:#9c4221;">🖨</span>'
                         : sm === 'PDF' ? '<span class="kb-sm" style="color:#2b6cb0;">📧</span>' : '';
@@ -1466,7 +1498,7 @@ function openDateDialog(userId, name, year, month, field, fieldLabel, currentVal
         dateInput.style.display = 'none';
         dateInputBtnRow.style.display = 'none';
         const isHoken = (blockedReason === '保険未登録');
-        blockedBanner.textContent = blockedIcon(blockedReason) + ' 保留中: ' + blockedReason;
+        blockedBanner.textContent = blockedIcon(blockedReason) + ' 保留中: ' + blockedLabel(blockedReason);
         blockedBanner.className = isHoken ? 'banner-hoken' : 'banner-mitei';
         blockedBanner.style.display = 'block';
         blockBtnRow.style.display = 'none';
@@ -1597,7 +1629,7 @@ function showReasonPicker() {
     const row = document.getElementById('reasonBtnRow');
     row.innerHTML = BLOCKED_REASONS.map(function (r) {
         const cls = (r === '保険未登録') ? 'block' : 'block-mitei';
-        return '<button class="' + cls + '" onclick="setBlocked(\'' + r + '\')">' + blockedIcon(r) + ' ' + escapeHtml(r) + '</button>';
+        return '<button class="' + cls + '" onclick="setBlocked(\'' + r + '\')">' + blockedIcon(r) + ' ' + escapeHtml(blockedLabel(r)) + '</button>';
     }).join('');
     document.getElementById('blockBtnRow').style.display = 'none';
     document.getElementById('reasonPicker').style.display = 'block';
@@ -1609,7 +1641,7 @@ async function setBlocked(reason) {
         // 保留解除（取消）
         if (!confirm(ds.name + ' ' + ds.month + '月の保留を解除しますか？')) return;
     } else if (reason === '保険未登録') {
-        if (!confirm(ds.name + ' ' + ds.month + '月を「保険未登録のため保留」にしますか？\n\n・タスクボードに相談員依頼が自動登録されます\n・セルがオレンジ＋⚠表示になります')) return;
+        if (!confirm(ds.name + ' ' + ds.month + '月を「保険未登録・作成不可」で保留にしますか？\n\n・セルがオレンジ＋⚠表示になります\n・このあと相談員さんへの確認依頼メッセージを送れます（送信前に確認・編集できます）')) return;
     } else {
         // 保険未登録以外の5種＝社長メモ扱い（タスクボード起票なし）
         if (!confirm(ds.name + ' ' + ds.month + '月を「' + reason + '」で保留にしますか？\n\n・計画書やり残し（朝報告）の督促から外れます\n・タスクボードには登録されません（社長メモ扱い）')) return;
@@ -1621,6 +1653,7 @@ async function setBlocked(reason) {
 async function applyBlockedReason(userId, name, year, month, reason) {
     const key = userId + '_' + year + '_' + month;
     const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+    const prevReason = rec.blocked_reason;   // 解除連動の判定用（上書き前に捕捉）
     rec.blocked_reason = reason;
     if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason
         && !rec.hyouka_pdf_date && !rec.hyouka_print_date && !rec.keikaku_sent_date
@@ -1644,17 +1677,24 @@ async function applyBlockedReason(userId, name, year, month, reason) {
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
         unmarkPending(userId, year, month, 'blocked_reason');
-        if (reason) {
-            const tb = json.taskBoard;
-            if (tb && tb.added) {
-                showToast('⚠ ' + name + ' ' + month + '月 保留設定。タスクボードに相談員依頼を登録しました', 'warn');
-            } else if (tb && !tb.added && tb.reason === 'already exists') {
-                showToast('⚠ ' + name + ' ' + month + '月 保留設定。タスクボードに既存依頼あり', 'warn');
+        if (reason === '保険未登録') {
+            showToast('⚠ ' + name + ' ' + month + '月「保険未登録・作成不可」で保留', 'warn');
+            // 相談員へ確認依頼（編集可プレビュー→送信時のみ POST。自動送信はしない）
+            const editedBody = await confirmKunrenHoldSend(name, month);
+            if (editedBody) {
+                postDengon({ action: 'kunren_hold_notify', userId: userId, name: name, year: year, month: month, body: editedBody });
+                showToast('📨 ' + name + ' ' + month + '月 相談員へ確認依頼を送信しました', 'warn');
             } else {
-                showToast('⚠ ' + name + ' ' + month + '月 保留設定', 'warn');
+                showToast('（相談員への確認依頼は送信していません）', '');
             }
+        } else if (reason) {
+            showToast('⏸ ' + name + ' ' + month + '月「' + reason + '」で保留（社長メモ）', 'warn');
         } else {
             showToast('✅ ' + name + ' ' + month + '月 保留解除', '');
+            // 直前が保険未登録なら、伝達ボードの相談員確認依頼を締める（done化・アクティブ板から下げる）
+            if (prevReason === '保険未登録') {
+                postDengon({ action: 'kunren_hold_clear', userId: userId, year: year, month: month });
+            }
         }
         hideOffline();
     } catch (e) {
@@ -1669,6 +1709,56 @@ async function applyBlockedReason(userId, name, year, month, reason) {
 
 function closeDateDialog() {
     document.getElementById('dateDialog').classList.remove('show');
+}
+
+// 伝達ボードへ no-cors POST（返りは読まない＝決定的キー方式・fire-and-forget）。genba.html の伝達投稿と同形式。
+function postDengon(payload) {
+    try {
+        fetch(API_BASE, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    } catch (e) {
+        console.error('postDengon error:', e);
+    }
+}
+
+// 相談員への確認依頼を編集可プレビューで確認。送信=Promise<string>（編集後本文）／キャンセル・空=Promise<null>。
+// 送信はユーザーがOKした時のみ（自動送信しない）。文面は送信前に編集できる。
+function confirmKunrenHoldSend(name, month) {
+    return new Promise(function (resolve) {
+        const ov = document.createElement('div');
+        ov.className = 'khs-overlay';
+        const box = document.createElement('div');
+        box.className = 'khs-box';
+        const title = document.createElement('div');
+        title.className = 'khs-title';
+        title.textContent = '相談員さんへ 確認依頼を送りますか？';
+        const ta = document.createElement('textarea');
+        ta.className = 'khs-textarea';
+        ta.value = buildKunrenHoldMessage(name, month);
+        const note = document.createElement('div');
+        note.className = 'khs-note';
+        note.textContent = 'この文章で送ります。よろしいですか？（送信前に編集できます）';
+        const row = document.createElement('div');
+        row.className = 'khs-btnrow';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'khs-cancel';
+        cancelBtn.textContent = 'キャンセル';
+        const sendBtn = document.createElement('button');
+        sendBtn.className = 'khs-send';
+        sendBtn.textContent = '送信';
+        function done(result) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(result); }
+        cancelBtn.onclick = function () { done(null); };
+        sendBtn.onclick = function () { done(ta.value.trim() || buildKunrenHoldMessage(name, month)); };
+        ov.onclick = function (e) { if (e.target === ov) done(null); };
+        row.appendChild(cancelBtn);
+        row.appendChild(sendBtn);
+        box.appendChild(title);
+        box.appendChild(ta);
+        box.appendChild(note);
+        box.appendChild(row);
+        ov.appendChild(box);
+        document.body.appendChild(ov);
+        ta.focus();
+    });
 }
 
 // ============ 評価セルクリック処理 ============

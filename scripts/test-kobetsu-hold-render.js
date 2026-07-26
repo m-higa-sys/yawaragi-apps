@@ -1,7 +1,7 @@
 // 個訓「保留（作れない月）」の実描画＋進捗集計テスト（DOMスタブ・素node／test-kobetsu-grid-dom.js と同方式）
 // 実行: node scripts/test-kobetsu-hold-render.js
 // 検証:
-//   ①セル表示: 保留セルが「⏸保留（理由）」/ 保険未登録だけ「⚠保留（保険未登録）」で理由が一目でわかる。
+//   ①セル表示: 保留セルが「⏸保留（理由）」/ 保険未登録だけ「⚠保留（保険未登録・作成不可）」で理由が一目でわかる。
 //   ②進捗集計(updateStats): 保留は分母(progressTotal)から外れ、blockedCount に件数が併記される。
 //   ③理由6種は BLOCKED_REASONS 定数から供給される（画面ソースに6種が定義されている）。
 const fs = require('fs');
@@ -20,7 +20,7 @@ function extractFrom(src, name) {
   for (let j = i; j < src.length; j++) { if (src[j] === '{') d++; else if (src[j] === '}') { d--; if (!d) return src.slice(s, j + 1); } }
 }
 const HTML_FNS = ['renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
-  'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO', 'blockedIcon', 'updateStats'];
+  'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO', 'blockedIcon', 'blockedLabel', 'updateStats'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
 const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
 
@@ -75,7 +75,8 @@ const outMitei = renderBlocked('長期休み');
 ok(outMitei.indexOf('⏸保留（長期休み）') >= 0, 'D1: 保留セルに「⏸保留（長期休み）」＝理由が一目でわかる');
 ok(outMitei.indexOf('計画(4月〜)') >= 0, 'D1b: 計画サイクルタグは維持（保留でも計画月表示は残す）');
 const outHoken = renderBlocked('保険未登録');
-ok(outHoken.indexOf('⚠保留（保険未登録）') >= 0, 'D2: 保険未登録だけ⚠アイコンで「⚠保留（保険未登録）」');
+// 2026-07-26 表示ラベル変更: stored は "保険未登録" のまま／画面表示だけ「保険未登録・作成不可」（blockedLabel）。
+ok(outHoken.indexOf('⚠保留（保険未登録・作成不可）') >= 0, 'D2: 保険未登録は⚠アイコンで「⚠保留（保険未登録・作成不可）」表示');
 const outMitei2 = renderBlocked('入院・入所');
 ok(outMitei2.indexOf('⏸保留（入院・入所）') >= 0, 'D3: 追加理由(入院・入所)も⏸で理由表示');
 
