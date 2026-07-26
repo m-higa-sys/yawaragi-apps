@@ -16295,19 +16295,28 @@ function kunrenHoldNotify(ss, data) {
     var decision = kunrenHoldDecide_(values, key, body);
     if (decision.op === 'reject') return { ok: false, error: 'bad_key', key: key };
     var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    // 宛先＝画面で選ばれた data.to（未指定/空は従来どおり相談員）。add/update 共通で算出。
+    // recipients：グループ宛てはマスタから確定（相談員→3名等）、特定個人はその本人1名（社長確定 2026-07-26）。
+    // dengonComputeRecipients_ は個人名を default→[] にするため、グループ判定を挟んで個人は [to] にする（本体は無改修）。
+    var khnTo = String((data && data.to) || '相談員').trim() || '相談員';
+    var KHN_GROUPS = ['全員', '全員・ドライバー除く', '社員', '相談員', '看護師'];
+    var recipients = (KHN_GROUPS.indexOf(khnTo) !== -1)
+      ? dengonComputeRecipients_(getDengonStaffMaster(ss), khnTo)
+      : [khnTo];
     if (decision.op === 'update') {
       var rowNum = decision.rowIndex + 1;
+      sheet.getRange(rowNum, DB_COL.TO + 1).setValue(khnTo);                                // 宛先を選び直したら再送でも追従
       sheet.getRange(rowNum, DB_COL.BODY + 1).setValue(body);
       sheet.getRange(rowNum, DB_COL.CREATED + 1).setValue(now);
       sheet.getRange(rowNum, DB_COL.DONE + 1).setValue(false); // 再保留でも未完了で復活
+      sheet.getRange(rowNum, DB_COL.RECIPIENTS + 1).setValue(JSON.stringify(recipients));   // 宛先に合わせ recipients も再計算
       SpreadsheetApp.flush();
-      return { ok: true, key: key, updated: true };
+      return { ok: true, key: key, updated: true, to: khnTo, recipients: recipients.length };
     }
-    // add: 宛先=相談員（recipients はマスタから確定・グループ宛て）。readBy は '[]' で開始。
-    var recipients = dengonComputeRecipients_(getDengonStaffMaster(ss), '相談員');
-    sheet.appendRow([key, '個訓保留', '相談員', body, '', now, false, '', '', JSON.stringify(recipients), '[]']);
+    // add: readBy は '[]' で開始。
+    sheet.appendRow([key, '個訓保留', khnTo, body, '', now, false, '', '', JSON.stringify(recipients), '[]']);
     SpreadsheetApp.flush();
-    return { ok: true, key: key, added: true, recipients: recipients.length };
+    return { ok: true, key: key, added: true, to: khnTo, recipients: recipients.length };
   } finally {
     lock.releaseLock();
   }

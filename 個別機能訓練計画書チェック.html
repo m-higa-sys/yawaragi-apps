@@ -400,6 +400,12 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     box-sizing: border-box; resize: vertical;
 }
 .khs-note { font-size: 0.82rem; color: #718096; margin: 8px 0 14px; }
+.khs-torow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.khs-torow label { font-size: 0.9rem; font-weight: 600; color: #4a5568; white-space: nowrap; }
+.khs-select {
+    flex: 1; font-size: 1rem; padding: 8px 10px;
+    border: 2px solid #cbd5e0; border-radius: 8px; background: #fff; box-sizing: border-box;
+}
 .khs-btnrow { display: flex; gap: 10px; justify-content: flex-end; }
 .khs-cancel {
     padding: 10px 18px; border: none; border-radius: 8px;
@@ -752,9 +758,11 @@ const BLOCKED_REASONS = ['保険未登録', '利用継続未確定', '長期休�
 function blockedIcon(reason) { return reason === '保険未登録' ? '⚠' : '⏸'; }
 // 表示ラベル：保険未登録は画面上だけ「保険未登録・作成不可」と出す（stored の blocked_reason は "保険未登録" のまま維持＝過去互換）。他5理由は不変。
 function blockedLabel(reason) { return reason === '保険未登録' ? '保険未登録・作成不可' : reason; }
-// 相談員への確認依頼メッセージ（純関数・やわらか依頼型）。テスト: scripts/test-kunren-hold.js
-function buildKunrenHoldMessage(name, month) {
-    return '相談員さんへ ― ' + name + 'さんの' + month + '月計画書が、介護保険情報の未登録で作成できません。ご確認・登録をお願いします。';
+// 確認依頼メッセージ（純関数・やわらか依頼型）。宛名は toLabel に追従（相談員／看護師／〇〇 等）。
+// toLabel 省略時は「相談員」＝従来挙動（後方互換）。テスト: scripts/test-kunren-hold.js
+function buildKunrenHoldMessage(name, month, toLabel) {
+    var to = (toLabel != null && String(toLabel).trim()) || '相談員';
+    return to + 'さんへ ― ' + name + 'さんの' + month + '月計画書が、介護保険情報の未登録で作成できません。ご確認・登録をお願いします。';
 }
 const MONTHS = [
     { m: 4, label: '4月' }, { m: 5, label: '5月' }, { m: 6, label: '6月' },
@@ -786,6 +794,9 @@ let state = {
 function getMeasurerOptions() {
     return (state.staffNames || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
 }
+// 確認依頼の宛先セレクタ用スタッフマスタ（伝達ボードと同じ getDengonStaffMaster 相当・active全員）。
+// 取得失敗時は空＝confirmKunrenHoldSend はグループのみ表示（デフォルト相談員で機能継続）。
+let dengonStaffMaster = [];
 let filterDay = '';
 let filterAmpm = '';
 let filterGroup = '';
@@ -1679,13 +1690,13 @@ async function applyBlockedReason(userId, name, year, month, reason) {
         unmarkPending(userId, year, month, 'blocked_reason');
         if (reason === '保険未登録') {
             showToast('⚠ ' + name + ' ' + month + '月「保険未登録・作成不可」で保留', 'warn');
-            // 相談員へ確認依頼（編集可プレビュー→送信時のみ POST。自動送信はしない）
-            const editedBody = await confirmKunrenHoldSend(name, month);
-            if (editedBody) {
-                postDengon({ action: 'kunren_hold_notify', userId: userId, name: name, year: year, month: month, body: editedBody });
-                showToast('📨 ' + name + ' ' + month + '月 相談員へ確認依頼を送信しました', 'warn');
+            // 確認依頼（宛先選択可・編集可プレビュー→送信時のみ POST。自動送信はしない）
+            const r = await confirmKunrenHoldSend(name, month);
+            if (r && r.body) {
+                postDengon({ action: 'kunren_hold_notify', userId: userId, name: name, year: year, month: month, body: r.body, to: r.to });
+                showToast('📨 ' + name + ' ' + month + '月 ' + r.to + 'へ確認依頼を送信しました', 'warn');
             } else {
-                showToast('（相談員への確認依頼は送信していません）', '');
+                showToast('（確認依頼は送信していません）', '');
             }
         } else if (reason) {
             showToast('⏸ ' + name + ' ' + month + '月「' + reason + '」で保留（社長メモ）', 'warn');
@@ -1720,8 +1731,12 @@ function postDengon(payload) {
     }
 }
 
-// 相談員への確認依頼を編集可プレビューで確認。送信=Promise<string>（編集後本文）／キャンセル・空=Promise<null>。
-// 送信はユーザーがOKした時のみ（自動送信しない）。文面は送信前に編集できる。
+// 確認依頼の宛先グループ（伝達ボードと同じ選択肢・順序）。個人名はマスタから optgroup に足す。
+const KHS_TO_GROUPS = ['全員', '全員・ドライバー除く', '社員', '相談員', '看護師'];
+
+// 確認依頼を編集可プレビューで確認。宛先を選べる（デフォルト相談員）。
+// 送信=Promise<{body, to}>（編集後本文＋選んだ宛先）／キャンセル・空=Promise<null>。
+// 送信はユーザーがOKした時のみ（自動送信しない）。文面・宛先は送信前に変更できる。
 function confirmKunrenHoldSend(name, month) {
     return new Promise(function (resolve) {
         const ov = document.createElement('div');
@@ -1730,13 +1745,52 @@ function confirmKunrenHoldSend(name, month) {
         box.className = 'khs-box';
         const title = document.createElement('div');
         title.className = 'khs-title';
-        title.textContent = '相談員さんへ 確認依頼を送りますか？';
+        title.textContent = '確認依頼を送りますか？';
+
+        // 宛先セレクタ（グループ＋特定スタッフ）。デフォルト＝相談員。
+        const toRow = document.createElement('div');
+        toRow.className = 'khs-torow';
+        const toLabelEl = document.createElement('label');
+        toLabelEl.textContent = '宛先：';
+        const sel = document.createElement('select');
+        sel.className = 'khs-select';
+        KHS_TO_GROUPS.forEach(function (g) {
+            const o = document.createElement('option');
+            o.value = g; o.textContent = g; sel.appendChild(o);
+        });
+        // 特定スタッフ（マスタ取得できた時のみ・active全員）。失敗時はグループのみ＝相談員で継続。
+        const activeStaff = (dengonStaffMaster || []).filter(function (m) { return m && m.active; });
+        if (activeStaff.length) {
+            const og = document.createElement('optgroup');
+            og.label = '特定スタッフ';
+            activeStaff.forEach(function (m) {
+                const o = document.createElement('option');
+                o.value = m.name; o.textContent = m.name; og.appendChild(o);
+            });
+            sel.appendChild(og);
+        }
+        sel.value = '相談員'; // デフォルト宛先＝相談員（現状の挙動を維持）
+        toRow.appendChild(toLabelEl);
+        toRow.appendChild(sel);
+
         const ta = document.createElement('textarea');
         ta.className = 'khs-textarea';
-        ta.value = buildKunrenHoldMessage(name, month);
+        ta.value = buildKunrenHoldMessage(name, month, sel.value);
+        // ユーザーが本文を手編集したら宛名の全文再生成はしない（編集を尊重）。宛先変更時は先頭の宛名だけ差し替える。
+        let userEdited = false;
+        ta.addEventListener('input', function () { userEdited = true; });
+        sel.addEventListener('change', function () {
+            if (!userEdited) {
+                ta.value = buildKunrenHoldMessage(name, month, sel.value);
+            } else {
+                // 先頭の「〜さんへ」だけ選んだ宛先に差し替え（本文の手編集は保持）。無ければ無変更。
+                ta.value = ta.value.replace(/^[^\n]*?さんへ/, sel.value + 'さんへ');
+            }
+        });
+
         const note = document.createElement('div');
         note.className = 'khs-note';
-        note.textContent = 'この文章で送ります。よろしいですか？（送信前に編集できます）';
+        note.textContent = 'この宛先・文章で送ります。よろしいですか？（送信前に編集できます）';
         const row = document.createElement('div');
         row.className = 'khs-btnrow';
         const cancelBtn = document.createElement('button');
@@ -1747,11 +1801,15 @@ function confirmKunrenHoldSend(name, month) {
         sendBtn.textContent = '送信';
         function done(result) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(result); }
         cancelBtn.onclick = function () { done(null); };
-        sendBtn.onclick = function () { done(ta.value.trim() || buildKunrenHoldMessage(name, month)); };
+        sendBtn.onclick = function () {
+            const body = ta.value.trim() || buildKunrenHoldMessage(name, month, sel.value);
+            done({ body: body, to: sel.value });
+        };
         ov.onclick = function (e) { if (e.target === ov) done(null); };
         row.appendChild(cancelBtn);
         row.appendChild(sendBtn);
         box.appendChild(title);
+        box.appendChild(toRow);
         box.appendChild(ta);
         box.appendChild(note);
         box.appendChild(row);
@@ -2314,6 +2372,18 @@ async function fetchStaffList() {
         return [];
     }
 }
+// 伝達ボードのスタッフマスタ（[{name,role,employ,active}]）。宛先セレクタの「特定スタッフ」populate用。
+// 失敗しても空配列で返す＝セレクタはグループのみ表示（デフォルト相談員で機能継続）。
+async function fetchDengonStaffMaster() {
+    try {
+        const res = await fetch(API_BASE + '?action=dengon_staff_master&t=' + Date.now());
+        const json = await res.json();
+        return (json && json.staff) || [];
+    } catch (e) {
+        console.warn('dengon_staff_master fetch failed', e);
+        return [];
+    }
+}
 async function openOperatorDialog() {
     const list = document.getElementById('operatorList');
     list.innerHTML = '<div style="padding:8px; color:#718096;">読み込み中...</div>';
@@ -2341,6 +2411,8 @@ window.addEventListener('load', async () => {
     if (!getOperator()) openOperatorDialog();  // 未選択なら強制モーダル
     // 測定者/出力者プルダウン用にスタッフ名簿を取得（失敗してもアプリは動く）
     fetchStaffList().then(staff => { state.staffNames = staff || []; });
+    // 確認依頼の宛先セレクタ「特定スタッフ」用にマスタを取得（失敗時は空＝グループのみ・デフォルト相談員で継続）
+    fetchDengonStaffMaster().then(m => { dengonStaffMaster = m || []; });
     await loadFiscalYearData();
     attachPressFeedback();
 });

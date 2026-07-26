@@ -78,6 +78,15 @@ ok(msg.indexOf('8月') >= 0, 'G3: メッセージに対象月が入る');
 ok(msg.indexOf('介護保険情報') >= 0 && msg.indexOf('作成できません') >= 0, 'G4: 未登録で作成できない旨が入る');
 ok(msg.indexOf('相談員') >= 0, 'G5: 相談員宛ての依頼型');
 
+// ===== G′. 宛名は toLabel に追従（宛先セレクタ連動）=====
+ok(msg.indexOf('相談員さんへ') === 0, 'G5a: toLabel省略時は「相談員さんへ」で始まる（後方互換）');
+const msgNs = run('buildKunrenHoldMessage("田中太郎", 8, "看護師")');
+ok(msgNs.indexOf('看護師さんへ') === 0, 'G5b: toLabel=看護師 → 「看護師さんへ」で始まる');
+ok(msgNs.indexOf('田中太郎') >= 0 && msgNs.indexOf('8月') >= 0, 'G5c: 宛先変更後も氏名・対象月は保持');
+const msgIndiv = run('buildKunrenHoldMessage("田中太郎", 8, "山田")');
+ok(msgIndiv.indexOf('山田さんへ') === 0, 'G5d: toLabel=特定個人 → 「〇〇さんへ」で始まる');
+ok(run('buildKunrenHoldMessage("田中太郎", 8, "")').indexOf('相談員さんへ') === 0, 'G5e: 空toLabelは相談員にフォールバック');
+
 ok(run('typeof blockedLabel') === 'function', 'G6: blockedLabel が定義されている');
 ok(run('blockedLabel("保険未登録")') === '保険未登録・作成不可', 'G7: 保険未登録 → 表示は「保険未登録・作成不可」');
 ok(run('blockedLabel("利用継続未確定")') === '利用継続未確定', 'G8: 他理由は表示変換しない');
