@@ -48,9 +48,20 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 .slide-btn { border: none; border-radius: 8px; padding: 5px 10px; font-size: .78em; font-weight: 700; cursor: pointer; background: #fff3e0; color: #e65100; font-family: inherit; white-space: nowrap; }
 .rec-btn + .slide-btn { margin-left: 6px; }
 .slide-btn:first-of-type { margin-left: auto; }
-.undo-bar { display: flex; align-items: center; gap: 10px; background: #2c3e50; color: #fff; border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; font-size: .88em; font-weight: 700; }
+/* Undoバーはスクロール位置に関係なく必ず見える位置へ固定する（2026-07-28: 見えていなかった疑い・1-9-6） */
+.undo-bar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); width: calc(100% - 24px); max-width: 720px;
+  display: flex; align-items: center; gap: 10px; background: #2c3e50; color: #fff; border-radius: 10px; padding: 12px 14px;
+  font-size: .92em; font-weight: 700; z-index: 200; box-shadow: 0 4px 16px rgba(0,0,0,.28); opacity: 1; transition: opacity 1.2s linear; }
+.undo-bar.fading { opacity: .25; }   /* 消える直前に薄くする＝「もう消える」が分かる */
 .undo-msg { flex: 1; }
-.undo-btn { border: none; border-radius: 8px; padding: 6px 12px; font-size: .9em; font-weight: 700; cursor: pointer; background: #ffd54f; color: #2c3e50; font-family: inherit; white-space: nowrap; }
+.undo-btn { border: none; border-radius: 8px; padding: 8px 14px; font-size: .95em; font-weight: 700; cursor: pointer; background: #ffd54f; color: #2c3e50; font-family: inherit; white-space: nowrap; }
+/* 送信中の行：押した瞬間にここが効く（応答は待たない） */
+.card.busy { background: #f5f7fa; box-shadow: inset 0 0 0 2px #4272D8; }
+.card.busy .nm { opacity: .75; }
+.card button[disabled] { opacity: .55; cursor: default; }
+/* 対象から外れた行はフェードしてから消す（一瞬で消えると押せた実感がない） */
+.card.leaving { opacity: 0; transform: translateX(14px); transition: opacity .45s ease, transform .45s ease; }
+.rowerr { margin-top: 6px; font-size: .82em; font-weight: 700; color: #c62828; background: #fdecea; border-radius: 6px; padding: 6px 8px; }
 .done-all { background: #e8f5e9; color: #2e7d32; border-radius: 12px; padding: 26px 12px; text-align: center; font-size: 1.5em; font-weight: 700; margin-bottom: 8px; }
 .ym-btn { border: 1px solid #cfd8dc; border-radius: 6px; padding: 2px 8px; font-size: 1em; font-weight: 700; cursor: pointer; background: #f7fafc; color: #37474f; font-family: inherit; white-space: nowrap; }
 .ym-btn:active { background: #eceff1; }
@@ -416,19 +427,30 @@ function yoteiLabel(r) {
   return (y === cur ? '' : y + '/') + m + '月' + (r.slideCount ? '（' + r.slideCount + '回スライド）' : '');
 }
 // showSlide: 「📅来月へ」を出すか（今日の優先タブのみ）／ showRec: 「📝今日測定した」を出すか
+// 送信中(busy)・フェード中(leaving)・失敗(rowErr) は state を見て描画に反映する。
+//   ボタンごとに個別実装せず runRowAction() 1本に集約している（同じ不具合を3箇所に作らない）。
 function rowCard(r, gray, tag, nextVisit, showSlide, showRec) {
   let remainHtml;
   if (r.unmeasured) remainHtml = '<span class="over">⚠️未測定（最優先）</span>';
   else if (r.remaining < 0) remainHtml = '<span class="over">⚠️超過 ' + (-r.remaining) + '日</span>';
   else remainHtml = '期限まで残り ' + r.remaining + '日';
+  const b = busy[r.name];                 // 送信中なら { which: 'slide'|'ym'|'rec' }
+  const dis = b ? ' disabled' : '';       // 送信中は同じ行の全ボタンを無効化（1-9-2）
+  const lbl = (which, normal) => (b && b.which === which) ? '⏳ 送信中…' : normal;
   // 記録ボタンは要介護・要支援等の両方に出す（段階1で addSokuteiDone に一本化）。
   const recBtn = showRec
-    ? '<button type="button" class="rec-btn" data-name="' + esc(r.name) + '" onclick="openRecordModal(this.dataset.name)">📝今日測定した</button>'
+    ? '<button type="button" class="rec-btn" data-name="' + esc(r.name) + '"' + dis
+      + ' onclick="openRecordModal(this.dataset.name)">' + lbl('rec', '📝今日測定した') + '</button>'
     : '';
   const slideBtn = showSlide
-    ? '<button type="button" class="slide-btn" data-name="' + esc(r.name) + '" onclick="slideToNextMonth(this.dataset.name)">📅来月へ</button>'
+    ? '<button type="button" class="slide-btn" data-name="' + esc(r.name) + '"' + dis
+      + ' onclick="slideToNextMonth(this.dataset.name)">' + lbl('slide', '📅来月へ') + '</button>'
     : '';
-  return '<div class="card b-' + r.badge + (gray ? ' gray' : '') + '" data-row="' + esc(r.name) + '">'
+  const errHtml = rowErr[r.name]
+    ? '<div class="rowerr">⚠ 変更できませんでした：' + esc(rowErr[r.name]) + '（もう一度お試しください）</div>'
+    : '';
+  return '<div class="card b-' + r.badge + (gray ? ' gray' : '')
+    + (b ? ' busy' : '') + (leaving[r.name] ? ' leaving' : '') + '" data-row="' + esc(r.name) + '">'
     + '<div class="rowline">'
     + '<span class="bdg">' + BADGE_EMOJI[r.badge] + '</span>'
     + '<span class="nm">' + esc(r.name) + '</span>'
@@ -437,11 +459,11 @@ function rowCard(r, gray, tag, nextVisit, showSlide, showRec) {
     + recBtn + slideBtn
     + '</div>'
     + '<div class="meta">前回測定 ' + esc(lastLabel(r))
-    + ' ／ <button type="button" class="ym-btn" data-name="' + esc(r.name) + '" onclick="openYmPicker(this.dataset.name)">予定 '
-    + esc(r.nextYm || '未設定') + ' ▾</button> ／ ' + remainHtml
+    + ' ／ <button type="button" class="ym-btn" data-name="' + esc(r.name) + '"' + dis
+    + ' onclick="openYmPicker(this.dataset.name)">' + lbl('ym', '予定 ' + esc(r.nextYm || '未設定') + ' ▾') + '</button> ／ ' + remainHtml
     + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
     + (nextVisit ? ' ／ 次回来館 ' + esc(nextVisit) : '')
-    + '</div></div>';
+    + '</div>' + errHtml + '</div>';
 }
 function showTab(n) {
   currentTab = n;
@@ -468,20 +490,24 @@ function renderTab1() {
   const ym = thisYm();
   const present = list.filter(a => a.status === '出席');
   // 段階1: 対象は「予定月 <= 当月」で絞る（過ぎている人も含む）。対象外は一切出さない（社長決定 5-1）。
-  const presentRows = sokuteiSort_(rowsOf(present).filter(r => isDue(r.nextYm, ym)));
-  const absentRows = sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')).filter(r => isDue(r.nextYm, ym)));
+  // ただしフェード中(leaving)の行だけは、消えていく様子を見せるため一時的に残す（1-9-3）。
+  const shown = r => isDue(r.nextYm, ym) || leaving[r.name];
+  const presentRows = sokuteiSort_(rowsOf(present).filter(shown));
+  const absentRows = sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')).filter(shown));
   // 「残り」= 今月が予定月だが本日来館していない人（別日に測る必要がある人数）
   const dueAll = Object.keys(derived.rowByName)
     .map(n => derived.rowByName[n])
     .filter(r => isDue(r.nextYm, ym));
   const presentNames = {}; present.forEach(a => { presentNames[a.name] = true; });
   const restCount = dueAll.filter(r => !presentNames[r.name]).length;
+  // ヘッダの人数はフェード中の行を除いた「実際の対象数」＝押した結果がすぐ数字に出る（1-9-3）
+  const dueCountNow = presentRows.filter(r => !leaving[r.name]).length;
 
   let html = '<div class="hdr">' + esc(fmtMD(state.today)) + '・来館予定' + present.length + '名中 '
-    + '今月の対象' + presentRows.length + '名（残り' + restCount + '名）</div>';
+    + '今月の対象' + dueCountNow + '名（残り' + restCount + '名）</div>';
   if (state.errs.yotei) html += '<div class="note">⚠ 予定月（getYotei）取得失敗のため全員を対象として表示しています：' + esc(state.errs.yotei) + '</div>';
   if (state.errs.usage) html += '<div class="note">⚠ 利用率（usage_stats）取得失敗のため E は残り回数のみで計算しています</div>';
-  if (!presentRows.length) {
+  if (!dueCountNow) {
     html += '<div class="done-all">今月ぶん完了 ✅</div>'
       + '<div class="note">本日来館の方で、今月が予定月の方はいません' + (restCount ? '（別日に測る方が ' + restCount + '名います）' : '') + '</div>';
   }
@@ -570,21 +596,67 @@ function renderTab3() {
   el.innerHTML = html;
 }
 
-// ===== 予定月スライド（📅来月へ）＋5秒Undo（newmail.html の5秒Undo方式に倣う）=====
-const UNDO_MS = 5000;
-let undoTimer = null;
+// ===== 操作フィードバック（2026-07-28 本番不具合の修正・最優先）=====
+// 事象: 「📅来月へ」を押しても画面が無反応で、押せていないと思って2回押し、2ヶ月進んで9月まで飛んだ。
+// 原因: サーバ応答を await してから renderAll() していたため、押した瞬間に何も変わらなかった。
+// 対策: 押下の瞬間に描画へ反映し、応答までその行の全ボタンを無効化する。
+//   ★3つのボタン（📅来月へ / 予定▾ / 今日測定した）は必ず runRowAction() を通す。
+//     個別に書くと同じ不具合を3箇所に作ることになる。
+const FADE_MS = 450;        // 対象から外れた行が消えるまでのフェード（一瞬で消えると押せた実感がない）
+const UNDO_MS = 5000;       // Undoバーの表示時間
+const UNDO_FADE_MS = 1200;  // 消える直前に薄くする時間（「もう消える」を伝える）
+const busy = {};            // name -> { which:'slide'|'ym'|'rec' } 送信中の行（in-flight ロック）
+const leaving = {};         // name -> true フェードして消える途中の行
+const rowErr = {};          // name -> 失敗メッセージ
+
+// 押下 → 即時フィードバック → 送信 → 成否の明示 までを1本化した共通ヘルパー。
+// 戻り: 成功なら fn() の返り値／送信しなかった・失敗なら null。
+async function runRowAction(name, which, fn) {
+  if (busy[name]) return null;   // 連打の2回目以降は送信しない（1-9-2）
+  busy[name] = { which: which };
+  delete rowErr[name];
+  renderAll();                   // ★応答を待たずに「⏳送信中…」＋無効化を出す（1-9-1）
+  try {
+    const out = await fn();
+    delete busy[name];
+    return out;
+  } catch (err) {
+    delete busy[name];
+    // 失敗したら表示を元に戻し、行に理由を出す（黙って戻さない・1-9-4）
+    rowErr[name] = (err && err.message) || String(err);
+    renderAll();
+    return null;
+  }
+}
+// 対象から外れた行をフェードさせてから消す（1-9-3）
+function fadeOutRow(name) {
+  leaving[name] = true;
+  renderAll();
+  setTimeout(function () { delete leaving[name]; renderAll(); }, FADE_MS);
+}
+
+// ===== 5秒Undoバー（newmail.html の5秒Undo方式に倣う・画面上部に固定表示）=====
+let undoTimer = null, undoFadeTimer = null;
 function hideUndoBar() {
   if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+  if (undoFadeTimer) { clearTimeout(undoFadeTimer); undoFadeTimer = null; }
   const bar = document.getElementById('undoBar');
-  if (bar) bar.style.display = 'none';
+  if (bar) { bar.style.display = 'none'; bar.className = 'undo-bar'; }
 }
 function showUndoBar(msg, onUndo) {
   const bar = document.getElementById('undoBar');
   bar.innerHTML = '<span class="undo-msg"></span><button type="button" class="undo-btn">↩戻す</button>';
   bar.querySelector('.undo-msg').textContent = msg;
   bar.querySelector('.undo-btn').onclick = function () { hideUndoBar(); return onUndo(); };
+  bar.className = 'undo-bar';           // fading を落として出し直す（連続操作でも必ず5秒見える）
   bar.style.display = 'flex';
   if (undoTimer) clearTimeout(undoTimer);
+  if (undoFadeTimer) clearTimeout(undoFadeTimer);
+  // 消える直前に薄くする＝「もう消える」が分かる（1-9-6）
+  undoFadeTimer = setTimeout(function () {
+    const b = document.getElementById('undoBar');
+    if (b) b.className = 'undo-bar fading';
+  }, UNDO_MS - UNDO_FADE_MS);
   undoTimer = setTimeout(hideUndoBar, UNDO_MS);
 }
 function operatorName() {
@@ -604,22 +676,16 @@ async function callYotei(action, name) {
   return res.row;
 }
 async function slideToNextMonth(name) {
-  try {
-    const row = await callYotei('slideYotei', name);
-    renderAll();   // 予定月が来月になる＝isDue から外れて行が消える
-    const m = +row.nextYm.slice(5, 7);
-    showUndoBar(name + ' を' + m + '月へ送りました', () => undoSlide(name));
-  } catch (err) {
-    alert('スライドに失敗しました：' + ((err && err.message) || err));
-  }
+  const row = await runRowAction(name, 'slide', () => callYotei('slideYotei', name));
+  if (!row) return;                                  // 連打の2回目 or 失敗（行に理由が出ている）
+  fadeOutRow(name);                                  // 予定月が来月＝isDue から外れる行をフェードで消す
+  const m = +row.nextYm.slice(5, 7);
+  showUndoBar(name + ' を' + m + '月へ送りました', () => undoSlide(name));
 }
 async function undoSlide(name) {
-  try {
-    await callYotei('undoSlideYotei', name);
-    renderAll();
-  } catch (err) {
-    alert('戻せませんでした：' + ((err && err.message) || err));
-  }
+  const row = await runRowAction(name, 'slide', () => callYotei('undoSlideYotei', name));
+  if (!row) return;
+  renderAll();
 }
 
 // ===== 月タップ（予定月を任意の月へ直接指定・2026-07-28 社長決定）=====
@@ -631,6 +697,7 @@ let ymPickerName = '';
 function openYmPicker(name) {
   const r = derived.rowByName[name];
   if (!r) return;
+  if (busy[name]) return;   // 送信中は開かせない（1-9-2）
   ymPickerName = name;
   document.getElementById('ymPickerName').textContent = name;
   const cur = r.nextYm || '';
@@ -673,22 +740,17 @@ async function pickYm(ym) {
   const prev = r.nextYm || '';
   closeYmPicker();
   if (ym === prev) return;   // 同じ月＝変更なし
-  try {
-    const row = await setYm(name, ym);
-    renderAll();
-    const m = +row.nextYm.slice(5, 7);
-    showUndoBar(name + ' を' + m + '月に変更しました', () => undoSetYm(name, prev));
-  } catch (err) {
-    alert('予定月の変更に失敗しました：' + ((err && err.message) || err));
-  }
+  const row = await runRowAction(name, 'ym', () => setYm(name, ym));
+  if (!row) return;
+  if (isDue(row.nextYm, thisYm())) renderAll(); else fadeOutRow(name);
+  const m = +row.nextYm.slice(5, 7);
+  showUndoBar(name + ' を' + m + '月に変更しました', () => undoSetYm(name, prev));
 }
 async function undoSetYm(name, prevYm) {
-  try {
-    if (prevYm) await setYm(name, prevYm);
-    renderAll();
-  } catch (err) {
-    alert('戻せませんでした：' + ((err && err.message) || err));
-  }
+  if (!prevYm) { renderAll(); return; }
+  const row = await runRowAction(name, 'ym', () => setYm(name, prevYm));
+  if (!row) return;
+  renderAll();
 }
 
 // ===== 「今日測定した」ワンタップ記録（段階1: 要介護・要支援等とも addSokuteiDone に一本化） =====
@@ -714,30 +776,31 @@ async function submitRecord() {
   const by = document.getElementById('recordStaffSelect').value;
   const note = document.getElementById('recordNote').value.trim();
   if (!name || !by) return;
+  if (busy[name]) return;                       // 送信中は二重送信しない（1-9-2）
   const btn = document.getElementById('recordConfirmBtn');
-  btn.disabled = true; btn.textContent = '記録中…';
+  btn.disabled = true; btn.textContent = '⏳ 記録中…';
   const r = derived.rowByName[name] || {};
-  try {
+  closeRecordModal();                           // モーダルは先に閉じ、行の「⏳送信中…」で進行を見せる
+  // スライド・月タップと同じ共通ヘルパーを通す（ボタンごとに個別実装しない・1-9-5）
+  const res = await runRowAction(name, 'rec', async () => {
     // addSokuteiDone = ①実施ログ追記 ②予定月を「実施月＋周期」へ更新 をセットで行う（GAS側でロールバック付き）
     const url = GAS + '?action=addSokuteiDone&userId=' + encodeURIComponent(r.userId || name)
       + '&name=' + encodeURIComponent(name)
       + '&care=' + encodeURIComponent(r.care || '')
       + '&date=' + todayStr() + '&by=' + encodeURIComponent(by)
       + '&note=' + encodeURIComponent(note) + '&t=' + Date.now();
-    const res = await fetchJson(url);
-    if (!res.ok || !res.verified) throw new Error((res && res.error) || '書き込み検証に失敗しました');
-    state.shien.push(res.log);
-    // 予定月をその場で反映（再取得せずに行が「済」として今日の優先から消える）
-    const yi = (state.yotei || []).findIndex(y => y.userId === res.yotei.userId && y.domain === res.yotei.domain);
-    if (yi >= 0) state.yotei[yi] = res.yotei; else state.yotei.push(res.yotei);
-    closeRecordModal();
-    buildDerived();
-    renderAll();
-  } catch (err) {
-    alert('記録に失敗しました：' + ((err && err.message) || err));
-  } finally {
-    btn.disabled = false; btn.textContent = '記録する';
-  }
+    const j = await fetchJson(url);
+    if (!j.ok || !j.verified) throw new Error((j && j.error) || '書き込み検証に失敗しました');
+    return j;
+  });
+  btn.disabled = false; btn.textContent = '記録する';
+  if (!res) return;                             // 失敗（行に理由が出ている）
+  state.shien.push(res.log);
+  // 予定月をその場で反映（再取得せずに行が「済」として今日の優先から消える）
+  const yi = (state.yotei || []).findIndex(y => y.userId === res.yotei.userId && y.domain === res.yotei.domain);
+  if (yi >= 0) state.yotei[yi] = res.yotei; else state.yotei.push(res.yotei);
+  buildDerived();
+  fadeOutRow(name);                             // 測定済みで対象から外れる行をフェードで消す（1-9-3）
 }
 
 load();

@@ -190,6 +190,11 @@ function makeSandbox() {
   return sandbox;
 }
 
+// 成功後の行は「フェードしてから消える」ようになった（2026-07-28 操作フィードバック改修）。
+// 保留中のフェードタイマー(450ms)を発火させて、消えた後の状態を見る。
+function flushFade() {
+  timers.filter(t => t.ms === 450 && !t.cleared).forEach(t => { t.cleared = true; t.fn(); });
+}
 function resetFixtures() {
   YOTEI_STATE = YOTEI.map(y => Object.assign({}, y));
   captured.writes.length = 0; captured.reads.length = 0; captured.shienRows.length = 0;
@@ -246,6 +251,7 @@ function resetFixtures() {
   eq(yoteiFind('ダミー介護A').nextYm, '2026-11', '予定月が 2026-11 になる');
   eq(yoteiFind('ダミー介護A').cycleMonths, 3, '★cycleMonths は 3 のまま（周期を変えない）');
   eq(elFor('ymPicker').style.display, 'none', 'ポップアップが閉じる');
+  flushFade();
   t1 = els['tab1'].innerHTML;
   eq(t1.indexOf('ダミー介護A') >= 0, false, '対象外になったので今日の優先から消える');
 
@@ -271,11 +277,13 @@ function resetFixtures() {
   await S.pickYm('2026-07');
   eq(yoteiFind('ダミー介護C').nextYm, '2026-07', '当月へ引き戻せる');
   eq(yoteiFind('ダミー介護C').cycleMonths, 3, 'cycleMonths 不変');
+  flushFade();
   t1 = els['tab1'].innerHTML;
   ok(t1.indexOf('ダミー介護C') >= 0, '今日の優先に現れる（対象に戻る）');
   // 後片付け: 8月へ戻す
   S.openYmPicker('ダミー介護C');
   await S.pickYm('2026-08');
+  flushFade();
   eq(yoteiFind('ダミー介護C').nextYm, '2026-08', '元に戻した');
 
   sec('5-3 「📅来月へ」→ slideYotei・行が消える・5秒Undo→ undoSlideYotei で戻る');
@@ -287,6 +295,7 @@ function resetFixtures() {
   ok(slideUrl.indexOf('by=') >= 0, '押した人(by)を渡す');
   eq(yoteiFind('ダミー介護A').nextYm, '2026-08', '予定月が +1ヶ月（2026-07→2026-08）');
   eq(yoteiFind('ダミー介護A').slideCount, 1, 'slideCount が +1');
+  flushFade();
   t1 = els['tab1'].innerHTML;
   eq(t1.indexOf('ダミー介護A') >= 0, false, 'その行が今日の優先から消える');
   ok(t1.indexOf('今月の対象1名') >= 0, 'ヘッダの対象人数が1名に減る');
@@ -316,6 +325,7 @@ function resetFixtures() {
   ok(doneUrl.indexOf('date=' + TODAY) >= 0, '実施日は今日');
   eq(captured.shienRows.length, shienBefore + 1, '実施ログが1行増える');
   eq(yoteiFind('ダミー介護A').nextYm, '2026-10', '予定月=実施月7月+3ヶ月=2026-10（要介護）');
+  flushFade();
   t1 = els['tab1'].innerHTML;
   eq(t1.indexOf('ダミー介護A') >= 0, false, '測定済みの行は今日の優先から消える');
   ok(t1.indexOf('今月の対象1名') >= 0, '対象が1名に減る');
@@ -328,6 +338,7 @@ function resetFixtures() {
   eq(yoteiFind('ダミー支援B').slideCount, 0, '実施でスライド回数が0に戻る');
 
   sec('5-5 対象0人で「今月ぶん完了 ✅」');
+  flushFade();
   t1 = els['tab1'].innerHTML;
   ok(t1.indexOf('今月ぶん完了 ✅') >= 0, '対象0人で完了表示が出る');
   ok(t1.indexOf('今月の対象0名（残り1名）') >= 0, 'ヘッダは対象0名・残り1名');
@@ -369,6 +380,133 @@ function resetFixtures() {
   ok(t1.indexOf('予定月（getYotei）取得失敗') >= 0, '取得失敗の注意書きが出る');
   ok(t1.indexOf('今月の対象3名') >= 0, '全員を対象として表示（測り漏れを作らない）');
   void sandbox2;
+
+  // ===================================================================
+  // 2026-07-28 本番不具合の回帰ガード
+  //   事象: 「📅来月へ」を押しても無反応 → 押せていないと思って2回押し、2ヶ月進んで9月まで飛んだ
+  // ===================================================================
+  sec('1-9-1 押した瞬間に見た目が変わる（サーバ応答を待たない）');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  let gate = null;
+  S.fetch = (url) => (url.indexOf('action=slideYotei') >= 0)
+    ? new Promise(res => { gate = () => res(fetchStub(url)); })   // 応答を保留する
+    : fetchStub(url);
+  const p1 = S.slideToNextMonth('ダミー介護A');   // await しない＝応答前の画面を見る
+  await Promise.resolve();
+  t1 = els['tab1'].innerHTML;
+  ok(t1.indexOf('⏳ 送信中…') >= 0, '★応答前に「⏳ 送信中…」が出る（無反応だった不具合の修正）');
+  ok(t1.indexOf(' busy"') >= 0, '応答前に行が送信中スタイルになる');
+
+  sec('1-9-2 送信中は同じ行の他のボタンも押せない');
+  const at = t1.indexOf('data-row="ダミー介護A"');
+  const card = t1.slice(at, t1.indexOf('</div></div>', at));
+  eq((card.match(/disabled/g) || []).length, 3, '📅来月へ・予定▾・今日測定した の3つとも disabled');
+  S.openYmPicker('ダミー介護A');
+  eq(elFor('ymPicker').style.display === 'flex', false, '送信中は月ピッカーが開かない');
+
+  sec('1-9-2 連打しても送信は1回だけ（in-flight ロック）★本番不具合の直接の再発防止');
+  const wBefore2 = captured.writes.length;
+  S.slideToNextMonth('ダミー介護A');
+  S.slideToNextMonth('ダミー介護A');              // 社長が踏んだ「効かないからもう1回」
+  await Promise.resolve();
+  eq(captured.writes.length, wBefore2, '2回目・3回目は送信されない');
+  gate();
+  await p1;
+  eq(captured.writes.filter(u => u.indexOf('action=slideYotei') >= 0).length, 1, '3回押しても slideYotei は1回');
+  eq(yoteiFind('ダミー介護A').nextYm, '2026-08', '★1ヶ月しか進まない（9月まで飛ばない）');
+  eq(yoteiFind('ダミー介護A').slideCount, 1, 'slideCount も +1 のみ');
+
+  sec('1-9-3 成功した行はフェードしてから消える');
+  t1 = els['tab1'].innerHTML;
+  ok(t1.indexOf('leaving') >= 0, 'フェード用クラスが付く（一瞬で消えない）');
+  ok(timers.some(t => t.ms === 450 && !t.cleared), 'フェードのタイマーが張られる');
+  flushFade();
+  t1 = els['tab1'].innerHTML;
+  eq(t1.indexOf('ダミー介護A') >= 0, false, 'フェード後に行が消える');
+  eq(t1.indexOf('leaving') >= 0, false, 'leaving クラスも消える');
+  ok(t1.indexOf('今月の対象1名') >= 0, 'ヘッダの対象人数も更新される');
+
+  sec('1-9-4 失敗したら表示が元に戻り、理由が行に出る');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  S.fetch = (url) => (url.indexOf('action=slideYotei') >= 0)
+    ? Promise.reject(new Error('通信エラー'))
+    : fetchStub(url);
+  await S.slideToNextMonth('ダミー介護A');
+  t1 = els['tab1'].innerHTML;
+  ok(t1.indexOf('変更できませんでした') >= 0, '「変更できませんでした」が出る');
+  ok(t1.indexOf('通信エラー') >= 0, '失敗の理由も出る');
+  eq(t1.indexOf('⏳ 送信中…') >= 0, false, '「送信中…」が残らない');
+  ok(t1.indexOf('ダミー介護A') >= 0, '行は消えずに残る（元の表示へ戻る）');
+  ok(t1.indexOf('予定 2026-07 ▾') >= 0, '予定月の表示も元のまま');
+  eq(yoteiFind('ダミー介護A').nextYm, '2026-07', 'サーバ側も変わっていない');
+  ok(t1.indexOf('今月の対象2名') >= 0, 'ヘッダの対象人数も元のまま');
+  eq(elFor('undoBar').style.display === 'flex', false, '失敗時はUndoバーを出さない');
+  S.fetch = fetchStub;
+  await S.slideToNextMonth('ダミー介護A');
+  eq(yoteiFind('ダミー介護A').nextYm, '2026-08', '失敗後もやり直せる（ロックが残らない）');
+
+  sec('1-9-5 月タップも同じヘルパーを通る（個別実装していない）');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  let gate2 = null;
+  S.fetch = (url) => (url.indexOf('action=setYotei') >= 0)
+    ? new Promise(res => { gate2 = () => res(fetchStub(url)); })
+    : fetchStub(url);
+  S.openYmPicker('ダミー介護A');
+  const p2 = S.pickYm('2026-11');
+  await Promise.resolve();
+  ok(els['tab1'].innerHTML.indexOf('⏳ 送信中…') >= 0, '月タップでも応答前に「送信中…」が出る');
+  const w2 = captured.writes.length;
+  S.openYmPicker('ダミー介護A');
+  await S.pickYm('2026-12');
+  eq(captured.writes.length, w2, '送信中の連打は送られない');
+  gate2();
+  await p2;
+  eq(yoteiFind('ダミー介護A').nextYm, '2026-11', '選んだ月に1回だけ変わる');
+
+  sec('1-9-5 「今日測定した」も同じヘルパーを通る');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  let gate3 = null;
+  S.fetch = (url) => (url.indexOf('action=addSokuteiDone') >= 0)
+    ? new Promise(res => { gate3 = () => res(fetchStub(url)); })
+    : fetchStub(url);
+  elFor('recordStaffSelect').value = 'スタッフY';
+  elFor('recordNote').value = '';
+  S.openRecordModal('ダミー介護A');
+  const p3 = S.submitRecord();
+  await Promise.resolve();
+  ok(els['tab1'].innerHTML.indexOf('⏳ 送信中…') >= 0, '「今日測定した」でも応答前に「送信中…」が出る');
+  const w3 = captured.writes.length;
+  S.openRecordModal('ダミー介護A');
+  await S.submitRecord();
+  eq(captured.writes.length, w3, '送信中の連打は送られない');
+  gate3();
+  await p3;
+  eq(captured.shienRows.length, 1, '実施ログは1行だけ（二重記録しない）');
+
+  sec('1-9-6 Undoバーがスクロール位置に関係なく必ず見える');
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  ok(/\.undo-bar\s*\{[^}]*position:\s*fixed/.test(css), '.undo-bar が position: fixed');
+  ok(/\.undo-bar\s*\{[^}]*z-index:\s*\d+/.test(css), 'z-index が指定されている（他要素に隠れない）');
+  ok(/\.undo-bar\.fading\s*\{[^}]*opacity/.test(css), '消える直前に薄くするクラスがある');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  await S.slideToNextMonth('ダミー介護A');
+  eq(elFor('undoBar').style.display, 'flex', 'Undoバーが表示される');
+  eq(elFor('undoBar').className, 'undo-bar', '出た直後は薄くない');
+  const fadeT = timers.filter(t => t.ms === 3800 && !t.cleared);
+  ok(fadeT.length >= 1, '消える1.2秒前に薄くするタイマーがある（5000-1200=3800ms）');
+  fadeT[0].fn();
+  eq(elFor('undoBar').className, 'undo-bar fading', '薄くなるクラスが付く');
+  ok(timers.some(t => t.ms === 5000 && !t.cleared), '5秒で消えるタイマーは従来どおり');
 
   console.log('\n=== 結果 ===');
   console.log('PASS ' + pass + ' / FAIL ' + fail);
