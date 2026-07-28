@@ -58,6 +58,23 @@ function nextYmSlide(ym) { return ymAdd(ym, 1); }
 // スライドの Undo = -1ヶ月。
 function nextYmUnslide(ym) { return ymAdd(ym, -1); }
 
+// 月タップの候補（2026-07-28 社長決定）: 当月から count ヶ月ぶんの 'YYYY-MM' を昇順で返す。
+// 過去月は出さない（＝先頭は必ず当月＝いつでも「今月の対象」に戻せる）。年跨ぎは ymAdd に委ねる。
+// 解釈不能・count<=0 は空配列（呼び出し側が落ちない）。既定は12ヶ月。
+function ymCandidates(fromYm, count) {
+  var n = parseInt(count, 10);
+  if (isNaN(n)) n = 12;
+  if (n <= 0) return [];
+  if (!_yoteiParseYm_(fromYm)) return [];
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var ym = ymAdd(fromYm, i);
+    if (!ym) return [];
+    out.push(ym);
+  }
+  return out;
+}
+
 // 当月の対象か。過ぎている人（予定月 < 当月）も必ず対象に含める。
 // 予定月が未設定('')は「漏れ」なので対象に出す。
 function isDue(nextYm, thisYm) {
@@ -150,6 +167,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextYmAfterDone: nextYmAfterDone,
     nextYmSlide: nextYmSlide,
     nextYmUnslide: nextYmUnslide,
+    ymCandidates: ymCandidates,
     isDue: isDue,
     buildInitialYotei: buildInitialYotei
   };

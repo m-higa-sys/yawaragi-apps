@@ -185,6 +185,40 @@ sec('name/note は空で更新しても既存値を消さない');
 G.writeYotei_('U2', 'sokutei', { nextYm: '2026-12', by: 'staffZ' });
 eq(G.findYotei_('U2', 'sokutei').name, 'ダミー2', 'name が消えない');
 
+// =====================================================================
+// 月タップ（2026-07-28 社長決定）: 予定月だけを動かし、その人の周期は絶対に変えない。
+// setYotei は care を受け取れるが、既存行の cycleMonths を書き換えてはならない。
+sec('⚠️既存行の cycleMonths は書き換わらない（月タップの肝）');
+eq(G.findYotei_('U2', 'sokutei').cycleMonths, 4, '前提: U2 は要支援＝4');
+// setYotei 相当（care を渡しても既存行の周期は動かない）
+G.writeYotei_('U2', 'sokutei', { name: 'ダミー2', care: '要介護2', nextYm: '2027-03', by: 'staffZ' });
+eq(G.findYotei_('U2', 'sokutei').nextYm, '2027-03', '予定月は任意の月へ変わる');
+eq(G.findYotei_('U2', 'sokutei').cycleMonths, 4, '★care=要介護2 を渡しても cycleMonths は 4 のまま');
+// 逆向き（要介護の行に要支援の care を渡す）
+eq(G.findYotei_('U1', 'sokutei').cycleMonths, 3, '前提: U1 は要介護＝3');
+G.writeYotei_('U1', 'sokutei', { name: 'ダミー1', care: '要支援1', nextYm: '2026-09', by: 'staffZ' });
+eq(G.findYotei_('U1', 'sokutei').cycleMonths, 3, '★care=要支援1 を渡しても cycleMonths は 3 のまま');
+eq(G.findYotei_('U1', 'sokutei').nextYm, '2026-09', '予定月だけが変わる');
+// スライドでも周期は動かない
+G.writeYotei_('U1', 'sokutei', { nextYm: '2026-10', by: 'staffZ', slideDelta: 1 });
+eq(G.findYotei_('U1', 'sokutei').cycleMonths, 3, 'スライドでも cycleMonths 不変');
+// 実施記録(addSokuteiDone)だけは介護度変更を反映できる（syncCycleFromCare 明示時のみ）
+G.writeYotei_('U1', 'sokutei', { care: '要支援1', nextYm: '2026-11', by: 'staffZ', resetSlide: true, syncCycleFromCare: true });
+eq(G.findYotei_('U1', 'sokutei').cycleMonths, 4, 'syncCycleFromCare:true のときだけ介護度から引き直す');
+G.writeYotei_('U1', 'sokutei', { care: '要介護2', nextYm: '2026-12', by: 'staffZ', resetSlide: true, syncCycleFromCare: true });
+eq(G.findYotei_('U1', 'sokutei').cycleMonths, 3, '戻せることも確認');
+// 明示的な cycleMonths は従来どおり優先
+G.writeYotei_('U1', 'sokutei', { nextYm: '2027-01', by: 'staffZ', cycleMonths: 6 });
+eq(G.findYotei_('U1', 'sokutei').cycleMonths, 6, '明示 cycleMonths は反映される（将来の分野用）');
+
+sec('新規行では care から周期を決める（月タップで行が無い人にも使える）');
+const nr = G.writeYotei_('U9', 'sokutei', { name: 'ダミー9', care: '要介護1', nextYm: '2026-10', by: 'staffZ' });
+ok(nr.ok, '新規行が作れる');
+eq(G.findYotei_('U9', 'sokutei').cycleMonths, 3, '新規は care から 3');
+const nr2 = G.writeYotei_('U10', 'sokutei', { name: 'ダミー10', care: '事業対象者', nextYm: '2026-10', by: 'staffZ' });
+eq(G.findYotei_('U10', 'sokutei').cycleMonths, 4, '新規（事業対象者）は 4');
+void nr2;
+
 console.log('\n=== 結果 ===');
 console.log('PASS ' + pass + ' / FAIL ' + fail);
 process.exit(fail ? 1 : 0);

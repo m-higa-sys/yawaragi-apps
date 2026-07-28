@@ -3337,8 +3337,11 @@ function doGet(e) {
         // ② 予定月を 実施月＋周期 へ
         var adCycle = sokuteiCycleMonths_(adCare);
         var adNextYm = nextYmAfterDone(adDate, adCycle);
+        // syncCycleFromCare: 実施時だけは介護度から周期を引き直す（区分変更に追随）。
+        //   setYotei / slideYotei は渡さない＝月タップ・スライドでは周期不変（2026-07-28 社長決定）。
         var adRes = writeYotei_(adUserId, 'sokutei', {
-          name: adName, care: adCare, nextYm: adNextYm, by: adBy, slideDelta: 0, resetSlide: true
+          name: adName, care: adCare, nextYm: adNextYm, by: adBy, slideDelta: 0,
+          resetSlide: true, syncCycleFromCare: true
         });
         if (!adRes.ok) throw new Error(adRes.error || '予定月の更新に失敗しました');
         return respond({
@@ -15029,6 +15032,12 @@ function findYotei_(userId, domain) {
 // (userId, domain) の1行を upsert。返り: { ok, row } / { ok:false, error }
 //   opts.slideDelta … slideCount への加算（0未満にはしない）
 //   opts.resetSlide … true で slideCount を0に戻す（実施時＝サイクルが正常に戻ったとき）
+//   opts.syncCycleFromCare … true のときだけ、既存行の cycleMonths を介護度から引き直す。
+//       既定(false)では既存行の cycleMonths を絶対に書き換えない。
+//       2026-07-28 社長決定「月タップで動かすのは予定月だけ。その人の周期は変えない」の構造的保証。
+//       setYotei / slideYotei / undoSlideYotei は渡さない＝周期不変。
+//       addSokuteiDone だけが渡す＝介護度が変わった人の周期を実施時に追随させる。
+//   opts.cycleMonths … 明示指定は常に最優先（将来の分野で周期を外から決めたい場合）
 function writeYotei_(userId, domain, opts) {
   var o = opts || {};
   var nextYm = String(o.nextYm || '').trim();
@@ -15048,14 +15057,19 @@ function writeYotei_(userId, domain, opts) {
     }
     var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
     var cycle = parseInt(o.cycleMonths, 10);
-    if (!(cycle >= 1 && cycle <= 12)) cycle = sokuteiCycleMonths_(o.care || '');
+    var hasExplicitCycle = (cycle >= 1 && cycle <= 12);
+    if (!hasExplicitCycle) cycle = sokuteiCycleMonths_(o.care || '');
     var slide = 0, name = String(o.name || '').trim(), note = String(o.note || '').trim();
     if (rowIdx > 0) {
       var cur = yoteiRowToObj_(values[rowIdx - 1]);
       slide = cur.slideCount;
       if (!name) name = cur.name;
       if (!note) note = cur.note;
-      if (!o.cycleMonths && !o.care && cur.cycleMonths) cycle = cur.cycleMonths;
+      // 既存行の周期は保持が既定。care を渡されても書き換えない（月タップで周期が動かないことの保証）。
+      // 介護度から引き直すのは syncCycleFromCare を明示したとき（= addSokuteiDone）だけ。
+      if (!hasExplicitCycle && cur.cycleMonths) {
+        if (!(o.syncCycleFromCare && o.care)) cycle = cur.cycleMonths;
+      }
     }
     if (o.resetSlide) slide = 0;
     else slide = slide + (parseInt(o.slideDelta, 10) || 0);

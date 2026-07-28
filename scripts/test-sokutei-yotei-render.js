@@ -132,6 +132,16 @@ function fetchStub(url) {
       row.updatedBy = param(url, 'by');
       data = { ok: true, row: Object.assign({}, row) };
     }
+  } else if (url.indexOf('action=setYotei') >= 0) {
+    captured.writes.push(url);
+    const row = yoteiFind(param(url, 'userId'));
+    if (!row) data = { ok: false, error: 'not found' };
+    else {
+      // 本番 writeYotei_ と同じ規約: 既存行の cycleMonths は care を渡されても書き換えない
+      row.nextYm = param(url, 'nextYm');
+      row.updatedBy = param(url, 'by');
+      data = { ok: true, row: Object.assign({}, row) };
+    }
   } else if (url.indexOf('action=addSokuteiDone') >= 0) {
     captured.writes.push(url);
     const uid = param(url, 'userId'), nm = param(url, 'name'), care = param(url, 'care'), date = param(url, 'date');
@@ -175,6 +185,7 @@ function makeSandbox() {
   // 本番は <script src="shared.js"> / <script src="gas/yawaragi-board/yotei-core.js"> で読む分
   ['sokuteiCycleMonths_', 'sokuteiDueDate_'].forEach(n => vm.runInContext(extractFn(shared, n), sandbox));
   vm.runInContext(yoteiSrc.replace(/if \(typeof module[\s\S]*$/, ''), sandbox);
+  sandbox.ymCandidates = vm.runInContext('ymCandidates', sandbox);
   vm.runInContext(script0, sandbox);
   return sandbox;
 }
@@ -199,9 +210,73 @@ function resetFixtures() {
   ok(t1.indexOf('ダミー支援B') >= 0, '予定月=先月（過ぎている）も出る');
   eq(t1.indexOf('ダミー介護C') >= 0, false, '予定月=来月 は一切出ない（対象外）');
   eq(t1.indexOf('ダミー支援D') >= 0, false, '本日来館なしは優先リストに出ない（残りに計上）');
-  ok(t1.indexOf('予定月 7月') >= 0, '各行に予定月を併記');
+  ok(t1.indexOf('予定 2026-07 ▾') >= 0, '各行に予定月を併記（社長指定の「予定 YYYY-MM」形式）');
   ok(t1.indexOf('📅来月へ') >= 0, '「📅来月へ」ボタンがある');
   ok(t1.indexOf('📝今日測定した') >= 0, '要介護にも「📝今日測定した」が出る（段階1で一本化）');
+
+  sec('月タップ: 予定月の表示がボタンになっている（両タブ）');
+  ok(t1.indexOf('class="ym-btn"') >= 0, '今日の優先タブに予定月ボタンがある');
+  ok(t1.indexOf('予定 2026-07 ▾') >= 0, '現在の予定月を表示（YYYY-MM）');
+  ok(t1.indexOf('openYmPicker') >= 0, 'タップで openYmPicker が呼ばれる配線');
+  ok(els['tab2'].innerHTML.indexOf('class="ym-btn"') >= 0, '全利用者タブにも予定月ボタンがある');
+  ok(els['tab2'].innerHTML.indexOf('予定 2026-08 ▾') >= 0, '対象外（来月予定）の人にもボタンが出る');
+
+  sec('月タップ: 候補は当月から12個・過去月なし・現在月にチェック');
+  S.openYmPicker('ダミー介護A');
+  const grid = elFor('ymPickerGrid').innerHTML;
+  eq((grid.match(/class="ym-cell/g) || []).length, 12, '候補はちょうど12個');
+  eq(elFor('ymPickerName').textContent, 'ダミー介護A', '対象者名が出る');
+  eq(elFor('ymPicker').style.display, 'flex', 'ポップアップが開く');
+  ok(grid.indexOf('data-ym="2026-07"') >= 0, '当月(2026-07)が候補にある＝対象に戻せる');
+  ok(grid.indexOf('data-ym="2027-06"') >= 0, '11ヶ月先(2027-06)まである');
+  eq(grid.indexOf('data-ym="2026-06"') >= 0, false, '過去月(2026-06)は出ない');
+  eq(grid.indexOf('data-ym="2027-07"') >= 0, false, '12ヶ月より先は出ない');
+  ok(grid.indexOf('ym-cell sel') >= 0, '現在の予定月にチェック用クラスが付く');
+  ok(grid.indexOf('✓ 7月') >= 0, '現在の予定月(7月)にチェックマーク');
+
+  sec('月タップ: 選ぶと nextYm が変わり cycleMonths は変わらない');
+  const cycBefore = yoteiFind('ダミー介護A').cycleMonths;
+  eq(cycBefore, 3, '前提: 要介護＝3ヶ月周期');
+  await S.pickYm('2026-11');
+  const setUrl = captured.writes[captured.writes.length - 1];
+  ok(setUrl.indexOf('action=setYotei') >= 0, 'setYotei を呼ぶ（新APIは足していない）');
+  ok(setUrl.indexOf('nextYm=2026-11') >= 0, '選んだ月を渡す');
+  ok(setUrl.indexOf('domain=sokutei') >= 0, 'domain を渡す');
+  ok(setUrl.indexOf('by=') >= 0, '押した人(by)を渡す');
+  eq(yoteiFind('ダミー介護A').nextYm, '2026-11', '予定月が 2026-11 になる');
+  eq(yoteiFind('ダミー介護A').cycleMonths, 3, '★cycleMonths は 3 のまま（周期を変えない）');
+  eq(elFor('ymPicker').style.display, 'none', 'ポップアップが閉じる');
+  t1 = els['tab1'].innerHTML;
+  eq(t1.indexOf('ダミー介護A') >= 0, false, '対象外になったので今日の優先から消える');
+
+  sec('月タップ: 5秒Undoで元の月へ戻る');
+  eq(elFor('undoBar').style.display, 'flex', 'Undoバーが出る');
+  eq(elFor('undoBar').querySelector('.undo-msg').textContent, 'ダミー介護A を11月に変更しました', 'Undoバーの文言');
+  ok(timers.some(t => t.ms === 5000 && !t.cleared), '5秒タイマーが張られる');
+  await elFor('undoBar').querySelector('.undo-btn').onclick();
+  eq(yoteiFind('ダミー介護A').nextYm, '2026-07', '元の 2026-07 に戻る');
+  eq(yoteiFind('ダミー介護A').cycleMonths, 3, '戻しても cycleMonths は 3');
+  t1 = els['tab1'].innerHTML;
+  ok(t1.indexOf('ダミー介護A') >= 0, '今日の優先に復活する');
+
+  sec('月タップ: 同じ月を選んだら何もしない');
+  const wBefore = captured.writes.length;
+  S.openYmPicker('ダミー介護A');
+  await S.pickYm('2026-07');
+  eq(captured.writes.length, wBefore, '同月選択では書き込みAPIを叩かない');
+
+  sec('月タップ: 対象外（来月予定）の人の月も変更できる');
+  S.openYmPicker('ダミー介護C');
+  eq(elFor('ymPickerGrid').innerHTML.indexOf('✓ 8月') >= 0, true, '対象外の人は8月にチェック');
+  await S.pickYm('2026-07');
+  eq(yoteiFind('ダミー介護C').nextYm, '2026-07', '当月へ引き戻せる');
+  eq(yoteiFind('ダミー介護C').cycleMonths, 3, 'cycleMonths 不変');
+  t1 = els['tab1'].innerHTML;
+  ok(t1.indexOf('ダミー介護C') >= 0, '今日の優先に現れる（対象に戻る）');
+  // 後片付け: 8月へ戻す
+  S.openYmPicker('ダミー介護C');
+  await S.pickYm('2026-08');
+  eq(yoteiFind('ダミー介護C').nextYm, '2026-08', '元に戻した');
 
   sec('5-3 「📅来月へ」→ slideYotei・行が消える・5秒Undo→ undoSlideYotei で戻る');
   await S.slideToNextMonth('ダミー介護A');
@@ -264,7 +339,7 @@ function resetFixtures() {
   });
   ok(t2.indexOf('全 4名') >= 0, 'ヘッダは全4名');
   ok(t2.indexOf('うち今月が予定月 1名') >= 0, '今月が予定月の人数を併記');
-  ok(t2.indexOf('予定月 8月') >= 0, '対象外の人の予定月も見える');
+  ok(t2.indexOf('予定 2026-08 ▾') >= 0, '対象外の人の予定月も見える');
   eq(t2.indexOf('📅来月へ') >= 0, false, '全利用者タブにはスライドボタンを出さない（誤操作防止）');
 
   sec('予定月シートに行が無い人は「未設定」で対象に出す（漏れ検知）');
@@ -274,7 +349,7 @@ function resetFixtures() {
   await S.load();
   t1 = els['tab1'].innerHTML;
   ok(t1.indexOf('ダミー介護A') >= 0, '予定月が無い人も対象に出る');
-  ok(t1.indexOf('予定月 未設定') >= 0, '「未設定」と表示される');
+  ok(t1.indexOf('予定 未設定 ▾') >= 0, '「未設定」と表示される（タップして設定できる）');
 
   sec('getYotei が落ちても画面は死なない（全員対象へフォールバック）');
   resetFixtures();

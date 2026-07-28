@@ -52,6 +52,12 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 .undo-msg { flex: 1; }
 .undo-btn { border: none; border-radius: 8px; padding: 6px 12px; font-size: .9em; font-weight: 700; cursor: pointer; background: #ffd54f; color: #2c3e50; font-family: inherit; white-space: nowrap; }
 .done-all { background: #e8f5e9; color: #2e7d32; border-radius: 12px; padding: 26px 12px; text-align: center; font-size: 1.5em; font-weight: 700; margin-bottom: 8px; }
+.ym-btn { border: 1px solid #cfd8dc; border-radius: 6px; padding: 2px 8px; font-size: 1em; font-weight: 700; cursor: pointer; background: #f7fafc; color: #37474f; font-family: inherit; white-space: nowrap; }
+.ym-btn:active { background: #eceff1; }
+.ym-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 4px; }
+.ym-cell { border: 1px solid #cfd8dc; border-radius: 8px; padding: 12px 4px; font-size: 1em; font-weight: 700; cursor: pointer; background: #fff; color: #2c3e50; font-family: inherit; }
+.ym-cell.sel { background: #4272D8; color: #fff; border-color: #4272D8; }
+.ym-cell:active { background: #eceff1; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
 .modal-box { background: #fff; border-radius: 14px; padding: 20px; width: 100%; max-width: 340px; box-shadow: 0 6px 24px rgba(0,0,0,.2); }
 .modal-title { font-weight: 700; color: #2c3e50; font-size: 1.05em; margin-bottom: 6px; }
@@ -92,6 +98,17 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
     <div class="modal-actions">
       <button type="button" class="modal-btn cancel" onclick="closeRecordModal()">キャンセル</button>
       <button type="button" class="modal-btn confirm" id="recordConfirmBtn" onclick="submitRecord()">記録する</button>
+    </div>
+  </div>
+</div>
+<div id="ymPicker" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeYmPicker()">
+  <div class="modal-box">
+    <div class="modal-title">📅 次回の測定予定月</div>
+    <div class="modal-name" id="ymPickerName"></div>
+    <div class="ym-grid" id="ymPickerGrid"></div>
+    <div class="note">※変わるのは予定月だけです。測定周期（要介護3ヶ月／要支援等4ヶ月）は変わりません。</div>
+    <div class="modal-actions">
+      <button type="button" class="modal-btn cancel" onclick="closeYmPicker()">キャンセル</button>
     </div>
   </div>
 </div>
@@ -419,7 +436,9 @@ function rowCard(r, gray, tag, nextVisit, showSlide, showRec) {
     + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
     + recBtn + slideBtn
     + '</div>'
-    + '<div class="meta">前回測定 ' + esc(lastLabel(r)) + ' ／ 予定月 ' + esc(yoteiLabel(r)) + ' ／ ' + remainHtml
+    + '<div class="meta">前回測定 ' + esc(lastLabel(r))
+    + ' ／ <button type="button" class="ym-btn" data-name="' + esc(r.name) + '" onclick="openYmPicker(this.dataset.name)">予定 '
+    + esc(r.nextYm || '未設定') + ' ▾</button> ／ ' + remainHtml
     + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
     + (nextVisit ? ' ／ 次回来館 ' + esc(nextVisit) : '')
     + '</div></div>';
@@ -597,6 +616,75 @@ async function slideToNextMonth(name) {
 async function undoSlide(name) {
   try {
     await callYotei('undoSlideYotei', name);
+    renderAll();
+  } catch (err) {
+    alert('戻せませんでした：' + ((err && err.message) || err));
+  }
+}
+
+// ===== 月タップ（予定月を任意の月へ直接指定・2026-07-28 社長決定）=====
+// ケアプラン変更などのイレギュラーに、スタッフがその場で予定月を動かすための入口。
+// ⚠️動かすのは予定月(nextYm)だけ。その人の周期(cycleMonths)は変えない
+//   （GAS側 writeYotei_ が syncCycleFromCare を渡されない限り既存の周期を保持する＝構造的保証）。
+// 「📅来月へ」は「よくあるケースの近道」として残す。こちらはイレギュラー用。
+let ymPickerName = '';
+function openYmPicker(name) {
+  const r = derived.rowByName[name];
+  if (!r) return;
+  ymPickerName = name;
+  document.getElementById('ymPickerName').textContent = name;
+  const cur = r.nextYm || '';
+  // 候補は当月から12ヶ月（過去月は出さない＝先頭が当月なので「今月の対象」へ戻せる）
+  const list = ymCandidates(thisYm(), 12);
+  document.getElementById('ymPickerGrid').innerHTML = list.map(ym => {
+    const sel = (ym === cur);
+    const m = +ym.slice(5, 7), y = +ym.slice(0, 4);
+    const label = (y === +state.today.slice(0, 4) ? '' : y + '/') + m + '月';
+    return '<button type="button" class="ym-cell' + (sel ? ' sel' : '') + '" data-ym="' + esc(ym) + '"'
+      + ' onclick="pickYm(this.dataset.ym)">' + (sel ? '✓ ' : '') + esc(label) + '</button>';
+  }).join('');
+  document.getElementById('ymPicker').style.display = 'flex';
+}
+function closeYmPicker() {
+  document.getElementById('ymPicker').style.display = 'none';
+  ymPickerName = '';
+}
+async function setYm(name, ym) {
+  const r = derived.rowByName[name];
+  if (!r) throw new Error('対象が見つかりません');
+  // care は「予定月シートに行が無い人」の新規作成時にだけ周期の決定材料として使われる。
+  // 既存行の周期は GAS 側で保持されるため、ここで care を送っても周期は動かない。
+  const url = GAS + '?action=setYotei&userId=' + encodeURIComponent(r.userId || r.name)
+    + '&domain=sokutei&nextYm=' + encodeURIComponent(ym)
+    + '&name=' + encodeURIComponent(r.name)
+    + '&care=' + encodeURIComponent(r.care || '')
+    + '&by=' + encodeURIComponent(operatorName()) + '&t=' + Date.now();
+  const res = await fetchJson(url);
+  if (!res.ok) throw new Error((res && res.error) || '更新に失敗しました');
+  r.nextYm = res.row.nextYm;
+  r.slideCount = res.row.slideCount;
+  r.hasYotei = true;
+  return res.row;
+}
+async function pickYm(ym) {
+  const name = ymPickerName;
+  const r = derived.rowByName[name];
+  if (!r) return;
+  const prev = r.nextYm || '';
+  closeYmPicker();
+  if (ym === prev) return;   // 同じ月＝変更なし
+  try {
+    const row = await setYm(name, ym);
+    renderAll();
+    const m = +row.nextYm.slice(5, 7);
+    showUndoBar(name + ' を' + m + '月に変更しました', () => undoSetYm(name, prev));
+  } catch (err) {
+    alert('予定月の変更に失敗しました：' + ((err && err.message) || err));
+  }
+}
+async function undoSetYm(name, prevYm) {
+  try {
+    if (prevYm) await setYm(name, prevYm);
     renderAll();
   } catch (err) {
     alert('戻せませんでした：' + ((err && err.message) || err));
