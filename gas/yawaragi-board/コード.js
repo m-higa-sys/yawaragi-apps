@@ -3306,8 +3306,14 @@ function doGet(e) {
       var adDate = String((e && e.parameter && e.parameter.date) || '').trim();
       var adBy = String((e && e.parameter && e.parameter.by) || '').trim();
       var adNote = String((e && e.parameter && e.parameter.note) || '').trim();
+      // 出力者（2026-07-28 案X-5）。要介護のみ。未指定なら測定者を出力者とみなす（測定アプリ①と同規約）。
+      var adOutputBy = String((e && e.parameter && e.parameter.outputBy) || '').trim();
       if (!adUserId || !/^\d{4}-\d{2}-\d{2}$/.test(adDate)) {
         return respond({ ok: false, error: 'invalid params (userId, date=YYYY-MM-DD required)' }, callback);
+      }
+      // 未来日は実施記録としてありえない（予定月が測定日の月＋周期で先へ飛んでしまう）。画面側でも塞いでいる。
+      if (adDate > Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd')) {
+        return respond({ ok: false, error: '未来の日付では記録できません（date=' + adDate + '）' }, callback);
       }
       var adLock = LockService.getScriptLock();
       try { adLock.waitLock(10000); } catch (adLockErr) {
@@ -3322,15 +3328,18 @@ function doGet(e) {
             if (adUsers[adU].name === adName || adUsers[adU].userId === adUserId) { adCare = adUsers[adU].category; break; }
           }
         }
+        // 出力者は要介護のみ。空欄なら測定者を採用。要支援・事業対象者は常に空（出力者の概念が無い）。
+        var adIsKaigo = String(adCare).indexOf('要介護') === 0;
+        var adOut = adIsKaigo ? (adOutputBy || adBy) : '';
         // ① 実施ログ追記＋読み戻し検証
         adSheet = ensureShienSokuteiSheet_();
         var adNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
         adWriteRow = adSheet.getLastRow() + 1;
-        var adRange = adSheet.getRange(adWriteRow, 1, 1, 7);
+        var adRange = adSheet.getRange(adWriteRow, 1, 1, SHIEN_SOKUTEI_HEADERS_.length);
         adRange.setNumberFormat('@');
-        adRange.setValues([[adName, adCare, adDate, adBy, 'app', adNote, adNow]]);
+        adRange.setValues([[adName, adCare, adDate, adBy, 'app', adNote, adNow, adOut]]);
         SpreadsheetApp.flush();
-        var adCheck = adSheet.getRange(adWriteRow, 1, 1, 7).getValues()[0];
+        var adCheck = adSheet.getRange(adWriteRow, 1, 1, SHIEN_SOKUTEI_HEADERS_.length).getValues()[0];
         if (!(String(adCheck[0]) === adName && String(adCheck[2]) === adDate)) {
           throw new Error('実施ログの書き込み検証に失敗しました');
         }
@@ -3346,7 +3355,7 @@ function doGet(e) {
         if (!adRes.ok) throw new Error(adRes.error || '予定月の更新に失敗しました');
         return respond({
           ok: true, verified: true,
-          log: { name: adName, care: adCare, sokutei_date: adDate, sokutei_by: adBy, source: 'app', note: adNote },
+          log: { name: adName, care: adCare, sokutei_date: adDate, sokutei_by: adBy, source: 'app', note: adNote, output_by: adOut },
           yotei: adRes.row
         }, callback);
       } catch (adErr) {
@@ -14928,20 +14937,30 @@ function ensureSoufuLedgerSheet_() {
 }
 
 // 要支援測定記録（sokutei Phase B・設計書2026-07-02 §5-6準拠）
-// 要支援/事業対象者の身体機能測定記録。要介護分は個別機能訓練計画書記録シートの
-// sokutei_date/sokutei_by を使う（既存・別シート・このシートとは無関係）。
+// 元は要支援/事業対象者だけの記録シートだったが、予定月スライド方式 段階1（2026-07-28）以降は
+// addSokuteiDone が要介護ぶんもここへ書く＝測定の実施ログの単一の正へ寄せていく途中。
+// （要介護は段階1の間だけ個別機能訓練計画書記録の 13〜15列目にも書ける。片寄せは段階3。）
 // source: 'paper'（紙台帳投入）／'app'（アプリからのワンタップ記録）
+// 8列目 output_by は後付け（2026-07-28 案X-5）。要介護のみ埋まる。
+//   要支援・事業対象者には出力者という概念が無いので常に空（ⓑ確定・measure-core.js §msRouteWrite）。
+// ⚠️ 列を増設する場合は 'A:H' の書式範囲もセットで拡張すること（範囲外の新列はDate解釈が復活する）。
+var SHIEN_SOKUTEI_HEADERS_ = ['name', 'care', 'sokutei_date', 'sokutei_by', 'source', 'note', 'createdAt', 'output_by'];
+
 function ensureShienSokuteiSheet_() {
   var ss = SpreadsheetApp.openById(SS_ID);
   var sheet = ss.getSheetByName('要支援測定記録');
   if (!sheet) {
     sheet = ss.insertSheet('要支援測定記録');
-    sheet.getRange(1, 1, 1, 7).setValues([[
-      'name', 'care', 'sokutei_date', 'sokutei_by', 'source', 'note', 'createdAt'
-    ]]);
+    sheet.getRange(1, 1, 1, SHIEN_SOKUTEI_HEADERS_.length).setValues([SHIEN_SOKUTEI_HEADERS_]);
+  } else {
+    // 後付け列の補完（冪等・additive・既存7列は一切触らない）
+    var lastCol = sheet.getLastColumn();
+    for (var hi = lastCol; hi < SHIEN_SOKUTEI_HEADERS_.length; hi++) {
+      sheet.getRange(1, hi + 1).setValue(SHIEN_SOKUTEI_HEADERS_[hi]);
+    }
   }
   // 全列テキスト書式（冪等）: シートTZによる日時文字列のDate自動解釈を根絶する。
-  sheet.getRange('A:G').setNumberFormat('@');
+  sheet.getRange('A:H').setNumberFormat('@');
   return sheet;
 }
 
@@ -14952,7 +14971,8 @@ function shienSokuteiRowToObj_(row) {
     sokutei_date: String(row[2] || '').trim(),
     sokutei_by: String(row[3] || '').trim(),
     source: String(row[4] || '').trim(),
-    note: String(row[5] || '').trim()
+    note: String(row[5] || '').trim(),
+    output_by: String(row[7] || '').trim()
   };
 }
 

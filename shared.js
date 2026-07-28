@@ -514,7 +514,11 @@ function isBeforePlanStart(planStart, year, month) {
 //   - 結合キー: 要介護は必ず userId（無ければ name フォールバック）／要支援は構造上 name のみ（userId列なし）
 //   - 測定日の無い行（計画のみ等）は測定実績でないため除外
 // 返り値: [{ key, matchedBy:'userId'|'name', sokutei_date, sokutei_by, output_by, careType:'要介護'|'要支援系', source }]
-//   output_by は要介護のみ（要支援シートに列なし＝null）。source は要介護シートに列なし＝''。paper は source で判別可。
+//   output_by は要介護シート由来のみ文字列。要支援シート由来は常に null を返す（＝この関数の契約・挙動不変）。
+//     ※2026-07-28 に「要支援測定記録」へ output_by 列（8列目）を後付けしたが、本関数はそれを読まない。
+//       読む必要が出たら shared.js と GASミラー(session-board-core.js) と test-sokutei-merge.js を
+//       セットで直すこと。片方だけ直すとドリフト検知テストが落ちる。
+//   source は要介護シートに列なし＝''。paper は source で判別可。
 // GAS(session-board-core.js)に同一挙動のミラーあり。test-sokutei-merge.js が両者のドリフトを検知する。
 function mergeSokuteiRecords(kaigoRecords, shienRecords, opts) {
     const includePaper = !!(opts && opts.includePaper);

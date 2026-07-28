@@ -27,6 +27,8 @@ function extractFn(src, name) {
 }
 const shared = fs.readFileSync(path.join(ROOT, 'shared.js'), 'utf8');
 const yoteiSrc = fs.readFileSync(path.join(ROOT, 'gas', 'yawaragi-board', 'yotei-core.js'), 'utf8');
+// 案X移植（2026-07-28）で sokutei.html が measure-core.js も読むようになった（日付ナビ・午前午後分け）
+const measureSrc = fs.readFileSync(path.join(ROOT, 'measure-core.js'), 'utf8');
 
 let pass = 0, fail = 0;
 function eq(a, e, l) {
@@ -44,7 +46,8 @@ function makeEl(id) {
     set innerHTML(v) { this._in = v; }, get innerHTML() { return this._in; },
     set textContent(v) { this._tx = v; }, get textContent() { return this._tx; },
     classList: { add() { }, remove() { }, toggle() { }, contains() { return false; } },
-    addEventListener() { },
+    // 日付ナビ（案X-1）の配線を検証したいのでハンドラを控える
+    addEventListener(type, fn) { (this._ev = this._ev || {})[type] = fn; },
     querySelector(sel) {
       if (!this._q) this._q = {};
       if (!this._q[sel]) this._q[sel] = { textContent: '', onclick: null };
@@ -182,18 +185,26 @@ function makeSandbox() {
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  // 本番は <script src="shared.js"> / <script src="gas/yawaragi-board/yotei-core.js"> で読む分
+  // 本番は <script src="shared.js"> / <script src="gas/yawaragi-board/yotei-core.js"> / <script src="measure-core.js"> で読む分
   ['sokuteiCycleMonths_', 'sokuteiDueDate_'].forEach(n => vm.runInContext(extractFn(shared, n), sandbox));
   vm.runInContext(yoteiSrc.replace(/if \(typeof module[\s\S]*$/, ''), sandbox);
+  vm.runInContext(measureSrc.replace(/if \(typeof module[\s\S]*$/, ''), sandbox);
   sandbox.ymCandidates = vm.runInContext('ymCandidates', sandbox);
   vm.runInContext(script0, sandbox);
   return sandbox;
 }
 
-// 成功後の行は「フェードしてから消える」ようになった（2026-07-28 操作フィードバック改修）。
-// 保留中のフェードタイマー(450ms)を発火させて、消えた後の状態を見る。
-function flushFade() {
-  timers.filter(t => t.ms === 450 && !t.cleared).forEach(t => { t.cleared = true; t.fn(); });
+// 成功後の行は「消える」のではなく「グレーで沈む」ようになった（2026-07-28 案X-4 移植）。
+// もうフェード待ちのタイマーは無いので、沈んだ行の状態は renderAll 直後にそのまま読める。
+// sunk クラスが付いた行を数える小道具（旧 flushFade の置き換え）。
+function sunkCount(html) { return (String(html).match(/class="card [^"]*\bsunk\b/g) || []).length; }
+// 特定の人のカードだけを切り出す（他人の行のボタンを誤って拾わないため）
+function cardOf(html, name) {
+  const s = String(html), i = s.indexOf('data-row="' + name + '"');
+  if (i < 0) return '';
+  const start = s.lastIndexOf('<div class="card', i);
+  const next = s.indexOf('<div class="card', i);
+  return s.slice(start, next < 0 ? s.length : next);
 }
 function resetFixtures() {
   YOTEI_STATE = YOTEI.map(y => Object.assign({}, y));
@@ -217,7 +228,7 @@ function resetFixtures() {
   eq(t1.indexOf('ダミー支援D') >= 0, false, '本日来館なしは優先リストに出ない（残りに計上）');
   ok(t1.indexOf('予定 2026-07 ▾') >= 0, '各行に予定月を併記（社長指定の「予定 YYYY-MM」形式）');
   ok(t1.indexOf('📅来月へ') >= 0, '「📅来月へ」ボタンがある');
-  ok(t1.indexOf('📝今日測定した') >= 0, '要介護にも「📝今日測定した」が出る（段階1で一本化）');
+  ok(t1.indexOf('📝測定した') >= 0, '要介護にも記録ボタンが出る（段階1で一本化）');
 
   sec('月タップ: 予定月の表示がボタンになっている（両タブ）');
   ok(t1.indexOf('class="ym-btn"') >= 0, '今日の優先タブに予定月ボタンがある');
@@ -251,9 +262,12 @@ function resetFixtures() {
   eq(yoteiFind('ダミー介護A').nextYm, '2026-11', '予定月が 2026-11 になる');
   eq(yoteiFind('ダミー介護A').cycleMonths, 3, '★cycleMonths は 3 のまま（周期を変えない）');
   eq(elFor('ymPicker').style.display, 'none', 'ポップアップが閉じる');
-  flushFade();
   t1 = els['tab1'].innerHTML;
-  eq(t1.indexOf('ダミー介護A') >= 0, false, '対象外になったので今日の優先から消える');
+  // 案X-4: 対象外になっても行は消さず、グレーで沈めて結果ラベルを残す
+  ok(t1.indexOf('ダミー介護A') >= 0, '対象外になっても行は残る（消さない）');
+  eq(sunkCount(t1), 1, 'その行がグレーで沈む（sunk）');
+  ok(t1.indexOf('✅ 11月に変更しました') >= 0, '結果ラベルが行に残る');
+  ok(t1.indexOf('今月の対象1名') >= 0, 'ヘッダの対象人数は沈んだ行を除いて1名');
 
   sec('月タップ: 5秒Undoで元の月へ戻る');
   eq(elFor('undoBar').style.display, 'flex', 'Undoバーが出る');
@@ -264,6 +278,8 @@ function resetFixtures() {
   eq(yoteiFind('ダミー介護A').cycleMonths, 3, '戻しても cycleMonths は 3');
   t1 = els['tab1'].innerHTML;
   ok(t1.indexOf('ダミー介護A') >= 0, '今日の優先に復活する');
+  eq(sunkCount(t1), 0, '戻したら沈めも解除される（また押せる状態に戻る）');
+  ok(t1.indexOf('今月の対象2名') >= 0, 'ヘッダの対象人数も2名に戻る');
 
   sec('月タップ: 同じ月を選んだら何もしない');
   const wBefore = captured.writes.length;
@@ -277,13 +293,11 @@ function resetFixtures() {
   await S.pickYm('2026-07');
   eq(yoteiFind('ダミー介護C').nextYm, '2026-07', '当月へ引き戻せる');
   eq(yoteiFind('ダミー介護C').cycleMonths, 3, 'cycleMonths 不変');
-  flushFade();
   t1 = els['tab1'].innerHTML;
   ok(t1.indexOf('ダミー介護C') >= 0, '今日の優先に現れる（対象に戻る）');
   // 後片付け: 8月へ戻す
   S.openYmPicker('ダミー介護C');
   await S.pickYm('2026-08');
-  flushFade();
   eq(yoteiFind('ダミー介護C').nextYm, '2026-08', '元に戻した');
 
   sec('5-3 「📅来月へ」→ slideYotei・行が消える・5秒Undo→ undoSlideYotei で戻る');
@@ -295,9 +309,10 @@ function resetFixtures() {
   ok(slideUrl.indexOf('by=') >= 0, '押した人(by)を渡す');
   eq(yoteiFind('ダミー介護A').nextYm, '2026-08', '予定月が +1ヶ月（2026-07→2026-08）');
   eq(yoteiFind('ダミー介護A').slideCount, 1, 'slideCount が +1');
-  flushFade();
   t1 = els['tab1'].innerHTML;
-  eq(t1.indexOf('ダミー介護A') >= 0, false, 'その行が今日の優先から消える');
+  ok(t1.indexOf('ダミー介護A') >= 0, 'その行は消えずに残る（案X-4）');
+  ok(cardOf(t1, 'ダミー介護A').indexOf('sunk') >= 0, 'その行がグレーで沈む');
+  ok(t1.indexOf('✅ 8月へ送りました') >= 0, '「8月へ送りました」が行に残る');
   ok(t1.indexOf('今月の対象1名') >= 0, 'ヘッダの対象人数が1名に減る');
   eq(elFor('undoBar').style.display, 'flex', 'Undoバーが表示される');
   eq(elFor('undoBar').querySelector('.undo-msg').textContent, 'ダミー介護A を8月へ送りました', 'Undoバーの文言');
@@ -325,9 +340,10 @@ function resetFixtures() {
   ok(doneUrl.indexOf('date=' + TODAY) >= 0, '実施日は今日');
   eq(captured.shienRows.length, shienBefore + 1, '実施ログが1行増える');
   eq(yoteiFind('ダミー介護A').nextYm, '2026-10', '予定月=実施月7月+3ヶ月=2026-10（要介護）');
-  flushFade();
   t1 = els['tab1'].innerHTML;
-  eq(t1.indexOf('ダミー介護A') >= 0, false, '測定済みの行は今日の優先から消える');
+  ok(t1.indexOf('ダミー介護A') >= 0, '測定済みの行も消えずに残る（案X-4）');
+  ok(cardOf(t1, 'ダミー介護A').indexOf('sunk') >= 0, '測定済みの行がグレーで沈む');
+  ok(t1.indexOf('✅ 測定を記録しました') >= 0, '「測定を記録しました」が行に残る');
   ok(t1.indexOf('今月の対象1名') >= 0, '対象が1名に減る');
 
   sec('5-4b 要支援は+4ヶ月');
@@ -338,7 +354,6 @@ function resetFixtures() {
   eq(yoteiFind('ダミー支援B').slideCount, 0, '実施でスライド回数が0に戻る');
 
   sec('5-5 対象0人で「今月ぶん完了 ✅」');
-  flushFade();
   t1 = els['tab1'].innerHTML;
   ok(t1.indexOf('今月ぶん完了 ✅') >= 0, '対象0人で完了表示が出る');
   ok(t1.indexOf('今月の対象0名（残り1名）') >= 0, 'ヘッダは対象0名・残り1名');
@@ -418,14 +433,15 @@ function resetFixtures() {
   eq(yoteiFind('ダミー介護A').nextYm, '2026-08', '★1ヶ月しか進まない（9月まで飛ばない）');
   eq(yoteiFind('ダミー介護A').slideCount, 1, 'slideCount も +1 のみ');
 
-  sec('1-9-3 成功した行はフェードしてから消える');
+  // 1-9-3 の意図（押した実感を残す）は案X-4で「消す」から「沈める」へ置き換えた。
+  // 消すより残す方が「本当に入ったのか」を確かめられる＝二度押しの動機自体が消える。
+  sec('案X-4 成功した行は消えずにグレーで沈む（1-9-3 の置き換え）');
   t1 = els['tab1'].innerHTML;
-  ok(t1.indexOf('leaving') >= 0, 'フェード用クラスが付く（一瞬で消えない）');
-  ok(timers.some(t => t.ms === 450 && !t.cleared), 'フェードのタイマーが張られる');
-  flushFade();
-  t1 = els['tab1'].innerHTML;
-  eq(t1.indexOf('ダミー介護A') >= 0, false, 'フェード後に行が消える');
-  eq(t1.indexOf('leaving') >= 0, false, 'leaving クラスも消える');
+  ok(t1.indexOf('ダミー介護A') >= 0, '行は残る');
+  eq(sunkCount(t1), 1, 'sunk クラスが付く');
+  ok(t1.indexOf('✅ 8月へ送りました') >= 0, '何が起きたかが行に書いてある');
+  eq(cardOf(t1, 'ダミー介護A').indexOf('📅来月へ') >= 0, false, '沈んだ行にはボタンを出さない（もう押せない＝二重操作の入口を塞ぐ）');
+  eq(cardOf(t1, 'ダミー介護A').indexOf('onclick="openRecordModal') >= 0, false, '沈んだ行はカードタップでも開かない');
   ok(t1.indexOf('今月の対象1名') >= 0, 'ヘッダの対象人数も更新される');
 
   sec('1-9-4 失敗したら表示が元に戻り、理由が行に出る');
@@ -507,6 +523,147 @@ function resetFixtures() {
   fadeT[0].fn();
   eq(elFor('undoBar').className, 'undo-bar fading', '薄くなるクラスが付く');
   ok(timers.some(t => t.ms === 5000 && !t.cleared), '5秒で消えるタイマーは従来どおり');
+
+  // =====================================================================
+  // 案X（measure-app.html の操作感を移植・2026-07-28 社長指示の8項目）
+  // =====================================================================
+  sec('案X-1 日付ナビ（◀ ▶ 日付タップ 今日）');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  ['prevDay', 'nextDay', 'todayBtn', 'datePick'].forEach(id => {
+    ok(els[id] && els[id]._ev, id + ' にイベントが配線されている');
+  });
+  eq(elFor('datePick').value, TODAY, '日付ピッカーの初期値は今日');
+  const readsBefore = captured.reads.length;
+  await els['prevDay']._ev.click();
+  const attUrl = captured.reads.slice(readsBefore).filter(u => u.indexOf('action=attendance') >= 0)[0];
+  ok(attUrl.indexOf('date=2026-07-27') >= 0, '◀で前日の来館者を取り直す');
+  eq(elFor('datePick').value, '2026-07-27', 'ピッカーの表示も前日になる');
+  await els['nextDay']._ev.click();
+  eq(elFor('datePick').value, TODAY, '▶で今日へ戻る');
+  elFor('datePick').value = '2026-07-20';
+  await els['datePick']._ev.change.call(elFor('datePick'));
+  eq(captured.reads.filter(u => u.indexOf('date=2026-07-20') >= 0).length > 0, true, '日付タップでその日を取り直す');
+  await els['todayBtn']._ev.click();
+  eq(elFor('datePick').value, TODAY, '「今日」で今日へ復帰する');
+
+  sec('案X-8 今日以外を見ているときの警告バナー');
+  await S.goDate('2026-07-25');
+  ok(elFor('dstate').textContent.indexOf('過去の日付') >= 0, '過去日で警告文が出る');
+  ok(elFor('dstate').className.indexOf('on') >= 0, 'バナーが表示状態になる');
+  ok(elFor('dstate').className.indexOf('past') >= 0, '過去用の色クラスが付く');
+  ok(elFor('dstate').textContent.indexOf('今日基準') >= 0, '期限判定は今日基準である旨も出す');
+  await S.goDate('2026-08-05');
+  ok(elFor('dstate').className.indexOf('future') >= 0, '未来日は未来用の色クラス');
+  await S.goDate(TODAY);
+  eq(elFor('dstate').className, 'dstate', '今日に戻すとバナーは消える');
+  eq(elFor('dstate').textContent, '', '文言も空になる');
+
+  sec('案X-1 日付を動かしても対象判定（予定月・期限）は今日基準のまま');
+  await S.goDate('2026-06-15');   // 先月の日付を見ても…
+  ok(els['tab1'].innerHTML.indexOf('ダミー介護A') >= 0, '今月(7月)予定の人はそのまま対象');
+  eq(els['tab1'].innerHTML.indexOf('ダミー介護C') >= 0, false, '来月(8月)予定の人は依然として対象外');
+  await S.goDate(TODAY);
+
+  sec('案X-3 午前午後の2カラム');
+  let t1x = els['tab1'].innerHTML;
+  ok(t1x.indexOf('<div class="cols">') >= 0, '2カラムの器がある');
+  ok(t1x.indexOf('colhead am') >= 0, '午前の列見出しがある');
+  ok(t1x.indexOf('colhead pm') >= 0, '午後の列見出しがある');
+  ok(t1x.indexOf('午前　2名') >= 0, '午前の人数が出る（介護A・支援B）');
+  ok(t1x.indexOf('午後　0名') >= 0, '午後は対象0名（介護Cは対象外）');
+  ok(/@media \(max-width: 620px\)[^}]*\{[^}]*\.cols[^}]*flex-direction: column/.test(css.replace(/\s+/g, ' ')) || css.indexOf('.cols { flex-direction: column; }') >= 0, '狭い画面では縦積みになる');
+
+  sec('案X-6 カード全体タップで記録モーダルが開く');
+  ok(cardOf(t1x, 'ダミー介護A').indexOf('onclick="openRecordModal') >= 0, 'カードそのものに記録モーダルの配線がある');
+  ok(cardOf(t1x, 'ダミー介護A').indexOf('tappable') >= 0, 'タップできる見た目のクラスが付く');
+  ok(cardOf(t1x, 'ダミー介護A').indexOf('event.stopPropagation();openYmPicker') >= 0, '中のボタンはカードのタップに吸われない');
+  eq(cardOf(els['tab2'].innerHTML, 'ダミー介護C').indexOf('tappable') >= 0, false, '全利用者タブはカードタップ無効（誤操作防止）');
+
+  sec('案X-5 出力者は要介護のみ');
+  elFor('recordStaffSelect').value = 'スタッフY';
+  S.openRecordModal('ダミー介護A');
+  eq(elFor('recordOutputWrap').style.display, '', '要介護では出力者欄を出す');
+  ok(elFor('recordOutputSelect').innerHTML.indexOf('（測定者と同じ）') >= 0, '既定は「測定者と同じ」');
+  ok(elFor('recordHint').textContent.indexOf('出力者') >= 0, '要介護向けの説明が出る');
+  S.closeRecordModal();
+  S.openRecordModal('ダミー支援B');
+  eq(elFor('recordOutputWrap').style.display, 'none', '要支援・事業対象者では出力者欄を隠す');
+  ok(elFor('recordHint').textContent.indexOf('出力者はありません') >= 0, '要支援向けの説明が出る');
+  S.closeRecordModal();
+
+  sec('案X-5 出力者を選ぶと outputBy が送られる（空なら測定者）');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  elFor('recordStaffSelect').value = 'スタッフY';
+  elFor('recordNote').value = '';
+  S.openRecordModal('ダミー介護A');
+  elFor('recordOutputSelect').value = 'スタッフX';
+  await S.submitRecord();
+  let doneUrlX = captured.writes[captured.writes.length - 1];
+  ok(doneUrlX.indexOf('outputBy=' + encodeURIComponent('スタッフX')) >= 0, '選んだ出力者が送られる');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  elFor('recordStaffSelect').value = 'スタッフY';
+  S.openRecordModal('ダミー介護A');
+  elFor('recordOutputSelect').value = '';
+  await S.submitRecord();
+  doneUrlX = captured.writes[captured.writes.length - 1];
+  ok(doneUrlX.indexOf('outputBy=' + encodeURIComponent('スタッフY')) >= 0, '空欄なら測定者が出力者になる');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  elFor('recordStaffSelect').value = 'スタッフX';
+  S.openRecordModal('ダミー支援B');
+  await S.submitRecord();
+  doneUrlX = captured.writes[captured.writes.length - 1];
+  ok(doneUrlX.indexOf('outputBy=&') >= 0 || /outputBy=$/.test(doneUrlX.split('&note=')[0]), '要支援は出力者を送らない（空）');
+
+  sec('案X-2 過去日で記録すると予定月は「測定日の月＋周期」になる（今日基準にしない）');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  eq(elFor('recordDate').value, '', '前提: まだ測定日欄は空');
+  elFor('recordStaffSelect').value = 'スタッフY';
+  S.openRecordModal('ダミー介護A');
+  eq(elFor('recordDate').value, TODAY, '既定値は選んでいる日（初期＝今日）');
+  eq(elFor('recordDate').max, TODAY, '未来日は選べないよう max が今日');
+  elFor('recordDate').value = '2026-05-12';        // 5月に測ったぶんを後から入れる
+  await S.submitRecord();
+  const pastUrl = captured.writes[captured.writes.length - 1];
+  ok(pastUrl.indexOf('date=2026-05-12') >= 0, '選んだ測定日がそのまま送られる');
+  eq(yoteiFind('ダミー介護A').nextYm, '2026-08', '★予定月=測定日の月(5月)+3ヶ月=2026-08（今日の7月起点にしない）');
+
+  sec('案X-2 未来日は記録できない');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  const wF = captured.writes.length;
+  elFor('recordStaffSelect').value = 'スタッフY';
+  S.openRecordModal('ダミー介護A');
+  elFor('recordDate').value = '2026-09-01';
+  await S.submitRecord();
+  eq(captured.writes.length, wF, '未来日では送信しない');
+  ok(String(captured.lastAlert).indexOf('未来の日付') >= 0, '理由を日本語で伝える');
+
+  sec('案X-2 日付ナビで日を変えると記録モーダルの既定日もその日になる');
+  await S.goDate('2026-07-21');
+  S.openRecordModal('ダミー介護A');
+  eq(elFor('recordDate').value, '2026-07-21', '既定の測定日は見ている日');
+  S.closeRecordModal();
+
+  sec('案X-7 モバイル最適化（タップ的の大きさ・iOSのちらつき/文字拡大対策）');
+  ok(css.indexOf('-webkit-tap-highlight-color: transparent') >= 0, 'タップ時の青いちらつきを消している');
+  ok(css.indexOf('-webkit-text-size-adjust: 100%') >= 0, 'iOSの勝手な文字拡大を止めている');
+  ok(html.indexOf('viewport-fit=cover') >= 0, 'ノッチ端末に対応している');
+  ok(css.indexOf('env(safe-area-inset-bottom)') >= 0, '下端のセーフエリアを確保している');
+  ['.tab-btn', '.dpick', '.ym-cell', '.modal-select, .modal-input'].forEach(sel => {
+    const re = new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{[^}]*min-height:\\s*(4[4-9]|[5-9]\\d)px');
+    ok(re.test(css), sel + ' に十分なタップ高さがある');
+  });
 
   console.log('\n=== 結果 ===');
   console.log('PASS ' + pass + ' / FAIL ' + fail);

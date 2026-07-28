@@ -2,50 +2,82 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>📏 測定管理（機能訓練）</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; background: #f0f4f8; min-height: 100vh; padding: 16px; }
+/* モバイル最適化（2026-07-28 案X-7）: タップ時の青いちらつきを消し、iOSの勝手な文字拡大を止める。
+   タップ対象は最低48pxを確保する（現場は手袋・老眼。小さい的は押し間違いの元）。 */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; background: #f0f4f8; min-height: 100vh;
+  padding: 14px 12px calc(28px + env(safe-area-inset-bottom)); -webkit-text-size-adjust: 100%; }
 h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 .subtitle { text-align: center; color: #7f8c8d; font-size: 0.85em; margin-bottom: 14px; }
 .wrap { max-width: 760px; margin: 0 auto; }
+/* 日付ナビ（案X-1）: ◀▶で前後日・日付タップで直接指定・「今日」で復帰。
+   ⚠️動かすのは「来館者の取得日」と「測定日の既定値」だけ。期限・予定月の判定は常に今日基準（下部コメント参照）。 */
+.datenav { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.dnav { border: none; background: #fff; color: #2c3e50; font-size: 1.2em; font-weight: 800; width: 48px; height: 48px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); cursor: pointer; font-family: inherit; }
+.dpick { flex: 1; padding: 12px; font-size: 1em; border: 1.5px solid #cfd8dc; border-radius: 12px; font-family: inherit; min-height: 48px; text-align: center; background: #fff; color: #2c3e50; }
+.dtoday { border: none; background: #2c3e50; color: #fff; font-weight: 700; padding: 0 14px; height: 48px; border-radius: 12px; cursor: pointer; font-family: inherit; font-size: .92em; white-space: nowrap; }
+/* 警告バナー（案X-8）: 今日以外を見ている／取得に失敗している、を画面上部で1回だけ伝える */
+.dstate { display: none; align-items: center; gap: 8px; margin: 0 0 12px; padding: 11px 12px; border-radius: 10px; font-size: .88em; font-weight: 800; }
+.dstate.on { display: flex; }
+.dstate.past { background: #fdf1df; border: 1.5px solid #f0a83a; color: #b46f10; }
+.dstate.future { background: #fdecea; border: 1.5px solid #ef9a9a; color: #c62828; }
+.errbar { display: none; background: #fff3e0; border: 1px solid #ffcc80; color: #c85200; border-radius: 10px; padding: 10px 12px; font-size: .84em; font-weight: 700; margin-bottom: 10px; }
+/* 午前午後2カラム（案X-3）: 広幅は並列・狭幅は縦積み。列見出しに人数を出す */
+.cols { display: flex; gap: 10px; align-items: flex-start; }
+.col { flex: 1; min-width: 0; }
+.colhead { font-size: .86em; font-weight: 800; padding: 8px 10px; border-radius: 10px; margin-bottom: 6px; text-align: center; }
+.colhead.am { background: #e3f2fd; color: #1565c0; }
+.colhead.pm { background: #fff3e0; color: #e65100; }
+.col-empty { text-align: center; color: #b0bec5; padding: 16px 6px; font-size: .86em; }
+@media (max-width: 620px) { .cols { flex-direction: column; } }
 .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
-.tab-btn { flex: 1; padding: 11px 6px; border: none; border-radius: 10px; background: #fff; color: #546e7a; font-weight: 700; font-size: .9em; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-family: inherit; }
+.tab-btn { flex: 1; padding: 13px 6px; border: none; border-radius: 10px; background: #fff; color: #546e7a; font-weight: 700; font-size: .92em; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); font-family: inherit; min-height: 48px; }
 .tab-btn.active { background: #2c3e50; color: #fff; }
-.card { background: #fff; border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; border-left: 6px solid #b0bec5; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card { background: #fff; border-radius: 12px; padding: 11px 12px; margin-bottom: 8px; border-left: 6px solid #b0bec5; box-shadow: 0 1px 3px rgba(0,0,0,.08); transition: opacity .45s ease; }
 .card.b-red { border-left-color: #ef5350; }
 .card.b-yellow { border-left-color: #ffa726; }
 .card.b-white { border-left-color: #b0bec5; }
 .card.gray { opacity: .55; }
+/* カード全体タップ（案X-6）: 名前のどこを押しても記録モーダルが開く。ボタンは stopPropagation で個別動作を守る */
+.card.tappable { cursor: pointer; transition: opacity .45s ease, transform .05s ease; }
+.card.tappable:active { transform: scale(.995); }
+/* 保存後グレーアウト（案X-4）: 済んだ行は消さずに沈める。消えると「本当に入ったのか」が分からず二度押しの元になる */
+.card.sunk { opacity: .45; cursor: default; }
+.done-tag { font-size: .82em; color: #2e7d32; font-weight: 700; }
+.pill { font-size: .78em; border-radius: 6px; padding: 2px 8px; white-space: nowrap; font-weight: 700; }
+.pill.am { background: #e3f2fd; color: #1565c0; }
+.pill.pm { background: #fff3e0; color: #e65100; }
 .rowline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .bdg { font-size: 1.0em; }
-.nm { font-weight: 700; color: #2c3e50; font-size: 1.02em; }
-.cr { font-size: .76em; color: #607d8b; background: #eceff1; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
-.tag { font-size: .76em; color: #90a4ae; border: 1px solid #cfd8dc; border-radius: 6px; padding: 1px 7px; }
-.meta { font-size: .8em; color: #607d8b; line-height: 1.6; margin-top: 3px; }
+.nm { font-weight: 700; color: #2c3e50; font-size: 1.06em; }
+.cr { font-size: .8em; color: #607d8b; background: #eceff1; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.tag { font-size: .8em; color: #90a4ae; border: 1px solid #cfd8dc; border-radius: 6px; padding: 1px 7px; }
+.meta { font-size: .84em; color: #607d8b; line-height: 1.7; margin-top: 4px; }
 .over { color: #c62828; font-weight: 700; }
 .hdr { font-size: .88em; font-weight: 700; color: #455a64; margin: 4px 2px 10px; }
 .section-label { font-size: .85em; font-weight: 700; color: #78909c; margin: 16px 0 6px; }
-.note { font-size: .78em; color: #90a4ae; margin: 10px 2px 4px; }
+.note { font-size: .82em; color: #90a4ae; margin: 10px 2px 4px; line-height: 1.6; }
 .filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
-.f-btn { padding: 8px 14px; border: none; border-radius: 999px; background: #fff; color: #546e7a; font-weight: 700; font-size: .82em; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.08); font-family: inherit; }
+.f-btn { padding: 11px 16px; border: none; border-radius: 999px; background: #fff; color: #546e7a; font-weight: 700; font-size: .86em; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.08); font-family: inherit; min-height: 44px; }
 .f-btn.active { background: #4272D8; color: #fff; }
 .sbar-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
 .sbar-row:last-child { border-bottom: none; }
-.sbar-name { width: 5.5em; font-size: .85em; font-weight: 700; color: #2c3e50; flex-shrink: 0; }
+.sbar-name { width: 5.5em; font-size: .88em; font-weight: 700; color: #2c3e50; flex-shrink: 0; }
 .sbar-track { flex: 1; min-width: 60px; }
 .sbar-fill { height: 12px; border-radius: 0 4px 4px 0; background: #4272D8; }
-.sbar-val { width: 6.5em; text-align: right; font-size: .82em; color: #2c3e50; font-weight: 700; flex-shrink: 0; }
-.sbar-last { width: 7em; text-align: right; font-size: .76em; color: #90a4ae; flex-shrink: 0; }
+.sbar-val { width: 6.5em; text-align: right; font-size: .86em; color: #2c3e50; font-weight: 700; flex-shrink: 0; }
+.sbar-last { width: 7em; text-align: right; font-size: .8em; color: #90a4ae; flex-shrink: 0; }
 #status { text-align: center; color: #7f8c8d; padding: 20px; }
 .reload-row { text-align: center; margin: 14px 0 4px; }
-.reload-btn { border: none; border-radius: 8px; padding: 8px 18px; font-size: .85em; font-weight: 700; cursor: pointer; background: #eceff1; color: #546e7a; font-family: inherit; }
-.rec-btn { margin-left: auto; border: none; border-radius: 8px; padding: 5px 10px; font-size: .78em; font-weight: 700; cursor: pointer; background: #e8f0fe; color: #4272D8; font-family: inherit; white-space: nowrap; }
-.slide-btn { border: none; border-radius: 8px; padding: 5px 10px; font-size: .78em; font-weight: 700; cursor: pointer; background: #fff3e0; color: #e65100; font-family: inherit; white-space: nowrap; }
+.reload-btn { border: none; border-radius: 8px; padding: 12px 22px; font-size: .88em; font-weight: 700; cursor: pointer; background: #eceff1; color: #546e7a; font-family: inherit; min-height: 44px; }
+.rec-btn { margin-left: auto; border: none; border-radius: 8px; padding: 8px 12px; font-size: .82em; font-weight: 700; cursor: pointer; background: #e8f0fe; color: #4272D8; font-family: inherit; white-space: nowrap; }
+.slide-btn { border: none; border-radius: 8px; padding: 8px 12px; font-size: .82em; font-weight: 700; cursor: pointer; background: #fff3e0; color: #e65100; font-family: inherit; white-space: nowrap; }
 .rec-btn + .slide-btn { margin-left: 6px; }
 .slide-btn:first-of-type { margin-left: auto; }
 /* Undoバーはスクロール位置に関係なく必ず見える位置へ固定する（2026-07-28: 見えていなかった疑い・1-9-6） */
@@ -59,24 +91,23 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 .card.busy { background: #f5f7fa; box-shadow: inset 0 0 0 2px #4272D8; }
 .card.busy .nm { opacity: .75; }
 .card button[disabled] { opacity: .55; cursor: default; }
-/* 対象から外れた行はフェードしてから消す（一瞬で消えると押せた実感がない） */
-.card.leaving { opacity: 0; transform: translateX(14px); transition: opacity .45s ease, transform .45s ease; }
-.rowerr { margin-top: 6px; font-size: .82em; font-weight: 700; color: #c62828; background: #fdecea; border-radius: 6px; padding: 6px 8px; }
+.rowerr { margin-top: 6px; font-size: .84em; font-weight: 700; color: #c62828; background: #fdecea; border-radius: 6px; padding: 7px 9px; }
 .done-all { background: #e8f5e9; color: #2e7d32; border-radius: 12px; padding: 26px 12px; text-align: center; font-size: 1.5em; font-weight: 700; margin-bottom: 8px; }
-.ym-btn { border: 1px solid #cfd8dc; border-radius: 6px; padding: 2px 8px; font-size: 1em; font-weight: 700; cursor: pointer; background: #f7fafc; color: #37474f; font-family: inherit; white-space: nowrap; }
+.ym-btn { border: 1px solid #cfd8dc; border-radius: 6px; padding: 4px 9px; font-size: 1em; font-weight: 700; cursor: pointer; background: #f7fafc; color: #37474f; font-family: inherit; white-space: nowrap; }
 .ym-btn:active { background: #eceff1; }
 .ym-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 4px; }
-.ym-cell { border: 1px solid #cfd8dc; border-radius: 8px; padding: 12px 4px; font-size: 1em; font-weight: 700; cursor: pointer; background: #fff; color: #2c3e50; font-family: inherit; }
+.ym-cell { border: 1px solid #cfd8dc; border-radius: 8px; padding: 14px 4px; font-size: 1em; font-weight: 700; cursor: pointer; background: #fff; color: #2c3e50; font-family: inherit; min-height: 48px; }
 .ym-cell.sel { background: #4272D8; color: #fff; border-color: #4272D8; }
 .ym-cell:active { background: #eceff1; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
-.modal-box { background: #fff; border-radius: 14px; padding: 20px; width: 100%; max-width: 340px; box-shadow: 0 6px 24px rgba(0,0,0,.2); }
+.modal-box { background: #fff; border-radius: 14px; padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); width: 100%; max-width: 360px; box-shadow: 0 6px 24px rgba(0,0,0,.2); max-height: calc(100vh - 32px); overflow-y: auto; }
 .modal-title { font-weight: 700; color: #2c3e50; font-size: 1.05em; margin-bottom: 6px; }
-.modal-name { font-weight: 700; color: #4272D8; font-size: 1.1em; margin-bottom: 14px; }
-.modal-label { display: block; font-size: .8em; color: #607d8b; margin: 10px 0 4px; }
-.modal-select, .modal-input { width: 100%; padding: 9px 10px; border: 1px solid #cfd8dc; border-radius: 8px; font-size: .95em; font-family: inherit; }
+.modal-name { font-weight: 700; color: #4272D8; font-size: 1.12em; margin-bottom: 12px; }
+.modal-label { display: block; font-size: .84em; color: #607d8b; font-weight: 700; margin: 12px 0 4px; }
+.modal-select, .modal-input { width: 100%; padding: 12px 10px; border: 1.5px solid #cfd8dc; border-radius: 8px; font-size: 1em; font-family: inherit; min-height: 48px; background: #fff; color: #2c3e50; }
+.modal-hint { font-size: .8em; color: #90a4ae; margin-top: 8px; line-height: 1.6; }
 .modal-actions { display: flex; gap: 8px; margin-top: 18px; }
-.modal-btn { flex: 1; border: none; border-radius: 8px; padding: 10px; font-size: .9em; font-weight: 700; cursor: pointer; font-family: inherit; }
+.modal-btn { flex: 1; border: none; border-radius: 8px; padding: 14px; font-size: .95em; font-weight: 700; cursor: pointer; font-family: inherit; min-height: 50px; }
 .modal-btn.cancel { background: #eceff1; color: #546e7a; }
 .modal-btn.confirm { background: #4272D8; color: #fff; }
 .modal-btn.confirm:disabled { opacity: .6; cursor: default; }
@@ -86,6 +117,14 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 <h1>📏 測定管理</h1>
 <div class="subtitle">機能訓練 測定の優先度と実施バランス（要介護・要支援等）</div>
 <div class="wrap">
+  <div class="datenav">
+    <button type="button" class="dnav" id="prevDay" aria-label="前の日">◀</button>
+    <input type="date" id="datePick" class="dpick" aria-label="日付を選ぶ">
+    <button type="button" class="dnav" id="nextDay" aria-label="次の日">▶</button>
+    <button type="button" class="dtoday" id="todayBtn">今日</button>
+  </div>
+  <div id="dstate" class="dstate"></div>
+  <div id="errbar" class="errbar"></div>
   <div class="tabs">
     <button type="button" class="tab-btn active" id="tabbtn1" onclick="showTab(1)">📋 今日の優先</button>
     <button type="button" class="tab-btn" id="tabbtn2" onclick="showTab(2)">👥 全利用者</button>
@@ -100,12 +139,19 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 </div>
 <div id="recordModal" class="modal-overlay" style="display:none" onclick="if(event.target===this) closeRecordModal()">
   <div class="modal-box">
-    <div class="modal-title">📝 今日測定した</div>
+    <div class="modal-title">📝 測定を記録する</div>
     <div class="modal-name" id="recordModalName"></div>
+    <label class="modal-label">測定日</label>
+    <input type="date" id="recordDate" class="modal-input">
     <label class="modal-label">測定者</label>
     <select id="recordStaffSelect" class="modal-select"></select>
+    <div id="recordOutputWrap">
+      <label class="modal-label">出力者（要介護のみ・空欄なら測定者と同じ）</label>
+      <select id="recordOutputSelect" class="modal-select"></select>
+    </div>
     <label class="modal-label">メモ（任意）</label>
     <input type="text" id="recordNote" class="modal-input" placeholder="備考があれば">
+    <div class="modal-hint" id="recordHint"></div>
     <div class="modal-actions">
       <button type="button" class="modal-btn cancel" onclick="closeRecordModal()">キャンセル</button>
       <button type="button" class="modal-btn confirm" id="recordConfirmBtn" onclick="submitRecord()">記録する</button>
@@ -126,9 +172,12 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 <!-- 期限計算 sokuteiCycleMonths_/sokuteiDueDate_ は shared.js §I に単一化（①測定アプリと共用）。
      予定月の純関数（isDue / nextYmAfterDone 等）は gas/yawaragi-board/yotei-core.js を直読みして
      GASと同一バイトを使う（measure-app.html が session-board-core.js を読むのと同じ流儀・複製を増やさない）。
+     日付ナビ・午前午後分けの純関数（msAddDays / msDateWarning / msSplitBySession）は measure-core.js を流用する
+     （案X移植 2026-07-28。同じ関数を2枚書かない＝単一の正。measure-app.html 廃止時も本ファイルの依存として残す）。
      no-store方式のため ?v= は付けない（版ゲート非対象・intake/kubun等と同流儀）。 -->
 <script src="shared.js"></script>
 <script src="gas/yawaragi-board/yotei-core.js"></script>
+<script src="measure-core.js"></script>
 <script>
 const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 // 測定者候補の除外（個訓アプリ MEASURER_EXCLUDE と同値・2026-06-15社長確定）
@@ -255,7 +304,14 @@ function nextVisitStr(daysStr, tStr) {
 }
 
 // ===== 状態 =====
-const state = { today: todayStr(), att: null, usage: null, users: [], records: [], staff: [], shien: [], userList: [], tsushoUsers: [], yotei: [], errs: {} };
+// selectedDate（案X-1/2）＝日付ナビで選んでいる日。動かす対象は次の2つ「だけ」。
+//   ① 来館者（attendance）をどの日で取るか   ② 記録モーダルの「測定日」の既定値
+// 期限（remaining）と予定月の当月判定（isDue）は **常に today 基準**のまま動かさない。
+//   理由: 予定月は月単位の運用。選択日基準にすると来月の日付を1タップ選んだだけで
+//   「今月の対象」の人数が丸ごと入れ替わり、現場が何を見ているのか分からなくなる。
+//   過去日の測定を入れたいだけなのに対象一覧が変わるのは事故の元（2026-07-28 移植時の判断）。
+// sunk（案X-4）= この画面で保存/変更を済ませた行。消さずに沈めて「入った」を残す。再読込でリセット。
+const state = { today: todayStr(), selectedDate: todayStr(), att: null, usage: null, users: [], records: [], staff: [], shien: [], userList: [], tsushoUsers: [], yotei: [], errs: {}, sunk: {} };
 function isKaigoCare(care) { return String(care || '').indexOf('要介護') === 0; }
 // 当月キー。新しい日付関数は作らず、既存の todayStr()（state.today）の先頭7桁を使う。
 function thisYm() { return state.today.slice(0, 7); }
@@ -279,15 +335,19 @@ function errMsg(r) {
   return (r.value && (r.value.error || r.value.message)) || '応答形式エラー';
 }
 
-async function load() {
+// dateStr 省略 = 今日。日付ナビ（◀▶／日付タップ／今日）からは必ずここを通す。
+async function load(dateStr) {
   const statusEl = document.getElementById('status');
   statusEl.textContent = '読み込み中…';
   state.errs = {};
+  state.sunk = {};                 // 日付を変えたら「済」マークは見直す（その日視点で見る）
   const t = state.today = todayStr();
+  const sel = state.selectedDate = (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) ? dateStr : t;
+  updateDateNav();
   const fy = fiscalYear();
   const months = prevMonthsList(3);
   const results = await Promise.allSettled([
-    fetchJson(GAS + '?action=attendance&date=' + t + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=attendance&date=' + sel + '&t=' + Date.now()),   // 来館者だけが選択日で動く
     fetchJson(GAS + '?action=usage_stats&from=' + months[0] + '&to=' + months[months.length - 1] + '&t=' + Date.now()),
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + fy + '&t=' + Date.now()),
     fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy + 1) + '&t=' + Date.now()),
@@ -326,15 +386,40 @@ async function load() {
   buildDerived();
   fillStaffSelect();
   statusEl.textContent = '';
+  renderErrBar();
   renderAll();
 }
 
+// ===== 日付ナビ（案X-1）＋ 警告バナー（案X-8）=====
+// 「今日ではない日を見ている」を画面上部で1回だけ伝える。文言は measure-core.js の msDateWarning が正。
+function updateDateNav() {
+  const pick = document.getElementById('datePick');
+  if (pick) pick.value = state.selectedDate;
+  const w = msDateWarning(state.selectedDate, state.today);
+  const el = document.getElementById('dstate');
+  el.className = 'dstate' + (w.show ? ' on ' + w.kind : '');
+  el.textContent = w.show ? w.label + '　※期限・予定月の判定は今日基準のままです' : '';
+}
+function goDate(d) { if (/^\d{4}-\d{2}-\d{2}$/.test(d)) load(d); }
+// 取得に失敗した系統を上部にまとめて出す（タブ3を見ている人にも気づかせる）
+function renderErrBar() {
+  const bar = document.getElementById('errbar');
+  const label = { att: '来館予定', usage: '利用率', year: '個訓対象者', staff: 'スタッフ一覧', shien: '測定記録', userList: '利用者台帳', tsushoUsers: '通所対象者', yotei: '予定月' };
+  const keys = Object.keys(state.errs);
+  if (!keys.length) { bar.style.display = 'none'; bar.textContent = ''; return; }
+  bar.style.display = 'block';
+  bar.textContent = '⚠ 一部データの取得に失敗しました：' + keys.map(k => label[k] || k).join('、') + '（↻再読込を試してください）';
+}
+
 // 測定者セレクトは読み込み時に一度埋める（スライドの updatedBy にも使うため・モーダル未オープンでも値が要る）
+// 出力者セレクト（案X-5・要介護のみ表示）も同じ名簿から作る。既定は「（測定者と同じ）」＝空。
 function fillStaffSelect() {
-  const sel = document.getElementById('recordStaffSelect');
-  if (!sel || sel.options.length) return;
   const names = (state.staff || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
-  sel.innerHTML = names.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+  const opts = names.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+  const sel = document.getElementById('recordStaffSelect');
+  if (sel && !sel.options.length) sel.innerHTML = opts;
+  const out = document.getElementById('recordOutputSelect');
+  if (out && !out.options.length) out.innerHTML = '<option value="">（測定者と同じ）</option>' + opts;
 }
 
 // ===== 共通計算（利用者ごとの行モデル） =====
@@ -426,44 +511,74 @@ function yoteiLabel(r) {
   const cur = +state.today.slice(0, 4);
   return (y === cur ? '' : y + '/') + m + '月' + (r.slideCount ? '（' + r.slideCount + '回スライド）' : '');
 }
-// showSlide: 「📅来月へ」を出すか（今日の優先タブのみ）／ showRec: 「📝今日測定した」を出すか
-// 送信中(busy)・フェード中(leaving)・失敗(rowErr) は state を見て描画に反映する。
+// opt = { gray, tag, nextVisit, showSlide, showRec, sunkable }
+//   showSlide : 「📅来月へ」を出すか（今日の優先タブのみ）
+//   showRec   : 記録ボタン＋カード全体タップを有効にするか
+//   sunkable  : 済んだ行をグレーで沈めるか。今日の優先タブ（＝その日の作業リスト）だけ true。
+//               全利用者タブは名簿なので沈めない＝いつでも予定月を触れる状態を保つ。
+// 送信中(busy)・済(sunk)・失敗(rowErr) は state を見て描画に反映する。
 //   ボタンごとに個別実装せず runRowAction() 1本に集約している（同じ不具合を3箇所に作らない）。
-function rowCard(r, gray, tag, nextVisit, showSlide, showRec) {
+// カード全体タップ（案X-6）: 記録が出せる行はカードのどこを押しても記録モーダルが開く。
+//   個別ボタンは event.stopPropagation() でカードのタップに吸われないようにする。
+function rowCard(r, opt) {
+  const o = opt || {};
+  const gray = !!o.gray, tag = o.tag || '', nextVisit = o.nextVisit || '';
+  const showSlide = !!o.showSlide, showRec = !!o.showRec;
   let remainHtml;
   if (r.unmeasured) remainHtml = '<span class="over">⚠️未測定（最優先）</span>';
   else if (r.remaining < 0) remainHtml = '<span class="over">⚠️超過 ' + (-r.remaining) + '日</span>';
   else remainHtml = '期限まで残り ' + r.remaining + '日';
+  const sunk = (o.sunkable && state.sunk[r.name]) || null;   // 済んだ行（案X-4・{ label }）
   const b = busy[r.name];                 // 送信中なら { which: 'slide'|'ym'|'rec' }
   const dis = b ? ' disabled' : '';       // 送信中は同じ行の全ボタンを無効化（1-9-2）
   const lbl = (which, normal) => (b && b.which === which) ? '⏳ 送信中…' : normal;
+  const stop = 'event.stopPropagation();';
   // 記録ボタンは要介護・要支援等の両方に出す（段階1で addSokuteiDone に一本化）。
-  const recBtn = showRec
+  const recBtn = (showRec && !sunk)
     ? '<button type="button" class="rec-btn" data-name="' + esc(r.name) + '"' + dis
-      + ' onclick="openRecordModal(this.dataset.name)">' + lbl('rec', '📝今日測定した') + '</button>'
+      + ' onclick="' + stop + 'openRecordModal(this.dataset.name)">' + lbl('rec', '📝測定した') + '</button>'
     : '';
-  const slideBtn = showSlide
+  const slideBtn = (showSlide && !sunk)
     ? '<button type="button" class="slide-btn" data-name="' + esc(r.name) + '"' + dis
-      + ' onclick="slideToNextMonth(this.dataset.name)">' + lbl('slide', '📅来月へ') + '</button>'
+      + ' onclick="' + stop + 'slideToNextMonth(this.dataset.name)">' + lbl('slide', '📅来月へ') + '</button>'
     : '';
+  // 午前/午後の枠（案X-3の列見出しと重複しないよう、欠席リストなど列外に出る行のためにも持たせる）
+  const pill = r.session
+    ? '<span class="pill ' + r.session + '">' + (r.session === 'am' ? '午前' : '午後') + '</span>' : '';
+  const doneTag = sunk ? '<span class="done-tag">✅ ' + esc(sunk.label) + '</span>' : '';
+  const ymHtml = sunk
+    ? '予定 ' + esc(r.nextYm || '未設定')
+    : '<button type="button" class="ym-btn" data-name="' + esc(r.name) + '"' + dis
+      + ' onclick="' + stop + 'openYmPicker(this.dataset.name)">' + lbl('ym', '予定 ' + esc(r.nextYm || '未設定') + ' ▾') + '</button>';
   const errHtml = rowErr[r.name]
     ? '<div class="rowerr">⚠ 変更できませんでした：' + esc(rowErr[r.name]) + '（もう一度お試しください）</div>'
     : '';
+  const tappable = showRec && !sunk && !b;
   return '<div class="card b-' + r.badge + (gray ? ' gray' : '')
-    + (b ? ' busy' : '') + (leaving[r.name] ? ' leaving' : '') + '" data-row="' + esc(r.name) + '">'
+    + (sunk ? ' sunk' : '') + (b ? ' busy' : '') + (tappable ? ' tappable' : '')
+    + '" data-row="' + esc(r.name) + '"'
+    + (tappable ? ' data-name="' + esc(r.name) + '" onclick="openRecordModal(this.dataset.name)"' : '') + '>'
     + '<div class="rowline">'
     + '<span class="bdg">' + BADGE_EMOJI[r.badge] + '</span>'
     + '<span class="nm">' + esc(r.name) + '</span>'
     + '<span class="cr">' + esc(r.care || '介護度不明') + '</span>'
+    + pill
     + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
+    + doneTag
     + recBtn + slideBtn
     + '</div>'
     + '<div class="meta">前回測定 ' + esc(lastLabel(r))
-    + ' ／ <button type="button" class="ym-btn" data-name="' + esc(r.name) + '"' + dis
-    + ' onclick="openYmPicker(this.dataset.name)">' + lbl('ym', '予定 ' + esc(r.nextYm || '未設定') + ' ▾') + '</button> ／ ' + remainHtml
+    + ' ／ ' + ymHtml + ' ／ ' + remainHtml
     + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
     + (nextVisit ? ' ／ 次回来館 ' + esc(nextVisit) : '')
     + '</div>' + errHtml + '</div>';
+}
+// 午前/午後の1列ぶん（案X-3）。人数は列見出しにそのまま出す
+function colHtml(cls, label, rows) {
+  let inner = '<div class="colhead ' + cls + '">' + label + '　' + rows.length + '名</div>';
+  if (!rows.length) inner += '<div class="col-empty">なし</div>';
+  else rows.forEach(r => { inner += rowCard(r, { showSlide: true, showRec: true, sunkable: true }); });
+  return '<div class="col">' + inner + '</div>';
 }
 function showTab(n) {
   currentTab = n;
@@ -479,19 +594,29 @@ function renderTab1() {
   const el = document.getElementById('tab1');
   if (!state.att) { el.innerHTML = errCard('今日の来館予定（attendance）', state.errs.att); return; }
   if (!state.users.length) { el.innerHTML = errCard('個訓対象者（getKeikakushoYear）', state.errs.year); return; }
-  // am+pm を名前で一意化（どちらかで出席なら出席扱い）
+  // am+pm を名前で一意化（どちらかで出席なら出席扱い）。
+  // 午前午後2カラム（案X-3）のため、どちらの枠の人かを session に残す（先に現れた枠＝午前を優先）。
   const seen = {}; const list = [];
   ['am', 'pm'].forEach(k => (state.att.attendance[k] || []).forEach(a => {
     if (seen[a.name]) { if (a.status === '出席') seen[a.name].status = '出席'; return; }
-    const c = { name: a.name, status: a.status };
+    const c = { name: a.name, status: a.status, session: k };
     seen[a.name] = c; list.push(c);
   }));
-  const rowsOf = arr => arr.map(a => derived.rowByName[a.name]).filter(Boolean);  // 測定対象（要介護個訓＋要支援等）に居る人のみ
+  // 測定対象（要介護個訓＋要支援等）に居る人のみ。session/attendingToday は複製に付ける
+  //   （derived.rowByName の実体はタブ2と共有しているので直接書き換えない）。
+  const rowsOf = arr => arr.map(a => {
+    const src = derived.rowByName[a.name];
+    if (!src) return null;
+    const c = Object.assign({}, src);
+    c.session = a.session;
+    c.attendingToday = (a.status === '出席');
+    return c;
+  }).filter(Boolean);
   const ym = thisYm();
   const present = list.filter(a => a.status === '出席');
   // 段階1: 対象は「予定月 <= 当月」で絞る（過ぎている人も含む）。対象外は一切出さない（社長決定 5-1）。
-  // ただしフェード中(leaving)の行だけは、消えていく様子を見せるため一時的に残す（1-9-3）。
-  const shown = r => isDue(r.nextYm, ym) || leaving[r.name];
+  // ただし済んだ行(sunk)は沈めたまま残す＝「入ったこと」が見える（案X-4）。
+  const shown = r => isDue(r.nextYm, ym) || state.sunk[r.name];
   const presentRows = sokuteiSort_(rowsOf(present).filter(shown));
   const absentRows = sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')).filter(shown));
   // 「残り」= 今月が予定月だが本日来館していない人（別日に測る必要がある人数）
@@ -500,23 +625,25 @@ function renderTab1() {
     .filter(r => isDue(r.nextYm, ym));
   const presentNames = {}; present.forEach(a => { presentNames[a.name] = true; });
   const restCount = dueAll.filter(r => !presentNames[r.name]).length;
-  // ヘッダの人数はフェード中の行を除いた「実際の対象数」＝押した結果がすぐ数字に出る（1-9-3）
-  const dueCountNow = presentRows.filter(r => !leaving[r.name]).length;
+  // ヘッダの人数は済んだ行を除いた「まだ測る人の数」＝押した結果がすぐ数字に出る（1-9-3）
+  const dueCountNow = presentRows.filter(r => !state.sunk[r.name]).length;
 
-  let html = '<div class="hdr">' + esc(fmtMD(state.today)) + '・来館予定' + present.length + '名中 '
+  let html = '<div class="hdr">' + esc(fmtMD(state.selectedDate)) + '・来館予定' + present.length + '名中 '
     + '今月の対象' + dueCountNow + '名（残り' + restCount + '名）</div>';
   if (state.errs.yotei) html += '<div class="note">⚠ 予定月（getYotei）取得失敗のため全員を対象として表示しています：' + esc(state.errs.yotei) + '</div>';
   if (state.errs.usage) html += '<div class="note">⚠ 利用率（usage_stats）取得失敗のため E は残り回数のみで計算しています</div>';
   if (!dueCountNow) {
     html += '<div class="done-all">今月ぶん完了 ✅</div>'
-      + '<div class="note">本日来館の方で、今月が予定月の方はいません' + (restCount ? '（別日に測る方が ' + restCount + '名います）' : '') + '</div>';
+      + '<div class="note">この日に来館の方で、今月が予定月の方はいません' + (restCount ? '（別日に測る方が ' + restCount + '名います）' : '') + '</div>';
   }
-  presentRows.forEach(r => { html += rowCard(r, false, '', '', true, true); });
+  // 午前／午後の2カラム（案X-3・広幅は並列・狭幅は縦積み）
+  const sp = msSplitBySession(presentRows);
+  if (presentRows.length) html += '<div class="cols">' + colHtml('am', '午前', sp.am) + colHtml('pm', '午後', sp.pm) + '</div>';
   if (absentRows.length) {
-    html += '<div class="section-label">🚫 本日欠席（今月が予定月・' + absentRows.length + '名）</div>';
-    absentRows.forEach(r => { html += rowCard(r, true, '欠席', '', false, false); });
+    html += '<div class="section-label">🚫 この日は欠席（今月が予定月・' + absentRows.length + '名）</div>';
+    absentRows.forEach(r => { html += rowCard(r, { gray: true, tag: '欠席', sunkable: true }); });
   }
-  html += '<div class="note">※「残り」＝今月が予定月だが本日来館していない方（' + restCount + '名）。予定月が来ていない方は「👥全利用者」タブで確認できます。</div>';
+  html += '<div class="note">※「残り」＝今月が予定月だが、この日に来館していない方（' + restCount + '名）。予定月が来ていない方は「👥全利用者」タブで確認できます。</div>';
   el.innerHTML = html;
 }
 
@@ -544,7 +671,7 @@ function renderTab2() {
   // タブ2は予定月で絞らない（対象外の人も従来どおり全員見える・5-7）。予定月は各行に併記する。
   const dueCount = rows.filter(r => isDue(r.nextYm, thisYm())).length;
   html += '<div class="hdr">全 ' + rows.length + '名（期限が近い順）／うち今月が予定月 ' + dueCount + '名</div>';
-  rows.forEach(r => { html += rowCard(r, false, '', nextVisitStr(r.weekdays, state.today), false, false); });
+  rows.forEach(r => { html += rowCard(r, { nextVisit: nextVisitStr(r.weekdays, state.today) }); });
   el.innerHTML = html;
 }
 
@@ -602,11 +729,9 @@ function renderTab3() {
 // 対策: 押下の瞬間に描画へ反映し、応答までその行の全ボタンを無効化する。
 //   ★3つのボタン（📅来月へ / 予定▾ / 今日測定した）は必ず runRowAction() を通す。
 //     個別に書くと同じ不具合を3箇所に作ることになる。
-const FADE_MS = 450;        // 対象から外れた行が消えるまでのフェード（一瞬で消えると押せた実感がない）
 const UNDO_MS = 5000;       // Undoバーの表示時間
 const UNDO_FADE_MS = 1200;  // 消える直前に薄くする時間（「もう消える」を伝える）
 const busy = {};            // name -> { which:'slide'|'ym'|'rec' } 送信中の行（in-flight ロック）
-const leaving = {};         // name -> true フェードして消える途中の行
 const rowErr = {};          // name -> 失敗メッセージ
 
 // 押下 → 即時フィードバック → 送信 → 成否の明示 までを1本化した共通ヘルパー。
@@ -628,12 +753,14 @@ async function runRowAction(name, which, fn) {
     return null;
   }
 }
-// 対象から外れた行をフェードさせてから消す（1-9-3）
-function fadeOutRow(name) {
-  leaving[name] = true;
+// 済んだ行を「沈める」（案X-4・従来のフェードして消す挙動から変更）。
+// 消してしまうと「本当に入ったのか」が確かめられず、スタッフが不安になって二度押しする。
+// グレーで残し ✅ と結果ラベルを出せば、押した結果がその場に残る。再読込（load）でリセットされる。
+function sinkRow(name, label) {
+  state.sunk[name] = { label: label };
   renderAll();
-  setTimeout(function () { delete leaving[name]; renderAll(); }, FADE_MS);
 }
+function unsinkRow(name) { delete state.sunk[name]; renderAll(); }
 
 // ===== 5秒Undoバー（newmail.html の5秒Undo方式に倣う・画面上部に固定表示）=====
 let undoTimer = null, undoFadeTimer = null;
@@ -678,14 +805,14 @@ async function callYotei(action, name) {
 async function slideToNextMonth(name) {
   const row = await runRowAction(name, 'slide', () => callYotei('slideYotei', name));
   if (!row) return;                                  // 連打の2回目 or 失敗（行に理由が出ている）
-  fadeOutRow(name);                                  // 予定月が来月＝isDue から外れる行をフェードで消す
   const m = +row.nextYm.slice(5, 7);
+  sinkRow(name, m + '月へ送りました');                 // 対象から外れた行はグレーで沈める（案X-4）
   showUndoBar(name + ' を' + m + '月へ送りました', () => undoSlide(name));
 }
 async function undoSlide(name) {
   const row = await runRowAction(name, 'slide', () => callYotei('undoSlideYotei', name));
   if (!row) return;
-  renderAll();
+  unsinkRow(name);                                   // 戻したら沈めも解除して元の行に復帰させる
 }
 
 // ===== 月タップ（予定月を任意の月へ直接指定・2026-07-28 社長決定）=====
@@ -742,15 +869,16 @@ async function pickYm(ym) {
   if (ym === prev) return;   // 同じ月＝変更なし
   const row = await runRowAction(name, 'ym', () => setYm(name, ym));
   if (!row) return;
-  if (isDue(row.nextYm, thisYm())) renderAll(); else fadeOutRow(name);
   const m = +row.nextYm.slice(5, 7);
+  // 今月のままなら対象に残す（沈めない）。来月以降なら対象から外れるのでグレーで沈める（案X-4）
+  if (isDue(row.nextYm, thisYm())) renderAll(); else sinkRow(name, m + '月に変更しました');
   showUndoBar(name + ' を' + m + '月に変更しました', () => undoSetYm(name, prev));
 }
 async function undoSetYm(name, prevYm) {
-  if (!prevYm) { renderAll(); return; }
+  if (!prevYm) { unsinkRow(name); return; }
   const row = await runRowAction(name, 'ym', () => setYm(name, prevYm));
   if (!row) return;
-  renderAll();
+  unsinkRow(name);
 }
 
 // ===== 「今日測定した」ワンタップ記録（段階1: 要介護・要支援等とも addSokuteiDone に一本化） =====
@@ -761,10 +889,24 @@ async function undoSetYm(name, prevYm) {
 //   どちらから入力しても「済」として拾える（5-6）。
 let recordTargetName = '';
 function openRecordModal(name) {
+  const r = derived.rowByName[name];
+  if (!r) return;
+  if (busy[name] || state.sunk[name]) return;   // 送信中・済んだ行は開かせない（二重記録の入口を塞ぐ）
   recordTargetName = name;
   document.getElementById('recordModalName').textContent = name;
   fillStaffSelect();
+  // 過去日入力（案X-2）: 既定は日付ナビで選んでいる日。未来日は実施記録としてありえないので max で塞ぐ。
+  const dEl = document.getElementById('recordDate');
+  dEl.value = state.selectedDate;
+  dEl.max = state.today;
   document.getElementById('recordNote').value = '';
+  // 出力者（案X-5）は要介護のみ。要支援・事業対象者は記録シートに出力者列が無い（ⓑ確定・measure-core.js §msRouteWrite）
+  const isKaigo = isKaigoCare(r.care);
+  document.getElementById('recordOutputWrap').style.display = isKaigo ? '' : 'none';
+  document.getElementById('recordOutputSelect').value = '';
+  document.getElementById('recordHint').textContent = isKaigo
+    ? '要介護：測定日・測定者・出力者を記録します。次回の予定月は「測定日の月＋3ヶ月」になります。'
+    : '要支援・事業対象者：測定日・測定者を記録します（出力者はありません）。次回の予定月は「測定日の月＋4ヶ月」になります。';
   document.getElementById('recordModal').style.display = 'flex';
 }
 function closeRecordModal() {
@@ -775,19 +917,28 @@ async function submitRecord() {
   const name = recordTargetName;
   const by = document.getElementById('recordStaffSelect').value;
   const note = document.getElementById('recordNote').value.trim();
+  const date = document.getElementById('recordDate').value;
   if (!name || !by) return;
   if (busy[name]) return;                       // 送信中は二重送信しない（1-9-2）
+  const r = derived.rowByName[name] || {};
+  // 測定日の検証（案X-2）。未来日を通すと予定月が「測定日の月＋周期」で先へ飛んでしまう
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert('測定日を選んでください。'); return; }
+  if (date > state.today) { alert('未来の日付では記録できません。実際に測定した日を選んでください。'); return; }
+  // 出力者は要介護のみ。空欄なら測定者と同じ（GAS側でも空→測定者に倒すが、送信時点で確定させておく）
+  const outputBy = isKaigoCare(r.care) ? (document.getElementById('recordOutputSelect').value || by) : '';
   const btn = document.getElementById('recordConfirmBtn');
   btn.disabled = true; btn.textContent = '⏳ 記録中…';
-  const r = derived.rowByName[name] || {};
   closeRecordModal();                           // モーダルは先に閉じ、行の「⏳送信中…」で進行を見せる
   // スライド・月タップと同じ共通ヘルパーを通す（ボタンごとに個別実装しない・1-9-5）
   const res = await runRowAction(name, 'rec', async () => {
     // addSokuteiDone = ①実施ログ追記 ②予定月を「実施月＋周期」へ更新 をセットで行う（GAS側でロールバック付き）
+    // ★date は選んだ測定日をそのまま送る。GAS 側 nextYmAfterDone(date, 周期) が「測定日の月＋周期」で
+    //   予定月を決めるため、過去日で入れても今日基準にはならない（案X-2の要件）。
     const url = GAS + '?action=addSokuteiDone&userId=' + encodeURIComponent(r.userId || name)
       + '&name=' + encodeURIComponent(name)
       + '&care=' + encodeURIComponent(r.care || '')
-      + '&date=' + todayStr() + '&by=' + encodeURIComponent(by)
+      + '&date=' + encodeURIComponent(date) + '&by=' + encodeURIComponent(by)
+      + '&outputBy=' + encodeURIComponent(outputBy)
       + '&note=' + encodeURIComponent(note) + '&t=' + Date.now();
     const j = await fetchJson(url);
     if (!j.ok || !j.verified) throw new Error((j && j.error) || '書き込み検証に失敗しました');
@@ -796,12 +947,18 @@ async function submitRecord() {
   btn.disabled = false; btn.textContent = '記録する';
   if (!res) return;                             // 失敗（行に理由が出ている）
   state.shien.push(res.log);
-  // 予定月をその場で反映（再取得せずに行が「済」として今日の優先から消える）
+  // 予定月をその場で反映（再取得せずに行が「済」になる）
   const yi = (state.yotei || []).findIndex(y => y.userId === res.yotei.userId && y.domain === res.yotei.domain);
   if (yi >= 0) state.yotei[yi] = res.yotei; else state.yotei.push(res.yotei);
   buildDerived();
-  fadeOutRow(name);                             // 測定済みで対象から外れる行をフェードで消す（1-9-3）
+  sinkRow(name, '測定を記録しました（' + fmtMD(date) + '）');   // 消さずにグレーで沈める（案X-4）
 }
+
+// ===== 日付ナビのイベント（案X-1）=====
+document.getElementById('prevDay').addEventListener('click', () => goDate(msAddDays(state.selectedDate, -1)));
+document.getElementById('nextDay').addEventListener('click', () => goDate(msAddDays(state.selectedDate, 1)));
+document.getElementById('todayBtn').addEventListener('click', () => goDate(todayStr()));
+document.getElementById('datePick').addEventListener('change', function () { goDate(this.value); });
 
 load();
 </script>
