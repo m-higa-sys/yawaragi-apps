@@ -16406,6 +16406,150 @@ function appregistryMigrateLauncherV2() {
 }
 
 // =============================================================
+// ランチャー台帳：測定管理(sokutei)を現場へ出す（2026-07-29）
+// -------------------------------------------------------------
+// ⚠️ appregistryMigrateLauncherV2() は使わない・呼ばない。
+//    あれは LAUNCHER_MAPPING から台帳を「作り直す」関数で、現在の台帳は
+//    マッピングより先に進んでいる（口腔3本・出席率など）。流すとそれらが
+//    internal へ落ちて現場から消える。ここは行の追加と1セルの文言変更だけを行う。
+//
+// やること2つ:
+//   ① sokutei（📐 測定管理）の行を1本足す（表示順9＝個別機能訓練計画書の次）
+//   ② measure-app の表示名を「⛔身体機能評価（使わない）」にする
+//      行は消さない・URLも変えない（ブックマークから開いた人が壊れないように）
+// どちらも冪等（2回実行しても行は増えず、⛔も二重に付かない）。
+// =============================================================
+var LAUNCHER_SOKUTEI_URL_ = 'https://m-higa-sys.github.io/yawaragi-apps/sokutei.html';
+var LAUNCHER_SOKUTEI_NAME_ = '測定管理';
+var LAUNCHER_SOKUTEI_ICON_ = '📐';
+var LAUNCHER_SOKUTEI_CAT_ = '利用者の記録';
+var LAUNCHER_SOKUTEI_ORDER_ = 9;
+var LAUNCHER_SOKUTEI_DESC_ = '今月の測定対象と実施状況（未／済）。曜日・午前午後・名前で絞り込み';
+var LAUNCHER_MEASUREAPP_SLUG_ = 'measure-app';
+var LAUNCHER_MEASUREAPP_NEWNAME_ = '⛔身体機能評価（使わない）';
+
+// 純関数: 既存行(array-of-arrays・列順=APPREGISTRY_HEADERS・14列)を受け取り、
+// 「反映後の行配列」と「何をするかの計画」を返す。シートには触らない。
+// 既存行は、measure-app の アプリ名[0] 以外は1セルも書き換えない
+//   （最終更新日[10] も動かさない。指示が「行の追加と1セルの文言変更だけ」のため）。
+function launcherPlanSokutei_(rows, todayStr) {
+  var COLS = 14;
+  var out = [];
+  var plan = {
+    addRow: null, alreadyRegistered: false,
+    renameRowIndex: -1, renameFrom: '', renameTo: '', renameAlready: false, measureAppFound: false,
+    before: [], beforeRowCount: (rows || []).length, afterRowCount: 0
+  };
+  var slugOf = launcherSlugFromUrl_;
+  for (var i = 0; i < (rows || []).length; i++) {
+    var r = rows[i].slice();
+    while (r.length < COLS) r.push('');
+    var slug = slugOf(r[3]);
+    if (slug === 'sokutei') plan.alreadyRegistered = true;
+    if (slug === LAUNCHER_MEASUREAPP_SLUG_) {
+      plan.measureAppFound = true;
+      plan.renameRowIndex = i;
+      plan.renameFrom = String(r[0] || '');
+      // 冪等: すでに⛔が付いていれば触らない（⛔⛔ にしない）
+      if (plan.renameFrom.indexOf('⛔') === 0) {
+        plan.renameAlready = true;
+        plan.renameTo = plan.renameFrom;
+      } else {
+        plan.renameTo = LAUNCHER_MEASUREAPP_NEWNAME_;
+        // 戻せるように変更前の行を丸ごと控える
+        plan.before.push({ rowIndex: i, values: rows[i].slice() });
+        r[0] = LAUNCHER_MEASUREAPP_NEWNAME_;
+      }
+    }
+    out.push(r);
+  }
+  // sokutei がまだ無ければ1行足す。公開区分[4]は同カテゴリの既存行と同じ 'staff'（internalへ落とさない）
+  if (!plan.alreadyRegistered) {
+    var nr = [];
+    for (var k = 0; k < COLS; k++) nr.push('');
+    nr[0] = LAUNCHER_SOKUTEI_NAME_;
+    nr[1] = LAUNCHER_SOKUTEI_CAT_;
+    nr[2] = LAUNCHER_SOKUTEI_DESC_;
+    nr[3] = LAUNCHER_SOKUTEI_URL_;
+    nr[4] = 'staff';
+    nr[9] = todayStr;    // 作成日
+    nr[10] = todayStr;   // 最終更新日
+    nr[12] = LAUNCHER_SOKUTEI_ICON_;
+    nr[13] = LAUNCHER_SOKUTEI_ORDER_;
+    plan.addRow = nr.slice();
+    out.push(nr);
+  }
+  plan.afterRowCount = out.length;
+  return { rows: out, plan: plan };
+}
+
+// IO: 台帳を読んで計画を作り、dryRun=false のときだけ書き戻す。
+// 書き戻しは「追加した1行の追記」と「measure-app のアプリ名セル1つ」だけに絞る
+//   （全域 clear→書き戻しはしない＝他の行を巻き込む余地を作らない）。
+function launcherAddSokutei_(dryRun) {
+  var ss = appregistrySS_();
+  var sheet = ss.getSheetByName(APPREGISTRY_SHEET);
+  if (!sheet) throw new Error("台帳シート '" + APPREGISTRY_SHEET + "' が無い");
+  var COLS = APPREGISTRY_HEADERS.length;
+  var lastRow = sheet.getLastRow();
+  var rows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, COLS).getValues() : [];
+  var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var res = launcherPlanSokutei_(rows, today);
+  var p = res.plan;
+
+  Logger.log('===== ランチャー台帳：測定管理を出す ' + (dryRun ? '【確認のみ・書き込みなし】' : '【実行】') + ' =====');
+  Logger.log('台帳の行数（ヘッダー除く）: ' + p.beforeRowCount + ' → ' + p.afterRowCount);
+  if (p.alreadyRegistered) {
+    Logger.log('［追加］既に登録済み・変更なし（sokutei の行がある）');
+  } else {
+    Logger.log('［追加］下の1行を足す:');
+    for (var a = 0; a < COLS; a++) {
+      if (String(p.addRow[a]) !== '') Logger.log('    ' + APPREGISTRY_HEADERS[a] + ' = ' + p.addRow[a]);
+    }
+  }
+  if (!p.measureAppFound) {
+    Logger.log('［変更］measure-app の行が見つからない・変更なし');
+  } else if (p.renameAlready) {
+    Logger.log('［変更］既に⛔が付いている・変更なし（' + p.renameFrom + '）');
+  } else {
+    Logger.log('［変更］measure-app のアプリ名');
+    Logger.log('    変更前: ' + p.renameFrom);
+    Logger.log('    変更後: ' + p.renameTo);
+    Logger.log('［控え］変更前の行（戻すときはこれを貼る）:');
+    Logger.log('    ' + JSON.stringify(p.before[0].values));
+  }
+
+  if (dryRun) {
+    Logger.log('※ 確認のみのため、台帳には何も書いていません。');
+    return { dryRun: true, plan: p };
+  }
+
+  // ① measure-app のアプリ名セルだけ書き換える
+  if (p.measureAppFound && !p.renameAlready) {
+    sheet.getRange(2 + p.renameRowIndex, 1).setValue(p.renameTo);
+  }
+  // ② sokutei の行を末尾へ追記する
+  if (!p.alreadyRegistered) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, COLS).setValues([p.addRow]);
+  }
+  SpreadsheetApp.flush();
+  // 読み戻し検証（書けたことを実測してから成功を返す）
+  var after = sheet.getRange(2, 1, sheet.getLastRow() - 1, COLS).getValues();
+  var verify = launcherPlanSokutei_(after, today).plan;
+  var ok = verify.alreadyRegistered && (!verify.measureAppFound || verify.renameAlready);
+  Logger.log(ok ? '✅ 反映を確認しました（行数 ' + after.length + '）' : '⚠️ 反映の確認が取れませんでした');
+  return { dryRun: false, ok: ok, rowCount: after.length, plan: p };
+}
+
+// GASエディタから引数なしで実行する入口（AAA_ 命名＝一覧の先頭に出す）
+function AAA_ランチャー測定管理を出す_確認のみ() {
+  return launcherAddSokutei_(true);
+}
+function AAA_ランチャー測定管理を出す() {
+  return launcherAddSokutei_(false);
+}
+
+// =============================================================
 // 伝達ボード（社長⇄スタッフ⇄スタッフ 3方向メッセージ板・2026-06-18）
 //   シート「伝達ボード」列=id/from/to/body/deadline/createdAt/done/doneAt/doneBy/recipients/readBy
 //   純関数の正本は genba.html 側（PhaseA・31テストPASS）と同一実装（二重持ち）。
