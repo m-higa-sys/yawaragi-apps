@@ -79,6 +79,21 @@ function AAA_雇用契約期限シート作成() {
   return r;
 }
 
+// 2026-07-28: 「予定月」シートの作成＋初期値の一括生成（GASエディタから引数なしで実行する入口）。
+// AAA_有給基準日シート作成 と同じ薄いラッパー。冪等（既に行がある利用者は上書きしない）。
+// dryRun=true で書き込みせず件数だけ返す。
+function AAA_予定月シート初期値生成() {
+  var r = setupYoteiInitial_(false);
+  Logger.log('シート「予定月」 生成 ' + r.inserted + '件 / 既存スキップ ' + r.stats.skippedExisting + '件');
+  Logger.log(JSON.stringify(r));
+  return r;
+}
+function AAA_予定月シート初期値生成_確認のみ() {
+  var r = setupYoteiInitial_(true);
+  Logger.log(JSON.stringify(r));
+  return r;
+}
+
 // ===== 設定 =====
 var SS_ID = '1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0';
 var OWNER_EMAIL = 'm-higa@keepfitlife.com';
@@ -959,6 +974,14 @@ function doGet(e) {
       return respond({ error: 'unauthorized', status: 401 }, e.parameter.callback);
     }
     return respond(setupYukyuKijunSheet_(SpreadsheetApp.openById(SS_ID)), e.parameter.callback);
+  }
+  // 同上: 「予定月」シートの作成＋初期値一括生成（同じ理由・同じ認可・冪等・2026-07-28）。
+  //   dryRun=1 で書き込みせず件数だけ返す。既に行がある利用者は上書きしない。
+  if (e && e.parameter && e.parameter.action === 'setup_yotei_init') {
+    if (!intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, e.parameter.callback);
+    }
+    return respond(setupYoteiInitial_(e.parameter.dryRun === '1'), e.parameter.callback);
   }
 
   // メンテナンス用: setupSheets を実行（2026/5/3追加・送付用居宅一覧シート作成用）
@@ -3217,6 +3240,118 @@ function doGet(e) {
         return respond({ ok: true, inserted: sspToInsert.length, skippedExisting: sspSkipped }, callback);
       } finally {
         sspLock.releaseLock();
+      }
+    }
+
+    // ============================================================
+    // 予定月スライド方式 段階1（2026-07-28追加・すべて additive）
+    // 「予定月」シート = 利用者 × 分野(domain) × 次回予定月(nextYm) の汎用の器。
+    // 段階1は domain='sokutei' のみ。口腔/個訓/通所は行を足すだけで同じAPIに載る。
+    // 純関数は gas/yawaragi-board/yotei-core.js（ymAdd / nextYmAfterDone / nextYmSlide /
+    //   nextYmUnslide / isDue / buildInitialYotei）。周期は session-board-core.js:47
+    //   sokuteiCycleMonths_ を使う（判定をここに複製しない）。
+    // ============================================================
+
+    // 予定月 一覧取得（domain指定・既定 sokutei）
+    if (action === 'getYotei') {
+      var gyDomain = String((e && e.parameter && e.parameter.domain) || 'sokutei').trim();
+      return respond({ ok: true, domain: gyDomain, records: readYotei_(gyDomain) }, callback);
+    }
+
+    // 予定月 1行 upsert（手動セット）
+    if (action === 'setYotei') {
+      var syUserId = String((e && e.parameter && e.parameter.userId) || '').trim();
+      var syDomain = String((e && e.parameter && e.parameter.domain) || 'sokutei').trim();
+      var syNextYm = String((e && e.parameter && e.parameter.nextYm) || '').trim();
+      var syBy = String((e && e.parameter && e.parameter.by) || '').trim();
+      var syName = String((e && e.parameter && e.parameter.name) || '').trim();
+      var syCare = String((e && e.parameter && e.parameter.care) || '').trim();
+      if (!syUserId || !syDomain || !/^\d{4}-\d{2}$/.test(syNextYm)) {
+        return respond({ ok: false, error: 'invalid params (userId, domain, nextYm=YYYY-MM required)' }, callback);
+      }
+      return respond(writeYotei_(syUserId, syDomain, {
+        name: syName, care: syCare, nextYm: syNextYm, by: syBy, slideDelta: 0
+      }), callback);
+    }
+
+    // 予定月 +1ヶ月（「来月へ」1タップ）。周期は動かさない＝次の実施後は実施月＋周期に戻る。
+    if (action === 'slideYotei' || action === 'undoSlideYotei') {
+      var slUserId = String((e && e.parameter && e.parameter.userId) || '').trim();
+      var slDomain = String((e && e.parameter && e.parameter.domain) || 'sokutei').trim();
+      var slBy = String((e && e.parameter && e.parameter.by) || '').trim();
+      var slUndo = (action === 'undoSlideYotei');
+      if (!slUserId || !slDomain) {
+        return respond({ ok: false, error: 'invalid params (userId, domain required)' }, callback);
+      }
+      var slCur = findYotei_(slUserId, slDomain);
+      if (!slCur) return respond({ ok: false, error: 'not found: ' + slDomain }, callback);
+      var slNext = slUndo ? nextYmUnslide(slCur.nextYm) : nextYmSlide(slCur.nextYm);
+      if (!slNext) return respond({ ok: false, error: 'invalid nextYm on sheet: ' + slCur.nextYm }, callback);
+      return respond(writeYotei_(slUserId, slDomain, {
+        name: slCur.name, care: '', nextYm: slNext, by: slBy, slideDelta: slUndo ? -1 : 1,
+        cycleMonths: slCur.cycleMonths
+      }), callback);
+    }
+
+    // 測定の実施記録（要介護・要支援等 共通の入口）。
+    // ①「要支援測定記録」へ実施ログを1行追記（source='app'）
+    // ②「予定月」の nextYm を 実施月＋周期 に更新
+    // ①②はセットで行う。②が失敗したら①を巻き戻し、片方だけ成功した状態を残さない。
+    // ※段階1の間、要介護は個訓アプリ側(個別機能訓練計画書記録13列目)にも書ける＝書込先が2つある
+    //   意図的な暫定状態。片寄せは段階3（個訓側の測定欄撤去）で行う。
+    if (action === 'addSokuteiDone') {
+      var adUserId = String((e && e.parameter && e.parameter.userId) || '').trim();
+      var adName = String((e && e.parameter && e.parameter.name) || '').trim() || adUserId;
+      var adCare = String((e && e.parameter && e.parameter.care) || '').trim();
+      var adDate = String((e && e.parameter && e.parameter.date) || '').trim();
+      var adBy = String((e && e.parameter && e.parameter.by) || '').trim();
+      var adNote = String((e && e.parameter && e.parameter.note) || '').trim();
+      if (!adUserId || !/^\d{4}-\d{2}-\d{2}$/.test(adDate)) {
+        return respond({ ok: false, error: 'invalid params (userId, date=YYYY-MM-DD required)' }, callback);
+      }
+      var adLock = LockService.getScriptLock();
+      try { adLock.waitLock(10000); } catch (adLockErr) {
+        return respond({ ok: false, error: 'lock timeout' }, callback);
+      }
+      var adWriteRow = -1, adSheet = null;
+      try {
+        // 介護度は引数優先・無ければ台帳から引く（周期の判定材料）
+        if (!adCare) {
+          var adUsers = getTsushoTargetUsersV2_(true);
+          for (var adU = 0; adU < adUsers.length; adU++) {
+            if (adUsers[adU].name === adName || adUsers[adU].userId === adUserId) { adCare = adUsers[adU].category; break; }
+          }
+        }
+        // ① 実施ログ追記＋読み戻し検証
+        adSheet = ensureShienSokuteiSheet_();
+        var adNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+        adWriteRow = adSheet.getLastRow() + 1;
+        var adRange = adSheet.getRange(adWriteRow, 1, 1, 7);
+        adRange.setNumberFormat('@');
+        adRange.setValues([[adName, adCare, adDate, adBy, 'app', adNote, adNow]]);
+        SpreadsheetApp.flush();
+        var adCheck = adSheet.getRange(adWriteRow, 1, 1, 7).getValues()[0];
+        if (!(String(adCheck[0]) === adName && String(adCheck[2]) === adDate)) {
+          throw new Error('実施ログの書き込み検証に失敗しました');
+        }
+        // ② 予定月を 実施月＋周期 へ
+        var adCycle = sokuteiCycleMonths_(adCare);
+        var adNextYm = nextYmAfterDone(adDate, adCycle);
+        var adRes = writeYotei_(adUserId, 'sokutei', {
+          name: adName, care: adCare, nextYm: adNextYm, by: adBy, slideDelta: 0, resetSlide: true
+        });
+        if (!adRes.ok) throw new Error(adRes.error || '予定月の更新に失敗しました');
+        return respond({
+          ok: true, verified: true,
+          log: { name: adName, care: adCare, sokutei_date: adDate, sokutei_by: adBy, source: 'app', note: adNote },
+          yotei: adRes.row
+        }, callback);
+      } catch (adErr) {
+        // ロールバック: ①だけ成功した状態を残さない
+        try { if (adSheet && adWriteRow > 1) adSheet.deleteRow(adWriteRow); } catch (adRbErr) { }
+        return respond({ ok: false, error: String((adErr && adErr.message) || adErr), rolledBack: true }, callback);
+      } finally {
+        adLock.releaseLock();
       }
     }
 
@@ -14825,6 +14960,228 @@ function shienSokuteiRowToObj_(row) {
 // 投入完了（2026-07-03・照合承認済み60名）。名簿は本番「支援測定」シートへ移行済みのため配列は空にした。
 // seedShienSokuteiPaper は残置（no-op：全員シート在籍済みで toInsert=0）。公開コードからの氏名露出を解消。
 var SHIEN_SOKUTEI_PAPER_SEED = [];
+
+// ===== 予定月スライド方式 段階1（2026-07-28追加）=====
+// 「予定月」シート = 利用者 × 分野(domain) × 次回予定月(nextYm) の汎用の器。
+// 主キーは (userId, domain)。同じ組み合わせの行は1本だけ（writeYotei_ が upsert で担保）。
+// 段階1は domain='sokutei' のみ。将来 'oral' / 'kobetsu' / 'tsusho' を行追加だけで載せる。
+// 列順は固定（ensure時のヘッダー文字列がそのまま正）。
+// ensureKeikakushoSheet_（同ファイル・「個別機能訓練計画書記録」）と同じ書き方に揃えている。
+var YOTEI_HEADERS_ = ['userId', 'name', 'domain', 'nextYm', 'cycleMonths', 'updatedAt', 'updatedBy', 'slideCount', 'note'];
+
+function ensureYoteiSheet_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName('予定月');
+  if (!sheet) {
+    sheet = ss.insertSheet('予定月');
+    sheet.getRange(1, 1, 1, YOTEI_HEADERS_.length).setValues([YOTEI_HEADERS_]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, YOTEI_HEADERS_.length).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+  } else {
+    // 後付け列の補完（冪等・additive）
+    var lastCol = sheet.getLastColumn();
+    for (var hi = lastCol; hi < YOTEI_HEADERS_.length; hi++) {
+      sheet.getRange(1, hi + 1).setValue(YOTEI_HEADERS_[hi])
+        .setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+  }
+  // 全列テキスト書式（冪等）: '2026-08' がシートTZで日付に化けるのを根絶する（要支援測定記録と同方針）。
+  sheet.getRange('A:I').setNumberFormat('@');
+  return sheet;
+}
+
+function yoteiRowToObj_(row) {
+  return {
+    userId: String(row[0] || '').trim(),
+    name: String(row[1] || '').trim(),
+    domain: String(row[2] || '').trim(),
+    nextYm: String(row[3] || '').trim(),
+    cycleMonths: parseInt(row[4], 10) || 0,
+    updatedAt: String(row[5] || '').trim(),
+    updatedBy: String(row[6] || '').trim(),
+    slideCount: parseInt(row[7], 10) || 0,
+    note: String(row[8] || '').trim()
+  };
+}
+
+// domain 一致の全行（domain 未指定なら全件）
+function readYotei_(domain) {
+  var sheet = ensureYoteiSheet_();
+  var values = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var o = yoteiRowToObj_(values[i]);
+    if (!o.userId) continue;
+    if (domain && o.domain !== domain) continue;
+    out.push(o);
+  }
+  return out;
+}
+
+function findYotei_(userId, domain) {
+  var rows = readYotei_(domain);
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].userId === userId) return rows[i];
+  }
+  return null;
+}
+
+// (userId, domain) の1行を upsert。返り: { ok, row } / { ok:false, error }
+//   opts.slideDelta … slideCount への加算（0未満にはしない）
+//   opts.resetSlide … true で slideCount を0に戻す（実施時＝サイクルが正常に戻ったとき）
+function writeYotei_(userId, domain, opts) {
+  var o = opts || {};
+  var nextYm = String(o.nextYm || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(nextYm)) return { ok: false, error: 'invalid nextYm: ' + nextYm };
+  var lock = LockService.getScriptLock();
+  var held = false;
+  try { lock.waitLock(10000); held = true; } catch (lockErr) { /* 呼出元が既に握っている場合はそのまま進む */ }
+  try {
+    var sheet = ensureYoteiSheet_();
+    var values = sheet.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][0] || '').trim() === userId && String(values[i][2] || '').trim() === domain) {
+        rowIdx = i + 1;
+        break;
+      }
+    }
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    var cycle = parseInt(o.cycleMonths, 10);
+    if (!(cycle >= 1 && cycle <= 12)) cycle = sokuteiCycleMonths_(o.care || '');
+    var slide = 0, name = String(o.name || '').trim(), note = String(o.note || '').trim();
+    if (rowIdx > 0) {
+      var cur = yoteiRowToObj_(values[rowIdx - 1]);
+      slide = cur.slideCount;
+      if (!name) name = cur.name;
+      if (!note) note = cur.note;
+      if (!o.cycleMonths && !o.care && cur.cycleMonths) cycle = cur.cycleMonths;
+    }
+    if (o.resetSlide) slide = 0;
+    else slide = slide + (parseInt(o.slideDelta, 10) || 0);
+    if (slide < 0) slide = 0;
+    var row = [userId, name, domain, nextYm, cycle, now, String(o.by || '').trim(), slide, note];
+    if (rowIdx > 0) {
+      sheet.getRange(rowIdx, 1, 1, YOTEI_HEADERS_.length).setNumberFormat('@').setValues([row]);
+    } else {
+      rowIdx = sheet.getLastRow() + 1;
+      sheet.getRange(rowIdx, 1, 1, YOTEI_HEADERS_.length).setNumberFormat('@').setValues([row]);
+    }
+    SpreadsheetApp.flush();
+    var check = yoteiRowToObj_(sheet.getRange(rowIdx, 1, 1, YOTEI_HEADERS_.length).getValues()[0]);
+    if (check.userId !== userId || check.domain !== domain || check.nextYm !== nextYm) {
+      return { ok: false, error: '予定月の書き込み検証に失敗しました' };
+    }
+    return { ok: true, row: check };
+  } finally {
+    if (held) lock.releaseLock();
+  }
+}
+
+// 予定月の初期値を一括生成（1回きり・冪等）。
+// 最後の測定日は3ソースをマージして最大値を採る:
+//   ①「要支援測定記録」sokutei_date（source='paper' の紙台帳アンカーを含む＝要支援の期限の正）
+//   ②「個別機能訓練計画書記録」13列目 sokutei_date（userIdキー）
+//   ③ 新規書込分（= addSokuteiDone が①へ書くため①に含まれる）
+// 氏名の突合は _normalizeUserName を必ず通す。
+// 判定そのものは yotei-core.js の buildInitialYotei（純関数・テスト済み）に委ねる。
+function setupYoteiInitial_(dryRun) {
+  var DOMAIN = 'sokutei';
+  var thisYm = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+
+  // --- 母集団: 要介護（個訓対象・planStart付き）＋ 要支援等（通所V2から要介護を除く） ---
+  var users = [];
+  var kaigo = getKeikakushoTargetUsers_(false);
+  kaigo.forEach(function (u) {
+    users.push({ userId: u.userId, name: u.name, care: u.category, planStart: u.planStart || '' });
+  });
+  var seen = {};
+  users.forEach(function (u) { seen[_normalizeUserName(u.name)] = true; });
+  getTsushoTargetUsersV2_(false).forEach(function (u) {
+    if (u.cancelled) return;
+    if (String(u.category || '').indexOf('要介護') === 0) return;
+    if (seen[_normalizeUserName(u.name)]) return;
+    seen[_normalizeUserName(u.name)] = true;
+    users.push({ userId: u.userId || u.name, name: u.name, care: u.category, planStart: '' });
+  });
+
+  // --- ① 要支援測定記録（paper含む・nameキー） ---
+  var lastDoneByKey = {};
+  var srcOf = {};   // 採用された最終日がどのソース由来か（報告用）
+  function put(key, date, src) {
+    if (!key || !date) return;
+    var k = _normalizeUserName(key);
+    if (!lastDoneByKey[k] || date > lastDoneByKey[k]) { lastDoneByKey[k] = date; srcOf[k] = src; }
+  }
+  var shSheet = ensureShienSokuteiSheet_();
+  var shValues = shSheet.getDataRange().getValues();
+  var paperRows = 0, appRows = 0;
+  for (var si = 1; si < shValues.length; si++) {
+    var so = shienSokuteiRowToObj_(shValues[si]);
+    if (!so.name || !so.sokutei_date) continue;
+    if (so.source === 'paper') paperRows++; else appRows++;
+    put(so.name, so.sokutei_date, so.source === 'paper' ? 'paper' : 'app');
+  }
+  // --- ② 個別機能訓練計画書記録 13列目（userIdキー） ---
+  var kkSheet = ensureKeikakushoSheet_();
+  var kkValues = kkSheet.getDataRange().getValues();
+  var kunRows = 0;
+  for (var ki = 1; ki < kkValues.length; ki++) {
+    var kUid = String(kkValues[ki][0] || '').trim();
+    var kSok = kkValues[ki][12];
+    var kStr = (kSok instanceof Date)
+      ? Utilities.formatDate(kSok, 'Asia/Tokyo', 'yyyy-MM-dd')
+      : String(kSok || '').trim();
+    if (!kUid || !kStr) continue;
+    kunRows++;
+    put(kUid, kStr, 'kunren');
+  }
+
+  var existing = readYotei_(DOMAIN).map(function (r) { return { userId: r.userId, domain: r.domain }; });
+
+  var built = buildInitialYotei({
+    domain: DOMAIN, thisYm: thisYm, users: users,
+    lastDoneByKey: lastDoneByKey, existing: existing
+  }, { cycleMonths: sokuteiCycleMonths_, normalizeName: _normalizeUserName });
+
+  // 採用アンカーのソース内訳（paper由来の偽 sokutei_date が初期値に効いた件数）
+  var anchorSrc = { paper: 0, app: 0, kunren: 0, planStart: 0, none: 0 };
+  built.rows.forEach(function (r) {
+    if (r.note === '起点なし') { anchorSrc.none++; return; }
+    var k = _normalizeUserName(r.name) || _normalizeUserName(r.userId);
+    var s = srcOf[k] || (lastDoneByKey[_normalizeUserName(r.userId)] ? srcOf[_normalizeUserName(r.userId)] : '');
+    if (s) anchorSrc[s]++; else anchorSrc.planStart++;
+  });
+
+  var result = {
+    ok: true, dryRun: !!dryRun, thisYm: thisYm,
+    targets: users.length, inserted: 0, stats: built.stats,
+    sourceRows: { shienPaper: paperRows, shienApp: appRows, keikakusho: kunRows },
+    anchorSource: anchorSrc
+  };
+  if (dryRun) return result;
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (lockErr) {
+    return { ok: false, error: 'lock timeout' };
+  }
+  try {
+    var sheet = ensureYoteiSheet_();
+    if (built.rows.length > 0) {
+      var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+      var out = built.rows.map(function (r) {
+        return [r.userId, r.name, r.domain, r.nextYm, r.cycleMonths, now, 'init', r.slideCount, r.note];
+      });
+      var start = sheet.getLastRow() + 1;
+      sheet.getRange(start, 1, out.length, YOTEI_HEADERS_.length).setNumberFormat('@').setValues(out);
+      SpreadsheetApp.flush();
+    }
+    result.inserted = built.rows.length;
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 // スタッフマスタ（Phase 2・ケアマネ提出物統合管理の操作者リスト）
 // 名前の正本は既存 staff_list（シフト希望SS）＝入退社はそちらの更新で足りる。

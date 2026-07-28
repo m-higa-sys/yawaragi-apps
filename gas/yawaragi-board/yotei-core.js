@@ -1,0 +1,156 @@
+// yotei-core.js — 「予定月スライド方式」の純関数（段階1・測定）。
+// GAS API / DOM に一切依存しない。周期（3ヶ月/4ヶ月）の判定はここに複製せず、
+// shared.js §I の sokuteiCycleMonths_ を deps.cycleMonths として注入して使う（単一の正）。
+//
+// 器は「利用者 × 分野(domain) × 予定月(nextYm)」の汎用形。段階1では domain='sokutei' のみだが、
+// 口腔 'oral' / 個訓 'kobetsu' / 通所 'tsusho' を行追加だけで同じシート・同じ関数に載せられる。
+//
+// 日付の型について: 呼び出し元が GAS(Sheets) の場合、セル値は Date になりうる。
+// テストは vm(別realm)で本ファイルをロードするため instanceof Date が false になる。
+// 型判定は必ず Object.prototype.toString.call() を使う。
+//
+// 検証: scripts/test-yotei-ym.js（vm で本ファイルを実ロードして本物を呼ぶ）
+
+// 'YYYY-MM' を { y, m } へ。解釈不能は null。
+// 'YYYY-MM-DD' / Date も先頭7桁相当として受ける（呼び出し側で切らなくて済むように）。
+function _yoteiParseYm_(v) {
+  var s;
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    if (isNaN(v.getTime())) return null;
+    s = v.getUTCFullYear() + '-' + (v.getUTCMonth() < 9 ? '0' : '') + (v.getUTCMonth() + 1);
+  } else {
+    s = String(v == null ? '' : v);
+  }
+  var m = s.match(/^(\d{4})-(\d{1,2})/);
+  if (!m) return null;
+  var y = parseInt(m[1], 10), mo = parseInt(m[2], 10);
+  if (!(mo >= 1 && mo <= 12)) return null;
+  return { y: y, m: mo };
+}
+
+function _yoteiFmtYm_(y, m) {
+  return y + '-' + (m < 10 ? '0' : '') + m;
+}
+
+// ym('YYYY-MM') に months を足した 'YYYY-MM'。負数・年跨ぎ対応。解釈不能は ''。
+function ymAdd(ym, months) {
+  var p = _yoteiParseYm_(ym);
+  if (!p) return '';
+  var n = parseInt(months, 10);
+  if (isNaN(n)) n = 0;
+  var m0 = (p.m - 1) + n;
+  var y = p.y + Math.floor(m0 / 12);
+  var m = ((m0 % 12) + 12) % 12 + 1;
+  return _yoteiFmtYm_(y, m);
+}
+
+// 実施日（'YYYY-MM-DD' / 'YYYY-MM' / Date）の「月」＋ 周期月数 = 次回予定月。
+// 日は見ない（月単位の運用のため）。起点が無ければ '' を返し、当月へ倒すかは呼び出し側が決める。
+function nextYmAfterDone(doneDate, cycleMonths) {
+  var p = _yoteiParseYm_(doneDate);
+  if (!p) return '';
+  return ymAdd(_yoteiFmtYm_(p.y, p.m), cycleMonths);
+}
+
+// 「来月へ」1タップ = +1ヶ月。周期そのものは動かさない（次の実施後に実施月＋周期へ戻る）。
+function nextYmSlide(ym) { return ymAdd(ym, 1); }
+
+// スライドの Undo = -1ヶ月。
+function nextYmUnslide(ym) { return ymAdd(ym, -1); }
+
+// 当月の対象か。過ぎている人（予定月 < 当月）も必ず対象に含める。
+// 予定月が未設定('')は「漏れ」なので対象に出す。
+function isDue(nextYm, thisYm) {
+  var a = _yoteiParseYm_(nextYm);
+  if (!a) return true;
+  var b = _yoteiParseYm_(thisYm);
+  if (!b) return true;
+  return _yoteiFmtYm_(a.y, a.m) <= _yoteiFmtYm_(b.y, b.m);
+}
+
+// 初期値の一括生成（1回きり・冪等）。
+//   input = {
+//     domain, thisYm,
+//     users:        [{ userId, name, care, planStart }],
+//     lastDoneByKey:{ userId または正規化名 -> 'YYYY-MM-DD'（3ソースをマージした最大値） },
+//     existing:     [{ userId, domain }]  // 「予定月」シートに既にある行
+//   }
+//   deps = { cycleMonths: sokuteiCycleMonths_, normalizeName: fn }
+// ルール:
+//   実績あり → 実施月＋周期 ／ 実績なし → 計画書開始月＋周期 ／ 起点なし → 当月・note='起点なし'
+//   (userId, domain) が existing にあれば生成しない（2回実行しても行が増えない）
+// 返り: { rows: [...], stats: { fromDone, fromPlanStart, noAnchor, skippedExisting, byYm } }
+function buildInitialYotei(input, deps) {
+  var inp = input || {};
+  var d = deps || {};
+  var cycleOf = d.cycleMonths || function () { return 3; };
+  var norm = d.normalizeName || function (s) { return String(s || ''); };
+  var domain = String(inp.domain || '');
+  var thisYm = String(inp.thisYm || '');
+  var last = inp.lastDoneByKey || {};
+
+  var have = {};
+  (inp.existing || []).forEach(function (e) {
+    if (String(e.domain || '') !== domain) return;
+    have[String(e.userId || '')] = true;
+  });
+
+  // 履歴は「正規化キー」でも引けるようにする（3ソースのキーが userId / 生の氏名 と揺れるため）。
+  // 同じ正規化キーに複数ソースが当たったら最大日（＝最後の実施日）を採る。
+  var lastNorm = {};
+  for (var lk in last) {
+    if (!Object.prototype.hasOwnProperty.call(last, lk)) continue;
+    var nk = norm(lk), lv = String(last[lk] || '');
+    if (!lv) continue;
+    if (!lastNorm[nk] || lv > lastNorm[nk]) lastNorm[nk] = lv;
+  }
+
+  var rows = [];
+  var stats = { fromDone: 0, fromPlanStart: 0, noAnchor: 0, skippedExisting: 0, byYm: {} };
+
+  (inp.users || []).forEach(function (u) {
+    var uid = String(u.userId || '');
+    if (have[uid]) { stats.skippedExisting++; return; }
+    var cyc = cycleOf(u.care);
+    var done = last[uid];
+    if (done == null) done = lastNorm[norm(uid)];
+    if (done == null) done = lastNorm[norm(u.name)];
+    var nextYm = '', note = '';
+    if (done) {
+      nextYm = nextYmAfterDone(done, cyc);
+      if (nextYm) stats.fromDone++;
+    }
+    if (!nextYm && u.planStart) {
+      nextYm = nextYmAfterDone(u.planStart, cyc);
+      if (nextYm) stats.fromPlanStart++;
+    }
+    if (!nextYm) {
+      nextYm = thisYm;
+      note = '起点なし';
+      stats.noAnchor++;
+    }
+    stats.byYm[nextYm] = (stats.byYm[nextYm] || 0) + 1;
+    rows.push({
+      userId: uid, name: String(u.name || ''), domain: domain,
+      nextYm: nextYm, cycleMonths: cyc, slideCount: 0, note: note
+    });
+  });
+
+  // 月別件数は昇順で返す（社長報告の「何月が何名」がそのまま読める順にする）
+  var sortedYm = {};
+  Object.keys(stats.byYm).sort().forEach(function (k) { sortedYm[k] = stats.byYm[k]; });
+  stats.byYm = sortedYm;
+
+  return { rows: rows, stats: stats };
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    ymAdd: ymAdd,
+    nextYmAfterDone: nextYmAfterDone,
+    nextYmSlide: nextYmSlide,
+    nextYmUnslide: nextYmUnslide,
+    isDue: isDue,
+    buildInitialYotei: buildInitialYotei
+  };
+}

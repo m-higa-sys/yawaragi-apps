@@ -45,6 +45,13 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 .reload-row { text-align: center; margin: 14px 0 4px; }
 .reload-btn { border: none; border-radius: 8px; padding: 8px 18px; font-size: .85em; font-weight: 700; cursor: pointer; background: #eceff1; color: #546e7a; font-family: inherit; }
 .rec-btn { margin-left: auto; border: none; border-radius: 8px; padding: 5px 10px; font-size: .78em; font-weight: 700; cursor: pointer; background: #e8f0fe; color: #4272D8; font-family: inherit; white-space: nowrap; }
+.slide-btn { border: none; border-radius: 8px; padding: 5px 10px; font-size: .78em; font-weight: 700; cursor: pointer; background: #fff3e0; color: #e65100; font-family: inherit; white-space: nowrap; }
+.rec-btn + .slide-btn { margin-left: 6px; }
+.slide-btn:first-of-type { margin-left: auto; }
+.undo-bar { display: flex; align-items: center; gap: 10px; background: #2c3e50; color: #fff; border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; font-size: .88em; font-weight: 700; }
+.undo-msg { flex: 1; }
+.undo-btn { border: none; border-radius: 8px; padding: 6px 12px; font-size: .9em; font-weight: 700; cursor: pointer; background: #ffd54f; color: #2c3e50; font-family: inherit; white-space: nowrap; }
+.done-all { background: #e8f5e9; color: #2e7d32; border-radius: 12px; padding: 26px 12px; text-align: center; font-size: 1.5em; font-weight: 700; margin-bottom: 8px; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
 .modal-box { background: #fff; border-radius: 14px; padding: 20px; width: 100%; max-width: 340px; box-shadow: 0 6px 24px rgba(0,0,0,.2); }
 .modal-title { font-weight: 700; color: #2c3e50; font-size: 1.05em; margin-bottom: 6px; }
@@ -67,6 +74,7 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
     <button type="button" class="tab-btn" id="tabbtn2" onclick="showTab(2)">👥 全利用者</button>
     <button type="button" class="tab-btn" id="tabbtn3" onclick="showTab(3)">📊 スタッフ%</button>
   </div>
+  <div id="undoBar" class="undo-bar" style="display:none"></div>
   <div id="status">読み込み中…</div>
   <div id="tab1"></div>
   <div id="tab2" style="display:none"></div>
@@ -88,8 +96,11 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
   </div>
 </div>
 <!-- 期限計算 sokuteiCycleMonths_/sokuteiDueDate_ は shared.js §I に単一化（①測定アプリと共用）。
+     予定月の純関数（isDue / nextYmAfterDone 等）は gas/yawaragi-board/yotei-core.js を直読みして
+     GASと同一バイトを使う（measure-app.html が session-board-core.js を読むのと同じ流儀・複製を増やさない）。
      no-store方式のため ?v= は付けない（版ゲート非対象・intake/kubun等と同流儀）。 -->
 <script src="shared.js"></script>
+<script src="gas/yawaragi-board/yotei-core.js"></script>
 <script>
 const GAS = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
 // 測定者候補の除外（個訓アプリ MEASURER_EXCLUDE と同値・2026-06-15社長確定）
@@ -216,8 +227,14 @@ function nextVisitStr(daysStr, tStr) {
 }
 
 // ===== 状態 =====
-const state = { today: todayStr(), att: null, usage: null, users: [], records: [], staff: [], shien: [], userList: [], tsushoUsers: [], errs: {} };
+const state = { today: todayStr(), att: null, usage: null, users: [], records: [], staff: [], shien: [], userList: [], tsushoUsers: [], yotei: [], errs: {} };
 function isKaigoCare(care) { return String(care || '').indexOf('要介護') === 0; }
+// 当月キー。新しい日付関数は作らず、既存の todayStr()（state.today）の先頭7桁を使う。
+function thisYm() { return state.today.slice(0, 7); }
+// 氏名の突合キー（GAS側 _normalizeUserName と同方針・NFKC＋空白除去＋末尾敬称除去）
+function normKey(s) {
+  return String(s == null ? '' : s).normalize('NFKC').replace(/[\s　]/g, '').replace(/(様|さま|サマ)$/, '');
+}
 let derived = { rowByName: {} };
 let careFilter = 'all';   // タブ2 介護度フィルタ
 let periodMonths = 1;     // タブ3 期間（1/2/3ヶ月）
@@ -250,11 +267,12 @@ async function load() {
     fetchJson(GAS + '?action=staff_list&t=' + Date.now()),
     fetchJson(GAS + '?action=getShienSokutei&t=' + Date.now()),
     fetchJson(GAS + '?action=user_list&t=' + Date.now()),
-    fetchJson(GAS + '?action=getTsushoPlansYearV2&year=' + fy + '&t=' + Date.now())
+    fetchJson(GAS + '?action=getTsushoPlansYearV2&year=' + fy + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=getYotei&domain=sokutei&t=' + Date.now())
   ]);
   // year は暦年のため、4月以降に前暦年の測定レコードが漏れないよう fy−1 も含めた3年分をマージ（GAS側 year 厳密一致・重複二重計上なし）
   const att = results[0], usage = results[1], years = [results[2], results[3], results[4]], staff = results[5];
-  const shien = results[6], userList = results[7], tsushoUsers = results[8];
+  const shien = results[6], userList = results[7], tsushoUsers = results[8], yotei = results[9];
   if (att.status === 'fulfilled' && att.value && att.value.success && att.value.attendance) state.att = att.value;
   else { state.att = null; state.errs.att = errMsg(att); }
   if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) state.usage = usage.value.usageStats;
@@ -275,9 +293,20 @@ async function load() {
   else { state.userList = []; state.errs.userList = errMsg(userList); }
   if (tsushoUsers.status === 'fulfilled' && tsushoUsers.value && tsushoUsers.value.ok) state.tsushoUsers = tsushoUsers.value.users || [];
   else { state.tsushoUsers = []; state.errs.tsushoUsers = errMsg(tsushoUsers); }
+  if (yotei.status === 'fulfilled' && yotei.value && yotei.value.ok) state.yotei = yotei.value.records || [];
+  else { state.yotei = []; state.errs.yotei = errMsg(yotei); }
   buildDerived();
+  fillStaffSelect();
   statusEl.textContent = '';
   renderAll();
+}
+
+// 測定者セレクトは読み込み時に一度埋める（スライドの updatedBy にも使うため・モーダル未オープンでも値が要る）
+function fillStaffSelect() {
+  const sel = document.getElementById('recordStaffSelect');
+  if (!sel || sel.options.length) return;
+  const names = (state.staff || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
+  sel.innerHTML = names.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
 }
 
 // ===== 共通計算（利用者ごとの行モデル） =====
@@ -305,9 +334,17 @@ function buildDerived() {
   if (state.att) ['am', 'pm'].forEach(k => (state.att.attendance[k] || []).forEach(a => { if (a.care) attCare[a.name] = a.care; }));
   const monthKeys = prevMonthsList(3);
   const rowByName = {};
+  // 予定月（domain='sokutei'）を userId／正規化名の両方で引けるようにする
+  const yoteiByKey = {};
+  (state.yotei || []).forEach(y => {
+    if (y.userId) yoteiByKey[y.userId] = y;
+    if (y.userId) yoteiByKey[normKey(y.userId)] = y;
+    if (y.name) yoteiByKey[normKey(y.name)] = y;
+  });
 
   // last = 実測定日（無ければ空）／ baseFallback = 実測定日が無い時だけ使う起点（要介護のplanStartのみ・要支援は無し）
-  function buildRow(name, care, kana, weekdaysRaw, last, baseFallback) {
+  // userId = 予定月シートの主キー側（要介護＝台帳の名前・要支援＝通所V2のuserId）
+  function buildRow(userId, name, care, kana, weekdaysRaw, last, baseFallback) {
     const uu = usageByName[name];
     const weekdays = (uu && uu.weekdaysRaw) || weekdaysRaw || '';
     const monthsArr = [];
@@ -321,22 +358,25 @@ function buildDerived() {
     const base = last || baseFallback || '';
     let due = '', remaining = -999;   // どちらも無ければ未測定 = 最優先扱い
     if (base) { due = sokuteiDueDate_(base, care); remaining = sokuteiRemaining_(due, t); }
+    const y = yoteiByKey[userId] || yoteiByKey[normKey(userId)] || yoteiByKey[normKey(name)] || null;
     rowByName[name] = {
-      name: name, kana: kana || '', care: care,
+      userId: userId, name: name, kana: kana || '', care: care,
       remaining: remaining, R: sokuteiRemainingVisits_(weekdays, t), U: sokuteiUsageRate_(monthsArr),
-      last: last, base: base, due: due, unmeasured: !base, weekdays: weekdays
+      last: last, base: base, due: due, unmeasured: !base, weekdays: weekdays,
+      // 予定月（段階1の対象判定の正）。行が無い＝未設定は isDue が true を返す＝漏れとして対象に出す。
+      nextYm: y ? y.nextYm : '', slideCount: y ? y.slideCount : 0, hasYotei: !!y
     };
   }
 
   // 要介護（個別機能訓練計画書対象・getKeikakushoYear）
   (state.users || []).forEach(u => {
     const care = u.category || attCare[u.name] || '';
-    buildRow(u.name, care, u.furigana, u.days, lastById[u.userId] || '', normDate(u.planStart));
+    buildRow(u.userId, u.name, care, u.furigana, u.days, lastById[u.userId] || '', normDate(u.planStart));
   });
   // 要支援・事業対象者（getTsushoPlansYearV2の対象者から要介護以外を抽出・Phase B）
   (state.tsushoUsers || []).forEach(u => {
     if (u.cancelled || isKaigoCare(u.category) || rowByName[u.name]) return;
-    buildRow(u.name, u.category || '', u.furigana, daysByName[u.name] || '', lastShien[u.name] || '', '');
+    buildRow(u.userId || u.name, u.name, u.category || '', u.furigana, daysByName[u.name] || '', lastShien[u.name] || '', '');
   });
   derived = { rowByName: rowByName };
 }
@@ -350,24 +390,36 @@ function lastLabel(r) {
   if (r.base) return 'なし（開始日 ' + fmtMD(r.base) + ' 起点）';
   return 'なし（記録なし）';
 }
-function rowCard(r, gray, tag, nextVisit) {
+// 予定月の表示ラベル（未設定は「未設定」＝漏れとして目立たせる）
+function yoteiLabel(r) {
+  if (!r.nextYm) return '未設定';
+  const m = +r.nextYm.slice(5, 7);
+  const y = +r.nextYm.slice(0, 4);
+  const cur = +state.today.slice(0, 4);
+  return (y === cur ? '' : y + '/') + m + '月' + (r.slideCount ? '（' + r.slideCount + '回スライド）' : '');
+}
+// showSlide: 「📅来月へ」を出すか（今日の優先タブのみ）／ showRec: 「📝今日測定した」を出すか
+function rowCard(r, gray, tag, nextVisit, showSlide, showRec) {
   let remainHtml;
   if (r.unmeasured) remainHtml = '<span class="over">⚠️未測定（最優先）</span>';
   else if (r.remaining < 0) remainHtml = '<span class="over">⚠️超過 ' + (-r.remaining) + '日</span>';
   else remainHtml = '期限まで残り ' + r.remaining + '日';
-  // 記録ボタンは要支援・事業対象者のみ（要介護は個訓アプリ側で記録するため出さない・Phase B）
-  const recBtn = !isKaigoCare(r.care)
+  // 記録ボタンは要介護・要支援等の両方に出す（段階1で addSokuteiDone に一本化）。
+  const recBtn = showRec
     ? '<button type="button" class="rec-btn" data-name="' + esc(r.name) + '" onclick="openRecordModal(this.dataset.name)">📝今日測定した</button>'
     : '';
-  return '<div class="card b-' + r.badge + (gray ? ' gray' : '') + '">'
+  const slideBtn = showSlide
+    ? '<button type="button" class="slide-btn" data-name="' + esc(r.name) + '" onclick="slideToNextMonth(this.dataset.name)">📅来月へ</button>'
+    : '';
+  return '<div class="card b-' + r.badge + (gray ? ' gray' : '') + '" data-row="' + esc(r.name) + '">'
     + '<div class="rowline">'
     + '<span class="bdg">' + BADGE_EMOJI[r.badge] + '</span>'
     + '<span class="nm">' + esc(r.name) + '</span>'
     + '<span class="cr">' + esc(r.care || '介護度不明') + '</span>'
     + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
-    + recBtn
+    + recBtn + slideBtn
     + '</div>'
-    + '<div class="meta">前回測定 ' + esc(lastLabel(r)) + ' ／ ' + remainHtml
+    + '<div class="meta">前回測定 ' + esc(lastLabel(r)) + ' ／ 予定月 ' + esc(yoteiLabel(r)) + ' ／ ' + remainHtml
     + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
     + (nextVisit ? ' ／ 次回来館 ' + esc(nextVisit) : '')
     + '</div></div>';
@@ -394,23 +446,32 @@ function renderTab1() {
     seen[a.name] = c; list.push(c);
   }));
   const rowsOf = arr => arr.map(a => derived.rowByName[a.name]).filter(Boolean);  // 測定対象（要介護個訓＋要支援等）に居る人のみ
+  const ym = thisYm();
   const present = list.filter(a => a.status === '出席');
-  const presentRows = sokuteiSort_(rowsOf(present));
-  const main = presentRows.filter(r => !(r.tier === 3 && r.remaining > 30));
-  const doneRows = presentRows.filter(r => r.tier === 3 && r.remaining > 30);
-  const absentRows = sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')));
-  let html = '<div class="hdr">' + esc(fmtMD(state.today)) + '・来館予定' + present.length + '名中 対象' + presentRows.length + '名</div>';
+  // 段階1: 対象は「予定月 <= 当月」で絞る（過ぎている人も含む）。対象外は一切出さない（社長決定 5-1）。
+  const presentRows = sokuteiSort_(rowsOf(present).filter(r => isDue(r.nextYm, ym)));
+  const absentRows = sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')).filter(r => isDue(r.nextYm, ym)));
+  // 「残り」= 今月が予定月だが本日来館していない人（別日に測る必要がある人数）
+  const dueAll = Object.keys(derived.rowByName)
+    .map(n => derived.rowByName[n])
+    .filter(r => isDue(r.nextYm, ym));
+  const presentNames = {}; present.forEach(a => { presentNames[a.name] = true; });
+  const restCount = dueAll.filter(r => !presentNames[r.name]).length;
+
+  let html = '<div class="hdr">' + esc(fmtMD(state.today)) + '・来館予定' + present.length + '名中 '
+    + '今月の対象' + presentRows.length + '名（残り' + restCount + '名）</div>';
+  if (state.errs.yotei) html += '<div class="note">⚠ 予定月（getYotei）取得失敗のため全員を対象として表示しています：' + esc(state.errs.yotei) + '</div>';
   if (state.errs.usage) html += '<div class="note">⚠ 利用率（usage_stats）取得失敗のため E は残り回数のみで計算しています</div>';
-  if (!main.length) html += '<div class="card"><div class="meta">今日の優先測定対象はいません</div></div>';
-  main.forEach(r => { html += rowCard(r, false, '', ''); });
-  if (doneRows.length) {
-    html += '<div class="section-label">✅ 当サイクル測定済み・余裕（' + doneRows.length + '名）</div>';
-    doneRows.forEach(r => { html += rowCard(r, true, r.last ? '測定済' : '余裕', ''); });
+  if (!presentRows.length) {
+    html += '<div class="done-all">今月ぶん完了 ✅</div>'
+      + '<div class="note">本日来館の方で、今月が予定月の方はいません' + (restCount ? '（別日に測る方が ' + restCount + '名います）' : '') + '</div>';
   }
+  presentRows.forEach(r => { html += rowCard(r, false, '', '', true, true); });
   if (absentRows.length) {
-    html += '<div class="section-label">🚫 本日欠席（' + absentRows.length + '名）</div>';
-    absentRows.forEach(r => { html += rowCard(r, true, '欠席', ''); });
+    html += '<div class="section-label">🚫 本日欠席（今月が予定月・' + absentRows.length + '名）</div>';
+    absentRows.forEach(r => { html += rowCard(r, true, '欠席', '', false, false); });
   }
+  html += '<div class="note">※「残り」＝今月が予定月だが本日来館していない方（' + restCount + '名）。予定月が来ていない方は「👥全利用者」タブで確認できます。</div>';
   el.innerHTML = html;
 }
 
@@ -435,8 +496,10 @@ function renderTab2() {
   });
   const fb = (v, label) => '<button type="button" class="f-btn' + (careFilter === v ? ' active' : '') + '" onclick="setCareFilter(\'' + v + '\')">' + label + '</button>';
   let html = '<div class="filter-row">' + fb('all', '全て') + fb('kaigo', '要介護のみ') + fb('shien', '要支援等') + '</div>';
-  html += '<div class="hdr">対象 ' + rows.length + '名（期限が近い順）</div>';
-  rows.forEach(r => { html += rowCard(r, false, '', nextVisitStr(r.weekdays, state.today)); });
+  // タブ2は予定月で絞らない（対象外の人も従来どおり全員見える・5-7）。予定月は各行に併記する。
+  const dueCount = rows.filter(r => isDue(r.nextYm, thisYm())).length;
+  html += '<div class="hdr">全 ' + rows.length + '名（期限が近い順）／うち今月が予定月 ' + dueCount + '名</div>';
+  rows.forEach(r => { html += rowCard(r, false, '', nextVisitStr(r.weekdays, state.today), false, false); });
   el.innerHTML = html;
 }
 
@@ -488,14 +551,69 @@ function renderTab3() {
   el.innerHTML = html;
 }
 
-// ===== 要支援等「今日測定した」ワンタップ記録（Phase B） =====
+// ===== 予定月スライド（📅来月へ）＋5秒Undo（newmail.html の5秒Undo方式に倣う）=====
+const UNDO_MS = 5000;
+let undoTimer = null;
+function hideUndoBar() {
+  if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+  const bar = document.getElementById('undoBar');
+  if (bar) bar.style.display = 'none';
+}
+function showUndoBar(msg, onUndo) {
+  const bar = document.getElementById('undoBar');
+  bar.innerHTML = '<span class="undo-msg"></span><button type="button" class="undo-btn">↩戻す</button>';
+  bar.querySelector('.undo-msg').textContent = msg;
+  bar.querySelector('.undo-btn').onclick = function () { hideUndoBar(); return onUndo(); };
+  bar.style.display = 'flex';
+  if (undoTimer) clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndoBar, UNDO_MS);
+}
+function operatorName() {
+  const sel = document.getElementById('recordStaffSelect');
+  return (sel && sel.value) || '';
+}
+async function callYotei(action, name) {
+  const r = derived.rowByName[name];
+  if (!r) throw new Error('対象が見つかりません');
+  const url = GAS + '?action=' + action + '&userId=' + encodeURIComponent(r.userId || r.name)
+    + '&domain=sokutei&by=' + encodeURIComponent(operatorName()) + '&t=' + Date.now();
+  const res = await fetchJson(url);
+  if (!res.ok) throw new Error((res && res.error) || '更新に失敗しました');
+  r.nextYm = res.row.nextYm;
+  r.slideCount = res.row.slideCount;
+  r.hasYotei = true;
+  return res.row;
+}
+async function slideToNextMonth(name) {
+  try {
+    const row = await callYotei('slideYotei', name);
+    renderAll();   // 予定月が来月になる＝isDue から外れて行が消える
+    const m = +row.nextYm.slice(5, 7);
+    showUndoBar(name + ' を' + m + '月へ送りました', () => undoSlide(name));
+  } catch (err) {
+    alert('スライドに失敗しました：' + ((err && err.message) || err));
+  }
+}
+async function undoSlide(name) {
+  try {
+    await callYotei('undoSlideYotei', name);
+    renderAll();
+  } catch (err) {
+    alert('戻せませんでした：' + ((err && err.message) || err));
+  }
+}
+
+// ===== 「今日測定した」ワンタップ記録（段階1: 要介護・要支援等とも addSokuteiDone に一本化） =====
+// 【暫定】要介護の測定日は個訓アプリ（個別機能訓練計画書チェック.html）からも
+//   「個別機能訓練計画書記録」13列目へ書ける。つまり段階1の間だけ書込先が2つ存在する。
+//   これは意図的な暫定であり、片寄せ（個訓側の測定欄撤去）は段階3で行う。
+//   前回測定日の読取は3ソース（新ログ ∪ 個訓13列目 ∪ 要支援測定記録）のまま維持しているため、
+//   どちらから入力しても「済」として拾える（5-6）。
 let recordTargetName = '';
 function openRecordModal(name) {
   recordTargetName = name;
   document.getElementById('recordModalName').textContent = name;
-  const sel = document.getElementById('recordStaffSelect');
-  const names = (state.staff || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
-  sel.innerHTML = names.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+  fillStaffSelect();
   document.getElementById('recordNote').value = '';
   document.getElementById('recordModal').style.display = 'flex';
 }
@@ -510,13 +628,20 @@ async function submitRecord() {
   if (!name || !by) return;
   const btn = document.getElementById('recordConfirmBtn');
   btn.disabled = true; btn.textContent = '記録中…';
+  const r = derived.rowByName[name] || {};
   try {
-    const url = GAS + '?action=addShienSokutei&name=' + encodeURIComponent(name)
+    // addSokuteiDone = ①実施ログ追記 ②予定月を「実施月＋周期」へ更新 をセットで行う（GAS側でロールバック付き）
+    const url = GAS + '?action=addSokuteiDone&userId=' + encodeURIComponent(r.userId || name)
+      + '&name=' + encodeURIComponent(name)
+      + '&care=' + encodeURIComponent(r.care || '')
       + '&date=' + todayStr() + '&by=' + encodeURIComponent(by)
       + '&note=' + encodeURIComponent(note) + '&t=' + Date.now();
     const res = await fetchJson(url);
     if (!res.ok || !res.verified) throw new Error((res && res.error) || '書き込み検証に失敗しました');
-    state.shien.push(res.row);
+    state.shien.push(res.log);
+    // 予定月をその場で反映（再取得せずに行が「済」として今日の優先から消える）
+    const yi = (state.yotei || []).findIndex(y => y.userId === res.yotei.userId && y.domain === res.yotei.domain);
+    if (yi >= 0) state.yotei[yi] = res.yotei; else state.yotei.push(res.yotei);
     closeRecordModal();
     buildDerived();
     renderAll();
