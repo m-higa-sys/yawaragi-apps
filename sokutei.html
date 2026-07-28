@@ -430,6 +430,22 @@ function ufMatchQuery(row, query) {
     || ufSearchKey(row && row.kana).indexOf(q) !== -1;
 }
 
+// 曜日ボタンに出す曜日を、実データ（利用者の利用曜日）から決める。
+// 固定リストにしないのは、土曜営業を始めたときにコードを触らずに土ボタンが出るようにするため
+//   （2026-07-28 社長決定。開始時の手直しを無くす）。1人でも土曜利用者が登録されれば出る。
+// 並び順は必ず 月→日 の曜日順に固定する（データの出現順にすると画面のボタンが日替わりで動く）。
+// 利用曜日が空の人は何も足さない（空文字が曜日として混ざらない）。
+const UF_DAY_ORDER = ['月', '火', '水', '木', '金', '土', '日'];
+function ufAvailableDays(list) {
+  const seen = {};
+  (list || []).forEach(r => {
+    const w = String((r && r.weekdays) || '');
+    if (!w) return;
+    UF_DAY_ORDER.forEach(d => { if (w.indexOf(d) !== -1) seen[d] = true; });
+  });
+  return UF_DAY_ORDER.filter(d => seen[d]);
+}
+
 // 3条件の AND。opt = { days:[], slots:[], query:'' }。opt 省略・空は素通し。
 function filterUsers(list, opt) {
   const o = opt || {};
@@ -756,14 +772,19 @@ function renderAll() { renderFilterBar(); renderTab1(); renderTabMonth(); render
 
 // ===== 共通フィルタバー（B）=====
 // 状態(uf/careFilter)は保持したまま、表示タブが変わったら出し入れだけする。
-const UF_DAYS = ['月', '火', '水', '木', '金', '土'];
 let ufFocusQuery = false;   // 再描画のあとに検索欄へフォーカスを戻すか
+// 曜日ボタンは実データから作る（固定リストにしない・土曜営業の開始で手直しが要らないように）。
+// 母集団は全利用者（derived.rowByName）で、タブによってボタンが増減しないようにする。
+function ufDayChoices() {
+  return ufAvailableDays(Object.keys(derived.rowByName).map(n => derived.rowByName[n]));
+}
 function renderFilterBar() {
   const bar = document.getElementById('ufbar');
   if (!bar) return;
   if (FILTER_TABS.indexOf(currentTab) < 0) { bar.style.display = 'none'; return; }
   bar.style.display = '';
   const n = ufActiveCount(uf, careFilter);
+  const dayChoices = ufDayChoices();
   const chip = (on, label, handler) =>
     '<button type="button" class="uf-chip' + (on ? ' on' : '') + '" onclick="' + handler + '">' + label + '</button>';
   let html = '<div class="uf-head" onclick="toggleFilterBar()">🔍 絞り込み'
@@ -775,9 +796,12 @@ function renderFilterBar() {
     + chip(careFilter === 'kaigo', '要介護のみ', "setCareFilter('kaigo')")
     + chip(careFilter === 'shien', '要支援等', "setCareFilter('shien')")
     + '</div></div>'
-    + '<div class="uf-row"><div class="uf-label">利用曜日（複数選べます）</div><div class="uf-chips">'
-    + UF_DAYS.map(d => chip(uf.days.indexOf(d) >= 0, d, "toggleUfDay('" + d + "')")).join('')
-    + '</div></div>'
+    // 曜日は実データにある曜日だけ出す。1人も居ない曜日のボタンは作らない（押しても必ず0件になるため）
+    + (dayChoices.length
+      ? '<div class="uf-row"><div class="uf-label">利用曜日（複数選べます）</div><div class="uf-chips">'
+        + dayChoices.map(d => chip(uf.days.indexOf(d) >= 0, d, "toggleUfDay('" + d + "')")).join('')
+        + '</div></div>'
+      : '')
     + '<div class="uf-row"><div class="uf-label">時間帯（複数選べます）</div><div class="uf-chips">'
     + chip(uf.slots.indexOf('am') >= 0, '午前', "toggleUfSlot('am')")
     + chip(uf.slots.indexOf('pm') >= 0, '午後', "toggleUfSlot('pm')")
@@ -846,7 +870,11 @@ function applyCareFilter(rows) {
 // 共通フィルタ（曜日・時間帯・名前）＋介護度フィルタ をまとめて適用する（すべて AND）
 function applyAllFilters(rows) { return applyCareFilter(filterUsers(rows, uf)); }
 // フィルタで0件になったときの案内（無言の空白にしない・B-6）
-const UF_EMPTY_HTML = '<div class="uf-none">該当する人がいません<br><span style="font-weight:400;font-size:.9em">条件を変えるか「絞り込みをクリア」で戻せます</span></div>';
+// 「読み込みに失敗した」「アプリが壊れた」と誤解されないよう、原因が絞り込み条件であることを明記する。
+// 現場は0件を見ると不安になって再読込を繰り返すため、次の一手（条件を変える／クリア）まで書く。
+const UF_EMPTY_HTML = '<div class="uf-none">🔍 絞り込みの条件に合う人がいません'
+  + '<br><span style="font-weight:400;font-size:.9em">データが無いのではなく、いま指定している条件に一致する人がいないだけです。<br>'
+  + '条件を変えるか「絞り込みをクリア」で全員に戻せます。</span></div>';
 
 // ===== タブ1: 今日の測定優先リスト =====
 function renderTab1() {

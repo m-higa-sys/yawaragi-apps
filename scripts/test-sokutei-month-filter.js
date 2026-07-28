@@ -99,6 +99,21 @@ let SHIEN_ROWS = [
 
 let YOTEI_STATE = null;
 const captured = { writes: [] };
+// 「土曜利用者を1人足したら土ボタンが出る」を実測するための追加枠（コードは一切変えずにデータだけ足す）
+let EXTRA_TSUSHO = [], EXTRA_USERLIST = [], EXTRA_YOTEI = [];
+function addUser(name, days, ampm, nextYm) {
+  EXTRA_TSUSHO.push({ userId: name, name: name, furigana: name, category: '要支援2', cancelled: false });
+  EXTRA_USERLIST.push({ userName: name, userNameKana: name, days: days, ampm: ampm });
+  EXTRA_YOTEI.push({ userId: name, name: name, domain: 'sokutei', nextYm: nextYm, cycleMonths: 4, slideCount: 0, note: '' });
+}
+// フィルタバーの曜日ボタンだけを取り出す（介護度・時間帯のチップと混ざらないよう曜日行だけを見る）
+function dayButtons(barHtml) {
+  const s = String(barHtml);
+  const i = s.indexOf('利用曜日');
+  if (i < 0) return [];
+  const row = s.slice(i, s.indexOf('</div></div>', i));
+  return (row.match(/toggleUfDay\('(.)'\)/g) || []).map(m => m.charAt(m.length - 3));
+}
 
 function param(url, k) {
   const m = url.match(new RegExp('[?&]' + k + '=([^&]*)'));
@@ -129,9 +144,9 @@ function fetchStub(url) {
   } else if (url.indexOf('action=getShienSokutei') >= 0) {
     data = { ok: true, records: SHIEN_ROWS.slice() };
   } else if (url.indexOf('action=user_list') >= 0) {
-    data = { success: true, user_list: USER_LIST };
+    data = { success: true, user_list: USER_LIST.concat(EXTRA_USERLIST) };
   } else if (url.indexOf('action=getTsushoPlansYearV2') >= 0) {
-    data = { ok: true, users: TSUSHO_USERS };
+    data = { ok: true, users: TSUSHO_USERS.concat(EXTRA_TSUSHO) };
   } else if (url.indexOf('action=getYotei') >= 0) {
     data = { ok: true, domain: 'sokutei', records: YOTEI_STATE.map(y => Object.assign({}, y)) };
   } else if (url.indexOf('action=addSokuteiDone') >= 0) {
@@ -186,7 +201,7 @@ function makeSandbox() {
   return sandbox;
 }
 function resetFixtures() {
-  YOTEI_STATE = YOTEI.map(y => Object.assign({}, y));
+  YOTEI_STATE = YOTEI.concat(EXTRA_YOTEI).map(y => Object.assign({}, y));
   SHIEN_ROWS = [{ name: 'ダミー渡辺', care: '事業対象者', sokutei_date: '2026-07-02', sokutei_by: '', source: 'paper', note: '' }];
   captured.writes.length = 0;
   Object.keys(els).forEach(k => delete els[k]);
@@ -240,6 +255,26 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   eq(S.ufParseAmpm('月午前、木午後'), [{ day: '月', slot: 'am' }, { day: '木', slot: 'pm' }], '曜日別の2枠に分解する');
   eq(S.ufParseAmpm(''), [], '空は空配列');
   eq(S.ufParseAmpm(null), [], 'null も空配列');
+
+  // =====================================================================
+  // 曜日ボタンは実データ駆動（2026-07-28 社長決定）。
+  // 社長は今後 土曜営業を始める予定があり、固定リストだと開始時にコードの手直しが要る。
+  // 土曜利用者が1人でも登録された時点で、コードを触らずに土ボタンが出ることを固定する。
+  sec('曜日ボタンの母集団（ufAvailableDays・純関数）');
+  eq(S.ufAvailableDays([{ weekdays: '月水' }, { weekdays: '火木' }, { weekdays: '金' }]),
+    ['月', '火', '水', '木', '金'], '月〜金しか居なければ5つ');
+  eq(S.ufAvailableDays([{ weekdays: '金' }, { weekdays: '月' }, { weekdays: '水' }]),
+    ['月', '水', '金'], '★並び順は曜日順に固定（データの出現順にしない）');
+  eq(S.ufAvailableDays([{ weekdays: '月水' }, { weekdays: '火木' }, { weekdays: '土' }]),
+    ['月', '火', '水', '木', '土'], '★土曜利用者が1人居れば土が出る');
+  eq(S.ufAvailableDays([{ weekdays: '月火水木金' }, { weekdays: '土' }, { weekdays: '日' }]),
+    ['月', '火', '水', '木', '金', '土', '日'], '★日曜も出る（最後に付く）');
+  eq(S.ufAvailableDays([{ weekdays: '月' }, { weekdays: '' }, { weekdays: null }, {}]),
+    ['月'], '★利用曜日が空・null・キー無しが混ざっても壊れない');
+  eq(S.ufAvailableDays([]), [], '空配列なら曜日なし');
+  eq(S.ufAvailableDays(null), [], 'null でも落ちない');
+  eq(S.ufAvailableDays([{ weekdays: '月水' }, { weekdays: '水金' }, { weekdays: '水' }]),
+    ['月', '水', '金'], '同じ曜日が何人居ても1つにまとまる');
 
   // =====================================================================
   sec('A-1/A-2 「今月やる人」タブに 未 と 済 の両方が出る');
@@ -334,7 +369,7 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   tM = els['tab4'].innerHTML;
   eq(has(tM, 'ダミー高橋'), false, '★高橋の木曜は午後なので「木×午前」では出ない');
   eq(has(tM, 'ダミー佐藤'), false, '佐藤も午後なので出ない');
-  ok(tM.indexOf('該当する人がいません') >= 0, 'B-6 0件のメッセージが出る');
+  ok(tM.indexOf('絞り込みの条件に合う人がいません') >= 0, 'B-6 0件のメッセージが出る');
   S.toggleUfSlot('am'); S.toggleUfSlot('pm');
   tM = els['tab4'].innerHTML;
   ok(has(tM, 'ダミー高橋'), '「木×午後」なら高橋が出る');
@@ -353,7 +388,7 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   q.value = '田中'; q.oninput.call(q);
   ok(has(els['tab4'].innerHTML, 'ダミー田中'), '漢字でも引ける');
   q.value = 'そんな人いない'; q.oninput.call(q);
-  ok(els['tab4'].innerHTML.indexOf('該当する人がいません') >= 0, 'B-6 0件メッセージ');
+  ok(els['tab4'].innerHTML.indexOf('絞り込みの条件に合う人がいません') >= 0, 'B-6 0件メッセージ');
   q.value = ''; q.oninput.call(q);
   ok(has(els['tab4'].innerHTML, 'ダミー佐藤'), '空にすると戻る');
 
@@ -371,6 +406,56 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   S.setCareFilter('kaigo');
   tM = els['tab4'].innerHTML;
   eq(has(tM, 'ダミー高橋'), false, '要介護のみに切り替えると高橋は消える');
+
+  sec('曜日ボタンが実データから作られる（画面レベル）');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  eq(dayButtons(els['ufbar'].innerHTML), ['月', '火', '水', '木', '金'],
+    '★いまのデータは月〜金なのでボタンは5つ（土・日は出ない）');
+  // ここから「土曜営業を始めた」状況を、コードを一切変えずにデータだけで再現する
+  addUser('ダミー土曜', '土', '午前', '2026-07');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  eq(dayButtons(els['ufbar'].innerHTML), ['月', '火', '水', '木', '金', '土'],
+    '★土曜利用者を1人足すと土ボタンが6つ目に出る（金の次）');
+  ok(has(els['tab4'].innerHTML, 'ダミー土曜'), '足した土曜利用者が一覧にも出る');
+  S.toggleUfDay('土');
+  eq(dayButtons(els['ufbar'].innerHTML).length, 6, '土で絞ってもボタンの並びは変わらない');
+  ok(has(els['tab4'].innerHTML, 'ダミー土曜'), '土で絞ると土曜利用者が残る');
+  eq(has(els['tab4'].innerHTML, 'ダミー田中'), false, '月水の人は消える');
+  S.clearFilters();
+  addUser('ダミー日曜', '日', '午後', '2026-07');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  eq(dayButtons(els['ufbar'].innerHTML), ['月', '火', '水', '木', '金', '土', '日'],
+    '★日曜利用者を足すと日が最後に出る');
+  // 利用曜日が空の人を混ぜてもボタン生成が壊れないこと
+  addUser('ダミー曜日なし', '', '午前', '2026-07');
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  eq(dayButtons(els['ufbar'].innerHTML), ['月', '火', '水', '木', '金', '土', '日'],
+    '★利用曜日が空の人がいてもボタンは増えない・壊れない');
+  ok(has(els['tab4'].innerHTML, 'ダミー曜日なし'), '曜日が空の人も一覧には出る');
+  S.toggleUfDay('月');
+  eq(has(els['tab4'].innerHTML, 'ダミー曜日なし'), false, '曜日で絞ると曜日不明の人は外れる');
+  // 追加ぶんを片付けて元のデータへ戻す
+  EXTRA_TSUSHO = []; EXTRA_USERLIST = []; EXTRA_YOTEI = [];
+  resetFixtures();
+  S = makeSandbox();
+  await S.load();
+  eq(dayButtons(els['ufbar'].innerHTML), ['月', '火', '水', '木', '金'], '元のデータに戻すとボタンも5つに戻る');
+
+  sec('B-6 0件メッセージは「壊れた」と誤解させない');
+  S.toggleUfDay('月'); S.toggleUfSlot('pm');   // 月曜×午後 は該当なし
+  const empty = els['tab4'].innerHTML;
+  ok(empty.indexOf('絞り込みの条件に合う人がいません') >= 0, '原因が絞り込みだと分かる見出し');
+  ok(empty.indexOf('データが無いのではなく') >= 0, 'データ欠損ではないと明記している');
+  ok(empty.indexOf('絞り込みをクリア') >= 0, '次の一手（クリア）を示している');
+  S.clearFilters();
 
   sec('B-4 クリアで全部戻る');
   S.clearFilters();
