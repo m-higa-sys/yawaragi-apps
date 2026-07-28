@@ -111,6 +111,29 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 .modal-btn.cancel { background: #eceff1; color: #546e7a; }
 .modal-btn.confirm { background: #4272D8; color: #fff; }
 .modal-btn.confirm:disabled { opacity: .6; cursor: default; }
+/* ===== 共通フィルタバー（2026-07-28・他アプリへ展開予定の標準パターン）===== */
+/* モバイルで画面を食わないよう、既定は畳んでおき「絞り込み」を押したら開く。
+   絞り込み中は畳んでいても分かるよう、見出しに適用中の件数バッジを出す。 */
+.ufbar { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 12px; overflow: hidden; }
+.uf-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; min-height: 48px; font-weight: 700; color: #455a64; font-size: .9em; }
+.uf-head .uf-caret { margin-left: auto; color: #90a4ae; font-size: .9em; }
+.uf-badge { background: #4272D8; color: #fff; border-radius: 999px; padding: 2px 9px; font-size: .78em; font-weight: 700; }
+.uf-body { display: none; padding: 0 14px 12px; border-top: 1px solid #eceff1; }
+.ufbar.open .uf-body { display: block; }
+.uf-row { margin-top: 10px; }
+.uf-label { font-size: .8em; font-weight: 700; color: #90a4ae; margin-bottom: 5px; }
+.uf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.uf-chip { border: 1px solid #cfd8dc; border-radius: 999px; background: #fff; color: #546e7a; font-weight: 700; font-size: .86em; padding: 10px 15px; cursor: pointer; font-family: inherit; min-height: 44px; }
+.uf-chip.on { background: #4272D8; border-color: #4272D8; color: #fff; }
+.uf-search { width: 100%; padding: 12px 12px; border: 1.5px solid #cfd8dc; border-radius: 10px; font-size: 1em; font-family: inherit; min-height: 48px; background: #fff; color: #2c3e50; }
+.uf-clear { border: none; border-radius: 10px; background: #eceff1; color: #546e7a; font-weight: 700; font-size: .88em; padding: 12px 18px; cursor: pointer; font-family: inherit; min-height: 44px; margin-top: 12px; }
+.uf-clear:disabled { opacity: .45; cursor: default; }
+.uf-none { text-align: center; color: #78909c; background: #fff; border-radius: 12px; padding: 26px 14px; font-size: .92em; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+/* ===== 「今月やる人」タブの済み行 ===== */
+/* 済は消さずに下へ積む。今月何を終わらせたかが、この1画面で分かるようにするため。 */
+.card.donerow { opacity: .58; }
+.card.donerow .nm { text-decoration: line-through; text-decoration-thickness: 2px; color: #607d8b; }
+.done-mark { font-size: .82em; color: #2e7d32; font-weight: 700; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -125,14 +148,20 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
   </div>
   <div id="dstate" class="dstate"></div>
   <div id="errbar" class="errbar"></div>
+  <!-- タブは画面に出る順に並べる。id の数字は既存の tab1/tab2/tab3 を動かさないため
+       「今月やる人」だけ tab4 になっている（表示位置は2番目）。id を振り直すと
+       既存テストの参照を大量に書き換えることになり、本当の回帰を見落としやすくなるため据え置いた。 -->
   <div class="tabs">
     <button type="button" class="tab-btn active" id="tabbtn1" onclick="showTab(1)">📋 今日の優先</button>
+    <button type="button" class="tab-btn" id="tabbtn4" onclick="showTab(4)">🗓️ 今月やる人</button>
     <button type="button" class="tab-btn" id="tabbtn2" onclick="showTab(2)">👥 全利用者</button>
     <button type="button" class="tab-btn" id="tabbtn3" onclick="showTab(3)">📊 スタッフ%</button>
   </div>
+  <div id="ufbar" class="ufbar" style="display:none"></div>
   <div id="undoBar" class="undo-bar" style="display:none"></div>
   <div id="status">読み込み中…</div>
   <div id="tab1"></div>
+  <div id="tab4" style="display:none"></div>
   <div id="tab2" style="display:none"></div>
   <div id="tab3" style="display:none"></div>
   <div class="reload-row"><button type="button" class="reload-btn" onclick="load()">↻ 再読込</button></div>
@@ -320,9 +349,102 @@ function normKey(s) {
   return String(s == null ? '' : s).normalize('NFKC').replace(/[\s　]/g, '').replace(/(様|さま|サマ)$/, '');
 }
 let derived = { rowByName: {} };
-let careFilter = 'all';   // タブ2 介護度フィルタ
+let careFilter = 'all';   // 介護度フィルタ（共通フィルタバーの一部・全タブ共通）
 let periodMonths = 1;     // タブ3 期間（1/2/3ヶ月）
 let currentTab = 1;
+// 共通フィルタの状態。タブを切り替えても保持する（同じ人を別の切り口で見たいため・B-7）
+let uf = { days: [], slots: [], query: '' };
+let ufOpen = false;       // フィルタバーを開いているか（モバイルで画面を食わないよう既定は畳む）
+
+// =====================================================================
+// 共通フィルタの純関数（2026-07-28・★他アプリへ展開予定の標準パターン★）
+// -----------------------------------------------------------------
+// DOM にも GAS にも state にも依存しない。曜日・午前午後・名前検索は口腔／個訓／通所でも
+// 同じものが要るため、後日そのまま shared.js へ移して共有する。ここでは sokutei.html 内に
+// 置いているが、移設しやすいよう「この1ブロックで完結」させてある（外の変数を読まない）。
+// 移設時は shared.js が 🔢版 を握るので、版上げのタイミングと合わせること。
+//
+// 入力の1件が持つ想定のキー（余分なキーは無視する）:
+//   { name, kana, weekdays, ampm }
+//     weekdays … 利用曜日の文字列。'火木' のように曜日文字が並ぶ（利用者台帳「利用曜日」列）
+//     ampm     … 午前/午後の文字列。'午前' / '午後' / '月午前、木午後' の3形（同台帳「午前/午後」列）
+// =====================================================================
+
+// 検索用キー。NFKC（全角半角の統一）＋空白除去＋敬称除去に加えて、
+// カタカナ→ひらがな へ寄せる。これで「田中」「たなか」「タナカ」「ﾀﾅｶ」が同じキーになる。
+// 生の === や includes で比べない（表記ゆれで引けなくなるため）。
+function ufSearchKey(s) {
+  let t = String(s == null ? '' : s);
+  if (typeof t.normalize === 'function') t = t.normalize('NFKC');   // 半角カナ→全角カナもここで揃う
+  t = t.replace(/[\s　]/g, '').replace(/(様|さま|サマ)$/, '');
+  // カタカナ→ひらがな（長音符・小書き文字もそのまま対応する範囲）
+  t = t.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  return t.toLowerCase();
+}
+
+// 午前/午後列の解釈。返り: [{ day:'月'|''（曜日指定なし）, slot:'am'|'pm' }, ...]
+//   '午前'          → [{ day:'', slot:'am' }]
+//   '月午前、木午後' → [{ day:'月', slot:'am' }, { day:'木', slot:'pm' }]
+// 曜日別に枠が違う人が実在する（2026-07-28 実測: 112名中2名）。単純な文字列包含だと
+// 「月曜は午前の人」が「月曜×午後」の絞り込みにも出てしまうため、対で持つ。
+function ufParseAmpm(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return [];
+  const out = [];
+  s.split(/[、,・\/／\s]+/).forEach(part => {
+    if (!part) return;
+    const m = part.match(/([月火水木金土日]?)\s*(午前|午後|AM|PM|am|pm)/);
+    if (!m) return;
+    const slot = /午前|AM|am/.test(m[2]) ? 'am' : 'pm';
+    out.push({ day: m[1] || '', slot: slot });
+  });
+  return out;
+}
+
+// 曜日の一致。days が空＝絞り込みなし＝全通し。
+function ufMatchDays(weekdays, days) {
+  if (!days || !days.length) return true;
+  const w = String(weekdays == null ? '' : weekdays);
+  return days.some(d => w.indexOf(d) !== -1);
+}
+
+// 午前午後の一致。slots が空＝絞り込みなし。
+// 曜日も同時に絞っているときは、その曜日ぶんの枠だけを見る（曜日指定なしの枠は常に対象）。
+function ufMatchSlots(row, slots, days) {
+  if (!slots || !slots.length) return true;
+  const parsed = ufParseAmpm(row && row.ampm);
+  if (!parsed.length) return false;   // 枠が分からない人は、枠で絞っているとき出さない
+  const dayFilterOn = !!(days && days.length);
+  return parsed.some(p => {
+    if (slots.indexOf(p.slot) === -1) return false;
+    if (!dayFilterOn || !p.day) return true;   // 曜日指定のない枠は常に有効
+    return days.indexOf(p.day) !== -1;
+  });
+}
+
+// 名前の部分一致（漢字・ひらがな・カタカナ・全角半角のゆれに強い）。氏名とふりがなの両方を見る。
+function ufMatchQuery(row, query) {
+  const q = ufSearchKey(query);
+  if (!q) return true;
+  return ufSearchKey(row && row.name).indexOf(q) !== -1
+    || ufSearchKey(row && row.kana).indexOf(q) !== -1;
+}
+
+// 3条件の AND。opt = { days:[], slots:[], query:'' }。opt 省略・空は素通し。
+function filterUsers(list, opt) {
+  const o = opt || {};
+  const days = o.days || [], slots = o.slots || [], query = o.query || '';
+  if (!days.length && !slots.length && !String(query).trim()) return (list || []).slice();
+  return (list || []).filter(r =>
+    ufMatchDays(r && r.weekdays, days) && ufMatchSlots(r, slots, days) && ufMatchQuery(r, query));
+}
+
+// 何かしら絞り込んでいるか（見出しのバッジ・クリアボタンの活性に使う）
+function ufActiveCount(f, care) {
+  return (f.days || []).length + (f.slots || []).length
+    + (String(f.query || '').trim() ? 1 : 0) + ((care && care !== 'all') ? 1 : 0);
+}
+// ===== 共通フィルタの純関数ここまで =====
 
 // ===== 取得（Promise.allSettled・1つ失敗しても他タブは描画 = teirei の safe 精神） =====
 async function fetchJson(url) {
@@ -441,8 +563,31 @@ function buildDerived() {
     if (!d || !r.name) return;
     if (!lastShien[r.name] || d > lastShien[r.name]) lastShien[r.name] = d;
   });
-  const daysByName = {};
-  (state.userList || []).forEach(u => { if (u.userName) daysByName[u.userName] = u.days; });
+  // 利用者台帳から 利用曜日 / 午前・午後 / ふりがな を引く（共通フィルタの材料・新規に持たない）
+  const daysByName = {}, ampmByName = {}, kanaByName = {};
+  (state.userList || []).forEach(u => {
+    if (!u.userName) return;
+    daysByName[u.userName] = u.days;
+    ampmByName[u.userName] = u.ampm || '';
+    kanaByName[u.userName] = u.userNameKana || '';
+  });
+  // 当月の測定実績（＝「今月やる人」タブの済判定・A-2）。
+  // ⚠️予定月(nextYm)では判定できない。測定すると nextYm が周期ぶん進んで isDue が偽になるため、
+  //   nextYm だけで見ると済んだ人が一覧から消え「今月何をやったか」が分からなくなる。だから実績で拾う。
+  // ソースは2つ: 要支援測定記録（nameキー）∪ 個別機能訓練計画書記録13列目（userIdキー）。
+  // source='paper'（紙台帳の遡り投入）は除く。測定者不明で日付も月初仮置きのため、
+  //   「今月やった仕事」として数えるのは実態に合わない（タブ3のスタッフ%と同じ扱い）。
+  const ym = thisYm();
+  const doneById = {}, doneByName = {};
+  function keepDone(bag, key, date, by) {
+    if (!key || !date || date.slice(0, 7) !== ym) return;
+    if (!bag[key] || date > bag[key].date) bag[key] = { date: date, by: String(by || '').trim() };
+  }
+  (state.records || []).forEach(r => keepDone(doneById, r.userId, normDate(r.sokutei_date), r.sokutei_by));
+  (state.shien || []).forEach(r => {
+    if (r.source === 'paper') return;
+    keepDone(doneByName, normKey(r.name), normDate(r.sokutei_date), r.sokutei_by);
+  });
   const attCare = {};
   if (state.att) ['am', 'pm'].forEach(k => (state.att.attendance[k] || []).forEach(a => { if (a.care) attCare[a.name] = a.care; }));
   const monthKeys = prevMonthsList(3);
@@ -472,12 +617,21 @@ function buildDerived() {
     let due = '', remaining = -999;   // どちらも無ければ未測定 = 最優先扱い
     if (base) { due = sokuteiDueDate_(base, care); remaining = sokuteiRemaining_(due, t); }
     const y = yoteiByKey[userId] || yoteiByKey[normKey(userId)] || yoteiByKey[normKey(name)] || null;
+    // 当月の実績（済判定）。要介護は userId・要支援等は正規化名で引き、両方見つかれば新しい方を採る。
+    const dById = doneById[userId] || null, dByName = doneByName[normKey(name)] || null;
+    let done = null;
+    if (dById && dByName) done = (dById.date >= dByName.date) ? dById : dByName;
+    else done = dById || dByName;
     rowByName[name] = {
-      userId: userId, name: name, kana: kana || '', care: care,
+      userId: userId, name: name, kana: kana || kanaByName[name] || '', care: care,
       remaining: remaining, R: sokuteiRemainingVisits_(weekdays, t), U: sokuteiUsageRate_(monthsArr),
       last: last, base: base, due: due, unmeasured: !base, weekdays: weekdays,
+      // 共通フィルタの材料（利用者台帳の「午前/午後」列。'午前' / '午後' / '月午前、木午後' の3形）
+      ampm: ampmByName[name] || '',
       // 予定月（段階1の対象判定の正）。行が無い＝未設定は isDue が true を返す＝漏れとして対象に出す。
-      nextYm: y ? y.nextYm : '', slideCount: y ? y.slideCount : 0, hasYotei: !!y
+      nextYm: y ? y.nextYm : '', slideCount: y ? y.slideCount : 0, hasYotei: !!y,
+      // 当月に測定済みなら { date, by }。「今月やる人」タブで済として下に積む（A-2/A-4）
+      doneThisMonth: done
     };
   }
 
@@ -533,11 +687,13 @@ function rowCard(r, opt) {
   const dis = b ? ' disabled' : '';       // 送信中は同じ行の全ボタンを無効化（1-9-2）
   const lbl = (which, normal) => (b && b.which === which) ? '⏳ 送信中…' : normal;
   const stop = 'event.stopPropagation();';
+  const doneRow = !!(o.markDone && r.doneThisMonth);   // 当月測定済み＝記録の入口は塞ぐ（二重記録防止）
   // 記録ボタンは要介護・要支援等の両方に出す（段階1で addSokuteiDone に一本化）。
-  const recBtn = (showRec && !sunk)
+  const recBtn = (showRec && !sunk && !doneRow)
     ? '<button type="button" class="rec-btn" data-name="' + esc(r.name) + '"' + dis
       + ' onclick="' + stop + 'openRecordModal(this.dataset.name)">' + lbl('rec', '📝測定した') + '</button>'
     : '';
+  // 済んだ行でも「📅来月へ」「予定 ▾」は残す（A-7）。予定の調整は済んだ後でも要るため。
   const slideBtn = (showSlide && !sunk)
     ? '<button type="button" class="slide-btn" data-name="' + esc(r.name) + '"' + dis
       + ' onclick="' + stop + 'slideToNextMonth(this.dataset.name)">' + lbl('slide', '📅来月へ') + '</button>'
@@ -545,6 +701,12 @@ function rowCard(r, opt) {
   // 午前/午後の枠（案X-3の列見出しと重複しないよう、欠席リストなど列外に出る行のためにも持たせる）
   const pill = r.session
     ? '<span class="pill ' + r.session + '">' + (r.session === 'am' ? '午前' : '午後') + '</span>' : '';
+  // 「今月やる人」タブの済行（A-4）: 打消し線＋グレー＋「7/28 済（測定者）」
+  const done = (o.markDone && r.doneThisMonth) ? r.doneThisMonth : null;
+  const doneMark = done
+    ? '<span class="done-mark">' + esc(fmtMD(done.date)) + ' 済'
+      + (done.by ? '（' + esc(done.by) + '）' : '（測定者不明）') + '</span>'
+    : '';
   const doneTag = sunk ? '<span class="done-tag">✅ ' + esc(sunk.label) + '</span>' : '';
   const ymHtml = sunk
     ? '予定 ' + esc(r.nextYm || '未設定')
@@ -553,18 +715,18 @@ function rowCard(r, opt) {
   const errHtml = rowErr[r.name]
     ? '<div class="rowerr">⚠ 変更できませんでした：' + esc(rowErr[r.name]) + '（もう一度お試しください）</div>'
     : '';
-  const tappable = showRec && !sunk && !b;
+  const tappable = showRec && !sunk && !done && !b;
   return '<div class="card b-' + r.badge + (gray ? ' gray' : '')
-    + (sunk ? ' sunk' : '') + (b ? ' busy' : '') + (tappable ? ' tappable' : '')
+    + (sunk ? ' sunk' : '') + (done ? ' donerow' : '') + (b ? ' busy' : '') + (tappable ? ' tappable' : '')
     + '" data-row="' + esc(r.name) + '"'
     + (tappable ? ' data-name="' + esc(r.name) + '" onclick="openRecordModal(this.dataset.name)"' : '') + '>'
     + '<div class="rowline">'
-    + '<span class="bdg">' + BADGE_EMOJI[r.badge] + '</span>'
+    + '<span class="bdg">' + (done ? '✅' : BADGE_EMOJI[r.badge]) + '</span>'
     + '<span class="nm">' + esc(r.name) + '</span>'
     + '<span class="cr">' + esc(r.care || '介護度不明') + '</span>'
     + pill
     + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
-    + doneTag
+    + doneMark + doneTag
     + recBtn + slideBtn
     + '</div>'
     + '<div class="meta">前回測定 ' + esc(lastLabel(r))
@@ -580,14 +742,111 @@ function colHtml(cls, label, rows) {
   else rows.forEach(r => { inner += rowCard(r, { showSlide: true, showRec: true, sunkable: true }); });
   return '<div class="col">' + inner + '</div>';
 }
+const TAB_IDS = [1, 4, 2, 3];   // 画面に出る順（tab4=今月やる人 は表示2番目・id据え置きの理由は body 側コメント参照）
+const FILTER_TABS = [1, 4, 2];  // 共通フィルタバーを出すタブ。スタッフ%（3）は人単位の集計なので出さない
 function showTab(n) {
   currentTab = n;
-  for (let i = 1; i <= 3; i++) {
+  TAB_IDS.forEach(i => {
     document.getElementById('tab' + i).style.display = (i === n) ? '' : 'none';
     document.getElementById('tabbtn' + i).classList.toggle('active', i === n);
+  });
+  renderFilterBar();   // フィルタ状態はタブを跨いで保持する（B-7）。出し入れだけ切り替える
+}
+function renderAll() { renderFilterBar(); renderTab1(); renderTabMonth(); renderTab2(); renderTab3(); }
+
+// ===== 共通フィルタバー（B）=====
+// 状態(uf/careFilter)は保持したまま、表示タブが変わったら出し入れだけする。
+const UF_DAYS = ['月', '火', '水', '木', '金', '土'];
+let ufFocusQuery = false;   // 再描画のあとに検索欄へフォーカスを戻すか
+function renderFilterBar() {
+  const bar = document.getElementById('ufbar');
+  if (!bar) return;
+  if (FILTER_TABS.indexOf(currentTab) < 0) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  const n = ufActiveCount(uf, careFilter);
+  const chip = (on, label, handler) =>
+    '<button type="button" class="uf-chip' + (on ? ' on' : '') + '" onclick="' + handler + '">' + label + '</button>';
+  let html = '<div class="uf-head" onclick="toggleFilterBar()">🔍 絞り込み'
+    + (n ? ' <span class="uf-badge">' + n + '件適用中</span>' : '')
+    + '<span class="uf-caret">' + (ufOpen ? '▲ 閉じる' : '▼ 開く') + '</span></div>'
+    + '<div class="uf-body">'
+    + '<div class="uf-row"><div class="uf-label">介護度</div><div class="uf-chips">'
+    + chip(careFilter === 'all', '全て', "setCareFilter('all')")
+    + chip(careFilter === 'kaigo', '要介護のみ', "setCareFilter('kaigo')")
+    + chip(careFilter === 'shien', '要支援等', "setCareFilter('shien')")
+    + '</div></div>'
+    + '<div class="uf-row"><div class="uf-label">利用曜日（複数選べます）</div><div class="uf-chips">'
+    + UF_DAYS.map(d => chip(uf.days.indexOf(d) >= 0, d, "toggleUfDay('" + d + "')")).join('')
+    + '</div></div>'
+    + '<div class="uf-row"><div class="uf-label">時間帯（複数選べます）</div><div class="uf-chips">'
+    + chip(uf.slots.indexOf('am') >= 0, '午前', "toggleUfSlot('am')")
+    + chip(uf.slots.indexOf('pm') >= 0, '午後', "toggleUfSlot('pm')")
+    + '</div></div>'
+    + '<div class="uf-row"><div class="uf-label">名前で探す（漢字・ひらがな・カタカナ どれでも）</div>'
+    + '<input type="text" id="ufQuery" class="uf-search" placeholder="例: たなか" value="' + esc(uf.query) + '"></div>'
+    + '<button type="button" class="uf-clear" onclick="clearFilters()"' + (n ? '' : ' disabled') + '>絞り込みをクリア</button>'
+    + '</div>';
+  bar.className = 'ufbar' + (ufOpen ? ' open' : '');
+  bar.innerHTML = html;
+  // 入力中に絞り込む（B-3）。再描画で input が作り直されるため、値とカーソル位置を戻す。
+  const q = document.getElementById('ufQuery');
+  if (q) {
+    q.oninput = function () { uf.query = this.value; renderLists(); updateFilterBadge(); };
+    if (document.activeElement !== q && ufFocusQuery) { q.focus(); ufFocusQuery = false; }
   }
 }
-function renderAll() { renderTab1(); renderTab2(); renderTab3(); }
+// 検索入力のたびにバー全体を作り直すと入力欄がフォーカスを失うので、
+// 文字入力ではリストだけ描き直し、バッジの数字だけを直接書き換える。
+// バッジの有無そのものが変わるとき（0件→1件・1件→0件）だけ、フォーカスを保ったまま作り直す。
+function updateFilterBadge() {
+  const head = document.querySelector('#ufbar .uf-head');
+  if (!head) return;
+  const n = ufActiveCount(uf, careFilter);
+  const badge = head.querySelector('.uf-badge');
+  if (!!n !== !!badge) { renderFilterBarKeepFocus(); return; }
+  if (badge) badge.textContent = n + '件適用中';
+  const clr = document.querySelector('#ufbar .uf-clear');
+  if (clr) clr.disabled = !n;
+}
+function renderFilterBarKeepFocus() {
+  const q = document.getElementById('ufQuery');
+  const keep = q && document.activeElement === q;
+  const pos = keep ? q.selectionStart : 0;
+  ufFocusQuery = keep;
+  renderFilterBar();
+  const q2 = document.getElementById('ufQuery');
+  if (keep && q2 && q2.setSelectionRange) { try { q2.setSelectionRange(pos, pos); } catch (e) { } }
+}
+// リストだけ描き直す（フィルタバーは触らない＝入力欄のフォーカスを奪わない）
+function renderLists() { renderTab1(); renderTabMonth(); renderTab2(); }
+function toggleFilterBar() { ufOpen = !ufOpen; renderFilterBar(); }
+function toggleUfDay(d) {
+  const i = uf.days.indexOf(d);
+  if (i >= 0) uf.days.splice(i, 1); else uf.days.push(d);
+  renderFilterBar(); renderLists();
+}
+function toggleUfSlot(s) {
+  const i = uf.slots.indexOf(s);
+  if (i >= 0) uf.slots.splice(i, 1); else uf.slots.push(s);
+  renderFilterBar(); renderLists();
+}
+function clearFilters() {
+  uf = { days: [], slots: [], query: '' };
+  careFilter = 'all';
+  renderFilterBar(); renderLists();
+}
+// 介護度フィルタも共通バーの一部（既存の設計書§4-2の3択をそのまま移設）。
+// 曜日・時間帯・名前検索との AND で効く。
+function setCareFilter(v) { careFilter = v; renderFilterBar(); renderLists(); }
+function applyCareFilter(rows) {
+  if (careFilter === 'kaigo') return rows.filter(r => isKaigoCare(r.care));
+  if (careFilter === 'shien') return rows.filter(r => !isKaigoCare(r.care));
+  return rows;
+}
+// 共通フィルタ（曜日・時間帯・名前）＋介護度フィルタ をまとめて適用する（すべて AND）
+function applyAllFilters(rows) { return applyCareFilter(filterUsers(rows, uf)); }
+// フィルタで0件になったときの案内（無言の空白にしない・B-6）
+const UF_EMPTY_HTML = '<div class="uf-none">該当する人がいません<br><span style="font-weight:400;font-size:.9em">条件を変えるか「絞り込みをクリア」で戻せます</span></div>';
 
 // ===== タブ1: 今日の測定優先リスト =====
 function renderTab1() {
@@ -617,8 +876,10 @@ function renderTab1() {
   // 段階1: 対象は「予定月 <= 当月」で絞る（過ぎている人も含む）。対象外は一切出さない（社長決定 5-1）。
   // ただし済んだ行(sunk)は沈めたまま残す＝「入ったこと」が見える（案X-4）。
   const shown = r => isDue(r.nextYm, ym) || state.sunk[r.name];
-  const presentRows = sokuteiSort_(rowsOf(present).filter(shown));
-  const absentRows = sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')).filter(shown));
+  // 共通フィルタ（曜日・時間帯・名前・介護度）を掛ける（B）。母数の把握用に掛ける前の数も持つ
+  const presentAllRows = sokuteiSort_(rowsOf(present).filter(shown));
+  const presentRows = applyAllFilters(presentAllRows);
+  const absentRows = applyAllFilters(sokuteiSort_(rowsOf(list.filter(a => a.status !== '出席')).filter(shown)));
   // 「残り」= 今月が予定月だが本日来館していない人（別日に測る必要がある人数）
   const dueAll = Object.keys(derived.rowByName)
     .map(n => derived.rowByName[n])
@@ -627,11 +888,18 @@ function renderTab1() {
   const restCount = dueAll.filter(r => !presentNames[r.name]).length;
   // ヘッダの人数は済んだ行を除いた「まだ測る人の数」＝押した結果がすぐ数字に出る（1-9-3）
   const dueCountNow = presentRows.filter(r => !state.sunk[r.name]).length;
+  const dueCountAll = presentAllRows.filter(r => !state.sunk[r.name]).length;
+  const filtering = ufActiveCount(uf, careFilter) > 0;
 
   let html = '<div class="hdr">' + esc(fmtMD(state.selectedDate)) + '・来館予定' + present.length + '名中 '
-    + '今月の対象' + dueCountNow + '名（残り' + restCount + '名）</div>';
+    + '今月の対象' + dueCountNow + '名'
+    + (filtering ? '（全体' + dueCountAll + '名中）' : '') + '（残り' + restCount + '名）</div>';
   if (state.errs.yotei) html += '<div class="note">⚠ 予定月（getYotei）取得失敗のため全員を対象として表示しています：' + esc(state.errs.yotei) + '</div>';
   if (state.errs.usage) html += '<div class="note">⚠ 利用率（usage_stats）取得失敗のため E は残り回数のみで計算しています</div>';
+  if (filtering && !presentRows.length && !absentRows.length) {
+    el.innerHTML = html + UF_EMPTY_HTML;   // 絞り込みで0件（B-6）。完了と紛らわしいので「完了✅」は出さない
+    return;
+  }
   if (!dueCountNow) {
     html += '<div class="done-all">今月ぶん完了 ✅</div>'
       + '<div class="note">この日に来館の方で、今月が予定月の方はいません' + (restCount ? '（別日に測る方が ' + restCount + '名います）' : '') + '</div>';
@@ -647,8 +915,56 @@ function renderTab1() {
   el.innerHTML = html;
 }
 
+// ===== タブ「今月やる人」（A）=====
+// 「今日誰を測るか」だけでなく「今月どこまで終わったか」を1画面で見るためのタブ。
+// 未（まだの人）を上、済（今月やった人）を下に積む。
+// ★済は実績ベースで拾う（A-2）。測定すると nextYm が周期ぶん進んで isDue が偽になるため、
+//   予定月だけで判定すると済んだ人が一覧から消えて「今月何をやったか」が分からなくなる。
+//   buildDerived が当月の測定実績を doneThisMonth に載せているので、それを使う。
+function renderTabMonth() {
+  const el = document.getElementById('tab4');
+  if (!state.users.length) { el.innerHTML = errCard('個訓対象者（getKeikakushoYear）', state.errs.year); return; }
+  const ym = thisYm();
+  const all = Object.keys(derived.rowByName).map(n => derived.rowByName[n]);
+  // 母集団 = 今月が予定月の人（未）∪ 今月すでに測った人（済・予定月は先へ進んでいる）
+  const pool = all.filter(r => isDue(r.nextYm, ym) || r.doneThisMonth);
+  // sokuteiSort_ は並べ替えだけでなく badge / tier / E の付与も担う（rowCard がそれを描く）ので、
+  // 未・済に分ける前に必ず一度通す。済だけ素通しにすると E が undefined になって描画で落ちる。
+  const rows = sokuteiSort_(applyAllFilters(pool));
+  const filtering = ufActiveCount(uf, careFilter) > 0;
+
+  const undone = rows.filter(r => !r.doneThisMonth);                 // 未は既存の優先度（tier→E→かな）のまま（A-3）
+  const done = rows.filter(r => r.doneThisMonth).sort((a, b) => {    // 済は新しく測った順
+    if (a.doneThisMonth.date !== b.doneThisMonth.date) return a.doneThisMonth.date < b.doneThisMonth.date ? 1 : -1;
+    const ka = String(a.kana || a.name || ''), kb = String(b.kana || b.name || '');
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+
+  const m = +ym.slice(5, 7);
+  let html = '<div class="hdr">' + m + '月の対象 ' + rows.length + '名'
+    + (filtering ? '（全体' + pool.length + '名中）' : '')
+    + '／済 ' + done.length + '・未 ' + undone.length + '</div>';
+  if (state.errs.yotei) html += '<div class="note">⚠ 予定月（getYotei）取得失敗のため全員を対象として表示しています：' + esc(state.errs.yotei) + '</div>';
+
+  if (filtering && !rows.length) { el.innerHTML = html + UF_EMPTY_HTML; return; }   // B-6
+  if (!undone.length && (done.length || !filtering)) {
+    html += '<div class="done-all">今月ぶん完了 ✅</div>'
+      + '<div class="note">' + m + '月が予定月の方はすべて測定済みです（済 ' + done.length + '名）。</div>';
+  }
+  if (undone.length) {
+    html += '<div class="section-label">🟡 まだの人（' + undone.length + '名）</div>';
+    undone.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true }); });
+  }
+  if (done.length) {
+    html += '<div class="section-label">✅ 今月やった人（' + done.length + '名）</div>';
+    done.forEach(r => { html += rowCard(r, { showSlide: true, markDone: true }); });
+  }
+  html += '<div class="note">※「済」は当月の測定実績で判定しています（予定月は測定すると先へ進むため、予定月では判定できません）。'
+    + '紙台帳の遡り投入（source=paper）は今月の実績に数えていません。</div>';
+  el.innerHTML = html;
+}
+
 // ===== タブ2: 全利用者 期限順 =====
-function setCareFilter(v) { careFilter = v; renderTab2(); }
 function renderTab2() {
   const el = document.getElementById('tab2');
   if (!state.users.length) { el.innerHTML = errCard('個訓対象者（getKeikakushoYear）', state.errs.year); return; }
@@ -661,16 +977,16 @@ function renderTab2() {
     const ka = String(a.kana || a.name || ''), kb = String(b.kana || b.name || '');
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
-  const rows = decorated.filter(r => {
-    if (careFilter === 'kaigo') return String(r.care).indexOf('要介護') === 0;
-    if (careFilter === 'shien') return String(r.care).indexOf('要介護') !== 0;
-    return true;
-  });
-  const fb = (v, label) => '<button type="button" class="f-btn' + (careFilter === v ? ' active' : '') + '" onclick="setCareFilter(\'' + v + '\')">' + label + '</button>';
-  let html = '<div class="filter-row">' + fb('all', '全て') + fb('kaigo', '要介護のみ') + fb('shien', '要支援等') + '</div>';
+  // 介護度の3択は共通フィルタバーへ移設した（曜日・時間帯・名前検索と同じ場所で操作できるように）。
+  // ここでは掛けるだけ。掛ける前の数は「（全体◯名中）」の母数に使う。
+  const rows = applyAllFilters(decorated);
+  const filtering = ufActiveCount(uf, careFilter) > 0;
   // タブ2は予定月で絞らない（対象外の人も従来どおり全員見える・5-7）。予定月は各行に併記する。
   const dueCount = rows.filter(r => isDue(r.nextYm, thisYm())).length;
-  html += '<div class="hdr">全 ' + rows.length + '名（期限が近い順）／うち今月が予定月 ' + dueCount + '名</div>';
+  let html = '<div class="hdr">全 ' + rows.length + '名'
+    + (filtering ? '（全体' + decorated.length + '名中）' : '')
+    + '（期限が近い順）／うち今月が予定月 ' + dueCount + '名</div>';
+  if (filtering && !rows.length) { el.innerHTML = html + UF_EMPTY_HTML; return; }   // B-6
   rows.forEach(r => { html += rowCard(r, { nextVisit: nextVisitStr(r.weekdays, state.today) }); });
   el.innerHTML = html;
 }
