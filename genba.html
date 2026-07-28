@@ -2173,6 +2173,7 @@
         <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:8px;">
             <label style="font-size:0.85rem;">宛先：
                 <select id="dengon-to" style="padding:6px; border-radius:6px; border:1px solid #cbd5e0;">
+                    <option value="社長">社長</option>
                     <option value="全員">全員</option>
                     <option value="全員・ドライバー除く">全員・ドライバー除く</option>
                     <option value="社員">社員</option>
@@ -10199,7 +10200,10 @@ function dengonRenderToSelect_() {
     if (!sel) return;
     const prev = sel.value;
     const groups = ['全員', '全員・ドライバー除く', '社員', '相談員', '看護師'];
-    let html = groups.map(g => {
+    // 社長宛（個人宛＝recipients は空。サーバ側 addDengonMessage が to==='社長' で notify@ へ送る）。
+    // グループではないので人数は出さない。最上部＝最も目立つ位置。2026-07-29 追記。
+    let html = '<option value="社長">社長</option>';
+    html += groups.map(g => {
         const n = dengonComputeRecipients_(dengonStaffMaster, g).length;
         return `<option value="${escapeHtml(g)}">${escapeHtml(g)}(${n})</option>`;
     }).join('');
