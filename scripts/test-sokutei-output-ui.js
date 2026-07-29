@@ -223,6 +223,10 @@ function resetFixtures() {
   captured.writes.length = 0;
   Object.keys(els).forEach(k => delete els[k]);
   timers.length = 0;
+  // 2026-07-30: 書き込みには操作者の選択が要る（B案 requireOperator）。
+  // 現場が最初に自分を選ぶのと同じ前提をここで作る。未選択の挙動は
+  // scripts/test-sokutei-operator-gate.js が受け持つ。
+  elFor('recordStaffSelect').value = 'スタッフY';
 }
 function cardOf(h, name) {
   const s = String(h), i = s.indexOf('data-row="' + name + '"');
