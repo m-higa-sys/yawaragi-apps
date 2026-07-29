@@ -152,6 +152,8 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 /* ===== 予定月を過ぎたまま止まっている人（オレンジ）===== */
 /* 赤（計画書に間に合わない）とは危険度が違うので色を分ける。赤を増やすと赤が効かなくなる。 */
 .overdue-head { background: #fff4e5; border: 1.5px solid #ffb74d; color: #e65100; border-radius: 10px; padding: 10px 12px; font-size: .88em; font-weight: 800; margin: 4px 0 8px; line-height: 1.6; }
+/* 長期休み中の印。急かす色（赤・オレンジ）は使わない。「待ち」であって「やり残し」ではない。 */
+.on-leave { font-size: .8em; font-weight: 700; color: #fff; background: #78909c; border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
 /* ===== 出力2チェック（🖨 利用者用 / 📄 ケアマネ用）===== */
 /* 測定が済んでも、この2つが済むまでその人は完了ではない。未は必ず目立つ側の色で出す。 */
 .out-btn { border: 1.5px solid #cfd8dc; border-radius: 8px; padding: 8px 10px; font-size: .82em; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; background: #fff; color: #546e7a; }
@@ -678,11 +680,19 @@ function splitMonthRows(rows, ym) {
   const gapRows = (rows || []).filter(r => lv(r) === 'red');
   const gapNames = {}; gapRows.forEach(r => { gapNames[r.name] = true; });
   const rest = (rows || []).filter(r => !gapNames[r.name]);
+  // 予定月を過ぎている人を、来ているのに測れていない人（⏰）と休み中の人（💤）に分ける。
+  //   長期休みは予定月をスライドせず放置する運用（2026-07-29 社長決定）。急に来たとき
+  //   一覧に出ていてその場で測れるようにするため。ただし ⏰ に混ぜると
+  //   「来ているのに測り忘れている人」が埋もれるので枠を分ける。
+  //   ★分けるのは ⏰ だけ。📋（計画に間に合わない）は休んでいても期限が動かないので枠は分けず、
+  //     カード側に印だけ添える（枠から消すとケアマネへ相談する機会そのものが消えるため）。
+  const overdueAll = rest.filter(r => isOverdueYm(r.nextYm, ym));
   return {
     gapRows: gapRows,
     lateRows: rest.filter(r => lv(r) === 'late'),
     rest: rest,
-    overdueRows: rest.filter(r => isOverdueYm(r.nextYm, ym))
+    overdueRows: overdueAll.filter(r => !(r && r.onLongLeave)),
+    restingRows: overdueAll.filter(r => !!(r && r.onLongLeave))
   };
 }
 // 「9月 2名 ／ 10月 1名」の内訳文字列（期限の月ごと）
@@ -742,11 +752,15 @@ async function load(dateStr) {
     fetchJson(GAS + '?action=getTsushoPlansYearV2&year=' + fy + '&t=' + Date.now()),
     fetchJson(GAS + '?action=getYotei&domain=sokutei&t=' + Date.now()),
     // 出力2チェック（🖨利用者用／📄ケアマネ用）。当月ぶんだけ取る＝1測定回＝1行の設計なので月で足りる
-    fetchJson(GAS + '?action=getSokuteiOutput&domain=sokutei&ym=' + thisYm() + '&t=' + Date.now())
+    fetchJson(GAS + '?action=getSokuteiOutput&domain=sokutei&ym=' + thisYm() + '&t=' + Date.now()),
+    // 長期休み（出欠変更シートの type='長期休み'）。⏰ と 💤 を分けるためだけに使う。
+    // 落ちても「休み中0名」で続行する＝従来どおりの ⏰ 表示に戻るだけで画面は壊れない。
+    fetchJson(GAS + '?action=absences&month=' + thisYm() + '&t=' + Date.now())
   ]);
   // year は暦年のため、4月以降に前暦年の測定レコードが漏れないよう fy−1 も含めた3年分をマージ（GAS側 year 厳密一致・重複二重計上なし）
   const att = results[0], usage = results[1], years = [results[2], results[3], results[4]], staff = results[5];
   const shien = results[6], userList = results[7], tsushoUsers = results[8], yotei = results[9], output = results[10];
+  const absences = results[11];
   if (att.status === 'fulfilled' && att.value && att.value.success && att.value.attendance) state.att = att.value;
   else { state.att = null; state.errs.att = errMsg(att); }
   if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) state.usage = usage.value.usageStats;
@@ -773,6 +787,13 @@ async function load(dateStr) {
   if (output.status === 'fulfilled' && output.value && output.value.ok) {
     state.output = { rows: output.value.records || [], legacy: output.value.legacy || [] };
   } else { state.output = { rows: [], legacy: [] }; state.errs.output = errMsg(output); }
+  // 長期休み。失敗しても errs には積まない＝上部の赤いエラーバーを出さない。
+  // これが取れないと ⏰ と 💤 が分かれないだけで、従来どおりの表示に戻る（測定業務は止まらない）。
+  // 逆に「休み中」を誤って0名にする方が安全側（急かしすぎることはあっても、取りこぼさない）。
+  state.longLeave = [];
+  if (absences.status === 'fulfilled' && absences.value && absences.value.absences) {
+    state.longLeave = absences.value.absences.longTerm || [];
+  }
   buildDerived();
   fillStaffSelect();
   statusEl.textContent = '';
@@ -810,6 +831,40 @@ function fillStaffSelect() {
   if (sel && !sel.options.length) sel.innerHTML = opts;
   const out = document.getElementById('recordOutputSelect');
   if (out && !out.options.length) out.innerHTML = '<option value="">（測定者と同じ）</option>' + opts;
+}
+
+// 長期休みが対象月 ym に重なるか。resumeDate 空＝無期限（まだ戻っていない）。
+// ★board 側（getLongLeaveList）は復帰日が入った人を既に除外しているが、当月重なりは
+//   こちらでも判定する。APIの返し方が変わってもフロントの意味が崩れないようにするため。
+function longLeaveCoversMonth(startDate, resumeDate, ym) {
+  const m = String(ym == null ? '' : ym).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(m)) return false;
+  const s = String(startDate == null ? '' : startDate).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(s)) return false;
+  if (s > m) return false;                       // 当月より後に始まる休みは当月に重ならない
+  const r = String(resumeDate == null ? '' : resumeDate).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(r)) return true;     // 復帰日なし＝無期限
+  return r >= m;                                 // 復帰月が当月以降なら重なる
+}
+
+// absences.longTerm[] → { 正規化名: { startDate, elapsedDays } }
+// ★突き合わせは必ず正規化名で行う（生名のままだと表記ゆれで外れる）。
+//   list が null／空でも {} を返す＝absences API が落ちても「休み中0名」で画面は動く。
+function buildLongLeaveMap(list, ym, normFn) {
+  const f = normFn || (typeof normKey === 'function' ? normKey : (s => String(s == null ? '' : s)));
+  const out = {};
+  (list || []).forEach(x => {
+    if (!x || !x.name) return;
+    const start = String(x.date || x.startDate || '');
+    const resume = String(x.resumeDate || x.endDate || '');
+    if (!longLeaveCoversMonth(start, resume, ym)) return;
+    const k = f(x.name);
+    if (!k) return;
+    const days = (x.elapsedDays == null) ? null : Number(x.elapsedDays);
+    const prev = out[k];
+    if (!prev || start > prev.startDate) out[k] = { startDate: start, elapsedDays: days };
+  });
+  return out;
 }
 
 // 前回測定日を2ソースの和で引く（個訓シート ∪ 測定記録シート）。両方あれば新しい方を採る。
@@ -861,6 +916,8 @@ function buildDerived() {
     if (!d || !k) return;
     if (!lastShienByKey[k] || d > lastShienByKey[k]) lastShienByKey[k] = d;
   });
+  // 長期休み中の人（正規化名キー）。取得できていなければ空＝全員「休みでない」扱いになる
+  const longLeaveMap = buildLongLeaveMap(state.longLeave, thisYm());
   // 利用者台帳から 利用曜日 / 午前・午後 / ふりがな を引く（共通フィルタの材料・新規に持たない）
   const daysByName = {}, ampmByName = {}, kanaByName = {};
   (state.userList || []).forEach(u => {
@@ -940,7 +997,10 @@ function buildDerived() {
       planYm: plan ? nextPlanStartYm(plan.planStart, plan.planMonths, ym) : '',
       dueYm: plan ? nextDueYm(plan.planStart, plan.planMonths, ym) : '',
       // 当月に測定済みなら { date, by }。「今月やる人」タブで済として下に積む（A-2/A-4）
-      doneThisMonth: done
+      doneThisMonth: done,
+      // 長期休み中なら { startDate, elapsedDays }。⏰ と 💤 の振り分けと、📋 の印に使う。
+      // ★測定の判定（planGapCheck/covered）には一切渡さない。休んでも計画書の期限は動かないため。
+      onLongLeave: longLeaveMap[normKey(name)] || null
     };
   }
 
@@ -1051,6 +1111,14 @@ function rowCard(r, opt) {
     ? '<span class="' + (gapLv === 'red' ? 'plan-gap' : 'plan-late') + '">'
       + (gapLv === 'red' ? '⚠' : '📋') + ' 測定期限' + esc(r.dueYm) + '／測定' + esc(r.nextYm || '未設定') + '予定</span>'
     : '';
+  // 長期休み中の印。💤 を別枠に分けた ⏰ 側だけでなく、📋 に残る人にも同じ印を出す
+  // （📋 は枠を分けない方針のため、カード上で「休み中」と分からないと相談の判断ができない）。
+  const restBadge = r.onLongLeave
+    ? '<span class="on-leave">💤 休み中'
+      + (r.onLongLeave.elapsedDays != null && !isNaN(r.onLongLeave.elapsedDays)
+        ? '（' + r.onLongLeave.elapsedDays + '日）' : '')
+      + '</span>'
+    : '';
   const ymHtml = sunk
     ? '予定 ' + esc(r.nextYm || '未設定')
     : '<button type="button" class="ym-btn" data-name="' + esc(r.name) + '"' + dis
@@ -1071,14 +1139,18 @@ function rowCard(r, opt) {
     + '<span class="cr">' + esc(r.care || '介護度不明') + '</span>'
     + pill
     + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
-    + doneMark + outBadge + doneTag + gapBadge
+    + doneMark + outBadge + doneTag + restBadge + gapBadge
     + recBtn + slideBtn
     + '</div>'
     + (outHtml ? '<div class="rowline">' + outNote + outHtml + '</div>' : '')
     + '<div class="meta">前回測定 ' + esc(lastLabel(r))
     + ' ／ ' + ymHtml + (planHtml ? ' ／ ' + planHtml : '') + ' ／ ' + remainHtml
-    + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
-    + (nextVisit ? ' ／ 次回来館 ' + esc(nextVisit) : '')
+    // ★長期休み中は「今月あと約◯回」を出さない（2026-07-29 社長指示）。
+    //   この数字は 契約曜日のカレンダー計算 × 直近3ヶ月の出席率 で、当月の来所実績を見ていない。
+    //   そのため57日休んでいる人でも「今月あと約0.2回」と出て「まだ来る予定がある人」に見えてしまう。
+    //   休みでない人の計算式（R×E）は一切変えない。
+    + (r.onLongLeave ? ' ／ 今月の来所予定なし（休み中）' : ' ／ 今月あと約' + r.E.toFixed(1) + '回')
+    + (r.onLongLeave && !nextVisit ? '' : (nextVisit ? ' ／ 次回来館 ' + esc(nextVisit) : ''))
     + '</div>' + errHtml + '</div>';
 }
 // 午前/午後の1列ぶん（案X-3）。人数は列見出しにそのまま出す
@@ -1332,24 +1404,42 @@ function renderTabMonth() {
       + '計画書の作成時期をケアマネと相談してください。</div>';
     gapRows.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true, showOutput: true }); });
   }
-  // オレンジ枠（4・C-2）。意味の違う2つを同じ枠に「別の行」として置く。
-  //   1行目 ⏰ 予定月を過ぎています   … 予定月が当月より前。測り忘れ
-  //   2行目 📋 計画に間に合いません   … 予定月が測定期限より後ろ。まだ戻せば間に合う
-  // ★赤に出ている人はどちらにも出さない＝二重表示しない（4-4・splitMonthRows が担保）。
-  const overdueRows = split.overdueRows, lateRows = split.lateRows;
-  if (overdueRows.length || lateRows.length) {
+  // オレンジ枠（4・C-2）。意味の違う3つを同じ枠に「別の行」として置く。
+  //   1行目 ⏰ 予定月を過ぎています     … 予定月が当月より前で、来ている人。測り忘れ
+  //   2行目 💤 来所がなく測れていません … 予定月が当月より前だが、長期休み中。急かさない
+  //   3行目 📋 計画に間に合いません     … 予定月が測定期限より後ろ。まだ戻せば間に合う
+  // ★赤に出ている人はどれにも出さない＝二重表示しない（4-4・splitMonthRows が担保）。
+  // ★📋 は休み中でも枠を分けない。休んでも計画書の期限は動かないため、むしろ休み中こそ
+  //   ケアマネへ「来ないので測れない、計画書の時期をずらせないか」の相談が要る（2026-07-29 社長決定）。
+  const overdueRows = split.overdueRows, lateRows = split.lateRows, restingRows = split.restingRows || [];
+  if (overdueRows.length || restingRows.length || lateRows.length) {
     html += '<div class="overdue-head">';
+    let wrote = false;
     if (overdueRows.length) {
       html += '⏰ 予定月を過ぎています（' + overdueRows.length + '名）<br>'
         + esc(overdueBreakdown(overdueRows)) + '<br>'
         + '予定月が来たのにまだ測定できていない方です。下の一覧にも並んでいます。';
+      wrote = true;
+    }
+    if (restingRows.length) {
+      html += (wrote ? '<div class="overdue-line">' : '')
+        + '💤 来所がなく測れていません（' + restingRows.length + '名）<br>'
+        + esc(overdueBreakdown(restingRows)) + '<br>'
+        + '長期休み中の方です。来られていないので測れません。'
+        + '<b>来られたときに測ってください。急がなくて大丈夫です。</b>'
+        + (wrote ? '</div>' : '');
+      wrote = true;
     }
     if (lateRows.length) {
-      html += (overdueRows.length ? '<div class="overdue-line">' : '')
+      html += (wrote ? '<div class="overdue-line">' : '')
         + '📋 計画に間に合いません（' + lateRows.length + '名）<br>'
         + esc(lateBreakdown(lateRows)) + '<br>'
         + '測定期限より後ろに予定月が置かれています。予定月を期限の月までに戻せば間に合います。'
-        + (overdueRows.length ? '</div>' : '');
+        + (lateRows.filter(r => r && r.onLongLeave).length
+          ? '<br>このうち ' + lateRows.filter(r => r && r.onLongLeave).length + '名は長期休み中です。'
+            + '測れないぶん、計画書の時期をずらせないかケアマネへ相談してください。'
+          : '')
+        + (wrote ? '</div>' : '');
     }
     html += '</div>';
   }
