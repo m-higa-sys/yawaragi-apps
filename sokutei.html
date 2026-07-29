@@ -812,6 +812,20 @@ function fillStaffSelect() {
   if (out && !out.options.length) out.innerHTML = '<option value="">（測定者と同じ）</option>' + opts;
 }
 
+// 前回測定日を2ソースの和で引く（個訓シート ∪ 測定記録シート）。両方あれば新しい方を採る。
+//   byId  … 個訓シート由来の最新測定日（userIdキー）
+//   byKey … 測定記録シート由来の最新測定日（正規化名キー）
+// ★済判定（doneById ∪ doneByName）と同じ2ソースに揃えるための関数。
+//   ここが片方だけだと「7/2 済」と「前回測定 なし」が同居し、covered が空振りして嘘の赤が出る。
+// normFn はテストからの注入用。省略時は normKey を使う。
+function pickLastDate(byId, byKey, userId, name, normFn) {
+  const a = (byId && byId[userId]) || '';
+  const f = normFn || (typeof normKey === 'function' ? normKey : (s => String(s == null ? '' : s)));
+  const b = (byKey && byKey[f(name)]) || '';
+  if (a && b) return a >= b ? a : b;
+  return a || b;
+}
+
 // ===== 共通計算（利用者ごとの行モデル） =====
 function buildDerived() {
   const t = state.today;
@@ -830,6 +844,22 @@ function buildDerived() {
     const d = normDate(r.sokutei_date);
     if (!d || !r.name) return;
     if (!lastShien[r.name] || d > lastShien[r.name]) lastShien[r.name] = d;
+  });
+  // ★2026-07-29 訂正: 要介護の前回測定日も「測定記録」シートを見る（正規化名キー）。
+  //   📝測定した（GAS: addSokuteiDone）は要介護でも分岐せず測定記録シートへ書き、個訓シートの
+  //   sokutei_date は永久に空のまま。そのため済判定（doneById ∪ doneByName の2ソースOR）だけが
+  //   測定を拾い、last は個訓しか見ないという非対称が生まれ、同じカードに「7/2 済」と
+  //   「前回測定 なし」が同居した。さらに covered の材料が last のため空振りして嘘の赤が出ていた。
+  //   キーは済判定（doneByName）と同じ normKey に揃える。上の lastShien は要支援用でキーが生名。
+  //   両方を残すのは、要支援側の既存の引き方を1バイトも変えないため。
+  //   source='paper'（紙台帳の遡り投入）も数える。「いつ最後に測ったか」は紙でも事実であり、
+  //   既存の lastShien も除外していない（除外しているのは「今月やった仕事」を数える済判定だけ）。
+  const lastShienByKey = {};
+  (state.shien || []).forEach(r => {
+    const d = normDate(r.sokutei_date);
+    const k = normKey(r.name);
+    if (!d || !k) return;
+    if (!lastShienByKey[k] || d > lastShienByKey[k]) lastShienByKey[k] = d;
   });
   // 利用者台帳から 利用曜日 / 午前・午後 / ふりがな を引く（共通フィルタの材料・新規に持たない）
   const daysByName = {}, ampmByName = {}, kanaByName = {};
@@ -917,7 +947,9 @@ function buildDerived() {
   // 要介護（個別機能訓練計画書対象・getKeikakushoYear）
   (state.users || []).forEach(u => {
     const care = u.category || attCare[u.name] || '';
-    buildRow(u.userId, u.name, care, u.furigana, u.days, lastById[u.userId] || '', normDate(u.planStart),
+    // last は2ソースの和（個訓 ∪ 測定記録）。済判定と同じ材料に揃える（2026-07-29 訂正）
+    buildRow(u.userId, u.name, care, u.furigana, u.days,
+      pickLastDate(lastById, lastShienByKey, u.userId, u.name), normDate(u.planStart),
       { planStart: u.planStart, planMonths: u.planMonths });
   });
   // 要支援・事業対象者（getTsushoPlansYearV2の対象者から要介護以外を抽出・Phase B）
