@@ -4344,6 +4344,11 @@ function doPost(e) {
       // 2026-07-02: ④業務報告メール（スタッフの業務報告を社長へ即時送信）
       case 'send_work_report':
         return jsonResp(sendWorkReport_(data));
+      // 2026-07-30: 未実施業務報告（「今日できませんでした」ボタン）。
+      //   2026-04-28 の HTML 追加時に GAS 側ハンドラが本番へ入っておらず、
+      //   default: の「不明なアクション」に落ちて4月から1件も保存されていなかった。
+      case 'report_undone':
+        return jsonResp(reportUndone_(ss, data));
       default:
         return jsonResp({ error: '不明なアクション', success: false });
     }
@@ -7523,6 +7528,16 @@ function morningDigest(e) {
     var comp = _computeMonthBoard_(ym);
     return _digestYarinokoshi_({ month: ym, sections: comp.sections, warnings: comp.warnings });
   });
+  // 昨日できなかった業務（「今日できませんでした」ボタンの active を直近14日ぶん・純追加 2026-07-30）。
+  //   終わるまで方式: cancel されるまで出続ける。0件なら下でキー自体を落とす（セクションを出さない）。
+  safe('undone', function () {
+    return undoneDigestForMorning_(ss, dateStr);
+  });
+  // 0件（null）はキーを立てない＝セクション非表示。ただし safe() が拾った例外由来の null は
+  // errors に痕跡が残るので、そちらは null のまま残して障害を隠さない。
+  if (sections.undone === null && !errors.some(function (x) { return x.section === 'undone'; })) {
+    delete sections.undone;
+  }
 
   return respond({
     ok: errors.length === 0,
@@ -17998,4 +18013,121 @@ function kdWriteDaicho_(e, callback, kind) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// =============================================================
+// 未実施業務報告（report_undone）── 2026-07-30 追加・純追加
+//   経緯: 2026-04-28 に sougei_nisshi.html 側だけ入り、GAS側ハンドラが本番に無かった。
+//         その結果 doPost の default: に落ち {"error":"不明なアクション"} を返し続け、
+//         4月以降1件も「未実施報告」シートに残っていなかった（access_log で実測確認済み）。
+//   純ロジック正本: gas/yawaragi-board/undone-report-core.js（テスト scripts/test-undone-report.js）
+//
+//   時刻の約束（最重要）: 保存先スプレッドシートのTZは UTC−7 で、Asia/Tokyo ではない。
+//     よって Date型オブジェクトをセルに渡すと日付が16時間ずれる（既存4月行がその実例）。
+//     date/reportedAt/cancelledAt は必ず Utilities.formatDate(..., 'Asia/Tokyo', ...) の
+//     **文字列**で書く。シートのTZ設定は変更しない（60シート・台帳を含むため別案件）。
+//
+//   返り値は sougei_nisshi.html が読む形に合わせる（HTML側は無改修で成立）:
+//     成功 → { success: true, id: '...', status: 'active'|'cancelled'|'none' }
+//     失敗 → { success: false, error: '...' }
+// =============================================================
+function reportUndone_(ss, data) {
+  var d = data || {};
+  var app = String(d.app || '').trim();
+  var appLabel = String(d.app_label || '').trim();
+  var toggle = String(d.toggle || 'report').trim();
+  if (!app) return { success: false, error: 'app が未指定です' };
+  if (toggle !== 'report' && toggle !== 'cancel') {
+    return { success: false, error: 'toggle が不正です: ' + toggle };
+  }
+
+  // date はクライアントが送る端末ローカル日付（'今日できませんでした' の意味を保つ）。
+  // 読めない場合だけサーバのJST当日で補う。生成は必ず TZ 明示。
+  var date = undoneNormalizeDateCell_(d.date);
+  if (!date) date = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+
+  var sh = ss.getSheetByName(UNDONE_SHEET);
+  // 構造変更はしない方針のため、シートが無い場合は作らずに明示的に失敗を返す
+  // （HTML側が黄色「送信失敗」＋この文言を出すので、黙って消えることはない）。
+  if (!sh) return { success: false, error: UNDONE_SHEET + 'シートが見つかりません' };
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(20000); } catch (lockErr) {
+    return { success: false, error: '混み合っています。少し待って再タップしてください' };
+  }
+  try {
+    var values = sh.getDataRange().getValues();
+    if (!values || values.length === 0) {
+      return { success: false, error: UNDONE_SHEET + 'シートが空です（ヘッダがありません）' };
+    }
+    // ヘッダは実シートを正とする（列順を決め打ちしない）
+    var header = values[0].map(function (v) { return String(v).trim(); });
+    var rows = values.slice(1);
+    var iStatus = header.indexOf('status');
+    var iCancelledAt = header.indexOf('cancelledAt');
+    if (iStatus < 0) {
+      return { success: false, error: UNDONE_SHEET + 'シートに status 列がありません' };
+    }
+
+    var found = undoneFindActiveRow_(rows, header, app, date);
+    var nowIso = Utilities.formatDate(new Date(), 'Asia/Tokyo', "yyyy-MM-dd'T'HH:mm:ssXXX");
+
+    if (toggle === 'cancel') {
+      // 対象が無いのはエラーにしない（実態に合わせて idle へ戻せるようにする）
+      if (!found) return { success: true, status: 'none' };
+      var rowNo = found.index + 2;   // +1(ヘッダ) +1(1起点)
+      sh.getRange(rowNo, iStatus + 1).setValue(UNDONE_STATUS_CANCELLED);
+      if (iCancelledAt >= 0) sh.getRange(rowNo, iCancelledAt + 1).setValue(nowIso);
+      SpreadsheetApp.flush();       // 行削除はしない（記録を残す）
+      return { success: true, id: found.id, status: UNDONE_STATUS_CANCELLED, cancelledAt: nowIso };
+    }
+
+    // toggle === 'report'：(app,date) に active が既にあれば追記しない（冪等）
+    if (found) {
+      return { success: true, id: found.id, status: UNDONE_STATUS_ACTIVE, duplicate: true };
+    }
+    // id は既存行と衝突させない。report → cancel → report を同一ミリ秒で通すと
+    // 'un_' + getTime() が重複し、cancelled 行と新 active 行が同じ id になる（テストで実測）。
+    // ロック保持中で全行を読めているので、使用済みを避けて確定させる。
+    var iId = header.indexOf('id');
+    var idBase = 'un_' + new Date().getTime();
+    var id = idBase;
+    if (iId >= 0) {
+      var used = {};
+      for (var k = 0; k < rows.length; k++) {
+        var uv = String((rows[k] || [])[iId] || '');
+        if (uv) used[uv] = true;
+      }
+      var seq = 1;
+      while (used[id]) { id = idBase + '_' + seq; seq++; }
+    }
+    sh.appendRow(undoneBuildRow_(header, {
+      id: id,
+      date: date,
+      app: app,
+      app_label: appLabel,
+      reportedAt: nowIso,
+      status: UNDONE_STATUS_ACTIVE,
+      cancelledAt: ''
+    }));
+    SpreadsheetApp.flush();
+    return { success: true, id: id, status: UNDONE_STATUS_ACTIVE, reportedAt: nowIso };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 朝報告用: 「未実施報告」の active を直近14日ぶん読み、朝報告セクションの素材を返す。
+//   0件のときは null（morningDigest 側でキーを立てない＝セクションを出さない）。
+//   todayStr 省略時はサーバのJST当日（morningDigest は ?date= 指定を通せるので受け取る）。
+function undoneDigestForMorning_(ss, todayStr) {
+  var sh = ss.getSheetByName(UNDONE_SHEET);
+  if (!sh) return null;
+  var values = sh.getDataRange().getValues();
+  if (!values || values.length < 2) return null;
+  var header = values[0].map(function (v) { return String(v).trim(); });
+  var today = (todayStr && /^\d{4}-\d{2}-\d{2}$/.test(todayStr))
+    ? todayStr
+    : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  return buildUndoneDigestSection_(values.slice(1), header, today, UNDONE_DIGEST_DAYS);
 }

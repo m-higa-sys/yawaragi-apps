@@ -75,7 +75,9 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
 .remarks-area h3{font-size:13px;margin-bottom:6px;color:#555}
 .remarks-area textarea{width:100%;height:60px;border:1px solid #ccc;border-radius:4px;padding:6px;font-size:13px;resize:vertical}
 .rider-input{width:48px;border:1px solid #ccc;border-radius:3px;text-align:center;font-size:11px;padding:1px;background:#fce4ec}
-.toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:6px;color:#fff;font-weight:bold;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s}
+/* pointer-events:none は必須（2026-07-30）。opacity:0 でも当たり判定は残るため、
+   top:60px の不可視トーストが未実施報告ボタンの下端タップを奪っていた。 */
+.toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:6px;color:#fff;font-weight:bold;font-size:14px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none}
 .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center}
 .modal{background:#fff;border-radius:8px;padding:24px;max-width:500px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
 .modal h2{font-size:16px;margin-bottom:12px;color:#2c5f8a}
@@ -138,6 +140,11 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
   line-height: 1.4;
   -webkit-tap-highlight-color: transparent;
   font-family: inherit;
+  /* .controls が position:sticky; z-index:100 のため、スクロール 0〜約72px の間
+     青バーがボタン下端に被さってタップを奪っていた（2026-07-30 修正）。
+     positioned にして z-index を1つ上に置く。 */
+  position: relative;
+  z-index: 101;
 }
 #undone-report-btn[data-state="idle"] {
   background: #dc3545;
@@ -155,6 +162,11 @@ body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f5;font-siz
 #undone-report-btn[data-state="error"] {
   background: #ffc107;
   color: #212529;
+}
+/* 押したが送信できていない（pending が端末に残っている）状態・2026-07-30追加 */
+#undone-report-btn[data-state="pending"] {
+  background: #fd7e14;
+  color: #fff;
 }
 #undone-report-btn .sub {
   display: block;
@@ -312,9 +324,42 @@ function _undoneStorageKey(){
 function _undoneFormatHHMM(iso){
   try {
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
     return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   } catch(e){ return ''; }
 }
+// 「押されたが送信できていません」案内用（M/D HH:MM）
+function _undoneFormatMDHM(iso){
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return (d.getMonth()+1) + '/' + d.getDate() + ' '
+         + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  } catch(e){ return ''; }
+}
+
+// ── localStorage は端末設定（Cookieブロック等）で例外を投げ得る。
+//    2026-07-30まで onUndoneClick が素の getItem を try 外で呼んでいたため、
+//    拒否端末では「表示変化ゼロ・リクエストゼロ」の完全無反応になっていた。
+//    以下の3関数に閉じ込め、成否を呼び出し側へ返す。
+function _undoneReadStore(){
+  try {
+    const raw = localStorage.getItem(_undoneStorageKey());
+    if (!raw) return {ok:true, data:null};
+    return {ok:true, data:JSON.parse(raw)};
+  } catch(e){
+    return {ok:false, data:null, error:e};
+  }
+}
+function _undoneWriteStore(obj){
+  try { localStorage.setItem(_undoneStorageKey(), JSON.stringify(obj)); return true; }
+  catch(e){ return false; }
+}
+function _undoneClearStore(){
+  try { localStorage.removeItem(_undoneStorageKey()); return true; }
+  catch(e){ return false; }
+}
+
 function _undoneSetState(state, data){
   const btn = document.getElementById('undone-report-btn');
   if (!btn) return;
@@ -325,36 +370,58 @@ function _undoneSetState(state, data){
     main.textContent = '🔴 今日できませんでした（タップで報告）';
     sub.textContent = '';
   } else if (state === 'sending') {
-    main.textContent = '⏳ 送信中...';
-    sub.textContent = '';
+    // GAS往復の実測が 3.9〜21.8秒あり、無言のグレーだと「無反応」と誤解される
+    main.textContent = '⏳ 送信中...（最大30秒かかります）';
+    sub.textContent = 'このまま画面を閉じないでください';
   } else if (state === 'reported') {
     const t = data && data.reportedAt ? _undoneFormatHHMM(data.reportedAt) : '';
     main.textContent = '✅ 未実施報告済' + (t ? '（' + t + '）' : '');
     sub.textContent = 'もう一度タップで取り消し';
+  } else if (state === 'pending') {
+    const t = data && data.reportedAt ? _undoneFormatMDHM(data.reportedAt) : '';
+    main.textContent = '⚠️ ' + (t ? t + ' に' : '') + '押されましたが送信できていません';
+    sub.textContent = 'タップで再送信';
   } else if (state === 'error') {
     main.textContent = '⚠️ 送信失敗・再タップで再試行';
     sub.textContent = (data && data.message) ? data.message : '';
   }
 }
+
 function _undoneRestoreState(){
-  try {
-    const raw = localStorage.getItem(_undoneStorageKey());
-    if (!raw) { _undoneSetState('idle'); return; }
-    const data = JSON.parse(raw);
-    _undoneSetState('reported', data);
-  } catch(e){
-    _undoneSetState('idle');
+  const store = _undoneReadStore();
+  if (!store.ok) {
+    _undoneSetState('error', {message: 'この端末の設定で保存できません'});
+    return;
   }
+  const data = store.data;
+  if (!data) { _undoneSetState('idle'); return; }
+  // state 未設定の旧データは「確定済み」として扱う（2026-04〜のフォーマット互換）
+  if (data.state === 'pending') { _undoneSetState('pending', data); return; }
+  _undoneSetState('reported', data);
 }
+
 async function onUndoneClick(){
   const btn = document.getElementById('undone-report-btn');
   if (!btn) return;
   const currentState = btn.getAttribute('data-state');
   if (currentState === 'sending') return;
 
-  const stored = localStorage.getItem(_undoneStorageKey());
-  const isReported = !!stored;
-  const toggle = isReported ? 'cancel' : 'report';
+  // storage 拒否端末で黙って死なせない（完全無反応の解消）
+  const store = _undoneReadStore();
+  if (!store.ok) {
+    _undoneSetState('error', {message: 'この端末の設定で保存できません'});
+    return;
+  }
+  const stored = store.data;
+  // pending（押したが未送信）が残っていれば、取消ではなく再送信
+  const isConfirmed = !!stored && stored.state !== 'pending';
+  const toggle = isConfirmed ? 'cancel' : 'report';
+
+  // 押下時刻を送信前に pending として残す。失敗しても消さない＝次回ロードで再送信案内が出る
+  const pressedAt = new Date().toISOString();
+  if (toggle === 'report') {
+    _undoneWriteStore({id: (stored && stored.id) || '', reportedAt: pressedAt, state: 'pending'});
+  }
 
   _undoneSetState('sending');
 
@@ -380,18 +447,19 @@ async function onUndoneClick(){
     const ok = json && (json.success || (toggle === 'cancel' && /no active report/.test(json.error || '')));
     if (!ok) {
       _undoneSetState('error', {message: (json && json.error) || 'サーバー応答を確認できませんでした。画面を再読込してください'});
-      return;
+      return;   // pending はそのまま残す（次回ロードで再送信案内）
     }
     if (toggle === 'report') {
-      const localData = {id: (json && json.id) || 'pending', reportedAt: new Date().toISOString()};
-      localStorage.setItem(_undoneStorageKey(), JSON.stringify(localData));
+      // pending → confirmed へ昇格
+      const localData = {id: (json && json.id) || 'pending', reportedAt: pressedAt, state: 'confirmed'};
+      _undoneWriteStore(localData);
       _undoneSetState('reported', localData);
     } else {
-      localStorage.removeItem(_undoneStorageKey());
+      _undoneClearStore();
       _undoneSetState('idle');
     }
   } catch(err){
-    _undoneSetState('error', {message: err.message || ''});
+    _undoneSetState('error', {message: err.message || ''});   // pending は残す
   }
 }
 window.addEventListener('DOMContentLoaded', _undoneRestoreState);
