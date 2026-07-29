@@ -139,10 +139,33 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 /* ===== 個訓の計画書サイクル（要介護のみ）===== */
 .plan-ym { font-size: .84em; color: #5c6bc0; font-weight: 700; white-space: nowrap; }
 .plan-unknown { font-size: .84em; color: #ef6c00; font-weight: 700; white-space: nowrap; }
+/* 測定の期限＝計画期間が始まる前の月。開始月(plan-ym)とは別物なので色を分ける */
+.plan-due { font-size: .84em; color: #00796b; font-weight: 700; white-space: nowrap; }
 /* 計画月に測定結果が無くなる人。対象外になっても消さず、赤で目立たせる */
 .plan-gap { font-size: .8em; font-weight: 700; color: #fff; background: #c62828; border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
 .card.gaprow { border-left-color: #c62828; background: #fff8f8; }
+/* まだ予定月を戻せば間に合う人。赤を増やさないためオレンジで出す（2026-07-29 社長決定「丙」） */
+.plan-late { font-size: .8em; font-weight: 700; color: #fff; background: #ef6c00; border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
+.card.laterow { border-left-color: #fb8c00; background: #fffaf3; }
+.overdue-line { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #ffb74d; }
 .gap-head { background: #fdecea; border: 1.5px solid #ef9a9a; color: #c62828; border-radius: 10px; padding: 10px 12px; font-size: .88em; font-weight: 800; margin: 4px 0 8px; line-height: 1.6; }
+/* ===== 予定月を過ぎたまま止まっている人（オレンジ）===== */
+/* 赤（計画書に間に合わない）とは危険度が違うので色を分ける。赤を増やすと赤が効かなくなる。 */
+.overdue-head { background: #fff4e5; border: 1.5px solid #ffb74d; color: #e65100; border-radius: 10px; padding: 10px 12px; font-size: .88em; font-weight: 800; margin: 4px 0 8px; line-height: 1.6; }
+/* ===== 出力2チェック（🖨 利用者用 / 📄 ケアマネ用）===== */
+/* 測定が済んでも、この2つが済むまでその人は完了ではない。未は必ず目立つ側の色で出す。 */
+.out-btn { border: 1.5px solid #cfd8dc; border-radius: 8px; padding: 8px 10px; font-size: .82em; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; background: #fff; color: #546e7a; }
+.out-btn + .out-btn { margin-left: 6px; }
+.out-btn:first-of-type { margin-left: auto; }
+.out-btn.on { background: #e8f5e9; border-color: #81c784; color: #2e7d32; }
+.out-btn.off { background: #fff3e0; border-color: #fb8c00; color: #e65100; font-weight: 800; }
+.out-btn:disabled { opacity: .5; cursor: default; }
+/* 済んだ行はグレーになるが、出力が残っているボタンとバッジだけは沈ませない（3-4） */
+.card.donerow .out-btn.off, .card.donerow .out-pending { opacity: 1; filter: none; }
+.card.pendingrow { opacity: 1; border-left-color: #fb8c00; background: #fffaf3; }
+.card.pendingrow .nm { text-decoration: none; color: #37474f; }
+.out-pending { font-size: .8em; font-weight: 800; color: #fff; background: #ef6c00; border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
+.out-legacy { font-size: .78em; color: #78909c; font-weight: 700; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -350,7 +373,7 @@ function nextVisitStr(daysStr, tStr) {
 //   「今月の対象」の人数が丸ごと入れ替わり、現場が何を見ているのか分からなくなる。
 //   過去日の測定を入れたいだけなのに対象一覧が変わるのは事故の元（2026-07-28 移植時の判断）。
 // sunk（案X-4）= この画面で保存/変更を済ませた行。消さずに沈めて「入った」を残す。再読込でリセット。
-const state = { today: todayStr(), selectedDate: todayStr(), att: null, usage: null, users: [], records: [], staff: [], shien: [], userList: [], tsushoUsers: [], yotei: [], errs: {}, sunk: {} };
+const state = { today: todayStr(), selectedDate: todayStr(), att: null, usage: null, users: [], records: [], staff: [], shien: [], userList: [], tsushoUsers: [], yotei: [], output: { rows: [], legacy: [] }, errs: {}, sunk: {} };
 function isKaigoCare(care) { return String(care || '').indexOf('要介護') === 0; }
 // 当月キー。新しい日付関数は作らず、既存の todayStr()（state.today）の先頭7桁を使う。
 function thisYm() { return state.today.slice(0, 7); }
@@ -463,14 +486,24 @@ function ufAvailableDays(list) {
 // 動かせない。予定月だけ後ろへスライドすると「計画書を作る月に測定結果が無い」が起きる。
 // 要支援・事業対象者は計画書が無いのでこの問題は起きない（測定＝報告のトリガーで、報告も一緒に動く）。
 //
-// 計画月の判定は shared.js §I の isPlanMonth を「使う」。同じ判定をここに複製しない。
+// 判定は shared.js §I のものを「使う」。同じ判定をここに複製しない。
 // 月の足し算は yotei-core.js の ymAdd を使う（新しい日付関数を作らない）。
+//
+// ★2026-07-29 訂正: 測定の期限は「計画月」ではなく「計画期間が始まる前の月」だった。
+//   社長が本番で発見。実例: 計画期間 2026-07-01〜09-30 ／ 身体機能評価 6/10 ／ 計画書 6/24。
+//   次の期間は 10/1〜 なので次の測定は 9月 が正しいのに、アプリは「9月にすると計画書の月に
+//   測定結果が無い」と誤報していた。原因は期限に isPlanMonth（＝計画期間の開始月）を使っていたこと。
+//   実測（個訓シート153行）: keikaku_date 70件中59件・sokutei_date 20件中18件・tasseido_date 34件中33件が
+//   「開始月＋2ヶ月（＝次期間の前月）」に集中。測定は月初、計画書は月末に寄っている。
+//   → 期限の判定は shared.js の isHyoukaMonth（評価月）に寄せる。個訓アプリが元から使っている関数で、
+//     shared.js は1バイトも変えていない。2つのアプリが同じ関数・同じ引数で同じ月を返す状態にする。
 // =====================================================================
 
-// 当月以降で最初に来る計画月 'YYYY-MM'。算出できなければ ''（planStart 未設定・変則で今後無いなど）。
-// isPlanMonthFn は差し替え可能（テストから注入するため）。既定はグローバルの isPlanMonth。
-function nextPlanYm(planStart, planMonths, fromYm, isPlanMonthFn, maxMonths) {
-  const f = isPlanMonthFn || (typeof isPlanMonth === 'function' ? isPlanMonth : null);
+// 当月以降で最初に judgeFn が true を返す月 'YYYY-MM'。算出できなければ ''。
+// judgeFn は差し替え可能（テストからの注入と、期限／開始月の使い分けのため）。
+// 既定は shared.js の isHyoukaMonth（＝測定の期限）。開始月が欲しいときは isPlanMonth を渡す。
+function nextPlanYm(planStart, planMonths, fromYm, judgeFn, maxMonths) {
+  const f = judgeFn || (typeof isHyoukaMonth === 'function' ? isHyoukaMonth : null);
   if (!f || !planStart || !/^\d{4}-\d{2}/.test(String(fromYm || ''))) return '';
   const n = maxMonths || 24;
   for (let i = 0; i < n; i++) {
@@ -481,50 +514,182 @@ function nextPlanYm(planStart, planMonths, fromYm, isPlanMonthFn, maxMonths) {
   return '';
 }
 
+// 測定の期限（＝個訓の評価月＝計画期間の最終月＝次期間の前月）。判定に使うのは常にこちら。
+function nextDueYm(planStart, planMonths, fromYm) {
+  return nextPlanYm(planStart, planMonths, fromYm,
+    (typeof isHyoukaMonth === 'function' ? isHyoukaMonth : null), 24);
+}
+// 計画期間の開始月。★画面に「計画書 ◯月」と出す表示用。判定には使わない。
+// 期限の月をそのまま「計画書 ◯月」と出すと、今度は表示のほうが嘘になるため分けている。
+function nextPlanStartYm(planStart, planMonths, fromYm) {
+  return nextPlanYm(planStart, planMonths, fromYm,
+    (typeof isPlanMonth === 'function' ? isPlanMonth : null), 24);
+}
+
 // 'YYYY-MM' の差（a - b ヶ月）。解釈不能は null。
 function ymMonthsBetween(a, b) {
   if (!/^\d{4}-\d{2}/.test(String(a || '')) || !/^\d{4}-\d{2}/.test(String(b || ''))) return null;
   return (+a.slice(0, 4) - +b.slice(0, 4)) * 12 + (+a.slice(5, 7) - +b.slice(5, 7));
 }
 
-// 「その予定月にすると、計画書の月に測定結果が無くなるか」を判定する純関数。
-//   opt = { isKaigo, planYm, lastYm, cycleMonths, chosenYm }
+// 「その予定月にすると、計画書を作る時点で使える測定結果が無くなるか」を判定する純関数。
+//   opt = { isKaigo, dueYm, lastYm, cycleMonths, chosenYm }
+//   ★dueYm = 測定の期限（＝評価月＝計画期間が始まる前の月）。計画期間の開始月ではない。
+//     旧キー planYm でも受ける（既存の呼び出しを壊さないため）。
 // 返り: { warn, kind }
 //   'notKaigo'    要支援・事業対象者＝計画書が無い。何ヶ月でも動かせる
-//   'unknownPlan' 計画月が算出できない。警告の対象外だが、画面には「計画月が不明」と出す
-//   'inTime'      計画月までに測る＝問題なし
-//   'covered'     計画月を越えるが、直近の測定がその計画月まで有効＝実害なし
-//                 （例: 7月に測って計画月が8月。8月の計画書は7月の測定結果で書ける）
-//   'gap'         ★計画月に使える測定結果が無い。ここだけ警告する
-// ⚠️「越えたら即警告」にはしない。確認文が「計画書の月に測定結果がありません」と断言するため、
+//   'unknownPlan' 期限が算出できない。警告の対象外だが、画面には「計画書 月不明」と出す
+//   'inTime'      期限までに測る＝問題なし
+//   'covered'     期限を越えるが、直近の測定がその期限まで有効＝実害なし
+//                 （例: 6月に測って期限が9月・周期3。9月の計画書は6月の測定結果で書ける）
+//   'gap'         ★期限に使える測定結果が無い。ここだけ警告する
+// ⚠️「越えたら即警告」にはしない。確認文が「測定結果がありません」と断言するため、
 //   直近の測定でカバーできている人に出すと嘘の警告になり、やがて誰も読まなくなる。
-//   2026-07-29 実測: 単純比較だと19名が該当するが、18名は今月測ったばかりで実害なし。本当の該当は1名。
+//   2026-07-29 実測: 単純比較だと19名が該当するが、18名は今月測ったばかりで実害なし。
 function planGapCheck(opt) {
   const o = opt || {};
   if (!o.isKaigo) return { warn: false, kind: 'notKaigo' };
-  const planYm = String(o.planYm || '');
-  if (!planYm) return { warn: false, kind: 'unknownPlan' };
-  const d = ymMonthsBetween(String(o.chosenYm || ''), planYm);
+  const dueYm = String(o.dueYm || o.planYm || '');
+  if (!dueYm) return { warn: false, kind: 'unknownPlan' };
+  const d = ymMonthsBetween(String(o.chosenYm || ''), dueYm);
   if (d === null || d <= 0) return { warn: false, kind: 'inTime' };
   const lastYm = String(o.lastYm || '');
   if (lastYm) {
     const cyc = parseInt(o.cycleMonths, 10) || 3;
-    const age = ymMonthsBetween(planYm, lastYm);   // 計画月の時点で前回測定が何ヶ月前か
-    // 測定は周期ぶん有効とみなす。周期3なら「計画月の2ヶ月前まで」の測定は使える
+    const age = ymMonthsBetween(dueYm, lastYm);   // 期限の時点で前回測定が何ヶ月前か
+    // 測定は周期ぶん有効とみなす。周期3なら「期限の2ヶ月前まで」の測定は使える
     if (age !== null && age >= 0 && age <= cyc - 1) return { warn: false, kind: 'covered' };
   }
   return { warn: true, kind: 'gap' };
 }
 
 // 行モデルから planGapCheck を呼ぶ薄い橋渡し（呼び出し側で同じ組み立てを繰り返さない）
+// ★渡すのは dueYm（期限）。planYm（計画期間の開始月）は表示専用で、判定には使わない。
 function rowPlanGap(r, chosenYm) {
   return planGapCheck({
     isKaigo: isKaigoCare(r && r.care),
-    planYm: (r && r.planYm) || '',
+    dueYm: (r && r.dueYm) || '',
     lastYm: (r && r.last) ? String(r.last).slice(0, 7) : '',
     cycleMonths: (r && r.cycleMonths) || 0,
     chosenYm: chosenYm
   });
+}
+
+// =====================================================================
+// 出力2チェック（🖨 利用者用プリント／📄 ケアマネ用PDF）2026-07-29
+// ---------------------------------------------------------------------
+// 実態（社長）: 結果報告書はリハブで作る。測定値を入れた時点で報告書はできあがるため
+//   「作成」という作業は無い。残るのは印刷とPDF出力の2つだけ。両方済んで初めて完了。
+//   片方でも残っていたら「やり残し」＝一覧から消さない（消えると忘れる）。
+// 正は「測定出力」シート（1測定回＝1行）。行が無い人だけ、個訓15列目の既存実績（legacy）を見る。
+//   legacy は旧アプリの出力者1列で、当時は出力という概念が1つだったので🖨📄の両方が済とみなす。
+//   ★行があればそちらが常に優先。行の作成時に GAS 側が legacy を引き継ぐので、
+//     1つ押した瞬間にもう片方が「未」へ落ちることはない（writeSokuteiOutput_ / seedFromLegacy）。
+// =====================================================================
+const OUTPUT_KINDS = ['riyousha', 'caremgr'];
+const OUTPUT_LABEL = { riyousha: '🖨 利用者用', caremgr: '📄 ケアマネ用' };
+
+// output = { rows:[「測定出力」シートの行], legacy:[個訓15列目の既存実績] }
+// 返り: { riyousha:{done,by,at}, caremgr:{done,by,at}, source:'sheet'|'legacy'|'none', ym }
+function outputStatusFrom(output, userId, name, ym) {
+  const blank = () => ({ done: false, by: '', at: '' });
+  const none = { riyousha: blank(), caremgr: blank(), source: 'none', ym: ym || '' };
+  if (!/^\d{4}-\d{2}$/.test(String(ym || ''))) return none;
+  const hit = (x) => (userId && x.userId === userId) || (name && x.name === name);
+  const rows = (output && output.rows) || [];
+  for (let i = 0; i < rows.length; i++) {
+    const x = rows[i];
+    if (x.ym !== ym || !hit(x)) continue;
+    return {
+      riyousha: { done: !!x.riyousha_at, by: x.riyousha_by || '', at: x.riyousha_at || '' },
+      caremgr: { done: !!x.caremgr_at, by: x.caremgr_by || '', at: x.caremgr_at || '' },
+      source: 'sheet', ym: ym
+    };
+  }
+  const leg = (output && output.legacy) || [];
+  for (let i = 0; i < leg.length; i++) {
+    const x = leg[i];
+    if (x.ym !== ym || !hit(x)) continue;
+    return {
+      riyousha: { done: true, by: x.by || '', at: x.sokutei_date || '' },
+      caremgr: { done: true, by: x.by || '', at: x.sokutei_date || '' },
+      source: 'legacy', ym: ym
+    };
+  }
+  return none;
+}
+
+// 行モデルから outputStatusFrom を呼ぶ薄い橋渡し（呼び出し側で同じ組み立てを繰り返さない）。
+// 測定年月は「当月に測定した日」の年月。まだ測っていない人には出力の概念そのものが無い。
+function rowOutputStatus(r, output) {
+  const src = output || (typeof state !== 'undefined' ? state.output : null);
+  const ym = (r && r.doneThisMonth && r.doneThisMonth.date) ? String(r.doneThisMonth.date).slice(0, 7) : '';
+  return outputStatusFrom(src, r && r.userId, r && r.name, ym);
+}
+
+// 3段階（3-3）: 'unmeasured'（測定未）/ 'pending'（測定済・出力残あり）/ 'complete'（完了）
+function outputStage(r, output) {
+  if (!(r && r.doneThisMonth)) return 'unmeasured';
+  const st = rowOutputStatus(r, output);
+  return (st.riyousha.done && st.caremgr.done) ? 'complete' : 'pending';
+}
+
+// ヘッダ件数（3-5）。{ total, complete, pending, unmeasured }
+function countOutputStages(rows, output) {
+  const out = { total: 0, complete: 0, pending: 0, unmeasured: 0 };
+  (rows || []).forEach(r => { out.total++; out[outputStage(r, output)]++; });
+  return out;
+}
+
+// 予定月を過ぎたまま止まっている人（オレンジ・4-2）。判定は「予定月 < 当月」。当月ちょうどは対象外。
+function isOverdueYm(nextYm, ym) {
+  const a = String(nextYm || ''), b = String(ym || '');
+  if (!/^\d{4}-\d{2}$/.test(a) || !/^\d{4}-\d{2}$/.test(b)) return false;
+  return a < b;
+}
+// 「4月 1名 ／ 6月 2名」の内訳文字列（4-1）
+function overdueBreakdown(rows) {
+  const by = {};
+  (rows || []).forEach(r => { const k = String(r.nextYm || ''); if (k) by[k] = (by[k] || 0) + 1; });
+  return Object.keys(by).sort().map(k => (+k.slice(5, 7)) + '月 ' + by[k] + '名').join(' ／ ');
+}
+
+// 警告の見せ方を2段階に分ける（2026-07-29 社長決定「丙」＝赤を増やさない）。
+//   'red'  … 予定月が測定期限を「周期ぶん以上」越えている＝1回分まるごと飛ばしている。
+//            入院・長期欠席などで本当に測れない人がここに来る。赤はこれだけに残す
+//   'late' … 越えているが1周期未満＝予定月を戻せばまだ間に合う。オレンジで出す
+//   ''     … 警告なし
+// 「越えたら即赤」にしないのは、赤を増やすと赤が効かなくなるため（2026-07-29 社長決定「丙」）。
+// ym は当月（将来この判定を当月基準へ広げるときのために受けるが、いまは使わない）。
+function planGapLevel(r, chosenYm, ym) {
+  if (!rowPlanGap(r, chosenYm).warn) return '';
+  const over = ymMonthsBetween(String(chosenYm || ''), (r && r.dueYm) || '');
+  const cyc = parseInt(r && r.cycleMonths, 10) || 3;
+  return (over !== null && over >= cyc) ? 'red' : 'late';
+}
+
+// 「今月やる人」タブの行分け。★二重表示の防止をここ1箇所に閉じ込める（4-4）。
+//   gapRows     … 赤の枠（期限を過ぎてしまった人）だけ
+//   lateRows    … オレンジの2行目（計画に間に合わない・まだ戻せる）。一覧にはそのまま並べる
+//   rest        … 赤に出た人を除いた残り。オレンジも未／出力残／完了もすべてここから作る
+//   overdueRows … rest のうち予定月が当月より前（オレンジの1行目）。赤に出た人は構造的にここへ来ない
+function splitMonthRows(rows, ym) {
+  const lv = r => planGapLevel(r, r.nextYm, ym);
+  const gapRows = (rows || []).filter(r => lv(r) === 'red');
+  const gapNames = {}; gapRows.forEach(r => { gapNames[r.name] = true; });
+  const rest = (rows || []).filter(r => !gapNames[r.name]);
+  return {
+    gapRows: gapRows,
+    lateRows: rest.filter(r => lv(r) === 'late'),
+    rest: rest,
+    overdueRows: rest.filter(r => isOverdueYm(r.nextYm, ym))
+  };
+}
+// 「9月 2名 ／ 10月 1名」の内訳文字列（期限の月ごと）
+function lateBreakdown(rows) {
+  const by = {};
+  (rows || []).forEach(r => { const k = String((r && r.dueYm) || ''); if (k) by[k] = (by[k] || 0) + 1; });
+  return Object.keys(by).sort().map(k => (+k.slice(5, 7)) + '月 ' + by[k] + '名').join(' ／ ');
 }
 
 // 3条件の AND。opt = { days:[], slots:[], query:'' }。opt 省略・空は素通し。
@@ -575,11 +740,13 @@ async function load(dateStr) {
     fetchJson(GAS + '?action=getShienSokutei&t=' + Date.now()),
     fetchJson(GAS + '?action=user_list&t=' + Date.now()),
     fetchJson(GAS + '?action=getTsushoPlansYearV2&year=' + fy + '&t=' + Date.now()),
-    fetchJson(GAS + '?action=getYotei&domain=sokutei&t=' + Date.now())
+    fetchJson(GAS + '?action=getYotei&domain=sokutei&t=' + Date.now()),
+    // 出力2チェック（🖨利用者用／📄ケアマネ用）。当月ぶんだけ取る＝1測定回＝1行の設計なので月で足りる
+    fetchJson(GAS + '?action=getSokuteiOutput&domain=sokutei&ym=' + thisYm() + '&t=' + Date.now())
   ]);
   // year は暦年のため、4月以降に前暦年の測定レコードが漏れないよう fy−1 も含めた3年分をマージ（GAS側 year 厳密一致・重複二重計上なし）
   const att = results[0], usage = results[1], years = [results[2], results[3], results[4]], staff = results[5];
-  const shien = results[6], userList = results[7], tsushoUsers = results[8], yotei = results[9];
+  const shien = results[6], userList = results[7], tsushoUsers = results[8], yotei = results[9], output = results[10];
   if (att.status === 'fulfilled' && att.value && att.value.success && att.value.attendance) state.att = att.value;
   else { state.att = null; state.errs.att = errMsg(att); }
   if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) state.usage = usage.value.usageStats;
@@ -602,6 +769,10 @@ async function load(dateStr) {
   else { state.tsushoUsers = []; state.errs.tsushoUsers = errMsg(tsushoUsers); }
   if (yotei.status === 'fulfilled' && yotei.value && yotei.value.ok) state.yotei = yotei.value.records || [];
   else { state.yotei = []; state.errs.yotei = errMsg(yotei); }
+  // 出力2チェック。取得に失敗したら「全部未」で描く（勝手に済にしない＝取りこぼしを隠さない）
+  if (output.status === 'fulfilled' && output.value && output.value.ok) {
+    state.output = { rows: output.value.records || [], legacy: output.value.legacy || [] };
+  } else { state.output = { rows: [], legacy: [] }; state.errs.output = errMsg(output); }
   buildDerived();
   fillStaffSelect();
   statusEl.textContent = '';
@@ -623,7 +794,7 @@ function goDate(d) { if (/^\d{4}-\d{2}-\d{2}$/.test(d)) load(d); }
 // 取得に失敗した系統を上部にまとめて出す（タブ3を見ている人にも気づかせる）
 function renderErrBar() {
   const bar = document.getElementById('errbar');
-  const label = { att: '来館予定', usage: '利用率', year: '個訓対象者', staff: 'スタッフ一覧', shien: '測定記録', userList: '利用者台帳', tsushoUsers: '通所対象者', yotei: '予定月' };
+  const label = { att: '来館予定', usage: '利用率', year: '個訓対象者', staff: 'スタッフ一覧', shien: '測定記録', userList: '利用者台帳', tsushoUsers: '通所対象者', yotei: '予定月', output: '出力チェック' };
   const keys = Object.keys(state.errs);
   if (!keys.length) { bar.style.display = 'none'; bar.textContent = ''; return; }
   bar.style.display = 'block';
@@ -730,10 +901,14 @@ function buildDerived() {
       nextYm: y ? y.nextYm : '', slideCount: y ? y.slideCount : 0, hasYotei: !!y,
       // 測定周期。予定月シートの値を正とし、行が無ければ介護度から引く（判定は shared.js §I に単一化）
       cycleMonths: (y && y.cycleMonths) || sokuteiCycleMonths_(care),
-      // 個訓の計画書サイクル（要介護のみ）。planYm = 当月以降で最初に来る計画月。'' は算出不能。
+      // 個訓の計画書サイクル（要介護のみ）。'' は算出不能。
+      //   planYm … 計画期間の開始月。★画面に「計画書 ◯月」と出す表示用
+      //   dueYm  … 測定の期限（＝評価月＝計画期間が始まる前の月）。★判定に使うのはこちら
+      // 2つを分けている理由: 期限をそのまま「計画書 ◯月」と表示すると、今度は表示が嘘になるため。
       planStart: plan ? String(plan.planStart || '') : '',
       planMonths: plan ? plan.planMonths : null,
-      planYm: plan ? nextPlanYm(plan.planStart, plan.planMonths, ym) : '',
+      planYm: plan ? nextPlanStartYm(plan.planStart, plan.planMonths, ym) : '',
+      dueYm: plan ? nextDueYm(plan.planStart, plan.planMonths, ym) : '',
       // 当月に測定済みなら { date, by }。「今月やる人」タブで済として下に積む（A-2/A-4）
       doneThisMonth: done
     };
@@ -813,15 +988,36 @@ function rowCard(r, opt) {
       + (done.by ? '（' + esc(done.by) + '）' : '（測定者不明）') + '</span>'
     : '';
   const doneTag = sunk ? '<span class="done-tag">✅ ' + esc(sunk.label) + '</span>' : '';
+  // 出力2チェック（3-1）。測定が済んだ行にだけ出す。まだ測っていない人に出力の概念は無い。
+  // ★ボタンは必ず runRowAction を通す（3-2）。個別に書くと連打防止を1箇所ずつ作り直すことになる。
+  const outSt = (o.showOutput && done) ? rowOutputStatus(r) : null;
+  const outPending = !!(outSt && !(outSt.riyousha.done && outSt.caremgr.done));
+  const outBtn = (kind) => {
+    const s = outSt[kind];
+    return '<button type="button" class="out-btn ' + (s.done ? 'on' : 'off') + '"'
+      + ' data-name="' + esc(r.name) + '" data-kind="' + kind + '"' + dis
+      + ' onclick="' + stop + 'toggleOutput(this.dataset.name, this.dataset.kind)">'
+      + lbl('out-' + kind, OUTPUT_LABEL[kind] + (s.done ? ' 済' : ' 未')) + '</button>';
+  };
+  const outHtml = outSt ? OUTPUT_KINDS.map(outBtn).join('') : '';
+  // 済んだ行はグレーになるので、出力が残っていることだけは沈まないバッジで出す（3-4）
+  const outBadge = outPending ? '<span class="out-pending">🖨📄 出力残</span>' : '';
+  const outNote = (outSt && outSt.source === 'legacy')
+    ? '<span class="out-legacy">出力 ' + esc(outSt.riyousha.by || '記録者不明') + '（旧アプリの記録）</span>' : '';
   // 個訓の計画書（要介護のみ）。要支援・事業対象者には計画書が無いので何も出さない（2-1）。
   // 計画月が算出できない要介護は黙って素通りさせず「計画月が不明」と出す（2-6）。
   const gap = rowPlanGap(r, r.nextYm);
   let planHtml = '';
   if (gap.kind === 'unknownPlan') planHtml = '<span class="plan-unknown">計画書 月不明</span>';
-  else if (r.planYm) planHtml = '<span class="plan-ym">計画書 ' + esc(r.planYm) + '</span>';
-  // 計画月に測定結果が無くなる人は赤バッジで目立たせる（2-4）
-  const gapBadge = gap.warn
-    ? '<span class="plan-gap">⚠ 計画書' + esc(r.planYm) + '／測定' + esc(r.nextYm || '未設定') + '予定</span>'
+  // 計画期間の開始月と、測定の期限は別物なので両方出す（期限だけだと「計画書はいつ？」が分からない）
+  else if (r.planYm) planHtml = '<span class="plan-ym">計画書 ' + esc(r.planYm) + '</span>'
+    + (r.dueYm ? ' <span class="plan-due">測定期限 ' + esc(r.dueYm) + '</span>' : '');
+  // 期限に測定結果が無くなる人のバッジ。赤は「もう期限を過ぎた人」だけ（丙）。
+  // まだ戻せる人はオレンジにする＝赤を増やさない（2026-07-29 社長決定）。
+  const gapLv = planGapLevel(r, r.nextYm, thisYm());
+  const gapBadge = gapLv
+    ? '<span class="' + (gapLv === 'red' ? 'plan-gap' : 'plan-late') + '">'
+      + (gapLv === 'red' ? '⚠' : '📋') + ' 測定期限' + esc(r.dueYm) + '／測定' + esc(r.nextYm || '未設定') + '予定</span>'
     : '';
   const ymHtml = sunk
     ? '予定 ' + esc(r.nextYm || '未設定')
@@ -832,7 +1028,8 @@ function rowCard(r, opt) {
     : '';
   const tappable = showRec && !sunk && !done && !b;
   return '<div class="card b-' + r.badge + (gray ? ' gray' : '')
-    + (sunk ? ' sunk' : '') + (done ? ' donerow' : '') + (gap.warn ? ' gaprow' : '')
+    + (sunk ? ' sunk' : '') + (done ? ' donerow' : '') + (outPending ? ' pendingrow' : '')
+    + (gapLv === 'red' ? ' gaprow' : '') + (gapLv === 'late' ? ' laterow' : '')
     + (b ? ' busy' : '') + (tappable ? ' tappable' : '')
     + '" data-row="' + esc(r.name) + '"'
     + (tappable ? ' data-name="' + esc(r.name) + '" onclick="openRecordModal(this.dataset.name)"' : '') + '>'
@@ -842,9 +1039,10 @@ function rowCard(r, opt) {
     + '<span class="cr">' + esc(r.care || '介護度不明') + '</span>'
     + pill
     + (tag ? '<span class="tag">' + esc(tag) + '</span>' : '')
-    + doneMark + doneTag + gapBadge
+    + doneMark + outBadge + doneTag + gapBadge
     + recBtn + slideBtn
     + '</div>'
+    + (outHtml ? '<div class="rowline">' + outNote + outHtml + '</div>' : '')
     + '<div class="meta">前回測定 ' + esc(lastLabel(r))
     + ' ／ ' + ymHtml + (planHtml ? ' ／ ' + planHtml : '') + ' ／ ' + remainHtml
     + ' ／ 今月あと約' + r.E.toFixed(1) + '回'
@@ -1064,9 +1262,9 @@ function renderTabMonth() {
   const filtering = ufActiveCount(uf, careFilter) > 0;
 
   // 計画書に間に合わない人は最上部の専用枠へ集める（未／済には重複して出さない）
-  const gapRows = rows.filter(r => rowPlanGap(r, r.nextYm).warn);
-  const gapNames = {}; gapRows.forEach(r => { gapNames[r.name] = true; });
-  const rest = rows.filter(r => !gapNames[r.name]);
+  // 赤とオレンジの振り分けは splitMonthRows に一本化（同じ判定を2箇所に書かない・4-4）
+  const split = splitMonthRows(rows, ym);
+  const gapRows = split.gapRows, rest = split.rest;
   const undone = rest.filter(r => !r.doneThisMonth);                 // 未は既存の優先度（tier→E→かな）のまま（A-3）
   const done = rest.filter(r => r.doneThisMonth).sort((a, b) => {    // 済は新しく測った順
     if (a.doneThisMonth.date !== b.doneThisMonth.date) return a.doneThisMonth.date < b.doneThisMonth.date ? 1 : -1;
@@ -1074,38 +1272,75 @@ function renderTabMonth() {
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
 
+  // 出力2チェックで済を2つに割る（3-3）。★出力が残っている人は測定済でも一覧から消さない（3-4）。
+  //   消すと「印刷もPDFもまだ」の人が誰の目にも触れないまま今月が終わる。
+  const pending = done.filter(r => outputStage(r) === 'pending');
+  const complete = done.filter(r => outputStage(r) === 'complete');
+
   const m = +ym.slice(5, 7);
+  // ヘッダは3段階で数える（3-5）。「済」ではなく「完了」＝測定＋出力2つまで終わった人。
   let html = '<div class="hdr">' + m + '月の対象 ' + (undone.length + done.length) + '名'
     + (filtering ? '（全体' + pool.length + '名中）' : '')
-    + '／済 ' + done.length + '・未 ' + undone.length + '</div>';
-  // 計画書に間に合わない人数は独立した1行で出す（2-5）。対象の内数ではなく別枠の警告として読ませる
+    + '／完了 ' + complete.length + '・出力残 ' + pending.length + '・測定未 ' + undone.length + '</div>';
+  html += '<div class="note">※「完了」＝測定と2つの出力（🖨利用者用・📄ケアマネ用）が全部済んだ人。'
+    + '「出力残」＝測定は済んだが出力が残っている人。「測定未」＝まだ測っていない人。</div>';
+  // 期限を過ぎてしまった人数は独立した1行で出す（2-5）。対象の内数ではなく別枠の警告として読ませる
   if (gapRows.length) {
-    html += '<div class="hdr" style="color:#c62828">⚠計画書に間に合わない ' + gapRows.length + '名</div>';
+    html += '<div class="hdr" style="color:#c62828">⚠測定を1回分まるごと飛ばしています ' + gapRows.length + '名</div>';
   }
   if (state.errs.yotei) html += '<div class="note">⚠ 予定月（getYotei）取得失敗のため全員を対象として表示しています：' + esc(state.errs.yotei) + '</div>';
+  if (state.errs.output) html += '<div class="note">⚠ 出力チェック（getSokuteiOutput）の取得に失敗したため、出力は全員「未」で表示しています：' + esc(state.errs.output) + '</div>';
 
   if (filtering && !rows.length) { el.innerHTML = html + UF_EMPTY_HTML; return; }   // B-6
   // 最上部に固定で見せる（2-4）。対象外になっていても消さない
+  // 赤の枠は「もう測定期限を過ぎてしまった人」だけに残す（丙・赤を増やさない）
   if (gapRows.length) {
-    html += '<div class="gap-head">⚠ 計画書の月に測定結果がありません（' + gapRows.length + '名）<br>'
-      + '個別機能訓練計画書は測定結果をもとに作ります。予定月を計画書の月までに戻すか、'
-      + '計画書の作成時期を相談してください。</div>';
-    gapRows.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true }); });
+    html += '<div class="gap-head">⚠ 測定を1回分まるごと飛ばしています（' + gapRows.length + '名）<br>'
+      + '予定月が測定期限を周期ぶん以上あとへ動いています。入院・長期欠席などで本当に測れない方です。'
+      + '計画書の作成時期をケアマネと相談してください。</div>';
+    gapRows.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true, showOutput: true }); });
   }
-  if (!undone.length && (done.length || !filtering)) {
+  // オレンジ枠（4・C-2）。意味の違う2つを同じ枠に「別の行」として置く。
+  //   1行目 ⏰ 予定月を過ぎています   … 予定月が当月より前。測り忘れ
+  //   2行目 📋 計画に間に合いません   … 予定月が測定期限より後ろ。まだ戻せば間に合う
+  // ★赤に出ている人はどちらにも出さない＝二重表示しない（4-4・splitMonthRows が担保）。
+  const overdueRows = split.overdueRows, lateRows = split.lateRows;
+  if (overdueRows.length || lateRows.length) {
+    html += '<div class="overdue-head">';
+    if (overdueRows.length) {
+      html += '⏰ 予定月を過ぎています（' + overdueRows.length + '名）<br>'
+        + esc(overdueBreakdown(overdueRows)) + '<br>'
+        + '予定月が来たのにまだ測定できていない方です。下の一覧にも並んでいます。';
+    }
+    if (lateRows.length) {
+      html += (overdueRows.length ? '<div class="overdue-line">' : '')
+        + '📋 計画に間に合いません（' + lateRows.length + '名）<br>'
+        + esc(lateBreakdown(lateRows)) + '<br>'
+        + '測定期限より後ろに予定月が置かれています。予定月を期限の月までに戻せば間に合います。'
+        + (overdueRows.length ? '</div>' : '');
+    }
+    html += '</div>';
+  }
+  // 「今月ぶん完了 ✅」は測定未0かつ出力残0のときだけ（3-6）。出力が残っているうちは完了ではない。
+  if (!undone.length && !pending.length && (done.length || !filtering)) {
     html += '<div class="done-all">今月ぶん完了 ✅</div>'
-      + '<div class="note">' + m + '月が予定月の方はすべて測定済みです（済 ' + done.length + '名）。</div>';
+      + '<div class="note">' + m + '月が予定月の方は測定も出力も全部終わっています（完了 ' + complete.length + '名）。</div>';
   }
   if (undone.length) {
-    html += '<div class="section-label">🟡 まだの人（' + undone.length + '名）</div>';
-    undone.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true }); });
+    html += '<div class="section-label">🟡 まだの人（測定未 ' + undone.length + '名）</div>';
+    undone.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true, showOutput: true }); });
   }
-  if (done.length) {
-    html += '<div class="section-label">✅ 今月やった人（' + done.length + '名）</div>';
-    done.forEach(r => { html += rowCard(r, { showSlide: true, markDone: true }); });
+  if (pending.length) {
+    html += '<div class="section-label">🖨 出力が残っている人（' + pending.length + '名）</div>';
+    pending.forEach(r => { html += rowCard(r, { showSlide: true, markDone: true, showOutput: true }); });
   }
-  html += '<div class="note">※「済」は当月の測定実績で判定しています（予定月は測定すると先へ進むため、予定月では判定できません）。'
-    + '紙台帳の遡り投入（source=paper）は今月の実績に数えていません。</div>';
+  if (complete.length) {
+    html += '<div class="section-label">✅ 完了（' + complete.length + '名）</div>';
+    complete.forEach(r => { html += rowCard(r, { showSlide: true, markDone: true, showOutput: true }); });
+  }
+  html += '<div class="note">※「測定済」は当月の測定実績で判定しています（予定月は測定すると先へ進むため、予定月では判定できません）。'
+    + '紙台帳の遡り投入（source=paper）は今月の実績に数えていません。'
+    + 'ケアマネへ送る作業は送付管理アプリの担当です。ここは「出力したか」までを見ています。</div>';
   el.innerHTML = html;
 }
 
@@ -1269,10 +1504,12 @@ async function callYotei(action, name) {
 function confirmPlanGap(r, chosenYm) {
   const gap = rowPlanGap(r, chosenYm);
   if (!gap.warn) return true;
-  const cm = +String(r.planYm).slice(5, 7), sm = +String(chosenYm).slice(5, 7);
+  // ★文面は「期限」で組む。計画期間の開始月ではない（2026-07-29 訂正）。
+  //   測定・評価・計画書作成は計画期間が始まる前の月に済ませるのが実務のため。
+  const cm = +String(r.dueYm).slice(5, 7), sm = +String(chosenYm).slice(5, 7);
   return confirm(
-    r.name + ' さんの計画書は ' + cm + '月です。\n'
-    + sm + '月にすると、計画書の月に測定結果がありません。\n\nよろしいですか？'
+    r.name + ' さんの測定期限は ' + cm + '月です（計画書 ' + (r.planYm || '月不明') + ' のぶん）。\n'
+    + sm + '月にすると、計画書を作るときに使える測定結果がありません。\n\nよろしいですか？'
   );
 }
 
@@ -1290,6 +1527,41 @@ async function undoSlide(name) {
   const row = await runRowAction(name, 'slide', () => callYotei('undoSlideYotei', name));
   if (!row) return;
   unsinkRow(name);                                   // 戻したら沈めも解除して元の行に復帰させる
+}
+
+// ===== 出力2チェック（🖨 利用者用／📄 ケアマネ用）のトグル（3-1/3-2）=====
+// 1タップで済、もう一度で未に戻る。押した結果はその場に残す（沈めない・消さない）。
+// 📅来月へ／予定▾／📝測定した と同じ runRowAction を通す＝送信中表示・連打防止・失敗時復帰が同じ挙動になる。
+function upsertOutputRow_(row) {
+  const rows = state.output.rows || (state.output.rows = []);
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].userId === row.userId && rows[i].domain === row.domain && rows[i].ym === row.ym) {
+      rows[i] = row; return;
+    }
+  }
+  rows.push(row);
+}
+async function toggleOutput(name, kind) {
+  const r = derived.rowByName[name];
+  if (!r || !r.doneThisMonth) return;                 // 測っていない人に出力は無い
+  if (OUTPUT_KINDS.indexOf(kind) < 0) return;
+  if (busy[name]) return;                             // 送信中は他のボタンも押せない（1-9-2）
+  const ym = String(r.doneThisMonth.date).slice(0, 7);
+  const next = !rowOutputStatus(r)[kind].done;        // いまの見た目の逆へ倒す（取り消しも同じ入口）
+  const row = await runRowAction(name, 'out-' + kind, async () => {
+    const url = GAS + '?action=setSokuteiOutput&userId=' + encodeURIComponent(r.userId || name)
+      + '&name=' + encodeURIComponent(name)
+      + '&domain=sokutei&ym=' + encodeURIComponent(ym)
+      + '&kind=' + encodeURIComponent(kind)
+      + '&done=' + (next ? 'true' : 'false')
+      + '&by=' + encodeURIComponent(operatorName()) + '&t=' + Date.now();
+    const j = await fetchJson(url);
+    if (!j.ok || !j.row) throw new Error((j && j.error) || '出力チェックの更新に失敗しました');
+    return j.row;
+  });
+  if (!row) return;                                   // 連打の2回目 or 失敗（行に理由が出ている）
+  upsertOutputRow_(row);
+  renderAll();
 }
 
 // ===== 月タップ（予定月を任意の月へ直接指定・2026-07-28 社長決定）=====
@@ -1321,7 +1593,7 @@ function openYmPicker(name) {
   if (noteEl) {
     const risky = list.some(ym => rowPlanGap(r, ym).warn);
     noteEl.textContent = risky
-      ? '⚠ の月にすると、計画書（' + r.planYm + '）の月に測定結果がありません。'
+      ? '⚠ の月にすると、測定期限（' + r.dueYm + '）を過ぎて、計画書（' + r.planYm + '）に使える測定結果がありません。'
       : (rowPlanGap(r, cur).kind === 'unknownPlan' ? '※ この方は計画書の月が分かりません（開始月が未設定）。' : '');
     noteEl.style.display = noteEl.textContent ? '' : 'none';
   }

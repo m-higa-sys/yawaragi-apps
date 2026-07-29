@@ -124,6 +124,9 @@ function ymAddStub(ym, n) {
   const m0 = (m - 1) + n, ny = y + Math.floor(m0 / 12), nm = ((m0 % 12) + 12) % 12 + 1;
   return ny + '-' + (nm < 10 ? '0' : '') + nm;
 }
+// 「測定出力」シートの行（出力2チェック）。既定は空＝出力はまだ誰も済んでいない
+let OUTPUT_ROWS = [];
+
 function fetchStub(url) {
   let data;
   if (url.indexOf('action=attendance') >= 0) {
@@ -164,6 +167,13 @@ function fetchStub(url) {
     const row = YOTEI_STATE.find(y => y.userId === param(url, 'userId'));
     row.nextYm = ymAddStub(row.nextYm, 1); row.slideCount++;
     data = { ok: true, row: Object.assign({}, row) };
+  } else if (url.indexOf('action=getSokuteiOutput') >= 0) {
+    // 出力2チェック（2026-07-29 追加）。この回帰テストが見ているのは測定の並びと件数なので、
+    // 既定は「出力の記録なし」＝測定済の人は全員「出力残」になる（完了✅は出ない）。
+    data = { ok: true, domain: 'sokutei', ym: param(url, 'ym'), records: OUTPUT_ROWS.map(x => Object.assign({}, x)), legacy: [] };
+  } else if (url.indexOf('action=setSokuteiOutput') >= 0) {
+    captured.writes.push(url);
+    data = { ok: false, error: 'このテストでは出力の書き込みは使わない' };
   } else data = {};
   return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
 }
@@ -203,6 +213,7 @@ function makeSandbox() {
 function resetFixtures() {
   YOTEI_STATE = YOTEI.concat(EXTRA_YOTEI).map(y => Object.assign({}, y));
   SHIEN_ROWS = [{ name: 'ダミー渡辺', care: '事業対象者', sokutei_date: '2026-07-02', sokutei_by: '', source: 'paper', note: '' }];
+  OUTPUT_ROWS = [];
   captured.writes.length = 0;
   Object.keys(els).forEach(k => delete els[k]);
   timers.length = 0;
@@ -294,9 +305,12 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   ok(tM.indexOf('紙台帳の遡り投入') >= 0, '紙台帳を除外していることを画面にも書いてある');
 
   sec('A-3 未が上・済が下に並ぶ');
-  const iUndoneHead = tM.indexOf('まだの人');
-  const iDoneHead = tM.indexOf('今月やった人');
-  ok(iUndoneHead >= 0 && iDoneHead >= 0, '「まだの人」「今月やった人」の見出しが両方ある');
+  // 2026-07-29: 済のセクションは出力2チェックで「🖨 出力が残っている人」と「✅ 完了」に割れた。
+  // このフィクスチャは出力の記録が無いので、済の人は全員「出力が残っている人」に入る。
+  // 見出しそのものを指す（ヘッダの用語説明にも同じ語が出るので section-label の形で拾う）
+  const iUndoneHead = tM.indexOf('🟡 まだの人（');
+  const iDoneHead = tM.indexOf('🖨 出力が残っている人（');
+  ok(iUndoneHead >= 0 && iDoneHead >= 0, '「まだの人」「出力が残っている人」の見出しが両方ある');
   ok(iUndoneHead < iDoneHead, '未の見出しが済の見出しより上にある');
   ok(tM.indexOf('data-row="ダミー鈴木"') > iDoneHead, '済の行は済の見出しより下にある');
   ['ダミー田中', 'ダミー佐藤', 'ダミー高橋'].forEach(n => {
@@ -320,7 +334,7 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
 
   sec('A-5 ヘッダに件数が出る');
   ok(tM.indexOf('7月の対象 4名') >= 0, '「7月の対象 4名」');
-  ok(tM.indexOf('／済 1・未 3') >= 0, '「／済 1・未 3」');
+  ok(tM.indexOf('完了 0・出力残 1・測定未 3') >= 0, '「完了 0・出力残 1・測定未 3」（出力の記録が無いので済1名は出力残）');
   eq(tM.indexOf('（全体') >= 0, false, 'フィルタ未適用のときは母数を併記しない');
 
   sec('A-7 スライドが「今月やる人」タブでも通る（1-9の送信中表示・連打防止のまま）');
@@ -345,7 +359,7 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   eq(has(tM, 'ダミー佐藤'), false, '火木の人は消える');
   eq(has(tM, 'ダミー鈴木'), false, '金の人（済）も消える');
   ok(tM.indexOf('7月の対象 2名（全体4名中）') >= 0, 'A-5 フィルタ時は母数を併記する');
-  ok(tM.indexOf('／済 0・未 2') >= 0, '済・未の内訳もフィルタ後の数になる');
+  ok(tM.indexOf('完了 0・出力残 0・測定未 2') >= 0, '3段階の内訳もフィルタ後の数になる');
   S.toggleUfDay('火');
   tM = els['tab4'].innerHTML;
   ok(has(tM, 'ダミー佐藤'), '曜日は複数選べる（月＋火）');
@@ -498,14 +512,30 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   S.clearFilters();
 
   // =====================================================================
-  sec('A-6 未が0になったら「今月ぶん完了 ✅」');
+  sec('A-6 測定未0かつ出力残0になったら「今月ぶん完了 ✅」');
+  // 2026-07-29: 完了の条件に「出力2つ（🖨📄）も済んでいること」が加わった（3-6）。
+  // 測定が全部済んでも出力が残っているうちは完了にしない。
   resetFixtures();
   YOTEI_STATE = YOTEI_STATE.map(y => (y.userId === 'ダミー鈴木') ? y : Object.assign({}, y, { nextYm: '2026-12' }));
   S = makeSandbox();
   await S.load();
   tM = els['tab4'].innerHTML;
-  ok(tM.indexOf('今月ぶん完了 ✅') >= 0, '未0で完了表示が出る');
-  ok(tM.indexOf('／済 1・未 0') >= 0, 'ヘッダも 済1・未0');
+  eq(tM.indexOf('今月ぶん完了 ✅') >= 0, false, '★測定未0でも出力が残っていれば完了にしない');
+  ok(tM.indexOf('完了 0・出力残 1・測定未 0') >= 0, 'ヘッダは 完了0・出力残1・測定未0');
+  ok(has(tM, 'ダミー鈴木'), '出力が残っている人は一覧に残る');
+
+  resetFixtures();
+  YOTEI_STATE = YOTEI_STATE.map(y => (y.userId === 'ダミー鈴木') ? y : Object.assign({}, y, { nextYm: '2026-12' }));
+  OUTPUT_ROWS = [{
+    userId: 'ダミー鈴木', name: 'ダミー鈴木', domain: 'sokutei', ym: '2026-07',
+    riyousha_at: '2026-07-15 10:00:00', riyousha_by: 'スタッフX',
+    caremgr_at: '2026-07-15 10:01:00', caremgr_by: 'スタッフX', updatedAt: '2026-07-15 10:01:00', note: ''
+  }];
+  S = makeSandbox();
+  await S.load();
+  tM = els['tab4'].innerHTML;
+  ok(tM.indexOf('今月ぶん完了 ✅') >= 0, '★出力2つも済んで初めて完了表示が出る');
+  ok(tM.indexOf('完了 1・出力残 0・測定未 0') >= 0, 'ヘッダも 完了1・出力残0・測定未0');
   ok(has(tM, 'ダミー鈴木'), '済の人は残って見える');
 
   sec('A-2 測定するとその場で未→済に移る（予定月が進んでも消えない）');
@@ -520,7 +550,7 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   tM = els['tab4'].innerHTML;
   ok(has(tM, 'ダミー田中'), '★予定月が外れても一覧に残る');
   ok(cardOf(tM, 'ダミー田中').indexOf('donerow') >= 0, '済の見た目に変わる');
-  ok(tM.indexOf('／済 2・未 2') >= 0, 'ヘッダが 済2・未2 になる');
+  ok(tM.indexOf('完了 0・出力残 2・測定未 2') >= 0, 'ヘッダが 完了0・出力残2・測定未2 になる（測ったばかりで出力はまだ）');
 
   console.log('\n=== 結果 ===');
   console.log('PASS ' + pass + ' / FAIL ' + fail);

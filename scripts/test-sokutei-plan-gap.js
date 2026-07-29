@@ -62,16 +62,18 @@ function elFor(id) { if (!els[id]) els[id] = makeEl(id); return els[id]; }
 // ---- 固定データ（すべてダミー名）----
 // TODAY = 2026-07-28（当月 2026-07）
 const TODAY = '2026-07-28';
-// planStart=2026-02 / planMonths=3 → 計画月は 2/5/8/11 月 → 当月以降の最初は 2026-08
-// planStart=2026-01 / planMonths=3 → 計画月は 1/4/7/10 月 → 当月以降の最初は 2026-07
-// planStart=2025-11 / planMonths=3 → 計画月は 11/2/5/8… → 当月以降の最初は 2026-08
+// ★2026-07-29 訂正: 判定に使うのは「計画月」ではなく「測定期限（＝評価月＝計画期間が始まる前の月）」。
+//   shared.js の isHyoukaMonth を使う。planStart から見て +2ヶ月（と開始前月 −1ヶ月）が期限になる。
+// planStart=2026-06 / planMonths=3 → 期限は 8/11/2月… → 当月(7月)以降の最初は 2026-08
+//   （計画期間の開始月は 6/9/12月 なので、画面の「計画書 ◯月」表示は 2026-09 になる）
+// planStart=2027-01 / planMonths=3 → 計画期間が翌年1月開始 → その前月 2026-12 が期限（年またぎ）
 const KAIGO_USERS = [
-  // 8月が計画月・前回測定なし → 予定月を9月以降にすると計画書に測定結果が無い（★警告対象）
-  { userId: 'ダミー甲', name: 'ダミー甲', furigana: 'ダミーコウ', category: '要介護2', days: '月水', planStart: '2026-02', planMonths: 3 },
-  // 8月が計画月・7月に測定済み → 8月の計画書は7月の測定で書ける（カバー済み＝警告しない）
-  { userId: 'ダミー乙', name: 'ダミー乙', furigana: 'ダミーオツ', category: '要介護1', days: '火木', planStart: '2026-02', planMonths: 3 },
-  // 計画月が先（年跨ぎの確認用）。planStart=2026-11 → 当月以降の最初は 2026-11、越えると翌年へ入る
-  { userId: 'ダミー丙', name: 'ダミー丙', furigana: 'ダミーヘイ', category: '要介護1', days: '金', planStart: '2026-11', planMonths: 3 },
+  // 測定期限8月・前回測定なし → 予定月を9月以降にすると計画書に使える測定結果が無い（★警告対象）
+  { userId: 'ダミー甲', name: 'ダミー甲', furigana: 'ダミーコウ', category: '要介護2', days: '月水', planStart: '2026-06', planMonths: 3 },
+  // 測定期限8月・7月に測定済み → 8月の計画書は7月の測定で書ける（カバー済み＝警告しない）
+  { userId: 'ダミー乙', name: 'ダミー乙', furigana: 'ダミーオツ', category: '要介護1', days: '火木', planStart: '2026-06', planMonths: 3 },
+  // 年跨ぎの確認用。計画期間が2027-01開始＝測定期限はその前月 2026-12
+  { userId: 'ダミー丙', name: 'ダミー丙', furigana: 'ダミーヘイ', category: '要介護1', days: '金', planStart: '2027-01', planMonths: 3 },
   // planStart 未設定 → 計画月が算出できない（警告の対象外だが「月不明」と出す）
   { userId: 'ダミー丁', name: 'ダミー丁', furigana: 'ダミーテイ', category: '要介護3', days: '水', planStart: '', planMonths: 3 }
 ];
@@ -172,7 +174,7 @@ function makeSandbox() {
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   // 計画月の判定は shared.js §I の isPlanMonth を「本物のまま」入れる（複製しない）
-  ['sokuteiCycleMonths_', 'sokuteiDueDate_', 'isPlanMonth'].forEach(n => vm.runInContext(extractFn(shared, n), sandbox));
+  ['sokuteiCycleMonths_', 'sokuteiDueDate_', 'isPlanMonth', 'isHyoukaMonth'].forEach(n => vm.runInContext(extractFn(shared, n), sandbox));
   vm.runInContext(yoteiSrc.replace(/if \(typeof module[\s\S]*$/, ''), sandbox);
   vm.runInContext(measureSrc.replace(/if \(typeof module[\s\S]*$/, ''), sandbox);
   vm.runInContext(script0, sandbox);
@@ -200,18 +202,22 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   let S, tM;
 
   // =====================================================================
-  sec('純関数 nextPlanYm: 当月以降で最初の計画月（isPlanMonth を使う・複製しない）');
+  sec('純関数 nextPlanStartYm: 当月以降で最初の計画月（表示用・isPlanMonth を使う・複製しない）');
   resetFixtures();
   S = makeSandbox();
-  eq(S.nextPlanYm('2026-02', 3, '2026-07'), '2026-08', 'planStart 2月・3ヶ月周期 → 当月7月の次は8月');
-  eq(S.nextPlanYm('2026-01', 3, '2026-07'), '2026-07', '当月が計画月ならその月');
-  eq(S.nextPlanYm('2025-10', 3, '2026-07'), '2026-07', '前年開始でも 10/1/4/7 と進み当月が計画月になる');
-  eq(S.nextPlanYm('2025-11', 3, '2026-12'), '2027-02', '★年跨ぎ（12月→翌年2月）');
-  eq(S.nextPlanYm('2026-11', 3, '2026-12'), '2027-02', '★計画月が翌年1月台に来る場合も正しい');
-  eq(S.nextPlanYm('', 3, '2026-07'), '', 'planStart 未設定は空');
-  eq(S.nextPlanYm(null, 3, '2026-07'), '', 'null でも落ちない');
-  eq(S.nextPlanYm('2020-01', 6, '2026-07'), '', '変則周期で今後計画月が無ければ空');
-  eq(S.nextPlanYm('2026-09', 6, '2026-07'), '2026-09', '変則周期でも開始月そのものは拾う');
+  eq(S.nextPlanStartYm('2026-02', 3, '2026-07'), '2026-08', 'planStart 2月・3ヶ月周期 → 当月7月の次は8月');
+  eq(S.nextPlanStartYm('2026-01', 3, '2026-07'), '2026-07', '当月が計画月ならその月');
+  eq(S.nextPlanStartYm('2025-10', 3, '2026-07'), '2026-07', '前年開始でも 10/1/4/7 と進み当月が計画月になる');
+  eq(S.nextPlanStartYm('2025-11', 3, '2026-12'), '2027-02', '★年跨ぎ（12月→翌年2月）');
+  eq(S.nextPlanStartYm('2026-11', 3, '2026-12'), '2027-02', '★計画月が翌年1月台に来る場合も正しい');
+  eq(S.nextPlanStartYm('', 3, '2026-07'), '', 'planStart 未設定は空');
+  eq(S.nextPlanStartYm(null, 3, '2026-07'), '', 'null でも落ちない');
+  eq(S.nextPlanStartYm('2020-01', 6, '2026-07'), '', '変則周期で今後計画月が無ければ空');
+  eq(S.nextPlanStartYm('2026-09', 6, '2026-07'), '2026-09', '変則周期でも開始月そのものは拾う');
+  // ★判定に使うのはこちら（期限＝計画期間が始まる前の月）。境界値は test-sokutei-due-month.js が担当
+  eq(S.nextDueYm('2026-06', 3, '2026-07'), '2026-08', '★期限は計画月(9月)の1ヶ月前＝8月');
+  ok(S.nextDueYm('2026-06', 3, '2026-07') !== S.nextPlanStartYm('2026-06', 3, '2026-07'),
+    '★期限と計画月は別の値（取り違えたのが今回の誤報の原因）');
 
   sec('純関数 planGapCheck: 誰に警告するか');
   const chk = (o) => S.planGapCheck(o);
@@ -244,8 +250,10 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   S = makeSandbox();
   await S.load();
   tM = els['tab4'].innerHTML;
-  ok(cardOf(tM, 'ダミー甲').indexOf('計画書 2026-08') >= 0, '要介護に「計画書 2026-08」が出る');
-  ok(cardOf(tM, 'ダミー丙').indexOf('計画書 2026-11') >= 0, '別の人には別の計画月が出る');
+  ok(cardOf(tM, 'ダミー甲').indexOf('計画書 2026-09') >= 0, '要介護に計画期間の開始月「計画書 2026-09」が出る');
+  ok(cardOf(tM, 'ダミー甲').indexOf('測定期限 2026-08') >= 0, '★その1ヶ月前の「測定期限 2026-08」も出る');
+  ok(cardOf(tM, 'ダミー丙').indexOf('計画書 2027-01') >= 0, '別の人には別の計画月が出る（年またぎ）');
+  ok(cardOf(tM, 'ダミー丙').indexOf('測定期限 2026-12') >= 0, '★年をまたいでも期限は計画月の前月');
   eq(cardOf(tM, 'ダミー戊').indexOf('計画書') >= 0, false, '★要支援・事業対象者には計画書を出さない');
 
   sec('2-6 planStart 未設定の要介護は黙って素通りさせない');
@@ -259,14 +267,15 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   await S.load();
   CONFIRM_ANSWER = false;                      // 「やめる」
   const w0 = captured.writes.length;
-  await S.slideToNextMonth('ダミー甲');          // 7月 → 8月（計画月と同月＝まだ間に合う）
-  eq(confirmCalls.length, 0, '計画月ちょうどへのスライドでは確認を出さない');
+  await S.slideToNextMonth('ダミー甲');          // 7月 → 8月（測定期限と同月＝まだ間に合う）
+  eq(confirmCalls.length, 0, '測定期限ちょうどへのスライドでは確認を出さない');
   eq(captured.writes.length, w0 + 1, 'そのまま送信される');
   eq(YOTEI_STATE.find(y => y.userId === 'ダミー甲').nextYm, '2026-08', '予定月は8月');
-  // ここからもう1回スライドすると 9月＝計画月(8月)を越える
+  // ここからもう1回スライドすると 9月＝測定期限(8月)を越える
   await S.slideToNextMonth('ダミー甲');
-  eq(confirmCalls.length, 1, '★計画月を越える瞬間に確認が出る');
-  ok(confirmCalls[0].indexOf('計画書は 8月') >= 0, '確認文に計画月が入る');
+  eq(confirmCalls.length, 1, '★測定期限を越える瞬間に確認が出る');
+  ok(confirmCalls[0].indexOf('測定期限は 8月') >= 0, '★確認文に「期限」が入る（計画月ではない）');
+  ok(confirmCalls[0].indexOf('計画書 2026-09') >= 0, '★どの計画書のぶんかも書いてある');
   ok(confirmCalls[0].indexOf('9月にすると') >= 0, '確認文に選んだ月が入る');
   ok(confirmCalls[0].indexOf('測定結果がありません') >= 0, '何が起きるかを書いている');
   eq(captured.writes.length, w0 + 1, '★「やめる」で送信が1回も発生しない');
@@ -280,21 +289,25 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   eq(captured.writes.length, w0 + 2, '★「はい」で送信される');
   eq(YOTEI_STATE.find(y => y.userId === 'ダミー甲').nextYm, '2026-09', '予定月が9月になる');
   tM = els['tab4'].innerHTML;
-  ok(cardOf(tM, 'ダミー甲').indexOf('plan-gap') >= 0, '★赤バッジが付く');
-  ok(cardOf(tM, 'ダミー甲').indexOf('⚠ 計画書2026-08／測定2026-09予定') >= 0, 'バッジの文言');
-  ok(cardOf(tM, 'ダミー甲').indexOf('gaprow') >= 0, '行にも赤の見た目が付く');
+  // ★2026-07-29 社長決定「丙」: 1ヶ月の超過は赤にしない。戻せば間に合うのでオレンジで出す。
+  eq(cardOf(tM, 'ダミー甲').indexOf('plan-gap') >= 0, false, '★1ヶ月の超過では赤バッジを付けない（赤を増やさない）');
+  ok(cardOf(tM, 'ダミー甲').indexOf('plan-late') >= 0, '★代わりにオレンジのバッジが付く');
+  ok(cardOf(tM, 'ダミー甲').indexOf('📋 測定期限2026-08／測定2026-09予定') >= 0, 'バッジの文言');
+  ok(cardOf(tM, 'ダミー甲').indexOf('laterow') >= 0, '行もオレンジの見た目になる');
+  eq(cardOf(tM, 'ダミー甲').indexOf('gaprow') >= 0, false, '赤の行クラスは付かない');
 
-  sec('2-4 計画月を超えた人は対象外になっても一覧から消えない');
+  sec('2-4 期限を超えた人は対象外になっても一覧から消えない');
   ok(!S.isDue('2026-09', '2026-07'), '前提: 予定月9月は当月の対象ではない');
   ok(has(tM, 'ダミー甲'), '★それでも「今月やる人」に残っている');
-  const iGapHead = tM.indexOf('計画書の月に測定結果がありません');
-  ok(iGapHead >= 0, '最上部に説明が出る');
-  ok(tM.indexOf('data-row="ダミー甲"') > iGapHead, '対象者はその直下に並ぶ');
-  ok(iGapHead < tM.indexOf('まだの人'), '★「まだの人」より上に固定されている');
+  const iLateHead = tM.indexOf('📋 計画に間に合いません');
+  ok(iLateHead >= 0, '★オレンジ枠に「計画に間に合いません」の行が出る');
+  ok(tM.indexOf('overdue-head') >= 0, 'オレンジの枠を使っている');
+  eq(tM.indexOf('gap-head') >= 0, false, '★赤の枠は出ていない');
 
-  sec('2-5 ヘッダに「⚠計画書に間に合わない ◯名」が出る');
-  ok(tM.indexOf('⚠計画書に間に合わない 1名') >= 0, '★1名と出る');
-  eq((tM.match(/data-row="ダミー甲"/g) || []).length, 1, '警告枠と未の両方に二重表示しない');
+  sec('2-5 ヘッダと件数');
+  ok(tM.indexOf('📋 計画に間に合いません（1名）') >= 0, '★1名と出る');
+  eq(tM.indexOf('⚠測定を1回分まるごと飛ばしています') >= 0, false, '赤の見出しは出ない');
+  eq((tM.match(/data-row="ダミー甲"/g) || []).length, 1, '枠と一覧の両方に二重表示しない');
 
   sec('要支援・事業対象者は無制限にスライドできる（2-7）');
   resetFixtures();
@@ -311,9 +324,9 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   S = makeSandbox();
   await S.load();
   CONFIRM_ANSWER = false;
-  ok(cardOf(els['tab4'].innerHTML, 'ダミー乙').indexOf('計画書 2026-08') >= 0, '前提: 乙の計画月は8月');
+  ok(cardOf(els['tab4'].innerHTML, 'ダミー乙').indexOf('測定期限 2026-08') >= 0, '前提: 乙の測定期限は8月');
   const wB = captured.writes.length;
-  await S.slideToNextMonth('ダミー乙');   // 10月 → 11月（計画月8月を越えている）
+  await S.slideToNextMonth('ダミー乙');   // 10月 → 11月（測定期限8月を越えている）
   eq(confirmCalls.length, 0, '★7月に測っているので確認を出さない');
   eq(captured.writes.length, wB + 1, 'そのまま送信される');
   eq(cardOf(els['tab4'].innerHTML, 'ダミー乙').indexOf('plan-gap') >= 0, false, '赤バッジも付かない');
@@ -332,11 +345,11 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
     return g.slice(s, g.indexOf('</button>', i));
   };
   eq(cellOf(grid, '2026-07').indexOf('⚠') >= 0, false, '当月(7月)には⚠が付かない');
-  eq(cellOf(grid, '2026-08').indexOf('⚠') >= 0, false, '計画月(8月)にも⚠が付かない');
+  eq(cellOf(grid, '2026-08').indexOf('⚠') >= 0, false, '測定期限(8月)にも⚠が付かない');
   ok(cellOf(grid, '2026-09').indexOf('⚠') >= 0, '★9月には⚠が付く');
   ok(cellOf(grid, '2026-09').indexOf('risky') >= 0, '色も変わる');
   ok(cellOf(grid, '2027-06').indexOf('⚠') >= 0, '先の月にも⚠が付く');
-  ok(elFor('ymPickerNote').textContent.indexOf('計画書（2026-08）') >= 0, 'ポップアップに注記が出る');
+  ok(elFor('ymPickerNote').textContent.indexOf('測定期限（2026-08）') >= 0, 'ポップアップに注記が出る');
   S.closeYmPicker();
 
   sec('2-3 要支援・計画月不明・カバー済みの人には⚠が付かない');
@@ -370,19 +383,23 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   await S.pickYm('2026-12');
   eq(captured.writes.length, wC + 1, '「はい」で送信される');
   eq(YOTEI_STATE.find(y => y.userId === 'ダミー甲').nextYm, '2026-12', '予定月が12月になる');
-  ok(cardOf(els['tab4'].innerHTML, 'ダミー甲').indexOf('plan-gap') >= 0, '赤バッジが付く');
+  // 期限8月に対して12月＝4ヶ月＝1周期(3ヶ月)以上の先送り → ここは赤に残す
+  ok(cardOf(els['tab4'].innerHTML, 'ダミー甲').indexOf('plan-gap') >= 0,
+    '★1回分まるごと飛ばすと赤バッジが付く（赤はここだけ）');
+  ok(els['tab4'].innerHTML.indexOf('⚠ 測定を1回分まるごと飛ばしています（1名）') >= 0, '赤の枠が出る');
 
-  sec('年跨ぎ: 計画月が翌年になる人でも判定が正しい');
+  sec('年跨ぎ: 計画期間が翌年から始まる人でも判定が正しい');
   resetFixtures();
   S = makeSandbox();
   await S.load();
   CONFIRM_ANSWER = false;
-  ok(cardOf(els['tab4'].innerHTML, 'ダミー丙').indexOf('計画書 2026-11') >= 0, '前提: 丙の計画月は2026-11');
+  ok(cardOf(els['tab4'].innerHTML, 'ダミー丙').indexOf('測定期限 2026-12') >= 0, '前提: 丙の測定期限は2026-12');
   S.openYmPicker('ダミー丙');
   grid = elFor('ymPickerGrid').innerHTML;
-  eq(cellOf(grid, '2026-11').indexOf('⚠') >= 0, false, '計画月(11月)には⚠なし');
-  ok(cellOf(grid, '2026-12').indexOf('⚠') >= 0, '12月には⚠');
-  ok(cellOf(grid, '2027-01').indexOf('⚠') >= 0, '★翌年1月にも⚠（年跨ぎで壊れない）');
+  eq(cellOf(grid, '2026-11').indexOf('⚠') >= 0, false, '期限より前(11月)には⚠なし');
+  eq(cellOf(grid, '2026-12').indexOf('⚠') >= 0, false, '★測定期限(2026-12)ちょうどにも⚠なし');
+  ok(cellOf(grid, '2027-01').indexOf('⚠') >= 0, '★翌年1月には⚠（年跨ぎで壊れない）');
+  ok(cellOf(grid, '2027-02').indexOf('⚠') >= 0, '翌年2月にも⚠');
   S.closeYmPicker();
 
   sec('1-9の共通ヘルパーを通っている（送信中表示・連打防止が生きている）');
@@ -412,10 +429,12 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   ok(/\.ym-cell\.risky\s*\{/.test(css), '⚠月のスタイル');
   ok(/\.plan-unknown\s*\{/.test(css), '「月不明」のスタイル');
 
-  sec('計画月の判定を複製していない（isPlanMonth を使っている）');
+  sec('判定を複製していない（shared.js の isPlanMonth / isHyoukaMonth を使っている）');
   const scriptBody = script0;
   eq(/diff\s*%\s*3\s*===\s*0/.test(scriptBody), false, '★isPlanMonth の中身を写していない');
-  ok(scriptBody.indexOf('isPlanMonth') >= 0, 'isPlanMonth を参照している');
+  eq(/diff\s*%\s*3\s*===\s*2/.test(scriptBody), false, '★isHyoukaMonth の中身も写していない');
+  ok(scriptBody.indexOf('isPlanMonth') >= 0, 'isPlanMonth を参照している（表示用）');
+  ok(scriptBody.indexOf('isHyoukaMonth') >= 0, '★isHyoukaMonth を参照している（判定用）');
   ok(scriptBody.indexOf('ymAdd(') >= 0, '月の足し算は yotei-core.js の ymAdd を使っている');
 
   console.log('\n=== 結果 ===');
