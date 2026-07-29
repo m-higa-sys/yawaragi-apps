@@ -246,5 +246,45 @@ const P = { action: 'report_undone', app: 'sougei_nisshi', app_label: '送迎日
     'J3: cancel すると朝報告から消える（終わるまで方式）');
 }
 
+// ===== morningDigest の配線そのものを実測（コピーではなく実ソースを切り出して評価）=====
+{
+  const s = codeSrc.indexOf("  safe('undone', function () {");
+  ok(s > 0, 'L0: morningDigest に safe(\'undone\', ...) が存在する');
+  const e = codeSrc.indexOf('\n  }\n', codeSrc.indexOf('delete sections.undone;', s)) + 4;
+  const wiring = codeSrc.slice(s, e);
+  ok(/undoneDigestForMorning_\(ss, dateStr\)/.test(wiring),
+    'L1: dateStr を渡している（?date= 指定に追随する）');
+
+  function runWiring(digestResult, throwIt) {
+    const sections = {}, errors = [];
+    const ctx = {
+      sections, errors,
+      safe: (name, fn) => {
+        try { sections[name] = fn(); }
+        catch (err) { sections[name] = null; errors.push({ section: name, error: String(err.message || err) }); }
+      },
+      undoneDigestForMorning_: () => { if (throwIt) throw new Error('boom'); return digestResult; },
+      ss: {}, dateStr: '2026-07-30'
+    };
+    vm.createContext(ctx);
+    vm.runInContext(wiring, ctx);
+    return { sections, errors };
+  }
+  // 0件（null）→ キー自体が立たない＝セクション非表示
+  const r0 = runWiring(null, false);
+  eq('undone' in r0.sections, false, 'L2: 0件ならキーを立てない（セクションを出さない）');
+  eq(r0.errors.length, 0, 'L3: 0件はエラーではない');
+  // 1件以上 → セクションが入る
+  const r1 = runWiring({ count: 1, items: [{ date: '2026-07-29', app: 'sougei_nisshi', app_label: '送迎日誌' }] }, false);
+  eq(r1.sections.undone, { count: 1, items: [{ date: '2026-07-29', app: 'sougei_nisshi', app_label: '送迎日誌' }] },
+    'L4: 1件以上ならセクションが入る');
+  // 例外 → null を残し errors に痕跡（障害を隠さない）
+  const rE = runWiring(null, true);
+  eq('undone' in rE.sections, true, 'L5: 例外時は null のままキーを残す（障害を隠さない）');
+  eq(rE.sections.undone, null, 'L6: 例外時の値は null');
+  eq(rE.errors.length, 1, 'L7: errors に1件記録される');
+  eq(rE.errors[0].section, 'undone', 'L8: errors の section が undone');
+}
+
 console.log('\ntest-undone-handler: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
