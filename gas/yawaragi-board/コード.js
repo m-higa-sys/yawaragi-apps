@@ -18042,9 +18042,25 @@ function reportUndone_(ss, data) {
   }
 
   // date はクライアントが送る端末ローカル日付（'今日できませんでした' の意味を保つ）。
-  // 読めない場合だけサーバのJST当日で補う。生成は必ず TZ 明示。
+  // ただし「今日」の定義が クライアント日付 と サーバJST の2つに割れているため、
+  // 端末時計が狂うと朝報告に嘘の日付が黙って出る（4月1行目の1日ずれの唯一の生き残り仮説）。
+  //   ・±1日以内 … 日跨ぎの正当なケース。クライアント日付をそのまま採用（クランプしない）
+  //   ・±1日超   … 端末時計の異常。**書き込まずに拒否**し、理由を画面へ返す
+  //   ・空/解釈不能 … 従来どおり serverToday を採用
+  // 生成は必ず TZ 明示（シートTZが UTC−7 のため Date型を渡すと16時間ずれる）。
+  var serverToday = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   var date = undoneNormalizeDateCell_(d.date);
-  if (!date) date = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  if (!date) {
+    date = serverToday;
+  } else if (!undoneIsAcceptableClientDate_(date, serverToday)) {
+    // 拒否はシートを開く前・LockService を取る前に返す（無駄なロックも読み取りもしない）。
+    // HTML は json.error をそのまま黄色で表示するので HTML 側は無改修で成立する。
+    return {
+      success: false,
+      error: 'この端末の日付設定がずれています（端末: ' + date + ' ／ 施設: ' + serverToday
+           + '）。設定を確認してください'
+    };
+  }
 
   var sh = ss.getSheetByName(UNDONE_SHEET);
   // 構造変更はしない方針のため、シートが無い場合は作らずに明示的に失敗を返す

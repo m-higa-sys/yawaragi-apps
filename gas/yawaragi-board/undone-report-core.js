@@ -24,6 +24,10 @@ var UNDONE_STATUS_ACTIVE = 'active';
 var UNDONE_STATUS_CANCELLED = 'cancelled';
 var UNDONE_DIGEST_DAYS = 14;   // 朝報告に載せる窓（直近14日ぶん）
 
+// 端末日付を受け入れる許容差（暦日）。日跨ぎ（施設が翌日／端末が前日）は正当なので潰さない。
+// これを超える食い違いは端末時計の異常とみなして**拒否**する（クランプはしない）。
+var UNDONE_CLIENT_DATE_TOLERANCE_DAYS = 1;
+
 var UNDONE_JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function _undonePad2_(n) { return (n < 10 ? '0' : '') + n; }
@@ -105,6 +109,33 @@ function undoneFindActiveRow_(rows, header, app, date) {
   return null;
 }
 
+// 'yyyy-MM-dd' を暦日のUTCミリ秒へ（時刻成分を持たないので DST もTZも効かない）
+function _undoneDayMs_(dateStr) {
+  var m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+// a - b の暦日差（整数）。どちらかが読めなければ null。ambient TZ 非依存。
+//   Date型・'+09:00'付きISO も normalize を通してから比較する。
+function undoneDayDiff_(a, b) {
+  var am = _undoneDayMs_(undoneNormalizeDateCell_(a));
+  var bm = _undoneDayMs_(undoneNormalizeDateCell_(b));
+  if (am === null || bm === null) return null;
+  return Math.round((am - bm) / 86400000);
+}
+
+// クライアントが送ってきた日付を、そのまま採用してよいか。
+//   「今日」の定義がクライアント日付とサーバJSTの2つに割れると、端末時計が狂ったときに
+//   朝報告へ嘘の日付が黙って出る。±1日以内なら日跨ぎの正当なケースとして採用し、
+//   それを超えたら呼び出し側で拒否する（書き込まない）。
+//   読めない値は「採用しない」＝呼び出し側が serverToday へフォールバックする。
+function undoneIsAcceptableClientDate_(clientDate, serverToday) {
+  var diff = undoneDayDiff_(clientDate, serverToday);
+  if (diff === null) return false;
+  return Math.abs(diff) <= UNDONE_CLIENT_DATE_TOLERANCE_DAYS;
+}
+
 // 'yyyy-MM-dd' から days-1 日前の 'yyyy-MM-dd'（UTC算術・ambient TZ 非依存）
 function _undoneWindowStart_(todayStr, days) {
   var m = String(todayStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -160,9 +191,12 @@ if (typeof module !== 'undefined' && module.exports) {
     UNDONE_STATUS_ACTIVE: UNDONE_STATUS_ACTIVE,
     UNDONE_STATUS_CANCELLED: UNDONE_STATUS_CANCELLED,
     UNDONE_DIGEST_DAYS: UNDONE_DIGEST_DAYS,
+    UNDONE_CLIENT_DATE_TOLERANCE_DAYS: UNDONE_CLIENT_DATE_TOLERANCE_DAYS,
     undoneNormalizeDateCell_: undoneNormalizeDateCell_,
     undoneBuildRow_: undoneBuildRow_,
     undoneFindActiveRow_: undoneFindActiveRow_,
+    undoneDayDiff_: undoneDayDiff_,
+    undoneIsAcceptableClientDate_: undoneIsAcceptableClientDate_,
     buildUndoneDigestSection_: buildUndoneDigestSection_
   };
 }

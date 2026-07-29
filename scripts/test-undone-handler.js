@@ -91,9 +91,13 @@ function makeEnv(opts) {
   vm.runInContext(coreSrc.replace(/if \(typeof module[\s\S]*$/, '') + '\n'
     + extractFn(codeSrc, 'reportUndone_') + '\n'
     + extractFn(codeSrc, 'undoneDigestForMorning_') + '\n', ctx);
-  const ss = { getSheetByName: (n) => (n === ' 未実施報告'.trim() ? sheet : null) };
+  let sheetLookups = 0;
+  const ss = {
+    getSheetByName: (n) => { sheetLookups++; return n === '未実施報告' ? sheet : null; }
+  };
   return {
     ctx, ss, grid, trace,
+    sheetLookups: () => sheetLookups,
     dataRows: () => grid.slice(1),
     activeCount: (app, date) => grid.slice(1).filter(r =>
       r[2] === app && r[5] === 'active' && ctx.undoneNormalizeDateCell_(r[1]) === date).length,
@@ -101,7 +105,14 @@ function makeEnv(opts) {
   };
 }
 
-const DATE = '2026-07-30';
+// 「今日」は実行日に追随させる（固定文字列にすると翌日から端末日付ガードに弾かれて
+//  テストが赤くなる＝時間依存の偽の赤を作らない）。ambient TZ 非依存に JST で求める。
+function jstDay(offsetDays) {
+  const j = new Date(Date.now() + 9 * 3600 * 1000 + (offsetDays || 0) * 86400000);
+  const p = n => String(n).padStart(2, '0');
+  return j.getUTCFullYear() + '-' + p(j.getUTCMonth() + 1) + '-' + p(j.getUTCDate());
+}
+const DATE = jstDay(0);
 const P = { action: 'report_undone', app: 'sougei_nisshi', app_label: '送迎日誌', date: DATE };
 
 // ===== 1回POST → 1行増える =====
@@ -232,17 +243,66 @@ const P = { action: 'report_undone', app: 'sougei_nisshi', app_label: '送迎日
   ok(/未実施報告/.test(r2.error), 'I6: 失敗理由が画面に出せる文言');
 }
 
+// ===== 端末日付ガード（「今日」の定義が2つに割れるのを止める）=====
+// 採用: 差 -1 / 0 / +1（日跨ぎの正当なケースを潰さない）
+{
+  [[-1, 'M1'], [0, 'M2'], [1, 'M3']].forEach(([off, tag]) => {
+    const env = makeEnv();
+    const cd = jstDay(off);
+    const r = env.ctx.reportUndone_(env.ss, Object.assign({}, P, { date: cd, toggle: 'report' }));
+    eq(r.success, true, tag + 'a: 差' + (off >= 0 ? '+' : '') + off + ' は採用（端末=' + cd + '）');
+    eq(env.dataRows()[env.dataRows().length - 1][1], cd,
+      tag + 'b: クライアント日付をそのまま保存（クランプしない）');
+  });
+}
+// 拒否: 差 -2 / +2 / +30 / -365 → 書き込まず、ロックも取らず、シートも開かない
+{
+  [[-2, 'N1'], [2, 'N2'], [30, 'N3'], [-365, 'N4']].forEach(([off, tag]) => {
+    const env = makeEnv();
+    const cd = jstDay(off);
+    const before = env.dataRows().length;
+    const r = env.ctx.reportUndone_(env.ss, Object.assign({}, P, { date: cd, toggle: 'report' }));
+    eq(r.success, false, tag + 'a: 差' + (off >= 0 ? '+' : '') + off + ' は拒否（端末=' + cd + '）');
+    eq(env.dataRows().length, before, tag + 'b: 行は増えない');
+    eq(env.trace.length, 0, tag + 'c: 操作トレースが空（read/append/write/waitLock すべてゼロ）');
+    eq(env.sheetLookups(), 0, tag + 'd: シートを開いてもいない');
+    ok(r.error.indexOf('端末: ' + cd) >= 0, tag + 'e: error に端末日付が入る');
+    ok(r.error.indexOf('施設: ' + DATE) >= 0, tag + 'f: error に施設日付が入る');
+  });
+  // 文言の全文を実測値として1件提示する
+  const env = makeEnv();
+  const cd = jstDay(30);
+  const r = env.ctx.reportUndone_(env.ss, Object.assign({}, P, { date: cd, toggle: 'report' }));
+  eq(r.error, 'この端末の日付設定がずれています（端末: ' + cd + ' ／ 施設: ' + DATE + '）。設定を確認してください',
+    'N5: error 文字列が仕様どおり（実測=' + r.error + '）');
+  eq(Object.keys(r).sort(), ['error', 'success'], 'N6: 返り値は success/error のみ');
+  // cancel でも同じく拒否する（片側だけ通す穴を作らない）
+  const env2 = makeEnv();
+  const r2 = env2.ctx.reportUndone_(env2.ss, Object.assign({}, P, { date: cd, toggle: 'cancel' }));
+  eq(r2.success, false, 'N7: cancel でも同じく拒否');
+  eq(env2.trace.length, 0, 'N8: cancel 拒否でも操作トレースは空');
+}
+// 空・解釈不能は従来どおり serverToday を採用（回帰なし）
+{
+  [['', 'O1'], ['ゴミ', 'O2'], [null, 'O3'], [undefined, 'O4']].forEach(([bad, tag]) => {
+    const env = makeEnv();
+    const r = env.ctx.reportUndone_(env.ss, Object.assign({}, P, { date: bad, toggle: 'report' }));
+    eq(r.success, true, tag + 'a: date=' + JSON.stringify(bad) + ' でも保存する');
+    eq(env.dataRows()[env.dataRows().length - 1][1], DATE, tag + 'b: serverToday(' + DATE + ') を採用');
+  });
+}
+
 // ===== 朝報告セクション（0件なら null）=====
 {
   const env = makeEnv({ rows: [] });
-  eq(env.ctx.undoneDigestForMorning_(env.ss, '2026-07-30'), null, 'J1: データなし → null（セクション非表示）');
+  eq(env.ctx.undoneDigestForMorning_(env.ss, DATE), null, 'J1: データなし → null（セクション非表示）');
   const env2 = makeEnv();
   env2.ctx.reportUndone_(env2.ss, Object.assign({}, P, { toggle: 'report' }));
-  const sec = env2.ctx.undoneDigestForMorning_(env2.ss, '2026-07-30');
+  const sec = env2.ctx.undoneDigestForMorning_(env2.ss, DATE);
   eq(sec, { count: 1, items: [{ date: DATE, app: 'sougei_nisshi', app_label: '送迎日誌' }] },
     'J2: active 1件が朝報告に出る（4月の active は14日窓の外で落ちる）');
   env2.ctx.reportUndone_(env2.ss, Object.assign({}, P, { toggle: 'cancel' }));
-  eq(env2.ctx.undoneDigestForMorning_(env2.ss, '2026-07-30'), null,
+  eq(env2.ctx.undoneDigestForMorning_(env2.ss, DATE), null,
     'J3: cancel すると朝報告から消える（終わるまで方式）');
 }
 

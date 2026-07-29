@@ -143,7 +143,14 @@ function blockedStorage() {
   envP.ctx._undoneRestoreState();
   eq(envP.state(), 'pending', '3-3a: pending が残っていれば data-state=pending');
   ok(envP.main().indexOf('押されましたが送信できていません') >= 0, '3-3b: 送信できていない旨を出す');
-  ok(/7\/30 09:12/.test(envP.main()), '3-3c: 押下時刻を M/D HH:MM で出す（実測=' + envP.main() + '）');
+  // 押下時刻は **端末ローカル時刻**で出す（現場のiPadの時計＝職員が見ている時刻に合わせる）。
+  // よって期待値も端末ローカルで組む。ここを JST 決め打ちにすると TZ 依存の偽の赤になる。
+  const pressed = new Date('2026-07-30T09:12:00+09:00');
+  const expectMDHM = (pressed.getMonth() + 1) + '/' + pressed.getDate() + ' '
+    + String(pressed.getHours()).padStart(2, '0') + ':' + String(pressed.getMinutes()).padStart(2, '0');
+  ok(envP.main().indexOf(expectMDHM) >= 0,
+    '3-3c: 押下時刻を M/D HH:MM（端末ローカル）で出す（期待=' + expectMDHM + ' 実測=' + envP.main() + '）');
+  ok(/\d{1,2}\/\d{1,2} \d{2}:\d{2}/.test(envP.main()), '3-3c2: M/D HH:MM の書式である');
   eq(envP.sub(), 'タップで再送信', '3-3d: 再送信を促す');
 
   // confirmed（送信成功済み）は従来どおり reported

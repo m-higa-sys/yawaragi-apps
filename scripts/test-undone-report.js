@@ -19,9 +19,12 @@ const path = require('path');
 const {
   UNDONE_SHEET,
   UNDONE_HEADER,
+  UNDONE_CLIENT_DATE_TOLERANCE_DAYS,
   undoneNormalizeDateCell_,
   undoneBuildRow_,
   undoneFindActiveRow_,
+  undoneDayDiff_,
+  undoneIsAcceptableClientDate_,
   buildUndoneDigestSection_
 } = require(path.join(__dirname, '..', 'gas', 'yawaragi-board', 'undone-report-core.js'));
 
@@ -107,6 +110,43 @@ eq(undoneFindActiveRow_(rows, H, 'sougei_nisshi', '2026-07-27'), null,
 eq(undoneFindActiveRow_(rows, H, 'sougei_nisshi', '2026-04-29'), { index: 1, id: 'un_1777444258098' },
   'F5: Date型セルの既存行も引ける（normalize経由）');
 eq(undoneFindActiveRow_([], H, 'sougei_nisshi', '2026-07-29'), null, 'F6: 空シート → null');
+
+// ===== 端末日付の受け入れ判定（「今日」の定義が2つに割れるのを止める）=====
+// 端末時計が狂うと朝報告に嘘の日付が黙って出るため、±1日を超える食い違いは拒否する。
+// 日跨ぎ（施設が翌日／端末が前日）は正当なので潰さない。クランプもしない。
+eq(UNDONE_CLIENT_DATE_TOLERANCE_DAYS, 1, 'T0: 許容差は暦日で±1日');
+
+// 日数差（ambient TZ 非依存・暦日）
+eq(undoneDayDiff_('2026-07-30', '2026-07-30'), 0, 'T1: 差 0');
+eq(undoneDayDiff_('2026-07-31', '2026-07-30'), 1, 'T2: 差 +1');
+eq(undoneDayDiff_('2026-07-29', '2026-07-30'), -1, 'T3: 差 -1');
+eq(undoneDayDiff_('2026-08-01', '2026-07-30'), 2, 'T4: 差 +2');
+eq(undoneDayDiff_('2026-07-28', '2026-07-30'), -2, 'T5: 差 -2');
+// 月末・年末・うるう年の跨ぎでも暦日で正しく出る
+eq(undoneDayDiff_('2026-08-01', '2026-07-31'), 1, 'T6: 月跨ぎ +1');
+eq(undoneDayDiff_('2027-01-01', '2026-12-31'), 1, 'T7: 年跨ぎ +1');
+eq(undoneDayDiff_('2028-03-01', '2028-02-29'), 1, 'T8: うるう日跨ぎ +1');
+eq(undoneDayDiff_('2026-07-30', '2025-07-30'), 365, 'T9: 差 +365');
+eq(undoneDayDiff_('ゴミ', '2026-07-30'), null, 'T10: 解釈不能は null');
+eq(undoneDayDiff_('2026-07-30', ''), null, 'T11: 相手が空でも null');
+
+// 採用（-1 / 0 / +1）
+eq(undoneIsAcceptableClientDate_('2026-07-29', '2026-07-30'), true, 'T12: -1 は採用');
+eq(undoneIsAcceptableClientDate_('2026-07-30', '2026-07-30'), true, 'T13:  0 は採用');
+eq(undoneIsAcceptableClientDate_('2026-07-31', '2026-07-30'), true, 'T14: +1 は採用');
+// 拒否（-2 / +2 / +30 / -365）
+eq(undoneIsAcceptableClientDate_('2026-07-28', '2026-07-30'), false, 'T15: -2 は拒否');
+eq(undoneIsAcceptableClientDate_('2026-08-01', '2026-07-30'), false, 'T16: +2 は拒否');
+eq(undoneIsAcceptableClientDate_('2026-08-29', '2026-07-30'), false, 'T17: +30 は拒否');
+eq(undoneIsAcceptableClientDate_('2025-07-30', '2026-07-30'), false, 'T18: -365 は拒否');
+// 解釈不能は「採用しない」（ハンドラ側が serverToday へフォールバックする）
+eq(undoneIsAcceptableClientDate_('', '2026-07-30'), false, 'T19: 空は採用しない');
+eq(undoneIsAcceptableClientDate_('ゴミ', '2026-07-30'), false, 'T20: 解釈不能は採用しない');
+// '+09:00' 付きISOやDate型も normalize を通して比較できる
+eq(undoneIsAcceptableClientDate_('2026-07-30T23:30:00+09:00', '2026-07-30'), true,
+  'T21: +09:00付きISO（同日）は採用');
+eq(undoneIsAcceptableClientDate_(new Date('2026-07-29T07:00:00Z'), '2026-07-30'), true,
+  'T22: Date型（前日）は採用');
 
 // ===== 朝報告セクション（0件なら null／新しい順／終わるまで方式）=====
 // 並び順の検証は窓を広げて行う（4月行を窓内に入れるため days=200）
