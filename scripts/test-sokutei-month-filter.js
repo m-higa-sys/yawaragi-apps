@@ -217,9 +217,10 @@ function resetFixtures() {
   captured.writes.length = 0;
   Object.keys(els).forEach(k => delete els[k]);
   timers.length = 0;
-  // 2026-07-30: 書き込みには操作者の選択が要る（B案 requireOperator）。
-  // 現場が最初に自分を選ぶのと同じ前提をここで作る。未選択の挙動は
-  // scripts/test-sokutei-operator-gate.js が受け持つ。
+  // 2026-07-30: 測定だけ測定者の選択が要る（他の書き込みは名前を求めない）。
+  // モーダルを開くたび未選択へ戻るため、実際の選択は openRecordModal の直後で行う。
+  // ここは初期状態を明示するためだけに置く。適用範囲の検証は
+  // scripts/test-sokutei-operator-scope.js が受け持つ。
   elFor('recordStaffSelect').value = 'スタッフY';
 }
 function cardOf(h, name) {
@@ -549,6 +550,7 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   ok(cardOf(els['tab4'].innerHTML, 'ダミー田中').indexOf('donerow') < 0, '前提: 田中はまだ未');
   elFor('recordStaffSelect').value = 'スタッフY';
   S.openRecordModal('ダミー田中');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   await S.submitRecord();
   eq(YOTEI_STATE.find(y => y.userId === 'ダミー田中').nextYm, '2026-10', '予定月は10月へ進む（当月から外れる）');
   tM = els['tab4'].innerHTML;

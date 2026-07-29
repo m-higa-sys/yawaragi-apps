@@ -211,9 +211,10 @@ function resetFixtures() {
   captured.writes.length = 0; captured.reads.length = 0; captured.shienRows.length = 0;
   timers.length = 0;
   Object.keys(els).forEach(k => delete els[k]);
-  // 2026-07-30: 書き込みには操作者の選択が要る（B案 requireOperator）。
-  // 現場が最初に自分を選ぶのと同じ前提をここで作る。未選択の挙動は
-  // scripts/test-sokutei-operator-gate.js が受け持つ。
+  // 2026-07-30: 測定だけ測定者の選択が要る（他の書き込みは名前を求めない）。
+  // モーダルを開くたび未選択へ戻るため、実際の選択は openRecordModal の直後で行う。
+  // ここは初期状態を明示するためだけに置く。適用範囲の検証は
+  // scripts/test-sokutei-operator-scope.js が受け持つ。
   elFor('recordStaffSelect').value = 'スタッフY';
 }
 
@@ -336,6 +337,7 @@ function resetFixtures() {
   elFor('recordStaffSelect').value = 'スタッフY';
   elFor('recordNote').value = '';
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   const shienBefore = captured.shienRows.length;
   await S.submitRecord();
   const doneUrl = captured.writes[captured.writes.length - 1];
@@ -353,6 +355,7 @@ function resetFixtures() {
   sec('5-4b 要支援は+4ヶ月');
   elFor('recordStaffSelect').value = 'スタッフX';
   S.openRecordModal('ダミー支援B');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   await S.submitRecord();
   eq(yoteiFind('ダミー支援B').nextYm, '2026-11', '予定月=実施月7月+4ヶ月=2026-11（要支援）');
   eq(yoteiFind('ダミー支援B').slideCount, 0, '実施でスライド回数が0に戻る');
@@ -500,11 +503,13 @@ function resetFixtures() {
   elFor('recordStaffSelect').value = 'スタッフY';
   elFor('recordNote').value = '';
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   const p3 = S.submitRecord();
   await Promise.resolve();
   ok(els['tab1'].innerHTML.indexOf('⏳ 送信中…') >= 0, '「今日測定した」でも応答前に「送信中…」が出る');
   const w3 = captured.writes.length;
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   await S.submitRecord();
   eq(captured.writes.length, w3, '送信中の連打は送られない');
   gate3();
@@ -588,11 +593,13 @@ function resetFixtures() {
   sec('案X-5 出力者は要介護のみ');
   elFor('recordStaffSelect').value = 'スタッフY';
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   eq(elFor('recordOutputWrap').style.display, '', '要介護では出力者欄を出す');
   ok(elFor('recordOutputSelect').innerHTML.indexOf('（測定者と同じ）') >= 0, '既定は「測定者と同じ」');
   ok(elFor('recordHint').textContent.indexOf('出力者') >= 0, '要介護向けの説明が出る');
   S.closeRecordModal();
   S.openRecordModal('ダミー支援B');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   eq(elFor('recordOutputWrap').style.display, 'none', '要支援・事業対象者では出力者欄を隠す');
   ok(elFor('recordHint').textContent.indexOf('出力者はありません') >= 0, '要支援向けの説明が出る');
   S.closeRecordModal();
@@ -604,6 +611,7 @@ function resetFixtures() {
   elFor('recordStaffSelect').value = 'スタッフY';
   elFor('recordNote').value = '';
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   elFor('recordOutputSelect').value = 'スタッフX';
   await S.submitRecord();
   let doneUrlX = captured.writes[captured.writes.length - 1];
@@ -613,6 +621,7 @@ function resetFixtures() {
   await S.load();
   elFor('recordStaffSelect').value = 'スタッフY';
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   elFor('recordOutputSelect').value = '';
   await S.submitRecord();
   doneUrlX = captured.writes[captured.writes.length - 1];
@@ -622,6 +631,7 @@ function resetFixtures() {
   await S.load();
   elFor('recordStaffSelect').value = 'スタッフX';
   S.openRecordModal('ダミー支援B');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   await S.submitRecord();
   doneUrlX = captured.writes[captured.writes.length - 1];
   ok(doneUrlX.indexOf('outputBy=&') >= 0 || /outputBy=$/.test(doneUrlX.split('&note=')[0]), '要支援は出力者を送らない（空）');
@@ -633,6 +643,7 @@ function resetFixtures() {
   eq(elFor('recordDate').value, '', '前提: まだ測定日欄は空');
   elFor('recordStaffSelect').value = 'スタッフY';
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   eq(elFor('recordDate').value, TODAY, '既定値は選んでいる日（初期＝今日）');
   eq(elFor('recordDate').max, TODAY, '未来日は選べないよう max が今日');
   elFor('recordDate').value = '2026-05-12';        // 5月に測ったぶんを後から入れる
@@ -648,6 +659,7 @@ function resetFixtures() {
   const wF = captured.writes.length;
   elFor('recordStaffSelect').value = 'スタッフY';
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   elFor('recordDate').value = '2026-09-01';
   await S.submitRecord();
   eq(captured.writes.length, wF, '未来日では送信しない');
@@ -656,6 +668,7 @@ function resetFixtures() {
   sec('案X-2 日付ナビで日を変えると記録モーダルの既定日もその日になる');
   await S.goDate('2026-07-21');
   S.openRecordModal('ダミー介護A');
+  elFor('recordStaffSelect').value = 'スタッフY';   // 2026-07-30: 測定はモーダルを開くたび未選択に戻る
   eq(elFor('recordDate').value, '2026-07-21', '既定の測定日は見ている日');
   S.closeRecordModal();
 

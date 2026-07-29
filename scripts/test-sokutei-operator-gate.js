@@ -10,12 +10,12 @@
 //   全部その人の名義で記録された。誰が操作したかの記録として信用できず、
 //   運営指導で操作履歴を問われたときに答えられない。人を疑う材料にもなってしまう。
 //
-// 直すのは人ではなく記録の仕組み。B案＋C案の両方を入れる:
-//   B 未選択を既定にし、未選択のままの書き込みをブロックする
-//   C いま誰として操作しているかを常時表示する（Bだけだと
-//     「自分を選んだつもりが前の人のまま」が残るため、組み合わせて初めて効く）
-//
-// ★リセットはしない。ページ内で一度選んだら保持する（毎回選び直しは現場の手数が増える）。
+// 直すのは人ではなく記録の仕組み。
+// ★2026-07-30 追記: 当初は「未選択を既定にして全書き込みをブロック（B）＋常時表示（C）」で入れたが、
+//   清掃アプリで同型の方式が実運用で破られた実績があり、方式を変えた。
+//   いまは「測定だけ毎回測定者を選ぶ／他の操作は名前を求めない」。
+//   このファイルは checkOperator の境界値と、ゲートの適用範囲・読み取り不干渉だけを見る。
+//   方式そのものの検証は scripts/test-sokutei-operator-scope.js が正。
 // ★読み取り操作（タブ切替・絞り込み・日付ナビ）は絶対にブロックしない。
 // ★過去の updatedBy は書き換えない。今後の記録だけが正しくなればよい。
 //
@@ -37,8 +37,8 @@ function extractFn(src, name) {
 
 const sandbox = { console, String, Number, Object, Array, Math, JSON, parseInt, RegExp };
 vm.createContext(sandbox);
-['checkOperator', 'operatorLabel'].forEach(n => { vm.runInContext(extractFn(html, n), sandbox); });
-const { checkOperator, operatorLabel } = sandbox;
+['checkOperator'].forEach(n => { vm.runInContext(extractFn(html, n), sandbox); });
+const { checkOperator } = sandbox;
 
 let pass = 0, fail = 0;
 function eq(actual, expected, label) {
@@ -79,18 +79,10 @@ eq(checkOperator('ダミー丁', STAFF).reason, 'unknown', '理由は不明な�
 eq(checkOperator('（操作する人を選んでください）', STAFF).reason, 'unknown',
   'プレースホルダの表示文字がそのまま値になっていたら弾く（value は空文字であるべき）');
 
-sec('5. 常時表示（C案）の文字列');
-{
-  const a = operatorLabel('ダミー甲', STAFF);
-  eq(a.warn, false, '選択済みは警告色にしない');
-  eq(a.text, 'いま ダミー甲 さんとして操作しています', '誰として操作中かを出す');
-  const b = operatorLabel('', STAFF);
-  eq(b.warn, true, '未選択は警告色にする');
-  eq(b.text, '操作する人を選んでください', '未選択の案内');
-  const c = operatorLabel('ダミー丁', STAFF);
-  eq(c.warn, true, '一覧に無い名前も警告側に倒す');
-  eq(c.text, '操作する人を選んでください', '同じ案内に寄せる（現場が迷わない）');
-}
+// 5. 常時表示（C案）は 2026-07-30 に廃止。測定を毎回選ぶ方式へ変えたため
+//    「いま○○さんとして操作しています」が意味を失い、operatorLabel ごと撤去した。
+//    置き換えた「直前に○○さんとして記録しました」と適用範囲は
+//    scripts/test-sokutei-operator-scope.js が受け持つ。
 
 sec('6. 書き込み5経路すべてにゲートが入っているか（ソースの実配線）');
 // 純関数だけ通っても、呼び出し側に入っていなければ意味がない。
@@ -99,11 +91,12 @@ sec('6. 書き込み5経路すべてにゲートが入っているか（ソー�
   const gate = 'requireOperator(';
   const fnBody = n => extractFn(html, n);
   const has = n => fnBody(n).indexOf(gate) >= 0;
-  eq(has('slideToNextMonth'), true, '📅来月へ にゲートがある');
-  eq(has('undoSlide'), true, '戻す にゲートがある');
-  eq(has('pickYm'), true, '予定▾の月選択 にゲートがある');
+  // 2026-07-30: ゲートは測定だけに絞った（他は名前を求めない＝社長決定）
   eq(has('submitRecord'), true, '📝測定した にゲートがある');
-  eq(has('toggleOutput'), true, '🖨／📄 出力チェック にゲートがある');
+  eq(has('slideToNextMonth'), false, '📅来月へ にはゲートを掛けない');
+  eq(has('undoSlide'), false, '戻す にはゲートを掛けない');
+  eq(has('pickYm'), false, '予定▾の月選択 にはゲートを掛けない');
+  eq(has('toggleOutput'), false, '🖨／📄 出力チェック にはゲートを掛けない');
 }
 
 sec('7. 読み取り操作にはゲートを入れていないこと（現場を止めない）');

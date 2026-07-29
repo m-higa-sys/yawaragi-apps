@@ -116,22 +116,12 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 /* ===== 共通フィルタバー（2026-07-28・他アプリへ展開予定の標準パターン）===== */
 /* モバイルで画面を食わないよう、既定は畳んでおき「絞り込み」を押したら開く。
    絞り込み中は畳んでいても分かるよう、見出しに適用中の件数バッジを出す。 */
-/* ===== 操作者バー（B案＋C案）===== */
-/* スクロールしても見えている必要がある。誰として操作しているかを見失った瞬間に
-   別人名義の記録が生まれるため、カードの上に貼り付けておく。 */
+/* ===== 直前の記録の表示 ===== */
+/* 測定した直後だけ「直前に○○さんとして記録しました」を出す。測定は毎回選ぶ方式なので
+   「いま誰として操作中」の常時表示は廃止した（2026-07-30）。 */
 .opbar { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   background: #eceff1; border: 1.5px solid #b0bec5; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
 .opbar .opbar-text { font-weight: 800; font-size: .9em; color: #37474f; }
-.opbar .opbar-label { font-size: .82em; color: #546e7a; margin-left: auto; }
-/* 選択は現場の手袋・老眼を想定して最低48px（他のタップ対象と同じ基準） */
-.opbar .opbar-select { min-height: 48px; font-size: 1em; padding: 6px 10px; border: 1px solid #90a4ae; border-radius: 8px; background: #fff; }
-/* 未選択は書き込みが止まる状態。気づかせる必要があるので色を変える */
-.opbar.warn { background: #fff4e5; border-color: #ffb74d; }
-.opbar.warn .opbar-text { color: #e65100; }
-.opbar.warn .opbar-select { border-color: #ef6c00; border-width: 2px; }
-/* 記録モーダル内の測定者の確認表示（正本は上部バー） */
-.modal-echo { font-size: 1em; font-weight: 700; color: #37474f; padding: 10px 12px; background: #eceff1; border-radius: 8px; }
-.modal-echo.warn { background: #fff4e5; color: #e65100; }
 .ufbar { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 12px; overflow: hidden; }
 .uf-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; min-height: 48px; font-weight: 700; color: #455a64; font-size: .9em; }
 .uf-head .uf-caret { margin-left: auto; color: #90a4ae; font-size: .9em; }
@@ -213,10 +203,11 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
          ページ上部に出しっぱなしにして、いつでも自分に切り替えられるようにする。
        ★一度選んだら保持する（モーダルを閉じるたびに空へ戻すと毎回選び直しになり手数が増える）。
          違っていればこの表示で気づける、という設計。 -->
-  <div id="opbar" class="opbar warn">
-    <span class="opbar-text">操作する人を選んでください</span>
-    <label class="opbar-label" for="recordStaffSelect">操作する人</label>
-    <select id="recordStaffSelect" class="opbar-select" onchange="renderOperatorBar()"></select>
+  <!-- 直前の測定を誰の名義で記録したかだけを出す（2026-07-30）。
+       測定は記録のたびに測定者を選ぶ方式にしたので「いま○○さんとして操作中」は意味を失う。
+       セレクトは記録モーダルへ戻した。ここは記録直後の確認専用で、未選択を促す表示は出さない。 -->
+  <div id="opbar" class="opbar" style="display:none">
+    <span class="opbar-text"></span>
   </div>
   <div id="ufbar" class="ufbar" style="display:none"></div>
   <div id="undoBar" class="undo-bar" style="display:none"></div>
@@ -233,9 +224,10 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
     <div class="modal-name" id="recordModalName"></div>
     <label class="modal-label">測定日</label>
     <input type="date" id="recordDate" class="modal-input">
-    <!-- 測定者のセレクトは画面上部の操作者バーへ移した（正本はあちら）。ここでは確認だけ出す。 -->
-    <label class="modal-label">測定者</label>
-    <div id="recordStaffEcho" class="modal-echo"></div>
+    <!-- 測定者は記録のたびに選ぶ（2026-07-30）。開くたび未選択から始まり、記録後にリセットする。
+         「直近の人を上に」は入れない。前の人が最上位に固定されると忙しいときに一番上を押す事故が起きる。 -->
+    <label class="modal-label">測定者（毎回選んでください）</label>
+    <select id="recordStaffSelect" class="modal-select"></select>
     <div id="recordOutputWrap">
       <label class="modal-label">出力者（要介護のみ・空欄なら測定者と同じ）</label>
       <select id="recordOutputSelect" class="modal-select"></select>
@@ -856,18 +848,38 @@ function fillStaffSelect() {
   const names = (state.staff || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
   const opts = names.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
   const sel = document.getElementById('recordStaffSelect');
-  // ★先頭にプレースホルダを置き、value を空文字にする（B案）。
-  //   これが無いとブラウザが先頭の人を既定にしてしまい、誰も選んでいないのに
-  //   その人の名前が updatedBy として記録される（2026-07-29 の26件がこれ）。
-  //   ★ただし既に選ばれている値は保持する（選び直しの手数を増やさない）。
+  // ★先頭にプレースホルダを置き value を空文字にする。これが無いとブラウザが先頭の人を
+  //   既定にしてしまい、誰も選んでいないのにその人の名前が記録される（2026-07-29 の26件がこれ）。
+  // ★選択は保持しない（2026-07-30 社長決定）。測定は毎回選ぶ方式にしたので持ち回らない。
+  //   清掃アプリで「未選択強制＋保持」を実運用したが、前の人のまま他の人が打って破られた。
+  //   並びは五十音順のまま。「直近の人を上に」は入れない（最上位固定は誤タップの温床）。
   if (sel && !sel.options.length) {
-    const keep = String(sel.value || '').trim();      // 既に選ばれている人は消さない（指示: リセットしない）
-    sel.innerHTML = '<option value="">（操作する人を選んでください）</option>' + opts;
-    sel.value = (keep && names.indexOf(keep) >= 0) ? keep : '';
+    sel.innerHTML = '<option value="">（測定した人を選んでください）</option>' + opts;
   }
+  if (sel) sel.value = '';
   const out = document.getElementById('recordOutputSelect');
   if (out && !out.options.length) out.innerHTML = '<option value="">（測定者と同じ）</option>' + opts;
-  renderOperatorBar();
+}
+
+// 人でない固定値。測定以外の操作の updatedBy / output_by に入れる。
+// ★空欄にしない。予定月シートの updatedBy は init が57件（人でない固定値の前例あり）で、
+//   空欄は0件。空にすると「取得漏れ・未設定」と区別できず、後から見て理由が読めない。
+//   固定値なら「人を記録しない設計」であることが記録自体から読み取れる。
+const SYSTEM_OPERATOR = 'アプリ操作';
+
+// その操作に「誰がやったか」の記録が要るか。★測定だけ true。
+//   測定   … 運営指導で問われる記録の要件。1日数件なので毎回選んでも負担が小さい
+//   その他 … 内部管理で記録義務がない。24件連続でやる作業なので毎回選ばせると必ず雑になる
+// （2026-07-30 社長決定。全操作に毎回選択を課すと24件連続スライドで48タップ増える）
+function actionNeedsOperator(action) {
+  return String(action || '') === 'addSokuteiDone';
+}
+
+// GAS へ渡す by の値を決める。
+// ★測定以外は人名を渡されても固定値へ潰す。これが今回の問題の本体（前の人の名前が残る）の封鎖策。
+function byParamFor(action, operator) {
+  const v = String(operator == null ? '' : operator).replace(/[\s　]+/g, ' ').trim();
+  return actionNeedsOperator(action) ? v : SYSTEM_OPERATOR;
 }
 
 // 操作者が選ばれているかを判定する純関数（B案）。
@@ -883,15 +895,6 @@ function checkOperator(value, staffList) {
     return { ok: false, name: v, reason: 'unknown' };
   }
   return { ok: true, name: v, reason: '' };
-}
-
-// 常時表示の文字列（C案）。Bだけだと「自分を選んだつもりが前の人のまま」が残るため、
-// いま誰として操作しているかを画面に出しっぱなしにする。長い注意文は付けない。
-function operatorLabel(value, staffList) {
-  const g = checkOperator(value, staffList);
-  return g.ok
-    ? { text: 'いま ' + g.name + ' さんとして操作しています', warn: false }
-    : { text: '操作する人を選んでください', warn: true };
 }
 
 // 長期休みが対象月 ym に重なるか。resumeDate 空＝無期限（まだ戻っていない）。
@@ -1669,34 +1672,56 @@ function operatorName() {
   const sel = document.getElementById('recordStaffSelect');
   return (sel && sel.value) || '';
 }
-// 書き込み操作の直前に必ず通す関門（B案）。未選択なら実行せず false を返す。
-// ★読み取り（タブ切替・絞り込み・日付ナビ・カードを開くだけ）では絶対に呼ばない。
-//   見るだけのときに名前を選ばされるのは現場の負担でしかない。
+// 測定の記録だけに掛ける関門。未選択なら記録せず false を返す。
+// ★スライド・予定月変更・戻す・出力チェックでは呼ばない（名前を求めない＝社長決定）。
+// ★読み取り（タブ切替・絞り込み・日付ナビ）でも絶対に呼ばない。
 function requireOperator() {
   const g = checkOperator(operatorName(), state.staff || []);
   if (g.ok) return true;
-  renderOperatorBar();                     // 上部の表示を警告状態にして、どこを直せばよいか示す
   const sel = document.getElementById('recordStaffSelect');
   alert(g.reason === 'unknown'
-    ? '操作する人が正しく選ばれていません。画面上部の「操作する人」から選び直してください。'
-    : '操作する人を選んでください。\n画面上部の「操作する人」から自分を選んでから操作してください。');
+    ? '測定者が正しく選ばれていません。「測定者」から選び直してください。'
+    : '測定者を選んでください。\n測定は毎回、測った人を選んでから記録します。');
   if (sel && sel.focus) { try { sel.focus(); } catch (e) { } }
   return false;
 }
-// いま誰として操作しているかを常時表示する（C案）。カードをスクロールしても見える位置に出す。
-function renderOperatorBar() {
+// 測定者セレクトを未選択へ戻す。開くたび・記録のたびに呼ぶ＝前の人の選択を残さない。
+function resetOperatorSelect() {
+  const sel = document.getElementById('recordStaffSelect');
+  if (sel) sel.value = '';
+}
+// 直前の測定を誰の名義で記録したかを、記録の直後だけ出す。
+// ★出しっぱなしにしない（2026-07-30 社長指示）。今日ここで潰したのは「前の人の名前が残る」問題で、
+//   表示だけ同じ誤解を生むなら直した意味が薄まる。朝9時の記録が11時まで残っていて
+//   別の人が「いま自分の名前」と読む余地は消す。「記録できた」が伝われば役目は終わり。
+const OPBAR_MS = 10000;
+let opbarTimer = null;
+let opbarSeq = 0;      // 表示の世代。古いタイマーが暴発しても新しい表示を消さないための札
+function renderOperatorBar(lastName) {
   const bar = document.getElementById('opbar');
   if (!bar) return;
-  const l = operatorLabel(operatorName(), state.staff || []);
-  bar.className = 'opbar' + (l.warn ? ' warn' : '');
+  // ★先に必ず前のタイマーを捨てる。連続で記録したとき、1件目の消去が2件目の表示を消しに来ない。
+  if (opbarTimer !== null) { clearTimeout(opbarTimer); opbarTimer = null; }
+  const n = String(lastName == null ? '' : lastName).trim();
   const txt = bar.querySelector('.opbar-text');
-  if (txt) txt.textContent = l.text;
+  const my = ++opbarSeq;                          // 表示を変えるたびに世代を進める
+  if (!n) { bar.style.display = 'none'; if (txt) txt.textContent = ''; return; }
+  bar.style.display = '';
+  bar.className = 'opbar';
+  if (txt) txt.textContent = '直前に ' + n + ' さんとして記録しました';
+  opbarTimer = setTimeout(function () {
+    if (my !== opbarSeq) return;                  // 自分より新しい表示が出ていれば何もしない
+    opbarTimer = null;
+    renderOperatorBar('');
+  }, OPBAR_MS);
 }
 async function callYotei(action, name) {
   const r = derived.rowByName[name];
   if (!r) throw new Error('対象が見つかりません');
   const url = GAS + '?action=' + action + '&userId=' + encodeURIComponent(r.userId || r.name)
-    + '&domain=sokutei&by=' + encodeURIComponent(operatorName()) + '&t=' + Date.now();
+    // ★人名は送らない。スライド・戻すは記録義務がなく、24件連続でやる作業のため毎回選ばせない。
+    //   前の人の名前が漏れることを構造的に防ぐため byParamFor で固定値へ潰す（2026-07-30）。
+    + '&domain=sokutei&by=' + encodeURIComponent(byParamFor(action, '')) + '&t=' + Date.now();
   const res = await fetchJson(url);
   if (!res.ok) throw new Error((res && res.error) || '更新に失敗しました');
   r.nextYm = res.row.nextYm;
@@ -1720,7 +1745,6 @@ function confirmPlanGap(r, chosenYm) {
 }
 
 async function slideToNextMonth(name) {
-  if (!requireOperator()) return;        // 誰として送るのかが確定していない書き込みはしない
   const r0 = derived.rowByName[name];
   // 送る先＝いまの予定月の翌月。判定は yotei-core.js の nextYmSlide と同じ土俵で行う
   if (r0 && !confirmPlanGap(r0, nextYmSlide(r0.nextYm || thisYm()))) return;   // 「やめる」＝送信しない
@@ -1731,7 +1755,6 @@ async function slideToNextMonth(name) {
   showUndoBar(name + ' を' + m + '月へ送りました', () => undoSlide(name));
 }
 async function undoSlide(name) {
-  if (!requireOperator()) return;        // 戻すのも updatedBy を書く操作
   const row = await runRowAction(name, 'slide', () => callYotei('undoSlideYotei', name));
   if (!row) return;
   unsinkRow(name);                                   // 戻したら沈めも解除して元の行に復帰させる
@@ -1750,7 +1773,6 @@ function upsertOutputRow_(row) {
   rows.push(row);
 }
 async function toggleOutput(name, kind) {
-  if (!requireOperator()) return;        // 出力チェックは output_by を記録する
   const r = derived.rowByName[name];
   if (!r || !r.doneThisMonth) return;                 // 測っていない人に出力は無い
   if (OUTPUT_KINDS.indexOf(kind) < 0) return;
@@ -1763,7 +1785,9 @@ async function toggleOutput(name, kind) {
       + '&domain=sokutei&ym=' + encodeURIComponent(ym)
       + '&kind=' + encodeURIComponent(kind)
       + '&done=' + (next ? 'true' : 'false')
-      + '&by=' + encodeURIComponent(operatorName()) + '&t=' + Date.now();
+      // ★人名は送らない（2026-07-30）。出力チェックは記録義務がなく、前の人の名前が
+      //   output_by に残る方が「名前なし」より悪い。固定値へ潰す。
+      + '&by=' + encodeURIComponent(byParamFor('setSokuteiOutput', '')) + '&t=' + Date.now();
     const j = await fetchJson(url);
     if (!j.ok || !j.row) throw new Error((j && j.error) || '出力チェックの更新に失敗しました');
     return j.row;
@@ -1821,7 +1845,8 @@ async function setYm(name, ym) {
     + '&domain=sokutei&nextYm=' + encodeURIComponent(ym)
     + '&name=' + encodeURIComponent(r.name)
     + '&care=' + encodeURIComponent(r.care || '')
-    + '&by=' + encodeURIComponent(operatorName()) + '&t=' + Date.now();
+    // ★人名は送らない（2026-07-30）。予定月の変更は内部管理で記録義務がない。
+    + '&by=' + encodeURIComponent(byParamFor('setYotei', '')) + '&t=' + Date.now();
   const res = await fetchJson(url);
   if (!res.ok) throw new Error((res && res.error) || '更新に失敗しました');
   r.nextYm = res.row.nextYm;
@@ -1830,7 +1855,6 @@ async function setYm(name, ym) {
   return res.row;
 }
 async function pickYm(ym) {
-  if (!requireOperator()) return;        // 月タップも setYotei で updatedBy を書く
   const name = ymPickerName;
   const r = derived.rowByName[name];
   if (!r) return;
@@ -1866,13 +1890,7 @@ function openRecordModal(name) {
   recordTargetName = name;
   document.getElementById('recordModalName').textContent = name;
   fillStaffSelect();
-  // 測定者は画面上部の操作者バーで選ぶ。ここは確認だけ（未選択なら記録ボタンで止まる）
-  const echo = document.getElementById('recordStaffEcho');
-  if (echo) {
-    const g = checkOperator(operatorName(), state.staff || []);
-    echo.textContent = g.ok ? g.name + '（画面上部で変更できます）' : '未選択 — 画面上部の「操作する人」から選んでください';
-    echo.className = 'modal-echo' + (g.ok ? '' : ' warn');
-  }
+  resetOperatorSelect();   // ★開くたび未選択から始める＝前の人の選択を絶対に引き継がない
   // 過去日入力（案X-2）: 既定は日付ナビで選んでいる日。未来日は実施記録としてありえないので max で塞ぐ。
   const dEl = document.getElementById('recordDate');
   dEl.value = state.selectedDate;
@@ -1892,7 +1910,7 @@ function closeRecordModal() {
   recordTargetName = '';
 }
 async function submitRecord() {
-  if (!requireOperator()) return;        // 測定者が確定していない記録は作らない
+  if (!requireOperator()) return;        // 測定者が確定していない記録は作らない（測定だけ毎回選ぶ）
   const name = recordTargetName;
   const by = document.getElementById('recordStaffSelect').value;
   const note = document.getElementById('recordNote').value.trim();
@@ -1916,7 +1934,8 @@ async function submitRecord() {
     const url = GAS + '?action=addSokuteiDone&userId=' + encodeURIComponent(r.userId || name)
       + '&name=' + encodeURIComponent(name)
       + '&care=' + encodeURIComponent(r.care || '')
-      + '&date=' + encodeURIComponent(date) + '&by=' + encodeURIComponent(by)
+      // ★測定だけ人名を送る。運営指導で問われる記録の要件のため（2026-07-30）
+      + '&date=' + encodeURIComponent(date) + '&by=' + encodeURIComponent(byParamFor('addSokuteiDone', by))
       + '&outputBy=' + encodeURIComponent(outputBy)
       + '&note=' + encodeURIComponent(note) + '&t=' + Date.now();
     const j = await fetchJson(url);
@@ -1925,6 +1944,11 @@ async function submitRecord() {
   });
   btn.disabled = false; btn.textContent = '記録する';
   if (!res) return;                             // 失敗（行に理由が出ている）
+  // ★書き込みが通った時点で選択を捨てる（2026-07-30）。この後の描画で何か起きても
+  //   選択が残らないよう、state を触る前に消す。次の測定は必ず選び直しになる。
+  //   openRecordModal でも毎回リセットするので二重の網。
+  resetOperatorSelect();
+  renderOperatorBar(by);                        // 「直前に ○○ さんとして記録しました」
   state.shien.push(res.log);
   // 予定月をその場で反映（再取得せずに行が「済」になる）
   const yi = (state.yotei || []).findIndex(y => y.userId === res.yotei.userId && y.domain === res.yotei.domain);
