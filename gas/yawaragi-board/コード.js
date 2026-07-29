@@ -3367,6 +3367,43 @@ function doGet(e) {
       }
     }
 
+    // 測定出力 一覧取得（🖨 利用者用／📄 ケアマネ用）
+    //   records … 「測定出力」シートの行。★これが正
+    //   legacy  … 個訓15列目 output_by の既存実績（読むだけ）。records に行が無い人の初期表示に使う
+    if (action === 'getSokuteiOutput') {
+      var goDomain = String((e && e.parameter && e.parameter.domain) || 'sokutei').trim();
+      var goYm = String((e && e.parameter && e.parameter.ym) || '').trim();
+      if (goYm && !/^\d{4}-\d{2}$/.test(goYm)) {
+        return respond({ ok: false, error: 'invalid ym: ' + goYm }, callback);
+      }
+      var goLegacy = [];
+      if (goDomain === 'sokutei') {
+        try { goLegacy = readSokuteiOutputLegacy_(goYm); } catch (goErr) { goLegacy = []; }
+      }
+      return respond({
+        ok: true, domain: goDomain, ym: goYm,
+        records: readSokuteiOutput_(goDomain, goYm), legacy: goLegacy
+      }, callback);
+    }
+
+    // 測定出力 1件トグル（done=true で済／false で未に戻す）。行が無ければ作る（upsert）。
+    // ★測定（addSokuteiDone）とは別の操作。測定の記録には一切触れない。
+    if (action === 'setSokuteiOutput') {
+      var soUserId = String((e && e.parameter && e.parameter.userId) || '').trim();
+      var soDomain = String((e && e.parameter && e.parameter.domain) || 'sokutei').trim();
+      var soYm = String((e && e.parameter && e.parameter.ym) || '').trim();
+      var soKind = String((e && e.parameter && e.parameter.kind) || '').trim();
+      var soBy = String((e && e.parameter && e.parameter.by) || '').trim();
+      var soName = String((e && e.parameter && e.parameter.name) || '').trim();
+      var soDone = String((e && e.parameter && e.parameter.done) || '').trim().toLowerCase();
+      if (soDone !== 'true' && soDone !== 'false') {
+        return respond({ ok: false, error: 'invalid done (true|false required)' }, callback);
+      }
+      return respond(writeSokuteiOutput_(soUserId, soDomain, soYm, soKind, soDone === 'true', {
+        by: soBy, name: soName
+      }), callback);
+    }
+
     // ============================================================
     // 口腔機能向上 レコード更新
     // field: plan_date / sent_to_cm / memo
@@ -14943,6 +14980,12 @@ function ensureSoufuLedgerSheet_() {
 // source: 'paper'（紙台帳投入）／'app'（アプリからのワンタップ記録）
 // 8列目 output_by は後付け（2026-07-28 案X-5）。要介護のみ埋まる。
 //   要支援・事業対象者には出力者という概念が無いので常に空（ⓑ確定・measure-core.js §msRouteWrite）。
+// ⚠️【この列は使わない】2026-07-29 社長決定（甲=A）。出力の記録は「測定出力」シートへ役割を移した。
+//   理由: 出力は🖨利用者用と📄ケアマネ用の2つあり、1列では「片方だけ済」を表せない。
+//   実測（2026-07-29）: 61件すべて空＝この列を根拠に画面を作っている箇所は無い。
+//   ★列は削除しない。addSokuteiDone は従来どおりここへ書き続ける（既存の読み取りを壊さないため）が、
+//     測定管理アプリはこの列を読まない。出力済／未の正は「測定出力」シートだけ。
+//   関連: SOKUTEI_OUTPUT_HEADERS_ / ensureSokuteiOutputSheet_ / writeSokuteiOutput_。
 // ⚠️ 列を増設する場合は 'A:H' の書式範囲もセットで拡張すること（範囲外の新列はDate解釈が復活する）。
 var SHIEN_SOKUTEI_HEADERS_ = ['name', 'care', 'sokutei_date', 'sokutei_by', 'source', 'note', 'createdAt', 'output_by'];
 
@@ -15112,6 +15155,21 @@ function writeYotei_(userId, domain, opts) {
   }
 }
 
+// 測定の期限（＝個訓の評価月＝計画期間が始まる前の月）を、当月以降で最初に来る月として返す。
+// 判定は session-board-judges.js の isHyoukaMonth を使う（shared.js とbyte一致・ここに複製しない）。
+// 月の足し算は yotei-core.js の ymAdd を使う（新しい日付関数を作らない）。
+// ★2026-07-29: 初期生成が「計画月」を予定月に置いていたため、測定記録の無い人が全員1ヶ月遅れていた。
+//   実測で26名が該当し、同日に書き戻し済み。ここを直さないと新しい利用者で同じズレが再発する。
+function sokuteiNextDueYm_(planStart, planMonths, fromYm) {
+  if (!planStart || !/^\d{4}-\d{2}/.test(String(fromYm || ''))) return '';
+  for (var i = 0; i < 24; i++) {
+    var ym = ymAdd(fromYm, i);
+    if (!ym) return '';
+    if (isHyoukaMonth(planStart, planMonths, +ym.slice(0, 4), +ym.slice(5, 7))) return ym;
+  }
+  return '';
+}
+
 // 予定月の初期値を一括生成（1回きり・冪等）。
 // 最後の測定日は3ソースをマージして最大値を採る:
 //   ①「要支援測定記録」sokutei_date（source='paper' の紙台帳アンカーを含む＝要支援の期限の正）
@@ -15127,7 +15185,7 @@ function setupYoteiInitial_(dryRun) {
   var users = [];
   var kaigo = getKeikakushoTargetUsers_(false);
   kaigo.forEach(function (u) {
-    users.push({ userId: u.userId, name: u.name, care: u.category, planStart: u.planStart || '' });
+    users.push({ userId: u.userId, name: u.name, care: u.category, planStart: u.planStart || '', planMonths: u.planMonths });
   });
   var seen = {};
   users.forEach(function (u) { seen[_normalizeUserName(u.name)] = true; });
@@ -15176,7 +15234,11 @@ function setupYoteiInitial_(dryRun) {
   var built = buildInitialYotei({
     domain: DOMAIN, thisYm: thisYm, users: users,
     lastDoneByKey: lastDoneByKey, existing: existing
-  }, { cycleMonths: sokuteiCycleMonths_, normalizeName: _normalizeUserName });
+  }, {
+    cycleMonths: sokuteiCycleMonths_, normalizeName: _normalizeUserName,
+    // ★測定記録の無い人の予定月は「計画月」ではなく「測定の期限」に置く（2026-07-29）
+    dueYmOf: function (u, ym) { return sokuteiNextDueYm_(u.planStart, u.planMonths, ym); }
+  });
 
   // 採用アンカーのソース内訳（paper由来の偽 sokutei_date が初期値に効いた件数）
   var anchorSrc = { paper: 0, app: 0, kunren: 0, planStart: 0, none: 0 };
@@ -15214,6 +15276,179 @@ function setupYoteiInitial_(dryRun) {
     return result;
   } finally {
     lock.releaseLock();
+  }
+}
+
+// ===== 測定出力（🖨 利用者用プリント／📄 ケアマネ用PDF）2026-07-29 =====
+// 実態（社長）: 結果報告書はリハブで作る。測定値を入れた時点で報告書はできあがるので「作成」という
+//   作業は無い。残るのは「🖨 利用者用に印刷した」「📄 ケアマネ用にPDFを出した」の2つだけ。
+//   両方が済んで初めてその人の測定は完了。片方でも残っていたら「やり残し」。要介護・要支援等とも同じ扱い。
+//   ケアマネへ「送る」作業は既存の送付管理アプリの担当。ここは「出力したか」までを見張る。
+//
+// 「測定出力」シート = 利用者 × 分野(domain) × 測定年月 の出力チェック。
+// 主キーは (userId, domain, 測定年月)。★1測定回＝1行にする（人に1行にしない）。
+//   人に1行だと、次の測定のときに前回のチェックを消す処理が要る。その消し忘れは
+//   「出力済に見えるのに実は出していない」という、画面からは見破れない事故になる。
+//   測定年月を主キーに含めれば次の測定は自動的に別行＝前回のチェックは構造的に引き継がれない。
+// domain は当面 'sokutei'。将来 'oral' / 'kobetsu' / 'tsusho' を行追加だけで載せる（「予定月」と同じ器）。
+//
+// ⚠️「個別機能訓練計画書記録」15列目 output_by は【読むだけ】。ここから書き戻さない（社長決定 乙=A）。
+//    個訓の1行は (userId, 計画書の年月) 単位で、測定日は13列目に入っている。よって測定年月は
+//    必ず sokutei_date の年月で見る（記録行の year/month ではない）。
+//    2026-07-29 実測: output_by ありは18件。全件 userId・sokutei_date が揃い、測定年月は 2026-07、重複ゼロ。
+// ⚠️「要支援測定記録」8列目 output_by は役割をこのシートへ移したため【使わない】（列は消さない）。
+var SOKUTEI_OUTPUT_SHEET_ = '測定出力';
+var SOKUTEI_OUTPUT_HEADERS_ = ['userId', 'name', 'domain', '測定年月', 'riyousha_at', 'riyousha_by', 'caremgr_at', 'caremgr_by', 'updatedAt', 'note'];
+var SOKUTEI_OUTPUT_KINDS_ = ['riyousha', 'caremgr'];
+
+function ensureSokuteiOutputSheet_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName(SOKUTEI_OUTPUT_SHEET_);
+  if (!sheet) {
+    sheet = ss.insertSheet(SOKUTEI_OUTPUT_SHEET_);
+    sheet.getRange(1, 1, 1, SOKUTEI_OUTPUT_HEADERS_.length).setValues([SOKUTEI_OUTPUT_HEADERS_]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, SOKUTEI_OUTPUT_HEADERS_.length).setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+  } else {
+    // 後付け列の補完（冪等・additive）
+    var lastCol = sheet.getLastColumn();
+    for (var hi = lastCol; hi < SOKUTEI_OUTPUT_HEADERS_.length; hi++) {
+      sheet.getRange(1, hi + 1).setValue(SOKUTEI_OUTPUT_HEADERS_[hi])
+        .setBackground('#2c7a7b').setFontColor('#ffffff').setFontWeight('bold');
+    }
+  }
+  // 全列テキスト書式（冪等）: '2026-07' がシートTZで日付に化けるのを根絶する（「予定月」と同方針）。
+  // ⚠️ 列を増設する場合は 'A:J' の書式範囲もセットで拡張すること。
+  sheet.getRange('A:J').setNumberFormat('@');
+  return sheet;
+}
+
+function sokuteiOutputRowToObj_(row) {
+  return {
+    userId: String(row[0] || '').trim(),
+    name: String(row[1] || '').trim(),
+    domain: String(row[2] || '').trim(),
+    ym: String(row[3] || '').trim(),
+    riyousha_at: String(row[4] || '').trim(),
+    riyousha_by: String(row[5] || '').trim(),
+    caremgr_at: String(row[6] || '').trim(),
+    caremgr_by: String(row[7] || '').trim(),
+    updatedAt: String(row[8] || '').trim(),
+    note: String(row[9] || '').trim()
+  };
+}
+
+// domain 一致（省略なら全件）／ym 一致（省略なら全月）の行を返す
+function readSokuteiOutput_(domain, ym) {
+  var sheet = ensureSokuteiOutputSheet_();
+  var values = sheet.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var o = sokuteiOutputRowToObj_(values[i]);
+    if (!o.userId) continue;
+    if (domain && o.domain !== domain) continue;
+    if (ym && o.ym !== ym) continue;
+    out.push(o);
+  }
+  return out;
+}
+
+// 個訓15列目 output_by の既存実績（★読むだけ・1バイトも書き戻さない）。
+// 旧「身体機能評価」アプリが記録した出力者。出力は当時1つの概念だったので🖨📄の両方が済とみなす。
+function readSokuteiOutputLegacy_(ym) {
+  var out = [];
+  var sheet = ensureKeikakushoSheet_();
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    var uid = String(values[i][0] || '').trim();
+    var by = String(values[i][14] || '').trim();
+    if (!uid || !by) continue;
+    var d = values[i][12];
+    var ds = (d instanceof Date)
+      ? Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd')
+      : String(d || '').trim();
+    ds = ds.replace(/\//g, '-');
+    if (!/^\d{4}-\d{2}/.test(ds)) continue;
+    var rym = ds.slice(0, 7);
+    if (ym && rym !== ym) continue;
+    out.push({ userId: uid, name: String(values[i][1] || '').trim(), ym: rym, by: by, sokutei_date: ds.slice(0, 10) });
+  }
+  return out;
+}
+
+// 新規行を作るときだけ、個訓15列目の既存実績を引き継ぐ（読むだけ・書き戻さない）。
+// これが無いと、旧アプリで出力済の人が🖨を1つ押した瞬間に📄が「未」へ落ちる。
+// 行ができた途端そちらが正になり、行に入っていない側が「空＝未」として読まれるため。
+function sokuteiOutputSeedFromLegacy_(userId, domain, ym, name) {
+  var seed = {
+    userId: userId, name: String(name || '').trim(), domain: domain, ym: ym,
+    riyousha_at: '', riyousha_by: '', caremgr_at: '', caremgr_by: '', updatedAt: '', note: ''
+  };
+  if (domain !== 'sokutei') return seed;
+  var legacy = [];
+  try { legacy = readSokuteiOutputLegacy_(ym); } catch (legErr) { return seed; }
+  for (var i = 0; i < legacy.length; i++) {
+    if (legacy[i].userId !== userId) continue;
+    seed.riyousha_at = legacy[i].sokutei_date;
+    seed.riyousha_by = legacy[i].by;
+    seed.caremgr_at = legacy[i].sokutei_date;
+    seed.caremgr_by = legacy[i].by;
+    seed.note = '個訓15列目の出力者を引き継ぎ';
+    if (!seed.name) seed.name = legacy[i].name;
+    break;
+  }
+  return seed;
+}
+
+// (userId, domain, 測定年月) の1行を upsert。kind だけを済／未に切り替え、もう片方は保持する。
+//   kind: 'riyousha'（🖨利用者用）/ 'caremgr'（📄ケアマネ用）
+//   done: true=済（日時と担当者を記録）／false=未に戻す（両方を空へ）
+// 返り: { ok, row } / { ok:false, error }
+function writeSokuteiOutput_(userId, domain, ym, kind, done, opts) {
+  var o = opts || {};
+  userId = String(userId || '').trim();
+  domain = String(domain || '').trim();
+  ym = String(ym || '').trim();
+  kind = String(kind || '').trim();
+  if (!userId || !domain) return { ok: false, error: 'invalid params (userId, domain required)' };
+  if (!/^\d{4}-\d{2}$/.test(ym)) return { ok: false, error: 'invalid ym: ' + ym };
+  if (SOKUTEI_OUTPUT_KINDS_.indexOf(kind) < 0) return { ok: false, error: 'invalid kind: ' + kind };
+  var lock = LockService.getScriptLock();
+  var held = false;
+  try { lock.waitLock(10000); held = true; } catch (lockErr) { /* 呼出元が既に握っている場合はそのまま進む */ }
+  try {
+    var sheet = ensureSokuteiOutputSheet_();
+    var values = sheet.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][0] || '').trim() === userId
+        && String(values[i][2] || '').trim() === domain
+        && String(values[i][3] || '').trim() === ym) { rowIdx = i + 1; break; }
+    }
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    var cur = (rowIdx > 0)
+      ? sokuteiOutputRowToObj_(values[rowIdx - 1])
+      : sokuteiOutputSeedFromLegacy_(userId, domain, ym, o.name);
+    var next = {
+      riyousha_at: cur.riyousha_at, riyousha_by: cur.riyousha_by,
+      caremgr_at: cur.caremgr_at, caremgr_by: cur.caremgr_by
+    };
+    if (done) { next[kind + '_at'] = now; next[kind + '_by'] = String(o.by || '').trim(); }
+    else { next[kind + '_at'] = ''; next[kind + '_by'] = ''; }
+    var name = String(o.name || '').trim() || cur.name;
+    var note = String(o.note || '').trim() || cur.note;
+    var row = [userId, name, domain, ym,
+      next.riyousha_at, next.riyousha_by, next.caremgr_at, next.caremgr_by, now, note];
+    if (rowIdx < 0) rowIdx = sheet.getLastRow() + 1;
+    sheet.getRange(rowIdx, 1, 1, SOKUTEI_OUTPUT_HEADERS_.length).setNumberFormat('@').setValues([row]);
+    SpreadsheetApp.flush();
+    var check = sokuteiOutputRowToObj_(sheet.getRange(rowIdx, 1, 1, SOKUTEI_OUTPUT_HEADERS_.length).getValues()[0]);
+    if (check.userId !== userId || check.domain !== domain || check.ym !== ym) {
+      return { ok: false, error: '測定出力の書き込み検証に失敗しました' };
+    }
+    return { ok: true, row: check };
+  } finally {
+    if (held) lock.releaseLock();
   }
 }
 

@@ -138,8 +138,19 @@ function buildInitialYotei(input, deps) {
       if (nextYm) stats.fromDone++;
     }
     if (!nextYm && u.planStart) {
-      nextYm = nextYmAfterDone(u.planStart, cyc);
-      if (nextYm) stats.fromPlanStart++;
+      // ★2026-07-29 訂正: 測定の期限は「計画期間が始まる前の月」であって計画月ではない。
+      //   dueYmOf（= isHyoukaMonth 起点で期限を返す関数）が渡されていればそれを使う。
+      //   これを入れる前は planStart+周期＝計画月に置いていたため、測定記録の無い人の予定月が
+      //   まるごと1ヶ月遅れて置かれていた（2026-07-28の初期生成で26名・2026-07-29に書き戻し済み）。
+      //   dueYmOf 未指定のときだけ従来どおりに落ちる（既存の呼び出しを壊さないため）。
+      if (d.dueYmOf) {
+        nextYm = String(d.dueYmOf(u, thisYm) || '');
+        if (nextYm) stats.fromDueYm = (stats.fromDueYm || 0) + 1;
+      }
+      if (!nextYm) {
+        nextYm = nextYmAfterDone(u.planStart, cyc);
+        if (nextYm) stats.fromPlanStart++;
+      }
     }
     if (!nextYm) {
       nextYm = thisYm;
