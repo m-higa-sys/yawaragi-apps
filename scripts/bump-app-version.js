@@ -6,8 +6,8 @@
 //   1. 前提チェック: 対象ファイルがdirty / ローカルがorigin/masterよりbehind なら実行拒否（fresh pull前提）
 //   2. assume-unchanged フラグを正常化（version.txt / genba.html を通常追跡へ戻す。罠の再発防止）
 //   3. version.txt を新版へ更新
-//   4. genba.html の shared.js?v= を version.txt と自動一致させる（版同期）
-//   5. version.txt と genba.html のみを git add → commit（design.md §9: 必ず同一コミット）
+//   4. SYNC_HTMLS（genba.html / intake.html）の shared.js?v= を version.txt と自動一致させる（版同期）
+//   5. version.txt と SYNC_HTMLS のみを git add → commit（design.md §9: 必ず同一コミット）
 //   6. commit後SHAを表示し、「pushコマンド」と「push後verifyコマンド」を提示（実pushはしない）
 //
 // 本番反映の確認（push後に別途実行）:
@@ -27,8 +27,14 @@ const https = require('https');
 
 const ROOT = path.join(__dirname, '..');
 const VERSION_TXT = path.join(ROOT, 'version.txt');
-const GENBA_HTML = path.join(ROOT, 'genba.html');
-const TRACKED = ['version.txt', 'genba.html']; // 版上げで触る対象（assume-unchanged正常化＋add対象）
+// shared.js?v= を version.txt と同期させるHTML群。
+//   ここに載せたHTMLは「?v= が必ず現行版に追従する」ことが保証される。
+//   ★逆に、載せずに shared.js?v=<固定値> を書くと版が永久に固定され、version.txt を
+//     いくら上げても shared.js が古いキャッシュのまま張り付く（no-?v= より悪い）。
+//   2026-07-29: intake.html を追加。intake が shared.js の新関数 gasPostIntake に依存する
+//     ようになったため、古い shared.js が残ると保存が丸ごと壊れる（undefined 呼び出し）。
+const SYNC_HTMLS = ['genba.html', 'intake.html'];
+const TRACKED = ['version.txt'].concat(SYNC_HTMLS); // 版上げで触る対象（assume-unchanged正常化＋add対象）
 const PROD_VERSION_URL = 'https://m-higa-sys.github.io/yawaragi-apps/version.txt';
 
 // --- 本番ポーリング設定 ---
@@ -146,16 +152,21 @@ function runBump(newVer) {
   // 1) version.txt を更新（必ずLF・末尾改行1つ）
   fs.writeFileSync(VERSION_TXT, newVer + '\n', 'utf8');
 
-  // 2) genba.html の shared.js?v=... を version.txt と一致させる（版同期）
-  let html = fs.readFileSync(GENBA_HTML, 'utf8');
-  const re = /(shared\.js\?v=)[^"']+/g;
-  const matches = html.match(re) || [];
-  if (matches.length === 0) {
-    console.error('genba.html に shared.js?v= が見つからない（ゲート未適用？）。version.txt のみ更新済・コミットは中止。');
-    process.exit(1);
+  // 2) 対象HTMLの shared.js?v=... を version.txt と一致させる（版同期）
+  const syncCounts = {};
+  for (const name of SYNC_HTMLS) {
+    const file = path.join(ROOT, name);
+    let html = fs.readFileSync(file, 'utf8');
+    const re = /(shared\.js\?v=)[^"']+/g;
+    const matches = html.match(re) || [];
+    if (matches.length === 0) {
+      console.error(name + ' に shared.js?v= が見つからない（ゲート未適用？）。version.txt のみ更新済・コミットは中止。');
+      process.exit(1);
+    }
+    html = html.replace(re, '$1' + newVer);
+    fs.writeFileSync(file, html, 'utf8');
+    syncCounts[name] = matches.length;
   }
-  html = html.replace(re, '$1' + newVer);
-  fs.writeFileSync(GENBA_HTML, html, 'utf8');
 
   // 3) 対象2ファイルのみ add → commit（他のdirtyファイルは巻き込まない）
   sh('git add -- ' + TRACKED.join(' '));
@@ -184,7 +195,9 @@ function runBump(newVer) {
   console.log('');
   console.log('版上げ完了（commitまで・push未実行）: ' + oldVer + ' -> ' + newVer);
   console.log('  version.txt 更新');
-  console.log('  genba.html shared.js?v= 更新 (' + matches.length + ' 箇所)');
+  for (const name of SYNC_HTMLS) {
+    console.log('  ' + name + ' shared.js?v= 更新 (' + syncCounts[name] + ' 箇所)');
+  }
   console.log('  commit: ' + head);
   console.log('');
   console.log('-- 次の手順（社長承認のうえ手動で）--------------');

@@ -6,9 +6,12 @@
 //   (2) 抽出した純関数 gateShouldReload / buildVersionedUrl が genba と同一挙動
 // であることを実コード抽出で検証する（出荷コードとテストのドリフト防止）。
 //
-// ★intake は shared.js を ?v= 無しで読む（kubun/portal/cleaning 同型）。Option A
-//   （ゲートのみ移植・bump非改修）。ゲート発火は version.txt 主導で shared.js 参照と独立。
-//   ゲートは shared.js 非依存の自己完結IIFEなので、<script src="shared.js"> の前に置いても非干渉。
+// ★2026-07-29 変更: intake は shared.js を **?v= 付き**で読むようになった。
+//   理由: intake.html が shared.js の新関数 gasPostIntake に依存するため、HTMLだけ版ゲートで
+//   更新されて shared.js が古いキャッシュのまま残ると、保存が丸ごと壊れる（undefined 呼び出し）。
+//   これに伴い scripts/bump-app-version.js の SYNC_HTMLS に intake.html を追加済み
+//   （＝?v= は version.txt と常に同期する。手書き固定は永久ピン留めになるので禁止）。
+//   ゲート自体は shared.js 非依存の自己完結IIFEなので、<script src="shared.js"> の前に置いても非干渉。
 //
 // 実行: node scripts/test-intake-version-gate.js
 
@@ -73,6 +76,22 @@ if (intakeGate) {
   eq(buildVersionedUrl(BASE + '?v=A', 'B'), BASE + '?v=B', '?v=A -> ?v=B (swap)');
   eq(buildVersionedUrl(BASE + '?foo=1', 'B'), BASE + '?foo=1&v=B', '?foo=1 -> ?foo=1&v=B (preserve foo)');
 }
+
+// (3) shared.js?v= が version.txt と一致する（bump同期の担保・永久ピン留め防止）
+console.log('[shared.js 版同期]');
+const VERSION = fs.readFileSync(path.join(__dirname, '..', 'version.txt'), 'utf8').trim();
+const intakeSharedVer = (INTAKE.match(/shared\.js\?v=([^"']+)/) || [])[1];
+eq(intakeSharedVer, VERSION, 'intake.html の shared.js?v= が version.txt と一致');
+const genbaSharedVer = (GENBA.match(/shared\.js\?v=([^"']+)/) || [])[1];
+eq(genbaSharedVer, VERSION, 'genba.html の shared.js?v= が version.txt と一致（既存担保）');
+
+// bump スクリプトが intake.html を同期対象に含んでいること（含み忘れ＝永久ピン留め）
+const BUMP = fs.readFileSync(path.join(__dirname, 'bump-app-version.js'), 'utf8');
+const syncBlock = (BUMP.match(/const SYNC_HTMLS\s*=\s*\[([^\]]*)\]/) || [])[1] || '';
+eq(/'intake\.html'|"intake\.html"/.test(syncBlock), true,
+   'bump-app-version.js の SYNC_HTMLS に intake.html が含まれる');
+eq(/'genba\.html'|"genba\.html"/.test(syncBlock), true,
+   'bump-app-version.js の SYNC_HTMLS に genba.html が含まれる');
 
 console.log('\n' + pass + ' PASS / ' + fail + ' FAIL');
 if (fail > 0) process.exit(1);

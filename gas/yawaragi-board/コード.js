@@ -9713,8 +9713,12 @@ function todayJst() {
 function createIntake(ss, data) {
   var sheet = ss.getSheetByName('見学体験新規');
   if (!sheet) return { success: false, error: 'シートなし' };
-  if (!data.氏名 || !data.TEL) {
-    return { success: false, error: '氏名・TELは必須' };
+  // 必須判定は intake-required-core.js の純関数が単一の正（テスト: scripts/test-intake-required-core.js）。
+  // 中断保存＝氏名/ふりがな/TELのどれか1つ、本保存＝(氏名 or ふりがな)＋TEL。
+  // 旧 `!data.氏名 || !data.TEL` は intake.html の中断保存を黙って捨てていた（2026-07-29 事故）。
+  var _req = intakeRequiredCheck_(data);
+  if (!_req.ok) {
+    return { success: false, error: _req.error };
   }
   if (!data.種別 || ['trial','visit','inquiry'].indexOf(data.種別) === -1) {
     return { success: false, error: '種別はinquiry/visit/trialのいずれか' };

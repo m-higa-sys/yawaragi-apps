@@ -24,7 +24,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>見学体験管理 - yawaragi</title>
-  <script src="shared.js"></script>
+  <!-- 版ゲートでHTMLは更新されても shared.js は古いキャッシュのまま残りうるため ?v= を付ける。
+       この値は scripts/bump-app-version.js が version.txt と自動同期する（手で書き換えない）。 -->
+  <script src="shared.js?v=2026-07-29-01"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', 'Yu Gothic UI', 'Meiryo', sans-serif; background: #f5f5f5; color: #2d3748; }
@@ -895,13 +897,13 @@
         return out.join('');
     }
     
-    // カンバン操作：フェーズ遷移・ドロップ（gasPost経由・no-cors）
+    // カンバン操作：フェーズ遷移・ドロップ（gasPostIntake経由・応答JSONを読んで成否を判定）
     async function kanbanAdvance(id, toPhase) {
         const r = _intakeCache.find(x => x.id === id);
         if (!r) { alert('レコードが見つかりません。再読込します。'); loadIntakeList(); return; }
         if (!confirm(`「${r.氏名 || r.ふりがな}」を「${toPhase}」へ進めます。よろしいですか？`)) return;
         const staff = localStorage.getItem('yawaragi_staff') || '';
-        const ok = await gasPost({ action: 'intake_advance_phase', id: id, toPhase: toPhase, 登録者: staff }, 'カンバン遷移');
+        const ok = await gasPostIntake({ action: 'intake_advance_phase', id: id, toPhase: toPhase, 登録者: staff }, 'カンバン遷移');
         if (ok) setTimeout(loadIntakeList, 800);
     }
     // ドロップ理由を選択式で入力（既存モーダルを流用・ivRenderBtnGroup使用・その他は詳細必須）
@@ -937,8 +939,8 @@
         const detail = de ? de.value.trim() : '';
         if (reason === 'other' && !detail) { alert('「その他」を選んだ場合は詳細の入力が必須です。'); return; }
         const staff = localStorage.getItem('yawaragi_staff') || '';
-        const ok = await gasPost({ action: 'intake_drop', id: id, reason: reason, detail: detail, 登録者: staff }, 'カンバン ドロップ');
-        if (ok) { closeIntakeModal(); setTimeout(loadIntakeList, 800); }
+        const ok = await gasPostIntake({ action: 'intake_drop', id: id, reason: reason, detail: detail, 登録者: staff }, 'カンバン ドロップ');
+        if (ok) { closeIntakeModal(); setTimeout(loadIntakeList, 800); }   // 失敗時はモーダルを閉じない（選んだ理由を消さない）
     }
     
     function renderIntakeList(list) {
@@ -1837,7 +1839,9 @@
             p.全記入済 = true;
         }
     
-        const ok = await gasPost(p, suspend ? '新規受付 中断保存' : '新規受付 保存');
+        // gasPostIntake は「サーバーが保存した」と応答したときだけ true を返す。
+        // false のときはモーダルを閉じない＝入力を消さない（赤いエラーは gasPostIntake が表示済み）。
+        const ok = await gasPostIntake(p, suspend ? '新規受付 中断保存' : '新規受付 保存');
         if (ok) {
             if (suspend) {
                 alert('✅ 保存しました！残りは後で入力できます。フロアの状況を確認してください。');
@@ -1880,7 +1884,7 @@
     async function syncIntakeToUserListAction(id) {
         if (!id) { alert('保存してから利用者台帳に反映してください'); return; }
         if (!confirm('利用者台帳に転記します。よろしいですか？\n\n転記項目：氏名・ふりがな・介護度・ケアマネ・電話・住所・性別・生年月日・利用曜日・本格利用開始日')) return;
-        const ok = await gasPost({ action: 'intake_sync_to_userlist', id: id }, '利用者台帳に反映');
+        const ok = await gasPostIntake({ action: 'intake_sync_to_userlist', id: id }, '利用者台帳に反映');
         if (ok) {
             alert('✅ 利用者台帳に反映しました');
             setTimeout(loadIntakeList, 800);
@@ -1905,7 +1909,7 @@
             '不成立時は利用者台帳画面で「中止」ステータスに変更してください。\n\n' +
             'よろしいですか？'
         )) return;
-        const ok = await gasPost({ action: 'intake_add_as_trial', id: id }, '出勤＆送迎表に追加');
+        const ok = await gasPostIntake({ action: 'intake_add_as_trial', id: id }, '出勤＆送迎表に追加');
         if (ok) {
             alert(
                 '✅ 出勤＆送迎表に体験者として追加しました。\n\n' +
@@ -1921,8 +1925,8 @@
         if (p.TEL) p.TEL = formatJPPhone(p.TEL);
         p.action = 'intake_update';
         p.id = id;
-        const ok = await gasPost(p, '見学・体験・新規 保存');
-        if (ok) {
+        const ok = await gasPostIntake(p, '見学・体験・新規 保存');
+        if (ok) {   // 失敗時はモーダルを閉じない（編集内容を消さない）
             closeIntakeModal();
             setTimeout(loadIntakeList, 800);
         }
@@ -1950,7 +1954,7 @@
     
     async function deleteIntakeAction(id) {
         if (!confirm('本当に削除しますか？（取り消せません）')) return;
-        const ok = await gasPost({ action: 'intake_delete', id: id }, '見学・体験・新規 削除');
+        const ok = await gasPostIntake({ action: 'intake_delete', id: id }, '見学・体験・新規 削除');
         if (ok) {
             closeIntakeModal();
             setTimeout(loadIntakeList, 800);

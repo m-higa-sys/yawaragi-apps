@@ -334,6 +334,89 @@ async function gasPostEditWithVerify(data, label) {
     return false;
 }
 
+/* ===== §D-3 intake専用の「応答が読めるPOST」（2026-07-29 中断保存の消失事故対策） =====
+   既存 gasPost は mode:'no-cors' ＝ レスポンスを一切読めない。そのため GAS が
+   {success:false,error:...} を返して保存を拒否しても、画面は「✅保存しました」と表示して
+   モーダルを閉じ、入力ごと消えていた（＝今回の事故の増幅要因）。
+
+   実測（2026-07-29 curl・Originヘッダ付き）:
+     script.google.com/…/exec への POST は 302 → script.googleusercontent.com/macros/echo。
+     両ホップとも `access-control-allow-origin: *` を返し、最終応答は
+     `content-type: application/json` ＋ 本文 {"error":"unauthorized","status":401} が読めた。
+     → mode:'cors' で応答JSONを読める。JSONP往復での実在確認は不要。
+
+   Content-Type を 'text/plain;charset=utf-8' にするのは**単純リクエスト**にしてプリフライト
+   (OPTIONS) を飛ばさないため。GAS Web App は OPTIONS に応答できず、application/json だと
+   プリフライトで落ちる。GAS 側は e.postData.contents を JSON.parse するだけなので
+   Content-Type の違いは無害（doPost 無改修）。
+
+   ★既存 gasPost は1文字も変更していない（欠席・振替不能など全アプリが使用中）。 */
+
+// 赤いエラー表示。#toast があればそれを使い、無ければ自前要素を作る。
+//   intake.html には #toast が存在しない（alert運用）ため、showToast だけに頼ると
+//   null 参照で落ちて「エラーが出ない＝成功に見える」に逆戻りする。ゆえに自己完結させる。
+function showIntakeError(msg, duration) {
+    var text = String(msg == null ? '' : msg);
+    var el = document.getElementById('_intake_error_toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_intake_error_toast';
+        el.setAttribute('role', 'alert');
+        el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);' +
+            'max-width:90vw;z-index:99999;background:#c62828;color:#fff;padding:14px 20px;' +
+            'border-radius:8px;font-size:15px;font-weight:700;line-height:1.5;' +
+            'box-shadow:0 4px 16px rgba(0,0,0,.35);white-space:pre-wrap;text-align:center;';
+        document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.display = 'block';
+    if (showIntakeError._t) clearTimeout(showIntakeError._t);
+    showIntakeError._t = setTimeout(function () { el.style.display = 'none'; }, duration || 6000);
+}
+
+// intake系POST。成功時のみ true を返す。
+//   ・{success:true}            → true
+//   ・{success:false,error:...} → 赤い表示で error をそのまま出して false（再送しない＝入力ミスを3回送らない）
+//   ・{error:'unauthorized'}    → handleIntakeUnauthorized(label) を呼んで false
+//   ・通信失敗／JSONで無い応答  → 最大3回再試行し、それでも駄目なら false
+//   呼び出し側は false のときモーダルを閉じない（入力を消さない）契約。
+async function gasPostIntake(data, label) {
+    // adminKey 自動付与（gasPost と同方式・明示指定があればそちら優先）
+    if (data && typeof data.action === 'string' && data.action.indexOf('intake_') === 0 && !data.adminKey) {
+        data = Object.assign({}, data, { adminKey: getIntakeAdminKey() });
+    }
+    const maxRetries = 3;
+    for (let i = 1; i <= maxRetries; i++) {
+        let json = null;
+        try {
+            const res = await fetch(YAWARAGIBOARD_API_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },  // 単純リクエスト＝プリフライトなし
+                body: JSON.stringify(data)
+            });
+            json = await res.json();
+        } catch (err) {
+            // 通信断・CORS遮断・JSON以外の応答（GASのHTMLエラーページ等）はここに来る
+            console.error('intake送信エラー (' + i + '/' + maxRetries + '): ' + (label || ''), err);
+            if (i < maxRetries) { await new Promise(r => setTimeout(r, 2000)); continue; }
+            showIntakeError('⚠️ 送信できませんでした（' + (label || '') + '）\n' +
+                            '電波を確認して、もう一度保存してください。入力は消えていません。', 8000);
+            return false;
+        }
+        // ここから先はサーバーの判断が読めている＝再送しない
+        if (json && json.error === 'unauthorized') {
+            handleIntakeUnauthorized(label || '');
+            return false;
+        }
+        if (json && json.success === true) return true;
+        const serverMsg = (json && (json.error || json.message)) || '保存できませんでした（サーバーが理由を返していません）';
+        showIntakeError('❌ ' + (label || '保存') + 'できませんでした\n' + serverMsg, 8000);
+        return false;
+    }
+    return false;
+}
+
 /* ===== §D-2 出席データのヘッドレス取得（2026-06-07 board分割パイロット P1-3） =====
    attLoad（出席予定タブ本体）から「AttStore投入」だけを切り出した最小版。
    画面描画・UserStore補完・ローカル欠席マージ等の副作用は一切持たない。
