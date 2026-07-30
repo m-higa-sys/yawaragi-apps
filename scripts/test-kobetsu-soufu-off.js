@@ -156,7 +156,7 @@ sec('8. GAS: 朝の報告の他のセクションを1つも壊していない');
 {
   const SECTIONS = ['intakeFollowup', 'sougeiOps', 'furikae', 'kubun', 'scheduled', 'longLeave', 'keikakushoBlocked',
     'monitoringExpiring', 'monthlyDocs', 'pendingTasks', 'keikakushoSoufu', 'shift', 'teirei', 'chushi',
-    'yukyuGrant', 'koyouKeiyaku', 'yarinokoshi'];
+    'yukyuGrant', 'koyouKeiyaku', 'yarinokoshi', 'undone'];
   SECTIONS.forEach(s => ok(gas.indexOf("safe('" + s + "'") >= 0, 'セクション ' + s + ' が残っている'));
   // 数の増減は morningDigest 関数の中だけで数える（safe( は他の集計でも使われているため）
   const dStart = gas.indexOf('function morningDigest(');
