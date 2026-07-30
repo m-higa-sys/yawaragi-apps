@@ -68,5 +68,57 @@ const kunPlan = (b) => b.sections.find(s => s.key === 'kunPlan');
   eq('C7 未=1（未作成のみ）', s.countUndone, 1);
 }
 
+// ===== D) kunEval(tasseido_date) 現挙動の固定（回帰テスト・2026-07-31 クロ確定）=====
+// ★これは「変更しないこと」を守るためのテスト。kunEval は無改修＝在月判定(_mbFieldDone_)のまま。
+//   評価には前倒し運用が存在しない（アプリの showEval は自セル判定・月ずらし無し）ため受入幅を広げない。
+//   将来 kunEval にも作業月判定を入れたくなったら、D1 が赤くなることで「仕様変更である」と気づける。
+const depsEval = {
+  isPlanMonth: () => false,                  // kunPlan を切り離して kunEval だけを見る
+  isHyoukaMonth: (planStart) => !!planStart, // planStart 有り=当月を評価月扱い
+  sbNormalizeName_: (s) => String(s == null ? '' : s).replace(/[\s　]+/g, '')
+};
+function buildEval(users, kunRecords) {
+  return buildMonthBoard({
+    targetMonth: '2026-07', users: users, kunRecords: kunRecords,
+    oralRecords: [], sokuteiRecords: [], tsushoSendRecords: [], tsushoDueMap: {}
+  }, depsEval);
+}
+const kunEval = (b) => b.sections.find(s => s.key === 'kunEval');
+
+{
+  const b = buildEval(
+    [U('ew', '評価_前月付け'), U('ec', '評価_当月付け'), U('en', '評価_未作成')],
+    [
+      { userId: 'ew', name: '評価_前月付け', tasseido_date: '2026-06-25' },
+      { userId: 'ec', name: '評価_当月付け', tasseido_date: '2026-07-01' },
+      { userId: 'en', name: '評価_未作成', tasseido_date: '' }
+    ]
+  );
+  const s = kunEval(b);
+  const t = (nm) => s.targets.find(x => x.name === nm);
+  ok('D1 評価_前月付け → 未のまま（kunEvalは無改修＝在月判定を維持）', t('評価_前月付け') && t('評価_前月付け').done === false);
+  ok('D2 評価_当月付け → 済（回帰）', t('評価_当月付け') && t('評価_当月付け').done === true);
+  ok('D3 評価_未作成 → 未（回帰）', t('評価_未作成') && t('評価_未作成').done === false);
+  eq('D4 対象=3', s.countTarget, 3);
+  eq('D5 済=1（当月付けのみ）', s.countDone, 1);
+  eq('D6 未=2（前月付け＋未作成）', s.countUndone, 2);
+}
+
+// ===== E) kunPlan の修正が kunEval へ漏れていないこと（相互不干渉の確認）=====
+{
+  const b = buildMonthBoard({
+    targetMonth: '2026-07',
+    users: [{ userId: 'x', name: 'x', category: '要介護1', planStart: '2026-01', planMonths: 3 }],
+    kunRecords: [{ userId: 'x', name: 'x', keikaku_date: '2026-06-25', tasseido_date: '2026-06-25' }],
+    oralRecords: [], sokuteiRecords: [], tsushoSendRecords: [], tsushoDueMap: {}
+  }, {
+    isPlanMonth: () => true,
+    isHyoukaMonth: () => true,
+    sbNormalizeName_: (s) => String(s == null ? '' : s).replace(/[\s　]+/g, '')
+  });
+  ok('E1 同一の前月日付でも kunPlan=済 / kunEval=未（判定が分かれている）',
+    kunPlan(b).countDone === 1 && kunEval(b).countDone === 0);
+}
+
 console.log(`\n==== ${fail === 0 ? 'ALL GREEN' : 'FAILED'}  pass=${pass} fail=${fail} ====`);
 if (fail !== 0) process.exit(1);
