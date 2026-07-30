@@ -93,9 +93,10 @@ ok((out.match(/#ffebee/g) || []).length >= 3, 'C1c: 未バッジ(赤#ffebee)が3
 ok(out.indexOf('kb-cyc-eval') >= 0, 'C2: 評価月タグ kb-cyc-eval');
 ok(out.indexOf('評価月') >= 0, 'C2b: 「評価月」ラベル');
 
-// ===== 4. 全済（D）: 計画=緑 / 提出=青（色2系統） =====
+// ===== 4. 全済（D）: 計画=緑 =====
+// 2026-07-30: 青（提出済）は個訓アプリから消えた（ケアマネ送付は送付アプリの担当）。
 ok(out.indexOf('#e8f5e9') >= 0, 'C3: 計画済=緑#e8f5e9');
-ok(out.indexOf('#e3f2fd') >= 0, 'C3b: 提出済=青#e3f2fd');
+ok(out.indexOf('#e3f2fd') < 0, 'C3b: 提出（青）はもう出ない');
 
 // ===== 5. 案A導線: div に onCellTap / onHyoukaCellTap（td単位でなくパートdiv） =====
 ok(/data-field="keikaku_date"[^>]*onclick="onCellTap\(this\)"/.test(out), 'C4: 計画パートdivに onCellTap');
@@ -134,7 +135,8 @@ sandbox.filterDay = '';
 const far = ymOf(60);  // 5年後 → 描画される12ヶ月すべてが planStart より前
 const H = { userId: 'H', name: 'ハツ江', furigana: 'ハ', category: '要介護1', planStart: far.s, planMonths: 3, days: '月', ampm: '午前', sendMethod: 'PDF' };
 const recH = {};
-recH[key('H', cur)] = { keikaku_date: cur.s + '-04', hyouka_pdf_date: cur.s + '-08' };  // 当月=開始前だが計画・評価の実績あり
+// 2026-07-30: 「評価の実績」は達成度評価日で見る（送付日は送付アプリの管轄へ移した）
+recH[key('H', cur)] = { keikaku_date: cur.s + '-04', tasseido_date: cur.s + '-08' };  // 当月=開始前だが計画・評価の実績あり
 sandbox.state = { fiscalYear: fy, users: [H], records: recH, isLoading: false, includeCancelled: false, needsActionOnly: false };
 sandbox.renderTable();
 let outB = tbody.innerHTML;

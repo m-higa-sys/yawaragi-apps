@@ -1,8 +1,10 @@
 // 個別機能訓練 1ヶ月1列・口腔式バッジ 純関数テスト（HTMLインライン関数を抽出注入・drift防止）
 // 実行: node scripts/test-kobetsu-grid-badge.js
 // 対象:
-//   kbPlanBadges(rec) … 計画月ノードのバッジ配列 [計画/測定/提出]（提出=submit青・他=plan緑）
-//   kbEvalBadges(rec) … 評価月ノードのバッジ配列 [提出/評価]（提出=submit青・評価=plan緑）
+//   kbPlanBadges(rec) … 計画月ノードのバッジ配列 [計画/測定]（plan緑）
+//   kbEvalBadges(rec) … 評価月ノードのバッジ配列 [評価]（plan緑）
+//   ★2026-07-30: 「提出」（ケアマネ送付）は個訓アプリの管轄外になったので外した。
+//     送付は ケアマネ送付チェックリスト.html の担当。kbBadgeHtml の submit(青) は残置。
 //   kbBadgeHtml(badge) … バッジ1個のHTML（済の色2系統: plan=緑 / submit=青、未=赤）
 const fs = require('fs');
 const path = require('path');
@@ -29,42 +31,37 @@ function ok(cond, label) { if (cond) pass++; else { fail++; console.error('  [FA
 function eq(a, b, label) { ok(a === b, label + ' :: exp=' + JSON.stringify(b) + ' act=' + JSON.stringify(a)); }
 function find(arr, label) { return arr.find(x => x.label === label); }
 
-// ===== A. kbPlanBadges（計画/測定/提出） =====
+// ===== A. kbPlanBadges（計画/測定） =====
 var pa0 = kbPlanBadges({});
-eq(pa0.length, 3, 'A0: 計画バッジは3個(計画/測定/提出)');
+eq(pa0.length, 2, 'A0: 計画バッジは2個(計画/測定)');
 eq(find(pa0, '計画').state, 'todo', 'A1: 計画=未(空)');
 eq(find(pa0, '測定').state, 'todo', 'A1b: 測定=未(空)');
-eq(find(pa0, '提出').state, 'todo', 'A1c: 提出=未(空)');
+eq(find(pa0, '提出'), undefined, 'A1c: ★提出バッジは無い（送付アプリの担当）');
 eq(find(pa0, '計画').kind, 'plan', 'A2: 計画のkind=plan(緑)');
 eq(find(pa0, '測定').kind, 'plan', 'A2b: 測定のkind=plan(緑)');
-eq(find(pa0, '提出').kind, 'submit', 'A2c: 提出のkind=submit(青)');
 
 var pa1 = kbPlanBadges({ keikaku_date: '2026-07-02', sokutei_date: '2026-07-03', keikaku_sent_date: '2026-07-09' });
 eq(find(pa1, '計画').state, 'done', 'A3: 計画=済');
 eq(find(pa1, '計画').date, '2026-07-02', 'A3b: 計画の日付');
 eq(find(pa1, '測定').state, 'done', 'A3c: 測定=済(sokutei_date)');
-eq(find(pa1, '提出').state, 'done', 'A3d: 提出=済(keikaku_sent_date)');
-eq(find(pa1, '提出').date, '2026-07-09', 'A3e: 提出の日付=keikaku_sent_date');
+eq(pa1.length, 2, 'A3d: ★送付日が入っていてもバッジは2個のまま');
 
 var pa2 = kbPlanBadges({ keikaku_date: '2026-07-02' });
 eq(find(pa2, '計画').state, 'done', 'A4: 計画のみ済');
 eq(find(pa2, '測定').state, 'todo', 'A4b: 測定=未');
-eq(find(pa2, '提出').state, 'todo', 'A4c: 提出=未');
 
-// ===== B. kbEvalBadges（提出/評価） =====
+// ===== B. kbEvalBadges（評価） =====
 var eb0 = kbEvalBadges({});
-eq(eb0.length, 2, 'B0: 評価バッジは2個(提出/評価)');
-eq(find(eb0, '提出').state, 'todo', 'B1: 提出=未');
+eq(eb0.length, 1, 'B0: 評価バッジは1個(評価)');
+eq(find(eb0, '提出'), undefined, 'B1: ★提出バッジは無い（送付アプリの担当）');
 eq(find(eb0, '評価').state, 'todo', 'B1b: 評価=未');
-eq(find(eb0, '提出').kind, 'submit', 'B2: 提出のkind=submit(青)');
 eq(find(eb0, '評価').kind, 'plan', 'B2b: 評価のkind=plan(緑)');
 
-eq(find(kbEvalBadges({ hyouka_pdf_date: '2026-07-09' }), '提出').state, 'done', 'B3: 提出=済(PDF送付)');
-eq(find(kbEvalBadges({ hyouka_print_date: '2026-07-10' }), '提出').state, 'done', 'B3b: 提出=済(印刷持参でも提出済)');
+eq(kbEvalBadges({ hyouka_pdf_date: '2026-07-09' }).length, 1, 'B3: ★PDF送付日があってもバッジは評価1個');
+eq(find(kbEvalBadges({ hyouka_print_date: '2026-07-10' }), '評価').state, 'todo', 'B3b: ★印刷送付日は評価の済判定に影響しない');
 var eb1 = kbEvalBadges({ hyouka_pdf_date: '2026-07-09', tasseido_date: '2026-07-02' });
 eq(find(eb1, '評価').state, 'done', 'B4: 評価=済(tasseido_date)');
 eq(find(eb1, '評価').date, '2026-07-02', 'B4b: 評価の日付=tasseido_date');
-eq(find(eb1, '提出').date, '2026-07-09', 'B4c: 提出の日付=hyouka_pdf_date');
 
 // ===== C. kbBadgeHtml（色2系統・追加指示3） =====
 var htmlTodo = kbBadgeHtml({ label: '提出', state: 'todo', date: '', kind: 'submit' });

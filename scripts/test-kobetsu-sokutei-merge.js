@@ -137,8 +137,9 @@ sec('5. kbPlanBadges: 測定バッジの材料を2ソースの和にする');
   eq(bOf(neither).state, 'todo', 'どちらにも無ければ「未」のまま');
   eq(bOf(neither, '').state, 'todo', '空文字を渡しても「未」のまま');
   eq(bOf(neither, null).state, 'todo', '★null（API失敗）でも「未」＝従来どおり');
-  eq(S.kbPlanBadges(neither, '2026-07-27').map(b => b.label), ['計画', '測定', '提出'], 'バッジの並びは変えない');
-  eq(S.kbPlanBadges({}).length, 3, '空の rec でも落ちない');
+  // 2026-07-30: 「提出」は個訓アプリの管轄外になった（送付アプリの担当）ので2つになった
+  eq(S.kbPlanBadges(neither, '2026-07-27').map(b => b.label), ['計画', '測定'], 'バッジの並びは変えない');
+  eq(S.kbPlanBadges({}).length, 2, '空の rec でも落ちない');
 }
 
 // =====================================================================

@@ -524,7 +524,6 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 <div class="toolbar">
     <select id="fiscalYearSelect" onchange="onYearChange()"></select>
     <button class="primary" onclick="loadFiscalYearData()">🔄 再読込</button>
-    <button onclick="openUnsubmittedView()" style="background:#fff5f5; border:1.5px solid #c53030; color:#742a2a; font-weight:700;">📮 ケアマネ未提出 <span id="unsubmittedBadge" style="display:none; background:#c53030; color:#fff; border-radius:10px; padding:1px 7px; font-size:0.8rem; margin-left:2px;">0</span></button>
     <button class="secondary" onclick="window.open('https://docs.google.com/spreadsheets/d/1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0/edit','_blank')">📋 利用者台帳</button>
     <button onclick="window.print()">🖨 印刷</button>
     <button onclick="openOperatorDialog()" id="operatorBtn" style="background:#edf2f7;">👤 操作者: <span id="operatorLabel">未選択</span></button>
@@ -619,14 +618,6 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
             <button class="cancel" onclick="closeDateDialog()">キャンセル</button>
         </div>
         <div id="blockedSub" style="display:none; font-size:0.85rem; color:#78350f; margin-top:8px; padding:8px 10px; background:#fef3c7; border-left:3px solid #b7791f; border-radius:6px;"></div>
-        <!-- 計画セルのときのみ表示する送付済みセクション -->
-        <div id="sentSection" style="display:none; margin-top:14px; padding:10px; background:#fff5f5; border-left:3px solid #c53030; border-radius:6px;">
-            <div style="font-size:0.85rem; color:#742a2a; font-weight:bold; margin-bottom:6px;">📮 ケアマネ送付</div>
-            <div id="sentStatus" style="font-size:0.9rem; margin-bottom:8px;"></div>
-            <div class="btn-row">
-                <button id="sentToggleBtn" onclick="toggleSentFromDialog()" style="background:#c53030; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:bold;">送付済みにする</button>
-            </div>
-        </div>
         <!-- 計画セルのときのみ表示する 測定/出力 セクション（2026-06-15 個訓Phase1） -->
         <div id="measureSection" style="display:none; margin-top:14px; padding:10px; background:#f0f9ff; border-left:3px solid #2c7a7b; border-radius:6px;">
             <div style="font-size:0.85rem; color:#234e52; font-weight:bold; margin-bottom:8px;">📐 測定・出力</div>
@@ -654,23 +645,6 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
             <div class="btn-row" style="margin-top:6px;">
                 <button class="clear" onclick="clearHyoukaTasseido()">クリア</button>
                 <button class="ok" onclick="saveHyoukaTasseido()">達成度を保存</button>
-            </div>
-        </div>
-        <div id="hyoukaMethodHint" style="display:none; margin:6px 0; padding:6px 10px; border-radius:6px; font-size:0.82rem;"></div>
-        <div id="hyoukaPdfSection" style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
-            <div style="font-weight:600; margin-bottom:6px;">📧 PDFで送付（メール/FAX）</div>
-            <input type="date" id="hyoukaPdfInput" style="width:100%;">
-            <div class="btn-row" style="margin-top:6px;">
-                <button class="clear" onclick="clearHyoukaField('hyouka_pdf_date')">クリア</button>
-                <button class="ok" onclick="saveHyoukaField('hyouka_pdf_date')">PDF送付を記録</button>
-            </div>
-        </div>
-        <div id="hyoukaPrintSection" style="margin:10px 0; padding:10px; background:#f7fafc; border-radius:6px;">
-            <div style="font-weight:600; margin-bottom:6px;">🖨 印刷で送付（持参/郵送）</div>
-            <input type="date" id="hyoukaPrintInput" style="width:100%;">
-            <div class="btn-row" style="margin-top:6px;">
-                <button class="clear" onclick="clearHyoukaField('hyouka_print_date')">クリア</button>
-                <button class="ok" onclick="saveHyoukaField('hyouka_print_date')">印刷送付を記録</button>
             </div>
         </div>
         <div class="btn-row" style="margin-top:10px;">
@@ -725,17 +699,6 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
   </div>
 </div>
 
-<!-- ケアマネ未提出ビュー（代表向け・2026-06-15 個訓Phase1） -->
-<div class="modal-overlay" id="unsubmittedDialog">
-    <div class="modal" style="max-width:560px; max-height:80vh; overflow:auto;">
-        <h3>📮 ケアマネ未提出 一覧</h3>
-        <div id="unsubmittedBody" style="margin-top:10px;"></div>
-        <div class="btn-row" style="margin-top:14px;">
-            <button class="cancel" onclick="closeUnsubmittedView()">閉じる</button>
-        </div>
-    </div>
-</div>
-
 <div id="toast" class="toast"></div>
 
 <script src="shared.js?v=2026-06-26b"></script>
@@ -748,9 +711,6 @@ const OPERATOR_KEY = 'yawaragi_keikakusho_operator';
 const OPERATOR_FIXED = ['代表'];  // スタッフ一覧APIに含まれない・先頭固定
 // 測定者/出力者プルダウンの除外（測定は全員実施だが代表・小野・林は対象外。2026-06-15社長確定）
 const MEASURER_EXCLUDE = ['代表', '小野', '林'];
-// ケアマネ未提出 カットオフ日（運用開始日）。これ以降の作成/達成度だけ未提出判定の対象（過去バックログ除外）。
-// ※GAS側 KEIKAKUSHO_SOUFU_CUTOFF と同値で管理すること。
-const KEIKAKUSHO_SOUFU_CUTOFF = '2026-06-15';
 // 保留（作れない月）の理由コード6種。既存2値（保険未登録／利用継続未確定）は文字列そのまま先頭に維持し
 // 過去データ互換（移行スクリプト不要）。保険未登録は相談員へ伝達ボードで確認依頼（送信は確認ダイアログでOK時のみ）、他5種は通知しない。
 const BLOCKED_REASONS = ['保険未登録', '利用継続未確定', '長期休み', '入院・入所', 'ケアマネ未提出', '利用終了・中止'];
@@ -841,7 +801,7 @@ function hideOffline() { document.getElementById('offlineBanner').style.display 
 // ============ 保存未確認（pending）管理 ============
 // API送信が失敗したセルを localStorage に記録し、再送信できるようにする。
 // 楽観更新は維持（入力した事実は残す）し、視覚的に「⚠保存未確認」をはっきり出す。
-// 通常セル: field=kyoumi_date/seikatsu_date/keikaku_date/blocked_reason/hyouka_pdf_date/hyouka_print_date
+// 通常セル: field=kyoumi_date/seikatsu_date/keikaku_date/blocked_reason（送付列は扱わない・2026-07-30）
 // 計画書開始月: 特殊キー field='__planStart' / year=0 / month=0
 let _pendingCache = null;
 let _pendingCacheYear = null;
@@ -939,7 +899,7 @@ async function retryPending() {
 // ============ 1ヶ月1列 口腔式バッジ 純関数（2026-07 追加・additive・renderTableで使用）============
 // 口腔 oral-plan の「1ヶ月1セル・バッジで一目」を個別へ移植。バッジ配列を返す純関数（DOM非依存）。
 // バッジ = {label, state:'done'|'todo', date, kind:'plan'|'submit'}。kind=済の色系統。
-// 計画月ノード: 計画(keikaku_date・緑)/測定(sokutei_date・緑)/提出(keikaku_sent_date・青)。
+// 計画月ノード: 計画(keikaku_date・緑)/測定(sokutei_date・緑)。提出（ケアマネ送付）は送付アプリの担当。
 function kbBadgeObj(label, val, kind) {
     const has = !!(val && String(val).trim());
     return { label: label, state: has ? 'done' : 'todo', date: has ? val : '', kind: kind };
@@ -987,21 +947,22 @@ function kbSokuteiForCell(byMonth, name, year, month, normFn) {
     if (!k || !byMonth[k]) return '';
     return byMonth[k][year + '-' + String(month).padStart(2, '0')] || '';
 }
+// ★2026-07-30 社長決定: このアプリは「計画書を作ったか／評価を作ったか」だけを管理する。
+//   ケアマネ送付は ケアマネ送付チェックリスト.html（送付アプリ）の担当なので「提出」を外した。
+//   データの列（keikaku_sent_date / hyouka_pdf_date / hyouka_print_date）は消していない。
+//   送付アプリが評価の送付列を読み書きしており、消すと戻せないため。
 // extraSokuteiDate = 測定記録シート由来の同月の測定日（省略時は従来どおり個訓シートだけ）
 function kbPlanBadges(rec, extraSokuteiDate) {
     rec = rec || {};
     return [
         kbBadgeObj('計画', rec.keikaku_date, 'plan'),
-        kbBadgeObj('測定', kbPickSokuteiDate(rec.sokutei_date, extraSokuteiDate), 'plan'),
-        kbBadgeObj('提出', rec.keikaku_sent_date, 'submit')
+        kbBadgeObj('測定', kbPickSokuteiDate(rec.sokutei_date, extraSokuteiDate), 'plan')
     ];
 }
-// 評価月ノード: 提出(hyouka_pdf_date||hyouka_print_date・青)/評価(tasseido_date・緑)。純関数。
+// 評価月ノード: 評価(tasseido_date・緑)のみ。送付（提出）は送付アプリの担当。純関数。
 function kbEvalBadges(rec) {
     rec = rec || {};
-    const submit = rec.hyouka_pdf_date || rec.hyouka_print_date || '';
     return [
-        kbBadgeObj('提出', submit, 'submit'),
         kbBadgeObj('評価', rec.tasseido_date, 'plan')
     ];
 }
@@ -1135,9 +1096,6 @@ async function loadFiscalYearData() {
                     seikatsu_date: rec.seikatsu_date || '',
                     keikaku_date: rec.keikaku_date || '',
                     blocked_reason: rec.blocked_reason || '',
-                    hyouka_pdf_date: rec.hyouka_pdf_date || '',
-                    hyouka_print_date: rec.hyouka_print_date || '',
-                    keikaku_sent_date: rec.keikaku_sent_date || '',   // ②修正: 再構築で送付日を落とさない（済マーク消失バグ）
                     // ③ 新規4列（測定/出力/達成度）
                     sokutei_date: rec.sokutei_date || '',
                     sokutei_by: rec.sokutei_by || '',
@@ -1174,8 +1132,7 @@ async function loadFiscalYearData() {
                 if (!newRecords[recKey]) {
                     newRecords[recKey] = {
                         kyoumi_date: '', seikatsu_date: '', keikaku_date: '',
-                        blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: '',
-                        keikaku_sent_date: '',
+                        blocked_reason: '',
                         sokutei_date: '', sokutei_by: '', output_by: '', tasseido_date: ''
                     };
                 }
@@ -1272,7 +1229,7 @@ function renderTable() {
         MONTHS.forEach(mo => {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
-            const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: '' };
+            const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
             const isPlan = isPlanMonth(u.planStart, u.planMonths, cellYear, mo.m);
             const isHyouka = isHyoukaMonth(u.planStart, u.planMonths, cellYear, mo.m);
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
@@ -1282,8 +1239,8 @@ function renderTable() {
 
             // データ温存（#6・フェーズ1）: 実績のある行は計画月/評価月でなくても、planStart より前でも表示する。
             const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
-                || rec.keikaku_sent_date || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason);
-            const hasHyoukaData = !!(rec.tasseido_date || rec.hyouka_pdf_date || rec.hyouka_print_date);
+                || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason);
+            const hasHyoukaData = !!rec.tasseido_date;
 
             // フェーズ2a: 作業月(前月)化。翌月が計画月ならこのセルは作業月で、計画パートを node(計画月)行から読み書きする。
             const cyc = kobetsuCycleAt(u.planStart, u.planMonths, cellYear, mo.m);
@@ -1294,9 +1251,9 @@ function renderTable() {
             let planSrc = null;
             if (isWork) {
                 const nk = u.userId + '_' + cyc.nodeYear + '_' + cyc.nodeMonth;
-                const nodeRec = state.records[nk] || { keikaku_date: '', sokutei_date: '', keikaku_sent_date: '', blocked_reason: '' };
+                const nodeRec = state.records[nk] || { keikaku_date: '', sokutei_date: '', blocked_reason: '' };
                 const nodeHasPlanData = !!(nodeRec.keikaku_date || nodeRec.kyoumi_date || nodeRec.seikatsu_date
-                    || nodeRec.keikaku_sent_date || nodeRec.sokutei_date || nodeRec.sokutei_by || nodeRec.output_by || nodeRec.blocked_reason);
+                    || nodeRec.sokutei_date || nodeRec.sokutei_by || nodeRec.output_by || nodeRec.blocked_reason);
                 if (!nodeHasPlanData && hasPlanData) {
                     // planStartを後ろへ動かした等で node(計画月)は空だが、作業月“自身の行”に旧データが残るケース。
                     // フェーズ1の温存を優先し、自セルの旧データを隠さず表示する（書込先も自セル＝旧データの位置は動かさない）。
@@ -1317,14 +1274,12 @@ function renderTable() {
             if (isCurrent) cls += ' current';
             if (!showPlan && !showEval) { cells += '<td class="' + cls + ' disabled">-</td>'; return; }
 
-            // 今月以前で未が残るバッジを要対応に集計。提出の当月未は来所ゲート(kbSubmitDue)を尊重し督促しない。
+            // 今月以前で未が残るバッジを要対応に集計。
+            // ★2026-07-30: 提出（ケアマネ送付）はこのアプリの管轄外になったので、来所ゲートの
+            //   出し分け（kbSubmitDue）は使わない。関数は残置（戻せるようにするため）。
             const collectTodo = (badges) => {
                 if (!(isPast || isCurrent)) return;
-                badges.forEach(b => {
-                    if (b.state !== 'todo') return;
-                    if (b.label === '提出' && isCurrent && !kbSubmitDue(u.name, cellYear, mo.m)) return;
-                    rowTodo = true;
-                });
+                badges.forEach(b => { if (b.state === 'todo') rowTodo = true; });
             };
             let inner = '';
 
@@ -1344,7 +1299,6 @@ function renderTable() {
                     pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
                         + '<span class="kb-badges">' + pb.map(kbBadgeHtml).join('') + '</span>';
                     collectTodo(pb);
-                    if (pRec.keikaku_date && !pRec.keikaku_sent_date && pYM === nowYM) gateNames.add(u.name);
                 }
                 inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
                     + '" data-year="' + planSrc.year + '" data-month="' + planSrc.month + '" data-field="keikaku_date" data-fieldlabel="計画"'
@@ -1354,9 +1308,8 @@ function renderTable() {
             // 評価パート（onHyoukaCellTap導線・従来data属性を踏襲＝案A）
             if (showEval) {
                 const sm = u.sendMethod || '';
-                const submitted = !!(rec.hyouka_pdf_date || rec.hyouka_print_date);
                 const tasseido = rec.tasseido_date || '';
-                const hyoukaBlocked = !submitted && !tasseido && isBlocked;
+                const hyoukaBlocked = !tasseido && isBlocked;
                 let eInner;
                 if (hyoukaBlocked) {
                     eInner = '<span class="kb-cyc kb-cyc-eval">評価月</span>'
@@ -1369,7 +1322,6 @@ function renderTable() {
                         + '<span class="kb-badges">' + eb.map(kbBadgeHtml).join('') + '</span>';
                     // 開始前(diff-1)の評価は前サイクルの空スロット。表示はするが要対応には数えない（幻の督促を防ぐ）。
                     if (!beforeStart) collectTodo(eb);
-                    if (tasseido && !submitted && (cellYear + '-' + String(mo.m).padStart(2, '0')) === nowYM) gateNames.add(u.name);
                 }
                 inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
                     + '" data-year="' + cellYear + '" data-month="' + mo.m + '" data-field="hyouka" data-fieldlabel="評価" data-sendmethod="' + escapeAttr(u.sendMethod || '') + '"'
@@ -1432,7 +1384,8 @@ function updateStats() {
         }
         if (isHyoukaMonth(u.planStart, u.planMonths, ny, nm)) {
             hyoukaThisMonth++;
-            if (rec && (rec.hyouka_pdf_date || rec.hyouka_print_date)) hyoukaDone++;
+            // ★2026-07-30: 「送付したか」ではなく「評価を作ったか」で数える（送付は送付アプリの担当）
+            if (rec && rec.tasseido_date) hyoukaDone++;
         }
     });
     document.getElementById('thisMonthCount').textContent = thisMonth;
@@ -1442,72 +1395,6 @@ function updateStats() {
     document.getElementById('hyoukaMonthCount').textContent = hyoukaThisMonth;
     document.getElementById('hyoukaDoneCount').textContent = hyoukaDone;
     document.getElementById('hyoukaTotalCount').textContent = hyoukaThisMonth;
-    updateUnsubmittedBadge();
-}
-
-// ===== ケアマネ未提出ビュー（2026-06-15 個訓Phase1）=====
-// 判定は純ロジック（scripts/lib/kobetsu-soufu-core.js judgeUnsubmitted）と同一ルール。
-//   計画書未提出 = keikaku_date有 かつ keikaku_sent_date空
-//   評価未提出   = tasseido_date有 かつ hyouka_pdf・hyouka_print 両方空
-function judgeUnsubmittedLocal() {
-    const has = v => !!(v && String(v).trim());
-    // 日付はgetKeikakushoYearでISO正規化済み。先頭10文字でカットオフ比較。
-    const onOrAfter = v => has(v) && String(v).trim().slice(0, 10) >= KEIKAKUSHO_SOUFU_CUTOFF;
-    const plan = [], hyouka = [];
-    Object.keys(state.records).forEach(key => {
-        const rec = state.records[key] || {};
-        const parts = key.split('_');
-        // key = userId_year_month（userIdに_を含む可能性に配慮し末尾2つをyear/monthとする）
-        const month = parts.length >= 2 ? parts[parts.length - 1] : '';
-        const year = parts.length >= 3 ? parts[parts.length - 2] : '';
-        const name = rec.name || (parts.length >= 3 ? parts.slice(0, parts.length - 2).join('_') : key);
-        // カットオフ以降の作成/達成度だけ対象（過去バックログ除外）
-        if (onOrAfter(rec.keikaku_date) && !has(rec.keikaku_sent_date)) {
-            plan.push({ name, year, month, date: rec.keikaku_date });
-        }
-        if (onOrAfter(rec.tasseido_date) && !has(rec.hyouka_pdf_date) && !has(rec.hyouka_print_date)) {
-            hyouka.push({ name, year, month, date: rec.tasseido_date });
-        }
-    });
-    return { plan, hyouka };
-}
-
-function updateUnsubmittedBadge() {
-    const r = judgeUnsubmittedLocal();
-    const total = r.plan.length + r.hyouka.length;
-    const badge = document.getElementById('unsubmittedBadge');
-    if (!badge) return;
-    badge.textContent = total;
-    badge.style.display = total > 0 ? 'inline-block' : 'none';
-}
-
-function openUnsubmittedView() {
-    const r = judgeUnsubmittedLocal();
-    const sortFn = (a, b) => (a.year + a.month).localeCompare(b.year + b.month) || a.name.localeCompare(b.name, 'ja');
-    r.plan.sort(sortFn); r.hyouka.sort(sortFn);
-    function rows(list, kind) {
-        if (!list.length) return '<div style="color:#718096; padding:8px;">なし</div>';
-        return '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">'
-            + list.map(x =>
-                '<tr style="border-bottom:1px solid #eee;">'
-                + '<td style="padding:6px 8px; font-weight:600;">' + escapeHtml(x.name) + '</td>'
-                + '<td style="padding:6px 8px; color:#c53030; white-space:nowrap;">' + kind + '</td>'
-                + '<td style="padding:6px 8px; white-space:nowrap;">' + escapeHtml(x.year) + '/' + escapeHtml(x.month) + '月</td>'
-                + '<td style="padding:6px 8px; color:#4a5568; white-space:nowrap;">' + escapeHtml(x.date) + '</td>'
-                + '</tr>').join('')
-            + '</table>';
-    }
-    document.getElementById('unsubmittedBody').innerHTML =
-        '<div style="margin-bottom:10px; padding:6px 10px; background:#fffaf0; border-left:3px solid #dd6b20; font-size:0.82rem; color:#744210;">カットオフ(' + KEIKAKUSHO_SOUFU_CUTOFF + ')以降のみ表示中（運用開始前の過去分は対象外）</div>'
-        + '<div style="margin-bottom:6px; font-weight:700; color:#742a2a;">📄 計画書 未提出（作成済み・未送付）：' + r.plan.length + '件</div>'
-        + rows(r.plan, '計画書')
-        + '<div style="margin:14px 0 6px; font-weight:700; color:#742a2a;">🎯 評価 未提出（達成度実施済み・未送付）：' + r.hyouka.length + '件</div>'
-        + rows(r.hyouka, '評価')
-        + '<div style="margin-top:12px; font-size:0.8rem; color:#718096;">※ 計画書＝作成日あり・ケアマネ提出日なし／評価＝達成度評価日あり・PDF/印刷の送付どちらもなし</div>';
-    document.getElementById('unsubmittedDialog').classList.add('show');
-}
-function closeUnsubmittedView() {
-    document.getElementById('unsubmittedDialog').classList.remove('show');
 }
 
 function setDayFilter(d, ev) {
@@ -1594,21 +1481,7 @@ function openDateDialog(userId, name, year, month, field, fieldLabel, currentVal
         document.getElementById('reasonPicker').style.display = 'none';
         unblockBtnRow.style.display = 'none';
     }
-    // 計画セル(keikaku_date)で保留中でないときのみ「ケアマネ送付」セクション表示
-    const sentSection = document.getElementById('sentSection');
-    if (field === 'keikaku_date' && !blockedReason) {
-        const key = userId + '_' + year + '_' + month;
-        const rec = state.records[key] || {};
-        const sent = rec.keikaku_sent_date || '';
-        dialogState.currentSent = sent;
-        document.getElementById('sentStatus').textContent = sent ? '✅ 送付済み: ' + formatMD(sent) : '⚪ 未送付';
-        const toggleBtn = document.getElementById('sentToggleBtn');
-        toggleBtn.textContent = sent ? '🗑 送付済みをクリア' : '📮 今日送付済みにする';
-        toggleBtn.style.background = sent ? '#718096' : '#c53030';
-        sentSection.style.display = 'block';
-    } else {
-        sentSection.style.display = 'none';
-    }
+    // ★2026-07-30: 「ケアマネ送付」セクションは撤去（送付は ケアマネ送付チェックリスト.html の担当）。
     // 計画セル（保留でない）でのみ 測定/出力 入力セクション表示（2026-06-15 個訓Phase1）
     const measureSection = document.getElementById('measureSection');
     if (field === 'keikaku_date' && !blockedReason) {
@@ -1658,48 +1531,6 @@ async function saveMeasureFromDialog() {
     }
 }
 
-async function toggleSentFromDialog() {
-    const ds = dialogState;
-    const newValue = ds.currentSent ? '' : formatTodayISO();
-    closeDateDialog();
-    await applySentValue(ds.userId, ds.name, ds.year, ds.month, newValue);
-}
-
-async function applySentValue(userId, name, year, month, value) {
-    const key = userId + '_' + year + '_' + month;
-    if (!state.records[key]) state.records[key] = { userId, name, year, month };
-    state.records[key].keikaku_sent_date = value;
-    saveCache();
-    renderTable();
-
-    markPending(userId, year, month, 'keikaku_sent_date', value);
-    updatePendingBanner();
-    try {
-        const url = API_BASE + '?action=updateKeikakusho'
-            + '&userId=' + encodeURIComponent(userId)
-            + '&year=' + year + '&month=' + month
-            + '&field=keikaku_sent_date'
-            + '&value=' + encodeURIComponent(value)
-            + '&operator=' + encodeURIComponent(getOperator())
-            + '&t=' + Date.now();
-        const res = await fetch(url);
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error || '保存失敗');
-        unmarkPending(userId, year, month, 'keikaku_sent_date');
-        showToast(value
-            ? '📮 ' + name + ' ' + month + '月 ケアマネ送付済み'
-            : '🗑 ' + name + ' ' + month + '月 送付済みクリア',
-            value ? '' : 'warn');
-        hideOffline();
-    } catch (e) {
-        console.error('applySentValue error:', e);
-        showToast('⚠ ' + name + ' ' + month + '月 送付済み保存失敗（再送信待ち）', 'error');
-        showOffline();
-    }
-    updatePendingBanner();
-    renderTable();
-}
-
 // 「⏸ 保留にする」→ 6種の理由ボタンを表示（1タップで setBlocked。合計2タップ）
 function showReasonPicker() {
     const row = document.getElementById('reasonBtnRow');
@@ -1732,7 +1563,6 @@ async function applyBlockedReason(userId, name, year, month, reason) {
     const prevReason = rec.blocked_reason;   // 解除連動の判定用（上書き前に捕捉）
     rec.blocked_reason = reason;
     if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason
-        && !rec.hyouka_pdf_date && !rec.hyouka_print_date && !rec.keikaku_sent_date
         && !rec.sokutei_date && !rec.sokutei_by && !rec.output_by && !rec.tasseido_date) {
         delete state.records[key];
     } else {
@@ -1899,36 +1729,14 @@ function onHyoukaCellTap(td) {
 function openHyoukaDialog(userId, name, year, month, sendMethod) {
     hyoukaDialogState = { userId, name, year, month };
     const key = userId + '_' + year + '_' + month;
-    const rec = state.records[key] || { hyouka_pdf_date: '', hyouka_print_date: '' };
-    // sendMethod未指定なら state.users から補完（ダイアログ再描画時など）
-    if (sendMethod === undefined || sendMethod === null) {
-        const u = state.users.find(x => x.userId === userId);
-        sendMethod = u ? (u.sendMethod || '') : '';
-    }
+    const rec = state.records[key] || {};
+    // ★2026-07-30: このダイアログは「達成度評価を作ったか」だけを扱う。
+    //   PDF送付／印刷送付の記録は ケアマネ送付チェックリスト.html（送付アプリ）へ移した。
+    //   sendMethod（PDF/印刷）は送付方法の情報なので、ここでは使わない。
     document.getElementById('hyoukaDialogTitle').textContent = name + '  ' + month + '月の評価';
     document.getElementById('hyoukaDialogSub').textContent =
-        'PDF: ' + (rec.hyouka_pdf_date || '(未送付)') + ' ／ 印刷: ' + (rec.hyouka_print_date || '(未送付)');
-    document.getElementById('hyoukaPdfInput').value = rec.hyouka_pdf_date || formatTodayISO();
-    document.getElementById('hyoukaPrintInput').value = rec.hyouka_print_date || formatTodayISO();
+        '達成度評価: ' + (rec.tasseido_date || '(未実施)');
     document.getElementById('tasseidoInput').value = rec.tasseido_date || '';
-
-    // 送付方法で出力ボタンを出し分け。既に値がある側は誤入力修正のため常時表示。
-    const pdfSec = document.getElementById('hyoukaPdfSection');
-    const printSec = document.getElementById('hyoukaPrintSection');
-    const hint = document.getElementById('hyoukaMethodHint');
-    const showPdf = (sendMethod !== '印刷') || !!rec.hyouka_pdf_date;
-    const showPrint = (sendMethod !== 'PDF') || !!rec.hyouka_print_date;
-    pdfSec.style.display = showPdf ? 'block' : 'none';
-    printSec.style.display = showPrint ? 'block' : 'none';
-    if (sendMethod === 'PDF') {
-        hint.textContent = '📧 この利用者はメール/FAX事業所 → PDFで送付';
-        hint.style.cssText = 'margin:6px 0; padding:6px 10px; border-radius:6px; font-size:0.82rem; background:#ebf8ff; color:#2b6cb0; display:block;';
-    } else if (sendMethod === '印刷') {
-        hint.textContent = '🖨 この利用者は持参/郵送事業所 → 印刷で送付';
-        hint.style.cssText = 'margin:6px 0; padding:6px 10px; border-radius:6px; font-size:0.82rem; background:#fffaf0; color:#9c4221; display:block;';
-    } else {
-        hint.style.display = 'none';  // sendMethod不明（GAS未配信等）は両方表示で従来動作
-    }
     document.getElementById('hyoukaDialog').classList.add('show');
 }
 
@@ -1951,35 +1759,16 @@ function closeHyoukaDialog() {
     document.getElementById('hyoukaDialog').classList.remove('show');
 }
 
-async function saveHyoukaField(field) {
-    const inputId = (field === 'hyouka_pdf_date') ? 'hyoukaPdfInput' : 'hyoukaPrintInput';
-    const v = document.getElementById(inputId).value;
-    if (!v) { showToast('⚠ 日付が選択されていません', 'error'); return; }
-    const ds = hyoukaDialogState;
-    const fieldLabel = (field === 'hyouka_pdf_date') ? '評価PDF' : '評価印刷';
-    await applyHyoukaValue(ds.userId, ds.name, ds.year, ds.month, field, fieldLabel, v);
-    // 保存後にダイアログ再描画
-    openHyoukaDialog(ds.userId, ds.name, ds.year, ds.month);
-}
-
-async function clearHyoukaField(field) {
-    const ds = hyoukaDialogState;
-    const fieldLabel = (field === 'hyouka_pdf_date') ? '評価PDF' : '評価印刷';
-    if (!confirm(ds.name + ' ' + ds.month + '月の' + fieldLabel + 'をクリアしますか？')) return;
-    await applyHyoukaValue(ds.userId, ds.name, ds.year, ds.month, field, fieldLabel, '');
-    openHyoukaDialog(ds.userId, ds.name, ds.year, ds.month);
-}
-
 async function applyHyoukaValue(userId, name, year, month, field, fieldLabel, value) {
     const key = userId + '_' + year + '_' + month;
     const rec = state.records[key] || {
         kyoumi_date: '', seikatsu_date: '', keikaku_date: '',
-        blocked_reason: '', hyouka_pdf_date: '', hyouka_print_date: ''
+        blocked_reason: ''
     };
     rec[field] = value;
     if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date
-        && !rec.blocked_reason && !rec.hyouka_pdf_date && !rec.hyouka_print_date
-        && !rec.keikaku_sent_date && !rec.sokutei_date && !rec.sokutei_by
+        && !rec.blocked_reason
+        && !rec.sokutei_date && !rec.sokutei_by
         && !rec.output_by && !rec.tasseido_date) {
         delete state.records[key];
     } else {
@@ -2035,8 +1824,7 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value) {
     const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
     rec[field] = value;
     if (!rec.kyoumi_date && !rec.seikatsu_date && !rec.keikaku_date && !rec.blocked_reason
-        && !rec.hyouka_pdf_date && !rec.hyouka_print_date
-        && !rec.keikaku_sent_date && !rec.sokutei_date && !rec.sokutei_by
+        && !rec.sokutei_date && !rec.sokutei_by
         && !rec.output_by && !rec.tasseido_date) {
         delete state.records[key];
     } else {

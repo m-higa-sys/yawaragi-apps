@@ -7479,8 +7479,18 @@ function morningDigest(e) {
     return { tasks: getDengonForOwner_(ss) };
   });
   // 個訓 ケアマネ未提出（計画書＝作成済み未送付／評価＝達成度実施済み未送付・2026-06-15）
+  // ★2026-07-30 社長決定で停止。個別機能訓練計画書チェックアプリは「計画書を作ったか／
+  //   評価を作ったか」だけを管理し、ケアマネ送付は ケアマネ送付チェックリスト.html の担当に分けた。
+  //   よって朝の報告からは送付の督促を出さない（停止直前の実測: 計画書38件・評価22件）。
+  // ★getKeikakushoUnsubmitted_ 自体は残す。消すと戻せないため（判定ルールの正本でもある）。
+  //   セクションのキーも残し、件数0・空配列で返す。キーごと消すと読み手（朝報スキル等）が
+  //   .planCount / .length を見たときに壊れるため、形は保ったまま中身だけ止める。
   safe('keikakushoSoufu', function () {
-    return getKeikakushoUnsubmitted_();
+    return {
+      planCount: 0, hyoukaCount: 0, plan: [], hyouka: [],
+      disabled: true,
+      note: 'ケアマネ送付は送付管理アプリの担当（2026-07-30 社長決定）。個訓アプリ由来の督促は停止'
+    };
   });
   // シフト 公開リマインド（毎朝・終わるまで方式・月次自動再出現・2026-06-22）
   safe('shift', function () {
