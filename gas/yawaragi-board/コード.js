@@ -4366,6 +4366,15 @@ function doPost(e) {
         return jsonResp(dedupeLongTermAbsence(ss));
       case 'run_daily_long_leave_reminder':
         return jsonResp(dailyLongLeaveReminder());
+      // 2026-07-31 長期休み 月1連絡：伝達ボードの依頼を再計算（冪等・手動実行用）
+      case 'longleave_notify':
+        return jsonResp(longleaveNotify(ss));
+      // 2026-07-31 移行用①：旧タスクボード起票（未完了169件）を完了化。冪等・1回だけ実行する
+      case 'longleave_close_legacy_tasks':
+        return jsonResp(closeLegacyLongLeaveTasks(ss));
+      // 2026-07-31 移行用②：現在の長期休み中でO列が空欄の人に '対象' を一括投入。冪等
+      case 'longleave_seed_gate':
+        return jsonResp(seedLongLeaveGate(ss, data.gate));
       case 'add_user_event':
         return jsonResp(addUserEvent(ss, data));
       case 'complete_event_item':
@@ -7524,10 +7533,14 @@ function morningDigest(e) {
   });
   // 長期休み（生データ→digest側でフラグ計算）
   safe('longLeave', function () {
-    var flagged = (getLongLeaveList(ss) || []).map(function (r) {
+    var llList = getLongLeaveList(ss) || [];
+    var flagged = llList.map(function (r) {
       return { name: r.name, flags: computeLongLeaveFlags_(r, dateStr), note: r.contactNote || '' };
     }).filter(function (r) { return r.flags.length > 0; });
-    return { flagged: flagged };
+    // 2026-07-31: O列「月1連絡」が空欄＝社長が対象/対象外を決めていない人数。
+    // 決まるまでその人は自動投稿に載らず連絡漏れになるため、終わるまで方式で毎朝出す（氏名は不要・件数のみ）。
+    var sel = longleaveSelectTargets_(llList);
+    return { flagged: flagged, pendingGateCount: sel.pendingCount };
   });
   // 個訓計画書 保留中（今月＋来月）
   safe('keikakushoBlocked', function () {
@@ -12065,6 +12078,13 @@ function migrateLongLeaveColumns_(sheet) {
     sheet.setColumnWidth(14, 140);
     sheet.getRange(1, 14).setBackground('#2d3748').setFontColor('#ffffff').setFontWeight('bold');
   }
+  // 2026-07-31: O列(15) 月1連絡ゲート。空欄=承認待ち（自動投稿に載せない）/ '対象' / '対象外'。
+  // デフォルトを「載せない」に倒すことで、載ってはいけない人が自動投稿に出る事故を構造的に防ぐ。
+  if (lastCol < 15) {
+    sheet.getRange(1, 15).setValue('月1連絡');
+    sheet.setColumnWidth(15, 100);
+    sheet.getRange(1, 15).setBackground('#2d3748').setFontColor('#ffffff').setFontWeight('bold');
+  }
 }
 
 // 長期休み中の利用者一覧を取得（経過日数計算込み・重複検出）
@@ -12126,6 +12146,7 @@ function getLongLeaveList(ss) {
     var nextContactDue = data[i][11] ? fmtDate(data[i][11]) : '';
     var lastResultType = String(data[i][12] || '').trim();  // 'resume' / 'extend' / 'pending'
     var cmNotified = String(data[i][13] || '').trim();      // N列(14, 0-indexed 13) 長期休みケアマネ連絡
+    var monthlyGate = String(data[i][14] || '').trim();     // O列(15, 0-indexed 14) 月1連絡ゲート（''/対象/対象外）
 
     // 経過日数
     var startMs = new Date(startDate + 'T00:00:00+09:00').getTime();
@@ -12176,6 +12197,7 @@ function getLongLeaveList(ss) {
       lastContact: lastContact,
       contactLog: contactLog,
       cmNotified: cmNotified,
+      monthlyContactGate: monthlyGate,
       lastOperator: ltLastLog.operator,
       lastMethod: ltLastLog.method,
       contactNote: contactNote,
@@ -12267,23 +12289,11 @@ function addContactLog(ss, data) {
     sheet.getRange(foundRow, 9).setValue(data.newExpectedReturn);  // I列：復帰予定日
   }
   // 次回連絡予定日（L列）
-  var nextDue = data.nextContactDue || '';
-  if (!nextDue) {
-    if (resultType === 'pending') {
-      // 未定 → 14日後
-      var d = new Date();
-      d.setDate(d.getDate() + 14);
-      nextDue = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
-    } else if (resultType === 'extend') {
-      // 延長 → 新予定日の7日前
-      var rd = new Date(data.newExpectedReturn + 'T00:00:00+09:00');
-      rd.setDate(rd.getDate() - 7);
-      nextDue = Utilities.formatDate(rd, 'Asia/Tokyo', 'yyyy-MM-dd');
-    } else {
-      // 再開 → 空（タスク不要）
-      nextDue = '';
-    }
-  }
+  // 2026-07-31 仕様変更: 自動計算（未定→14日後 / 延長→新予定日の7日前）を廃止し、基本は空欄運用にする。
+  //   理由: やわらぎのルールは月1回。14日は短すぎるうえ、28日ルールが「L列の値」と「判定コードの28」に
+  //   分裂して単一の正を崩していた。督促は J列(最終連絡日)＋28日 の一本で回る（longleaveIsOverdue_）。
+  //   L列は「退院日が決まっている」等のイレギュラーを画面から手入力した時だけ入る。
+  var nextDue = String(data.nextContactDue || '').trim();
   sheet.getRange(foundRow, 12).setValue(nextDue);
   sheet.getRange(foundRow, 13).setValue(resultType);  // M列：結果区分
 
@@ -12307,6 +12317,12 @@ function addContactLog(ss, data) {
     GmailApp.sendEmail(NOTIFY_EMAIL, subject, bodyLines.join('\n'), { charset: 'UTF-8' });
   } catch (e) {
     Logger.log('長期休み連絡 通知メール送信失敗: ' + e.message);
+  }
+
+  // 2026-07-31: 記録が入ったら伝達ボードの依頼を即座に追従させる（本文から当人を落とす／全員済なら締める）。
+  // 個訓の kunrenHoldClear と同じ一方向連動。失敗しても記録本体は success のまま返す。
+  try { longleaveNotify(ss); } catch (e) {
+    Logger.log('長期休み連絡 伝達ボード追従に失敗: ' + e.message);
   }
 
   return {
@@ -12388,38 +12404,166 @@ function dedupeLongTermAbsence(ss) {
   };
 }
 
-// 自動リマインド（GASトリガー：毎日朝6時実行）
-// - 復帰予定日の7日前ジャストでタスク投入
-// - 復帰未定で最終連絡から14日経過でタスク投入
-// - 同日同利用者で重複防止
+// 自動リマインド（GASトリガー：毎日朝6時実行・uniqueId=2985651332620222464）
+//
+// 2026-07-31 全面差し替え。★関数名は変更しない（既存トリガーが handler 名で紐づいているため）。
+// 旧実装はタスクボードへ「○○様 長期休み利用連絡」を起票していたが、
+//   ①判定が14日（やわらぎの月1ルールと不整合）
+//   ②重複チェックが「同じ日」だけ＝日付が変わると再度立つ
+//   ③連絡・再開しても閉じる導線が無い
+// の3点により、2026-04-28〜07-30 の72日間で未完了169件（10名分・うち5名は再開済み）が堆積し、
+// 誰の目にも留まらないゴミになっていた（2026-07-31 実測）。
+// 新実装は伝達ボードの単一キー1件に集約する（longleaveNotify）。タスクボードへは一切起票しない。
 function dailyLongLeaveReminder() {
   var ss = SpreadsheetApp.openById(SS_ID);
-  var list = getLongLeaveList(ss);
-  var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  return longleaveNotify(ss);
+}
 
-  var added = [];
-  list.forEach(function (user) {
-    var shouldRemind = false;
-    if (user.expectedReturn && user.expectedReturn !== '未定') {
-      if (user.daysUntilReturn === 7) shouldRemind = true;
+// ===== 長期休み 月1連絡 → 伝達ボード（2026-07-31 社長承認）=====
+// 判定・本文は純関数 gas/yawaragi-board/longleave-notice-core.js に集約（テスト: scripts/test-longleave-notice.js）。
+// 単一キー longleave-contact を upsert し、0名で done化して締める。他メッセージには触れない。
+var LONGLEAVE_ROSTER_PROP = 'longleave_last_roster';   // 前回の対象者（増減時だけメールするため）
+
+// 対象者を再計算し、伝達ボードの1件を最新化する。
+//   ・毎朝6時トリガー（dailyLongLeaveReminder）と、連絡保存時（addContactLog）の両方から呼ばれる冪等関数。
+//   ・投稿は増えない（同じ行の本文を書き換えるだけ）。0名になったら done化。
+//   ・O列ゲートが '対象' の人だけが本文に載る。空欄（承認待ち）は絶対に載せない。
+function longleaveNotify(ss) {
+  ss = ss || SpreadsheetApp.openById(SS_ID);
+  var sel = longleaveSelectTargets_(getLongLeaveList(ss));
+  var body = longleaveBuildBody_(sel.targets);
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return { ok: false, error: 'lock_timeout' }; }
+  var result;
+  try {
+    var sheet = ss.getSheetByName(DENGON_SHEET);
+    if (!sheet) { setupDengonBoard(ss); sheet = ss.getSheetByName(DENGON_SHEET); }
+    var values = sheet.getDataRange().getValues();
+    var decision = longleaveDecide_(values, LONGLEAVE_NOTICE_KEY, body);
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+
+    if (decision.op === 'reject') { result = { ok: false, error: 'bad_key' }; }
+    else if (decision.op === 'noop') { result = { ok: true, closed: true, noop: true }; }
+    else if (decision.op === 'close') {
+      // 全員が連絡済み（または対象者ゼロ）→ done化して完了履歴へ落とす。行は残す。
+      var cRow = decision.rowIndex + 1;
+      sheet.getRange(cRow, DB_COL.DONE + 1).setValue(true);
+      sheet.getRange(cRow, DB_COL.DONEAT + 1).setValue(now);
+      sheet.getRange(cRow, DB_COL.DONEBY + 1).setValue('システム(全員連絡済み)');
+      SpreadsheetApp.flush();
+      result = { ok: true, closed: true };
     } else {
-      // 復帰未定: 最終連絡日があれば14日経過、なければ開始日から14日経過で発火
-      var checkDays = user.daysSinceLastContact !== null ? user.daysSinceLastContact : user.elapsedDays;
-      if (checkDays >= 14) shouldRemind = true;
+      var recipients = ['勝又'];   // 個人宛て＝その本人1名（kunrenHoldNotify と同じ流儀）
+      if (decision.op === 'update') {
+        var uRow = decision.rowIndex + 1;
+        sheet.getRange(uRow, DB_COL.BODY + 1).setValue(body);
+        sheet.getRange(uRow, DB_COL.CREATED + 1).setValue(now);
+        sheet.getRange(uRow, DB_COL.DONE + 1).setValue(false);   // 締めたあと再発しても未完了で復活
+        sheet.getRange(uRow, DB_COL.RECIPIENTS + 1).setValue(JSON.stringify(recipients));
+        SpreadsheetApp.flush();
+        result = { ok: true, updated: true, count: sel.targets.length };
+      } else {
+        sheet.appendRow([LONGLEAVE_NOTICE_KEY, '長期休み連絡', '勝又', body, '', now, false, '', '',
+                         JSON.stringify(recipients), '[]']);
+        SpreadsheetApp.flush();
+        var idx = dbFindRowIndex_(sheet.getDataRange().getValues(), LONGLEAVE_NOTICE_KEY);
+        if (idx === -1) { result = { ok: false, error: 'verify_failed', verified: false }; }
+        else {
+          sheet.getRange(idx + 1, DB_COL.DONE + 1).insertCheckboxes();
+          result = { ok: true, added: true, verified: true, count: sel.targets.length };
+        }
+      }
     }
+  } finally {
+    lock.releaseLock();
+  }
 
-    if (shouldRemind && !alreadyAddedTodayLongLeave_(ss, user.name, today)) {
-      addBoardTask(ss, {
-        name: user.name + '様 長期休み利用連絡',
-        priority: 'high',
-        deadline: (user.expectedReturn && user.expectedReturn !== '未定') ? user.expectedReturn : '',
-        source: '代表'
-      });
-      added.push(user.name);
+  result.pendingCount = sel.pendingCount;
+  result.excludedCount = sel.excludedCount;
+
+  // 社長への通知メールは「顔ぶれに増減があった時だけ」。毎朝は送らない（169件が埋もれた反省で導線は1本残す）。
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var prev = null;
+    var raw = props.getProperty(LONGLEAVE_ROSTER_PROP);
+    if (raw) { try { prev = JSON.parse(raw); } catch (e) { prev = null; } }
+    if (result.ok && longleaveRosterChanged_(prev, sel.targets)) {
+      longleaveSendRosterMail_(prev, sel.targets, sel.pendingCount);
+      result.mailed = true;
     }
-  });
+    if (result.ok) props.setProperty(LONGLEAVE_ROSTER_PROP, JSON.stringify(sel.targets));
+  } catch (e) {
+    Logger.log('長期休み連絡 増減メール送信失敗: ' + e.message);
+  }
+  return result;
+}
 
-  return { success: true, addedCount: added.length, added: added };
+// 対象者の増減を社長へ知らせる（差分がある時だけ呼ばれる）。
+function longleaveSendRosterMail_(prev, next, pendingCount) {
+  var before = Array.isArray(prev) ? prev : [];
+  var added = next.filter(function (n) { return before.indexOf(n) === -1; });
+  var removed = before.filter(function (n) { return next.indexOf(n) === -1; });
+  var lines = ['長期休み 月1連絡の対象者に増減がありました。', '',
+               '現在の対象：' + next.length + '名'];
+  if (added.length) lines.push('　増えた方：' + added.join('、') + 'さん');
+  if (removed.length) lines.push('　外れた方：' + removed.join('、') + 'さん（連絡済み or 再開 or 対象外）');
+  if (pendingCount > 0) {
+    lines.push('');
+    lines.push('⚠ 承認待ち ' + pendingCount + '名（出欠変更シートのO列「月1連絡」が空欄）');
+    lines.push('　「対象」または「対象外」を入れるまで、その方は自動投稿に載りません。');
+  }
+  lines.push('');
+  lines.push('伝達ボード（勝又さん宛て）の依頼文は自動で最新化済みです。');
+  GmailApp.sendEmail(NOTIFY_EMAIL, '[長期休み連絡] 対象者 ' + next.length + '名（増減あり）',
+                     lines.join('\n'), { charset: 'UTF-8' });
+}
+
+// 旧 dailyLongLeaveReminder が量産したタスクボードの未完了行を完了化する（物理削除しない＝経緯を残す）。
+// 2026-07-31 の移行で1回だけ実行する想定。冪等（2回目以降は0件）。
+function closeLegacyLongLeaveTasks(ss) {
+  ss = ss || SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName('タスクボード');
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, closed: 0 };
+  var data = sheet.getDataRange().getValues();
+  var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  var closed = 0;
+  for (var i = 1; i < data.length; i++) {
+    var status = String(data[i][8] || '未完了').trim();
+    if (status === '完了') continue;
+    if (!longleaveIsLegacyTask_(data[i][3])) continue;
+    sheet.getRange(i + 1, 9).setValue('完了');        // I列 ステータス
+    sheet.getRange(i + 1, 10).setValue(now);          // J列 完了日時
+    sheet.getRange(i + 1, 12).setValue('システム(仕様変更)');  // L列 完了者
+    closed++;
+  }
+  SpreadsheetApp.flush();
+  return { ok: true, closed: closed };
+}
+
+// 移行用：いま長期休み中で O列が空欄の人に一括で '対象' を入れる（2026-07-31 の5名を開始状態にする）。
+// 冪等。既に '対象'/'対象外' が入っている行には触れない。以後の新規登録は空欄＝承認待ちで始まる。
+function seedLongLeaveGate(ss, value) {
+  ss = ss || SpreadsheetApp.openById(SS_ID);
+  var gate = longleaveGateOf_(value || '対象');
+  if (!gate) return { ok: false, error: 'bad_gate' };
+  var sheet = ss.getSheetByName('出欠変更');
+  if (!sheet) return { ok: false, error: 'no_sheet' };
+  migrateLongLeaveColumns_(sheet);
+  var todayYMD = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var data = sheet.getDataRange().getValues();
+  var seeded = 0;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][3] || '').trim() !== '長期休み') continue;
+    var endCol = data[i][7] ? fmtDate(data[i][7]) : '';
+    if (endCol && endCol < todayYMD) continue;              // 復帰済みは対象外
+    if (endCol) continue;                                    // H列に再開日が入っていれば触らない
+    if (longleaveGateOf_(data[i][14])) continue;             // 既に判断済みなら触らない
+    sheet.getRange(i + 1, 15).setValue(gate);
+    seeded++;
+  }
+  SpreadsheetApp.flush();
+  return { ok: true, seeded: seeded, gate: gate };
 }
 
 // dailyLongLeaveReminder の毎朝6時トリガーをセットアップ（GASエディタから1回実行する）
@@ -12442,6 +12586,8 @@ function setupLongLeaveTrigger() {
 }
 
 // 同日に同じ「○○様 長期休み利用連絡」タスクが既に登録されてるか
+// 【2026-07-31 以降 未使用】dailyLongLeaveReminder のタスクボード起票を廃止したため呼び出し元なし。
+// addLongLeaveTaskboard（手動EP add_long_leave_taskboard・HTMLからの呼び出しは無し）と併せて休眠状態。
 function alreadyAddedTodayLongLeave_(ss, userName, todayStr) {
   var sheet = ss.getSheetByName('タスクボード');
   if (!sheet) return false;

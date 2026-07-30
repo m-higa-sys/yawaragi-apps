@@ -928,7 +928,7 @@
                     <input type="date" id="contact-new-expected" onchange="absToggleContactResult()" style="margin-left:6px;padding:4px;border:1px solid #cbd5e0;border-radius:6px;display:none;">
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;padding:8px;border:1.5px solid #cbd5e0;border-radius:8px;cursor:pointer;">
-                    <input type="radio" name="contact-result" value="pending" onchange="absToggleContactResult()"> 再開日 未定（次回連絡 2週間後にセット）
+                    <input type="radio" name="contact-result" value="pending" onchange="absToggleContactResult()"> 再開日 未定
                 </label>
             </div>
         </div>
@@ -939,7 +939,7 @@
         </div>
 
         <div style="margin-bottom:12px;">
-            <label style="font-size:0.85rem;color:#4a5568;font-weight:600;">次回連絡予定日（自動計算・上書き可）</label>
+            <label style="font-size:0.85rem;color:#4a5568;font-weight:600;">次回連絡予定日（空欄のままでOK・個別に決めたい時だけ入力）</label>
             <input type="date" id="contact-next-due" style="width:100%;padding:8px;border:1.5px solid #cbd5e0;border-radius:8px;font-size:0.9rem;margin-top:4px;box-sizing:border-box;">
         </div>
 
@@ -1065,16 +1065,8 @@
                 const latest = lastLogLines.length ? lastLogLines[lastLogLines.length - 1] : '';
                 if (latest) contactRow = `<div style="margin-top:4px;font-size:0.8rem;color:#4a5568;">📞 ${latest}</div>`;
             }
-            // 次回連絡予定日バッジ
-            let nextBadge = '';
-            if (lt.nextContactDue) {
-                let bg = '#edf2f7', fg = '#4a5568', icon = '⏳';
-                if (lt.contactOverdue) { bg = '#fed7d7'; fg = '#c53030'; icon = '🔴'; }
-                else if (lt.contactWarning) { bg = '#feebc8'; fg = '#c05621'; icon = '⚠️'; }
-                nextBadge = `<div style="margin-top:4px;display:inline-block;padding:3px 10px;background:${bg};color:${fg};border-radius:10px;font-size:0.78rem;font-weight:700;">${icon} 次回連絡 ${absFormatDate(lt.nextContactDue)}</div>`;
-            } else if (!lt.lastContact) {
-                nextBadge = `<div style="margin-top:4px;display:inline-block;padding:3px 10px;background:#fed7d7;color:#c53030;border-radius:10px;font-size:0.78rem;font-weight:700;">🔴 まだ連絡なし</div>`;
-            }
+            // 連絡状況バッジ（2026-07-31: L列が空欄でも状況が読めるよう、最終連絡日ベースを主にした）
+            const nextBadge = absBuildContactBadge(lt);
     
             const safeName = lt.name.replace(/'/g, "\\'");
             html += `<div style="padding:10px 8px;border-bottom:1px solid #f0f4f8;">
@@ -1098,6 +1090,29 @@
         el.innerHTML = html;
     }
     
+    // 連絡状況バッジ（2026-07-31）。次回連絡予定日(L列)は基本空欄運用に変えたので、
+    // 最終連絡日＋28日（月1ルール）の残り日数を主に出す。L列に手入力の日付があればそちらを優先。
+    function absBuildContactBadge(lt) {
+        const pill = (bg, fg, text) =>
+            `<div style="margin-top:4px;display:inline-block;padding:3px 10px;background:${bg};color:${fg};border-radius:10px;font-size:0.78rem;font-weight:700;">${text}</div>`;
+        if (!lt.lastContact) {
+            const d = lt.elapsedDays != null ? `（${lt.elapsedDays}日経過）` : '';
+            return pill('#fed7d7', '#c53030', `🔴 まだ連絡なし${d}`);
+        }
+        if (lt.nextContactDue) {
+            let bg = '#edf2f7', fg = '#4a5568', icon = '⏳';
+            if (lt.contactOverdue) { bg = '#fed7d7'; fg = '#c53030'; icon = '🔴'; }
+            else if (lt.contactWarning) { bg = '#feebc8'; fg = '#c05621'; icon = '⚠️'; }
+            return pill(bg, fg, `${icon} 次回連絡 ${absFormatDate(lt.nextContactDue)}`);
+        }
+        const last = absFormatDate(lt.lastContact);
+        if (lt.daysSinceLastContact == null) return pill('#edf2f7', '#4a5568', `⏳ 前回連絡 ${last}`);
+        const remain = 28 - lt.daysSinceLastContact;
+        if (remain <= 0) return pill('#fed7d7', '#c53030', `🔴 月1連絡の期限（前回 ${last}・${lt.daysSinceLastContact}日前）`);
+        if (remain <= 3) return pill('#feebc8', '#c05621', `⚠️ まもなく月1連絡（前回 ${last}・あと${remain}日）`);
+        return pill('#edf2f7', '#4a5568', `⏳ 前回連絡 ${last}（あと${remain}日）`);
+    }
+
     // 長期休み利用者キャッシュ（連絡入力ダイアログから検索する用）
     let absLongTermFullCache = [];
     function absFindLongTermByName(name) {
@@ -1173,24 +1188,10 @@
     
         const dateInput = document.getElementById('contact-new-expected');
         dateInput.style.display = checked.value === 'extend' ? 'inline-block' : 'none';
-    
-        // 次回連絡予定日を自動計算
-        const nextDueInput = document.getElementById('contact-next-due');
-        const today = new Date();
-        if (checked.value === 'pending') {
-            const d = new Date(today); d.setDate(d.getDate() + 14);
-            nextDueInput.value = d.toISOString().slice(0, 10);
-        } else if (checked.value === 'extend') {
-            const newRet = dateInput.value;
-            if (newRet) {
-                const d = new Date(newRet); d.setDate(d.getDate() - 7);
-                nextDueInput.value = d.toISOString().slice(0, 10);
-            } else {
-                nextDueInput.value = '';
-            }
-        } else {
-            nextDueInput.value = '';
-        }
+
+        // 2026-07-31 仕様変更: 次回連絡予定日の自動計算を廃止。基本は空欄のまま運用する。
+        // 月1（28日）の督促は最終連絡日から自動で回るため、ここに日付を入れる必要がない。
+        // 「退院日が決まっている」等のイレギュラーだけ、スタッフが手で入れる。
     }
     
     function absSubmitContact() {
