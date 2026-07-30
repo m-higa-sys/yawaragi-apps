@@ -248,5 +248,112 @@ const sec = (b, k) => b.sections.find(s => s.key === k);
     (b.warnings || []).some(w => w && w.type === 'kunPlanAxisFallback'));
 }
 
+// =====================================================================
+// G) コード.js monthBoardBuildInput_ の入力組み立て（実物 vm 抽出・再実装しない）
+//   kunRecordsNext（翌月＝計画期間の開始月の行）を additive に足した変更の検証。
+//   ★最重要: 当月分 kunRecords が変更前と1件も変わらないこと。ここが動くと
+//     sokuteiKaigo など既存判定へ波及する。旧版(origin/master)と実測で突き合わせる。
+// =====================================================================
+const vm = require('vm');
+const { execFileSync } = require('child_process');
+const CODE_PATH = path.join(__dirname, '..', 'gas', 'yawaragi-board', 'コード.js');
+
+function extractFunction(s, name) {
+  const start = s.indexOf('function ' + name + '(');
+  if (start < 0) throw new Error('function not found: ' + name);
+  const open = s.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    if (s[i] === '{') depth++;
+    else if (s[i] === '}') { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  throw new Error('unbalanced braces for ' + name);
+}
+
+// 個訓シートの合成行（col0=userId,1=name,2=year,3=month,6=keikaku,8=blocked,12=sokutei,15=tasseido）
+// ★氏名は使わない。U1/U2… の記号のみ。
+function sheetRow(uid, y, mo, keikaku, blocked, sokutei, tasseido) {
+  const r = new Array(16).fill('');
+  r[0] = uid; r[1] = uid; r[2] = y; r[3] = mo;
+  r[6] = keikaku || ''; r[8] = blocked || ''; r[12] = sokutei || ''; r[15] = tasseido || '';
+  return r;
+}
+const HEADER = new Array(16).fill('h');
+
+// monthBoardBuildInput_ を最小モックで走らせ、input を得る。
+// 個訓セクション以外は safe() が例外を飲む（＝null）ので、kunRecords/kunRecordsNext だけが実測対象。
+function runBuildInput(srcText, ym, year, month, rows) {
+  const ctx = {
+    SS_ID: 'x',
+    SpreadsheetApp: { openById: () => ({ getSheetByName: () => null }) },
+    Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
+    ensureKeikakushoSheet_: () => ({ getDataRange: () => ({ getValues: () => [HEADER].concat(rows) }) }),
+    console: console
+  };
+  vm.createContext(ctx);
+  vm.runInContext(extractFunction(srcText, 'monthBoardBuildInput_')
+    + '\nthis.__run=function(ym,y,m){return monthBoardBuildInput_(ym,y,m,function(n,f){try{return f();}catch(e){return null;}});};', ctx);
+  return ctx.__run(ym, year, month);
+}
+
+const codeNew = fs.readFileSync(CODE_PATH, 'utf8');
+const codeOld = execFileSync('git', ['show', 'origin/master:gas/yawaragi-board/コード.js'],
+  { cwd: path.join(__dirname, '..'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+
+// --- G1: 当月分 kunRecords が旧版と完全一致（件数・中身・順序）---
+{
+  const rows = [
+    sheetRow('U1', 2026, 7, '2026-06-25', '', '2026-06-10', ''),   // 当月
+    sheetRow('U2', 2026, 8, '2026-07-20', '', '', ''),             // 翌月
+    sheetRow('U3', 2026, 6, '2026-05-30', '', '', '2026-06-05'),   // 前月（どちらにも入らない）
+    sheetRow('U4', 2026, 7, '', '保険未登録', '', ''),              // 当月・保留
+    sheetRow('U5', 2025, 7, '2025-06-20', '', '', ''),             // 他年
+    sheetRow('U6', 2026, 8, '', '長期休み', '', '')                 // 翌月・保留
+  ];
+  const oldIn = runBuildInput(codeOld, '2026-07', 2026, 7, rows).input;
+  const newIn = runBuildInput(codeNew, '2026-07', 2026, 7, rows).input;
+  eq('G1a 当月 kunRecords が旧版と完全一致（件数・中身・順序）', newIn.kunRecords, oldIn.kunRecords);
+  eq('G1b 当月 kunRecords は2件（U1,U4）', newIn.kunRecords.length, 2);
+  eq('G1c sokuteiRecords も旧版と完全一致（全月・波及なし）', newIn.sokuteiRecords, oldIn.sokuteiRecords);
+  ok('G1d 旧版には kunRecordsNext が存在しない', oldIn.kunRecordsNext === undefined);
+  eq('G1e 新版 kunRecordsNext は2件（U2,U6）', newIn.kunRecordsNext.length, 2);
+  eq('G1f kunRecordsNext の中身（翌月行のみ・保留も含む）',
+    newIn.kunRecordsNext.map(x => [x.userId, x.keikaku_date, x.blocked_reason]),
+    [['U2', '2026-07-20', ''], ['U6', '', '長期休み']]);
+}
+// --- G2: 年跨ぎ（12月ボード → 翌年1月を翌月として拾う）---
+{
+  const rows = [
+    sheetRow('U1', 2025, 12, '2025-11-28', '', '', ''),   // 当月
+    sheetRow('U2', 2026, 1, '2025-12-20', '', '', ''),    // 翌月＝翌年1月
+    sheetRow('U3', 2025, 1, '2024-12-20', '', '', '')     // 同じ月番号だが前年 → 拾わない
+  ];
+  const oldIn = runBuildInput(codeOld, '2025-12', 2025, 12, rows).input;
+  const newIn = runBuildInput(codeNew, '2025-12', 2025, 12, rows).input;
+  eq('G2a 年跨ぎでも当月 kunRecords は旧版と一致', newIn.kunRecords, oldIn.kunRecords);
+  eq('G2b 年跨ぎの翌月(2026-01)を1件拾う', newIn.kunRecordsNext.map(x => x.userId), ['U2']);
+  ok('G2c 前年同月(2025-01)は拾わない', !newIn.kunRecordsNext.some(x => x.userId === 'U3'));
+}
+// --- G3: 実入力を core に通すと warning が出ない（フォールバックしない）---
+{
+  const rows = [sheetRow('U1', 2026, 8, '2026-07-15', '', '', '')];
+  const newIn = runBuildInput(codeNew, '2026-07', 2026, 7, rows).input;
+  const b = buildMonthBoard(Object.assign({}, newIn, {
+    targetMonth: '2026-07',
+    users: [KU('U1', '2026-08')],
+    oralRecords: [], sokuteiRecords: [], tsushoSendRecords: [], tsushoDueMap: {}
+  }), realDeps);
+  ok('G3a kunPlanAxisFallback warning が出ない（新軸で動いている）',
+    !(b.warnings || []).some(w => w && w.type === 'kunPlanAxisFallback'));
+  eq('G3b 8月開始分を7月ボードが済で拾う', [sec(b, 'kunPlan').countTarget, sec(b, 'kunPlan').countDone], [1, 1]);
+}
+// --- G4: monthBoard(e) と _computeMonthBoard_ が同じビルダを通る（入力の二重定義が無い）---
+{
+  const calls = (codeNew.match(/monthBoardBuildInput_\s*\(/g) || []).length;
+  eq('G4a monthBoardBuildInput_ の呼び出しは2箇所＋定義1（＝3出現）', calls, 3);
+  ok('G4b kunRecordsNext を input に載せる箇所は1つだけ（両経路が共有）',
+    (codeNew.match(/kunRecordsNext:\s*kunRecordsNext/g) || []).length === 1);
+}
+
 console.log(`\n==== ${fail === 0 ? 'ALL GREEN' : 'FAILED'}  pass=${pass} fail=${fail} ====`);
 if (fail !== 0) process.exit(1);

@@ -17787,7 +17787,13 @@ function monthBoardBuildInput_(ym, year, month, safe) {
   if (r === null) markErr(['oralEval', 'oralPlan']);
 
   // --- 個訓記録（当月・keikaku_date/tasseido_date）＋ 要介護測定 sokutei_date（全月・userIdキー） ---
-  var kunRecords = [], sokuteiRecords = [];
+  // 2026-07-31 additive: kunPlan の作業月主義（v1.2 §1-3 前月準備の原則）のため、翌月行も渡す。
+  //   月次ボードの kunPlan は「翌月＝計画期間の開始月」の行を読む。core 側は kunRecordsNext が
+  //   未供給だと旧軸へフォールバックして warnings に kunPlanAxisFallback を立てる（保険は残置）。
+  //   ★当月分 kunRecords の中身・順序・件数は1件も変えない（sokuteiKaigo 等の既存判定へ波及させない）。
+  var kunRecords = [], kunRecordsNext = [], sokuteiRecords = [];
+  var mbNextY = (month === 12) ? year + 1 : year;    // 年跨ぎ: 12月 → 翌年1月
+  var mbNextM = (month === 12) ? 1 : month + 1;
   r = safe('mb_kunRec', function () {
     var sh = ensureKeikakushoSheet_();
     var v = sh.getDataRange().getValues();
@@ -17795,9 +17801,13 @@ function monthBoardBuildInput_(ym, year, month, safe) {
       var uid = String(v[i][0] || '').trim(), nm = String(v[i][1] || '').trim(); // col0=userId,col1=name
       var sok = mbFmt_(v[i][12]);                                                 // col12=sokutei_date
       if (sok) sokuteiRecords.push({ userId: uid || nm, sokutei_date: sok });     // kaigo: userIdキー・当月判定はcore
-      if ((parseInt(v[i][2], 10) || 0) !== year) continue;   // col2=year
-      if ((parseInt(v[i][3], 10) || 0) !== month) continue;  // col3=month
-      kunRecords.push({ userId: uid || nm, name: nm, keikaku_date: mbFmt_(v[i][6]), tasseido_date: mbFmt_(v[i][15]), blocked_reason: String(v[i][8] || '').trim() }); // col6=keikaku,col15=tasseido,col8=blocked_reason(保留=やり残し対象外)
+      var rowY = parseInt(v[i][2], 10) || 0;   // col2=year
+      var rowM = parseInt(v[i][3], 10) || 0;   // col3=month
+      var isCur = (rowY === year && rowM === month);
+      var isNext = (rowY === mbNextY && rowM === mbNextM);
+      if (!isCur && !isNext) continue;
+      var kunRow = { userId: uid || nm, name: nm, keikaku_date: mbFmt_(v[i][6]), tasseido_date: mbFmt_(v[i][15]), blocked_reason: String(v[i][8] || '').trim() }; // col6=keikaku,col15=tasseido,col8=blocked_reason(保留=やり残し対象外)
+      if (isCur) kunRecords.push(kunRow); else kunRecordsNext.push(kunRow);
     }
     return true;
   });
@@ -17880,6 +17890,7 @@ function monthBoardBuildInput_(ym, year, month, safe) {
       users: users,
       oralRecords: oralRecords,
       kunRecords: kunRecords,
+      kunRecordsNext: kunRecordsNext,   // 2026-07-31 additive: kunPlan 作業月主義（翌月＝計画期間の開始月の行）
       sokuteiRecords: sokuteiRecords,
       tsushoDueMap: tsushoDueMap,
       tsushoSendRecords: tsushoSendRecords
