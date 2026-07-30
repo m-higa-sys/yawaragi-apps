@@ -16827,8 +16827,16 @@ var DENGON_MIGRATE_SEED = [
   { id: 'furikae-kaizen', createdAt: '2026-06-14', body: '🔴 振替不能アプリ改修＋繰越確認｜未回収サマリー最上段／表2段階／放置アラート＋「4月の未回収者が5月画面に繰り越されるか」要確認' },
   { id: 'tanka-chosa', createdAt: '2026-06-14', body: '🔴 東松山市の総合事業/介護予防の正確な単価を調べる｜返戻金額を概算→正確化。6級地。出所＝市の総合事業の手引き／運営推進会議資料' },
   { id: 'kobetsu-phase1-verify', createdAt: '2026-06-15', body: '🟡 個別機能訓練計画書チェックPhase1 実装完了・社長のiPad実機確認待ち｜GAS @252／確認＝計画/評価2列・測定者プルダウン8名・📮ケアマネ未提出ビュー' },
-  { id: 'line-token-heisei', createdAt: '2026-07-16', body: '🔴 LINE平文トークン是正｜本番コード.js 6003-6004 のLINE_TOKEN/OWNER_USER_IDが平文ハードコード(repo正本はProperties化済)。順序厳守=①本番Script Propertiesに両キー有無を確認→②有れば平文2行をProperties版に是正しdeploy→③共用先(板/gas_LINE通知/インク/シフト)棚卸し。未設定のまま是正するとLINE通知が壊れる' },
-  { id: 'nakayama-cm-fudatsu', createdAt: '2026-07-16', body: '🔴 仲山洋子様 ケアマネ宛欠席連絡が不達(実害)｜reha-staff@wakabanooka.jp に550 User Unknown。対応=わかばの丘(担当:吉野あけみ様)の正しい欠席連絡先を確認し電話で直接連絡＋台帳アドレス修正' }
+  { id: 'line-token-heisei', createdAt: '2026-07-16', body: '🔴 LINE平文トークン是正｜本番コード.js 6003-6004 のLINE_TOKEN/OWNER_USER_IDが平文ハードコード(repo正本はProperties化済)。順序厳守=①本番Script Propertiesに両キー有無を確認→②有れば平文2行をProperties版に是正しdeploy→③共用先(板/gas_LINE通知/インク/シフト)棚卸し。未設定のまま是正するとLINE通知が壊れる' }
+  // ★2026-07-30 PII除去: 1件（ケアマネ宛メール不達の移行シード）をこの配列から削除した。
+  //   このリポジトリは PUBLIC で、GitHub Pages が gas/ 配下も配信している（実測 HTTP 200）。
+  //   当該シードは body に利用者氏名・ケアマネ担当者名・事業所メールアドレスを含み、id 自体にも
+  //   姓のローマ字が入っていたため、body だけの伏せ字では消えない。id を変えると冪等キーが変わり
+  //   再シードで重複行が増えるので、エントリごと削除した。
+  //   ★機能への影響なし（実測）: 当該行は本番「伝達ボード」へ 2026-07-17 に移行済みで、
+  //     いまは完了済み（action=dengonHistory に在籍・未完了一覧には無い）。この配列は
+  //     「id が既にあればスキップ」の冪等シードなので、消しても本番シートは1バイトも変わらない。
+  //   ⚠️ シート側には氏名が残っている。消すかどうかは社長判断（このコードからは触らない）。
 ];
 
 // --- 純関数（scripts/test-dengon-board.js と同一実装）---
