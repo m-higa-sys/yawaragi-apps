@@ -15,7 +15,9 @@ function extractFn(src, name) {
   return src.slice(start, i);
 }
 const htmlSrc = fs.readFileSync(path.join(__dirname, '..', '個別機能訓練計画書チェック.html'), 'utf8');
-const helper = extractFn(htmlSrc, 'kbBadgeObj') + '\n';   // kbPlanBadges/kbEvalBadges の依存ヘルパ
+// kbPlanBadges/kbEvalBadges の依存ヘルパ
+// 2026-07-30: 測定を2ソースの和で見るため kbPickSokuteiDate を追加（kbPlanBadges が呼ぶ）
+const helper = extractFn(htmlSrc, 'kbBadgeObj') + '\n' + extractFn(htmlSrc, 'kbPickSokuteiDate') + '\n';
 const kbPlanBadges = new Function(helper + extractFn(htmlSrc, 'kbPlanBadges') + '; return kbPlanBadges;')();
 const kbEvalBadges = new Function(helper + extractFn(htmlSrc, 'kbEvalBadges') + '; return kbEvalBadges;')();
 const kbBadgeHtml = new Function(

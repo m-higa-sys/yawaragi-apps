@@ -788,7 +788,10 @@ let state = {
     operator: '',         // 操作者（localStorage 経由）
     includeCancelled: false,  // 中止者も表示するか
     needsActionOnly: false,   // ⚠️要対応のみ（未提出等が残る利用者だけ表示）・既存フィルタと併用
-    staffNames: []        // 測定者/出力者プルダウン用（staff_listから除外適用後・起動時に取得）
+    staffNames: [],       // 測定者/出力者プルダウン用（staff_listから除外適用後・起動時に取得）
+    // 測定記録シート（測定管理アプリの書き込み先）由来の測定日。{ 正規化名: { 'YYYY-MM': 最新日 } }
+    // ★読むだけ。取得に失敗しても {} のままで、個訓シートだけの従来表示に戻る（画面は壊さない）。
+    shienByMonth: {}
 };
 // 測定者/出力者の選択肢（staff_listの生文字列から MEASURER_EXCLUDE を除いたもの）
 function getMeasurerOptions() {
@@ -941,11 +944,55 @@ function kbBadgeObj(label, val, kind) {
     const has = !!(val && String(val).trim());
     return { label: label, state: has ? 'done' : 'todo', date: has ? val : '', kind: kind };
 }
-function kbPlanBadges(rec) {
+// ===== 測定は2ソースの和で見る（2026-07-30）=====
+// 実測: 要介護52名のうち 個訓シートにだけ測定日がある人20名／測定記録シートにだけある人4名／
+//   両方0名。2つのシートが完全に分断されており、測定管理アプリで記録すると個訓は「未」、
+//   個訓で記録すると測定管理は「なし」になっていた。どちらの画面も嘘をつく。
+// ★書く場所は測定記録シート1つのまま。ここは読むだけ（個訓シートの sokutei_date には書かない）。
+//   同じ事実を2箇所に持たせると、片方だけ更新される事故が必ず起きる。
+// ★突き合わせは正規化名。生名のままだと表記ゆれ（全角スペース・「様」）で外れる。
+//   測定管理 sokutei.html の normKey と同じ規則に揃えてある。
+function kbNormKey(s) {
+    return String(s == null ? '' : s).normalize('NFKC').replace(/[\s　]/g, '').replace(/(様|さま|サマ)$/, '');
+}
+// 2つの測定日から新しい方を採る（どちらか一方でも可・両方空なら空）。
+function kbPickSokuteiDate(a, b) {
+    const x = String(a == null ? '' : a).trim(), y = String(b == null ? '' : b).trim();
+    if (x && y) return x >= y ? x : y;
+    return x || y;
+}
+// 測定記録シート（getShienSokutei の records）→ { 正規化名: { 'YYYY-MM': その月の最新日 } }
+// ★測定記録シートには「何月分の測定か」の列が無いので、測定日の月で束ねる＝測定日の月のセルに出す。
+//   records が null/空でも {} を返す＝取得に失敗しても個訓シートだけで従来どおり動く。
+function kbBuildSokuteiByMonth(records, normFn) {
+    const f = normFn || kbNormKey;
+    const out = {};
+    (records || []).forEach(function (r) {
+        if (!r) return;
+        const d = String(r.sokutei_date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}/.test(d)) return;
+        const k = f(r.name);
+        if (!k) return;
+        const ym = d.slice(0, 7);
+        if (!out[k]) out[k] = {};
+        if (!out[k][ym] || d > out[k][ym]) out[k][ym] = d;   // 同じ月に複数あれば新しい日
+    });
+    return out;
+}
+// そのセル（year/month）に出す測定日を引く。無ければ空。
+function kbSokuteiForCell(byMonth, name, year, month, normFn) {
+    if (!byMonth) return '';
+    const f = normFn || kbNormKey;
+    const k = f(name);
+    if (!k || !byMonth[k]) return '';
+    return byMonth[k][year + '-' + String(month).padStart(2, '0')] || '';
+}
+// extraSokuteiDate = 測定記録シート由来の同月の測定日（省略時は従来どおり個訓シートだけ）
+function kbPlanBadges(rec, extraSokuteiDate) {
     rec = rec || {};
     return [
         kbBadgeObj('計画', rec.keikaku_date, 'plan'),
-        kbBadgeObj('測定', rec.sokutei_date, 'plan'),
+        kbBadgeObj('測定', kbPickSokuteiDate(rec.sokutei_date, extraSokuteiDate), 'plan'),
         kbBadgeObj('提出', rec.keikaku_sent_date, 'submit')
     ];
 }
@@ -1051,12 +1098,28 @@ async function fetchYear(year) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
 }
+// 測定記録シート（測定管理アプリ 📝測定した の書き込み先）を読む。読み取り専用。
+// ★失敗しても投げない。ここが取れないと「測定 未」が従来どおりに戻るだけで、
+//   個訓の計画書業務そのものは止めない（teirei の safe と同じ精神）。
+async function fetchShienSokutei() {
+    try {
+        const res = await fetch(API_BASE + '?action=getShienSokutei&t=' + Date.now());
+        if (!res.ok) return null;
+        const json = await res.json();
+        return (json && json.ok) ? (json.records || []) : null;
+    } catch (e) {
+        console.warn('getShienSokutei 取得失敗（測定の表示は個訓シートのみに戻る）', e);
+        return null;
+    }
+}
 async function loadFiscalYearData() {
     if (state.isLoading) return;
     state.isLoading = true;
     const fy = state.fiscalYear;
     try {
-        const [r1, r2] = await Promise.all([fetchYear(fy), fetchYear(fy + 1)]);
+        const [r1, r2, shien] = await Promise.all([fetchYear(fy), fetchYear(fy + 1), fetchShienSokutei()]);
+        // 測定記録シート。null（失敗）なら前回の値を捨てて空にする＝古い「済」を残さない。
+        state.shienByMonth = kbBuildSokuteiByMonth(shien, kbNormKey);
         if (!r1 || !r1.ok || !r2 || !r2.ok) { showOffline(); return; }
         if (!(r1.users || []).length) {
             showToast('⚠ 利用者データが空でした。キャッシュを維持します', 'warn');
@@ -1275,7 +1338,9 @@ function renderTable() {
                     pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
                         + '<span class="kb-hold" title="' + escapeAttr(pRec.blocked_reason) + '">' + blockedIcon(pRec.blocked_reason) + '保留（' + escapeHtml(blockedLabel(pRec.blocked_reason)) + '）</span>';
                 } else {
-                    const pb = kbPlanBadges(pRec);
+                    // 測定は2ソースの和（個訓シート ∪ 測定記録シート）。渡すのは「表示しているセルの月」の記録。
+                    // ★書込先（planSrc = 計画月ノード行）は1バイトも変えていない。読む材料だけを足している。
+                    const pb = kbPlanBadges(pRec, kbSokuteiForCell(state.shienByMonth, u.name, cellYear, mo.m));
                     pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
                         + '<span class="kb-badges">' + pb.map(kbBadgeHtml).join('') + '</span>';
                     collectTodo(pb);

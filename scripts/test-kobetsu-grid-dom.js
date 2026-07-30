@@ -18,8 +18,11 @@ function extractFrom(src, name) {
   let i = src.indexOf('{', s), d = 0;
   for (let j = i; j < src.length; j++) { if (src[j] === '{') d++; else if (src[j] === '}') { d--; if (!d) return src.slice(s, j + 1); } }
 }
+// 2026-07-30: 測定を2ソースの和（個訓シート ∪ 測定記録シート）で見るための3関数を追加。
+//   renderTable が kbSokuteiForCell を、kbPlanBadges が kbPickSokuteiDate を呼ぶ。
 const HTML_FNS = ['renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
-  'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO'];
+  'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO',
+  'kbNormKey', 'kbPickSokuteiDate', 'kbSokuteiForCell'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
 const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
 
