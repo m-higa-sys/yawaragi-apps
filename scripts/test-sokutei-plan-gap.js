@@ -329,9 +329,13 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   S = makeSandbox();
   await S.load();
   CONFIRM_ANSWER = false;
-  ok(cardOf(els['tab4'].innerHTML, 'ダミー乙').indexOf('測定期限 2026-08') >= 0, '前提: 乙の測定期限は8月');
+  // ★2026-07-30（案C）で前提が変わった。乙は planStart=2026-06/3ヶ月 で評価月は 8月・11月。
+  //   7/10 に測っているので8月の期限はもう満たされており、次の期限は11月。
+  //   以前は期限が8月のまま残り、7月の測定でカバーされる形になっていた（＝どこまで送っても
+  //   警告が出ない穴があった。実測: 予定2027-06 でも covered）。期限が正しくなって穴も塞がる。
+  ok(cardOf(els['tab4'].innerHTML, 'ダミー乙').indexOf('測定期限 2026-11') >= 0, '前提: 乙の測定期限は11月（8月は7/10の測定で満たされた）');
   const wB = captured.writes.length;
-  await S.slideToNextMonth('ダミー乙');   // 10月 → 11月（測定期限8月を越えている）
+  await S.slideToNextMonth('ダミー乙');   // 10月 → 11月（＝期限の月ちょうど）
   eq(confirmCalls.length, 0, '★7月に測っているので確認を出さない');
   eq(captured.writes.length, wB + 1, 'そのまま送信される');
   eq(cardOf(els['tab4'].innerHTML, 'ダミー乙').indexOf('plan-gap') >= 0, false, '赤バッジも付かない');
@@ -367,8 +371,15 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   eq(elFor('ymPickerGrid').innerHTML.indexOf('⚠') >= 0, false, '計画月不明の人にも⚠は付かない');
   ok(elFor('ymPickerNote').textContent.indexOf('計画書の月が分かりません') >= 0, '★代わりに「月が分かりません」と出す');
   S.closeYmPicker();
+  // ★2026-07-30（案C）: 乙の期限は 8月→11月 へ進んだ。11月までは⚠なし、12月以降は本当に
+  //   「11月の計画書に使える測定が無くなる」ので⚠が付く。以前は期限が8月のまま7月の測定で
+  //   カバーされ、2027-06 まで1つも⚠が付かなかった（穴）。
   S.openYmPicker('ダミー乙');
-  eq(elFor('ymPickerGrid').innerHTML.indexOf('⚠') >= 0, false, '★今月測った人には⚠が付かない');
+  grid = elFor('ymPickerGrid').innerHTML;
+  eq(cellOf(grid, '2026-08').indexOf('⚠') >= 0, false, '★満たし済みの8月には⚠が付かない');
+  eq(cellOf(grid, '2026-11').indexOf('⚠') >= 0, false, '期限の11月ちょうどにも⚠が付かない');
+  ok(cellOf(grid, '2026-12').indexOf('⚠') >= 0, '★12月には⚠が付く（11月の計画書に使える測定が無くなる）');
+  ok(elFor('ymPickerNote').textContent.indexOf('測定期限（2026-11）') >= 0, '注記も新しい期限で出る');
   S.closeYmPicker();
 
   sec('2-2 月タップでも確認は書き込みの前に出る');

@@ -536,10 +536,39 @@ function nextPlanYm(planStart, planMonths, fromYm, judgeFn, maxMonths) {
   return '';
 }
 
+// その評価月の測定が、前回測定でもう済んでいるか（2026-07-30・案C）。
+// ★数え方は planGapCheck の covered と同じ（期限の時点で前回測定が周期ぶん以内か）。
+//   新しい数え方は作らない。ここを別式にすると「画面の期限」と「警告の判定」が食い違う。
+// ★前回測定が無い人（新規の方）は必ず false ＝ 期限を1ヶ月も動かさない。
+//   ここが崩れると「まだ測っていない人の本物の期限」が画面から消える。
+function dueMetBy(dueYm, lastDate, cycleMonths) {
+  const l = String(lastDate == null ? '' : lastDate).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(l)) return false;
+  const cyc = parseInt(cycleMonths, 10) || 3;
+  const age = ymMonthsBetween(String(dueYm || ''), l);   // 評価月の時点で前回測定が何ヶ月前か
+  return age !== null && age >= 0 && age <= cyc - 1;
+}
+
 // 測定の期限（＝個訓の評価月＝計画期間の最終月＝次期間の前月）。判定に使うのは常にこちら。
-function nextDueYm(planStart, planMonths, fromYm) {
-  return nextPlanYm(planStart, planMonths, fromYm,
-    (typeof isHyoukaMonth === 'function' ? isHyoukaMonth : null), 24);
+// ★2026-07-30 訂正: 「最初の評価月」ではなく「まだ満たされていない最初の評価月」を返す。
+//   社長が本番で発見。7/14 に測定を済ませた方のカードに「測定期限 2026-07」と出ていた。
+//   7月の期限はもう満たされており、次に測るのは10月（＝次の評価月）。実測22名が同じ状態だった。
+//   原因は、評価月を返すだけで「その月の測定が済んでいるか」を1バイトも見ていなかったこと。
+//   クロの最初の仮説（planStart月の計画書が作成済みか）は実測0名で効かなかった。リハブで作った
+//   計画書が個訓シートに記録されていないため（keikaku_date が空）。材料は前回測定日に一本化する。
+// ★isHyoukaMonth（shared.js・個訓アプリと共用）は変更しない。呼び方だけを変えている。
+// ★lastDate 省略時は従来と1バイトも変わらない（dueMetBy が常に false になる）。
+// 24ヶ月ぶん全部満たされている異常系では、従来どおり「最初の評価月」を返す。
+//   期限を空にすると unknownPlan に落ちて警告そのものが消えるため、消さない側へ倒す。
+function nextDueYm(planStart, planMonths, fromYm, lastDate, cycleMonths) {
+  const f = (typeof isHyoukaMonth === 'function') ? isHyoukaMonth : null;
+  if (!f) return '';
+  const unmet = function (ps, pm, y, m) {
+    if (!f(ps, pm, y, m)) return false;
+    return !dueMetBy(y + '-' + (m < 10 ? '0' : '') + m, lastDate, cycleMonths);
+  };
+  return nextPlanYm(planStart, planMonths, fromYm, unmet, 24)
+    || nextPlanYm(planStart, planMonths, fromYm, f, 24);
 }
 // 計画期間の開始月。★画面に「計画書 ◯月」と出す表示用。判定には使わない。
 // 期限の月をそのまま「計画書 ◯月」と出すと、今度は表示のほうが嘘になるため分けている。
@@ -1076,6 +1105,9 @@ function buildDerived() {
     let due = '', remaining = -999;   // どちらも無ければ未測定 = 最優先扱い
     if (base) { due = sokuteiDueDate_(base, care); remaining = sokuteiRemaining_(due, t); }
     const y = yoteiByKey[userId] || yoteiByKey[normKey(userId)] || yoteiByKey[normKey(name)] || null;
+    // 測定周期。予定月シートの値を正とし、行が無ければ介護度から引く（判定は shared.js §I に単一化）。
+    // ★dueYm の算出（済んだ評価月を飛ばす判定）にも渡すので、行モデルより先に確定させる。
+    const cyc = (y && y.cycleMonths) || sokuteiCycleMonths_(care);
     // 当月の実績（済判定）。要介護は userId・要支援等は正規化名で引き、両方見つかれば新しい方を採る。
     const dById = doneById[userId] || null, dByName = doneByName[normKey(name)] || null;
     let done = null;
@@ -1089,16 +1121,17 @@ function buildDerived() {
       ampm: ampmByName[name] || '',
       // 予定月（段階1の対象判定の正）。行が無い＝未設定は isDue が true を返す＝漏れとして対象に出す。
       nextYm: y ? y.nextYm : '', slideCount: y ? y.slideCount : 0, hasYotei: !!y,
-      // 測定周期。予定月シートの値を正とし、行が無ければ介護度から引く（判定は shared.js §I に単一化）
-      cycleMonths: (y && y.cycleMonths) || sokuteiCycleMonths_(care),
+      cycleMonths: cyc,
       // 個訓の計画書サイクル（要介護のみ）。'' は算出不能。
       //   planYm … 計画期間の開始月。★画面に「計画書 ◯月」と出す表示用
       //   dueYm  … 測定の期限（＝評価月＝計画期間が始まる前の月）。★判定に使うのはこちら
       // 2つを分けている理由: 期限をそのまま「計画書 ◯月」と表示すると、今度は表示が嘘になるため。
+      // ★dueYm には前回測定日と周期も渡す（2026-07-30）。もう測って満たされた評価月を期限として
+      //   出し続けないため。planYm（表示）は従来どおり isPlanMonth 由来で1バイトも変えていない。
       planStart: plan ? String(plan.planStart || '') : '',
       planMonths: plan ? plan.planMonths : null,
       planYm: plan ? nextPlanStartYm(plan.planStart, plan.planMonths, ym) : '',
-      dueYm: plan ? nextDueYm(plan.planStart, plan.planMonths, ym) : '',
+      dueYm: plan ? nextDueYm(plan.planStart, plan.planMonths, ym, last, cyc) : '',
       // 当月に測定済みなら { date, by }。「今月やる人」タブで済として下に積む（A-2/A-4）
       doneThisMonth: done,
       // 長期休み中なら { startDate, elapsedDays }。⏰ と 💤 の振り分けと、📋 の印に使う。

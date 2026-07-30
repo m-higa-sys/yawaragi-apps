@@ -54,6 +54,7 @@ vm.runInContext([
   extractFn(yoteiSrc, '_yoteiFmtYm_'),
   extractFn(yoteiSrc, 'ymAdd'),
   extractFn(script0, 'nextPlanYm'),
+  extractFn(script0, 'dueMetBy'),   // 2026-07-30: nextDueYm が「済んだ評価月か」を見るために使う
   extractFn(script0, 'nextDueYm'),
   extractFn(script0, 'nextPlanStartYm'),
   extractFn(script0, 'ymMonthsBetween'),
