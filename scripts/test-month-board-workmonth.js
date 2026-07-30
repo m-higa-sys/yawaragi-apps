@@ -120,5 +120,133 @@ const kunEval = (b) => b.sections.find(s => s.key === 'kunEval');
     kunPlan(b).countDone === 1 && kunEval(b).countDone === 0);
 }
 
+// =====================================================================
+// F) 作業月主義への軸シフト（2026-07-31・クロGO）
+//   業務ルール仕様書v1.2 §1-3「前月準備の原則」＝N月開始の計画書はN−1月中に作り終える。
+//   よってボード月(y,m)の kunPlan は「翌月(y,m+1)が計画期間の開始月か」で数え、
+//   済判定も翌月の行（＝計画期間の開始月ノード）から読む。teishutsu.html:319-322 と同じ軸。
+//   ★shared.js の isPlanMonth / isHyoukaMonth は不変更。呼び方だけを変える（sokutei.html の先例と同じ）。
+//   ★翌月の行は input.kunRecordsNext で供給する。未供給なら旧軸へフォールバックし warning を立てる
+//     （黙って全員「未」になる事故を防ぐ）。
+// =====================================================================
+const fs = require('fs');
+const shared = fs.readFileSync(path.join(__dirname, '..', 'shared.js'), 'utf8');
+eval(shared.match(/function isPlanMonth[\s\S]*?\n}/)[0]);      // 本物を使う（モックでは軸を検証できない）
+eval(shared.match(/function isHyoukaMonth[\s\S]*?\n}/)[0]);
+const realDeps = {
+  isPlanMonth: isPlanMonth,
+  isHyoukaMonth: isHyoukaMonth,
+  sbNormalizeName_: (s) => String(s == null ? '' : s).replace(/[\s　]+/g, '')
+};
+// targetMonth のボードを、当月行 cur と翌月行 next を与えて組み立てる
+function buildAxis(targetMonth, users, cur, next) {
+  const input = {
+    targetMonth: targetMonth, users: users, kunRecords: cur,
+    oralRecords: [], sokuteiRecords: [], tsushoSendRecords: [], tsushoDueMap: {}
+  };
+  if (next !== undefined) input.kunRecordsNext = next;
+  return buildMonthBoard(input, realDeps);
+}
+const KU = (id, planStart, planMonths) => ({ userId: id, name: id, category: '要介護1', planStart: planStart, planMonths: planMonths || 3 });
+const sec = (b, k) => b.sections.find(s => s.key === k);
+
+// --- F1: 基本の軸シフト。6月ボードが「7月開始」の計画を数える ---
+{
+  // planStart=2026-01/3ヶ月 → 計画月は 1,4,7,10月。6月ボードは翌月(7月)を見るので対象。
+  const b = buildAxis('2026-06', [KU('u', '2026-01')],
+    [],                                                   // 6月行は空
+    [{ userId: 'u', name: 'u', keikaku_date: '2026-06-24' }]);  // 7月行に前月付けで作成済み
+  eq('F1a 6月ボードの kunPlan 対象=1（翌月7月が計画開始月）', sec(b, 'kunPlan').countTarget, 1);
+  eq('F1b 6月中に作成済み → 済', sec(b, 'kunPlan').countDone, 1);
+}
+// --- F2: 旧軸なら対象だった7月ボードは、新軸では対象externo（1ヶ月前倒しされた） ---
+{
+  const b = buildAxis('2026-07', [KU('u', '2026-01')], [], []);
+  eq('F2 7月ボードの kunPlan 対象=0（7月開始分は6月ボードへ移った）', sec(b, 'kunPlan').countTarget, 0);
+}
+// --- F3: 早く作った / 遅れて作った の両方が済（完了条件）---
+{
+  const users = [KU('early', '2026-01'), KU('late', '2026-01'), KU('none', '2026-01')];
+  const b = buildAxis('2026-06', users, [], [
+    { userId: 'early', name: 'early', keikaku_date: '2026-06-24' }, // 作業月(6月)に作成＝正常
+    { userId: 'late', name: 'late', keikaku_date: '2026-07-01' },  // 開始月(7月)に作成＝遅れ
+    { userId: 'none', name: 'none', keikaku_date: '' }
+  ]);
+  const s = sec(b, 'kunPlan');
+  const t = (n) => s.targets.find(x => x.name === n);
+  ok('F3a 作業月(6月)に作成 → 済', t('early') && t('early').done === true);
+  ok('F3b 開始月(7月)に作成 → 済（遅れても作ってあれば済）', t('late') && t('late').done === true);
+  ok('F3c 未作成 → 未', t('none') && t('none').done === false);
+  eq('F3d 対象=3 / 済=2 / 未=1', [s.countTarget, s.countDone, s.countUndone], [3, 2, 1]);
+}
+// --- F4: 「当月or前月」＝「開始月or作業月」の等価性が成立するか（クロ指定の実証）---
+{
+  // 2ヶ月前(5月)に作った場合は済にならない＝受入窓が2ヶ月ぶんに広がっていないこと
+  const b = buildAxis('2026-06', [KU('u', '2026-01')], [],
+    [{ userId: 'u', name: 'u', keikaku_date: '2026-05-20' }]);
+  ok('F4 2ヶ月前(5月)付け → 未（受入窓は 作業月6月 と 開始月7月 の2ヶ月だけ）',
+    sec(b, 'kunPlan').countDone === 0);
+}
+// --- F5: 年跨ぎ（12月ボード → 翌年1月開始）---
+{
+  // planStart=2026-01 → 計画月は 2026-01。12月(2025-12)ボードの翌月が 2026-01。
+  const b = buildAxis('2025-12', [KU('u', '2026-01')], [],
+    [{ userId: 'u', name: 'u', keikaku_date: '2025-12-20' }]);
+  eq('F5a 2025-12ボード kunPlan 対象=1（翌月=2026-01が計画開始月・年跨ぎ）', sec(b, 'kunPlan').countTarget, 1);
+  eq('F5b 12月中に作成済み → 済（年跨ぎの前月付け）', sec(b, 'kunPlan').countDone, 1);
+}
+// --- F6: diff=-1 は kunPlan では対象・kunEval では非対象（幻の督促ガード）---
+{
+  // planStart=2026-08 の新規。7月ボード: 翌月8月が計画開始月 → kunPlan対象。
+  //   一方 isHyoukaMonth は diff=-1 で true になるが、評価すべき前サイクルが無い → kunEval非対象。
+  const b = buildAxis('2026-07', [KU('n', '2026-08')], [],
+    [{ userId: 'n', name: 'n', keikaku_date: '' }]);
+  eq('F6a diff=-1 は kunPlan 対象=1（8月開始なので7月に作る＝正当）', sec(b, 'kunPlan').countTarget, 1);
+  eq('F6b diff=-1 は kunEval 対象=0（幻の督促ガード）', sec(b, 'kunEval').countTarget, 0);
+}
+// --- F7: 正規の評価対象は kunEval に残る（ガードの巻き添えが無いこと）---
+{
+  // planStart=2026-02 → isHyoukaMonth は diff=5(2026-07) で true。diff>0 なのでガード対象外。
+  const b = buildAxis('2026-07', [KU('e', '2026-02')],
+    [{ userId: 'e', name: 'e', tasseido_date: '2026-07-10' }], []);
+  eq('F7a 正規の評価月は kunEval 対象=1', sec(b, 'kunEval').countTarget, 1);
+  eq('F7b 評価済み → 済', sec(b, 'kunEval').countDone, 1);
+}
+// --- F8: 保留除外が kunPlan / kunEval 両方で効く ---
+{
+  const bP = buildAxis('2026-06', [KU('bl', '2026-01')], [],
+    [{ userId: 'bl', name: 'bl', blocked_reason: '保険未登録' }]);   // 翌月(7月)行の保留
+  eq('F8a kunPlan 保留除外（翌月＝計画開始月の行の blocked_reason を見る）', sec(bP, 'kunPlan').countTarget, 0);
+  const bE = buildAxis('2026-07', [KU('e', '2026-02')],
+    [{ userId: 'e', name: 'e', blocked_reason: '長期休み' }], []);
+  eq('F8b kunEval 保留除外（当月行）', sec(bE, 'kunEval').countTarget, 0);
+}
+// --- F9: planMonths=1 / 2 でも壊れない ---
+{
+  // planMonths=1 → isPlanMonth は diff===0 のみ。planStart=2026-07 なら7月だけ。6月ボードが拾う。
+  const b1 = buildAxis('2026-06', [KU('a', '2026-07', 1)], [],
+    [{ userId: 'a', name: 'a', keikaku_date: '2026-06-30' }]);
+  eq('F9a planMonths=1 でも軸シフトが効く', [sec(b1, 'kunPlan').countTarget, sec(b1, 'kunPlan').countDone], [1, 1]);
+  const b2 = buildAxis('2026-06', [KU('b', '2026-07', 2)], [],
+    [{ userId: 'b', name: 'b', keikaku_date: '' }]);
+  eq('F9b planMonths=2 でも対象になり、未作成は未', [sec(b2, 'kunPlan').countTarget, sec(b2, 'kunPlan').countUndone], [1, 1]);
+}
+// --- F10: 該当行が存在しない（未作成）→ 未。例外で落ちない ---
+{
+  const b = buildAxis('2026-06', [KU('u', '2026-01')], [], []);   // 翌月行そのものが無い
+  eq('F10a 行が無い → 対象1・未1（落ちない）', [sec(b, 'kunPlan').countTarget, sec(b, 'kunPlan').countUndone], [1, 1]);
+  ok('F10b doneDate は空', ((sec(b, 'kunPlan').targets[0] || {}).doneDate || '') === '');
+}
+// --- F11: kunRecordsNext 未供給 → 旧軸フォールバック＋warning（黙って壊れない）---
+{
+  // next を渡さない＝コード.js が未対応のまま core だけ入った状態を模す
+  const b = buildAxis('2026-07', [KU('u', '2026-01')],
+    [{ userId: 'u', name: 'u', keikaku_date: '2026-06-25' }], undefined);
+  eq('F11a フォールバック時は旧軸（7月ボードが7月開始分を数える）', sec(b, 'kunPlan').countTarget, 1);
+  eq('F11b フォールバックでも前月付けは済（既存修正を維持）', sec(b, 'kunPlan').countDone, 1);
+  ok('F11c warning が立つ（黙って旧軸に落ちない）',
+    (b.warnings || []).some(w => w && w.type === 'kunPlanAxisFallback'));
+}
+
 console.log(`\n==== ${fail === 0 ? 'ALL GREEN' : 'FAILED'}  pass=${pass} fail=${fail} ====`);
 if (fail !== 0) process.exit(1);

@@ -95,6 +95,38 @@ function _mbFieldDoneWorkMonth_(rec, field, ym) {
   return { done: false, doneDate: '' };
 }
 
+// ===== 作業月主義（2026-07-31・業務ルール仕様書v1.2 §1-3「前月準備の原則」）=====
+// N月開始の計画書は N−1月中に作り終える運用。よって kunPlan はボード月(y,m)ではなく
+// 「翌月(y,m+1)が計画期間の開始月か」で数え、記録も翌月の行から読む。
+// teishutsu.html:319-322 が既に同じ軸（作業月主義）で動いており、月次ボードをそれに揃える。
+// ★shared.js の isPlanMonth / isHyoukaMonth は1バイトも変えない。呼び方（渡す年月）だけを変える。
+//   sokutei.html の dueYm/planYm 分離（2026-07-29）と同じ手法。
+
+// ym('YYYY-MM') の翌月（年跨ぎ対応）。_mbPrevYm_ の対。不正入力は ''。
+function _mbNextYm_(ym) {
+  var m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return '';
+  var y = parseInt(m[1], 10), mo = parseInt(m[2], 10);
+  mo += 1; if (mo > 12) { mo = 1; y += 1; }
+  return y + '-' + ('0' + mo).slice(-2);
+}
+
+// ボード月(y,m) の翌月 = 計画期間の開始月ノード（年跨ぎ対応）。
+// 個別機能訓練計画書チェック.html:1162-1169 の kobetsuCycleAt と同じ論理（コピーではなくGAS側の独立実装）。
+function _mbNextMonth_(y, m) {
+  return (m === 12) ? { year: y + 1, month: 1 } : { year: y, month: m + 1 };
+}
+
+// planStart より前の月か（diff<0）。shared.js の isBeforePlanStart と同義（GASからは呼べないので additive に置く）。
+// ★用途は kunEval の「幻の督促」ガードのみ。diff=-1（planStart の前月）は isHyoukaMonth が true を返すが、
+//   評価すべき前サイクルが存在しないため督促しない。個別機能訓練計画書チェック.html:1323-1324 と同じ意味。
+// ★kunPlan には当てないこと。新軸では diff=-1 の利用者は正当な計画作成対象（8月開始なら7月に作る）。
+function _mbBeforePlanStart_(planStart, y, m) {
+  var mm = String(planStart || '').match(/^(\d{4})-(\d{2})$/);
+  if (!mm) return false;
+  return ((y - parseInt(mm[1], 10)) * 12 + (m - parseInt(mm[2], 10))) < 0;
+}
+
 // 送付日（pdf優先→print）の済判定
 function _mbSendDone_(rec, ym) {
   if (rec) {
@@ -141,6 +173,16 @@ function buildMonthBoard(input, deps) {
   var dueMap = input.tsushoDueMap || {};
   var noDue = {}; // 通所warning重複防止（userId単位）
 
+  // 作業月主義（v1.2 §1-3）: kunPlan は「翌月＝計画期間の開始月」の行を見る。
+  // input.kunRecordsNext が供給されていなければ旧軸（当月主義）へフォールバックし、warning で可視化する。
+  // ★フォールバックを黙って行わないこと。黙ると「反映したのに数字が変わらない」事故になる。
+  var nextNode = _mbNextMonth_(y, m);
+  var nextYm = _mbNextYm_(ym);
+  var hasNextRecords = !!input.kunRecordsNext;
+  if (!hasNextRecords) {
+    warnings.push({ type: 'kunPlanAxisFallback', month: ym });
+  }
+
   var oralEval = [], oralPlan = [], kunPlan = [], kunEval = [];
   var sokuteiKaigo = [], sokuteiShien = [], tsushoPlan = [], tsushoEval = [], tsushoMoni = [];
 
@@ -162,19 +204,31 @@ function buildMonthBoard(input, deps) {
     // --- 個訓（要介護のみ） ---
     if (_mbIsKaigo_(cat)) {
       var kRec = _mbPick_(input.kunRecords, u, norm);
-      // 個訓計画書: isPlanMonth（保留=blocked_reason 有りの月は対象外＝やり残しに出さない。
-      // 督促は止めるが keikakushoBlocked digest 側で別掲。サイクル(isPlanMonth)自体は動かさない）
-      if (d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, y, m)
+      // 個訓計画書: 作業月主義（v1.2 §1-3 前月準備の原則）。
+      //   ボード月の翌月が計画期間の開始月なら、このボード月が作業月＝督促する月。
+      //   判定・記録読取・保留判定はすべて翌月の行（＝計画期間の開始月ノード）を見る。
+      //   済判定に渡す ym も翌月＝「開始月 or その前月(=作業月)」が済の窓になる。
+      // 保留=blocked_reason 有りの月は対象外＝やり残しに出さない（督促は止めるが digest 側で別掲）。
+      if (hasNextRecords) {
+        var nRec = _mbPick_(input.kunRecordsNext, u, norm);
+        if (d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, nextNode.year, nextNode.month)
+            && !(nRec && nRec.blocked_reason)) {
+          var kp = _mbFieldDoneWorkMonth_(nRec, 'keikaku_date', nextYm);
+          kunPlan.push({ userId: u.userId, name: u.name, done: kp.done, doneDate: kp.doneDate });
+        }
+      } else if (d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, y, m)
           && !(kRec && kRec.blocked_reason)) {
-        // keikaku_date は「作業月＝前月」に作成し前月日付を持つ運用のため、当月/前月いずれかで済判定（偽の未の是正）。
-        var kp = _mbFieldDoneWorkMonth_(kRec, 'keikaku_date', ym);
-        kunPlan.push({ userId: u.userId, name: u.name, done: kp.done, doneDate: kp.doneDate });
+        // 旧軸フォールバック（input.kunRecordsNext 未供給＝呼び出し側が未対応）。
+        // 黙って全員「未」にしないための保険。warnings に kunPlanAxisFallback を立てて可視化する。
+        var kpOld = _mbFieldDoneWorkMonth_(kRec, 'keikaku_date', ym);
+        kunPlan.push({ userId: u.userId, name: u.name, done: kpOld.done, doneDate: kpOld.doneDate });
       }
-      // 個訓評価: isHyoukaMonth（短縮 planMonths を反映）
+      // 個訓評価: isHyoukaMonth（短縮 planMonths を反映）。軸は当月のまま（評価に前倒し運用は無い）。
       var isEvalMonth = d.isHyoukaMonth && d.isHyoukaMonth(u.planStart, u.planMonths, y, m);
       if (isEvalMonth) {
-        // 保留=blocked_reason 有りの評価月は kunPlan と同じく対象外（督促しない）＝理由の種類で分岐しない truthy 判定
-        if (!(kRec && kRec.blocked_reason)) {
+        // 保留=blocked_reason 有りの評価月は kunPlan と同じく対象外（督促しない）＝理由の種類で分岐しない truthy 判定。
+        // 加えて diff=-1（planStart の前月）は評価すべき前サイクルが無いので除外＝幻の督促ガード。
+        if (!(kRec && kRec.blocked_reason) && !_mbBeforePlanStart_(u.planStart, y, m)) {
           var ke = _mbFieldDone_(kRec, 'tasseido_date', ym);
           kunEval.push({ userId: u.userId, name: u.name, done: ke.done, doneDate: ke.doneDate });
         }
@@ -258,6 +312,9 @@ if (typeof module !== 'undefined' && module.exports) {
     buildMonthBoard: buildMonthBoard,
     mbShienMeasureDue_: mbShienMeasureDue_,
     _mbFieldDoneWorkMonth_: _mbFieldDoneWorkMonth_,
-    _mbPrevYm_: _mbPrevYm_
+    _mbPrevYm_: _mbPrevYm_,
+    _mbNextYm_: _mbNextYm_,
+    _mbNextMonth_: _mbNextMonth_,
+    _mbBeforePlanStart_: _mbBeforePlanStart_
   };
 }
