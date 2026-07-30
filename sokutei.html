@@ -690,29 +690,68 @@ function planGapLevel(r, chosenYm, ym) {
   return (over !== null && over >= cyc) ? 'red' : 'late';
 }
 
+// 長期休み中の人に「期限までの測定がまだ残っているか」を判定する純関数（2026-07-30）。
+// ★💤 の条件から「予定月」を外すためにこれを足した。
+//   予定月を条件にしていた間、長期休み5名の予定月は全員未来月（現場がスライドで送っていた）で
+//   💤 は0名だった＝休み中の人は画面のどこにも出てこない。急に来ても探せない。
+//   （3ヶ月休みの予定が2ヶ月で来ることがある・2026-07-30 社長）
+// 数え方は介護度で分ける。判定式（planGapCheck / covered）は呼ばずに、同じ数え方をここに置く。
+//   要介護  … 期限（dueYm＝評価月）に対して前回測定が周期ぶん以内か＝covered と同じ境界
+//   要支援・事業対象者、期限が算出できない要介護
+//           … 計画書が無く covered が定義できないので「前回測定 ＋ 周期」で期限切れを見る（B-1）。
+//             ここを「休んでいる限りずっと出す」にすると、5月に測って9月まで余裕がある人まで
+//             💤 に並び、「測らなくていい人」が混ざって 💤 の意味が薄まる。
+// 判断材料が無い側（前回測定なし・日付が壊れている・当月が壊れている）は true＝出す方へ倒す。
+// 急かしすぎることはあっても取りこぼさない、が安全側のため。
+function lacksDueMeasure(r, ym) {
+  const lastYm = (r && r.last) ? String(r.last).slice(0, 7) : '';
+  if (!/^\d{4}-\d{2}$/.test(lastYm)) return true;      // 一度も測っていない＝期限内の測定は無い
+  const cyc = parseInt(r && r.cycleMonths, 10) || 3;
+  const dueYm = String((r && r.dueYm) || '');
+  if (isKaigoCare(r && r.care) && /^\d{4}-\d{2}$/.test(dueYm)) {
+    const age = ymMonthsBetween(dueYm, lastYm);        // 期限の時点で前回測定が何ヶ月前か
+    return !(age !== null && age >= 0 && age <= cyc - 1);
+  }
+  const m = String(ym == null ? '' : ym).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(m)) return true;
+  const limit = ymAdd(lastYm, cyc);                    // 前回測定 ＋ 周期 ＝ 期限相当の月
+  if (!limit) return true;
+  return limit <= m;
+}
+
 // 「今月やる人」タブの行分け。★二重表示の防止をここ1箇所に閉じ込める（4-4）。
-//   gapRows     … 赤の枠（期限を過ぎてしまった人）だけ
-//   lateRows    … オレンジの2行目（計画に間に合わない・まだ戻せる）。一覧にはそのまま並べる
-//   rest        … 赤に出た人を除いた残り。オレンジも未／出力残／完了もすべてここから作る
-//   overdueRows … rest のうち予定月が当月より前（オレンジの1行目）。赤に出た人は構造的にここへ来ない
-function splitMonthRows(rows, ym) {
+//   gapRows      … 赤の枠（期限を過ぎてしまった人）だけ
+//   lateRows     … オレンジの2行目（計画に間に合わない・まだ戻せる）。一覧にはそのまま並べる
+//   rest         … 赤に出た人を除いた残り。オレンジも未／出力残／完了もすべてここから作る
+//   overdueRows  … rest のうち予定月が当月より前（オレンジの1行目）。赤に出た人は構造的にここへ来ない
+//   restingRows  … 💤 に数える人（allRows から拾う＝今月の対象でなくても出す）
+//   restingCards … restingRows のうち、この画面にまだカードが無い人＝新しく組み立てる行
+// allRows は母集団（フィルタ後の全利用者）。省略すると rows の中だけで数える＝従来の呼び出しも動く。
+function splitMonthRows(rows, ym, allRows) {
   const lv = r => planGapLevel(r, r.nextYm, ym);
   const gapRows = (rows || []).filter(r => lv(r) === 'red');
   const gapNames = {}; gapRows.forEach(r => { gapNames[r.name] = true; });
   const rest = (rows || []).filter(r => !gapNames[r.name]);
-  // 予定月を過ぎている人を、来ているのに測れていない人（⏰）と休み中の人（💤）に分ける。
-  //   長期休みは予定月をスライドせず放置する運用（2026-07-29 社長決定）。急に来たとき
-  //   一覧に出ていてその場で測れるようにするため。ただし ⏰ に混ぜると
-  //   「来ているのに測り忘れている人」が埋もれるので枠を分ける。
+  // 予定月を過ぎている人のうち、来ているのに測れていない人（⏰）と休み中の人（💤）を分ける。
+  //   長期休みは予定月をスライドせず放置する運用（2026-07-29 社長決定）。ただし現場は
+  //   スライドで送るため、予定月を条件にすると休み中の人が画面から消える（2026-07-30 実測）。
+  //   → 💤 は予定月を見ない。「長期休み中 ＋ 期限内の測定が無い」で拾う。
   //   ★分けるのは ⏰ だけ。📋（計画に間に合わない）は休んでいても期限が動かないので枠は分けず、
   //     カード側に印だけ添える（枠から消すとケアマネへ相談する機会そのものが消えるため）。
+  //   ★📋・赤に出ている人は 💤 から外す（A-1）。そちらのほうが緊急度が高く、
+  //     二重に並べると「対象が何名か」が分からなくなる。休み中であることはカードの印で分かる。
   const overdueAll = rest.filter(r => isOverdueYm(r.nextYm, ym));
+  const shown = {}; (rows || []).forEach(r => { if (r) shown[r.name] = true; });
+  const pop = (allRows && allRows.length) ? allRows : (rows || []);
+  const restingRows = pop.filter(r => r && r.onLongLeave && !lv(r)
+    && (lacksDueMeasure(r, ym) || (shown[r.name] && isOverdueYm(r.nextYm, ym))));
   return {
     gapRows: gapRows,
     lateRows: rest.filter(r => lv(r) === 'late'),
     rest: rest,
     overdueRows: overdueAll.filter(r => !(r && r.onLongLeave)),
-    restingRows: overdueAll.filter(r => !!(r && r.onLongLeave))
+    restingRows: restingRows,
+    restingCards: restingRows.filter(r => !shown[r.name])
   };
 }
 // 「9月 2名 ／ 10月 1名」の内訳文字列（期限の月ごと）
@@ -1427,11 +1466,15 @@ function renderTabMonth() {
   // sokuteiSort_ は並べ替えだけでなく badge / tier / E の付与も担う（rowCard がそれを描く）ので、
   // 未・済に分ける前に必ず一度通す。済だけ素通しにすると E が undefined になって描画で落ちる。
   const rows = sokuteiSort_(applyAllFilters(pool));
+  // 💤（長期休み中）は予定月を見ないので pool の外にも居る。カードを組み立てられるよう
+  // 母集団にも同じ装飾（badge / tier / E）を通しておく。★pool そのものは据え置き＝
+  // ヘッダの「◯月の対象 ◯名」に 💤 を混ぜない（今月やる予定の人ではないため・2026-07-30）。
+  const allRows = sokuteiSort_(applyAllFilters(all));
   const filtering = ufActiveCount(uf, careFilter) > 0;
 
   // 計画書に間に合わない人は最上部の専用枠へ集める（未／済には重複して出さない）
   // 赤とオレンジの振り分けは splitMonthRows に一本化（同じ判定を2箇所に書かない・4-4）
-  const split = splitMonthRows(rows, ym);
+  const split = splitMonthRows(rows, ym, allRows);
   const gapRows = split.gapRows, rest = split.rest;
   const undone = rest.filter(r => !r.doneThisMonth);                 // 未は既存の優先度（tier→E→かな）のまま（A-3）
   const done = rest.filter(r => r.doneThisMonth).sort((a, b) => {    // 済は新しく測った順
@@ -1459,7 +1502,9 @@ function renderTabMonth() {
   if (state.errs.yotei) html += '<div class="note">⚠ 予定月（getYotei）取得失敗のため全員を対象として表示しています：' + esc(state.errs.yotei) + '</div>';
   if (state.errs.output) html += '<div class="note">⚠ 出力チェック（getSokuteiOutput）の取得に失敗したため、出力は全員「未」で表示しています：' + esc(state.errs.output) + '</div>';
 
-  if (filtering && !rows.length) { el.innerHTML = html + UF_EMPTY_HTML; return; }   // B-6
+  const restingCards = split.restingCards || [];
+  // 💤 だけが残る絞り込みでも「該当なし」で終わらせない（休み中の人が探せなくなるため）
+  if (filtering && !rows.length && !restingCards.length) { el.innerHTML = html + UF_EMPTY_HTML; return; }   // B-6
   // 最上部に固定で見せる（2-4）。対象外になっていても消さない
   // 赤の枠は「もう測定期限を過ぎてしまった人」だけに残す（丙・赤を増やさない）
   if (gapRows.length) {
@@ -1486,11 +1531,14 @@ function renderTabMonth() {
       wrote = true;
     }
     if (restingRows.length) {
+      // ★予定月の内訳は出さない（2026-07-30）。💤 は予定月を見ない枠になったため、
+      //   ここに予定月を並べると「その月に測る人」と読めてしまう。
       html += (wrote ? '<div class="overdue-line">' : '')
         + '💤 来所がなく測れていません（' + restingRows.length + '名）<br>'
-        + esc(overdueBreakdown(restingRows)) + '<br>'
-        + '長期休み中の方です。来られていないので測れません。'
+        + '長期休み中で、期限までの測定がまだの方です。来られていないので測れません。'
         + '<b>来られたときに測ってください。急がなくて大丈夫です。</b>'
+        + (restingCards.length
+          ? '<br>下の「💤 長期休み中の人」に並んでいます（' + m + '月の対象人数には数えていません）。' : '')
         + (wrote ? '</div>' : '');
       wrote = true;
     }
@@ -1515,6 +1563,16 @@ function renderTabMonth() {
   if (undone.length) {
     html += '<div class="section-label">🟡 まだの人（測定未 ' + undone.length + '名）</div>';
     undone.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true, showOutput: true }); });
+  }
+  // 💤 長期休み中の人（2026-07-30）。予定月に関係なく、期限までの測定が残っている人を出す。
+  // ★ここに出す人の多くは pool の外＝この画面にカードが無かった。急に来所したとき
+  //   探さずその場で測れるようにするための枠なので、記録ボタン付きのカードをそのまま作る。
+  //   まだの人（未）の下に置く。今日やる仕事を押し下げないため。
+  if (restingCards.length) {
+    html += '<div class="section-label">💤 長期休み中の人（' + restingCards.length + '名）</div>';
+    html += '<div class="note">※長期休み中で、期限までの測定がまだの方です。予定月では絞っていません。'
+      + '来られたその場で測れるように出しています。' + m + '月の対象人数には数えていません。</div>';
+    restingCards.forEach(r => { html += rowCard(r, { showSlide: true, showRec: true, markDone: true, showOutput: true }); });
   }
   if (pending.length) {
     html += '<div class="section-label">🖨 出力が残っている人（' + pending.length + '名）</div>';
