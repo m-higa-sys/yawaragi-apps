@@ -94,6 +94,37 @@ function AAA_予定月シート初期値生成_確認のみ() {
   return r;
 }
 
+// 2026-07-31: 個訓（domain='kobetsu'）の予定月 初期値生成。上の測定版とは別 action・別関数（additive）。
+//   ★測定（domain='sokutei'）の行には一切触れない。冪等（既に行がある利用者は作らない）。
+function _予定月個訓_要約_(r) {
+  var n = 0, ymList = [];
+  for (var k in r.stats.byYm) {
+    if (!Object.prototype.hasOwnProperty.call(r.stats.byYm, k)) continue;
+    n += r.stats.byYm[k];
+    ymList.push(k + ':' + r.stats.byYm[k] + '名');
+  }
+  return '対象' + r.targets + '名 / 作る行' + n + '件'
+    + ' / 記録ベース' + r.stats.fromRecord + '名'
+    + ' / 計画書開始月ベース' + r.stats.fromPlanStart + '名'
+    + ' / 起点なし' + r.stats.noAnchor + '名'
+    + ' / ★過去月' + r.stats.pastYm + '名'
+    + ' / 既存スキップ' + r.stats.skippedExisting + '名'
+    + ' / 月別 ' + ymList.join('・');
+}
+function AAA_予定月シート初期値生成_個訓_確認のみ() {
+  var r = setupYoteiKobetsuInitial_(true);
+  Logger.log('【個訓・確認のみ（書き込み0）】' + _予定月個訓_要約_(r));
+  Logger.log(JSON.stringify(r));
+  return r;
+}
+function AAA_予定月シート初期値生成_個訓() {
+  var r = setupYoteiKobetsuInitial_(false);
+  Logger.log('【個訓・投入】実際に書いた行 ' + r.inserted + '件');
+  Logger.log('【個訓・投入】' + _予定月個訓_要約_(r));
+  Logger.log(JSON.stringify(r));
+  return r;
+}
+
 // ===== 設定 =====
 var SS_ID = '1blasasDuYsCLRP8fXGqcQfKGQWTMZGjYuJDVRKwNNw0';
 var OWNER_EMAIL = 'm-higa@keepfitlife.com';
@@ -2356,8 +2387,12 @@ function doGet(e) {
         var kuNow = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
         // 既存行があれば old_value を取得（ログ用）
         var kuOldValue = '';
+        // 巻き戻し用の生値（2026-07-31 段階3）。ログ用の String 化とは別に、書き戻せる形で控える。
+        var kuOldRaw = '', kuOldUpdatedAt = '', kuInsertedRow = -1, kuYoteiRow = null;
         if (kuRowIdx > 0) {
-          kuOldValue = String(kuSheet.getRange(kuRowIdx, kuCol).getValue() || '');
+          kuOldRaw = kuSheet.getRange(kuRowIdx, kuCol).getValue();
+          kuOldValue = String(kuOldRaw || '');
+          kuOldUpdatedAt = kuSheet.getRange(kuRowIdx, 8).getValue();
         }
         if (kuRowIdx < 0) {
           if (!kuValue) return respond({ ok: true }, callback);
@@ -2375,6 +2410,7 @@ function doGet(e) {
           var kuNewRow = [kuUserId, kuName, kuYear, kuMonth, '', '', '', kuNow, '', '', '', '', '', '', '', ''];
           kuNewRow[kuCol - 1] = kuValue;
           kuSheet.appendRow(kuNewRow);
+          kuInsertedRow = kuSheet.getLastRow();   // 段階3の巻き戻し用（追記した行の位置）
           // 2026-07-26 タスクボード起票を撤去（相談員通知は伝達ボード action=kunren_hold_notify に一本化）。
         } else {
           kuSheet.getRange(kuRowIdx, kuCol).setValue(kuValue);
@@ -2397,6 +2433,34 @@ function doGet(e) {
           }
           // 2026-07-26 タスクボード起票（UPDATE時）を撤去（相談員通知は伝達ボード action=kunren_hold_notify に一本化）。
         }
+        // ===== 段階3（2026-07-31・additive）: 計画書を記録したら予定月(kobetsu)が追随する =====
+        // ★動かすのは「次回予定月」1個だけ。過去（この記録）も planStart も動かさない。
+        //   評価(tasseido_date)・興味関心・生活機能・送付では進めない（shouldAdvanceKobetsuYotei が唯一の門）。
+        //   ②が失敗したら①（いま書いた記録）を巻き戻す＝片方だけ成功した状態を残さない。
+        if (shouldAdvanceKobetsuYotei(kuField, kuValue)) {
+          var kuWriteRow = (kuInsertedRow > 0) ? kuInsertedRow : kuRowIdx;
+          // 個訓の周期は介護度ではなく「計画月数」（利用者台帳が単一の正）。見つからなければ既定3。
+          var kuPlanMonths = 3, kuYoteiName = '';
+          var kuTgtList = kuTargets || getKeikakushoTargetUsers_(true);
+          for (var kuY = 0; kuY < kuTgtList.length; kuY++) {
+            if (kuTgtList[kuY].userId === kuUserId) {
+              kuPlanMonths = kuTgtList[kuY].planMonths;
+              kuYoteiName = kuTgtList[kuY].name;
+              break;
+            }
+          }
+          if (!kuYoteiName && kuWriteRow > 1) kuYoteiName = String(kuSheet.getRange(kuWriteRow, 2).getValue() || '');
+          var kuYRes = kunrenRecordYotei_({
+            sheet: kuSheet, rowIdx: kuWriteRow, col: kuCol,
+            oldValue: kuOldRaw, oldUpdatedAt: kuOldUpdatedAt, inserted: (kuInsertedRow > 0),
+            userId: kuUserId, name: kuYoteiName, year: kuYear, month: kuMonth,
+            planMonths: kuPlanMonths, by: kuOperator
+          });
+          if (!kuYRes.ok) {
+            return respond({ ok: false, error: kuYRes.error, rolledBack: !!kuYRes.rolledBack }, callback);
+          }
+          kuYoteiRow = kuYRes.row;
+        }
         // ログ書き込み（actionは field 別に決定）
         var kuLogAction = '';
         if (kuField === 'blocked_reason') {
@@ -2412,6 +2476,7 @@ function doGet(e) {
         }
         logKeikakushoOp_(kuOperator, kuUserId, kuLogName, kuYear, kuMonth, kuLogAction, kuField, kuOldValue, kuValue);
         var kuResp = { ok: true, updatedAt: kuNow };
+        if (kuYoteiRow) kuResp.yotei = kuYoteiRow;   // 段階3: 追随した予定月（画面は現状これを読まない＝表示不変）
         return respond(kuResp, callback);
       } finally {
         kuLock.releaseLock();
@@ -15382,6 +15447,59 @@ function setupYoteiKobetsuInitial_(dryRun) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ===== 予定月スライド方式 段階3（個訓）: 記録したら予定月が追随する 2026-07-31 =====
+// updateKeikakusho(field=keikaku_date) が成功した直後に呼ぶ。
+//   nextYm = 「記録した行の年月」＋ planMonths   ★起点は作成日ではない（前月付けで1ヶ月ずれるため）
+// 設計（クロ確定 2026-07-31）:
+//   ・過去（個訓シートの記録）は動かさない。動かすのは次回予定月1個だけ。
+//   ・syncCycleFromCare は渡さない＝その人の周期を介護度で書き換えない。
+//     個訓の周期は介護度ではなく「計画月数」なので cycleMonths を明示で渡す（単一の正＝利用者台帳）。
+//   ・resetSlide=true＝記録がついたらスライド回数を0に戻し、計算値へ自動復帰させる。
+//   ・②（予定月）が失敗したら①（計画書の記録）を巻き戻す。片方だけ成功した状態を残さない
+//     （addSokuteiDone と同じ構造）。
+// ctx = { sheet, rowIdx, col, oldValue, oldUpdatedAt, inserted, userId, name, year, month, planMonths, by }
+function kunrenRollbackKeikaku_(ctx) {
+  var c = ctx || {};
+  try {
+    if (!c.sheet || !(c.rowIdx > 1)) return false;
+    if (c.inserted) {
+      c.sheet.deleteRow(c.rowIdx);
+    } else {
+      c.sheet.getRange(c.rowIdx, c.col).setValue(c.oldValue == null ? '' : c.oldValue);
+      if (c.oldUpdatedAt != null) c.sheet.getRange(c.rowIdx, 8).setValue(c.oldUpdatedAt);
+    }
+    SpreadsheetApp.flush();
+    return true;
+  } catch (rbErr) {
+    return false;
+  }
+}
+
+function kunrenRecordYotei_(ctx) {
+  var c = ctx || {};
+  var cycle = kobetsuCycleMonths(c.planMonths);
+  var nextYm = nextYmAfterKeikakuRow(c.year, c.month, c.planMonths);
+  if (!nextYm) {
+    kunrenRollbackKeikaku_(c);
+    return { ok: false, error: '予定月を計算できませんでした（year=' + c.year + ' month=' + c.month + '）', rolledBack: true };
+  }
+  var res;
+  try {
+    res = writeYotei_(String(c.userId || ''), 'kobetsu', {
+      name: String(c.name || ''), nextYm: nextYm, cycleMonths: cycle,
+      by: String(c.by || ''), slideDelta: 0, resetSlide: true
+    });
+  } catch (wErr) {
+    kunrenRollbackKeikaku_(c);
+    return { ok: false, error: String((wErr && wErr.message) || wErr), rolledBack: true };
+  }
+  if (!res || !res.ok) {
+    kunrenRollbackKeikaku_(c);
+    return { ok: false, error: (res && res.error) || '予定月の更新に失敗しました', rolledBack: true };
+  }
+  return { ok: true, nextYm: nextYm, row: res.row };
 }
 
 // ===== 測定出力（🖨 利用者用プリント／📄 ケアマネ用PDF）2026-07-29 =====

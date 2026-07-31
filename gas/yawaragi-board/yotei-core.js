@@ -267,6 +267,35 @@ function buildInitialYoteiKobetsu(input, deps) {
   return { rows: rows, stats: stats };
 }
 
+// ===== 段階3（個訓）: 計画書を記録したら予定月を進める（2026-07-31・additive）=====
+// ★既存関数は1バイトも変えない。純関数として3つだけ足す。
+//   sokutei.html が本ファイルを ?v= 無しで読むため、既存の挙動は不変に保つ。
+
+// 個訓の周期は介護度ではなく「計画月数（利用者台帳）」。1〜12以外は既定3。
+function kobetsuCycleMonths(planMonths) {
+  var pm = parseInt(planMonths, 10);
+  return (pm >= 1 && pm <= 12) ? pm : 3;
+}
+
+// 計画書を1件記録したときの次回予定月。
+// ★起点は「記録した行の年月」（＝計画期間の開始月）であって作成日ではない。
+//   計画書は前月準備の原則で前月に作るため、作成日を起点にすると必ず1ヶ月ずれる。
+// 年月が壊れていれば '' を返す（＝予定月を書かない。呼び出し側が失敗として扱う）。
+function nextYmAfterKeikakuRow(year, month, planMonths) {
+  var y = parseInt(year, 10), m = parseInt(month, 10);
+  if (!(y >= 2000 && y <= 2100)) return '';
+  if (!(m >= 1 && m <= 12)) return '';
+  return ymAdd(_yoteiFmtYm_(y, m), kobetsuCycleMonths(planMonths));
+}
+
+// 予定月を進めてよい更新か。計画書の日付を「入れた」ときだけ true。
+//   ・tasseido_date（評価）/ kyoumi_date / seikatsu_date / keikaku_sent_date では進めない
+//   ・日付のクリア（空）でも進めない（消した拍子に予定月が先へ飛ぶのを防ぐ）
+function shouldAdvanceKobetsuYotei(field, value) {
+  if (String(field || '') !== 'keikaku_date') return false;
+  return String(value == null ? '' : value).trim() !== '';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ymAdd: ymAdd,
@@ -276,6 +305,9 @@ if (typeof module !== 'undefined' && module.exports) {
     ymCandidates: ymCandidates,
     isDue: isDue,
     buildInitialYotei: buildInitialYotei,
-    buildInitialYoteiKobetsu: buildInitialYoteiKobetsu
+    buildInitialYoteiKobetsu: buildInitialYoteiKobetsu,
+    kobetsuCycleMonths: kobetsuCycleMonths,
+    nextYmAfterKeikakuRow: nextYmAfterKeikakuRow,
+    shouldAdvanceKobetsuYotei: shouldAdvanceKobetsuYotei
   };
 }
