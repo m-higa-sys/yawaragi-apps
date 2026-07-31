@@ -292,6 +292,61 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
     font-size: 0.74rem;
 }
 
+/* ===== 段階4（2026-07-31）: 予定月スライド方式のUI（sokutei.html から移植）===== */
+/* 予定月が取れなかったときの帯。黙って旧挙動に戻らないための表示。 */
+#yoteiBanner {
+    display: none;
+    background: #fffaf0;
+    color: #9c4221;
+    border-left: 4px solid #dd6b20;
+    padding: 8px 14px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+/* 氏名セルの「予定 ◯月 ▾」 */
+.kb-yotei-btn {
+    display: inline-block;
+    margin-top: 3px;
+    border: 1px solid #cbd5e0;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    font-family: inherit;
+    background: #f7fafc;
+    color: #2c5282;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.kb-yotei-btn:active { background: #e2e8f0; }
+.kb-yotei-btn[disabled] { opacity: 0.5; cursor: default; }
+.kb-yotei-btn.busy { background: #ebf8ff; border-color: #4299e1; color: #2b6cb0; }
+/* 月タップ（12ヶ月の候補） */
+.ym-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 4px; }
+.ym-cell {
+    border: 1px solid #cfd8dc; border-radius: 8px; padding: 14px 4px;
+    font-size: 1rem; font-weight: 700; cursor: pointer; background: #fff;
+    color: #2c3e50; font-family: inherit; min-height: 48px;
+}
+.ym-cell.sel { background: #2c7a7b; color: #fff; border-color: #2c7a7b; }
+.ym-cell:active { background: #eceff1; }
+/* 5秒Undoバー（スクロール位置に関係なく必ず見える位置へ固定する） */
+.undo-bar {
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+    width: calc(100% - 24px); max-width: 720px;
+    display: flex; align-items: center; gap: 10px;
+    background: #2c3e50; color: #fff; border-radius: 10px; padding: 12px 14px;
+    font-size: 0.92rem; font-weight: 700; z-index: 2000;
+    box-shadow: 0 4px 16px rgba(0,0,0,.28); opacity: 1; transition: opacity 1.2s linear;
+}
+.undo-bar.fading { opacity: .25; }   /* 消える直前に薄くする＝「もう消える」が分かる */
+.undo-msg { flex: 1; }
+.undo-btn {
+    border: none; border-radius: 8px; padding: 8px 14px;
+    font-size: 0.95rem; font-weight: 700; cursor: pointer;
+    background: #ffd54f; color: #2c3e50; font-family: inherit; white-space: nowrap;
+}
+
 .modal-overlay {
     display: none;
     position: fixed;
@@ -520,6 +575,10 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 
 <div id="offlineBanner">⚠ オフライン表示中(最新データの取得に失敗しています)</div>
 <div id="pendingBanner" style="display:none;" onclick="retryPending()"></div>
+<!-- 段階4: 予定月が取れなかったときだけ出す。黙って旧挙動（計画書開始月からの計算）に戻さない。 -->
+<div id="yoteiBanner" style="display:none;"></div>
+<!-- 段階4: 5秒Undoバー（sokutei.html から移植・押し間違いをその場で戻す） -->
+<div id="undoBar" class="undo-bar" style="display:none;"></div>
 
 <div class="toolbar">
     <select id="fiscalYearSelect" onchange="onYearChange()"></select>
@@ -699,9 +758,28 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
   </div>
 </div>
 
+<!-- 段階4: 次回の計画予定月を選ぶ（月タップ）。動かすのは予定月だけ＝過去の記録も計画書開始月も触らない -->
+<div class="modal-overlay" id="ymPicker" onclick="if(event.target===this)closeYmPicker()">
+    <div class="modal">
+        <h3>📅 次回の計画予定月</h3>
+        <div class="sub" id="ymPickerName"></div>
+        <div class="ym-grid" id="ymPickerGrid"></div>
+        <div id="ymPickerNote" style="display:none; font-size:0.82rem; color:#4a5568; margin-top:6px;"></div>
+        <div style="font-size:0.8rem; color:#718096; margin-top:8px;">
+            ※変わるのは次回の予定月だけです。これまでの記録も、計画書開始月も動きません。
+        </div>
+        <div class="btn-row" style="margin-top:10px;">
+            <button class="cancel" onclick="closeYmPicker()">キャンセル</button>
+        </div>
+    </div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script src="shared.js?v=2026-06-26b"></script>
+<!-- 段階4: 予定月の純関数（ymAdd / ymCandidates / isDue）。月の足し算をこの画面に複製しない＝単一の正。
+     ?v= を必ず付ける（sokutei.html は付けずに読んでおり、古いキャッシュを掴む余地がある）。 -->
+<script src="gas/yawaragi-board/yotei-core.js?v=2026-07-31a"></script>
 <script>
 // ============ 定数 ============
 const API_BASE = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw/exec';
@@ -751,7 +829,11 @@ let state = {
     staffNames: [],       // 測定者/出力者プルダウン用（staff_listから除外適用後・起動時に取得）
     // 測定記録シート（測定管理アプリの書き込み先）由来の測定日。{ 正規化名: { 'YYYY-MM': 最新日 } }
     // ★読むだけ。取得に失敗しても {} のままで、個訓シートだけの従来表示に戻る（画面は壊さない）。
-    shienByMonth: {}
+    shienByMonth: {},
+    // 予定月シート domain='kobetsu'（段階4）。{ userId: { nextYm, cycleMonths, slideCount, note, name } }
+    yotei: {},
+    // 予定月を「読めているか」。false のあいだは planStart ベースへ落ち、バナーを出す（黙って戻らない）。
+    yoteiOk: false
 };
 // 測定者/出力者の選択肢（staff_listの生文字列から MEASURER_EXCLUDE を除いたもの）
 function getMeasurerOptions() {
@@ -895,6 +977,74 @@ async function retryPending() {
 // ============ 3ヶ月サイクル判定 ============
 // isPlanMonth / isHyoukaMonth は shared.js §I（submitCellColor 同梱）へ集約。
 // 引数・ロジックは従来と同一（無回帰）。本体は §I 参照のみ。
+// ★2026-07-31 段階4: 通常はこの2つを呼ばなくなった（予定月ベースへ移行）。
+//   予定月が取れないときのフォールバック専用として残す。関数自体は1バイトも変えていない。
+
+// ============ 予定月ベースの判定（段階4・2026-07-31）============
+// 正本の3分割:
+//   過去      = 個訓シートの記録（行の年月）が正      … 温存ロジック（hasPlanData）で表示する
+//   次回予定  = 予定月シート domain='kobetsu' の nextYm が正
+//   planStart = 動かさない。記録ゼロの新規利用者の種としてのみ使う
+// ★planStart から「過去も未来も」数える設計をやめる。開始月を書き換えた瞬間に過去の実績が
+//   表示場所を失って画面から消える事故（2026-07-31 実機で再現）の根治がこれ。
+// ★予定月が取れない／その人の行が無いときだけ、従来の planStart ベースへ落ちる（画面を空にしない）。
+function kbYm(year, month) { return year + '-' + String(month).padStart(2, '0'); }
+
+// yotei-core.js（?v= 付きで読む）が届いているか。届いていなければ予定月機能そのものを使わない
+// ＝ 中途半端に動かさず、フォールバック＋バナーへ倒す。
+function kbYoteiCoreReady() {
+    return (typeof ymAdd === 'function') && (typeof ymCandidates === 'function');
+}
+
+// getYotei の records → { ok, map }。ok=false は「取得できなかった」。0件（空配列）は ok=true。
+function kbBuildYoteiMap(records) {
+    if (!records || !Array.isArray(records)) return { ok: false, map: {} };
+    const map = {};
+    records.forEach(r => {
+        if (!r || !r.userId) return;
+        map[String(r.userId)] = {
+            nextYm: String(r.nextYm || ''),
+            cycleMonths: parseInt(r.cycleMonths, 10) || 0,
+            slideCount: parseInt(r.slideCount, 10) || 0,
+            note: String(r.note || ''),
+            name: String(r.name || '')
+        };
+    });
+    return { ok: true, map: map };
+}
+
+// その人の予定月。行が無い・値が壊れていれば '' を返す（＝planStart ベースへ落ちる合図）。
+function kbYoteiYm(map, userId) {
+    const r = map && map[userId];
+    const ym = r && r.nextYm;
+    return /^\d{4}-\d{2}$/.test(String(ym || '')) ? String(ym) : '';
+}
+
+// このセルが計画月か。予定月があればそれ1つだけが計画月（過去も未来も計算で作らない）。
+function kbIsPlanCell(yoteiYm, u, year, month) {
+    if (yoteiYm) return yoteiYm === kbYm(year, month);
+    return isPlanMonth(u.planStart, u.planMonths, year, month);
+}
+
+// このセルが評価月か。＝予定月の前月（前月準備の原則・@355 の作業月主義と同じ構造）。
+function kbIsHyoukaCell(yoteiYm, u, year, month) {
+    if (yoteiYm) return ymAdd(yoteiYm, -1) === kbYm(year, month);
+    return isHyoukaMonth(u.planStart, u.planMonths, year, month);
+}
+
+// 「予定 ◯月 ▾」のラベル。年をまたぐときだけ年を付ける。
+function kbYoteiLabel(yoteiYm, nowYm) {
+    if (!yoteiYm) return '未設定';
+    const y = String(yoteiYm).slice(0, 4);
+    const m = String(parseInt(String(yoteiYm).slice(5, 7), 10));
+    return (y === String(nowYm).slice(0, 4)) ? (m + '月') : (y + '/' + m + '月');
+}
+
+// 当月 'YYYY-MM'（月タップの候補の起点）
+function thisYmStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
 
 // ============ 1ヶ月1列 口腔式バッジ 純関数（2026-07 追加・additive・renderTableで使用）============
 // 口腔 oral-plan の「1ヶ月1セル・バッジで一目」を個別へ移植。バッジ配列を返す純関数（DOM非依存）。
@@ -1073,14 +1223,32 @@ async function fetchShienSokutei() {
         return null;
     }
 }
+// 予定月（domain='kobetsu'）を読む。読み取り専用。
+// ★失敗しても投げない。null を返す＝「計画書開始月ベースへ落ちてバナーを出す」合図。
+//   測定の行（domain='sokutei'）は要求しない＝触れない。
+async function fetchYotei() {
+    try {
+        const res = await fetch(API_BASE + '?action=getYotei&domain=kobetsu&t=' + Date.now());
+        if (!res.ok) return null;
+        const json = await res.json();
+        return (json && json.ok && Array.isArray(json.records)) ? json.records : null;
+    } catch (e) {
+        console.warn('getYotei 取得失敗（計画書開始月ベースの表示に戻る）', e);
+        return null;
+    }
+}
 async function loadFiscalYearData() {
     if (state.isLoading) return;
     state.isLoading = true;
     const fy = state.fiscalYear;
     try {
-        const [r1, r2, shien] = await Promise.all([fetchYear(fy), fetchYear(fy + 1), fetchShienSokutei()]);
+        const [r1, r2, shien, yotei] = await Promise.all([fetchYear(fy), fetchYear(fy + 1), fetchShienSokutei(), fetchYotei()]);
         // 測定記録シート。null（失敗）なら前回の値を捨てて空にする＝古い「済」を残さない。
         state.shienByMonth = kbBuildSokuteiByMonth(shien, kbNormKey);
+        // 予定月（段階4）。取得できたときだけ予定月ベースに切り替える。
+        const yb = kbBuildYoteiMap(yotei);
+        state.yotei = yb.map;
+        state.yoteiOk = yb.ok && kbYoteiCoreReady();
         if (!r1 || !r1.ok || !r2 || !r2.ok) { showOffline(); return; }
         if (!(r1.users || []).length) {
             showToast('⚠ 利用者データが空でした。キャッシュを維持します', 'warn');
@@ -1159,10 +1327,15 @@ async function loadFiscalYearData() {
 // フェーズ2a: 作業月(前月)化の純関数。翌月が計画月なら、このセルは「作業月」で、
 // 格納行(node)はその翌月＝計画月。計画パートを node 行で読み書きし、表示だけ前月へ寄せる。
 // 返り: { role:'work'|'none', nodeYear, nodeMonth }。isPlanMonth を読むだけ（shared.js 無改修）。DOM非依存・年跨ぎ対応。
-function kobetsuCycleAt(planStart, planMonths, year, month) {
+// ★2026-07-31 段階4: 「翌月が計画月か」を「翌月が予定月か」に差し替えた（第5引数）。
+//   yoteiYm を渡さない／空のときは従来どおり planStart ベース（フォールバック・既存テスト互換）。
+function kobetsuCycleAt(planStart, planMonths, year, month, yoteiYm) {
     const nY = (month === 12) ? year + 1 : year;
     const nM = (month === 12) ? 1 : month + 1;
-    if (isPlanMonth(planStart, planMonths, nY, nM)) {
+    const nextIsPlan = yoteiYm
+        ? (yoteiYm === kbYm(nY, nM))
+        : isPlanMonth(planStart, planMonths, nY, nM);
+    if (nextIsPlan) {
         return { role: 'work', nodeYear: nY, nodeMonth: nM };
     }
     return { role: 'none', nodeYear: year, nodeMonth: month };
@@ -1172,6 +1345,18 @@ function renderTable() {
     const thead = document.querySelector('#matrixTable thead');
     const tbody = document.querySelector('#matrixTable tbody');
     const emptyEl = document.getElementById('emptyMessage');
+
+    // 段階4: 予定月を読めていないことを必ず画面に出す（黙って旧挙動に戻らない）
+    const ybEl = document.getElementById('yoteiBanner');
+    if (ybEl) {
+        if (state.yoteiOk) {
+            ybEl.textContent = '';
+            ybEl.style.display = 'none';
+        } else {
+            ybEl.textContent = '⚠ 予定月を取得できませんでした。計画書開始月からの計算で表示しています（「予定 ▾」は使えません）。🔄再読込をお試しください。';
+            ybEl.style.display = 'block';
+        }
+    }
 
     if (!state.users || state.users.length === 0) {
         thead.innerHTML = '';
@@ -1212,9 +1397,18 @@ function renderTable() {
         const careMatch = (u.category || '').match(/要介護(\d)/);
         const badge = careMatch ? '<span class="care-badge">介' + careMatch[1] + '</span>' : '';
         const cancelBadge = u.cancelled ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;background:#c0392b;color:white;font-size:0.7rem;font-weight:700;">中止</span>' : '';
+        // 段階4: この人の次回予定月。取得できていない／行が無ければ '' ＝ planStart ベースへ落ちる。
+        const yoteiYm = state.yoteiOk ? kbYoteiYm(state.yotei, u.userId) : '';
+        const rowBusy = !!(busy && busy[u.userId]);
+        // 「予定 ◯月 ▾」。氏名タップ（利用状況モーダル）へ伝播させない。
+        const yoteiBtn = '<button type="button" class="kb-yotei-btn' + (rowBusy ? ' busy' : '') + '"'
+            + (state.yoteiOk && !rowBusy ? '' : ' disabled')
+            + ' onclick="event.stopPropagation(); openYmPicker(\'' + escapeAttr(u.userId) + '\')">'
+            + (rowBusy ? '⏳送信中…' : '予定 ' + escapeHtml(kbYoteiLabel(yoteiYm, nowYM)) + ' ▾')
+            + '</button>';
         let cells = '<td class="group-cell"></td>'
             + '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-planstart="' + escapeAttr(u.planStart || '') + '" onclick="openUsageModal(this)">'
-            + escapeHtml(u.name) + badge + cancelBadge + '</td>';
+            + escapeHtml(u.name) + badge + cancelBadge + '<br>' + yoteiBtn + '</td>';
         let rowTodo = false;
 
         // フェーズ2a: このユーザーの「作業月」が指す node(計画月) の集合を先に集める。
@@ -1222,7 +1416,7 @@ function renderTable() {
         const claimedNodes = {};
         MONTHS.forEach(mo2 => {
             const cy2 = mo2.nextYear ? fy + 1 : fy;
-            const c2 = kobetsuCycleAt(u.planStart, u.planMonths, cy2, mo2.m);
+            const c2 = kobetsuCycleAt(u.planStart, u.planMonths, cy2, mo2.m, yoteiYm);
             if (c2.role === 'work') claimedNodes[c2.nodeYear + '_' + c2.nodeMonth] = true;
         });
 
@@ -1230,8 +1424,9 @@ function renderTable() {
             const cellYear = mo.nextYear ? fy + 1 : fy;
             const key = u.userId + '_' + cellYear + '_' + mo.m;
             const rec = state.records[key] || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
-            const isPlan = isPlanMonth(u.planStart, u.planMonths, cellYear, mo.m);
-            const isHyouka = isHyoukaMonth(u.planStart, u.planMonths, cellYear, mo.m);
+            // 段階4: 計画月＝予定月そのもの／評価月＝予定月の前月。予定月が無ければ従来の計算へ落ちる。
+            const isPlan = kbIsPlanCell(yoteiYm, u, cellYear, mo.m);
+            const isHyouka = kbIsHyoukaCell(yoteiYm, u, cellYear, mo.m);
             const isPast = (cellYear < nowYear) || (cellYear === nowYear && mo.m < nowMonth);
             const isCurrent = (cellYear === nowYear && mo.m === nowMonth);
             const beforeStart = isBeforePlanStart(u.planStart, cellYear, mo.m);
@@ -1250,7 +1445,7 @@ function renderTable() {
             const hasHyoukaData = !!rec.tasseido_date;
 
             // フェーズ2a: 作業月(前月)化。翌月が計画月ならこのセルは作業月で、計画パートを node(計画月)行から読み書きする。
-            const cyc = kobetsuCycleAt(u.planStart, u.planMonths, cellYear, mo.m);
+            const cyc = kobetsuCycleAt(u.planStart, u.planMonths, cellYear, mo.m, yoteiYm);
             const isWork = cyc.role === 'work';
             const planClaimedByWork = isPlan && !!claimedNodes[cellYear + '_' + mo.m]; // この計画月は前月(作業月)へ移譲済み→二重表示しない
             // 計画パートをどの行(node)で描くか。作業月=計画月行(表示は前月・書込は計画月＝格納位置不変) /
@@ -1381,7 +1576,9 @@ function updateStats() {
     state.users.forEach(u => {
         const key = u.userId + '_' + ny + '_' + nm;
         const rec = state.records[key];
-        if (isPlanMonth(u.planStart, u.planMonths, ny, nm)) {
+        // 段階4: 集計も予定月ベース（取れない人だけ従来の計算へ落ちる）
+        const yoteiYm = state.yoteiOk ? kbYoteiYm(state.yotei, u.userId) : '';
+        if (kbIsPlanCell(yoteiYm, u, ny, nm)) {
             if (rec && rec.blocked_reason) {
                 blocked++;   // 保留（作れない月）は進捗の分母から除外し、別途「保留 n件」で併記
             } else {
@@ -1389,7 +1586,7 @@ function updateStats() {
                 if (rec && rec.keikaku_date) done++;   // 興味/生活は非表示・作成済み＝計画書作成日あり
             }
         }
-        if (isHyoukaMonth(u.planStart, u.planMonths, ny, nm)) {
+        if (kbIsHyoukaCell(yoteiYm, u, ny, nm)) {
             hyoukaThisMonth++;
             // ★2026-07-30: 「送付したか」ではなく「評価を作ったか」で数える（送付は送付アプリの担当）
             if (rec && rec.tasseido_date) hyoukaDone++;
@@ -1402,6 +1599,142 @@ function updateStats() {
     document.getElementById('hyoukaMonthCount').textContent = hyoukaThisMonth;
     document.getElementById('hyoukaDoneCount').textContent = hyoukaDone;
     document.getElementById('hyoukaTotalCount').textContent = hyoukaThisMonth;
+}
+
+// ============ 予定 ▾（月タップ）・連打防止・5秒Undo（段階4・sokutei.html から移植）============
+// 移植元の実害記録（sokutei.html:1700）:
+//   「押しても画面が無反応 → 押せていないと思って2回押す → 2ヶ月進んで9月まで飛んだ」。
+//   原因は応答を待ってから描画していたこと。だから送信は必ず runRowAction() を通す:
+//     ①押した瞬間に描画を変える（応答は待たない） ②同じ行の2回目は送信そのものをしない
+//     ③失敗したら黙って戻さず理由を出す
+//   そして直後に5秒Undoバーを出し、押し間違いをその場で戻せるようにする。
+const UNDO_MS = 5000;       // Undoバーの表示時間
+const UNDO_FADE_MS = 1200;  // 消える直前に薄くする時間（「もう消える」を伝える）
+let busy = {};              // userId → { which } 送信中の行（in-flight ロック）
+let rowErr = {};            // userId → 失敗メッセージ
+let undoTimer = null, undoFadeTimer = null;
+let ymPickerUserId = '';
+
+async function runRowAction(userId, which, fn) {
+    if (busy[userId]) return null;          // 連打の2回目以降は送信しない
+    busy[userId] = { which: which };
+    delete rowErr[userId];
+    renderTable();                          // ★応答を待たずに「⏳送信中…」＋無効化を出す
+    try {
+        const out = await fn();
+        delete busy[userId];
+        renderTable();
+        return out;
+    } catch (err) {
+        delete busy[userId];
+        rowErr[userId] = (err && err.message) || String(err);
+        renderTable();                      // 表示を元に戻す（黙って戻さない）
+        showToast('⚠ ' + rowErr[userId], 'error');
+        return null;
+    }
+}
+
+function hideUndoBar() {
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    if (undoFadeTimer) { clearTimeout(undoFadeTimer); undoFadeTimer = null; }
+    const bar = document.getElementById('undoBar');
+    if (bar) { bar.style.display = 'none'; bar.className = 'undo-bar'; }
+}
+function showUndoBar(msg, onUndo) {
+    const bar = document.getElementById('undoBar');
+    if (!bar) return;
+    bar.innerHTML = '<span class="undo-msg"></span><button type="button" class="undo-btn">↩戻す</button>';
+    bar.querySelector('.undo-msg').textContent = msg;
+    bar.querySelector('.undo-btn').onclick = function () { hideUndoBar(); return onUndo(); };
+    bar.className = 'undo-bar';             // fading を落として出し直す（連続操作でも必ず5秒見える）
+    bar.style.display = 'flex';
+    if (undoTimer) clearTimeout(undoTimer);
+    if (undoFadeTimer) clearTimeout(undoFadeTimer);
+    undoFadeTimer = setTimeout(function () {
+        const b = document.getElementById('undoBar');
+        if (b) b.className = 'undo-bar fading';
+    }, UNDO_MS - UNDO_FADE_MS);
+    undoTimer = setTimeout(hideUndoBar, UNDO_MS);
+}
+
+// 次回の計画予定月を選ぶ。動かすのは予定月だけ＝過去の記録も計画書開始月も1バイトも触らない。
+function openYmPicker(userId) {
+    if (!state.yoteiOk) {
+        showToast('⚠ 予定月を取得できていないため変更できません（🔄再読込）', 'error');
+        return;
+    }
+    if (busy[userId]) return;               // 送信中は開かせない
+    const u = (state.users || []).find(x => x.userId === userId);
+    if (!u) return;
+    ymPickerUserId = userId;
+    document.getElementById('ymPickerName').textContent = u.name + ' さん';
+    const cur = kbYoteiYm(state.yotei, userId);
+    // 候補は当月から12ヶ月（過去月は出さない＝先頭が当月なので「今月の対象」へ戻せる）
+    const list = ymCandidates(thisYmStr(), 12);
+    document.getElementById('ymPickerGrid').innerHTML = list.map(ym => {
+        const sel = (ym === cur);
+        return '<button type="button" class="ym-cell' + (sel ? ' sel' : '') + '" data-ym="' + escapeAttr(ym) + '"'
+            + ' onclick="pickYm(\'' + escapeAttr(ym) + '\')">' + (sel ? '✓ ' : '')
+            + escapeHtml(kbYoteiLabel(ym, thisYmStr())) + '</button>';
+    }).join('');
+    const note = document.getElementById('ymPickerNote');
+    if (note) {
+        note.textContent = cur
+            ? ('いまの予定月: ' + kbYoteiLabel(cur, thisYmStr()) + '（計画書はその前月に作ります）')
+            : '※この方はまだ予定月がありません。選ぶと新しく設定します。';
+        note.style.display = 'block';
+    }
+    document.getElementById('ymPicker').classList.add('show');
+}
+function closeYmPicker() {
+    document.getElementById('ymPicker').classList.remove('show');
+    ymPickerUserId = '';
+}
+
+// 予定月シートへ1行 upsert。★cycleMonths は送らない＝その人の周期（計画月数）は動かさない。
+async function setYm(userId, ym) {
+    const u = (state.users || []).find(x => x.userId === userId);
+    const url = API_BASE + '?action=setYotei'
+        + '&userId=' + encodeURIComponent(userId)
+        + '&domain=kobetsu'
+        + '&nextYm=' + encodeURIComponent(ym)
+        + '&name=' + encodeURIComponent((u && u.name) || '')
+        + '&care=' + encodeURIComponent((u && u.category) || '')
+        + '&by=' + encodeURIComponent(getOperator() || '')
+        + '&t=' + Date.now();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('通信に失敗しました');
+    const json = await res.json();
+    if (!json || !json.ok || !json.row) throw new Error((json && json.error) || '予定月の更新に失敗しました');
+    if (!state.yotei) state.yotei = {};
+    state.yotei[userId] = {
+        nextYm: String(json.row.nextYm || ''),
+        cycleMonths: parseInt(json.row.cycleMonths, 10) || 0,
+        slideCount: parseInt(json.row.slideCount, 10) || 0,
+        note: String(json.row.note || ''),
+        name: String(json.row.name || '')
+    };
+    return json.row;
+}
+
+async function pickYm(ym) {
+    const userId = ymPickerUserId;
+    if (!userId) return;
+    const prev = kbYoteiYm(state.yotei, userId);
+    closeYmPicker();
+    if (ym === prev) return;                // 同じ月＝変更なし（送信しない）
+    const row = await runRowAction(userId, 'ym', () => setYm(userId, ym));
+    if (!row) return;                       // 連打の2回目 or 失敗（理由はトーストに出ている）
+    showUndoBar('予定月を ' + kbYoteiLabel(row.nextYm, thisYmStr()) + ' に変更しました',
+        () => undoSetYm(userId, prev));
+}
+async function undoSetYm(userId, prevYm) {
+    if (!prevYm) {
+        // 元が無い（新規に作った）ケース。行を消すAPIは持たないので、戻す先が無いことを伝える。
+        showToast('この方は予定月が無い状態でした。戻すには月を選び直してください', 'warn');
+        return;
+    }
+    await runRowAction(userId, 'ym', () => setYm(userId, prevYm));
 }
 
 function setDayFilter(d, ev) {

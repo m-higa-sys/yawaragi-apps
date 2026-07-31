@@ -20,7 +20,9 @@ function extractFrom(src, name) {
 }
 // 2026-07-30: 測定を2ソースの和（個訓シート ∪ 測定記録シート）で見るための3関数を追加。
 //   renderTable が kbSokuteiForCell を、kbPlanBadges が kbPickSokuteiDate を呼ぶ。
-const HTML_FNS = ['renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
+// 2026-07-31 段階4: renderTable が予定月ベースの判定を呼ぶようになったため、
+//   その純関数群も実HTMLから一緒に抽出する（フォールバック側＝planStartベースの検証内容は不変）。
+const HTML_FNS = ['renderTable', 'kbYm', 'kbBuildYoteiMap', 'kbYoteiYm', 'kbIsPlanCell', 'kbIsHyoukaCell', 'kbYoteiLabel', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
   'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO',
   'kbNormKey', 'kbPickSokuteiDate', 'kbSokuteiForCell'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
@@ -33,6 +35,9 @@ const ids = {};
 ['emptyMessage', 'filterBar', 'filterCount', 'totalUsers', 'thisMonthCount', 'progressCount', 'progressTotal',
   'hyoukaMonthCount', 'hyoukaDoneCount', 'hyoukaTotalCount'].forEach(id => ids[id] = el());
 const sandbox = {
+  busy: {},                                  // 段階4: 送信中ロック（この検証では常に空）
+  // 月の足し算は yotei-core.js の本物を使う（この画面に複製しない＝単一の正）
+  ymAdd: require(require('path').resolve(__dirname, '../gas/yawaragi-board/yotei-core.js')).ymAdd,
   document: {
     querySelector: sel => sel.indexOf('thead') >= 0 ? thead : (sel.indexOf('tbody') >= 0 ? tbody : el()),
     getElementById: id => ids[id] || el()
