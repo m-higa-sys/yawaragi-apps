@@ -984,6 +984,15 @@ function doGet(e) {
     return respond(setupYoteiInitial_(e.parameter.dryRun === '1'), e.parameter.callback);
   }
 
+  // 予定月の初期値（個訓・domain='kobetsu'）2026-07-31 additive。
+  // ★sokutei 版（上の setup_yotei_init）とは別 action。既存の挙動には一切影響しない。
+  if (e && e.parameter && e.parameter.action === 'setup_yotei_kobetsu_init') {
+    if (!intakeAdminAuthorized_(e, null)) {
+      return respond({ error: 'unauthorized', status: 401 }, e.parameter.callback);
+    }
+    return respond(setupYoteiKobetsuInitial_(e.parameter.dryRun === '1'), e.parameter.callback);
+  }
+
   // メンテナンス用: setupSheets を実行（2026/5/3追加・送付用居宅一覧シート作成用）
   if (e && e.parameter && e.parameter.action === 'maintenance_setup_sheets') {
     try {
@@ -15279,6 +15288,77 @@ function setupYoteiInitial_(dryRun) {
     targets: users.length, inserted: 0, stats: built.stats,
     sourceRows: { shienPaper: paperRows, shienApp: appRows, keikakusho: kunRows },
     anchorSource: anchorSrc
+  };
+  if (dryRun) return result;
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (lockErr) {
+    return { ok: false, error: 'lock timeout' };
+  }
+  try {
+    var sheet = ensureYoteiSheet_();
+    if (built.rows.length > 0) {
+      var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+      var out = built.rows.map(function (r) {
+        return [r.userId, r.name, r.domain, r.nextYm, r.cycleMonths, now, 'init', r.slideCount, r.note];
+      });
+      var start = sheet.getLastRow() + 1;
+      sheet.getRange(start, 1, out.length, YOTEI_HEADERS_.length).setNumberFormat('@').setValues(out);
+      SpreadsheetApp.flush();
+    }
+    result.inserted = built.rows.length;
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ===== 予定月スライド方式 段階1（個訓）: domain='kobetsu' の初期値生成 2026-07-31 =====
+// ★既存の setupYoteiInitial_（domain='sokutei'）は1バイトも変えない。別関数として足す（additive）。
+// 種の作り方（クロ確定）:
+//   nextYm = 「keikaku_date を持つ行のうち最新の行の年月」＋ planMonths
+//     ★起点は作成日ではなく "行の年月"（＝計画期間の開始月）。計画書は前月準備の原則で前月に作るため、
+//       作成日を起点にすると必ず1ヶ月ずれる。行の年月は個訓シートのキーそのもの。
+//   記録0件の利用者のみ planStart から算出（当月以降で最初の計画月＝過去月を作らない）。
+// 判定は yotei-core.js の buildInitialYoteiKobetsu（純関数・テスト済み）に委ねる。
+// dryRun=1 で書き込みゼロ。件数だけ返す。
+function setupYoteiKobetsuInitial_(dryRun) {
+  var DOMAIN = 'kobetsu';
+  var thisYm = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+
+  // 母集団: 要介護（個訓対象・planStart/planMonths 付き）
+  var users = getKeikakushoTargetUsers_(false).map(function (u) {
+    return { userId: u.userId, name: u.name, care: u.category, planStart: u.planStart || '', planMonths: u.planMonths };
+  });
+
+  // 個訓シートの全行（keikaku_date を持つ行だけ純関数側で拾う）
+  var kkSheet = ensureKeikakushoSheet_();
+  var kkValues = kkSheet.getDataRange().getValues();
+  var keikakushoRows = [];
+  for (var ki = 1; ki < kkValues.length; ki++) {
+    var kUid = String(kkValues[ki][0] || '').trim();      // col0=userId
+    if (!kUid) continue;
+    var kKei = kkValues[ki][6];                            // col6=keikaku_date
+    var kStr = (Object.prototype.toString.call(kKei) === '[object Date]')
+      ? Utilities.formatDate(kKei, 'Asia/Tokyo', 'yyyy-MM-dd') : String(kKei || '').trim();
+    keikakushoRows.push({
+      userId: kUid,
+      year: parseInt(kkValues[ki][2], 10) || 0,            // col2=year
+      month: parseInt(kkValues[ki][3], 10) || 0,           // col3=month
+      keikaku_date: kStr
+    });
+  }
+
+  var existing = readYotei_(DOMAIN).map(function (r) { return { userId: r.userId, domain: r.domain }; });
+
+  var built = buildInitialYoteiKobetsu({
+    domain: DOMAIN, thisYm: thisYm, users: users, keikakushoRows: keikakushoRows, existing: existing
+  }, { isPlanMonth: isPlanMonth });
+
+  var result = {
+    ok: true, dryRun: !!dryRun, domain: DOMAIN, thisYm: thisYm,
+    targets: users.length, inserted: 0, stats: built.stats,
+    sourceRows: { keikakushoRows: keikakushoRows.length, existingKobetsu: existing.length }
   };
   if (dryRun) return result;
 

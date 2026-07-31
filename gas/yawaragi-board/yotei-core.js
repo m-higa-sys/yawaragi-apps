@@ -172,6 +172,101 @@ function buildInitialYotei(input, deps) {
   return { rows: rows, stats: stats };
 }
 
+// ===== 段階4（個訓）: domain='kobetsu' の初期値生成（2026-07-31・additive）=====
+// ★既存の buildInitialYotei（domain='sokutei'）は1バイトも変えない。別関数として足す。
+//   sokutei.html が本ファイルを ?v= 無しの <script src> で読んでいるため、既存関数の挙動は不変にする。
+//
+// 測定（sokutei）との違い:
+//   測定は「実施日」だけで次が決まるが、計画書は「期間」を持つ。
+//   ★起点は作成日ではなく "行の年月"（＝計画期間の開始月）。
+//     計画書は前月準備の原則で前月に作るため、作成日を起点にすると必ず1ヶ月ずれる。
+//     行の年月は個訓シートのキーそのものなので、日付を解釈する必要がない（測定より簡単）。
+//
+//   input = {
+//     domain, thisYm,
+//     users:          [{ userId, name, care, planStart, planMonths }],
+//     keikakushoRows: [{ userId, year, month, keikaku_date }],   // keikaku_date 空の行は無視
+//     existing:       [{ userId, domain }]
+//   }
+//   deps = { isPlanMonth }   ← 判定はここに複製せず shared.js §I を注入（単一の正）
+// ルール:
+//   記録あり → 最新行(year,month) ＋ planMonths
+//   記録なし → planStart 起点で「thisYm 以降の最初の計画月」（過去月を作らない）
+//   どちらも不可 → thisYm・note='起点なし'
+//   算出結果が thisYm より前になったら note='past'（クランプしない＝isDue が督促対象として拾う）
+function buildInitialYoteiKobetsu(input, deps) {
+  var i = input || {};
+  var d = deps || {};
+  var domain = i.domain || 'kobetsu';
+  var thisYm = String(i.thisYm || '');
+  var users = i.users || [];
+  var rows = [];
+  var stats = { fromRecord: 0, fromPlanStart: 0, noAnchor: 0, skippedExisting: 0, pastYm: 0, byYm: {} };
+
+  // 既存 (userId, domain) の索引
+  var have = {};
+  (i.existing || []).forEach(function (r) {
+    if (r && r.userId && r.domain === domain) have[r.userId] = true;
+  });
+
+  // userId → keikaku_date を持つ行のうち最新の 'YYYY-MM'
+  var latest = {};
+  (i.keikakushoRows || []).forEach(function (r) {
+    if (!r || !r.userId) return;
+    if (!String(r.keikaku_date == null ? '' : r.keikaku_date).trim()) return;   // 実績のある行だけ
+    var y = parseInt(r.year, 10), m = parseInt(r.month, 10);
+    if (!(y > 0) || !(m >= 1 && m <= 12)) return;
+    var ym = _yoteiFmtYm_(y, m);
+    if (!latest[r.userId] || ym > latest[r.userId]) latest[r.userId] = ym;
+  });
+
+  users.forEach(function (u) {
+    if (!u) return;
+    var uid = u.userId || u.name;
+    if (!uid) return;
+    if (have[uid]) { stats.skippedExisting++; return; }
+
+    var pm = parseInt(u.planMonths, 10);
+    var cyc = (pm >= 1 && pm <= 12) ? pm : 3;   // 不正値は既定3（画面から入らない値がシートに残っていても落ちない）
+    var nextYm = '', note = '';
+
+    if (latest[uid]) {
+      nextYm = ymAdd(latest[uid], cyc);
+      if (nextYm) stats.fromRecord++;
+    }
+    if (!nextYm && u.planStart && d.isPlanMonth) {
+      // thisYm 以降で最初の計画月。24ヶ月先まで見て見つからなければ諦める。
+      for (var k = 0; k < 24; k++) {
+        var cand = ymAdd(thisYm, k);
+        if (!cand) break;
+        if (d.isPlanMonth(u.planStart, cyc, parseInt(cand.slice(0, 4), 10), parseInt(cand.slice(5, 7), 10))) {
+          nextYm = cand; note = 'planStart'; stats.fromPlanStart++;
+          break;
+        }
+      }
+    }
+    if (!nextYm) {
+      nextYm = thisYm;
+      note = '起点なし';
+      stats.noAnchor++;
+    }
+    // 過去月はクランプしない（isDue が「過ぎている人」として必ず対象に含める設計のため）。件数だけ可視化する。
+    if (thisYm && nextYm < thisYm) { stats.pastYm++; note = 'past'; }
+
+    stats.byYm[nextYm] = (stats.byYm[nextYm] || 0) + 1;
+    rows.push({
+      userId: uid, name: String(u.name || ''), domain: domain,
+      nextYm: nextYm, cycleMonths: cyc, slideCount: 0, note: note
+    });
+  });
+
+  var sortedYm = {};
+  Object.keys(stats.byYm).sort().forEach(function (k) { sortedYm[k] = stats.byYm[k]; });
+  stats.byYm = sortedYm;
+
+  return { rows: rows, stats: stats };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ymAdd: ymAdd,
@@ -180,6 +275,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextYmUnslide: nextYmUnslide,
     ymCandidates: ymCandidates,
     isDue: isDue,
-    buildInitialYotei: buildInitialYotei
+    buildInitialYotei: buildInitialYotei,
+    buildInitialYoteiKobetsu: buildInitialYoteiKobetsu
   };
 }
