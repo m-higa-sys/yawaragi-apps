@@ -12423,6 +12423,9 @@ function dailyLongLeaveReminder() {
 // 判定・本文は純関数 gas/yawaragi-board/longleave-notice-core.js に集約（テスト: scripts/test-longleave-notice.js）。
 // 単一キー longleave-contact を upsert し、0名で done化して締める。他メッセージには触れない。
 var LONGLEAVE_ROSTER_PROP = 'longleave_last_roster';   // 前回の対象者（増減時だけメールするため）
+// 宛先。2026-08-01 社長指示で個人('勝又')から役割グループへ変更。
+// dengonComputeRecipients_ が認識するグループ名であること（全員/全員・ドライバー除く/社員/相談員/看護師）。
+var LONGLEAVE_NOTICE_TO = '相談員';
 
 // 対象者を再計算し、伝達ボードの1件を最新化する。
 //   ・毎朝6時トリガー（dailyLongLeaveReminder）と、連絡保存時（addContactLog）の両方から呼ばれる冪等関数。
@@ -12454,24 +12457,29 @@ function longleaveNotify(ss) {
       SpreadsheetApp.flush();
       result = { ok: true, closed: true };
     } else {
-      var recipients = ['勝又'];   // 個人宛て＝その本人1名（kunrenHoldNotify と同じ流儀）
+      // 2026-08-01: 宛先を個人('勝又')から '相談員' グループへ変更（社長指示）。
+      // 担当が代わっても投稿先を直さずに済む。recipients はスタッフマスタから自動確定する。
+      var recipients = dengonComputeRecipients_(getDengonStaffMaster(ss), LONGLEAVE_NOTICE_TO);
       if (decision.op === 'update') {
         var uRow = decision.rowIndex + 1;
+        sheet.getRange(uRow, DB_COL.TO + 1).setValue(LONGLEAVE_NOTICE_TO);   // 個人宛ての既存行も追従させる
         sheet.getRange(uRow, DB_COL.BODY + 1).setValue(body);
         sheet.getRange(uRow, DB_COL.CREATED + 1).setValue(now);
         sheet.getRange(uRow, DB_COL.DONE + 1).setValue(false);   // 締めたあと再発しても未完了で復活
         sheet.getRange(uRow, DB_COL.RECIPIENTS + 1).setValue(JSON.stringify(recipients));
         SpreadsheetApp.flush();
-        result = { ok: true, updated: true, count: sel.targets.length };
+        result = { ok: true, updated: true, count: sel.targets.length, to: LONGLEAVE_NOTICE_TO,
+                   recipients: recipients.length };
       } else {
-        sheet.appendRow([LONGLEAVE_NOTICE_KEY, '長期休み連絡', '勝又', body, '', now, false, '', '',
+        sheet.appendRow([LONGLEAVE_NOTICE_KEY, '長期休み連絡', LONGLEAVE_NOTICE_TO, body, '', now, false, '', '',
                          JSON.stringify(recipients), '[]']);
         SpreadsheetApp.flush();
         var idx = dbFindRowIndex_(sheet.getDataRange().getValues(), LONGLEAVE_NOTICE_KEY);
         if (idx === -1) { result = { ok: false, error: 'verify_failed', verified: false }; }
         else {
           sheet.getRange(idx + 1, DB_COL.DONE + 1).insertCheckboxes();
-          result = { ok: true, added: true, verified: true, count: sel.targets.length };
+          result = { ok: true, added: true, verified: true, count: sel.targets.length,
+                     to: LONGLEAVE_NOTICE_TO, recipients: recipients.length };
         }
       }
     }
@@ -12514,7 +12522,7 @@ function longleaveSendRosterMail_(prev, next, pendingCount) {
     lines.push('　「対象」または「対象外」を入れるまで、その方は自動投稿に載りません。');
   }
   lines.push('');
-  lines.push('伝達ボード（勝又さん宛て）の依頼文は自動で最新化済みです。');
+  lines.push('伝達ボード（' + LONGLEAVE_NOTICE_TO + '宛て）の依頼文は自動で最新化済みです。');
   GmailApp.sendEmail(NOTIFY_EMAIL, '[長期休み連絡] 対象者 ' + next.length + '名（増減あり）',
                      lines.join('\n'), { charset: 'UTF-8' });
 }
