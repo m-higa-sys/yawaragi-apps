@@ -204,5 +204,85 @@ sandbox.state = { fiscalYear: 2026, users: [M2], records: { 'M2_2026_6': { keika
 sandbox.renderTable();
 ok(tbody.innerHTML.indexOf('6/20') >= 0, 'M5: planStart 5月→8月の旧6月データも隠れない（従来の温存で表示）');
 
+// ===== 16. 【B】planStart を後ろへ動かしても測定実績が消えない（2026-07-31）=====
+// 背景: 測定は「個訓シート ∪ 測定記録シート」の2ソース（908-910行の実測: 測定記録シートにだけある人4名）。
+//   描画(1298行)は kbSokuteiForCell で両方を見るのに、温存判定 hasPlanData(1241-1242行) は
+//   個訓シートの rec.sokutei_date しか見ていなかった。そのため測定記録シートにしか測定が無い人は
+//   planStart を後ろへ動かすと実績セルが丸ごと '-' に隠れた（7/25 d5c8ada / aad04fd では塞ぎ切れていない）。
+// 検証方針: planStart を 2026-06 → 2026-08 に動かしても、実績の日付が行のどこかに残ること。
+//   （セル位置が隣へ動くのは設計どおり。消えないことが要件）
+const SHIEN = { '2026-08': null };  // placeholder（下で個別に組む）
+function buildShien(name, ym, date) { const o = {}; o[sandbox.kbNormKey(name)] = {}; o[sandbox.kbNormKey(name)][ym] = date; return o; }
+function renderWith(user, records, shienByMonth) {
+  sandbox.state = { fiscalYear: 2026, users: [user], records: records || {},
+    shienByMonth: shienByMonth || {}, isLoading: false, includeCancelled: false, needsActionOnly: false };
+  sandbox.renderTable();
+  return tbody.innerHTML;
+}
+const U6 = (ps) => ({ userId: 'S', name: 'エス子', furigana: 'ア', category: '要介護1', planStart: ps, planMonths: 3, days: '月', ampm: '午前' });
+
+// --- ケース1: 測定が個訓シートにある（rec.sokutei_date）---
+{
+  const recs = { 'S_2026_6': { keikaku_date: '2026-05-26', sokutei_date: '2026-05-04' } };
+  const before = renderWith(U6('2026-06'), recs, {});
+  ok(before.indexOf('5/26') >= 0 && before.indexOf('5/4') >= 0, 'S1a: [変更前] 計画5/26・測定5/4が見える');
+  const after = renderWith(U6('2026-08'), recs, {});
+  ok(after.indexOf('5/26') >= 0, 'S1b: [ケース1] planStart後ろ倒し後も計画5/26が消えない');
+  ok(after.indexOf('5/4') >= 0, 'S1c: [ケース1] planStart後ろ倒し後も測定5/4が消えない');
+}
+// --- ケース2: 測定が測定記録シートだけにある（rec.sokutei_date は空）---
+{
+  const recs = { 'S_2026_6': { keikaku_date: '2026-05-26' } };
+  const shien = buildShien('エス子', '2026-05', '2026-05-04');
+  const before = renderWith(U6('2026-06'), recs, shien);
+  ok(before.indexOf('5/26') >= 0 && before.indexOf('5/4') >= 0, 'S2a: [変更前] 測定記録シート由来の測定5/4も見える');
+  const after = renderWith(U6('2026-08'), recs, shien);
+  ok(after.indexOf('5/26') >= 0, 'S2b: [ケース2] 計画5/26が消えない');
+  ok(after.indexOf('5/4') >= 0, 'S2c: [ケース2] 測定記録シートだけの測定5/4が消えない');
+}
+// --- ケース3: keikaku_date が空で測定だけ（計画書がリハブだけで作られた場合）---
+//   sokutei.html:560 の実測「リハブで作った計画書が個訓シートに記録されていない（keikaku_date が空）」に該当
+{
+  const shien = buildShien('エス子', '2026-05', '2026-05-04');
+  const before = renderWith(U6('2026-06'), {}, shien);
+  ok(before.indexOf('5/4') >= 0, 'S3a: [変更前] 個訓シートが空でも測定5/4は見える');
+  const after = renderWith(U6('2026-08'), {}, shien);
+  ok(after.indexOf('5/4') >= 0, 'S3b: [ケース3] 個訓シートが空でも測定5/4が消えない（完全消失しない）');
+}
+// --- 温存を広げすぎない: 実績が1つも無ければ従来どおり '-' のまま ---
+{
+  const out = renderWith(U6('2026-08'), {}, {});
+  ok(out.indexOf('disabled">-') >= 0, 'S4a: 実績ゼロのセルは従来どおり "-"（温存を広げすぎていない）');
+  ok(out.indexOf('5/4') < 0 && out.indexOf('5/26') < 0, 'S4b: 存在しない実績を勝手に描かない');
+}
+// --- 測定記録シートが空/未取得でも落ちない（取得失敗時は従来表示に戻る）---
+{
+  let threwS = false;
+  try { renderWith(U6('2026-08'), { 'S_2026_6': { keikaku_date: '2026-05-26' } }, undefined); } catch (e) { threwS = true; }
+  ok(!threwS, 'S5: shienByMonth 未設定（取得失敗）でも renderTable が落ちない');
+}
+
+// ===== 17. 【C】計画月数を画面から変更できないこと（2026-07-31）=====
+// 背景: isPlanMonth は planMonths が 3 以外だと diff===0 しか返さない＝周期が止まる（shared.js:441）。
+//   稼働中52名は全員3で実害0だが、変則値が増える経路を画面から塞ぐ。既存の台帳値は保全する。
+{
+  ok(!/<select[^>]*id="planMonthsInput"/.test(html), 'C-1: 計画月数の <select> が存在しない（編集不能）');
+  ok(!/id="planMonthsInput"[^>]*>[\s\S]{0,200}?<option/.test(html), 'C-2: 計画月数の <option> が存在しない');
+  ok(html.indexOf('planMonthsInput') < 0 || !/getElementById\('planMonthsInput'\)\.value/.test(html),
+    'C-3: planMonthsInput の .value を読む経路が無い');
+  // applyPlanStart へ planMonths を渡していない＝GAS側は未指定なら台帳を触らない（コード.js:2437）
+  ok(/await applyPlanStart\(ds\.userId, ds\.name, v\);/.test(html),
+    'C-4: savePlanStartFromDialog が planMonths を渡さない（既存の台帳値を保全）');
+  ok(!/planMonths=/.test(html.split('function applyPlanStart')[1] || '') ||
+     !/&planMonths=/.test((html.split('async function savePlanStartFromDialog')[1] || '').split('async function')[0]),
+    'C-5: 保存経路で planMonths クエリを組み立てていない');
+  // 開始月の変更機能は残す
+  ok(/<input type="month" id="planStartInput">/.test(html), 'C-6: 開始月の入力欄は従来どおり残っている');
+  ok(/async function savePlanStartFromDialog/.test(html), 'C-7: 開始月の保存関数は残っている');
+  ok(/async function clearPlanStart/.test(html) && /calendar|クリア/.test(html), 'C-8: clearPlanStart は残っている');
+  // 現在値は「見える」まま
+  ok(/planMonthsText|計画の長さ/.test(html), 'C-9: 「計画の長さ」の現在値表示は残る（見えるが変更できない）');
+}
+
 console.log('個別機能訓練 1ヶ月1列グリッド DOM: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

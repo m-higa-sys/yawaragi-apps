@@ -297,11 +297,22 @@ function runBuildInput(srcText, ym, year, month, rows) {
 }
 
 const codeNew = fs.readFileSync(CODE_PATH, 'utf8');
-const codeOld = execFileSync('git', ['show', 'origin/master:gas/yawaragi-board/コード.js'],
-  { cwd: path.join(__dirname, '..'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+// 旧版の基準は「kunRecordsNext を入れる直前のコミット」に固定する。
+// ★2026-07-31 修正: ここは当初 origin/master を指していたが、本変更が master へ反映された時点で
+//   旧版＝新版になり G1d が必ず落ちた（自己参照）。ブランチの進みで壊れないよう SHA で固定する。
+//   当該コミットが無い clone（shallow 等）では G セクションを SKIP する
+//   （test-users-api-default-unchanged.js と同じ「黙って落とさず理由付きで明示」方式）。
+const BASE_COMMIT = '9c6ce54';   // = 7804dc8 の親。コード.js に kunRecordsNext がまだ無い版
+let codeOld = null, gSkipReason = '';
+try {
+  codeOld = execFileSync('git', ['show', BASE_COMMIT + ':gas/yawaragi-board/コード.js'],
+    { cwd: path.join(__dirname, '..'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+} catch (e) {
+  gSkipReason = 'BASE_COMMIT ' + BASE_COMMIT + ' が本cloneに存在しないため G セクションを SKIP';
+}
 
 // --- G1: 当月分 kunRecords が旧版と完全一致（件数・中身・順序）---
-{
+if (!codeOld) { console.log('  SKIP G1（' + gSkipReason + '）'); } else {
   const rows = [
     sheetRow('U1', 2026, 7, '2026-06-25', '', '2026-06-10', ''),   // 当月
     sheetRow('U2', 2026, 8, '2026-07-20', '', '', ''),             // 翌月
@@ -322,7 +333,7 @@ const codeOld = execFileSync('git', ['show', 'origin/master:gas/yawaragi-board/�
     [['U2', '2026-07-20', ''], ['U6', '', '長期休み']]);
 }
 // --- G2: 年跨ぎ（12月ボード → 翌年1月を翌月として拾う）---
-{
+if (!codeOld) { console.log('  SKIP G2（' + gSkipReason + '）'); } else {
   const rows = [
     sheetRow('U1', 2025, 12, '2025-11-28', '', '', ''),   // 当月
     sheetRow('U2', 2026, 1, '2025-12-20', '', '', ''),    // 翌月＝翌年1月

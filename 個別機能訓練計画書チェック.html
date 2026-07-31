@@ -659,13 +659,13 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
         <h3 id="planStartTitle">計画書開始月の編集</h3>
         <div class="sub" id="planStartSub"></div>
         <input type="month" id="planStartInput">
+        <!-- 計画の長さ: 2026-07-31 に編集不能化（表示のみ）。
+             isPlanMonth は planMonths が 3 以外だと diff===0 しか返さない＝周期が止まる（shared.js:441）。
+             稼働中は全員3で実害0のうちに、変則値が増える入口を画面から塞ぐ。既存の台帳値は保全する
+             （applyPlanStart に planMonths を渡さない → GAS は未指定なら計画月数セルを触らない・コード.js:2437）。 -->
         <div style="margin-top:12px;">
-            <label for="planMonthsInput" style="display:block; font-size:0.9rem; color:#2c3e50; font-weight:bold; margin-bottom:4px;">計画の長さ</label>
-            <select id="planMonthsInput" style="width:100%; padding:8px; font-size:1rem; border:1px solid #cbd5e0; border-radius:6px;">
-                <option value="3">3ヶ月（既定）</option>
-                <option value="2">2ヶ月</option>
-                <option value="1">1ヶ月</option>
-            </select>
+            <div style="font-size:0.9rem; color:#2c3e50; font-weight:bold; margin-bottom:4px;">計画の長さ</div>
+            <div id="planMonthsText" style="padding:8px; font-size:1rem; border:1px solid #e2e8f0; border-radius:6px; background:#f7fafc; color:#4a5568;"></div>
         </div>
         <div class="btn-row">
             <button class="clear" onclick="clearPlanStart()">クリア</button>
@@ -1238,8 +1238,15 @@ function renderTable() {
             const isBlocked = !!rec.blocked_reason;
 
             // データ温存（#6・フェーズ1）: 実績のある行は計画月/評価月でなくても、planStart より前でも表示する。
+            // ★2026-07-31: 測定は「個訓シート ∪ 測定記録シート」の2ソース（908-910行の実測＝測定記録シートに
+            //   しか無い人が4名）。描画側（下の kbPlanBadges）は kbSokuteiForCell で両方を見るのに、ここだけ
+            //   個訓シートの rec.sokutei_date しか見ていなかった。そのため測定記録シートにしか測定が無い人は
+            //   planStart を後ろへ動かすと実績セルが丸ごと '-' に隠れた（社長が実機で確認・戻すと戻る＝表示のみ）。
+            //   温存判定と描画で参照元を揃える。★描画と同じ「セルの月」で引くこと（月をずらすと別の月を見て空になる）。
+            const shienSokuteiForCell = kbSokuteiForCell(state.shienByMonth, u.name, cellYear, mo.m);
             const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
-                || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason);
+                || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason
+                || shienSokuteiForCell);
             const hasHyoukaData = !!rec.tasseido_date;
 
             // フェーズ2a: 作業月(前月)化。翌月が計画月ならこのセルは作業月で、計画パートを node(計画月)行から読み書きする。
@@ -1879,9 +1886,9 @@ function openPlanStartDialog(td) {
         + '</div>'
         + '<div>現在: ' + escapeHtml(currentValue || '未設定') + '（変更すると評価サイクルが再計算されます）</div>';
     document.getElementById('planStartInput').value = currentValue || '';
-    // 計画の長さ（計画月数）を初期選択（無効・未設定は既定3）
+    // 計画の長さ（計画月数）は表示のみ（変更不可・2026-07-31）。無効・未設定は既定3として見せる。
     const curMonths = (u && parseInt(u.planMonths, 10) >= 1 && parseInt(u.planMonths, 10) <= 12) ? parseInt(u.planMonths, 10) : 3;
-    document.getElementById('planMonthsInput').value = String(curMonths);
+    document.getElementById('planMonthsText').textContent = curMonths + 'ヶ月' + (curMonths === 3 ? '（既定）' : '（変則）');
     document.getElementById('planStartDialog').classList.add('show');
 }
 
@@ -2152,11 +2159,11 @@ function openPlanStartFromUsage() {
 async function savePlanStartFromDialog() {
     const v = document.getElementById('planStartInput').value;
     if (!v) { showToast('⚠ 月が選択されていません', 'error'); return; }
-    const pmRaw = parseInt(document.getElementById('planMonthsInput').value, 10);
-    const planMonths = (pmRaw >= 1 && pmRaw <= 12) ? pmRaw : 3;
+    // 計画の長さは画面から変更しない（2026-07-31）。planMonths を渡さない＝GAS側は未指定として
+    // 計画月数セルを touch しない（コード.js:2437）ので、台帳の既存値がそのまま保全される。
     const ds = planStartDialogState;
     closePlanStartDialog();
-    await applyPlanStart(ds.userId, ds.name, v, planMonths);
+    await applyPlanStart(ds.userId, ds.name, v);
 }
 
 async function clearPlanStart() {
