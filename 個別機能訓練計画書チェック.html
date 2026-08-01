@@ -680,17 +680,20 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
             <button class="cancel" onclick="closeDateDialog()">キャンセル</button>
         </div>
         <div id="blockedSub" style="display:none; font-size:0.85rem; color:#78350f; margin-top:8px; padding:8px 10px; background:#fef3c7; border-left:3px solid #b7791f; border-radius:6px;"></div>
-        <!-- 計画セルのときのみ表示する 測定/出力 セクション（2026-06-15 個訓Phase1） -->
+        <!-- 計画セルのときのみ表示する 測定セクション。
+             ★2026-08-01 段階3（片寄せ・社長決定 案A）: 測定の【入力】は測定管理アプリ(sokutei.html)へ
+               一本化したので、ここは「いまの状態（読み取り）＋案内＋行き先」だけにした。
+               ここから書けると測定管理側の予定月(domain='sokutei')が追随せず二重督促が増えるため。
+               ⚠️表示は減らさない。測定✓／未 は月のセルでも従来どおり出る。 -->
         <div id="measureSection" style="display:none; margin-top:14px; padding:10px; background:#f0f9ff; border-left:3px solid #2c7a7b; border-radius:6px;">
-            <div style="font-size:0.85rem; color:#234e52; font-weight:bold; margin-bottom:8px;">📐 測定・出力</div>
-            <label style="font-size:0.8rem; color:#4a5568;">測定日</label>
-            <input type="date" id="sokuteiDateInput" style="width:100%; margin-bottom:8px;">
-            <label style="font-size:0.8rem; color:#4a5568;">測定者</label>
-            <select id="sokuteiByInput" style="width:100%; margin-bottom:8px; min-height:38px;"></select>
-            <label style="font-size:0.8rem; color:#4a5568;">出力者（初期値＝測定者・変更可）</label>
-            <select id="outputByInput" style="width:100%; margin-bottom:8px; min-height:38px;"></select>
+            <div style="font-size:0.85rem; color:#234e52; font-weight:bold; margin-bottom:8px;">📐 測定</div>
+            <div id="measureStatus" style="margin-bottom:8px;"></div>
+            <div style="font-size:0.8rem; color:#4a5568; line-height:1.5; margin-bottom:8px;">
+                測定の入力は測定管理アプリへ一本化しました
+            </div>
             <div class="btn-row">
-                <button class="ok" onclick="saveMeasureFromDialog()">📐 測定/出力を保存</button>
+                <a class="ok" href="sokutei.html" target="_blank" rel="noopener"
+                   style="display:inline-block; text-align:center; text-decoration:none;">📏 測定アプリを開く</a>
             </div>
         </div>
     </div>
@@ -1559,6 +1562,7 @@ function renderTable() {
                 }
                 inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
                     + '" data-year="' + planSrc.year + '" data-month="' + planSrc.month + '" data-field="keikaku_date" data-fieldlabel="計画"'
+                    + '" data-cellyear="' + cellYear + '" data-cellmonth="' + mo.m + '"'
                     + ' onclick="onCellTap(this)">' + pInner + '</div>';
             });
 
@@ -1829,10 +1833,15 @@ function onCellTap(td) {
     const isBlocked = !!rec.blocked_reason;
     // 計画セルは常にダイアログを開く（作成日に加えて測定/出力/送付を入力するため・2026-06-15）
     // 既存値が空でも自動で今日をセットせず、ダイアログで明示入力させる。
-    openDateDialog(userId, name, year, month, field, fieldLabel, current, rec.blocked_reason || '');
+    // セルの年月（＝作業した月の列）。測定記録シートをこの月で引く。data属性が無ければ undefined＝従来動作。
+    const cellYear = parseInt(td.dataset.cellyear, 10) || 0;
+    const cellMonth = parseInt(td.dataset.cellmonth, 10) || 0;
+    openDateDialog(userId, name, year, month, field, fieldLabel, current, rec.blocked_reason || '', cellYear, cellMonth);
 }
 
-function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue, blockedReason) {
+// ★2026-08-01 段階3: 末尾に cellYear/cellMonth を追加（additive）。測定の状態は「表示しているセルの月」で
+//   測定記録シートを引く必要があるため。渡さない既存の呼び出しは書込先の年月へ落ちて従来どおり動く。
+function openDateDialog(userId, name, year, month, field, fieldLabel, currentValue, blockedReason, cellYear, cellMonth) {
     dialogState = { userId, name, year, month, field, fieldLabel, currentValue, blockedReason: blockedReason || '' };
     const labelMap = { kyoumi_date: '興味関心', seikatsu_date: '生活機能', keikaku_date: '計画書' };
     const blockedSub = document.getElementById('blockedSub');
@@ -1871,27 +1880,20 @@ function openDateDialog(userId, name, year, month, field, fieldLabel, currentVal
         unblockBtnRow.style.display = 'none';
     }
     // ★2026-07-30: 「ケアマネ送付」セクションは撤去（送付は ケアマネ送付チェックリスト.html の担当）。
-    // 計画セル（保留でない）でのみ 測定/出力 入力セクション表示（2026-06-15 個訓Phase1）
+    // ★2026-08-01 段階3（片寄せ・社長決定 案A）: 測定の入力欄を撤去し、状態の表示だけ残す。
+    //   入力先は測定管理アプリ(sokutei.html)。ここから書くと測定管理側の予定月が追随しないため。
+    //   状態は月のセルと同じ2ソース和（個訓シート13列目 ∪ 測定記録シート）で出す。
+    //   測定記録シートは「表示しているセルの月」で引くので、セルの年月（cellYear/cellMonth）を使う。
+    //   ★渡されなければ書込先の年月へ落ちる＝旧い呼び出しでも落ちない。
     const measureSection = document.getElementById('measureSection');
     if (field === 'keikaku_date' && !blockedReason) {
         const key = userId + '_' + year + '_' + month;
         const rec = state.records[key] || {};
-        // プルダウン構築（測定者・出力者とも母集団は getMeasurerOptions()）
-        const opts = getMeasurerOptions();
-        function buildOptions(selected) {
-            let h = '<option value="">（未選択）</option>';
-            // 既存値が母集団に無い場合も選べるよう先頭に補完
-            if (selected && opts.indexOf(selected) < 0) {
-                h += '<option value="' + escapeHtml(selected) + '" selected>' + escapeHtml(selected) + '（名簿外）</option>';
-            }
-            opts.forEach(s => {
-                h += '<option value="' + escapeHtml(s) + '"' + (s === selected ? ' selected' : '') + '>' + escapeHtml(s) + '</option>';
-            });
-            return h;
-        }
-        document.getElementById('sokuteiDateInput').value = rec.sokutei_date || '';
-        document.getElementById('sokuteiByInput').innerHTML = buildOptions(rec.sokutei_by || '');
-        document.getElementById('outputByInput').innerHTML = buildOptions(rec.output_by || '');
+        const cy = cellYear || year, cm = cellMonth || month;
+        const sokDate = kbPickSokuteiDate(rec.sokutei_date,
+            kbSokuteiForCell(state.shienByMonth, name, cy, cm));
+        document.getElementById('measureStatus').innerHTML =
+            kbBadgeHtml(kbBadgeObj('測定', sokDate, 'plan'));
         measureSection.style.display = 'block';
     } else {
         measureSection.style.display = 'none';
@@ -1899,26 +1901,9 @@ function openDateDialog(userId, name, year, month, field, fieldLabel, currentVal
     document.getElementById('dateDialog').classList.add('show');
 }
 
-// 測定日/測定者/出力者を保存（計画月レコードへ・変更があったフィールドのみ送信）
-async function saveMeasureFromDialog() {
-    const ds = dialogState;
-    const key = ds.userId + '_' + ds.year + '_' + ds.month;
-    const rec = state.records[key] || {};
-    const newSokuteiDate = document.getElementById('sokuteiDateInput').value || '';
-    const newSokuteiBy = document.getElementById('sokuteiByInput').value || '';
-    let newOutputBy = document.getElementById('outputByInput').value || '';
-    // 出力者が空なら測定者を初期値として採用
-    if (!newOutputBy && newSokuteiBy) newOutputBy = newSokuteiBy;
-    const jobs = [];
-    if (newSokuteiDate !== (rec.sokutei_date || '')) jobs.push(['sokutei_date', '測定日', newSokuteiDate]);
-    if (newSokuteiBy !== (rec.sokutei_by || '')) jobs.push(['sokutei_by', '測定者', newSokuteiBy]);
-    if (newOutputBy !== (rec.output_by || '')) jobs.push(['output_by', '出力者', newOutputBy]);
-    if (jobs.length === 0) { showToast('変更はありません'); closeDateDialog(); return; }
-    closeDateDialog();
-    for (const j of jobs) {
-        await applyValue(ds.userId, ds.name, ds.year, ds.month, j[0], j[1], j[2]);
-    }
-}
+// ★2026-08-01 段階3（片寄せ）: saveMeasureFromDialog を撤去した。
+//   測定日／測定者／出力者を個訓シート13〜15列目へ書く経路はこれで0本になる。
+//   受け口は GAS 側（updateKeikakusho の kuFieldAllowed）に残してあるので、戻すならここを復活させるだけでよい。
 
 // 「⏸ 保留にする」→ 6種の理由ボタンを表示（1タップで setBlocked。合計2タップ）
 function showReasonPicker() {

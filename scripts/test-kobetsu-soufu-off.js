@@ -98,11 +98,18 @@ eq((html.match(/field=keikaku_sent_date|field=hyouka_pdf_date|field=hyouka_print
 ['sentSection', 'sentToggleBtn', 'sentStatus', 'hyoukaPdfSection', 'hyoukaPrintSection', 'hyoukaPdfInput', 'hyoukaPrintInput']
   .forEach(id => eq(html.indexOf('id="' + id + '"') >= 0, false, '★送付UI ' + id + ' を外した'));
 
-sec('3. 残すもの: 計画書・達成度・測定の記録はそのまま動く');
-['saveMeasureFromDialog', 'saveHyoukaTasseido', 'clearHyoukaTasseido', 'saveDateFromDialog', 'applyHyoukaValue'].forEach(f =>
+sec('3. 残すもの: 計画書・達成度の記録はそのまま動く');
+// ★2026-08-01 段階3（片寄せ・社長決定）で検証の意味を変えた箇所:
+//   このテストは 2026-07-30 の送付撤去のとき「測定を巻き添えで消していないこと」の番人だった。
+//   今回は測定の入力を【意図的に】撤去し、測定管理アプリ(sokutei.html)へ一本化した。
+//   よって saveMeasureFromDialog / sokuteiDateInput は「無いこと」が正しい。
+//   測定の【表示】が残っていることは scripts/test-kobetsu-sokutei-readonly.js が固定している。
+['saveHyoukaTasseido', 'clearHyoukaTasseido', 'saveDateFromDialog', 'applyHyoukaValue'].forEach(f =>
   ok(html.indexOf('function ' + f + '(') >= 0, f + ' は残っている'));
 ok(html.indexOf('id="tasseidoInput"') >= 0, '達成度評価日の入力は残っている');
-ok(html.indexOf('id="sokuteiDateInput"') >= 0, '測定日の入力は残っている');
+ok(!/function\s+saveMeasureFromDialog/.test(html), '★測定の保存関数は撤去済み（段階3の片寄せ）');
+ok(html.indexOf('id="sokuteiDateInput"') < 0, '★測定日の入力欄は撤去済み（入力先は測定管理アプリ）');
+ok(html.indexOf('id="measureStatus"') >= 0, '★測定の状態表示（読み取り）は残っている');
 ok(html.indexOf('action=getShienSokutei') >= 0, '①で足した測定記録シートの読み取りは残っている');
 
 // =====================================================================
