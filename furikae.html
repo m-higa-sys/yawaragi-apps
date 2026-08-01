@@ -1244,7 +1244,10 @@ function fnkMarkCollected(id) {
   const act = document.getElementById('fnk-act-' + id);
   if (!act) return;
   act.innerHTML = '<span class="fnk-method-label">回収方法:</span>'
-    + ['現金', '口座変更', '翌月合算', 'その他'].map(m =>
+    // 「現金」→「振込」差し替え（2026-08-02）。社長は現金を扱わない一方、利用中止者の最終集金は
+    // 口座解約で引落不能→振込回収になる（電算に乗らず翌月合算の自動消込も効かない＝手動で消し込む）。
+    // 既存レコードに collectMethod='現金' は0件（実測）so 移行不要。他3つは据え置き。
+    + ['振込', '口座変更', '翌月合算', 'その他'].map(m =>
         `<button class="fnk-method-btn" onclick="fnkConfirmCollected(${id}, '${m}')">${m}</button>`).join('')
     + `<button class="fnk-method-cancel" onclick="renderMonth()" title="やめる">×</button>`;
 }
