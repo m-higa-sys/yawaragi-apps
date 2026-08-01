@@ -111,6 +111,24 @@ function _mbNextYm_(ym) {
   return y + '-' + ('0' + mo).slice(-2);
 }
 
+// ===== 段階5（2026-08-01・社長決定）: 要介護の対象月を「予定月(domain='kobetsu')」ベースへ =====
+// 社長の設計: 測定・評価・計画書は1つの節目。ボードの同じ月に3つとも立つのが正しい。
+//   よってボード月 M の要介護3判定（計画書・評価・測定）は、すべて同じ拠り所にする:
+//     「M+1 == その人の kobetsu予定月」（＝M がその節目の作業月）
+//   測定アプリ側の予定(domain='sokutei')は使わない（社長判断）。
+//   要支援・事業対象者は計画書を持たないので従来どおり（前回測定日+4ヶ月）。ここでは触らない。
+//
+// yoteiMap: { userId: 'YYYY-MM' }（domain='kobetsu'）。nextYm: ボード月の翌月 'YYYY-MM'。
+// 返り: true=このボード月が作業月 / false=違う / null=判定できない（マップが無い・その人の行が無い・
+//       値が壊れている）。★null のとき呼び出し側は従来の planStart ベースへフォールバックし、
+//       warnings に kunYoteiFallback を立てること。黙って旧挙動へ戻らない（@355 と同じ方式）。
+function _mbYoteiIsWorkMonth_(yoteiMap, userId, nextYm) {
+  if (!yoteiMap) return null;
+  var v = yoteiMap[userId];
+  if (!/^\d{4}-\d{2}$/.test(String(v == null ? '' : v))) return null;
+  return String(v) === String(nextYm);
+}
+
 // ボード月(y,m) の翌月 = 計画期間の開始月ノード（年跨ぎ対応）。
 // 個別機能訓練計画書チェック.html:1162-1169 の kobetsuCycleAt と同じ論理（コピーではなくGAS側の独立実装）。
 function _mbNextMonth_(y, m) {
@@ -204,6 +222,14 @@ function buildMonthBoard(input, deps) {
     // --- 個訓（要介護のみ） ---
     if (_mbIsKaigo_(cat)) {
       var kRec = _mbPick_(input.kunRecords, u, norm);
+      // ★段階5（2026-08-01・社長決定）: 計画書・評価・測定の3つを同じ拠り所へ揃える。
+      //   「ボード月の翌月 == その人の kobetsu予定月」なら、このボード月がその節目の作業月。
+      //   予定月が取れない人／供給が無い場合は null が返るので、従来の planStart ベースへ落ちる。
+      //   その場合は kunYoteiFallback を立てて、黙って旧挙動に戻らないようにする。
+      var kunWork = _mbYoteiIsWorkMonth_(input.kobetsuYotei, u.userId, nextYm);
+      if (kunWork === null) {
+        warnings.push({ type: 'kunYoteiFallback', userId: u.userId, name: u.name, month: ym });
+      }
       // 個訓計画書: 作業月主義（v1.2 §1-3 前月準備の原則）。
       //   ボード月の翌月が計画期間の開始月なら、このボード月が作業月＝督促する月。
       //   判定・記録読取・保留判定はすべて翌月の行（＝計画期間の開始月ノード）を見る。
@@ -211,8 +237,10 @@ function buildMonthBoard(input, deps) {
       // 保留=blocked_reason 有りの月は対象外＝やり残しに出さない（督促は止めるが digest 側で別掲）。
       if (hasNextRecords) {
         var nRec = _mbPick_(input.kunRecordsNext, u, norm);
-        if (d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, nextNode.year, nextNode.month)
-            && !(nRec && nRec.blocked_reason)) {
+        // 段階5: 予定月が取れていればそれが対象月の正。取れなければ従来の planStart ベース。
+        var planTarget = (kunWork !== null) ? kunWork
+          : !!(d.isPlanMonth && d.isPlanMonth(u.planStart, u.planMonths, nextNode.year, nextNode.month));
+        if (planTarget && !(nRec && nRec.blocked_reason)) {
           var kp = _mbFieldDoneWorkMonth_(nRec, 'keikaku_date', nextYm);
           kunPlan.push({ userId: u.userId, name: u.name, done: kp.done, doneDate: kp.doneDate });
         }
@@ -223,8 +251,10 @@ function buildMonthBoard(input, deps) {
         var kpOld = _mbFieldDoneWorkMonth_(kRec, 'keikaku_date', ym);
         kunPlan.push({ userId: u.userId, name: u.name, done: kpOld.done, doneDate: kpOld.doneDate });
       }
-      // 個訓評価: isHyoukaMonth（短縮 planMonths を反映）。軸は当月のまま（評価に前倒し運用は無い）。
-      var isEvalMonth = d.isHyoukaMonth && d.isHyoukaMonth(u.planStart, u.planMonths, y, m);
+      // 個訓評価＋測定(要介護)。★段階5: 計画書と同じ拠り所（翌月＝予定月）へ揃えた。
+      //   予定月が取れないときだけ従来の isHyoukaMonth(planStart)（短縮 planMonths を反映）へ落ちる。
+      var isEvalMonth = (kunWork !== null) ? kunWork
+        : !!(d.isHyoukaMonth && d.isHyoukaMonth(u.planStart, u.planMonths, y, m));
       if (isEvalMonth) {
         // 保留=blocked_reason 有りの評価月は kunPlan と同じく対象外（督促しない）＝理由の種類で分岐しない truthy 判定。
         // 加えて diff=-1（planStart の前月）は評価すべき前サイクルが無いので除外＝幻の督促ガード。
@@ -329,6 +359,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildMonthBoard: buildMonthBoard,
     mbShienMeasureDue_: mbShienMeasureDue_,
     _mbFieldDoneWorkMonth_: _mbFieldDoneWorkMonth_,
+    _mbYoteiIsWorkMonth_: _mbYoteiIsWorkMonth_,
     _mbPrevYm_: _mbPrevYm_,
     _mbNextYm_: _mbNextYm_,
     _mbNextMonth_: _mbNextMonth_,

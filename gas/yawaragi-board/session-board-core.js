@@ -201,7 +201,13 @@ function sbBuildKaigoDone_(kunRows, shienRows, ym, normFn) {
 // doneByKey: 当評価月に sokutei_date が入っている人の名前→true（内部正規化・§3.4）。usageByKey: 名前→出席率U（内部正規化）。
 // 返り値: [{ name, key, care, remaining, track:'kaigo', careLayer:0, weeklyVisits, remainingVisits, absenceRate }]
 //   remaining=月末カレンダー残日数（表示用）／remainingVisits=残来所日数（優先順位用）。
-function sbMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn, usageByKey) {
+// ★段階5（2026-08-01・社長決定）: 対象月を「予定月(domain='kobetsu')」ベースへ。
+//   ボード日の属する月 M の翌月がその人の予定月なら、M がその節目の作業月＝測定の対象。
+//   yoteiMap({ 正規化名 or userId: 'YYYY-MM' }) が無い／その人の行が無い／値が壊れているときは
+//   従来の isHyoukaMonthFn(planStart) へフォールバックし、fallbackKeys に積んで可視化する
+//   （黙って旧挙動に戻らない＝month-board の kunYoteiFallback と同じ方式）。
+//   ★yoteiMap / fallbackKeys は末尾の追加引数＝既存の呼び出しは1バイトも変えずに動く。
+function sbMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaMonthFn, usageByKey, yoteiMap, fallbackKeys) {
   var doneNorm = {};
   if (doneByKey) {
     for (var dk in doneByKey) {
@@ -216,9 +222,26 @@ function sbMeasureKaigo_(kaigoUsers, doneByKey, year, month, todayStr, isHyoukaM
   }
   var monthEnd = sbMonthEnd_(year, month);
   var rows = [];
+  // ボード月の翌月（年跨ぎ対応）。予定月との突き合わせに使う。
+  var nY = (month === 12) ? year + 1 : year;
+  var nM = (month === 12) ? 1 : month + 1;
+  var nextYm = nY + '-' + (nM < 10 ? '0' : '') + nM;
   (kaigoUsers || []).forEach(function (u) {
-    if (!isHyoukaMonthFn(u.planStart, u.planMonths, year, month)) return;
     var key = sbNormalizeName_(u.name);
+    // 予定月は userId でも正規化名でも引けるようにする（板の予定月シートは要介護の userId が氏名相当のため）
+    var yv = '';
+    if (yoteiMap) {
+      if (u.userId != null && yoteiMap[u.userId] != null) yv = yoteiMap[u.userId];
+      else if (yoteiMap[key] != null) yv = yoteiMap[key];
+      else if (yoteiMap[u.name] != null) yv = yoteiMap[u.name];
+    }
+    var useYotei = /^\d{4}-\d{2}$/.test(String(yv || ''));
+    if (useYotei) {
+      if (String(yv) !== nextYm) return;
+    } else {
+      if (fallbackKeys) fallbackKeys.push(key);
+      if (!isHyoukaMonthFn(u.planStart, u.planMonths, year, month)) return;
+    }
     if (doneNorm[key]) return;
     var uRate = (usageNorm[key] != null) ? usageNorm[key] : 1.0;
     var absRate = 1 - uRate; if (absRate < 0) absRate = 0; if (absRate > 1) absRate = 1;
@@ -372,7 +395,10 @@ function sbBuildBoard_(input, judges) {
     if (p.session === 'am') presentAm++; else if (p.session === 'pm') presentPm++;
     if (p.conflict) ampmConflict.push({ name: p.name, key: p.key });
   });
-  var kaigo = sbMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth, input.usageByKey);
+  // ★段階5: 予定月(domain='kobetsu')を渡す。取れない人は従来の planStart ベースへ落ち、
+  //   yoteiFallback に積んで可視化する（黙って旧挙動へ戻らない）。
+  var kunYoteiFallback = [];
+  var kaigo = sbMeasureKaigo_(input.kaigoUsers, input.kaigoDoneByKey, input.year, input.month, input.today, judges.isHyoukaMonth, input.usageByKey, input.kobetsuYotei, kunYoteiFallback);
   var shien = sbMeasureShien_(input.shienUsers, input.shienLastByName, input.today, input.usageByKey);
   var sokutei = sbSokuteiSort_(sbIntersectPresent_(kaigo, present).concat(sbIntersectPresent_(shien, present)), SOKUTEI_WEIGHTS);
   var koukuMoni = sbIntersectPresent_(sbKoukuMoni_(input.oralUsers, input.oralRecByKey, input.year, input.month, judges.oralCycleAt), present);
@@ -391,7 +417,8 @@ function sbBuildBoard_(input, judges) {
     presentCount: present.length, presentAm: presentAm, presentPm: presentPm,
     sokutei: sokutei, koukuMoni: koukuMoni, koukuTaisou: koukuTaisou,
     kotan: kotan, birthday: birthday, residue: residue, ampmConflict: ampmConflict,
-    universe: sbBuildUniverse_(input.kaigoUsers, input.shienUsers)  // 決定B: 全母集団(交差前・今日不在含む)
+    universe: sbBuildUniverse_(input.kaigoUsers, input.shienUsers),  // 決定B: 全母集団(交差前・今日不在含む)
+    kunYoteiFallback: kunYoteiFallback  // ★段階5: 予定月が取れず planStart ベースへ落ちた人の正規化名（additive）
   };
 }
 

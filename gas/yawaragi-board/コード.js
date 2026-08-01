@@ -17974,10 +17974,20 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     }
   });
 
+  // --- kobetsuYotei: 予定月シート domain='kobetsu' を userId → 'YYYY-MM' のマップに（段階5）---
+  // ★additive。取得に失敗しても {} のままで、core 側が planStart ベースへフォールバックする。
+  var kobetsuYoteiS = {};
+  safe('kobetsuYotei', function () {
+    readYotei_('kobetsu').forEach(function (r) {
+      if (r && r.userId && /^\d{4}-\d{2}$/.test(String(r.nextYm || ''))) kobetsuYoteiS[String(r.userId)] = String(r.nextYm);
+    });
+  });
+
   return {
     year: year, month: month, today: dateStr,
     attendance: attendance,
     kaigoUsers: kaigoUsers, kaigoDoneByKey: kaigoDoneByKey,
+    kobetsuYotei: kobetsuYoteiS,
     shienUsers: shienUsers, shienLastByName: shienLastByName,
     usageByKey: usageByKey,
     oralUsers: oralUsers, oralRecByKey: oralRecByKey, oralSettings: oralSettings,
@@ -18256,6 +18266,18 @@ function monthBoardBuildInput_(ym, year, month, safe) {
   var users = [];
   order.forEach(function (k) { users.push(usersMap[k]); });
 
+  // --- kobetsuYotei: 予定月シート domain='kobetsu' を userId → 'YYYY-MM' のマップに（段階5）---
+  // ★additive。既存の入力（users / kunRecords / kunRecordsNext / sokuteiRecords 等）は1つも変えていない。
+  //   取得に失敗しても {} のままで、core 側が planStart ベースへフォールバックし kunYoteiFallback を立てる。
+  var kobetsuYotei = {};
+  r = safe('mb_kobetsuYotei', function () {
+    readYotei_('kobetsu').forEach(function (yr) {
+      if (yr && yr.userId && /^\d{4}-\d{2}$/.test(String(yr.nextYm || ''))) kobetsuYotei[String(yr.userId)] = String(yr.nextYm);
+    });
+    return true;
+  });
+  if (r === null) markErr(['kunPlan', 'kunEval', 'sokuteiKaigo']);
+
   return {
     input: {
       targetMonth: ym,
@@ -18264,6 +18286,7 @@ function monthBoardBuildInput_(ym, year, month, safe) {
       kunRecords: kunRecords,
       kunRecordsNext: kunRecordsNext,   // 2026-07-31 additive: kunPlan 作業月主義（翌月＝計画期間の開始月の行）
       sokuteiRecords: sokuteiRecords,
+      kobetsuYotei: kobetsuYotei,       // 2026-08-01 additive: 段階5（要介護3判定の対象月の正）
       tsushoDueMap: tsushoDueMap,
       tsushoSendRecords: tsushoSendRecords
     },
