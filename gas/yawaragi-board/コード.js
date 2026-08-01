@@ -17843,17 +17843,37 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
   safe('kaigoUsers', function () { kaigoUsers = getKeikakushoTargetUsers_(false); });
   var allUsers = kaigoUsers;
 
-  // --- kaigoDoneByKey: 個別機能訓練計画書記録で当評価月(year/month)に sokutei_date 済みの name→true ---
+  // --- kaigoDoneByKey: 当月に測定済みの要介護の name→true ---
+  // ★2026-08-01: 判定は session-board-core.js の純関数 sbBuildKaigoDone_ に一本化した（テスト可能にするため）。
+  //   ここは「シートを読んで渡す」だけ。旧実装には2つの穴があった:
+  //     ① 個訓シートを「行の年月が当月」で絞っていた。行の年月は計画期間の開始月であって実施月ではなく、
+  //        実測21件中20件が不一致（例: 行=2026-05 / 実施=2026-07）。測定済みを取りこぼして誤督促していた。
+  //     ② 測定記録シートを見ていなかった。片寄せ（版-03）後の新規測定はすべてそちらへ書かれる。
+  //   ★個訓シート13列目の参照は外していない（過去分は引き続き拾う）。読む先を足しただけ。
   var kaigoDoneByKey = {};
   safe('kaigoDoneByKey', function () {
     var kkSheet = ensureKeikakushoSheet_();
     var kkValues = kkSheet.getDataRange().getValues();
+    var kkRows = [];
     for (var ki = 1; ki < kkValues.length; ki++) {
       var kr = kkValues[ki];
-      if ((parseInt(kr[2], 10) || 0) !== year) continue;   // col2=year
-      if ((parseInt(kr[3], 10) || 0) !== month) continue;  // col3=month
-      if (fmtDate_(kr[12])) kaigoDoneByKey[String(kr[1] || '').trim()] = true;  // col12=sokutei_date, col1=name
+      // col1=name, col2=year, col3=month, col12=sokutei_date（year/month は判定に使わない＝実施日で見る）
+      kkRows.push({
+        name: String(kr[1] || '').trim(),
+        year: parseInt(kr[2], 10) || 0, month: parseInt(kr[3], 10) || 0,
+        sokutei_date: fmtDate_(kr[12])
+      });
     }
+    var shRows = [];
+    var shSheet2 = ensureShienSokuteiSheet_();
+    var shValues2 = shSheet2.getDataRange().getValues();
+    for (var si2 = 1; si2 < shValues2.length; si2++) {
+      var so2 = shienSokuteiRowToObj_(shValues2[si2]);
+      if (!so2.name || !so2.sokutei_date) continue;
+      shRows.push({ name: so2.name, sokutei_date: so2.sokutei_date });
+    }
+    var ymKey = year + '-' + ('0' + month).slice(-2);
+    kaigoDoneByKey = sbBuildKaigoDone_(kkRows, shRows, ymKey, sbNormalizeName_);
   });
 
   // --- 利用者台帳を1回読み: shienUsers（要支援/事業対象・days付き）＋ bdUsers（誕生日M/D） ---

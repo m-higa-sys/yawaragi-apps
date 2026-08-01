@@ -165,6 +165,38 @@ function sbMonthEnd_(year, month) {
   return year + '-' + pad(month) + '-' + pad(lastDay);
 }
 
+// 当月に測定済みの要介護の「正規化名 → true」を作る（sbMeasureKaigo_ の doneByKey 用）。純関数。
+// ★2026-08-01 追加。それまで コード.js が同じことをインラインでやっていたが、2つの穴があった。
+//   ① 個訓シートを「行の年月が当月の行」だけに絞っていた。行の年月は【計画期間の開始月】であって
+//      測定の実施月ではない。実測では 21件中20件が不一致（例: 行=2026-05 / 実施=2026-07）で、
+//      測定済みなのに「未」として督促していた（2026-07 実測: 対象21名全員が誤督促）。
+//      → 行では絞らず、sokutei_date の【実施日の月】が当月かどうかで判定する。
+//   ② 測定記録シートを見ていなかった。2026-08-01 の片寄せ（版-03）で新規の測定はすべて
+//      測定記録シートへ書かれるため、このままでは永久に「未」になる。
+//      → 測定記録シートも足した【和】で見る。既存の個訓シート参照は外さない（過去分が消えない）。
+// kunRows:   個訓シートの行 [{ name, year, month, sokutei_date }]（year/month は判定に使わない）
+// shienRows: 測定記録シートの行 [{ name, sokutei_date }]
+// ym:        'YYYY-MM'。空・不正なら誰も済にしない（黙って全員済にしない）。
+// normFn:    名前の正規化（既定は sbNormalizeName_）
+function sbBuildKaigoDone_(kunRows, shienRows, ym, normFn) {
+  var out = {};
+  var f = normFn || sbNormalizeName_;
+  if (!/^\d{4}-\d{2}$/.test(String(ym || ''))) return out;
+  function add(rows) {
+    (rows || []).forEach(function (r) {
+      if (!r) return;
+      var d = String(r.sokutei_date || '').trim();
+      if (d.slice(0, 7) !== ym) return;
+      var k = f(r.name);
+      if (!k) return;
+      out[k] = true;
+    });
+  }
+  add(kunRows);
+  add(shienRows);
+  return out;
+}
+
 // 要介護の測定対象行（enriched・未ソート）。当月が評価月(isHyoukaMonthFn)かつ当評価月未実施。並びは sbSokuteiSort_ が担当。
 // doneByKey: 当評価月に sokutei_date が入っている人の名前→true（内部正規化・§3.4）。usageByKey: 名前→出席率U（内部正規化）。
 // 返り値: [{ name, key, care, remaining, track:'kaigo', careLayer:0, weeklyVisits, remainingVisits, absenceRate }]
@@ -442,6 +474,7 @@ if (typeof module !== 'undefined' && module.exports) {
     sbMeasureShien_: sbMeasureShien_,
     sbMonthEnd_: sbMonthEnd_,
     sbMeasureKaigo_: sbMeasureKaigo_,
+    sbBuildKaigoDone_: sbBuildKaigoDone_,
     sbKoukuMoni_: sbKoukuMoni_,
     sbKoukuTaisou_: sbKoukuTaisou_,
     sbKotan_: sbKotan_,

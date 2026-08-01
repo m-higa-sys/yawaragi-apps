@@ -232,8 +232,15 @@ function buildMonthBoard(input, deps) {
           var ke = _mbFieldDone_(kRec, 'tasseido_date', ym);
           kunEval.push({ userId: u.userId, name: u.name, done: ke.done, doneDate: ke.doneDate });
         }
-        // 測定(要介護)＝個訓評価月と同期・userIdキーで済判定（短縮も自動反映。測定はkunEval除外のスコープ外＝現状維持）
-        var ks = _mbListDone_(sokById[u.userId], ym);
+        // 測定(要介護)＝個訓評価月と同期（短縮も自動反映。測定はkunEval除外のスコープ外＝現状維持）
+        // ★2026-08-01: 測定の正本が「測定記録シート」へ移った（個訓アプリの測定入力を撤去済み・版-03）。
+        //   sokById（個訓シート13列目・userIdキー）だけを見ていると片寄せ後の測定を1件も拾えず、
+        //   測定しても永久に「未」で督促が続く。実測: 2026-07 の誤督促4名。
+        //   ★既存の sokById 参照は外さない。sokByName（測定記録シート・正規化名キー）を足した【和】で見る。
+        //     過去分（個訓シート13列目）は sokById 側に残るので画面から消えない。
+        //   ★順序は sokById が先。両方にある場合の doneDate が従来と同じ値になるようにするため。
+        //   ⚠️対象月の決め方（isHyoukaMonth / planStart 起点）は1バイトも変えていない＝段階5の範囲。
+        var ks = _mbListDone_(_mbConcatDates_(sokById[u.userId], sokByName[norm(u.name)]), ym);
         sokuteiKaigo.push({ userId: u.userId, name: u.name, done: ks.done, doneDate: ks.doneDate });
       }
     }
@@ -298,6 +305,16 @@ function buildMonthBoard(input, deps) {
 }
 
 // 日付リストから targetMonth 内の1件を拾う済判定
+// 2つの日付配列を連結する（どちらも無くてよい）。★2026-08-01: 測定を2ソースの和で見るために追加。
+// 重複は取り除かない（_mbListDone_ は最初に当月へ当たった1件を返すだけで、件数を数えないため
+// 二重カウントは起きない）。順序は a が先＝既存の見え方（doneDate）を変えないため。
+function _mbConcatDates_(a, b) {
+  var out = [];
+  if (a) out = out.concat(a);
+  if (b) out = out.concat(b);
+  return out;
+}
+
 function _mbListDone_(dates, ym) {
   if (dates) {
     for (var i = 0; i < dates.length; i++) {
