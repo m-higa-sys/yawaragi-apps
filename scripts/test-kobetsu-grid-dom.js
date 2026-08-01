@@ -22,11 +22,15 @@ function extractFrom(src, name) {
 //   renderTable が kbSokuteiForCell を、kbPlanBadges が kbPickSokuteiDate を呼ぶ。
 // 2026-07-31 段階4: renderTable が予定月ベースの判定を呼ぶようになったため、
 //   その純関数群も実HTMLから一緒に抽出する（フォールバック側＝planStartベースの検証内容は不変）。
-const HTML_FNS = ['renderTable', 'kbYm', 'kbBuildYoteiMap', 'kbYoteiYm', 'kbIsPlanCell', 'kbIsHyoukaCell', 'kbYoteiLabel', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
+// ★2026-08-01 段階6-1: 配置ルールが KB_WORK_MONTH_FROM / kbPlanMovesToPrevMonth / kbHasPlanRowData を使うため注入する。
+//   （vm.runInContext では const がサンドボックスに載らないので定数だけ var で束ねる）
+const KB_WM_SRC = 'var KB_WORK_MONTH_FROM = '
+  + /const\s+KB_WORK_MONTH_FROM\s*=\s*([^;]+);/.exec(html)[1] + ';\n';
+const HTML_FNS = ['kbHasPlanRowData', 'kbPlanMovesToPrevMonth', 'renderTable', 'kbYm', 'kbBuildYoteiMap', 'kbYoteiYm', 'kbIsPlanCell', 'kbIsHyoukaCell', 'kbYoteiLabel', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
   'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO',
   'kbNormKey', 'kbPickSokuteiDate', 'kbSokuteiForCell'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
-const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
+const fnSrc = KB_WM_SRC + HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
 
 // ---- DOMスタブ ----
 function el() { return { style: {}, innerHTML: '', textContent: '', classList: { add() {}, remove() {}, contains() { return false; } } }; }
@@ -203,7 +207,9 @@ ok(outM.indexOf('6/12') >= 0, 'M2: 作業月自身の行の旧・測定データ
 // 旧データは6月(自セル)行のまま＝格納位置を動かさない（書込先data-month=6）。
 const rowM = (outM.split('</tr>').find(r => r.indexOf('ムー太') >= 0) || '');
 const cellsM = rowM.split('<td');
-ok(!!cellsM[5] && cellsM[5].indexOf('6/10') >= 0, 'M3: 旧データは6月セルに温存表示される');
+// ★2026-08-01 段階6-1: 6月始まりの期間は「作業した月」＝5月列に描く（cellsM[4]）。
+//   検証の意味は変えていない（旧データが '-' に潰れず、書込先も動いていないこと）。列の期待値だけ追随。
+ok(!!cellsM[4] && cellsM[4].indexOf('6/10') >= 0, 'M3: 旧データは5月セル（6月始まりの作業月）に温存表示される');
 ok(/data-month="6"[^>]*data-field="keikaku_date"/.test(outM), 'M4: 温存フォールバック時の書込先は自セル(6月)＝旧データの位置を動かさない');
 
 // 別パターン: planStart 5月→8月 で旧6月データ（6月は作業月でないので従来の温存で拾う）
@@ -255,7 +261,14 @@ const U6 = (ps) => ({ userId: 'S', name: 'エス子', furigana: 'ア', category:
   const before = renderWith(U6('2026-06'), {}, shien);
   ok(before.indexOf('5/4') >= 0, 'S3a: [変更前] 個訓シートが空でも測定5/4は見える');
   const after = renderWith(U6('2026-08'), {}, shien);
-  ok(after.indexOf('5/4') >= 0, 'S3b: [ケース3] 個訓シートが空でも測定5/4が消えない（完全消失しない）');
+  // ★2026-08-01 段階6-1（クロ決定・指示8）で検証の意味を変えた箇所:
+  //   測定記録シート「だけ」では計画パートを立てない（意図しない行への書込を防ぐ）。
+  //   よって個訓シートに行が1つも無い人の測定は画面に出なくなる。本番実測では該当0件
+  //   （測定記録シートだけの4件は、いずれも同じ列の計画パートに測定✓として出ることを実測確認済み）。
+  //   ⚠️発生したら表示だけが欠ける。docs/宿題.md に記載。
+  ok(after.indexOf('5/4') < 0, 'S3b: [ケース3] 個訓シートが空なら測定記録シートだけでは計画パートを立てない（新仕様）');
+  const withRow = renderWith(U6('2026-08'), { 'S_2026_6': { keikaku_date: '2026-05-26' } }, shien);
+  ok(withRow.indexOf('5/4') >= 0, 'S3c: [ケース3] 同じ列に計画パートがあれば測定5/4はそこに出る（記録は失われない）');
 }
 // --- 温存を広げすぎない: 実績が1つも無ければ従来どおり '-' のまま ---
 {

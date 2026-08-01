@@ -34,13 +34,17 @@ function ok(c, m) { if (c) { pass++; } else { fail++; console.error('  [FAIL] ' 
 function sec(t) { console.log('\n[' + t + ']'); }
 
 // ---- 実HTML/shared.js から本物を抽出 ----
-const HTML_FNS = ['renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges',
+// ★2026-08-01 段階6-1: 配置ルールが KB_WORK_MONTH_FROM / kbPlanMovesToPrevMonth / kbHasPlanRowData を使うため注入する。
+//   （vm.runInContext では const がサンドボックスに載らないので定数だけ var で束ねる）
+const KB_WM_SRC = 'var KB_WORK_MONTH_FROM = '
+  + /const\s+KB_WORK_MONTH_FROM\s*=\s*([^;]+);/.exec(html)[1] + ';\n';
+const HTML_FNS = ['kbHasPlanRowData', 'kbPlanMovesToPrevMonth', 'renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges',
   'kbEvalBadges', 'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO',
   'kbNormKey', 'kbPickSokuteiDate', 'kbSokuteiForCell',
   // 段階4で足す予定月まわり
   'kbYm', 'kbBuildYoteiMap', 'kbYoteiYm', 'kbIsPlanCell', 'kbIsHyoukaCell', 'kbYoteiLabel', 'updateStats'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
-const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n'
+const fnSrc = KB_WM_SRC + HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n'
   + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
 
 // ---- DOMスタブ ----
@@ -88,6 +92,13 @@ function ymOf(delta) {
 }
 const cur = ymOf(0), p1 = ymOf(-1), p2 = ymOf(-2), p3 = ymOf(-3), n1 = ymOf(1), n2 = ymOf(2), n3 = ymOf(3);
 function key(uid, o) { return uid + '_' + o.y + '_' + o.m; }
+
+// ★2026-08-01 段階6-1: 記録が描かれる列は「期間開始月の1つ前」（KB_WORK_MONTH_FROM 以降）。
+//   このテスト群は実行月を起点に組むので、期待する列も同じ規則で求める（実行日に依存させない）。
+//   規則そのものは scripts/test-kobetsu-workmonth-column.js が絶対月で固定している。
+function prevOf(o) { const t = o.y * 12 + (o.m - 1) - 1; const y = Math.floor(t / 12), m = (t % 12) + 1; return { y: y, m: m, s: y + '-' + String(m).padStart(2, '0') }; }
+function planCellOf(o) { return sandbox.kbPlanMovesToPrevMonth(o.s) ? prevOf(o) : o; }
+
 const EMPTY = { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '', sokutei_date: '', sokutei_by: '', output_by: '', tasseido_date: '' };
 const rec = o => Object.assign({}, EMPTY, o || {});
 
@@ -207,11 +218,24 @@ sec('D) 過去の実績セルが消えない（今日の3ケース）');
     return tbody.innerHTML;
   })();
   const t2 = rowCells(t2html, 'ダミーE');
-  ok(hasPlanInput(cellOfYm(t2, p2)), 'D3: ②測定記録シートにしか測定が無い過去月のセルも残る');
+  // ★2026-08-01 段階6-1（クロ決定・指示8）で検証の意味を変えた箇所:
+  //   測定記録シート「だけ」では計画パートを立てない（個訓シートの行データのみで判定）。
+  //   意図しない行（期間の開始月でない行）への書込を防ぐため。本番実測では該当0件。
+  //   測定は、同じ列に描かれる計画パートのバッジとして現れる（下の D3b で固定）。
+  ok(!hasPlanInput(cellOfYm(t2, p2)), 'D3: ②測定記録シートだけでは計画パートを立てない（新仕様）');
+  const t2b = (function () {
+    const built2 = sandbox.kbBuildYoteiMap(yo);
+    const rr = {}; rr[key('U1', p2)] = rec({ keikaku_date: p2.s + '-10' });
+    sandbox.state = { fiscalYear: fy, users: users, records: rr, isLoading: false, needsActionOnly: false,
+      shienByMonth: { 'ダミーE': { [planCellOf(p2).s]: planCellOf(p2).s + '-05' } }, yotei: built2.map, yoteiOk: built2.ok };
+    sandbox.renderTable(); return tbody.innerHTML;
+  })();
+  const c2b = cellOfYm(rowCells(t2b, 'ダミーE'), planCellOf(p2));
+  ok(hasPlanInput(c2b) && c2b.indexOf('測定') >= 0, 'D3b: ②同じ列に計画パートがあれば測定記録シートの測定はそこに出る（記録は失われない）');
   // ケース③: keikaku_date は空だが他の実績（興味・生活・保留）がある
   const r3 = {}; r3[key('U1', p2)] = rec({ kyoumi_date: p2.s + '-03', blocked_reason: '' });
   const t3 = rowCells(render(users, r3, yo), 'ダミーE');
-  ok(hasPlanInput(cellOfYm(t3, p2)), 'D4: ③keikaku_date が空でも他の実績があれば残る');
+  ok(hasPlanInput(cellOfYm(t3, planCellOf(p2))), 'D4: ③keikaku_date が空でも他の実績があれば残る（作業月の列へ）');
   // 評価の実績も残る
   const r4 = {}; r4[key('U1', p1)] = rec({ tasseido_date: p1.s + '-20' });
   const t4 = rowCells(render(users, r4, yo), 'ダミーE');

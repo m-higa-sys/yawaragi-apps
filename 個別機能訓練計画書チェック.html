@@ -1053,6 +1053,33 @@ function kbAdoptYoteiRow(map, userId, row) {
     return true;
 }
 
+// ===== 段階6-1（2026-08-01・社長決定）: 列＝作業した月 =====
+// ★暫定の定数。作業月主義（前月準備の原則・v1.2 §1-3）が運用に入った月。
+//   これ以降に始まる期間は「前月に作る」ので、計画パートを【その前月の列】に描く。
+//   これより前の期間は当時のやり方（開始月にその月ぶんを作る）なので、開始月の列に据え置く。
+//   過去を後から並べ替えないための線引きであって、恒久ルールではない。
+//   ▼この定数を消せる条件: 2026-05 以前の行が年度グリッドから完全に外れたとき
+//     （＝2027年度＝2027-04 以降しか表示しなくなったとき）。そのとき kbPlanMovesToPrevMonth は
+//     常に true になるので、関数ごと畳んで「常に前月へ寄せる」に単純化できる。
+const KB_WORK_MONTH_FROM = '2026-06';
+
+// 期間開始月 ym('YYYY-MM') の計画パートを「その前月の列」へ寄せるか。
+// 'YYYY-MM' は辞書順＝時系列順なので文字列比較でよい。壊れた値は寄せない（＝自セル据え置きで落ちない）。
+function kbPlanMovesToPrevMonth(ym) {
+    const s = String(ym || '');
+    return /^\d{4}-\d{2}$/.test(s) && s >= KB_WORK_MONTH_FROM;
+}
+
+// 個訓シートの1行に「計画パートの実績」があるか。
+// ★測定記録シートはここに混ぜない（クロ決定 2026-08-01・安全側）。混ぜると、個訓シートに行が無い月にも
+//   計画パートが立ち、書込先が「期間の開始月ではない行」になってしまう。測定記録シートの測定は
+//   kbSokuteiForCell 経由で、同じ列に描かれる計画パートのバッジとして現れる（記録は失われない）。
+function kbHasPlanRowData(rec) {
+    if (!rec) return false;
+    return !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
+        || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason);
+}
+
 // 「予定 ◯月 ▾」のラベル。年をまたぐときだけ年を付ける。
 function kbYoteiLabel(yoteiYm, nowYm) {
     if (!yoteiYm) return '未設定';
@@ -1432,14 +1459,8 @@ function renderTable() {
             + escapeHtml(u.name) + badge + cancelBadge + '<br>' + yoteiBtn + '</td>';
         let rowTodo = false;
 
-        // フェーズ2a: このユーザーの「作業月」が指す node(計画月) の集合を先に集める。
-        // 計画月セル側で「前月(作業月)へ計画パートを移譲済みか」を判定し、二重表示を防ぐのに使う。
-        const claimedNodes = {};
-        MONTHS.forEach(mo2 => {
-            const cy2 = mo2.nextYear ? fy + 1 : fy;
-            const c2 = kobetsuCycleAt(u.planStart, u.planMonths, cy2, mo2.m, yoteiYm);
-            if (c2.role === 'work') claimedNodes[c2.nodeYear + '_' + c2.nodeMonth] = true;
-        });
+        // 段階6-1: 配置は「期間開始月」から一意に決まるようになったので、
+        // フェーズ2aの claimedNodes（どの計画月が前月へ移譲済みか）の事前集計は不要になった。撤去。
 
         MONTHS.forEach(mo => {
             const cellYear = mo.nextYear ? fy + 1 : fy;
@@ -1460,36 +1481,42 @@ function renderTable() {
             //   planStart を後ろへ動かすと実績セルが丸ごと '-' に隠れた（社長が実機で確認・戻すと戻る＝表示のみ）。
             //   温存判定と描画で参照元を揃える。★描画と同じ「セルの月」で引くこと（月をずらすと別の月を見て空になる）。
             const shienSokuteiForCell = kbSokuteiForCell(state.shienByMonth, u.name, cellYear, mo.m);
-            const hasPlanData = !!(rec.keikaku_date || rec.kyoumi_date || rec.seikatsu_date
-                || rec.sokutei_date || rec.sokutei_by || rec.output_by || rec.blocked_reason
-                || shienSokuteiForCell);
             const hasHyoukaData = !!rec.tasseido_date;
 
-            // フェーズ2a: 作業月(前月)化。翌月が計画月ならこのセルは作業月で、計画パートを node(計画月)行から読み書きする。
+            // フェーズ2a: 作業月(前月)化。段階6-1 以降、配置判定には使わない（評価スロットの同居判定にだけ残す）。
             const cyc = kobetsuCycleAt(u.planStart, u.planMonths, cellYear, mo.m, yoteiYm);
             const isWork = cyc.role === 'work';
-            const planClaimedByWork = isPlan && !!claimedNodes[cellYear + '_' + mo.m]; // この計画月は前月(作業月)へ移譲済み→二重表示しない
-            // 計画パートをどの行(node)で描くか。作業月=計画月行(表示は前月・書込は計画月＝格納位置不変) /
-            // 前月がグリッド範囲外の計画月=自セル(従来どおり) / 実績のある非計画・非作業月=温存(自セル)。
-            let planSrc = null;
-            if (isWork) {
-                const nk = u.userId + '_' + cyc.nodeYear + '_' + cyc.nodeMonth;
-                const nodeRec = state.records[nk] || { keikaku_date: '', sokutei_date: '', blocked_reason: '' };
-                const nodeHasPlanData = !!(nodeRec.keikaku_date || nodeRec.kyoumi_date || nodeRec.seikatsu_date
-                    || nodeRec.sokutei_date || nodeRec.sokutei_by || nodeRec.output_by || nodeRec.blocked_reason);
-                if (!nodeHasPlanData && hasPlanData) {
-                    // planStartを後ろへ動かした等で node(計画月)は空だが、作業月“自身の行”に旧データが残るケース。
-                    // フェーズ1の温存を優先し、自セルの旧データを隠さず表示する（書込先も自セル＝旧データの位置は動かさない）。
-                    planSrc = { year: cellYear, month: mo.m, rec: rec };
-                } else {
-                    planSrc = { year: cyc.nodeYear, month: cyc.nodeMonth, rec: nodeRec };
+
+            // ★2026-08-01 段階6-1（社長決定）: 列＝作業した月。
+            //   配置ルール（1文）:「計画パートは、期間開始月が KB_WORK_MONTH_FROM(2026-06) 以降なら
+            //     その1つ前の月の列に描く。それより前なら 期間開始月の列に描く。」
+            //   これで分岐A-2（これから作る）と分岐C（記録済）が1本に統合された。違いはラベルだけ。
+            //   フェーズ2aの claimedNodes と、分岐A-1（作業月セルに旧データを温存する特例）は不要になり撤去。
+            //   ⚠️ 書込先（下の data-year/month）は常に「期間の開始月の行」のまま。動かすのは表示位置だけ。
+            //      書込先まで動かすと planStart 変更と同じ「記録が画面から消える」事故になる。
+            const nY = (mo.m === 12) ? cellYear + 1 : cellYear;
+            const nM = (mo.m === 12) ? 1 : mo.m + 1;
+            // 年度グリッドの左端（4月）は前月が年度の外。ここから前月へ寄せると描く場所が無くなるので据え置く（分岐B）。
+            const isGridHead = (cellYear === fy && mo.m === 4);
+            const planSrcs = [];
+            // ① 翌月始まりの期間を、この列（＝その期間の作業月）へ寄せる
+            if (kbPlanMovesToPrevMonth(kbYm(nY, nM))) {
+                const nodeRec = state.records[u.userId + '_' + nY + '_' + nM]
+                    || { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '' };
+                const nodeIsPlan = kbIsPlanCell(yoteiYm, u, nY, nM);
+                if (kbHasPlanRowData(nodeRec) || nodeIsPlan) {
+                    planSrcs.push({ year: nY, month: nM, rec: nodeRec, isNext: nodeIsPlan });
                 }
-            } else if (isPlan && !planClaimedByWork) {
-                planSrc = { year: cellYear, month: mo.m, rec: rec };
-            } else if (!isPlan && hasPlanData) {
-                planSrc = { year: cellYear, month: mo.m, rec: rec };
             }
-            const showPlan = planSrc !== null;
+            // ② 自セル始まりの期間を据え置く（作業月主義より前の期間 ／ 前月が年度グリッド外＝分岐B）
+            //    ★①と②が両方立つのは境界の月（KB_WORK_MONTH_FROM の前月）と年度左端だけ。
+            //      そこでは2本並ぶが、どちらの記録も捨てない方を選んでいる。
+            if (!kbPlanMovesToPrevMonth(kbYm(cellYear, mo.m)) || isGridHead) {
+                if (kbHasPlanRowData(rec) || isPlan) {
+                    planSrcs.push({ year: cellYear, month: mo.m, rec: rec, isNext: isPlan });
+                }
+            }
+            const showPlan = planSrcs.length > 0;
             // 評価は無改修（isHyoukaMonth・格納行=自セルのまま）。作業月に評価スロットを同居させるため isWork&&isHyouka を加算のみ。
             const showEval = hasHyoukaData || (!beforeStart && isHyouka) || (isWork && isHyouka);
 
@@ -1506,19 +1533,15 @@ function renderTable() {
             };
             let inner = '';
 
-            // 計画パート（onCellTap導線・書込先 data-year/month は planSrc=node行＝格納位置は計画月のまま不変）
-            if (showPlan) {
+            // 計画パート（onCellTap導線・書込先 data-year/month は planSrc＝期間開始月の行＝格納位置は不変）
+            // 段階6-1: 1セルに複数並ぶのは境界の月と年度左端だけ（通常は0か1本）。
+            planSrcs.forEach(planSrc => {
                 const pRec = planSrc.rec;
                 const pBlocked = !!pRec.blocked_reason;
-                const pYM = planSrc.year + '-' + String(planSrc.month).padStart(2, '0');
-                // ★2026-08-01 ラベルの混在是正（社長決定・案A）。配置ルール（上の if/else if 連鎖）は1バイトも変えず、
-                //   見出しの文言と色だけを分ける。同じ列に「計画(7月〜)」と「計画(8月〜)」が並んでも
-                //   どちらが「これから作る」でどちらが「済んだ期間」か分からなかった、が直接の理由。
-                //   これから作る = 作業月セル（planSrc が翌月＝計画月の行）／前月が表の外の計画月セル。
-                //   済んだ期間   = 実績があるだけの温存セル（planSrc が自セル・計画月でない）。
-                const planIsNext = (planSrc.year !== cellYear || planSrc.month !== mo.m)
-                    || (isPlan && !planClaimedByWork);
-                const pCycHtml = planIsNext
+                // ★2026-08-01 ラベル（社長決定・案A）。文言・色は据え置き。
+                //   これから作る = その期間が予定月（＝まだ作っていない次の期間）。
+                //   済んだ期間   = それ以外（＝記録として残っている期間）。
+                const pCycHtml = planSrc.isNext
                     ? '<span class="kb-cyc kb-cyc-plan">▶ ' + planSrc.month + '月分を準備</span>'
                     : '<span class="kb-cyc kb-cyc-past">' + planSrc.month + '月分（記録済）</span>';
                 let pInner;
@@ -1527,7 +1550,8 @@ function renderTable() {
                         + '<span class="kb-hold" title="' + escapeAttr(pRec.blocked_reason) + '">' + blockedIcon(pRec.blocked_reason) + '保留（' + escapeHtml(blockedLabel(pRec.blocked_reason)) + '）</span>';
                 } else {
                     // 測定は2ソースの和（個訓シート ∪ 測定記録シート）。渡すのは「表示しているセルの月」の記録。
-                    // ★書込先（planSrc = 計画月ノード行）は1バイトも変えていない。読む材料だけを足している。
+                    // ★段階6-1 で列＝作業した月になったので、「このセルの月に測定した」を見るのが正しくなった。
+                    //   書込先（planSrc = 期間開始月の行）は1バイトも変えていない。読む材料だけを足している。
                     const pb = kbPlanBadges(pRec, kbSokuteiForCell(state.shienByMonth, u.name, cellYear, mo.m));
                     pInner = pCycHtml
                         + '<span class="kb-badges">' + pb.map(kbBadgeHtml).join('') + '</span>';
@@ -1536,7 +1560,7 @@ function renderTable() {
                 inner += '<div class="kb-part" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name)
                     + '" data-year="' + planSrc.year + '" data-month="' + planSrc.month + '" data-field="keikaku_date" data-fieldlabel="計画"'
                     + ' onclick="onCellTap(this)">' + pInner + '</div>';
-            }
+            });
 
             // 評価パート（onHyoukaCellTap導線・従来data属性を踏襲＝案A）
             if (showEval) {

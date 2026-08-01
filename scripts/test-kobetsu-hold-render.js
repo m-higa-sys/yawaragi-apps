@@ -21,12 +21,16 @@ function extractFrom(src, name) {
 }
 // 2026-07-31 段階4: renderTable が予定月ベースの判定を呼ぶようになったため、
 //   その純関数群も実HTMLから一緒に抽出する（フォールバック側＝planStartベースの検証内容は不変）。
-const HTML_FNS = ['renderTable', 'kbYm', 'kbBuildYoteiMap', 'kbYoteiYm', 'kbIsPlanCell', 'kbIsHyoukaCell', 'kbYoteiLabel', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
+// ★2026-08-01 段階6-1: 配置ルールが KB_WORK_MONTH_FROM / kbPlanMovesToPrevMonth / kbHasPlanRowData を使うため注入する。
+//   （vm.runInContext では const がサンドボックスに載らないので定数だけ var で束ねる）
+const KB_WM_SRC = 'var KB_WORK_MONTH_FROM = '
+  + /const\s+KB_WORK_MONTH_FROM\s*=\s*([^;]+);/.exec(html)[1] + ';\n';
+const HTML_FNS = ['kbHasPlanRowData', 'kbPlanMovesToPrevMonth', 'renderTable', 'kbYm', 'kbBuildYoteiMap', 'kbYoteiYm', 'kbIsPlanCell', 'kbIsHyoukaCell', 'kbYoteiLabel', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges', 'kbEvalBadges',
   'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO', 'blockedIcon', 'blockedLabel', 'updateStats',
   // 2026-07-30: 測定を2ソースの和で見るため renderTable / kbPlanBadges が呼ぶ3関数を追加
   'kbNormKey', 'kbPickSokuteiDate', 'kbSokuteiForCell'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
-const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
+const fnSrc = KB_WM_SRC + HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n' + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
 
 // ---- DOMスタブ ----
 function el() { return { style: {}, innerHTML: '', textContent: '', classList: { add() {}, remove() {}, contains() { return false; } } }; }

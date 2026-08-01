@@ -39,14 +39,18 @@ function ok(c, m) { if (c) { pass++; } else { fail++; console.error('  [FAIL] ' 
 function sec(t) { console.log('\n[' + t + ']'); }
 
 // ---- 実HTML/shared.js から本物を抽出 ----
-const HTML_FNS = ['renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges',
+// ★2026-08-01 段階6-1: 配置ルールが KB_WORK_MONTH_FROM / kbPlanMovesToPrevMonth / kbHasPlanRowData を使うため注入する。
+//   （vm.runInContext では const がサンドボックスに載らないので定数だけ var で束ねる）
+const KB_WM_SRC = 'var KB_WORK_MONTH_FROM = '
+  + /const\s+KB_WORK_MONTH_FROM\s*=\s*([^;]+);/.exec(html)[1] + ';\n';
+const HTML_FNS = ['kbHasPlanRowData', 'kbPlanMovesToPrevMonth', 'renderTable', 'kobetsuCycleAt', 'getGroup', 'matchesFilter', 'kbBadgeObj', 'kbPlanBadges',
   'kbEvalBadges', 'kbBadgeHtml', 'kbSubmitDue', 'escapeHtml', 'escapeAttr', 'formatMD', 'formatTodayISO',
   'kbNormKey', 'kbPickSokuteiDate', 'kbSokuteiForCell',
   'kbYm', 'kbBuildYoteiMap', 'kbYoteiYm', 'kbIsPlanCell', 'kbIsHyoukaCell', 'kbYoteiLabel', 'updateStats',
   // ★今回足すもの
   'kbAdoptYoteiRow', 'applyValue'];
 const SHARED_FNS = ['isPlanMonth', 'isHyoukaMonth', 'isBeforePlanStart'];
-const fnSrc = HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n'
+const fnSrc = KB_WM_SRC + HTML_FNS.map(n => extractFrom(html, n)).join('\n') + '\n'
   + SHARED_FNS.map(n => extractFrom(shared, n)).join('\n');
 
 // ---- DOMスタブ ----
@@ -118,6 +122,12 @@ function ymOf(delta) {
 }
 const cur = ymOf(0), p1 = ymOf(-1), p2 = ymOf(-2), p3 = ymOf(-3), n1 = ymOf(1), n2 = ymOf(2), n3 = ymOf(3);
 function key(uid, o) { return uid + '_' + o.y + '_' + o.m; }
+
+// ★2026-08-01 段階6-1: 記録が描かれる列は「期間開始月の1つ前」（KB_WORK_MONTH_FROM 以降）。
+//   実行月起点の fixture なので、期待する列も同じ規則で求める（実行日に依存させない）。
+function prevOf(o) { const t = o.y * 12 + (o.m - 1) - 1; const y = Math.floor(t / 12), m = (t % 12) + 1; return { y: y, m: m, s: y + '-' + String(m).padStart(2, '0') }; }
+function planCellOf(o) { return sandbox.kbPlanMovesToPrevMonth(o.s) ? prevOf(o) : o; }
+
 const EMPTY = { kyoumi_date: '', seikatsu_date: '', keikaku_date: '', blocked_reason: '', sokutei_date: '', sokutei_by: '', output_by: '', tasseido_date: '' };
 const rec = o => Object.assign({}, EMPTY, o || {});
 
@@ -173,11 +183,12 @@ const yo = (uid, mark, ym) => ({ userId: uid, name: mark, domain: 'kobetsu', nex
 // =====================================================================
 sec('A) 問題1: 同じ月の列で「これから作る」と「済んだ期間」が見分けられる');
 {
-  // 当月の列に2人を並べる。
-  //   ダミーA: 予定月=翌月 → 当月は作業月（分岐A-2・ラベルは翌月を指す）
-  //   ダミーB: 予定月=3ヶ月後 で 当月に記録あり → 当月は温存セル（分岐C・ラベルは自セル月）
+  // 当月の列に2人を並べる（★2026-08-01 段階6-1 の配置に合わせて再現条件を作り直した。
+  //   検証の意味は同じ＝「同じ列に並んだ2人のラベルが種類として見分けられるか」）。
+  //   ダミーA: 予定月=翌月 → 翌月始まりの期間は当月列に「▶ 準備」
+  //   ダミーB: 翌月の行に記録あり・予定月は3ヶ月後 → 当月列に「(翌月)分（記録済）」
   const users = [baseUser('U1', 'ダミーA', p3.s), baseUser('U2', 'ダミーB', p3.s)];
-  const recs = {}; recs[key('U2', cur)] = rec({ keikaku_date: cur.s + '-10' });
+  const recs = {}; recs[key('U2', n1)] = rec({ keikaku_date: cur.s + '-10' });
   const htmlOut = render(users, recs, [yo('U1', 'ダミーA', n1.s), yo('U2', 'ダミーB', n3.s)]);
   const a = cellOfYm(rowCells(htmlOut, 'ダミーA'), cur);
   const b = cellOfYm(rowCells(htmlOut, 'ダミーB'), cur);
@@ -189,10 +200,10 @@ sec('A) 問題1: 同じ月の列で「これから作る」と「済んだ期間
   ok(form(planLabel(a)) !== form(planLabel(b)), 'A1: 分岐A-2と分岐Cのラベルが「形」として違う（混在の解消）'
     + ' [A-2="' + planLabel(a) + '" / C="' + planLabel(b) + '"]');
   ok(planLabel(a) === '▶ ' + n1.m + '月分を準備', 'A2: 作業月セルは「▶ ◯月分を準備」（案A・これから作る） 実際="' + planLabel(a) + '"');
-  ok(planLabel(b) === cur.m + '月分（記録済）', 'A3: 温存セルは「◯月分（記録済）」（案A・済んだ期間） 実際="' + planLabel(b) + '"');
+  ok(planLabel(b) === n1.m + '月分（記録済）', 'A3: 記録済は「◯月分（記録済）」（案A・済んだ期間） 実際="' + planLabel(b) + '"');
   ok(planLabelClass(a) === 'kb-cyc-plan', 'A4: これから作る側は青のまま（kb-cyc-plan）');
   ok(planLabelClass(b) === 'kb-cyc-past', 'A5: 済んだ期間は灰（kb-cyc-past）＝後ろへ引っ込む');
-  ok(a.indexOf('計画(' + n1.m + '月〜)') < 0 && b.indexOf('計画(' + cur.m + '月〜)') < 0,
+  ok(a.indexOf('計画(' + n1.m + '月〜)') < 0 && b.indexOf('計画(' + n1.m + '月〜)') < 0,
     'A6: 旧ラベル「計画(◯月〜)」が残っていない');
 }
 {
@@ -217,9 +228,10 @@ sec('B) 温存セルはタップして編集できる（表示位置が過去で
   const users = [baseUser('U1', 'ダミーB', p3.s)];
   const recs = {}; recs[key('U1', p2)] = rec({ keikaku_date: p2.s + '-10' });
   const tds = rowCells(render(users, recs, [yo('U1', 'ダミーB', n3.s)]), 'ダミーB');
-  const c = cellOfYm(tds, p2);
-  ok(c.indexOf('onclick="onCellTap(this)"') >= 0, 'B1: 温存セルにも onCellTap 導線が残っている');
-  ok(planTarget(c) === p2.s, 'B2: 温存セルの書込先は自セル＝旧データの位置のまま動かない');
+  const c = cellOfYm(tds, planCellOf(p2));
+  ok(c.indexOf('onclick="onCellTap(this)"') >= 0, 'B1: 記録済セルにも onCellTap 導線が残っている');
+  // ★列は作業月へ寄るが、書込先（期間の開始月の行）は動かない。ここが今回いちばん守りたい一点。
+  ok(planTarget(c) === p2.s, 'B2: 記録済セルの書込先は期間の開始月の行のまま動かない');
 }
 
 sec('C) 過去の実績セルが消えない（3ケース・ラベル変更で潰していないこと）');
@@ -228,20 +240,26 @@ sec('C) 過去の実績セルが消えない（3ケース・ラベル変更で�
   const yr = [yo('U1', 'ダミーE', n3.s)];
   // ①個訓シートに計画書作成日がある過去月
   const r1 = {}; r1[key('U1', p3)] = rec({ keikaku_date: p3.s + '-10' });
-  const t1 = cellOfYm(rowCells(render(users, r1, yr), 'ダミーE'), p3);
+  const t1 = cellOfYm(rowCells(render(users, r1, yr), 'ダミーE'), planCellOf(p3));
   ok(hasPlanInput(t1), 'C1: ①個訓シートに実績がある過去月のセルは残る');
   ok(t1.indexOf('>-<') < 0, 'C2: ①「-」に潰れていない');
-  ok(planLabel(t1) === p3.m + '月分（記録済）', 'C3: ①ラベルは「済んだ期間」側 実際="' + planLabel(t1) + '"');
+  ok(planLabel(t1) === p3.m + '月分（記録済）', 'C3: ①ラベルは行の月のまま「済んだ期間」側 実際="' + planLabel(t1) + '"');
   // ②個訓シートは空で、測定記録シートにだけ測定がある
   const shien = {}; shien['ダミーE'] = {}; shien['ダミーE'][p2.s] = p2.s + '-05';
+  // ★2026-08-01 段階6-1（クロ決定・指示8）で検証の意味を変えた箇所:
+  //   測定記録シート「だけ」では計画パートを立てない（意図しない行への書込を防ぐ）。
+  //   同じ列に計画パートがあれば、そこに測定✓として現れる（記録は失われない）。
   const t2 = cellOfYm(rowCells(render(users, {}, yr, shien), 'ダミーE'), p2);
-  ok(hasPlanInput(t2), 'C4: ②測定記録シートにしか測定が無い過去月のセルも残る');
-  ok(planLabel(t2) === p2.m + '月分（記録済）', 'C5: ②ラベルは「済んだ期間」側 実際="' + planLabel(t2) + '"');
+  ok(!hasPlanInput(t2), 'C4: ②測定記録シートだけでは計画パートを立てない（新仕様）');
+  const shien2 = {}; shien2['ダミーE'] = {}; shien2['ダミーE'][planCellOf(p2).s] = planCellOf(p2).s + '-05';
+  const r2b = {}; r2b[key('U1', p2)] = rec({ keikaku_date: p2.s + '-10' });
+  const t2b = cellOfYm(rowCells(render(users, r2b, yr, shien2), 'ダミーE'), planCellOf(p2));
+  ok(hasPlanInput(t2b) && t2b.indexOf('測定') >= 0, 'C5: ②同じ列に計画パートがあれば測定記録シートの測定はそこに出る');
   // ③keikaku_date は空だが他の実績（興味関心）がある
   const r3 = {}; r3[key('U1', p2)] = rec({ kyoumi_date: p2.s + '-03' });
-  const t3 = cellOfYm(rowCells(render(users, r3, yr), 'ダミーE'), p2);
+  const t3 = cellOfYm(rowCells(render(users, r3, yr), 'ダミーE'), planCellOf(p2));
   ok(hasPlanInput(t3), 'C6: ③keikaku_date が空でも他の実績があれば残る');
-  ok(planLabel(t3) === p2.m + '月分（記録済）', 'C7: ③ラベルは「済んだ期間」側 実際="' + planLabel(t3) + '"');
+  ok(planLabel(t3) === p2.m + '月分（記録済）', 'C7: ③ラベルは行の月のまま「済んだ期間」側 実際="' + planLabel(t3) + '"');
   // 評価の実績も残る（無改修の確認）
   const r4 = {}; r4[key('U1', p1)] = rec({ tasseido_date: p1.s + '-20' });
   const t4 = cellOfYm(rowCells(render(users, r4, yr), 'ダミーE'), p1);
@@ -316,7 +334,7 @@ async function main() {
     ok(hasPlanInput(work), 'F5: 入力欄の出る月が新しい予定月の前月へ移動する');
     ok(planTarget(work) === advanced.s, 'F6: 移動後の書込先も新しい期間の開始月');
     ok(planLabel(work) === '▶ ' + advanced.m + '月分を準備', 'F7: 移動先は「これから作る」ラベル 実際="' + planLabel(work) + '"');
-    const done = cellOfYm(tds, n1);
+    const done = cellOfYm(tds, planCellOf(n1));
     ok(hasPlanInput(done) && planLabel(done) === n1.m + '月分（記録済）',
       'F8: いま記録した月は「済んだ期間」として残る（消えない） 実際="' + planLabel(done) + '"');
   }
