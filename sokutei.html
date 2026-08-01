@@ -1656,7 +1656,19 @@ function renderTab3() {
   const t = state.today;
   const cutoff = monthsAgoStr(periodMonths);
   const counts = {}, lastBy = {};
-  let totalPeriod = 0;   // シェア%の分母 = 期間内総測定件数
+  // ★2026-08-01: 見出しの件数と シェア%の分母 を分けた。
+  //   事象: 表示されている % の合計が 100% にならない（実測 1ヶ月100% / 2ヶ月97% / 3ヶ月93%）。
+  //   原因: 「先に分母へ加算してから測定者の有無で除外」していたため、測定者が空欄の記録が
+  //         【分母にだけ】入り、誰の分子にもならず全員の % を薄めていた。
+  //         同じ形の歪みが MEASURER_EXCLUDE（代表・小野・林）にもある＝行が出ないのに分母に入る。
+  //   方針（社長決定）: 件数と割合で母数が違う状態を意図して作る。どちらも嘘がない形を優先する。
+  //     totalPeriod … 見出しの「総測定 N件」。実際に測った件数なので測定者不明も数える（従来どおり）
+  //     shareBase   … % の分母。表示される行に属する件数だけ＝Σ counts と必ず一致する
+  //   ⚠️ shareBase は「表示されないのに分母に入る」ものを除いた数。この画面でそれに当たるのは
+  //      ①測定者が空欄 ②MEASURER_EXCLUDE 該当 の2つだけ（rows は counts のキーから作られ、
+  //      キーは必ず非空かつ非除外になるため、他に漏れる経路は無い）。
+  let totalPeriod = 0;   // 見出しの実件数 = 期間内総測定件数（測定者不明も含む）
+  let shareBase = 0;     // シェア%の分母 = 期間内で測定者が判明し、かつ表示対象のスタッフの件数
   // 要支援等は 'app'（実測定）のみ集計対象。'paper'（紙台帳投入・測定者不明・日付は月初仮置き）は
   // 実施バランス分析の対象外＝件数に含めない（含めると誰にも属さない件数で総数だけ膨らむ）。
   const allRecords = (state.records || []).concat((state.shien || []).filter(r => r.source !== 'paper'));
@@ -1666,9 +1678,10 @@ function renderTab3() {
     const inPeriod = d >= cutoff && d <= t;
     if (inPeriod) totalPeriod++;
     const by = String(r.sokutei_by || '').trim();
-    if (!by) return;
+    if (!by) return;                                     // 測定者不明＝誰の実績にもならない
+    if (MEASURER_EXCLUDE.indexOf(by) >= 0) return;       // 行が出ないスタッフ＝分母にも入れない
     if (!lastBy[by] || d > lastBy[by]) lastBy[by] = d;   // 最終測定日は期間外も含む全期間
-    if (inPeriod) counts[by] = (counts[by] || 0) + 1;
+    if (inPeriod) { counts[by] = (counts[by] || 0) + 1; shareBase++; }
   });
   // 表示対象 = staff_list − 除外3名（0件も全員）＋ records にだけ現れる測定者
   const names = (state.staff || []).filter(s => MEASURER_EXCLUDE.indexOf(s) < 0);
@@ -1679,11 +1692,16 @@ function renderTab3() {
   const pb = n => '<button type="button" class="f-btn' + (periodMonths === n ? ' active' : '') + '" onclick="setPeriod(' + n + ')">' + n + 'ヶ月</button>';
   let html = '<div class="filter-row">' + pb(1) + pb(2) + pb(3) + '</div>';
   html += '<div class="hdr">' + esc(fmtMD(cutoff)) + '〜' + esc(fmtMD(t)) + '・総測定 ' + totalPeriod + '件</div>';
+  // 件数（実件数）と割合（表示行の母数）で母数が違うので、違うときだけその旨を出す。
+  // 同じときは書かない＝いつもの画面に余計な注記を増やさない。
+  if (shareBase !== totalPeriod) {
+    html += '<div class="note">※割合は測定者が記録されている ' + shareBase + ' 件を母数にしています</div>';
+  }
   if (state.errs.staff) html += '<div class="note">⚠ スタッフ一覧（staff_list）取得失敗のため records に現れる測定者のみ表示しています</div>';
   html += '<div class="card">';
   if (!rows.length) html += '<div class="meta">表示できるスタッフがいません</div>';
   rows.forEach(r => {
-    const pct = totalPeriod > 0 ? Math.round(r.count / totalPeriod * 100) : 0;
+    const pct = shareBase > 0 ? Math.round(r.count / shareBase * 100) : 0;
     const w = max > 0 ? Math.max(r.count / max * 100, r.count > 0 ? 2 : 0) : 0;
     html += '<div class="sbar-row">'
       + '<div class="sbar-name">' + esc(r.name) + '</div>'
