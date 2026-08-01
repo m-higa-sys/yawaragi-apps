@@ -31,6 +31,8 @@ function sec(t) { console.log('\n[' + t + ']'); }
 
 const FNS = ['runRowAction', 'showUndoBar', 'hideUndoBar', 'openYmPicker', 'closeYmPicker',
   'setYm', 'pickYm', 'undoSetYm', 'kbYm', 'kbYoteiLabel', 'kbBuildYoteiMap', 'kbYoteiYm',
+  'kbAdoptYoteiRow',   // 2026-08-01: setYm の取り込みを kbAdoptYoteiRow に集約したため必要
+
   'thisYmStr', 'escapeAttr', 'escapeHtml'];
 const fnSrc = FNS.map(n => extractFrom(html, n)).join('\n');
 

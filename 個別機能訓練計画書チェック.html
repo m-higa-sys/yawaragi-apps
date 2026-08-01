@@ -211,6 +211,9 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .kb-cyc { display:block; font-size:0.72rem; font-weight:700; line-height:1.2; margin-bottom:2px; }
 .kb-cyc-plan { color:#2c5282; }
 .kb-cyc-eval { color:#9c4221; }
+/* 済んだ期間（温存セル）の見出し。灰色にして後ろへ引っ込め、「これから作る」青と見分ける。
+   ★2026-08-01: バッジの 緑✓／赤「未」の色と意味は一切変えていない（見出しの色だけ）。 */
+.kb-cyc-past { color:#718096; }
 .kb-badges { display:flex; flex-wrap:wrap; gap:2px; }
 .kb-hold { font-size:0.85rem; color:#744210; font-weight:700; }
 .kb-sm { font-size:0.72rem; font-weight:700; }
@@ -1032,6 +1035,24 @@ function kbIsHyoukaCell(yoteiYm, u, year, month) {
     return isHyoukaMonth(u.planStart, u.planMonths, year, month);
 }
 
+// 予定月シートの1行（APIレスポンス）を予定月マップへ取り込む。取り込めたら true。
+// ★2026-08-01: 計画書を記録した直後、GAS(@356) が返す yotei をここで画面へ反映するために追加。
+//   行が無い／nextYm が 'YYYY-MM' でない（旧GAS・エラー・壊れた値）ときは【何もしない】＝false。
+//   黙って予定月を消したり進めたりしない。呼び出し側は従来どおりの挙動を続けられる。
+function kbAdoptYoteiRow(map, userId, row) {
+    if (!map || !userId || !row) return false;
+    const ym = String(row.nextYm || '');
+    if (!/^\d{4}-\d{2}$/.test(ym)) return false;
+    map[userId] = {
+        nextYm: ym,
+        cycleMonths: parseInt(row.cycleMonths, 10) || 0,
+        slideCount: parseInt(row.slideCount, 10) || 0,
+        note: String(row.note || ''),
+        name: String(row.name || '')
+    };
+    return true;
+}
+
 // 「予定 ◯月 ▾」のラベル。年をまたぐときだけ年を付ける。
 function kbYoteiLabel(yoteiYm, nowYm) {
     if (!yoteiYm) return '未設定';
@@ -1490,15 +1511,25 @@ function renderTable() {
                 const pRec = planSrc.rec;
                 const pBlocked = !!pRec.blocked_reason;
                 const pYM = planSrc.year + '-' + String(planSrc.month).padStart(2, '0');
+                // ★2026-08-01 ラベルの混在是正（社長決定・案A）。配置ルール（上の if/else if 連鎖）は1バイトも変えず、
+                //   見出しの文言と色だけを分ける。同じ列に「計画(7月〜)」と「計画(8月〜)」が並んでも
+                //   どちらが「これから作る」でどちらが「済んだ期間」か分からなかった、が直接の理由。
+                //   これから作る = 作業月セル（planSrc が翌月＝計画月の行）／前月が表の外の計画月セル。
+                //   済んだ期間   = 実績があるだけの温存セル（planSrc が自セル・計画月でない）。
+                const planIsNext = (planSrc.year !== cellYear || planSrc.month !== mo.m)
+                    || (isPlan && !planClaimedByWork);
+                const pCycHtml = planIsNext
+                    ? '<span class="kb-cyc kb-cyc-plan">▶ ' + planSrc.month + '月分を準備</span>'
+                    : '<span class="kb-cyc kb-cyc-past">' + planSrc.month + '月分（記録済）</span>';
                 let pInner;
                 if (pBlocked) {
-                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
+                    pInner = pCycHtml
                         + '<span class="kb-hold" title="' + escapeAttr(pRec.blocked_reason) + '">' + blockedIcon(pRec.blocked_reason) + '保留（' + escapeHtml(blockedLabel(pRec.blocked_reason)) + '）</span>';
                 } else {
                     // 測定は2ソースの和（個訓シート ∪ 測定記録シート）。渡すのは「表示しているセルの月」の記録。
                     // ★書込先（planSrc = 計画月ノード行）は1バイトも変えていない。読む材料だけを足している。
                     const pb = kbPlanBadges(pRec, kbSokuteiForCell(state.shienByMonth, u.name, cellYear, mo.m));
-                    pInner = '<span class="kb-cyc kb-cyc-plan">計画(' + planSrc.month + '月〜)</span>'
+                    pInner = pCycHtml
                         + '<span class="kb-badges">' + pb.map(kbBadgeHtml).join('') + '</span>';
                     collectTodo(pb);
                 }
@@ -1707,13 +1738,7 @@ async function setYm(userId, ym) {
     const json = await res.json();
     if (!json || !json.ok || !json.row) throw new Error((json && json.error) || '予定月の更新に失敗しました');
     if (!state.yotei) state.yotei = {};
-    state.yotei[userId] = {
-        nextYm: String(json.row.nextYm || ''),
-        cycleMonths: parseInt(json.row.cycleMonths, 10) || 0,
-        slideCount: parseInt(json.row.slideCount, 10) || 0,
-        note: String(json.row.note || ''),
-        name: String(json.row.name || '')
-    };
+    kbAdoptYoteiRow(state.yotei, userId, json.row);   // 取り込みは1箇所（kbAdoptYoteiRow）に集約
     return json.row;
 }
 
@@ -2184,6 +2209,12 @@ async function applyValue(userId, name, year, month, field, fieldLabel, value) {
         const res = await fetch(url);
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '保存失敗');
+        // ★2026-08-01: 計画書を記録すると GAS(@356・段階3) が予定月を進め、その行を yotei で返す。
+        //   ここで取り込まないと、画面は再読込するまで古い予定月のまま描き続ける（社長が実機で確認）。
+        //   ⚠️ 記録の書込先（上のURLの year/month＝期間の開始月）は1バイトも変えていない。表示の追随だけ。
+        //   yotei が無い／壊れているレスポンス（旧GAS・他フィールド）は kbAdoptYoteiRow が無視する。
+        if (!state.yotei) state.yotei = {};
+        kbAdoptYoteiRow(state.yotei, userId, json.yotei);
         unmarkPending(userId, year, month, field);
         showToast(value
             ? '✅ ' + name + ' ' + month + '月 ' + fieldLabel + '=' + formatMD(value)

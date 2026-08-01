@@ -80,7 +80,8 @@ function renderBlocked(reason) {
 }
 const outMitei = renderBlocked('長期休み');
 ok(outMitei.indexOf('⏸保留（長期休み）') >= 0, 'D1: 保留セルに「⏸保留（長期休み）」＝理由が一目でわかる');
-ok(outMitei.indexOf('計画(4月〜)') >= 0, 'D1b: 計画サイクルタグは維持（保留でも計画月表示は残す）');
+// 2026-08-01 ラベル文言変更（案A）: 前月が範囲外の計画月は「▶ 4月分を準備」。
+ok(outMitei.indexOf('▶ 4月分を準備') >= 0, 'D1b: 計画サイクルタグは維持（保留でも計画月表示は残す）');
 const outHoken = renderBlocked('保険未登録');
 // 2026-07-26 表示ラベル変更: stored は "保険未登録" のまま／画面表示だけ「保険未登録・作成不可」（blockedLabel）。
 ok(outHoken.indexOf('⚠保留（保険未登録・作成不可）') >= 0, 'D2: 保険未登録は⚠アイコンで「⚠保留（保険未登録・作成不可）」表示');

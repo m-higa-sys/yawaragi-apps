@@ -91,7 +91,8 @@ ok(thead.innerHTML.indexOf(nowM + '月') >= 0, 'H1c: 当月ラベルがヘッダ
 // ===== 2. 計画月ノード（P）: 3バッジ・全未・赤 =====
 let out = tbody.innerHTML;
 ok(out.indexOf('ピー太') >= 0, 'C1: 計画月ユーザーが描画');
-ok(out.indexOf('計画(' + nowM + '月〜)') >= 0, 'C1b: サイクルタグ「計画(N月〜)」');
+// 2026-08-01 ラベル文言変更（案A）: 「計画(N月〜)」→「▶ N月分を準備」（これから作る側・青）。
+ok(out.indexOf('▶ ' + nowM + '月分を準備') >= 0, 'C1b: サイクルタグ「▶ N月分を準備」（これから作る）');
 ok((out.match(/#ffebee/g) || []).length >= 3, 'C1c: 未バッジ(赤#ffebee)が3個以上');
 
 // ===== 3. 評価月ノード（E）: 提出/評価・kb-cyc-eval =====
@@ -146,7 +147,8 @@ sandbox.state = { fiscalYear: fy, users: [H], records: recH, isLoading: false, i
 sandbox.renderTable();
 let outB = tbody.innerHTML;
 ok(outB.indexOf('ハツ江') >= 0, 'B0: 過去温存の対象ユーザーが描画される');
-ok(outB.indexOf('計画(') >= 0, 'B1: planStartより前でも計画実績のあるセルは表示される（"-"に隠れない）');
+// 温存セル（実績があるだけ）は「N月分（記録済）」＝済んだ期間の側。
+ok(outB.indexOf('月分（記録済）') >= 0, 'B1: planStartより前でも計画実績のあるセルは表示される（"-"に隠れない）');
 ok(outB.indexOf('kb-cyc-eval') >= 0, 'B1b: planStartより前でも評価実績のあるセルは表示される');
 ok(outB.indexOf('disabled">-') >= 0, 'B2: 実績のない開始前セルは従来どおり "-"（disabled）のまま');
 
@@ -156,13 +158,14 @@ const W = { userId: 'W', name: 'ワク人', furigana: 'ワ', category: '要介�
 sandbox.state = { fiscalYear: 2026, users: [W], records: {}, isLoading: false, includeCancelled: false, needsActionOnly: false };
 sandbox.renderTable();
 let outW = tbody.innerHTML;
-ok(outW.indexOf('計画(7月〜)') >= 0, 'W1: 作業月(6月)に計画パート「計画(7月〜)」が node(計画月)ラベルで出る');
-ok((outW.match(/計画\(7月〜\)/g) || []).length === 1, 'W2: 「計画(7月〜)」は1個だけ＝計画月(7月)に対話バッジを二重表示しない');
+ok(outW.indexOf('▶ 7月分を準備') >= 0, 'W1: 作業月(6月)に計画パート「▶ 7月分を準備」が node(計画月)ラベルで出る');
+ok((outW.match(/▶ 7月分を準備/g) || []).length === 1, 'W2: 「▶ 7月分を準備」は1個だけ＝計画月(7月)に対話バッジを二重表示しない');
 // 行をtd分割してセル位置を特定（[3]=4月,[4]=5月,[5]=6月,[6]=7月）。計画パートが6月にあり7月に無いこと＝移動を証明。
 const rowW = (outW.split('</tr>').find(r => r.indexOf('ワク人') >= 0) || '');
 const cellsW = rowW.split('<td');
-ok(!!cellsW[5] && cellsW[5].indexOf('計画(7月〜)') >= 0, 'W2b: 計画パートは6月セル(前月＝作業月)に出る');
-ok(!!cellsW[6] && cellsW[6].indexOf('計画(') < 0, 'W2c: 7月セル(計画月)には計画パートが出ない（作業月へ移譲＝二重表示なし）');
+ok(!!cellsW[5] && cellsW[5].indexOf('▶ 7月分を準備') >= 0, 'W2b: 計画パートは6月セル(前月＝作業月)に出る');
+// ラベル文言に依存しない形（計画パートの入力導線の有無）で見る。
+ok(!!cellsW[6] && cellsW[6].indexOf('data-field="keikaku_date"') < 0, 'W2c: 7月セル(計画月)には計画パートが出ない（作業月へ移譲＝二重表示なし）');
 ok(!!cellsW[5] && cellsW[5].indexOf('kb-cyc-eval') >= 0, 'W3: 作業月(6月)に評価スロットが同居（計画・測定・評価が揃う）');
 ok(/data-month="7"[^>]*data-field="keikaku_date"/.test(outW), 'W4: 計画パートの書込先 data-month=7（node=計画月＝格納位置は計画月のまま不変）');
 ok(!/data-month="6"[^>]*data-field="keikaku_date"/.test(outW), 'W5: 前月(6月)自身の行へは計画を書き込まない＝格納位置を移さない');
@@ -179,7 +182,7 @@ ok(sandbox.kobetsuCycleAt('2026-07', 1, 2026, 9).role === 'none', 'V2: 変則(1�
 const V = { userId: 'V', name: 'ヘン子', furigana: 'ワ', category: '要介護1', planStart: '2026-07', planMonths: 1, days: '月', ampm: '午前' };
 sandbox.state = { fiscalYear: 2026, users: [V], records: {}, isLoading: false, includeCancelled: false, needsActionOnly: false };
 sandbox.renderTable();
-ok(((tbody.innerHTML.match(/計画\(/g) || []).length) === 1, 'V3: 変則(1ヶ月)は計画パートが年間1個だけ（作業月=開始前月のみ）');
+ok(((tbody.innerHTML.match(/data-field="keikaku_date"/g) || []).length) === 1, 'V3: 変則(1ヶ月)は計画パートが年間1個だけ（作業月=開始前月のみ）');
 
 // ===== 14. planStart前月がグリッド範囲外（4月開始→前月は前年度3月）でもエラーにならず従来表示 =====
 const A = { userId: 'A', name: 'エイ子', furigana: 'ワ', category: '要介護1', planStart: '2026-04', planMonths: 3, days: '月', ampm: '午前' };
@@ -187,7 +190,7 @@ sandbox.state = { fiscalYear: 2026, users: [A], records: {}, isLoading: false, i
 let threw = false;
 try { sandbox.renderTable(); } catch (e) { threw = true; }
 ok(!threw, 'X1: 作業月がグリッド範囲外の利用者でもエラーにならない');
-ok(tbody.innerHTML.indexOf('計画(4月〜)') >= 0, 'X2: 前月が範囲外の計画月(4月)は従来どおり自セルに計画パートを出す（フォールバック）');
+ok(tbody.innerHTML.indexOf('▶ 4月分を準備') >= 0, 'X2: 前月が範囲外の計画月(4月)は従来どおり自セルに計画パートを出す（フォールバック）');
 
 // ===== 15. 回帰(クロ指摘): planStartを後ろへ動かし、旧データが作業月“自身の行”に残るケースで隠れない =====
 // M: planStart=2026-07 だが 6月(作業月)自身の行に旧・計画/測定データ。node(7月)は空 → 温存フォールバックで6月に表示。
