@@ -93,6 +93,31 @@ git rev-parse HEAD && git rev-parse origin/master   # SHA一致を実測
 
 さらに、本番配信物（github.io）の実コードに変更が入っていることを確認する。証跡なしの「反映しました」は報告として不成立。
 
+### 3-1. ⚠️ `docs/` のみの変更は github.io を叩かない（2026-08-02 実測で確定）
+
+**`docs/` は `_config.yml` の `exclude` 対象**（2026-07-30 のセキュリティ対策。公開リポジトリから
+設計情報を誰でもダウンロードできる状態を止めるため）。**GitHub Pages に配信されない。**
+
+したがって `docs/` 配下だけの変更では、上の「本番配信物の確認」は**適用できない**。
+github.io を叩くと **404 が返るが、これは正常**であり反映漏れではない。
+
+**`docs/` のみの変更の完了条件**:
+
+```bash
+git rev-parse HEAD && git rev-parse origin/master   # ① SHA一致を実測
+git show origin/master:docs/<ファイル名>            # ② リモートに本文が存在することを実測
+```
+
+**①②が揃えば完了。** Pages を叩く工程そのものが不要（叩いても意味のある情報は得られない）。
+
+実測（2026-08-02）: `docs/宿題.md` の push 後、`/docs/宿題.md` `/docs/宿題.html` `/docs/宿題/`
+の3パターンとも 404。**以前から存在する別の docs ファイルも同じく 404**
+（`2026-07-14-shift-admin-auth-followup.md` ／ `PII匿名化-据え置きリスト.md`）。
+新旧問わず配信されない＝構造的なもので push が原因ではない、と切り分け済み。
+
+> 同じ理由で `scripts/` `CLAUDE.md` `.claude/` も exclude 対象。これらだけの変更も同じ扱いにする。
+> **exclude に何が入っているかは `_config.yml` が単一の正。** 判断に迷ったらそこを見る。
+
 ## 4. 系統C: GAS（clasp）
 
 ### 4-1. 対象プロジェクト（実測: `.clasp.json`）
