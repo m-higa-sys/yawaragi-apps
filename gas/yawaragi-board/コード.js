@@ -20,13 +20,20 @@
 // 直接叩き、HTTPステータス（200=成功 / 401=トークン不正 / 400=宛先不正）を実行ログに残す。
 // 送る文面は「【テスト】」で始まる固定文＋日時のみ。利用者情報は一切含めない。
 function AAA_LINEテスト() {
-  // 1) sendLine が実際に使うグローバル（スクリプト読込時に Properties から取得）の状態
-  Logger.log('LINE_TOKEN    : ' + (LINE_TOKEN ? 'あり（' + String(LINE_TOKEN).length + '文字）' : '❌ なし'));
-  Logger.log('OWNER_USER_ID : ' + (OWNER_USER_ID ? 'あり' : '❌ なし'));
-  if (!LINE_TOKEN || !OWNER_USER_ID) {
+  // 1) sendLine が実際に使う値（初回参照時に Properties から取得）の状態
+  //    2026-08-02: グローバル変数から遅延取得関数へ移行。未設定時は関数が投げるため、
+  //    ここで拾って従来と同じ「未設定です」の案内を出して終わる（診断としての挙動は不変）。
+  var lineToken, ownerUserId;
+  try {
+    lineToken = getLineToken_();
+    ownerUserId = getOwnerUserId_();
+  } catch (propErr) {
     Logger.log('❌ Script Properties が未設定。プロジェクトの設定→スクリプト プロパティを確認');
+    Logger.log('   詳細: ' + propErr.message);
     return;
   }
+  Logger.log('LINE_TOKEN    : あり（' + String(lineToken).length + '文字）');
+  Logger.log('OWNER_USER_ID : あり');
 
   // 2) 実際に送ってステータスを取る
   var msg = '【テスト】LINE疎通確認 '
@@ -34,8 +41,8 @@ function AAA_LINEテスト() {
   var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
     method: 'post',
     contentType: 'application/json',
-    headers: { 'Authorization': 'Bearer ' + LINE_TOKEN },
-    payload: JSON.stringify({ to: OWNER_USER_ID, messages: [{ type: 'text', text: msg }] }),
+    headers: { 'Authorization': 'Bearer ' + lineToken },
+    payload: JSON.stringify({ to: ownerUserId, messages: [{ type: 'text', text: msg }] }),
     muteHttpExceptions: true
   });
   var code = res.getResponseCode();
@@ -6464,8 +6471,36 @@ function _test_sendCancelEmail_a_case() {
 }
 
 // ===== 社長に通知（LINE + Gmail 両方送信）=====
-var LINE_TOKEN = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
-var OWNER_USER_ID = PropertiesService.getScriptProperties().getProperty('OWNER_USER_ID');
+// 【2026-08-02 グローバルから外した理由】以前はここで PropertiesService をトップレベルで
+//   実行していた。トップレベルの例外は doGet に入る前に起きるため実行ログが1行も出ず、
+//   「0秒で失敗・原因不明」になる（実際に発生）。参照時に初めて読む形へ変更した。
+//   ★ここに限らず、関数の外から外部サービス（Properties/Spreadsheet/Drive/Gmail/UrlFetch 等）を
+//     呼ぶコードを足さないこと。足すとプロジェクト全体が同じ壊れ方をする。
+var _lineSecretsCache_ = null;   // 同一実行内のメモ化。宣言だけで外部呼び出しは無い
+
+// LINE用の2キーをまとめて1回だけ読む（同一実行内は再読み込みしない）。
+function _loadLineSecrets_() {
+  if (_lineSecretsCache_ === null) {
+    var props = PropertiesService.getScriptProperties();
+    _lineSecretsCache_ = {
+      token: props.getProperty('LINE_TOKEN'),
+      ownerUserId: props.getProperty('OWNER_USER_ID')
+    };
+  }
+  return _lineSecretsCache_;
+}
+
+function getLineToken_() {
+  var v = _loadLineSecrets_().token;
+  if (!v) throw new Error('Script Properties の LINE_TOKEN が未設定です（プロジェクトの設定→スクリプト プロパティ）');
+  return v;
+}
+
+function getOwnerUserId_() {
+  var v = _loadLineSecrets_().ownerUserId;
+  if (!v) throw new Error('Script Properties の OWNER_USER_ID が未設定です（プロジェクトの設定→スクリプト プロパティ）');
+  return v;
+}
 
 // 2026-05-22 → 2026-05-23: 欠席通知に出すケアマネ連絡手段の1行を組み立てる
 // cmInfo = { status: cmNotified値, office, name, method, phone }
@@ -6542,14 +6577,16 @@ function sendLine(message) {
   // === LINE送信（無料枠200通超過時は無音で失敗・5/1にリセット） ===
   try {
     var url = 'https://api.line.me/v2/bot/message/push';
+    // 未設定なら getOwnerUserId_/getLineToken_ が投げる。この try が拾うので挙動は従来どおり
+    // （LINEは無音で失敗し、下の Gmail バックアップは変わらず送られる）。
     var payload = {
-      to: OWNER_USER_ID,
+      to: getOwnerUserId_(),
       messages: [{ type: 'text', text: message }]
     };
     UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
-      headers: { 'Authorization': 'Bearer ' + LINE_TOKEN },
+      headers: { 'Authorization': 'Bearer ' + getLineToken_() },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
