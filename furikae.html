@@ -708,7 +708,28 @@ function fnkScheduleNotify(month) {
   _fnkNotifyTimer = setTimeout(function() { fnkNotifyBoard(month); }, 1500);
 }
 
+// ===== 編集中の自動更新抑止（2026-08-02）=====
+// カードの編集フォームはカードHTMLに直接埋め込まれ、入力は全て onchange（oninput ではない）。
+// つまりフォーカスを外すまで値はどこにも保存されていない。この状態で renderMonth が走ると
+// DOMごと差し替わり、change が発火しないまま入力が消える（社長が実際に遭遇・2026-08-02）。
+// 自動更新の経路は3つあり、うち2つ（30秒interval・visibilitychange）は cloudLoad に集約されるが、
+// ★3つ目 fetchFurikaeFubi → renderMonth は別経路。ここを塞がないと直らない。
+// 判定は「フォーム要素にフォーカスがあるか」だけ。フォームを開いただけ（未入力）なら更新は走る
+// ＝開きっぱなしで自動更新が永久に止まり他端末の変更が来なくなる、という事故を避ける。
+// テスト: scripts/test-furikae-editing-guard.js
+function fnkIsEditingTag(tagName) {
+  var t = String(tagName || '').toUpperCase();
+  return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT';
+}
+function fnkIsEditingNow() {
+  try {
+    var el = document.activeElement;
+    return !!el && fnkIsEditingTag(el.tagName);
+  } catch (e) { return false; } // 判定不能なら「編集中でない」＝更新側に倒す（更新が死ぬ方が害が大きい）
+}
+
 function cloudLoad() {
+  if (fnkIsEditingNow()) return; // 編集中は records 差し替えも再描画もしない（経路1・2をここで塞ぐ）
   if (!SYNC_URL || SYNC_URL.indexOf('__') === 0) return; // URL未設定
   try {
     const script = document.createElement('script');
@@ -1036,13 +1057,26 @@ function fnkProcessImport(records, nextId, funou, okCustomerIds, month, today) {
       var curTotal = byCid[cid].amount;
       var curPart = curTotal - prevSum; // 当月分 = 電算累積額 − 最新スナップショット
       var newBreakdown = (latest.breakdown && latest.breakdown.length ? latest.breakdown.slice() : [{ month: latest.month, amount: latest.amount || 0 }]).concat([{ month: month, amount: curPart }]);
+      // 依頼書の郵送日と引落開始予定は当月カードへ引き継ぐ（2026-08-02）。落とすと code4 の人は
+      // 毎月入れ直しになり、その間は「今日基準で次に間に合う便」の予告表示に戻って、実際の
+      // 引落開始月より遅い日付が出て判断を誤らせる。チェーンの新しい側から最初の非空を拾う。
+      // fnkNormalizeRecord の既定値(formSentDate:null)に潰されないよう明示指定で渡す。
+      // 金額・件数・自動消込には一切使われないフィールドなので取込結果は変わらない。
+      var carryFrom = function (field) {
+        for (var ci = cut.chain.length - 1; ci >= 0; ci--) { var v = cut.chain[ci][field]; if (v) return v; }
+        return null;
+      };
+      var carriedSent = carryFrom('formSentDate');
+      var carriedStartDate = carryFrom('expectedStartDate');
+      var carriedStartMonth = carryFrom('expectedStartMonth');
       cut.chain.forEach(function (card) { card.status = '繰越'; card.carriedTo = month; }); // 全スナップショットを閉じる（取り残し防止）
       recs.push(fnkNormalizeRecord({
         id: nextId++, month: month, customerId: cid, name: byCid[cid].name,
         bank: byCid[cid].bank, branch: byCid[cid].branch, account: byCid[cid].account,
         amount: curTotal, reason: byCid[cid].reason, resultCode: byCid[cid].resultCode,
         breakdown: newBreakdown, occurrence: newBreakdown.length, prevAmount: prevSum,
-        status: '未対応', contactedBy: null, contactedAt: null, contactMethod: null, createdAt: today
+        status: '未対応', contactedBy: null, contactedAt: null, contactMethod: null, createdAt: today,
+        formSentDate: carriedSent, expectedStartDate: carriedStartDate, expectedStartMonth: carriedStartMonth
       }));
       carriedOver.push({ customerId: cid, name: byCid[cid].name });
       cut.outliers.forEach(function (c) { flagged.push({ customerId: cid, name: c.name }); }); // 累積外は消さず要確認
@@ -1809,7 +1843,9 @@ async function fetchFurikaeFubi() {
     const d = await res.json();
     if (d && d.ok && Array.isArray(d.cases)) {
       furikaeFubiCases = d.cases;
-      renderMonth();
+      // ★経路3: 取得したデータは保持するが、編集中は再描画しない（次回の描画で反映される）。
+      // ここを塞がないと、別タブから戻るたびに開いていたフォームが消える。
+      if (!fnkIsEditingNow()) renderMonth();
     }
   } catch (err) {
     console.warn('fetchFurikaeFubi failed:', err);
