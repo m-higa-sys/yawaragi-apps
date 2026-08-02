@@ -26,9 +26,36 @@
 <title>出勤＆送迎表 - やわらぎ</title>
 <script>
 // ═══════════════════════════════════════════════
-// 閲覧専用モード判定（GitHub Pagesドメインで自動適用）
+// 編集可否ゲート（鍵を持つ端末だけ編集できる）
 // ═══════════════════════════════════════════════
-const IS_READONLY = location.hostname.includes('github.io');
+// 旧: location.hostname.includes('github.io') ＝ 公開先なら一律で閲覧専用。
+//     これは「公開先で誰にも編集させない」ための安全装置で、バグではない。
+//     ただし Pages へ移すと社長も編集できなくなり業務が止まるため、
+//     安全装置を外すのではなく admin.html と同じ鍵（adminKey）方式に置き換える。
+//
+// 🔴 フェイルセーフ: 鍵が無い / 読めない / 形式が不正 / 例外 のいずれでも
+//    閲覧専用（true）に倒す。どのルートを通っても「編集可」に落ちてこないこと。
+//
+// ⚠ 限界: これはクライアント側の入口ゲートであり、GASへの直接POSTは防げない。
+//    GAS は現在 ANYONE_ANONYMOUS のままで、サーバ側認証は別課題（既存の宿題）。
+//    ここで防げるのは「うっかり編集・第三者の偶発的な操作」までで、
+//    本気の攻撃を防ぐものではない。
+const ADMIN_KEY_STORE = 'yawaragi_admin_key';   // admin.html と同一のキー名・同一の保存先
+function readAdminKey(){
+  try{
+    const k = localStorage.getItem(ADMIN_KEY_STORE);
+    return (typeof k === 'string') ? k : '';
+  }catch(e){ return ''; }   // localStorage が読めない環境も「鍵なし」扱い
+}
+function computeReadonly(){
+  try{
+    const k = readAdminKey();
+    if(typeof k !== 'string') return true;   // 形式が不正
+    if(k.trim() === '') return true;         // 鍵なし
+    return false;                            // 鍵あり＝編集可
+  }catch(e){ return true; }                  // 例外時も閲覧専用へ倒す
+}
+const IS_READONLY = computeReadonly();
 if(IS_READONLY) document.documentElement.classList.add('readonly');
 </script>
 <style>
@@ -541,7 +568,8 @@ th{background:#e8e8e8;font-weight:700;text-align:center;white-space:nowrap;}
   <span id="board-sync-status" style="font-size:11px;margin-left:6px;color:#64748b;display:none"></span>
 </div>
 <div class="readonly-bar">
-  <span class="ro-title">出勤＆送迎表（閲覧専用）</span>
+  <span class="ro-title" id="ro-title">出勤＆送迎表（閲覧専用モード｜編集・保存できません）</span>
+  <a href="admin.html" id="ro-keylink" style="font-size:11px;color:#1565c0;text-decoration:underline">🔑 編集するには鍵が必要です</a>
   <input type="date" id="ro-date" onchange="changeDate(this.value)">
   <button onclick="roChangeDay(-1)">◀ 前日</button>
   <button onclick="roChangeDay(1)">次日 ▶</button>
@@ -7605,6 +7633,17 @@ async function initApp(){
   if(!IS_READONLY) opsAutoBackup();
   if(IS_READONLY) roUpdateStatus('最終更新: '+new Date().toLocaleTimeString('ja-JP'));
 }
+// 閲覧専用のとき、保存操作が「黙って何も起きない」状態にしない。
+// 既存の IS_READONLY 分岐（28箇所）には一切手を入れず、autoSave を外から包んで
+// 通知だけを足す。中の autoSave は従来どおり IS_READONLY で何もせず返る。
+if(IS_READONLY && typeof autoSave === 'function'){
+  const _autoSaveOrig = autoSave;
+  autoSave = function(){
+    try{ showToast('閲覧専用のため保存されませんでした（編集するには鍵が必要です）', '#d32f2f'); }catch(e){}
+    return _autoSaveOrig.apply(this, arguments);
+  };
+}
+
 initApp();
 
 // ═══════════════════════════════════════════════
