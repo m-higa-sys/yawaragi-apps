@@ -4043,21 +4043,57 @@ if (tbData.templates.length === 0) {
 let tbSelectedStaff = null;
 let tbSelectedPriority = 'high';
 
+// ===== ポーリングの可視性制御（2026-08-03・板GASの同時実行数対策）=====
+//   従来は setInterval を張りっぱなしにし、コールバック先頭の document.hidden ガードで
+//   「中身の実行だけ」を飛ばしていた。タイマー自体は動き続けるため、端末を開いたまま
+//   放置すると夜間も doGet が呼ばれ続け、朝の同時アクセスと重なって同時実行数超過の
+//   下地になる（2026-08-02 20:30-20:36 実測）。ここではタイマーそのものを止める。
+//   復帰時は「即1回」実行してから間隔を再開する（無いと復帰直後に最大1分古い画面を見せる）。
+//   ★ポーリングの中身（取得・描画）は一切変えていない。起動と停止の制御だけを足したもの。
+const _pollTimers = {};     // key -> intervalId。多重起動防止の単一の正
+const _pollRegistry = {};   // key -> { fn, intervalMs }。visibilitychange で再開する対象
+
+function stopPoll(key) {
+    if (_pollTimers[key]) { clearInterval(_pollTimers[key]); delete _pollTimers[key]; }
+}
+function startPoll(key, fn, intervalMs) {
+    stopPoll(key);   // 既存があれば必ず先に止める＝何度呼ばれてもタイマーは1本
+    _pollTimers[key] = setInterval(fn, intervalMs);
+}
+// 登録＝この時点で（表示中なら）開始する。同じ key の再登録は上書きで、タイマーは増えない。
+function registerPoll(key, fn, intervalMs) {
+    _pollRegistry[key] = { fn: fn, intervalMs: intervalMs };
+    if (document.visibilityState !== 'hidden') startPoll(key, fn, intervalMs);
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        Object.keys(_pollRegistry).forEach(k => stopPoll(k));   // 非表示＝完全停止
+        return;
+    }
+    // 表示に戻った：まず即1回、そのうえで間隔を再開する
+    Object.keys(_pollRegistry).forEach(k => {
+        const p = _pollRegistry[k];
+        try { p.fn(); } catch (e) { console.error('poll resume error: ' + k, e); }
+        startPoll(k, p.fn, p.intervalMs);
+    });
+});
+
 function tbInit() {
     tbFetchGasTasks(); // GASからタスクを取得
     tbRenderAll();
     // 1分ごとにボード更新（経過時間の更新用、タブ非表示中・別タブ表示中は止める）
-    setInterval(() => {
+    registerPoll('tbRenderBoard', () => {
         if (document.hidden) return;
         const activeTab = document.querySelector('.tab-btn.active');
         if (activeTab && activeTab.dataset.tab === 'task') tbRenderBoard();
     }, 60000);
-    // 30秒ごとにGASタスクを再取得（タブ非表示中・別タブ表示中は止める）
-    setInterval(() => {
+    // 60秒ごとにGASタスクを再取得（2026-08-03: 30秒→60秒。板GASの呼び出し数を半減）
+    registerPoll('tbFetchGasTasks', () => {
         if (document.hidden) return;
         const activeTab = document.querySelector('.tab-btn.active');
         if (activeTab && activeTab.dataset.tab === 'task') tbFetchGasTasks();
-    }, 30000);
+    }, 60000);
 }
 
 // GASからタスクを取得
@@ -7395,16 +7431,17 @@ function attInit() {
     loadUsageAlerts();
     // 長期休み一覧も読み込み（再開予定日の表示用）
     if (typeof absLoadLongTermList === 'function') absLoadLongTermList();
-    // 30秒ごとに出席予定を自動更新（欠席登録のリアルタイム反映）
+    // 60秒ごとに出席予定を自動更新（欠席登録のリアルタイム反映）
+    // 2026-08-03: 30秒→60秒。あわせて registerPoll 管理へ移し、ページ非表示中はタイマーごと止める
     // 他アプリと同じガード方式：タブ非表示・他タブ表示中は再描画を止める
-    setInterval(() => {
+    registerPoll('attLoad', () => {
         if (document.hidden) return;
         const tabBtn = document.querySelector('.tab-btn[data-tab="attendance"]');
         if (tabBtn && !tabBtn.classList.contains('active')) return;
         // キャッシュは消さずに attLoad を呼ぶ → 既存リストが表示されたまま裏で取得し、
         // 結果が返ってきたら attRender で上書き（「読み込み中...」表示でチラつかない）
         attLoad();
-    }, 30000);
+    }, 60000);
 }
 
 // 全利用者データを取得（欠席登録の検索用、patternsから全員取得）
