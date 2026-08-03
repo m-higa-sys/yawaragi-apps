@@ -148,6 +148,25 @@ main { padding: 16px 24px 48px; }
 .bulk-sent-btn:disabled { background: #cbd5e0; border-color: #cbd5e0; cursor: not-allowed; }
 #printWorklistBtn { padding: 6px 14px; background: #805ad5; color: white; border: 1px solid #805ad5; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
 #printWorklistBtn:hover { background: #6b46c1; }
+/* ⚠️ 中止者・書類未完了 専用枠（2026-08-03・純追加） */
+.chushi-section { border: 2px solid #f59e0b; border-radius: 10px; background: #fffbeb; margin: 0 0 14px; overflow: hidden; }
+.chushi-section-header { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 8px 12px; background: #fef3c7; color: #78350f; font-weight: 700; font-size: 0.92rem; }
+.chushi-section-count { font-weight: 700; }
+.chushi-section-note { font-weight: 400; font-size: 0.76rem; color: #92400e; }
+.chushi-card { padding: 8px 12px; border-top: 1px solid #fde68a; }
+.chushi-card-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
+.chushi-name { font-weight: 700; font-size: 0.95rem; color: #1a202c; }
+.chushi-office { font-size: 0.78rem; color: #4a5568; }
+.chushi-lastuse { font-size: 0.76rem; color: #92400e; }
+.chushi-deadline { font-size: 0.76rem; font-weight: 700; padding: 1px 8px; border-radius: 10px; background: #fde68a; color: #78350f; }
+.chushi-deadline.over { background: #c53030; color: #ffffff; }
+.chushi-count { margin-left: auto; font-size: 0.78rem; font-weight: 700; color: #78350f; }
+.chushi-warn { font-size: 0.75rem; color: #9a3412; background: #ffedd5; border-radius: 6px; padding: 3px 8px; margin-bottom: 5px; }
+.chushi-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+/* 要確認＝自動判定できなかった項目。「不要」ではないことが一目で分かる見た目にする */
+.check-item.uncertain { background: #ffedd5; border-color: #fb923c; border-style: dashed; color: #7c2d12; font-weight: 600; }
+.check-item.uncertain.checked { background: #c6f6d5; border-color: #48bb78; border-style: solid; color: #1a202c; }
+
 .check-item.carryover { background: #fef3c7; border-color: #f59e0b; color: #78350f; font-style: italic; }
 .check-item.carryover.checked { background: #d9f99d; border-color: #84cc16; color: #365314; }
 .help-hint { background: #fff9e6; border-left: 3px solid #f6ad55; padding: 8px 12px; font-size: 0.8rem; margin: 0 0 12px; border-radius: 4px; color: #744210; }
@@ -919,17 +938,21 @@ async function fetchAll() {
     jsonp(YAWARAGI_BOARD_API + '?action=kubunList').catch(() => ({ active: [] })),
     jsonp(YAWARAGI_BOARD_API + '?action=kubunDelayList').catch(() => ({ items: [] })),
     // Phase 1-D: 通所介護計画書 月次取得
-    jsonp(YAWARAGI_BOARD_API + '?action=getTsushoPlans&ym=' + encodeURIComponent(ymForPlans))
+    // includeCancelled=1（2026-08-03 GAS@364）: 中止者の cmOffice/userName が付き cancelled で判別できる。
+    jsonp(YAWARAGI_BOARD_API + '?action=getTsushoPlans&ym=' + encodeURIComponent(ymForPlans) + '&includeCancelled=1')
       .catch(() => ({ ok: false, plans: [], unsent: [] })),
     // Phase 1-D: 口腔(II)計画書/モニタリング 月次取得
-    jsonp(YAWARAGI_BOARD_API + '?action=getOralPlans&ym=' + encodeURIComponent(ymForPlans))
+    // includeCancelled=1（2026-08-03 GAS@363）: 中止者も cancelled 付きで受け取る。
+    // 「⚠️中止者・書類未完了」枠が中止者の口腔書類を判定するために必要。
+    // 応答の cancelled キーで通常/中止を区別でき、既存の集計は userId 突合なので影響なし。
+    jsonp(YAWARAGI_BOARD_API + '?action=getOralPlans&ym=' + encodeURIComponent(ymForPlans) + '&includeCancelled=1')
       .catch(() => ({ ok: false, plans: [], unsent: [] })),
-    // 個訓 目標達成評価: 年度全体の記録を取得
-    jsonp(YAWARAGI_BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear)
+    // 個訓 目標達成評価: 年度全体の記録を取得（中止者の planStart フォールバック源も兼ねる）
+    jsonp(YAWARAGI_BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear + '&includeCancelled=1')
       .catch(() => ({ ok: false, records: [] }))
     ,
     // 通所モニタリング: 年度の利用者(planStart,finalEvalMonth,caremaneOffice)と記録
-    jsonp(YAWARAGI_BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear)
+    jsonp(YAWARAGI_BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear + '&includeCancelled=1')
       .catch(() => ({ ok: false, users: [], records: [] }))
   ]);
   allData.users = usersRes.users || [];
@@ -944,13 +967,87 @@ async function fetchAll() {
   allData.contacts = contactsRes.cmContacts || [];
   allData.kubunActive = (kubunRes && kubunRes.active) ? kubunRes.active : [];
   allData.kubunDelayed = (kubunDelayedRes && kubunDelayedRes.items) ? kubunDelayedRes.items : [];
-  allData.tsushoPlans = (tsushoPlansRes && tsushoPlansRes.ok) ? tsushoPlansRes : { plans: [], unsent: [] };
-  allData.oralPlans = (oralPlansRes && oralPlansRes.ok) ? oralPlansRes : { plans: [], unsent: [] };
+  // ★通所計画書だけは他の3つと事情が違う（実測で確認）。
+  //   応答の行は「通所計画書記録シート」由来なので、includeCancelled を付けなくても
+  //   中止者の行は元から含まれている（付かないのは cmOffice/userName の付加情報だけ）。
+  //   ＝ここで cancelled 行を落とすと、従来出ていた行が消えて**逆に退行**する。
+  //   buildTargets は userId しか見ない（tsushoNeededSet/tsushoSentSet）ので、
+  //   生データをそのまま渡せば行集合は従来と完全に同一。
+  const tsushoRaw = (tsushoPlansRes && tsushoPlansRes.ok) ? tsushoPlansRes : { plans: [], unsent: [] };
+  allData.tsushoPlansAll = tsushoRaw;
+  allData.tsushoPlans = tsushoRaw;
+
+  // ★includeCancelled=1 で中止者が混ざるようになったが、**通常リストの判定は現状維持**する（仕様§6）。
+  //   既存経路（buildTargets）には cancelled を除いた＝従来と完全に同一の集合を渡し、
+  //   中止者を含む生データは *All フィールドに分けて持つ（専用枠だけが参照する）。
+  //   ※GAS は includeCancelled 無しのとき中止者を除外するので、この filter は従来応答と一致する。
+  const dropCancelled = (arr) => (arr || []).filter(x => x && x.cancelled !== true);
+
+  const oralRaw = (oralPlansRes && oralPlansRes.ok) ? oralPlansRes : { plans: [], unsent: [] };
+  allData.oralPlansAll = oralRaw;
+  allData.oralPlans = { plans: dropCancelled(oralRaw.plans), unsent: dropCancelled(oralRaw.unsent) };
+
   allData.keikakushoRecords = (keikakushoRes && keikakushoRes.records) ? keikakushoRes.records : [];
   // 個訓 計画開始月/計画月数（planStart, planMonths）= ①と同源。評価月判定の正準化に使う
-  allData.keikakushoUsers = (keikakushoRes && keikakushoRes.users) ? keikakushoRes.users : [];
+  const kUsersRaw = (keikakushoRes && keikakushoRes.users) ? keikakushoRes.users : [];
+  allData.keikakushoUsersAll = kUsersRaw;
+  allData.keikakushoUsers = dropCancelled(kUsersRaw);
+
   // 通所モニタリング年度データ（users: planStart/finalEvalMonth/caremaneOffice, records: 送付日）
-  allData.monitoring = (monitoringRes && monitoringRes.ok) ? monitoringRes : { users: [], records: [] };
+  const monRaw = (monitoringRes && monitoringRes.ok) ? monitoringRes : { users: [], records: [] };
+  allData.monitoringAll = monRaw;
+  allData.monitoring = { users: dropCancelled(monRaw.users), records: monRaw.records || [] };
+
+  // 「⚠️中止者・書類未完了」枠: 最終利用月が表示月より前の中止者について、その月ぶんを追加取得する。
+  await fetchChushiPendingMonths(ymForPlans);
+}
+
+// 専用枠が必要とする「別の月／別の年度」のデータだけを追加取得する（取得済みはキャッシュで再利用）。
+// 失敗しても既存画面は壊さない（catch で空を入れ、カード側は「要確認」に倒す）。
+async function fetchChushiPendingMonths(displayYm) {
+  allData.chushiMonth = allData.chushiMonth || {};
+  allData.chushiYear = allData.chushiYear || {};
+
+  const needMonths = new Set();
+  (allData.users || []).forEach(u => {
+    if (!soufuIsChushiUser(u)) return;
+    const lm = soufuLastUseMonth(u.lastUseDate);
+    if (lm && lm < displayYm) needMonths.add(lm);
+  });
+  if (needMonths.size === 0) return;
+
+  const needYears = new Set();
+  needMonths.forEach(lm => {
+    const [y, m] = lm.split('-').map(Number);
+    needYears.add((m >= 4) ? y : y - 1);
+  });
+
+  const monthJobs = [...needMonths].filter(lm => !allData.chushiMonth[lm]).map(lm =>
+    Promise.all([
+      jsonp(YAWARAGI_BOARD_API + '?action=getOralPlans&ym=' + encodeURIComponent(lm) + '&includeCancelled=1').catch(() => null),
+      // 通所計画書も includeCancelled=1（GAS@364）。中止者の cmOffice が付き cancelled で判別できる
+      jsonp(YAWARAGI_BOARD_API + '?action=getTsushoPlans&ym=' + encodeURIComponent(lm) + '&includeCancelled=1').catch(() => null)
+    ]).then(([o, t]) => {
+      allData.chushiMonth[lm] = {
+        oral: (o && o.ok) ? o : null,
+        tsusho: (t && t.ok) ? t : null
+      };
+    })
+  );
+  const yearJobs = [...needYears].filter(fy => !allData.chushiYear[fy]).map(fy =>
+    Promise.all([
+      jsonp(YAWARAGI_BOARD_API + '?action=getKeikakushoYear&year=' + fy + '&includeCancelled=1').catch(() => null),
+      jsonp(YAWARAGI_BOARD_API + '?action=getMonitoringYear&year=' + fy + '&includeCancelled=1').catch(() => null)
+    ]).then(([k, m]) => {
+      allData.chushiYear[fy] = {
+        keikakushoUsers: (k && k.users) || [],
+        keikakushoRecords: (k && k.records) || [],
+        monitoringUsers: (m && m.users) || [],
+        ok: !!(k && m)
+      };
+    })
+  );
+  await Promise.all(monthJobs.concat(yearJobs));
 }
 
 // ===== 利用中止者の対象月判定（2026-07-08） =====
@@ -982,6 +1079,112 @@ function soufuIsChushiHiddenInMonth(user, ym) {
   var last = soufuNormLastUseDate(user && user.lastUseDate);
   if (!last) return false;                            // 空欄/行なし → 出す（フェイルセーフ）
   return last < ym + '-01';                           // 最終利用日 < 対象月初日 → 隠す
+}
+
+// ===== 「⚠️ 中止者・書類未完了」専用枠（2026-08-03） =====
+// 中止者は最終利用月を過ぎると通常リストから消える（soufuIsChushiHiddenInMonth）が、
+// 翌月10日までに渡す書類が残る。全部✅になるまで当月ビュー上部に出し続ける（終わるまで方式）。
+// テスト: scripts/test-cmsoufu-chushi-pending.js（これらを実コード抽出して検証）
+
+// 最終利用日 → 最終利用月 'YYYY-MM'。不明・空は '' を返す。
+function soufuLastUseMonth(v) {
+  var d = soufuNormLastUseDate(v);
+  return d ? d.slice(0, 7) : '';
+}
+
+// 利用を終えた人か（中止・終了・卒業）。
+// 2026-08-03 社長判断で 終了・卒業 も専用枠の対象に含めた。書類漏れのリスクは中止と同じため。
+// GAS 側の getXxxTargetUsers_ も「終了/中止/卒業」を同一に扱い cancelled=true にするので基準が揃う。
+function soufuIsChushiUser(user) {
+  var st = String((user && user.status) || '');
+  return st.indexOf('中止') >= 0 || st.indexOf('終了') >= 0 || st.indexOf('卒業') >= 0;
+}
+
+// 表示中 ym で「中止者・書類未完了」専用枠に出すか。
+// allChecked = その人の必要書類が全部✅か（呼び出し側が既存の集計ロジックで算出して渡す）。
+// ・全✅なら消える。それ以外の自動消滅は無し（何ヶ月経っても消えない）。
+// ・最終利用月 == ym は通常リスト側（既存動作を変えない）ので専用枠には出さない。
+// ・最終利用日が不明な中止者は通常リスト側がフェイルセーフで出すので、ここでは出さない（二重表示防止）。
+function soufuIsChushiPendingTarget(user, ym, allChecked) {
+  if (allChecked === true) return false;
+  if (!soufuIsChushiUser(user)) return false;
+  var lm = soufuLastUseMonth(user && user.lastUseDate);
+  if (!lm) return false;
+  return lm < String(ym || '');
+}
+
+// 最終利用月 'YYYY-MM' → 提出期限 '翌月10日' の ISO。解釈不能は ''。
+function soufuChushiDeadline(lastUseMonth) {
+  var m = String(lastUseMonth || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return '';
+  var d = new Date(Number(m[1]), Number(m[2]), 10);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// 期限の状態: 'before'（期限前） / 'due'（当日・通常色） / 'over'（超過・赤）。期限が空なら ''。
+function soufuDeadlineState(deadlineIso, todayIso) {
+  if (!deadlineIso) return '';
+  if (todayIso > deadlineIso) return 'over';
+  if (todayIso === deadlineIso) return 'due';
+  return 'before';
+}
+
+// 期限の表示ラベル '8/10'（0詰めしない）。
+function soufuFormatDeadlineLabel(deadlineIso) {
+  var m = String(deadlineIso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  return Number(m[2]) + '/' + Number(m[3]);
+}
+
+// planStart の解決。measureMap 優先、無ければ getKeikakushoYear(includeCancelled=1) の planStart。
+// ★どこからも取れない場合は source='unknown' を返す。呼び出し側はこれを「要確認」表示にし、
+//   「不明＝不要」と解釈して自動✅に倒してはならない（書類残りの見逃し防止）。
+function soufuResolvePlanStart(measureEntry, keikakushoUser) {
+  var fromMeasure = (measureEntry && measureEntry.planStart) || '';
+  if (fromMeasure) return { planStart: fromMeasure, source: 'measure' };
+  var fromK = (keikakushoUser && keikakushoUser.planStart) || '';
+  if (fromK) return { planStart: fromK, source: 'keikakusho' };
+  return { planStart: '', source: 'unknown' };
+}
+
+// 体力測定の対象月か。'yes' / 'no' / 'unknown'。
+// ★planStart が取れないときは 'no'（不要）ではなく 'unknown'（要確認）を返す。
+function soufuMeasureState(planStart, ym, startDate, care) {
+  if (!planStart) return 'unknown';
+  return isMeasureMonth(planStart, ym, startDate, care) ? 'yes' : 'no';
+}
+
+// 中止者カードに出す書類項目を組み立てる。既存 getCheckItems をそのまま再利用し、
+// 「判定できない項目」を uncertain=true（＝要確認）として**必ず残す**。
+// ★不明を「不要」に倒して項目ごと消すと、未提出の書類が画面から消えて見逃しになる。絶対にやらない。
+//   - measureState 'unknown' … planStart が取れず体測サイクルを判定できない
+//   - tsushoState  'unknown' … GAS の getTsushoPlans が中止者を返さない（includeCancelled 非対応）
+//   - planStartSource 'unknown' … 個別機能訓練計画書・個訓評価の作成月を判定できない（要介護のみ）
+function soufuChushiDocItems(opts) {
+  var o = opts || {};
+  var psUnknown = (o.planStartSource === 'unknown');
+  var measureUnknown = (o.measureState === 'unknown');
+  var tsushoUnknown = (o.tsushoState === 'unknown');
+  var isKaigo = (o.care === 'kaigo');
+  // 不明は「出す側」に倒す（yes でなくても unknown なら項目を立てる）
+  var isMeasure = (o.measureState === 'yes') || measureUnknown;
+  var needsTsusho = (o.tsushoState === 'yes') || tsushoUnknown;
+  var hasNewPlan = (o.hasNewPlan === true) || (psUnknown && isKaigo);
+  var needsHyouka = (o.needsHyouka === true) || (psUnknown && isKaigo);
+  var items = getCheckItems(
+    o.care, hasNewPlan, o.method, isMeasure,
+    needsTsusho, o.needsOralPlan === true, needsHyouka, o.monitoringSignRequired === true
+  );
+  var uncertainKeys = {};
+  if (measureUnknown) uncertainKeys.measure = true;
+  if (tsushoUnknown) uncertainKeys.tsushoPlan = true;
+  if (psUnknown && isKaigo) {
+    if (o.hasNewPlan !== true) uncertainKeys.train = true;
+    if (o.needsHyouka !== true) uncertainKeys.hyouka = true;
+  }
+  return items.map(function (it) {
+    return { key: it.key, label: it.label, uncertain: uncertainKeys[it.key] === true };
+  });
 }
 
 // トグル状態を見て「対象月 ym にこの利用者を出すか」を返すグルー（純関数 + DOM読取）。
@@ -1124,6 +1327,222 @@ function buildTargets(ym) {
   return { targets, contactMap };
 }
 
+// ===== 「⚠️ 中止者・書類未完了」専用枠（2026-08-03） =====
+// 中止者は最終利用月を過ぎると通常リストから消えるが、翌月10日までに渡す書類が残る。
+// 全部✅になるまで当月ビュー上部に出し続ける（終わるまで方式）。純追加＝通常リストには一切触らない。
+// チェックは data-target-ym に**最終利用月**を入れるため、既存の check-main ハンドラがそのまま
+// progress[最終利用月][氏名] に読み書きする＝7月ビューで付けた✅と専用枠の✅が同期する。
+
+// 表示月の年度データ（chushiYear に無ければメイン取得分でまかなう）
+function soufuYearDataFor(lastUseMonth) {
+  const [y, m] = String(lastUseMonth || '').split('-').map(Number);
+  if (isNaN(y) || isNaN(m)) return null;
+  const fy = (m >= 4) ? y : y - 1;
+  const cached = (allData.chushiYear || {})[fy];
+  if (cached) return cached;
+  // メイン取得分の年度と一致するならそれを使う（*All = 中止者込み）
+  const selYm = (document.getElementById('monthSel') || {}).value || '';
+  const [sy, sm] = String(selYm).split('-').map(Number);
+  const selFy = (!isNaN(sy) && !isNaN(sm)) ? ((sm >= 4) ? sy : sy - 1) : null;
+  if (selFy === fy) {
+    return {
+      keikakushoUsers: allData.keikakushoUsersAll || [],
+      keikakushoRecords: allData.keikakushoRecords || [],
+      monitoringUsers: (allData.monitoringAll && allData.monitoringAll.users) || [],
+      ok: true
+    };
+  }
+  return null;
+}
+
+// 最終利用月の月次データ（chushiMonth に無ければ、表示月と一致する場合のみメイン取得分）。
+// kind = 'oral' | 'tsusho'。取得できていなければ null（呼び出し側は「要確認」に倒す）。
+function soufuMonthDataFor(lastUseMonth, kind) {
+  const cached = (allData.chushiMonth || {})[lastUseMonth];
+  if (cached) return cached[kind] || null;
+  const selYm = (document.getElementById('monthSel') || {}).value || '';
+  if (selYm === lastUseMonth) {
+    return (kind === 'tsusho' ? allData.tsushoPlansAll : allData.oralPlansAll) || null;
+  }
+  return null;
+}
+
+function buildChushiPendingCards(ym) {
+  const progress = loadProgress();
+  const contactMap = {};
+  (allData.contacts || []).forEach(c => { contactMap[c.office] = c; });
+  const measureMap = {};
+  (allData.measure || []).forEach(m => { measureMap[m.name] = m; });
+
+  const todayIso = (function () {
+    const t = new Date();
+    return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  })();
+
+  const cards = [];
+  (allData.users || []).forEach(u => {
+    const lum = soufuLastUseMonth(u.lastUseDate);
+    // まず「中止者かつ最終利用月 < 表示月」だけに絞る（allChecked は項目を組んでから判定する）
+    if (!soufuIsChushiUser(u) || !lum || !(lum < ym)) return;
+    if (u.care !== 'kaigo' && u.care !== 'shien') return; // 通常リストと同じ対象区分に揃える
+
+    const yearData = soufuYearDataFor(lum);
+    const oralData = soufuMonthDataFor(lum, 'oral');
+    const tsushoData = soufuMonthDataFor(lum, 'tsusho');
+
+    // planStart: measureMap 優先 → getKeikakushoYear(includeCancelled=1) へフォールバック
+    const mEntry = measureMap[u.name] || null;
+    const kUser = yearData ? (yearData.keikakushoUsers || []).find(k => k.userId === u.name) : null;
+    const ps = soufuResolvePlanStart(mEntry, kUser);
+    const measureState = soufuMeasureState(ps.planStart, lum, (mEntry && mEntry.startDate) || '', u.care);
+
+    // 個別機能訓練計画書 / 個訓評価（要介護のみ・①と同源の planStart/planMonths で判定）
+    const [lY, lM] = lum.split('-').map(Number);
+    let hasNewPlan = false, needsHyouka = false;
+    if (u.care === 'kaigo' && ps.source !== 'unknown') {
+      const pMonths = (kUser && kUser.planMonths) || 3;
+      hasNewPlan = isPlanMonth(ps.planStart, pMonths, lY, lM);
+      needsHyouka = isHyoukaMonth(ps.planStart, pMonths, lY, lM);
+    }
+
+    // plans / unsent の userId 集合に居るか＝その月に必要な書類か（通常リストと同じ判定）
+    const neededIn = (data) => {
+      const s = new Set();
+      (data.plans || []).forEach(p => s.add(p.userId));
+      (data.unsent || []).forEach(p => s.add(p.userId));
+      return s.has(u.name);
+    };
+
+    // 口腔(II): includeCancelled=1 で中止者も判定できる。データが無ければ「出す側」に倒す。
+    const needsOralPlan = oralData ? neededIn(oralData) : true;
+
+    // 通所計画書: GAS@364 で includeCancelled 対応済み＝実データで必要/不要を判定できる。
+    // ★取得できなかったときだけ 'unknown'（要確認）に倒す。不明を「不要」にはしない。
+    const tsushoState = tsushoData ? (neededIn(tsushoData) ? 'yes' : 'no') : 'unknown';
+
+    // 通所モニタリング 最終評価月（要支援のサイン要）
+    let monitoringSignRequired = false;
+    if (u.care === 'shien' && yearData) {
+      const mu = (yearData.monitoringUsers || []).find(x => x.userId === u.name);
+      if (mu) monitoringSignRequired = (monitoringFinalEvalMonth(mu.planStart, mu.finalEvalMonth) === lum);
+    }
+
+    const contact = contactMap[u.cmOffice || ''] || {};
+    const officeMethod = resolveSoufu(contact.method || '').docMethod;
+
+    const items = soufuChushiDocItems({
+      care: u.care,
+      method: officeMethod,
+      planStartSource: ps.source,
+      measureState: measureState,
+      tsushoState: tsushoState,
+      needsOralPlan: needsOralPlan,
+      hasNewPlan: hasNewPlan,
+      needsHyouka: needsHyouka,
+      monitoringSignRequired: monitoringSignRequired
+    });
+
+    // 進捗は**最終利用月**のキーで読む（通常リストのその月ビューと同じ場所）
+    const prog = (progress[lum] || {})[u.name] || {};
+    const hyoukaRec = yearData
+      ? (yearData.keikakushoRecords || []).find(r => r.userId === u.name && r.year === lY && r.month === lM)
+      : null;
+    const hyoukaDone = !!(hyoukaRec && (hyoukaRec.hyouka_pdf_date || hyoukaRec.hyouka_print_date));
+
+    const marked = items.map(it => ({
+      key: it.key,
+      label: it.label,
+      uncertain: it.uncertain,
+      // 個訓評価だけは①側の送付記録が正（通常リストと同じ扱い）＝手動チェックにしない
+      serverDriven: it.key === 'hyouka',
+      done: it.key === 'hyouka' ? hyoukaDone : (prog[it.key] === true)
+    }));
+    const total = marked.length;
+    const done = marked.filter(x => x.done).length;
+
+    // 全部✅なら専用枠から消える（純関数で最終判定）
+    if (!soufuIsChushiPendingTarget(u, ym, total > 0 && done === total)) return;
+
+    const deadline = soufuChushiDeadline(lum);
+    cards.push({
+      name: u.name,
+      furigana: u.furigana || '',
+      office: u.cmOffice || '(事業所未登録)',
+      care: u.care,
+      lastUseMonth: lum,
+      lastUseDate: soufuNormLastUseDate(u.lastUseDate),
+      deadline: deadline,
+      deadlineState: soufuDeadlineState(deadline, todayIso),
+      deadlineLabel: soufuFormatDeadlineLabel(deadline),
+      items: marked,
+      total: total,
+      done: done,
+      dataIncomplete: !yearData || !oralData || !tsushoData
+    });
+  });
+
+  // 期限が近い（＝最終利用月が古い）順に並べる
+  cards.sort((a, b) => (a.lastUseMonth < b.lastUseMonth ? -1 : a.lastUseMonth > b.lastUseMonth ? 1 : (a.name < b.name ? -1 : 1)));
+  return cards;
+}
+
+function renderChushiPendingSection(ym) {
+  let cards;
+  try {
+    cards = buildChushiPendingCards(ym);
+  } catch (e) {
+    console.error('[中止者・書類未完了] 構築に失敗', e);
+    return '';
+  }
+  if (!cards.length) return '';
+
+  const cardHtml = cards.map(c => {
+    const dlCls = c.deadlineState === 'over' ? ' over' : '';
+    const dlText = c.deadlineState === 'over'
+      ? '期限超過（' + c.deadlineLabel + '）'
+      : '期限 ' + c.deadlineLabel;
+    const chips = c.items.map(it => {
+      const icon = it.done ? '✅' : (it.uncertain ? '❓' : '☐');
+      const cls = 'check-item'
+        + (it.done ? ' checked' : '')
+        + (it.uncertain ? ' uncertain' : '')
+        + (it.serverDriven ? ' locked' : '');
+      const label = it.label + (it.uncertain ? '（要確認）' : '');
+      const title = it.uncertain
+        ? '必要かどうかを自動判定できませんでした。台帳を見て確認してください（不要と決めつけていません）'
+        : (it.serverDriven ? '個訓評価は①アプリの送付記録が正です' : '');
+      // ★data-target-ym は最終利用月。既存の check-main ハンドラがそのまま同じ月へ書き込む
+      return '<span class="' + cls + '" data-user="' + escapeAttr(c.name) + '" data-key="' + it.key + '" data-target-ym="' + c.lastUseMonth + '">'
+        + '<span class="' + (it.serverDriven ? 'check-label' : 'check-main') + '" title="' + escapeAttr(title) + '">'
+        + icon + ' ' + escapeHtml(label) + '</span>'
+        + '</span>';
+    }).join('');
+    const warn = c.dataIncomplete
+      ? '<div class="chushi-warn">⚠️ ' + escapeHtml(monthShort(c.lastUseMonth)) + '分のデータを取得できませんでした。項目は多めに出しています（要確認）</div>'
+      : '';
+    return '<div class="chushi-card">'
+      + '<div class="chushi-card-head">'
+      +   '<span class="chushi-name">' + escapeHtml(c.name) + '</span>'
+      +   '<span class="chushi-office">' + escapeHtml(c.office) + '</span>'
+      +   '<span class="chushi-lastuse">最終利用 ' + escapeHtml(monthShort(c.lastUseMonth))
+      +     (c.lastUseDate ? '（' + escapeHtml(c.lastUseDate) + '）' : '') + '</span>'
+      +   '<span class="chushi-deadline' + dlCls + '">' + escapeHtml(dlText) + '</span>'
+      +   '<span class="chushi-count">' + c.done + '/' + c.total + '</span>'
+      + '</div>'
+      + warn
+      + '<div class="chushi-chips">' + chips + '</div>'
+      + '</div>';
+  }).join('');
+
+  return '<div class="chushi-section">'
+    + '<div class="chushi-section-header">⚠️ 中止・終了者の書類未完了'
+    +   '<span class="chushi-section-count">(' + cards.length + '名)</span>'
+    +   '<span class="chushi-section-note">全部✅になるまで表示され続けます</span>'
+    + '</div>'
+    + cardHtml
+    + '</div>';
+}
+
 // 展開中の事業所を記憶（再描画で消えないように）
 const expandedOffices = new Set();
 // 「送付完了」セクションの展開状態（セッション内のみ・デフォルト折りたたみ）
@@ -1230,9 +1649,13 @@ function render() {
   let total = 0, done = 0;
 
   const main = document.getElementById('main');
+  // 「⚠️中止者・書類未完了」専用枠（純追加）。通常リストの上に置く。
+  // 通常の対象者が0名でも、書類が残っている中止者は出し続ける必要があるので早期returnより前で組む。
+  const chushiPendingHtml = renderChushiPendingSection(ym);
   if (sortedOffices.length === 0) {
-    main.innerHTML = '<div class="empty">' + ym + ' の対象者はいません</div>';
+    main.innerHTML = chushiPendingHtml + '<div class="empty">' + ym + ' の対象者はいません</div>';
     updateProgress(0, 0);
+    bindEvents();
     return;
   }
 
@@ -1684,7 +2107,7 @@ function render() {
         + '</div>'
         + blocks.map(b => b.html).join('');
     }
-    main.innerHTML = methodHtml;
+    main.innerHTML = chushiPendingHtml + methodHtml;
   } else {
     // 未完了 → ⏸今月は送付対象外 → ✅送付完了 の3グループに分離（2026-06-28 改修）。
     const incompleteHtml = officeBlocks.filter(b => b.status === 'incomplete').map(b => b.html).join('');
@@ -1719,7 +2142,7 @@ function render() {
         + '</div>'
         + '</div>';
     }
-    main.innerHTML = incompleteHtml + excludedSectionHtml + completedSectionHtml;
+    main.innerHTML = chushiPendingHtml + incompleteHtml + excludedSectionHtml + completedSectionHtml;
   }
 
   updateProgress(done, total);
