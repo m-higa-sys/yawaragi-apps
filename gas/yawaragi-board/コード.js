@@ -3961,8 +3961,14 @@ function doGet(e) {
       var gpParts = gpYm.split('-');
       var gpYear = parseInt(gpParts[0], 10);
       var gpMonth = parseInt(gpParts[1], 10);
+      // 2026-08-03 追加: includeCancelled=1/true のときだけ中止者も対象ユーザーに含める
+      // （ケアマネ送付チェックリストの中止者猶予表示用）。口腔・通所モニと同じ受け取り方。
+      // ※応答の行そのものは「通所計画書記録シート」由来なので中止者の行が落ちるわけではないが、
+      //   ユーザーリストに中止者が居ないと cmOffice / userName の付加が効かず事業所名が空になる。
+      // ★既定（パラメータ無し）は従来どおり中止者を除外し、応答に1キーも足さない＝バイト不変。
+      var gpIncludeCancelled = !!(e && e.parameter && (e.parameter.includeCancelled === '1' || e.parameter.includeCancelled === 'true'));
       var gpSheets = ensureTsushoPlansSheets_();
-      var gpUsers = getTsushoTargetUsers_();
+      var gpUsers = getTsushoTargetUsers_(gpIncludeCancelled);
       var gpUserMap = {};
       for (var gpUi = 0; gpUi < gpUsers.length; gpUi++) {
         gpUserMap[gpUsers[gpUi].userId] = gpUsers[gpUi];
@@ -3987,25 +3993,30 @@ function doGet(e) {
         if (!gpPlanDate) continue;
         // 該当月作成リスト
         if (gpRowYear === gpYear && gpRowMonth === gpMonth) {
-          gpPlans.push({
+          var gpRow = {
             userId: gpUserId,
             userName: gpUserInfo.name,
             planDate: gpPlanDate,
             sentToCm: gpSent,
             cmOffice: gpUserInfo.cmOffice
-          });
+          };
+          // cancelled は includeCancelled のときだけ付ける（既定応答のキー構成を変えないため）
+          if (gpIncludeCancelled) gpRow.cancelled = !!gpUserInfo.cancelled;
+          gpPlans.push(gpRow);
         }
         // 未送付リスト（全期間）
         if (!gpSent) {
           var gpPlanD = new Date(gpPlanDate);
           var gpDays = Math.floor((gpToday - gpPlanD) / (1000 * 60 * 60 * 24));
-          gpUnsent.push({
+          var gpUnsentRow = {
             userId: gpUserId,
             userName: gpUserInfo.name,
             planDate: gpPlanDate,
             daysSinceCreated: gpDays,
             cmOffice: gpUserInfo.cmOffice
-          });
+          };
+          if (gpIncludeCancelled) gpUnsentRow.cancelled = !!gpUserInfo.cancelled;
+          gpUnsent.push(gpUnsentRow);
         }
       }
       return respond({ ok: true, ym: gpYm, plans: gpPlans, unsent: gpUnsent }, callback);

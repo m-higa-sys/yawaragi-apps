@@ -24,6 +24,11 @@ const API = 'https://script.google.com/macros/s/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Q
 const CASES = [
   { file: 'base_oral_2026-09.json', q: 'action=getOralPlans&ym=2026-09', label: '口腔(getOralPlans)', lists: ['plans', 'unsent'] },
   { file: 'base_moni_2026.json', q: 'action=getMonitoringYear&year=2026', label: '通所モニ(getMonitoringYear)', lists: ['users', 'records'] },
+  // 2026-08-03 追加: 通所介護計画書。応答行は記録シート由来なので中止者の行が落ちるわけではないが、
+  // ユーザーリストに中止者が居ないと cmOffice/userName の付加が効かない（事業所名が空になる）。
+  // ★このリストは母数が小さく、中止者の計画書行が0件の月もある。その場合 =1 の「中止者0名」は
+  //   正常（判定材料が返る＝cancelled キーが全行に付く、で合否を見る）。
+  { file: 'base_tsusho_2026-08.json', q: 'action=getTsushoPlans&ym=2026-08', label: '通所計画書(getTsushoPlans)', lists: ['plans', 'unsent'] },
 ];
 
 function get(url) {
@@ -60,6 +65,14 @@ fs.mkdirSync(dir, { recursive: true });
     const raw = await get(API + '?' + c.q);
 
     if (mode === '--baseline') {
+      // ★既存ベースラインは既定で上書きしない。
+      //   古いベースラインほど「そこから今日までずっと既定不変」を強く証明できるため、
+      //   ケースを1つ足しただけで過去分を採り直してしまうのは証拠を弱める。
+      //   採り直したいときだけ明示的に --rebaseline を使う。
+      if (fs.existsSync(p) && !process.argv.includes('--rebaseline')) {
+        console.log('保全 ' + c.label + '  既存ベースラインを維持（採り直すなら --rebaseline） ← ' + p);
+        continue;
+      }
       fs.writeFileSync(p, raw);
       console.log('保存 ' + c.label + '  ' + Buffer.byteLength(raw) + ' bytes → ' + p);
       continue;
