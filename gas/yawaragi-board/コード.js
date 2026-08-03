@@ -20,13 +20,20 @@
 // 直接叩き、HTTPステータス（200=成功 / 401=トークン不正 / 400=宛先不正）を実行ログに残す。
 // 送る文面は「【テスト】」で始まる固定文＋日時のみ。利用者情報は一切含めない。
 function AAA_LINEテスト() {
-  // 1) sendLine が実際に使うグローバル（スクリプト読込時に Properties から取得）の状態
-  Logger.log('LINE_TOKEN    : ' + (LINE_TOKEN ? 'あり（' + String(LINE_TOKEN).length + '文字）' : '❌ なし'));
-  Logger.log('OWNER_USER_ID : ' + (OWNER_USER_ID ? 'あり' : '❌ なし'));
-  if (!LINE_TOKEN || !OWNER_USER_ID) {
+  // 1) sendLine が実際に使う値（初回参照時に Properties から取得）の状態
+  //    2026-08-02: グローバル変数から遅延取得関数へ移行。未設定時は関数が投げるため、
+  //    ここで拾って従来と同じ「未設定です」の案内を出して終わる（診断としての挙動は不変）。
+  var lineToken, ownerUserId;
+  try {
+    lineToken = getLineToken_();
+    ownerUserId = getOwnerUserId_();
+  } catch (propErr) {
     Logger.log('❌ Script Properties が未設定。プロジェクトの設定→スクリプト プロパティを確認');
+    Logger.log('   詳細: ' + propErr.message);
     return;
   }
+  Logger.log('LINE_TOKEN    : あり（' + String(lineToken).length + '文字）');
+  Logger.log('OWNER_USER_ID : あり');
 
   // 2) 実際に送ってステータスを取る
   var msg = '【テスト】LINE疎通確認 '
@@ -34,8 +41,8 @@ function AAA_LINEテスト() {
   var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
     method: 'post',
     contentType: 'application/json',
-    headers: { 'Authorization': 'Bearer ' + LINE_TOKEN },
-    payload: JSON.stringify({ to: OWNER_USER_ID, messages: [{ type: 'text', text: msg }] }),
+    headers: { 'Authorization': 'Bearer ' + lineToken },
+    payload: JSON.stringify({ to: ownerUserId, messages: [{ type: 'text', text: msg }] }),
     muteHttpExceptions: true
   });
   var code = res.getResponseCode();
@@ -2084,8 +2091,11 @@ function doGet(e) {
       if (!monYear || monYear < 2020 || monYear > 2100) {
         return respond({ ok: false, error: 'invalid year' }, callback);
       }
+      // 2026-08-03 追加: includeCancelled=1/true のときだけ中止者も users に含める
+      // （ケアマネ送付チェックリストの中止者猶予表示用）。既定はキーも増やさずバイト不変。
+      var monIncludeCancelled = !!(e && e.parameter && (e.parameter.includeCancelled === '1' || e.parameter.includeCancelled === 'true'));
       var monSheet = ensureMonitoringSheet_();
-      var monUsers = getMonitoringTargetUsers_();
+      var monUsers = getMonitoringTargetUsers_(monIncludeCancelled);
       var monValues = monSheet.getDataRange().getValues();
       var monRecords = [];
       for (var mi = 1; mi < monValues.length; mi++) {
@@ -3861,8 +3871,12 @@ function doGet(e) {
       var goParts = goYm.split('-');
       var goYear = parseInt(goParts[0], 10);
       var goMonth = parseInt(goParts[1], 10);
+      // 2026-08-03 追加: includeCancelled=1/true のときだけ中止者も母集団に含める
+      // （ケアマネ送付チェックリストの中止者猶予表示用）。getKeikakushoYear と同じ受け取り方。
+      // ★既定（パラメータ無し）は従来どおり中止者を除外し、応答に1キーも足さない＝バイト不変。
+      var goIncludeCancelled = !!(e && e.parameter && (e.parameter.includeCancelled === '1' || e.parameter.includeCancelled === 'true'));
       var goSheets = ensureOralPlansSheets_();
-      var goUsers = getOralTargetUsers_();
+      var goUsers = getOralTargetUsers_(goIncludeCancelled);
       var goTargets = goUsers.filter(function (u) { return u.isTarget; });
       var goUserMap = {};
       for (var goUi = 0; goUi < goTargets.length; goUi++) {
@@ -3890,13 +3904,16 @@ function doGet(e) {
           if (!isOralSendMonth_(goYear, goMonth, u.startedAt)) return;
           var k = u.userId + '|' + goYear + '|' + goMonth;
           var rec = goRecMap[k] || { sentToCm: false, planDate: '' };
-          goPlans.push({
+          var goRow = {
             userId: u.userId,
             userName: u.name,
             sentToCm: rec.sentToCm,
             planDate: rec.planDate,
             cmOffice: u.cmOffice
-          });
+          };
+          // cancelled は includeCancelled のときだけ付ける（既定応答のキー構成を変えないため）
+          if (goIncludeCancelled) goRow.cancelled = !!u.cancelled;
+          goPlans.push(goRow);
         });
       }
       // 未送付リスト（過去の送付月で未送付の算定対象者）
@@ -3918,14 +3935,16 @@ function doGet(e) {
           var rec2 = goRecMap[k2];
           if (rec2 && rec2.sentToCm) continue;
           if (ty === goYear && tm === goMonth) continue;
-          goUnsent.push({
+          var goUnsentRow = {
             userId: u.userId,
             userName: u.name,
             year: ty,
             month: tm,
             daysSinceTarget: Math.floor((goCurTotal - t) * 30.4),
             cmOffice: u.cmOffice
-          });
+          };
+          if (goIncludeCancelled) goUnsentRow.cancelled = !!u.cancelled;
+          goUnsent.push(goUnsentRow);
         }
       });
       return respond({ ok: true, ym: goYm, plans: goPlans, unsent: goUnsent }, callback);
@@ -3942,8 +3961,14 @@ function doGet(e) {
       var gpParts = gpYm.split('-');
       var gpYear = parseInt(gpParts[0], 10);
       var gpMonth = parseInt(gpParts[1], 10);
+      // 2026-08-03 追加: includeCancelled=1/true のときだけ中止者も対象ユーザーに含める
+      // （ケアマネ送付チェックリストの中止者猶予表示用）。口腔・通所モニと同じ受け取り方。
+      // ※応答の行そのものは「通所計画書記録シート」由来なので中止者の行が落ちるわけではないが、
+      //   ユーザーリストに中止者が居ないと cmOffice / userName の付加が効かず事業所名が空になる。
+      // ★既定（パラメータ無し）は従来どおり中止者を除外し、応答に1キーも足さない＝バイト不変。
+      var gpIncludeCancelled = !!(e && e.parameter && (e.parameter.includeCancelled === '1' || e.parameter.includeCancelled === 'true'));
       var gpSheets = ensureTsushoPlansSheets_();
-      var gpUsers = getTsushoTargetUsers_();
+      var gpUsers = getTsushoTargetUsers_(gpIncludeCancelled);
       var gpUserMap = {};
       for (var gpUi = 0; gpUi < gpUsers.length; gpUi++) {
         gpUserMap[gpUsers[gpUi].userId] = gpUsers[gpUi];
@@ -3968,25 +3993,30 @@ function doGet(e) {
         if (!gpPlanDate) continue;
         // 該当月作成リスト
         if (gpRowYear === gpYear && gpRowMonth === gpMonth) {
-          gpPlans.push({
+          var gpRow = {
             userId: gpUserId,
             userName: gpUserInfo.name,
             planDate: gpPlanDate,
             sentToCm: gpSent,
             cmOffice: gpUserInfo.cmOffice
-          });
+          };
+          // cancelled は includeCancelled のときだけ付ける（既定応答のキー構成を変えないため）
+          if (gpIncludeCancelled) gpRow.cancelled = !!gpUserInfo.cancelled;
+          gpPlans.push(gpRow);
         }
         // 未送付リスト（全期間）
         if (!gpSent) {
           var gpPlanD = new Date(gpPlanDate);
           var gpDays = Math.floor((gpToday - gpPlanD) / (1000 * 60 * 60 * 24));
-          gpUnsent.push({
+          var gpUnsentRow = {
             userId: gpUserId,
             userName: gpUserInfo.name,
             planDate: gpPlanDate,
             daysSinceCreated: gpDays,
             cmOffice: gpUserInfo.cmOffice
-          });
+          };
+          if (gpIncludeCancelled) gpUnsentRow.cancelled = !!gpUserInfo.cancelled;
+          gpUnsent.push(gpUnsentRow);
         }
       }
       return respond({ ok: true, ym: gpYm, plans: gpPlans, unsent: gpUnsent }, callback);
@@ -6464,8 +6494,36 @@ function _test_sendCancelEmail_a_case() {
 }
 
 // ===== 社長に通知（LINE + Gmail 両方送信）=====
-var LINE_TOKEN = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
-var OWNER_USER_ID = PropertiesService.getScriptProperties().getProperty('OWNER_USER_ID');
+// 【2026-08-02 グローバルから外した理由】以前はここで PropertiesService をトップレベルで
+//   実行していた。トップレベルの例外は doGet に入る前に起きるため実行ログが1行も出ず、
+//   「0秒で失敗・原因不明」になる（実際に発生）。参照時に初めて読む形へ変更した。
+//   ★ここに限らず、関数の外から外部サービス（Properties/Spreadsheet/Drive/Gmail/UrlFetch 等）を
+//     呼ぶコードを足さないこと。足すとプロジェクト全体が同じ壊れ方をする。
+var _lineSecretsCache_ = null;   // 同一実行内のメモ化。宣言だけで外部呼び出しは無い
+
+// LINE用の2キーをまとめて1回だけ読む（同一実行内は再読み込みしない）。
+function _loadLineSecrets_() {
+  if (_lineSecretsCache_ === null) {
+    var props = PropertiesService.getScriptProperties();
+    _lineSecretsCache_ = {
+      token: props.getProperty('LINE_TOKEN'),
+      ownerUserId: props.getProperty('OWNER_USER_ID')
+    };
+  }
+  return _lineSecretsCache_;
+}
+
+function getLineToken_() {
+  var v = _loadLineSecrets_().token;
+  if (!v) throw new Error('Script Properties の LINE_TOKEN が未設定です（プロジェクトの設定→スクリプト プロパティ）');
+  return v;
+}
+
+function getOwnerUserId_() {
+  var v = _loadLineSecrets_().ownerUserId;
+  if (!v) throw new Error('Script Properties の OWNER_USER_ID が未設定です（プロジェクトの設定→スクリプト プロパティ）');
+  return v;
+}
 
 // 2026-05-22 → 2026-05-23: 欠席通知に出すケアマネ連絡手段の1行を組み立てる
 // cmInfo = { status: cmNotified値, office, name, method, phone }
@@ -6542,14 +6600,16 @@ function sendLine(message) {
   // === LINE送信（無料枠200通超過時は無音で失敗・5/1にリセット） ===
   try {
     var url = 'https://api.line.me/v2/bot/message/push';
+    // 未設定なら getOwnerUserId_/getLineToken_ が投げる。この try が拾うので挙動は従来どおり
+    // （LINEは無音で失敗し、下の Gmail バックアップは変わらず送られる）。
     var payload = {
-      to: OWNER_USER_ID,
+      to: getOwnerUserId_(),
       messages: [{ type: 'text', text: message }]
     };
     UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
-      headers: { 'Authorization': 'Bearer ' + LINE_TOKEN },
+      headers: { 'Authorization': 'Bearer ' + getLineToken_() },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
@@ -12972,7 +13032,11 @@ function _getCaremaneSendMethodMap_(ss) {
 // 対象者抽出: 利用者台帳から「要支援1/要支援2/事業対象」かつ「終了/中止/卒業」でない利用者を返す
 // 注: 利用者台帳には「利用者ID」列が存在しないため、名前をuserIdとして使用する
 // 注: 「要介護度」列の値は半角全角混在（要支援1/要支援１）のため、両方を許容する
-function getMonitoringTargetUsers_() {
+// includeCancelled（2026-08-03 追加・末尾オプション引数）:
+//   省略/falsy = 従来どおり「終了・中止・卒業」を除外し、返り値にキーを1つも足さない＝バイト不変。
+//   true = 中止者も含め、各要素に cancelled:boolean を付ける。
+//   既存4箇所の呼び出しは全て引数なし＝undefined＝falsy なので現状動作のまま。
+function getMonitoringTargetUsers_(includeCancelled) {
   var ss = SpreadsheetApp.openById(SS_ID);
   var userSheet = ss.getSheetByName('利用者台帳');
   if (!userSheet) return [];
@@ -13028,9 +13092,14 @@ function getMonitoringTargetUsers_() {
     var row = values[i];
     var name = String(row[nameCol] || '').trim();
     if (!name) continue;
+    // 口腔・個訓・通所の各 getXxxTargetUsers_ と同じ形（includeCancelled で残して印を付ける）
+    var isCancelled = false;
     if (statusCol >= 0) {
       var st = String(row[statusCol] || '').trim();
-      if (st.indexOf('終了') >= 0 || st.indexOf('中止') >= 0 || st.indexOf('卒業') >= 0) continue;
+      if (st.indexOf('終了') >= 0 || st.indexOf('中止') >= 0 || st.indexOf('卒業') >= 0) {
+        if (!includeCancelled) continue;
+        isCancelled = true;
+      }
     }
     var careRaw = String(row[careCol] || '').trim();
     var careNorm = normalize(careRaw);
@@ -13042,7 +13111,7 @@ function getMonitoringTargetUsers_() {
     }
     if (!careMatched) continue;
     var cfg = configMap[name] || { planStart: '', finalEvalMonth: '' };
-    users.push({
+    var monRow = {
       userId: name,
       name: name,
       category: careNorm,
@@ -13053,7 +13122,10 @@ function getMonitoringTargetUsers_() {
       caremaneName: cmNameCol >= 0 ? String(row[cmNameCol] || '').trim() : '',
       planStart: cfg.planStart,
       finalEvalMonth: cfg.finalEvalMonth
-    });
+    };
+    // cancelled は includeCancelled のときだけ付ける（既定応答のキー構成を変えないため）
+    if (includeCancelled) monRow.cancelled = isCancelled;
+    users.push(monRow);
   }
   return users;
 }
