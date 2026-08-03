@@ -57,7 +57,7 @@ ok(typeof w.buildStaffFromIdMap === 'function', 'buildStaffFromIdMap が定義�
 ok(typeof w.pickUnknownNames === 'function', 'pickUnknownNames が定義されている');
 ok(typeof w.detectIdMapConflicts === 'function', 'detectIdMapConflicts が定義されている');
 ok(typeof w.wageMissingIds === 'function', 'wageMissingIds が定義されている');
-ok(Array.isArray(SM) && SM.length === 13, 'STAFF_META は13件');
+ok(Array.isArray(SM) && SM.length >= 13, 'STAFF_META にスタッフが入っている（実測: ' + SM.length + '件・件数は test-attendance-ops-timeparse.js で固定）');
 ok(SM.every(m => m.name === undefined), 'STAFF_META に name フィールドが無い（実名を持たない）');
 ok(Object.keys(G('DEFAULT_WAGES')).length === 0, 'DEFAULT_WAGES が空（金額を持たない）');
 
@@ -100,7 +100,7 @@ console.log('\n[4] 未承認の氏名には勤務も時給も紐付かない');
   ok(built.staff.length === 1, '承認済み1名だけが STAFF に入る');
   ok(built.staff.every(s => s.name !== N2), '未承認の氏名は STAFF に現れない');
   ok(built.nameToId[N2] === undefined, '未承認の氏名は 氏名→ID にも入らない');
-  ok(built.unassignedIds.length === 12, '残り12IDは未割当として報告される');
+  ok(built.unassignedIds.length === SM.length - 1, '承認済み1名を除く全IDが未割当として報告される（実測: ' + built.unassignedIds.length + '/' + (SM.length - 1) + '）');
   ok(built.unassignedIds.indexOf(ID2) >= 0, '未割当IDに ID2 が含まれる');
   // 仮IDの自動生成をしていないこと＝未割当IDは STAFF_META の実在IDのみ
   const metaIds = SM.map(m => m.id);

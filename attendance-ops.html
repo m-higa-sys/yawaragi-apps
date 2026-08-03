@@ -627,13 +627,14 @@ const STAFF_META = [
   {id:'takayama',type:'パート',defaultStart:'8:45',qual:'看護師',wageType:'hourly'},
   {id:'haruyama',type:'パート',defaultStart:'8:45',qual:'看護師',wageType:'hourly'},
   {id:'kudou',type:'パート',defaultStart:'8:45',qual:'社会福祉主事',wageType:'hourly'},
-  {id:'tanaka',type:'パート',defaultStart:'8:45',qual:'看護師',wageType:'hourly'},
+  {id:'tanaka',type:'パート',defaultStart:'8:45',qual:'看護師',wageType:'hourly',retired:true}, // 退職済み。過去データを引けるよう残す（候補には出さない）
   {id:'ookubo',type:'パート',defaultStart:'8:45',qual:'介護福祉士',wageType:'hourly'},
   {id:'ishikawa',type:'パート',defaultStart:'8:45',qual:'看護師',wageType:'hourly'},
   {id:'kita',type:'パート',defaultStart:'8:45',qual:'社会福祉士',wageType:'hourly'},
   // 送迎メイン（時給）
   {id:'ono',type:'送迎',defaultStart:'7:45',qual:'',wageType:'hourly'},
   {id:'hayashi',type:'送迎',defaultStart:'7:45',qual:'',wageType:'hourly'},
+  {id:'izawa',type:'送迎',defaultStart:'7:45',qual:'',wageType:'hourly'},
   // 社長（通常シフトには入らない）
   {id:'higa',type:'正社員',defaultStart:'7:45',qual:'機能訓練指導員',wageType:'monthly'},
 ];
@@ -2250,6 +2251,7 @@ function breakTimeSelect(idx,current){
   opts+='<option value="送迎後"'+(current==='送迎後'?' selected':'')+'>送迎後</option>';
   opts+='<option value="担会後"'+(current==='担会後'?' selected':'')+'>担会後</option>';
   opts+='<option value="契約後"'+(current==='契約後'?' selected':'')+'>契約後</option>';
+  opts+='<option value="清掃後"'+(current==='清掃後'?' selected':'')+'>清掃後</option>';
   return '<select class="sel-time" style="color:#333" onchange="D.breaks['+idx+'].time=this.value;autoSave();render()">'+opts+'</select>';
 }
 
@@ -2572,7 +2574,7 @@ function renderBreakClean(){
       // 担当2も担当1と同じく外出するので同じ判定にかける（staff2が空なら従来と同一）
       [ev.staff, ev.staff2].forEach(mem=>{
         if(!mem) return;
-        const staffBreak=D.breaks.find(b=>b.name===mem && b.time && b.time!=='送迎後' && b.time!=='担会後' && b.time!=='契約後');
+        const staffBreak=D.breaks.find(b=>b.name===mem && isClockTime(b.time));
         if(!staffBreak) return;
         const evMin=timeToMin(ev.time);
         const departMin=evMin-30;
@@ -2927,7 +2929,7 @@ function checkDriverShiftWarnings(key){
         const depMin=timeToMin(depTime);
         if(key==='pm'){
           // PM迎え → 休憩終了時間と比較
-          const brk=(D.breaks||[]).find(b=>b.name===driver&&b.time&&b.time!=='送迎後'&&b.time!=='担会後'&&b.time!=='契約後');
+          const brk=(D.breaks||[]).find(b=>b.name===driver&&isClockTime(b.time));
           if(brk){
             const brkStart=timeToMin(brk.time);
             const brkDur=parseInt(brk.duration)||60;
@@ -2946,7 +2948,7 @@ function checkDriverShiftWarnings(key){
           }
         } else {
           // AM迎え → 出勤時間と比較
-          const attMin=timeToMin(att.time);
+          const attMin=timeToMin(parseAttendanceTime(att.time).start);
           if(depMin>=0&&attMin>=0){
             if(depMin<attMin){
               errors.push('⚠ '+driver+'の出発'+depTime+'が出勤'+att.time+'より前です！');
@@ -3051,7 +3053,7 @@ function checkBreakDriverWarnings(){
   const pmPickDrivers=[];
   (D.pm.pick||[]).forEach(r=>{ if(r.driver&&r.depTime) pmPickDrivers.push({name:r.driver,dep:r.depTime}); });
   D.breaks.forEach(b=>{
-    if(!b.name||!b.time||b.time==='送迎後'||b.time==='担会後'||b.time==='契約後') return;
+    if(!b.name||!isClockTime(b.time)) return;
     const bStart=timeToMin(b.time);
     if(bStart<0) return;
     const bEnd=bStart+60; // 1時間
@@ -3128,7 +3130,7 @@ function checkFloorStaffCount(){
       floorNames.forEach(name=>{
         const att=D.attendance.find(a=>a.name===name);
         if(att&&att.time){
-          const arrMin=timeToMin(att.time);
+          const arrMin=timeToMin(parseAttendanceTime(att.time).start);
           if(arrMin!=null&&arrMin>min) away[name]='未出勤';
         }
       });
@@ -3143,7 +3145,7 @@ function checkFloorStaffCount(){
 
       // 休憩中（1時間）
       (D.breaks||[]).forEach(b=>{
-        if(!b.name||!b.time||b.time==='送迎後'||b.time==='担会後'||b.time==='契約後') return;
+        if(!b.name||!isClockTime(b.time)) return;
         if(!floorNames.includes(b.name)) return;
         const bStart=timeToMin(b.time);
         if(bStart==null||bStart<0) return;
@@ -3685,7 +3687,7 @@ function addSendStaffSelect(){
   // 既に送迎スタッフに入っている名前を除外
   const existing=new Set(D.sendStaff.map(s=>s.name));
   // 送迎タイプのスタッフのみ候補にする
-  const candidates=STAFF.filter(s=>s.type==='送迎'&&!existing.has(s.name)).map(s=>s.name);
+  const candidates=STAFF.filter(s=>s.type==='送迎'&&!s.retired&&!existing.has(s.name)).map(s=>s.name);
   let opts='<option value="">＋ スタッフ追加</option>';
   candidates.forEach(n=>{
     opts+='<option value="'+n+'">'+n+'</option>';
@@ -3696,6 +3698,9 @@ function addSendStaffSelect(){
 function attendanceTimeSelect(idx,val){
   const times=['7:30','7:45','8:00','8:15','8:30','8:45'];
   let s='<select class="sel-time" onchange="D.attendance['+idx+'].time=this.value;autoSave();render()">';
+  // 送迎日誌から入った値（範囲形式 "07:45-16:45" 等）は選択肢に無いので、
+  // そのまま selected の option として先頭に足す。足さないと開いた瞬間に値が消える。
+  if(val && !times.includes(val)) s+='<option value="'+val+'" selected>'+val+'</option>';
   times.forEach(t=>{
     s+='<option value="'+t+'"'+(t===val?' selected':'')+'>'+t+'</option>';
   });
@@ -3722,7 +3727,7 @@ function attendanceSelect(){
   const shiftIds=getShiftStaffIds();
   // 送迎スタッフとして既に表示されている人も除外
   const sendNames=new Set(D.sendStaff.map(s=>s.name));
-  const candidates=STAFF.filter(s=>s.id!=='higa'&&!added.has(s.name)&&!sendNames.has(s.name));
+  const candidates=STAFF.filter(s=>s.id!=='higa'&&!s.retired&&!added.has(s.name)&&!sendNames.has(s.name));
   if(candidates.length===0) return '';
 
   let opts='<option value="">＋ スタッフ追加</option>';
@@ -3862,7 +3867,7 @@ let SHIFT_DATA = {
 const SHIFT_DEFAULT_CODE = {
   katsumata:'B2', hoshino:'B2', shimoura:'C', kudou:'C', ookubo:'C',
   takayama:'E1', haruyama:'E1', ishikawa:'E1', tanaka:'F', higa:'-',
-  ono:'7②', hayashi:'7②', kita:'C'
+  ono:'7②', hayashi:'7②', kita:'C', izawa:'7②'
 };
 
 function importShiftJSON(input){
@@ -4128,15 +4133,35 @@ function timeToMin(t){
 }
 
 // フロアスタッフの実働時間（出勤〜退社−休憩1h）※data省略時はグローバルD
+// 「HH:MM」形式かどうか。休憩欄には「送迎後」等の業務語が入るので、
+// それを時刻として計算に混ぜないための判定（2026-08-02 旧アプリの改修を移植）。
+const CLOCK_TIME_RE=/^\d{1,2}:\d{2}$/;
+function isClockTime(t){ return CLOCK_TIME_RE.test(String(t==null?'':t).trim()); }
+
+// 出勤時刻の解釈。手入力の "HH:MM"（単一）と、送迎日誌(GAS)由来の
+// "HH:MM-HH:MM"（出勤-退勤）の2形式を受ける。どちらでもなければ null を返す。
+const ATT_RANGE_RE=/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/;
+function parseAttendanceTime(t){
+  const s=String(t==null?'':t).trim();
+  const m=ATT_RANGE_RE.exec(s);
+  if(m) return {start:m[1], end:m[2]};
+  if(isClockTime(s)) return {start:s, end:null};
+  return {start:null, end:null};
+}
+
 function calcFloorHours(name,data){
   const d=data||D;
   const att=(d.attendance||[]).find(a=>a.name===name);
   if(!att||!att.time) return 0;
-  const startM=timeToMin(att.time);
+  const at=parseAttendanceTime(att.time);
+  if(!at.start) return 0;
+  const startM=timeToMin(at.start);
   if(startM===null) return 0;
   const lv=(d.leave||[]).find(l=>l.name===name);
-  if(!lv||!lv.time) return 0;
-  const endM=timeToMin(lv.time);
+  // 退社時刻の優先順: ①退社欄 ②出勤が範囲形式ならその終了側 ③どちらも無ければ0h
+  const endSrc=(lv&&lv.time)?lv.time:at.end;
+  if(!endSrc) return 0;
+  const endM=timeToMin(endSrc);
   if(endM===null) return 0;
   const raw=(endM-startM)/60-1;
   return Math.max(0,Math.round(raw*100)/100);
@@ -4336,7 +4361,9 @@ function renderWagePanel(){
       const lookupName=w.isSubstitute?w.inheritFromName:w.name;
       const att=D.attendance.find(a=>a.name===lookupName);
       const lv=D.leave.find(l=>l.name===lookupName);
-      if(att&&lv&&lv.time) timeInfo=att.time+'〜'+lv.time;
+      const at=att?parseAttendanceTime(att.time):null;
+      const endShow=(lv&&lv.time)?lv.time:(at?at.end:null);
+      if(at&&at.start&&endShow) timeInfo=at.start+'〜'+endShow;
     }
 
     const displayName=isEmergency?(w.name+'（急遽出勤）'):w.name;
