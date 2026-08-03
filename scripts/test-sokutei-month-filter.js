@@ -395,20 +395,24 @@ function has(h, name) { return String(h).indexOf('data-row="' + name + '"') >= 0
   S.toggleUfDay('木'); S.toggleUfSlot('pm');
 
   sec('B-3 名前検索（インクリメンタル・表記ゆれに強い）');
+  // 2026-08-03: 検索欄を絞り込みバーの【外】(#searchbar) へ移した（案A）。
+  //   ハンドラの張り方が renderFilterBar 内の oninput から
+  //   起動時の addEventListener('input') へ変わったので、発火だけ新旧どちらでも通す。
+  //   ★検証している中身（表記ゆれ・件数・0件メッセージ）は1つも変えていない。
   const q = elFor('ufQuery');
-  q.value = 'たなか';
-  q.oninput.call(q);
+  const typeQuery = (v) => { q.value = v; (q.oninput || (q._ev && q._ev.input)).call(q); };
+  typeQuery('たなか');
   tM = els['tab4'].innerHTML;
   ok(has(tM, 'ダミー田中'), 'ひらがなで漢字氏名を引ける（ふりがな経由）');
   eq(has(tM, 'ダミー佐藤'), false, '他の人は消える');
   ok(tM.indexOf('7月の対象 1名（全体4名中）') >= 0, '件数と母数が出る');
-  q.value = 'ﾀﾅｶ'; q.oninput.call(q);
+  typeQuery('ﾀﾅｶ');
   ok(has(els['tab4'].innerHTML, 'ダミー田中'), '半角カナでも引ける');
-  q.value = '田中'; q.oninput.call(q);
+  typeQuery('田中');
   ok(has(els['tab4'].innerHTML, 'ダミー田中'), '漢字でも引ける');
-  q.value = 'そんな人いない'; q.oninput.call(q);
+  typeQuery('そんな人いない');
   ok(els['tab4'].innerHTML.indexOf('絞り込みの条件に合う人がいません') >= 0, 'B-6 0件メッセージ');
-  q.value = ''; q.oninput.call(q);
+  typeQuery('');
   ok(has(els['tab4'].innerHTML, 'ダミー佐藤'), '空にすると戻る');
 
   sec('B 介護度フィルタとの AND');
