@@ -345,5 +345,84 @@ if (jsdomErrors.length > 0) jsdomErrors.slice(0, 3).forEach(e => console.log('  
 
 try { w.close(); } catch (e) { }
 
-console.log('\nPASS ' + pass + ' / FAIL ' + fail);
-process.exit(fail === 0 ? 0 : 1);
+// ─────────────────────────────────────────────────────────
+// [15] 起動順の回帰ガード（非同期なので最後に実行する）
+//
+// 🔴 この節では applyStaffIdMap() を先に呼ばない。実際の起動順そのままで検証する。
+//    2026-08-03 の退行: loadShiftFromTable() が SHIFT_NAME_TO_ID の構築前に走り、
+//    シフトが必ず0名になった。上の [7] は applyStaffIdMap を明示的に先に呼ぶ書き方
+//    だったため、この退行を素通りさせた。
+//    **この節を「先に呼ぶ形」に書き換えてはいけない。** 退行を検出できなくなる。
+// ─────────────────────────────────────────────────────────
+(async () => {
+  console.log('\n[15] 起動順の回帰ガード：読み込んだだけでシフトが入る');
+
+  const MAP = {}, SD = {};
+  const IDS = ['katsumata', 'hoshino', 'shimoura', 'takayama', 'haruyama',
+    'kudou', 'ookubo', 'kita', 'ono', 'hayashi'];
+  IDS.forEach((id, i) => { MAP['ダミー' + i] = id; });                                   // 対応表 = 10名
+  IDS.forEach((id, i) => { SD['ダミー' + i] = { '2026-08-03': 'B2', '2026-08-04': 'B2' }; });
+  SD['未登録A'] = { '2026-08-03': 'C' };    // 対応表に無い氏名（シフトにはある）
+  SD['未登録B'] = { '2026-08-03': '7②' };
+  SD['未登録C'] = { '2026-08-03': '-' };
+
+  const bootLogs = [];
+  const bootVc = new VirtualConsole();
+  bootVc.on('log', m => bootLogs.push(String(m)));
+  bootVc.on('warn', m => bootLogs.push(String(m)));
+  const bootErrors = [];
+  bootVc.on('jsdomError', e => bootErrors.push(e));
+  bootVc.on('error', e => bootErrors.push(e));
+
+  const bootDom = new JSDOM(html, {
+    runScripts: 'dangerously', pretendToBeVisual: true,
+    url: 'https://example.github.io/yawaragi-apps/attendance-ops.html',
+    virtualConsole: bootVc,
+    beforeParse(bw) {
+      bw.fetch = function () { return new Promise(function () { }); };
+      bw.BroadcastChannel = function () { this.onmessage = null; this.postMessage = function () { }; this.close = function () { }; };
+      bw.alert = function () { }; bw.confirm = function () { return false; }; bw.print = function () { };
+      bw.localStorage.setItem('yawaragi_admin_key', 'dummy-not-a-real-key');
+      bw.localStorage.setItem('yawaragi_staff_id_map', JSON.stringify(MAP));
+      bw.localStorage.setItem('yawaragi_shift_2026-08', JSON.stringify({ data: SD, savedAt: 'x' }));
+    }
+  });
+  const bw = bootDom.window;
+
+  // staff_list の JSONP は jsdom では読み込まれないので、失敗させて起動を先へ進める。
+  // 対応表があればこの経路が失敗しても続行できる、という実装どおりの動きを再現する。
+  const jsonp = [].slice.call(bw.document.head.querySelectorAll('script[src*="script.google.com"]'));
+  jsonp.forEach(s => { try { s.dispatchEvent(new bw.Event('error')); } catch (e) { } });
+  ok(jsonp.length > 0, 'staff_list の取得が試みられている（JSONPのscriptが挿入された・実測: ' + jsonp.length + '本）');
+
+  await new Promise(r => setTimeout(r, 50));   // initApp の await が解決するのを待つ
+
+  const shiftData = bw.eval('SHIFT_DATA')['2026-08'];
+  const count = shiftData ? Object.keys(shiftData).length : 0;
+  ok(count === 10, '読み込んだだけでシフトが10名入る（実測: ' + count + '名／対応表10名分）');
+
+  const zeroLog = bootLogs.filter(l => l.indexOf('から読込') >= 0 && l.indexOf('（0名）') >= 0);
+  ok(zeroLog.length === 0, '起動ログに「（0名）」が出ない（実測: ' + zeroLog.length + '件）');
+
+  if (shiftData && count > 0) {
+    const anyId = Object.keys(shiftData)[0];
+    ok(shiftData[anyId].length === 31, '8月は31日分の配列になる');
+    ok(shiftData[anyId][2] === 'B2', '3日目の勤務コードが取れる');
+    ok(shiftData[anyId][0] === '-', 'データの無い日は - で埋まる');
+  } else {
+    fail += 3;
+    console.log('  FAIL 8月は31日分の配列になる（シフトが0名のため検証不能）');
+    console.log('  FAIL 3日目の勤務コードが取れる（同上）');
+    console.log('  FAIL データの無い日は - で埋まる（同上）');
+  }
+
+  ok(count === 10, '対応表に無い3名は入らない（シフト13名中10名・過剰除外ではなく仕様どおり）');
+  ok(bw.eval('typeof SHIFT_DATA_HARDCODED') === 'object', 'SHIFT_DATA_HARDCODED が壊れていない');
+  ok(bw.eval('Object.keys(SHIFT_NAME_TO_ID).length') === 10, '起動後 SHIFT_NAME_TO_ID が構築されている');
+  ok(bootErrors.length === 0, '起動時のJSエラーが0件（実測: ' + bootErrors.length + '）');
+
+  try { bw.close(); } catch (e) { }
+
+  console.log('\nPASS ' + pass + ' / FAIL ' + fail);
+  process.exit(fail === 0 ? 0 : 1);
+})();

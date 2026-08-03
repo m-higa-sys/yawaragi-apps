@@ -3996,8 +3996,10 @@ function loadShiftFromTable(){
 // ハードコード済みシフトデータのバックアップ（シフト表アプリ連携で上書きされた場合の復旧用）
 const SHIFT_DATA_HARDCODED = JSON.parse(JSON.stringify(SHIFT_DATA));
 
-// ページ読み込み時にシフト表データを取得
-loadShiftFromTable();
+// ページ読み込み時のシフト読込は、ここでは呼ばない。
+// SHIFT_NAME_TO_ID は氏名⇄ID対応表から実行時に構築されるため、この位置ではまだ空で、
+// ここで呼ぶとシフトが必ず0名になる（2026-08-03 の退行）。
+// 実際の呼び出しは initApp() 内、resolveStaffMaster() の直後にある。
 
 const SHIFT_TIMES = {
   'B2':{start:'7:45',end:'16:45'},
@@ -7572,6 +7574,9 @@ async function initApp(){
   // ここが false（対応表も無く取得も失敗）のときは、推測で埋めずに停止する。
   const staffOk = await resolveStaffMaster();
   if(!staffOk){ showStaffUnavailable(); return; }
+  // 🔴 シフト読込は対応表(SHIFT_NAME_TO_ID)ができた後でないと0名になる。
+  //    対応表を実行時構築へ変えた時点で、トップレベル呼び出しとの順序が逆転していた。
+  loadShiftFromTable();
   if(IS_READONLY) roUpdateStatus('データ取得中...');
   const url = getOpsGasUrl();
   if(url){
