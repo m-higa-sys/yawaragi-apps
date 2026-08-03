@@ -2091,8 +2091,11 @@ function doGet(e) {
       if (!monYear || monYear < 2020 || monYear > 2100) {
         return respond({ ok: false, error: 'invalid year' }, callback);
       }
+      // 2026-08-03 追加: includeCancelled=1/true のときだけ中止者も users に含める
+      // （ケアマネ送付チェックリストの中止者猶予表示用）。既定はキーも増やさずバイト不変。
+      var monIncludeCancelled = !!(e && e.parameter && (e.parameter.includeCancelled === '1' || e.parameter.includeCancelled === 'true'));
       var monSheet = ensureMonitoringSheet_();
-      var monUsers = getMonitoringTargetUsers_();
+      var monUsers = getMonitoringTargetUsers_(monIncludeCancelled);
       var monValues = monSheet.getDataRange().getValues();
       var monRecords = [];
       for (var mi = 1; mi < monValues.length; mi++) {
@@ -3868,8 +3871,12 @@ function doGet(e) {
       var goParts = goYm.split('-');
       var goYear = parseInt(goParts[0], 10);
       var goMonth = parseInt(goParts[1], 10);
+      // 2026-08-03 追加: includeCancelled=1/true のときだけ中止者も母集団に含める
+      // （ケアマネ送付チェックリストの中止者猶予表示用）。getKeikakushoYear と同じ受け取り方。
+      // ★既定（パラメータ無し）は従来どおり中止者を除外し、応答に1キーも足さない＝バイト不変。
+      var goIncludeCancelled = !!(e && e.parameter && (e.parameter.includeCancelled === '1' || e.parameter.includeCancelled === 'true'));
       var goSheets = ensureOralPlansSheets_();
-      var goUsers = getOralTargetUsers_();
+      var goUsers = getOralTargetUsers_(goIncludeCancelled);
       var goTargets = goUsers.filter(function (u) { return u.isTarget; });
       var goUserMap = {};
       for (var goUi = 0; goUi < goTargets.length; goUi++) {
@@ -3897,13 +3904,16 @@ function doGet(e) {
           if (!isOralSendMonth_(goYear, goMonth, u.startedAt)) return;
           var k = u.userId + '|' + goYear + '|' + goMonth;
           var rec = goRecMap[k] || { sentToCm: false, planDate: '' };
-          goPlans.push({
+          var goRow = {
             userId: u.userId,
             userName: u.name,
             sentToCm: rec.sentToCm,
             planDate: rec.planDate,
             cmOffice: u.cmOffice
-          });
+          };
+          // cancelled は includeCancelled のときだけ付ける（既定応答のキー構成を変えないため）
+          if (goIncludeCancelled) goRow.cancelled = !!u.cancelled;
+          goPlans.push(goRow);
         });
       }
       // 未送付リスト（過去の送付月で未送付の算定対象者）
@@ -3925,14 +3935,16 @@ function doGet(e) {
           var rec2 = goRecMap[k2];
           if (rec2 && rec2.sentToCm) continue;
           if (ty === goYear && tm === goMonth) continue;
-          goUnsent.push({
+          var goUnsentRow = {
             userId: u.userId,
             userName: u.name,
             year: ty,
             month: tm,
             daysSinceTarget: Math.floor((goCurTotal - t) * 30.4),
             cmOffice: u.cmOffice
-          });
+          };
+          if (goIncludeCancelled) goUnsentRow.cancelled = !!u.cancelled;
+          goUnsent.push(goUnsentRow);
         }
       });
       return respond({ ok: true, ym: goYm, plans: goPlans, unsent: goUnsent }, callback);
@@ -13009,7 +13021,11 @@ function _getCaremaneSendMethodMap_(ss) {
 // 対象者抽出: 利用者台帳から「要支援1/要支援2/事業対象」かつ「終了/中止/卒業」でない利用者を返す
 // 注: 利用者台帳には「利用者ID」列が存在しないため、名前をuserIdとして使用する
 // 注: 「要介護度」列の値は半角全角混在（要支援1/要支援１）のため、両方を許容する
-function getMonitoringTargetUsers_() {
+// includeCancelled（2026-08-03 追加・末尾オプション引数）:
+//   省略/falsy = 従来どおり「終了・中止・卒業」を除外し、返り値にキーを1つも足さない＝バイト不変。
+//   true = 中止者も含め、各要素に cancelled:boolean を付ける。
+//   既存4箇所の呼び出しは全て引数なし＝undefined＝falsy なので現状動作のまま。
+function getMonitoringTargetUsers_(includeCancelled) {
   var ss = SpreadsheetApp.openById(SS_ID);
   var userSheet = ss.getSheetByName('利用者台帳');
   if (!userSheet) return [];
@@ -13065,9 +13081,14 @@ function getMonitoringTargetUsers_() {
     var row = values[i];
     var name = String(row[nameCol] || '').trim();
     if (!name) continue;
+    // 口腔・個訓・通所の各 getXxxTargetUsers_ と同じ形（includeCancelled で残して印を付ける）
+    var isCancelled = false;
     if (statusCol >= 0) {
       var st = String(row[statusCol] || '').trim();
-      if (st.indexOf('終了') >= 0 || st.indexOf('中止') >= 0 || st.indexOf('卒業') >= 0) continue;
+      if (st.indexOf('終了') >= 0 || st.indexOf('中止') >= 0 || st.indexOf('卒業') >= 0) {
+        if (!includeCancelled) continue;
+        isCancelled = true;
+      }
     }
     var careRaw = String(row[careCol] || '').trim();
     var careNorm = normalize(careRaw);
@@ -13079,7 +13100,7 @@ function getMonitoringTargetUsers_() {
     }
     if (!careMatched) continue;
     var cfg = configMap[name] || { planStart: '', finalEvalMonth: '' };
-    users.push({
+    var monRow = {
       userId: name,
       name: name,
       category: careNorm,
@@ -13090,7 +13111,10 @@ function getMonitoringTargetUsers_() {
       caremaneName: cmNameCol >= 0 ? String(row[cmNameCol] || '').trim() : '',
       planStart: cfg.planStart,
       finalEvalMonth: cfg.finalEvalMonth
-    });
+    };
+    // cancelled は includeCancelled のときだけ付ける（既定応答のキー構成を変えないため）
+    if (includeCancelled) monRow.cancelled = isCancelled;
+    users.push(monRow);
   }
   return users;
 }
