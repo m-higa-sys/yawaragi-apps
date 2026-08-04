@@ -50,14 +50,6 @@ body {
 .nav-btn:active { background:#eceff1; }
 .nav-btn:disabled { opacity:.35; cursor:default; }
 .date-label { font-size:22px; font-weight:800; min-width:200px; text-align:center; white-space:nowrap; }
-.unit-switch { display:flex; gap:0; white-space:nowrap; }
-.unit-btn {
-  font-size:18px; font-weight:800; line-height:1;
-  padding:10px 26px; border:1px solid #90a4ae; background:#fff; color:#546e7a; cursor:pointer;
-}
-.unit-btn:first-child { border-radius:6px 0 0 6px; }
-.unit-btn:last-child { border-radius:0 6px 6px 0; border-left:none; }
-.unit-btn.active { background:#37474f; color:#fff; border-color:#37474f; }
 
 /* カレンダー用の日付入力は画面に出さない（ボタンから呼び出すだけ・書き込みはしない） */
 #datePicker { position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
@@ -83,43 +75,51 @@ h2.sec {
 }
 .table-wrap { overflow-x:auto; margin-bottom:18px; }
 table.route {
-  border-collapse:collapse; background:#fff; width:100%;
-  table-layout:auto;
+  border-collapse:collapse; background:#fff;
+  /* 列を全行で一直線に揃える。幅は colgroup の px 指定だけで決まり、中身の文字数では動かない */
+  table-layout:fixed; width:auto;
 }
-table.route td { border:1px solid #90a4ae; padding:4px 6px; vertical-align:middle; }
+table.route td {
+  border:1px solid #90a4ae; padding:0; vertical-align:middle;
+  overflow:hidden;            /* 中身が溢れても列を広げない */
+}
 
-td.dep {
-  width:86px; min-width:86px; text-align:center; background:#eceff1; white-space:nowrap;
-}
+td.dep { text-align:center; background:#eceff1; white-space:nowrap; padding:3px 2px; }
 td.dep .lbl { font-size:12px; font-weight:700; color:#546e7a; }
 td.dep .val { font-size:19px; font-weight:800; color:#263238; }
 td.no {
-  width:64px; min-width:64px; text-align:center; background:#eceff1;
+  text-align:center; background:#eceff1; padding:3px 2px;
   font-size:26px; font-weight:800; color:#37474f;
 }
-td.car {
-  width:96px; min-width:96px; text-align:center; background:#eceff1; white-space:nowrap;
-}
+td.car { text-align:center; background:#eceff1; white-space:nowrap; padding:3px 2px; }
 td.car .name { font-size:19px; font-weight:800; color:#263238; }
 td.car .cap { font-size:13px; font-weight:700; color:#546e7a; }
 
-/* 停車順の横並び（折り返さない） */
-td.stops { padding:3px 4px; }
-.stop-row { display:flex; flex-wrap:nowrap; gap:4px; }
-.stop {
-  flex:1 1 0; min-width:88px;
-  border:1px solid #cfd8dc; border-radius:5px; overflow:hidden; background:#fff;
+/* 停車枠（1停車＝1セル。幅は colgroup 固定） */
+td.stop { background:#fff; }
+td.stop .nm {
+  font-weight:800; text-align:center; white-space:nowrap;
+  padding:4px 2px; line-height:1.25; overflow:hidden;
 }
-.stop .nm {
-  font-size:16px; font-weight:800; text-align:center; white-space:nowrap;
-  padding:4px 3px; line-height:1.25;
+td.stop .tm {
+  font-size:13px; font-weight:700; text-align:center; white-space:nowrap;
+  padding:3px 2px; line-height:1.2; border-top:1px solid #eceff1; color:#37474f; overflow:hidden;
 }
-.stop .tm {
-  font-size:14px; font-weight:700; text-align:center; white-space:nowrap;
-  padding:3px; line-height:1.2; border-top:1px solid #eceff1; color:#37474f;
+td.stop.empty { background:#fafafa; }
+td.stop.empty .nm { color:#b0bec5; font-weight:700; font-size:16px; }
+
+/* ── ②午前送り と ③午後迎え は同じ車の続きの動き。ひとまとまりに見せる ──
+   体験(橙)/新規(青)/変更(赤) と紛れないよう、無彩色のグレーだけで表現する */
+.pair {
+  border:2px solid #78909c; border-radius:8px; background:#eceff1;
+  padding:8px 8px 2px; margin-bottom:18px;
 }
-.stop.empty { background:#fafafa; border-style:dashed; }
-.stop.empty .nm { color:#b0bec5; font-weight:700; }
+.pair .pair-note {
+  font-size:13px; font-weight:700; color:#455a64; margin:0 0 6px; padding-left:2px;
+}
+.pair h2.sec { margin-bottom:5px; }
+.pair .table-wrap { margin-bottom:8px; }
+.pair .table-wrap:last-child { margin-bottom:2px; }
 
 /* ── 色分け（体験＝橙／新規＝青／時間変更＝赤） ── */
 .nm.st-trial { background:#ffe0b2; color:#e65100; }
@@ -152,10 +152,6 @@ td.stops { padding:3px 4px; }
     <button class="nav-btn" onclick="openCalendar()">📅</button>
     <input type="date" id="datePicker" tabindex="-1" aria-hidden="true" onchange="pickDate(this.value)">
   </div>
-  <div class="unit-switch">
-    <button class="unit-btn" id="btnAm" onclick="setUnit('am')">AM</button>
-    <button class="unit-btn" id="btnPm" onclick="setUnit('pm')">PM</button>
-  </div>
 </div>
 
 <div class="legend">
@@ -186,6 +182,21 @@ const CAR_CAPACITY = {'ス':7, 'シS':6, 'シW':6, 'モ':3, 'キ':4};
 const DOW = ['日','月','火','水','木','金','土'];
 const MARU = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
 
+// 列幅（px 固定）。colgroup にそのまま入れる。table-layout:fixed と組で列を一直線に揃える。
+// 左端・右端は4セクション共通にして、ページ全体でも縦に揃うようにする。
+const W_LEFT  = 86;   // 出発時刻 / ①②
+const W_STOP  = 96;   // 停車1枠
+const W_RIGHT = 96;   // 送迎車＋定員
+// 名前がセルに収まらないときは、列を広げずに文字を縮める（折り返し禁止・1行厳守）。
+// 和名は全角＝約1文字1em。バッジがある行はその分だけ使える幅が減る。
+const NAME_MAX_PX = 16, NAME_MIN_PX = 9, BADGE_PX = 30, CELL_PAD_PX = 8;
+function fitPx(name, hasBadge){
+  const len = String(name || '').length;
+  if(!len) return NAME_MAX_PX;
+  const avail = W_STOP - CELL_PAD_PX - (hasBadge ? BADGE_PX : 0);
+  return Math.max(NAME_MIN_PX, Math.min(NAME_MAX_PX, Math.floor(avail / len)));
+}
+
 // 取得は起動時のみ。断続404に備えて MAX_TRY 回まで自動で再試行する
 // （2026-08-04 実測: 同一URL・同一パラメータで 200 と 404 が混在する。1回の失敗で諦めない）
 const MAX_TRY = 3;
@@ -195,7 +206,6 @@ let ALL_OPS = null;       // { "yyyy-MM-dd": D } … 起動時に1回だけ取�
 let loadFailed = false;
 let loadTry = 0;          // 現在の試行回数（読み込み中の表示に使う）
 let selectedDate = '';
-let currentUnit = 'am';
 let navMin = '';          // 移動できる最古の日付
 let navMax = '';          // 移動できる最新の日付（打ち間違いの遠い未来を除外した上限）
 
@@ -272,12 +282,11 @@ function openCalendar(){
   el.style.width = 'auto'; el.style.height = 'auto'; el.style.pointerEvents = 'auto';
   el.focus();
 }
-function setUnit(u){ currentUnit = u; render(); }
 
 // ── 1停車ぶんのセル ──
 function renderStop(stop, userStatus){
   const name = (stop && stop.user) ? String(stop.user).trim() : '';
-  if(!name) return '<div class="stop empty"><div class="nm">—</div><div class="tm">—</div></div>';
+  if(!name) return '<td class="stop empty"><div class="nm">—</div><div class="tm">—</div></td>';
 
   const st = userStatus[name] || '';
   let nmCls = '', nmBadge = '';
@@ -290,21 +299,23 @@ function renderStop(stop, userStatus){
   const tmCls = chg ? ' st-chg' : '';
   const tmBadge = chg ? '<span class="badge chg">変更</span>' : '';
 
-  return '<div class="stop">'
-       +   '<div class="nm' + nmCls + '">' + esc(sama(name)) + nmBadge + '</div>'
+  return '<td class="stop">'
+       +   '<div class="nm' + nmCls + '" style="font-size:' + fitPx(sama(name), !!nmBadge) + 'px">'
+       +     esc(sama(name)) + nmBadge + '</div>'
        +   '<div class="tm' + tmCls + '">' + esc(time) + tmBadge + '</div>'
-       + '</div>';
+       + '</td>';
 }
 
 // 送りは利用者名のみ（時刻は出さない）
 function renderStopNameOnly(stop, userStatus){
   const name = (stop && stop.user) ? String(stop.user).trim() : '';
-  if(!name) return '<div class="stop empty"><div class="nm">—</div></div>';
+  if(!name) return '<td class="stop empty"><div class="nm">—</div></td>';
   const st = userStatus[name] || '';
   let nmCls = '', nmBadge = '';
   if(st === 'trial'){ nmCls = ' st-trial'; nmBadge = '<span class="badge trial">体験</span>'; }
   else if(st === 'new'){ nmCls = ' st-new'; nmBadge = '<span class="badge new">新規</span>'; }
-  return '<div class="stop"><div class="nm' + nmCls + '">' + esc(sama(name)) + nmBadge + '</div></div>';
+  return '<td class="stop"><div class="nm' + nmCls + '" style="font-size:'
+       + fitPx(sama(name), !!nmBadge) + 'px">' + esc(sama(name)) + nmBadge + '</div></td>';
 }
 
 function renderCarCell(vehicle){
@@ -315,48 +326,49 @@ function renderCarCell(vehicle){
        + (cap ? '<div class="cap">' + cap + '名</div>' : '') + '</td>';
 }
 
-// ── 迎え：出発 / 停車順（名前＋到着時刻） / 送迎車 ──
-function renderPick(routes, userStatus){
-  let h = '<h2 class="sec">迎え</h2>';
-  if(!routes.length) return h + '<div class="msg">この時間帯の迎えルートはありません</div>';
-  h += '<div class="table-wrap"><table class="route">';
-  routes.forEach(function(route){
-    const dep = (route.depTime !== undefined && route.depTime !== null && String(route.depTime) !== '')
-      ? String(route.depTime) : '—';
-    const stops = Array.isArray(route.stops) ? route.stops : [];
-    h += '<tr>'
-       +   '<td class="dep"><div class="lbl">出発</div><div class="val">' + esc(dep) + '</div></td>'
-       +   '<td class="stops"><div class="stop-row">'
-       +     stops.map(function(s){ return renderStop(s, userStatus); }).join('')
-       +   '</div></td>'
-       +   renderCarCell(route.vehicle)
-       + '</tr>';
-  });
-  return h + '</table></div>';
-}
+// ── セクション1つを描く（迎え/送り共通）──
+// 列幅は colgroup の px 固定。停車列数はそのセクションの最大停車数に揃え、
+// 足りない行は空セル（—）で埋める＝全行で列境界が一直線に並ぶ。
+function renderSection(title, routes, userStatus, kind){
+  let h = '<h2 class="sec">' + esc(title) + '</h2>';
+  if(!routes.length) return h + '<div class="msg">ルートがありません</div>';
 
-// ── 送り：順番 / 利用者名のみ / 送迎車 ──
-function renderDrop(routes, userStatus){
-  let h = '<h2 class="sec">送り</h2>';
-  if(!routes.length) return h + '<div class="msg">この時間帯の送りルートはありません</div>';
-  h += '<div class="table-wrap"><table class="route">';
-  routes.forEach(function(route, i){
+  // セクション内の最大停車数（これが列数になる）
+  let cols = 0;
+  routes.forEach(function(r){
+    const n = Array.isArray(r.stops) ? r.stops.length : 0;
+    if(n > cols) cols = n;
+  });
+  if(cols === 0) cols = 1;
+
+  let cg = '<colgroup><col style="width:' + W_LEFT + 'px">';
+  for(let i = 0; i < cols; i++) cg += '<col style="width:' + W_STOP + 'px">';
+  cg += '<col style="width:' + W_RIGHT + 'px"></colgroup>';
+
+  // 表の総幅も明示する。table-layout:fixed は width:auto のままだと中身の最小幅に
+  // 引きずられて列が広がることがある（実測: 96px指定の列が 101/111px になった）。
+  const totalW = W_LEFT + cols * W_STOP + W_RIGHT;
+  h += '<div class="table-wrap"><table class="route" style="width:' + totalW + 'px">' + cg;
+  routes.forEach(function(route, ri){
     const stops = Array.isArray(route.stops) ? route.stops : [];
-    h += '<tr>'
-       +   '<td class="no">' + (MARU[i] || (i+1)) + '</td>'
-       +   '<td class="stops"><div class="stop-row">'
-       +     stops.map(function(s){ return renderStopNameOnly(s, userStatus); }).join('')
-       +   '</div></td>'
-       +   renderCarCell(route.vehicle)
-       + '</tr>';
+    if(kind === 'pick'){
+      const dep = (route.depTime !== undefined && route.depTime !== null && String(route.depTime) !== '')
+        ? String(route.depTime) : '—';
+      h += '<tr><td class="dep"><div class="lbl">出発</div><div class="val">' + esc(dep) + '</div></td>';
+    } else {
+      h += '<tr><td class="no">' + (MARU[ri] || (ri + 1)) + '</td>';
+    }
+    for(let i = 0; i < cols; i++){
+      const s = stops[i];
+      h += (kind === 'pick') ? renderStop(s, userStatus) : renderStopNameOnly(s, userStatus);
+    }
+    h += renderCarCell(route.vehicle) + '</tr>';
   });
   return h + '</table></div>';
 }
 
 function render(){
   document.getElementById('dateLabel').textContent = formatDateLabel(selectedDate);
-  document.getElementById('btnAm').className = 'unit-btn' + (currentUnit === 'am' ? ' active' : '');
-  document.getElementById('btnPm').className = 'unit-btn' + (currentUnit === 'pm' ? ' active' : '');
 
   // 移動範囲の端では前日/翌日を押せなくする（打ち間違いの日付へ迷い込ませない）
   const bp = document.getElementById('btnPrev');
@@ -384,17 +396,22 @@ function render(){
     main.innerHTML = '<div class="msg">' + esc(formatDateLabel(selectedDate)) + ' の送迎表はまだ登録されていません</div>';
     return;
   }
-  const unit = day[currentUnit];
-  if(!unit){
-    main.innerHTML = '<div class="msg">' + esc(formatDateLabel(selectedDate))
-      + ' の' + (currentUnit === 'am' ? '午前' : '午後') + 'は登録されていません</div>';
-    return;
-  }
+  // 1日分を上から順に縦に並べる。②午前送り と ③午後迎え は同じ車の続きの動きなので
+  // 隣り合わせ、さらにグレーの枠でひとまとまりに見せる（この順序を変えないこと）
+  const am = day.am || {};
+  const pm = day.pm || {};
+  const amSt = am.userStatus || {};
+  const pmSt = pm.userStatus || {};
+  const arr = function(v){ return Array.isArray(v) ? v : []; };
 
-  const userStatus = unit.userStatus || {};
-  const pick = Array.isArray(unit.pick) ? unit.pick : [];
-  const drop = Array.isArray(unit.drop) ? unit.drop : [];
-  main.innerHTML = renderPick(pick, userStatus) + renderDrop(drop, userStatus);
+  main.innerHTML =
+      renderSection('午前 迎え', arr(am.pick), amSt, 'pick')
+    + '<div class="pair">'
+    +   '<div class="pair-note">▼ この2つは同じ車の続きの動きです</div>'
+    +   renderSection('午前 送り', arr(am.drop), amSt, 'drop')
+    +   renderSection('午後 迎え', arr(pm.pick), pmSt, 'pick')
+    + '</div>'
+    + renderSection('午後 送り', arr(pm.drop), pmSt, 'drop');
 }
 
 // ── 起動時に取得する（日付を動かしても再取得しない）──
