@@ -134,6 +134,16 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
 .uf-chip { border: 1px solid #cfd8dc; border-radius: 999px; background: #fff; color: #546e7a; font-weight: 700; font-size: .86em; padding: 10px 15px; cursor: pointer; font-family: inherit; min-height: 44px; }
 .uf-chip.on { background: #4272D8; border-color: #4272D8; color: #fff; }
 .uf-search { width: 100%; padding: 12px 12px; border: 1.5px solid #cfd8dc; border-radius: 10px; font-size: 1em; font-family: inherit; min-height: 48px; background: #fff; color: #2c3e50; }
+/* 名前検索バー（2026-08-03・案A）。絞り込みバーの外に常時出す。
+   畳まれたバーの中の4番目にあったため社長がたどり着けなかった＝機能はあっても解決していなかった。
+   ⚠️min-width:0 が要る。付けないと flex の既定（auto）で入力欄が縮まず、375px幅で×がはみ出す。 */
+.searchbar { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 8px 10px; margin-bottom: 10px; }
+.sb-icon { flex: 0 0 auto; font-size: 1.05em; line-height: 1; }
+.sb-input { flex: 1 1 auto; min-width: 0; padding: 12px 12px; border: 1.5px solid #cfd8dc; border-radius: 10px;
+  font-size: 1em; font-family: inherit; min-height: 48px; background: #fff; color: #2c3e50; }
+.sb-clear { flex: 0 0 auto; width: 44px; min-height: 44px; border: none; border-radius: 999px;
+  background: #eceff1; color: #546e7a; font-weight: 700; font-size: 1.05em; line-height: 1; cursor: pointer; font-family: inherit; }
 .uf-clear { border: none; border-radius: 10px; background: #eceff1; color: #546e7a; font-weight: 700; font-size: .88em; padding: 12px 18px; cursor: pointer; font-family: inherit; min-height: 44px; margin-top: 12px; }
 .uf-clear:disabled { opacity: .45; cursor: default; }
 .uf-none { text-align: center; color: #78909c; background: #fff; border-radius: 12px; padding: 26px 14px; font-size: .92em; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
@@ -208,6 +218,14 @@ h1 { text-align: center; color: #2c3e50; font-size: 1.4em; margin-bottom: 4px; }
        セレクトは記録モーダルへ戻した。ここは記録直後の確認専用で、未選択を促す表示は出さない。 -->
   <div id="opbar" class="opbar" style="display:none">
     <span class="opbar-text"></span>
+  </div>
+  <!-- 名前検索（2026-08-03・案A）。★絞り込みバーの【外】に置き、開かなくても使えるようにする。
+       ⚠️入力欄は JS で作り直さない（この静的マークアップのまま使う）。作り直すと入力のたびに
+         カーソルが末尾へ飛ぶため、移設前は毎回フォーカス位置を補正していた。構造で潰す。 -->
+  <div id="searchbar" class="searchbar" style="display:none">
+    <span class="sb-icon" aria-hidden="true">🔍</span>
+    <input type="text" id="ufQuery" class="sb-input" placeholder="名前で探す（例: たなか）" aria-label="名前で探す">
+    <button type="button" class="sb-clear" id="ufQueryClear" aria-label="名前の検索をクリア" style="display:none">×</button>
   </div>
   <div id="ufbar" class="ufbar" style="display:none"></div>
   <div id="undoBar" class="undo-bar" style="display:none"></div>
@@ -807,8 +825,12 @@ function ufActiveCount(f, care) {
 // ===== 共通フィルタの純関数ここまで =====
 
 // ===== 取得（Promise.allSettled・1つ失敗しても他タブは描画 = teirei の safe 精神） =====
-async function fetchJson(url) {
-  const res = await fetch(url, { redirect: 'follow' });
+// signal は任意（2026-08-03 追加）。渡すと load() の多重実行ガードから一括で中断できる。
+// 渡さない既存の呼び出し（記録・スライド等の書き込み系）は従来どおり中断されない。
+async function fetchJson(url, signal) {
+  const opt = { redirect: 'follow' };
+  if (signal) opt.signal = signal;
+  const res = await fetch(url, opt);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
@@ -817,8 +839,28 @@ function errMsg(r) {
   return (r.value && (r.value.error || r.value.message)) || '応答形式エラー';
 }
 
+// ===== 多重ロードのガード（2026-08-03）=====
+// 事象: 日付ナビ（◀▶）を続けて押すと load() が重なり、1回12本の取得が積み上がって板GASの
+//   同時実行が詰まり「一部データの取得に失敗しました：利用率」が出ていた（実測: 1本3〜9秒）。
+// 方針: ★新しい要求を優先し、古い通信は abort して結果を捨てる。
+//   逆（新しい方を捨てる）にすると「押したのに変わらない」になり、2026-07-28 に踏んだ
+//   「無反応で2回押して2ヶ月先まで進んだ」事故と同じ形になるため採らない。
+//   最後に押した日付が必ず画面に出ることを優先する。
+let loadSeq = 0;          // 最新の要求だけが state を書ける。古い応答は state を1バイトも触らずに捨てる
+let loadAbort = null;     // 実行中の通信をまとめて中断するための札
+// usage_stats（利用率）は【選択日に依存しない】。集計月は prevMonthsList(3) ＝今日から決まるため、
+// 日付ナビで取り直すのは最も重い応答（実測27KB）の投げ直しにしかならない。集計月が同じ間は使い回す。
+// ★取り直す条件: ①まだ持っていない ②前回失敗した ③集計月が変わった（日付をまたいで開きっぱなし）
+//                ④明示リロード（起動時と ↻再読込＝ load() を引数なしで呼んだとき）
+let usageCacheKey = '';
 // dateStr 省略 = 今日。日付ナビ（◀▶／日付タップ／今日）からは必ずここを通す。
 async function load(dateStr) {
+  const forceReload = (dateStr === undefined);   // 起動時 と ↻再読込。全部を取り直す
+  if (loadAbort) { try { loadAbort.abort(); } catch (abErr) { } }   // 走っている前の取得を止める
+  const ac = (typeof AbortController === 'function') ? new AbortController() : null;
+  loadAbort = ac;
+  const sig = ac ? ac.signal : null;
+  const mySeq = ++loadSeq;
   const statusEl = document.getElementById('status');
   statusEl.textContent = '読み込み中…';
   state.errs = {};
@@ -828,31 +870,43 @@ async function load(dateStr) {
   updateDateNav();
   const fy = fiscalYear();
   const months = prevMonthsList(3);
+  const usageKey = months[0] + '..' + months[months.length - 1];
+  const needUsage = forceReload || !state.usage || usageCacheKey !== usageKey;
   const results = await Promise.allSettled([
-    fetchJson(GAS + '?action=attendance&date=' + sel + '&t=' + Date.now()),   // 来館者だけが選択日で動く
-    fetchJson(GAS + '?action=usage_stats&from=' + months[0] + '&to=' + months[months.length - 1] + '&t=' + Date.now()),
-    fetchJson(GAS + '?action=getKeikakushoYear&year=' + fy + '&t=' + Date.now()),
-    fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy + 1) + '&t=' + Date.now()),
-    fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy - 1) + '&t=' + Date.now()),
-    fetchJson(GAS + '?action=staff_list&t=' + Date.now()),
-    fetchJson(GAS + '?action=getShienSokutei&t=' + Date.now()),
-    fetchJson(GAS + '?action=user_list&t=' + Date.now()),
-    fetchJson(GAS + '?action=getTsushoPlansYearV2&year=' + fy + '&t=' + Date.now()),
-    fetchJson(GAS + '?action=getYotei&domain=sokutei&t=' + Date.now()),
+    fetchJson(GAS + '?action=attendance&date=' + sel + '&t=' + Date.now(), sig),   // 来館者だけが選択日で動く
+    // ★選択日に依存しないので、取り直しが要らないときは前回の値をそのまま流す（通信は起こさない）
+    needUsage
+      ? fetchJson(GAS + '?action=usage_stats&from=' + months[0] + '&to=' + months[months.length - 1] + '&t=' + Date.now(), sig)
+      : Promise.resolve({ success: true, usageStats: state.usage, cached: true }),
+    fetchJson(GAS + '?action=getKeikakushoYear&year=' + fy + '&t=' + Date.now(), sig),
+    fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy + 1) + '&t=' + Date.now(), sig),
+    fetchJson(GAS + '?action=getKeikakushoYear&year=' + (fy - 1) + '&t=' + Date.now(), sig),
+    fetchJson(GAS + '?action=staff_list&t=' + Date.now(), sig),
+    fetchJson(GAS + '?action=getShienSokutei&t=' + Date.now(), sig),
+    fetchJson(GAS + '?action=user_list&t=' + Date.now(), sig),
+    fetchJson(GAS + '?action=getTsushoPlansYearV2&year=' + fy + '&t=' + Date.now(), sig),
+    fetchJson(GAS + '?action=getYotei&domain=sokutei&t=' + Date.now(), sig),
     // 出力2チェック（🖨利用者用／📄ケアマネ用）。当月ぶんだけ取る＝1測定回＝1行の設計なので月で足りる
-    fetchJson(GAS + '?action=getSokuteiOutput&domain=sokutei&ym=' + thisYm() + '&t=' + Date.now()),
+    fetchJson(GAS + '?action=getSokuteiOutput&domain=sokutei&ym=' + thisYm() + '&t=' + Date.now(), sig),
     // 長期休み（出欠変更シートの type='長期休み'）。⏰ と 💤 を分けるためだけに使う。
     // 落ちても「休み中0名」で続行する＝従来どおりの ⏰ 表示に戻るだけで画面は壊れない。
-    fetchJson(GAS + '?action=absences&month=' + thisYm() + '&t=' + Date.now())
+    fetchJson(GAS + '?action=absences&month=' + thisYm() + '&t=' + Date.now(), sig)
   ]);
+  // ★ここから下は state を書く。古い要求なら1バイトも触らずに帰る（新しい表示を上書きしない）
+  if (mySeq !== loadSeq) return;
   // year は暦年のため、4月以降に前暦年の測定レコードが漏れないよう fy−1 も含めた3年分をマージ（GAS側 year 厳密一致・重複二重計上なし）
   const att = results[0], usage = results[1], years = [results[2], results[3], results[4]], staff = results[5];
   const shien = results[6], userList = results[7], tsushoUsers = results[8], yotei = results[9], output = results[10];
   const absences = results[11];
   if (att.status === 'fulfilled' && att.value && att.value.success && att.value.attendance) state.att = att.value;
   else { state.att = null; state.errs.att = errMsg(att); }
-  if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) state.usage = usage.value.usageStats;
-  else { state.usage = null; state.errs.usage = errMsg(usage); }
+  if (usage.status === 'fulfilled' && usage.value && usage.value.success && usage.value.usageStats) {
+    state.usage = usage.value.usageStats;
+    usageCacheKey = usageKey;              // この集計月ぶんは持っている、という印
+  } else {
+    // ★失敗はキャッシュしない。state.usage が null のままなので次の load() で必ず取りに行く。
+    state.usage = null; state.errs.usage = errMsg(usage);
+  }
   const okYears = years.filter(r => r.status === 'fulfilled' && r.value && r.value.ok);
   state.users = [];
   for (let i = 0; i < okYears.length; i++) {   // users は fy → fy+1 → fy−1 の優先順で最初に取れた年のもの
@@ -1305,12 +1359,12 @@ function showTab(n) {
     document.getElementById('tabbtn' + i).classList.toggle('active', i === n);
   });
   renderFilterBar();   // フィルタ状態はタブを跨いで保持する（B-7）。出し入れだけ切り替える
+  renderSearchBar();   // 名前検索も同じ条件で出し入れする（案A・2026-08-03）
 }
-function renderAll() { renderFilterBar(); renderTab1(); renderTabMonth(); renderTab2(); renderTab3(); }
+function renderAll() { renderFilterBar(); renderSearchBar(); renderTab1(); renderTabMonth(); renderTab2(); renderTab3(); }
 
 // ===== 共通フィルタバー（B）=====
 // 状態(uf/careFilter)は保持したまま、表示タブが変わったら出し入れだけする。
-let ufFocusQuery = false;   // 再描画のあとに検索欄へフォーカスを戻すか
 // 曜日ボタンは実データから作る（固定リストにしない・土曜営業の開始で手直しが要らないように）。
 // 母集団は全利用者（derived.rowByName）で、タブによってボタンが増減しないようにする。
 function ufDayChoices() {
@@ -1344,40 +1398,47 @@ function renderFilterBar() {
     + chip(uf.slots.indexOf('am') >= 0, '午前', "toggleUfSlot('am')")
     + chip(uf.slots.indexOf('pm') >= 0, '午後', "toggleUfSlot('pm')")
     + '</div></div>'
-    + '<div class="uf-row"><div class="uf-label">名前で探す（漢字・ひらがな・カタカナ どれでも）</div>'
-    + '<input type="text" id="ufQuery" class="uf-search" placeholder="例: たなか" value="' + esc(uf.query) + '"></div>'
+    // ★2026-08-03（案A）: 「名前で探す」はこのバーの外（#searchbar）へ移した。
+    //   同じ機能を2箇所に置かないため、ここには残していない。中身（ufSearchKey / ufMatchQuery）は無変更。
     + '<button type="button" class="uf-clear" onclick="clearFilters()"' + (n ? '' : ' disabled') + '>絞り込みをクリア</button>'
     + '</div>';
   bar.className = 'ufbar' + (ufOpen ? ' open' : '');
   bar.innerHTML = html;
-  // 入力中に絞り込む（B-3）。再描画で input が作り直されるため、値とカーソル位置を戻す。
-  const q = document.getElementById('ufQuery');
-  if (q) {
-    q.oninput = function () { uf.query = this.value; renderLists(); updateFilterBadge(); };
-    if (document.activeElement !== q && ufFocusQuery) { q.focus(); ufFocusQuery = false; }
-  }
 }
-// 検索入力のたびにバー全体を作り直すと入力欄がフォーカスを失うので、
+// 名前検索バー（案A・2026-08-03）。★入力欄そのものは body の静的マークアップで、ここでは作り直さない。
+//   作り直すと入力のたびにカーソルが末尾へ飛ぶ。ここがやるのは「出す/隠す」と「値・×の同期」だけ。
+//   表示条件は絞り込みバーと同じ FILTER_TABS に揃える（スタッフ%は人単位の集計なので出さない）。
+function renderSearchBar() {
+  const bar = document.getElementById('searchbar');
+  if (!bar) return;
+  if (FILTER_TABS.indexOf(currentTab) < 0) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  const q = document.getElementById('ufQuery');
+  // ★違うときだけ書く。同じ値でも代入するとブラウザはカーソルを末尾へ戻す。
+  if (q && q.value !== uf.query) q.value = uf.query;
+  const c = document.getElementById('ufQueryClear');
+  if (c) c.style.display = String(uf.query || '') ? '' : 'none';
+}
+// ×ボタン: 名前検索だけを消す（曜日・時間帯・介護度は残す）。全部消すのは「絞り込みをクリア」。
+function clearQuery() {
+  uf.query = '';
+  const q = document.getElementById('ufQuery');
+  if (q) q.value = '';
+  renderSearchBar(); renderLists(); updateFilterBadge();
+}
 // 文字入力ではリストだけ描き直し、バッジの数字だけを直接書き換える。
-// バッジの有無そのものが変わるとき（0件→1件・1件→0件）だけ、フォーカスを保ったまま作り直す。
+// バッジの有無そのものが変わるとき（0件→1件・1件→0件）だけバーを作り直す。
+// ★2026-08-03（案A）: 検索欄をバーの外へ出したので、バーを作り直しても入力欄は壊れない。
+//   フォーカス位置を退避・復元していた renderFilterBarKeepFocus / ufFocusQuery は不要になり撤去した。
 function updateFilterBadge() {
   const head = document.querySelector('#ufbar .uf-head');
   if (!head) return;
   const n = ufActiveCount(uf, careFilter);
   const badge = head.querySelector('.uf-badge');
-  if (!!n !== !!badge) { renderFilterBarKeepFocus(); return; }
+  if (!!n !== !!badge) { renderFilterBar(); return; }
   if (badge) badge.textContent = n + '件適用中';
   const clr = document.querySelector('#ufbar .uf-clear');
   if (clr) clr.disabled = !n;
-}
-function renderFilterBarKeepFocus() {
-  const q = document.getElementById('ufQuery');
-  const keep = q && document.activeElement === q;
-  const pos = keep ? q.selectionStart : 0;
-  ufFocusQuery = keep;
-  renderFilterBar();
-  const q2 = document.getElementById('ufQuery');
-  if (keep && q2 && q2.setSelectionRange) { try { q2.setSelectionRange(pos, pos); } catch (e) { } }
 }
 // リストだけ描き直す（フィルタバーは触らない＝入力欄のフォーカスを奪わない）
 function renderLists() { renderTab1(); renderTabMonth(); renderTab2(); }
@@ -1395,7 +1456,7 @@ function toggleUfSlot(s) {
 function clearFilters() {
   uf = { days: [], slots: [], query: '' };
   careFilter = 'all';
-  renderFilterBar(); renderLists();
+  renderFilterBar(); renderSearchBar(); renderLists();   // 検索欄も空に戻す（案A・2026-08-03）
 }
 // 介護度フィルタも共通バーの一部（既存の設計書§4-2の3択をそのまま移設）。
 // 曜日・時間帯・名前検索との AND で効く。
@@ -2071,6 +2132,13 @@ document.getElementById('prevDay').addEventListener('click', () => goDate(msAddD
 document.getElementById('nextDay').addEventListener('click', () => goDate(msAddDays(state.selectedDate, 1)));
 document.getElementById('todayBtn').addEventListener('click', () => goDate(todayStr()));
 document.getElementById('datePick').addEventListener('change', function () { goDate(this.value); });
+// 名前検索（案A・2026-08-03）。入力欄は作り直さないので、ハンドラは起動時に1回だけ張る。
+// ★renderSearchBar は値が同じなら書き戻さない＝ここで呼んでもカーソルは動かない（×の出し入れだけ）。
+document.getElementById('ufQuery').addEventListener('input', function () {
+  uf.query = this.value;
+  renderLists(); renderSearchBar(); updateFilterBadge();
+});
+document.getElementById('ufQueryClear').addEventListener('click', clearQuery);
 
 load();
 </script>
