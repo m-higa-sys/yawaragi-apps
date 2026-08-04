@@ -4007,6 +4007,9 @@ const SHIFT_TIMES = {
   'E1':{start:'8:45',end:'15:00'},
   'F':{start:'8:45',end:'16:00'},
   'H':{start:'8:45',end:'16:30'},
+  // C2: シフト作成(shift-create.html:413 "C2": {time:"08:45-17:15"}) が根拠。
+  //     Cより15分遅い終業。2026-08 時点でフロア常勤の標準パターンとして使われている。
+  'C2':{start:'8:45',end:'17:15'},
 };
 
 const SEND_CODES = {
@@ -4037,6 +4040,7 @@ const SHIFT_HOURS = {
   'E1': 5.25,  // 8:45-15:00（6h15m - 1h休憩）
   'F':  6.25,  // 8:45-16:00（7h15m - 1h休憩）
   'H':  6.75,  // 8:45-16:30（7h45m - 1h休憩）
+  'C2': 7.5,   // 8:45-17:15（8h30m - 1h休憩）。shift-create は category:'full' に一律60分控除（shift-create.html:396-399）
   '7①': 1.25, // 朝のみ（7:45-9:00）
   '7②': 3.0,  // 朝＋昼（7:45-9:00 + 11:45-13:30）
   '7③': 4.0,  // 朝＋昼＋夕（+ 16:15-17:15頃）
@@ -4246,6 +4250,9 @@ function calcFullMonthCost(){
       let dayCost=0;
       for(const [staffId,shifts] of Object.entries(monthData)){
         const code=shifts[day-1];
+        // 🔴 ここは有給を除外しない（意図的）。常勤は月給制なので、有給の日も
+        //    日当が人件費として発生する。除外すると月次人件費が過小になる。
+        //    未対応コードの警告を出しているのは loadFromShift 側で、ここではない。
         if(!code||code==='-'||code==='休') continue;
         const staff=STAFF.find(s=>s.id===staffId);
         if(!staff) continue;
@@ -5272,7 +5279,7 @@ function loadFromShift(dateStr){
   data._unknownShift=[]; // シフトを取り込めなかった人の記録 {staffId,name,code,reason}
   for(const [staffId,shifts] of Object.entries(monthData)){
     const code=shifts[day-1];
-    if(!code||code==='-'||code==='休') continue;
+    if(!code||code==='-'||code==='休'||code==='有給') continue; // 有給は勤務しない日。休と同じく取込対象外
     const staff=STAFF.find(s=>s.id===staffId);
     if(!staff){ data._unknownShift.push({staffId:staffId, name:'', code:code, reason:'staff未登録'}); continue; }
 
@@ -5298,6 +5305,9 @@ function loadFromShift(dateStr){
         data.leave.push({name:staff.name, time:'16:30'});
       } else if(end==='16:45'||end==='17:00'){
         data.leave.push({name:staff.name, time:'送迎後'});
+      } else if(end==='17:15'){
+        // C2 はフロア勤務で送迎に出ないため「送迎後」ではなく実時刻を出す
+        data.leave.push({name:staff.name, time:'17:15'});
       }
     } else {
       // SEND_CODES にも SHIFT_TIMES にも無いコード → 黙って捨てず記録
