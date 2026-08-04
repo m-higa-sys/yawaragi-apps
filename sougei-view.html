@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- キャッシュ自動更新バージョンゲート（design.md 2026-06-18 準拠・<head>最先頭） -->
+    <!-- version.txt を取得し、現URLの ?v= と違えば1回だけ最新版へ location.replace する -->
+    <script>
+    function gateShouldReload(cur, latest) { return !!latest && cur !== latest; }
+    function buildVersionedUrl(currentUrl, latest) { var u = new URL(currentUrl); u.searchParams.set('v', latest); return u.href; }
+    (function () {
+        try {
+            var cur = new URLSearchParams(location.search).get('v');
+            fetch('version.txt?_=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (t) {
+                    var latest = (t || '').trim();
+                    if (gateShouldReload(cur, latest)) {
+                        location.replace(buildVersionedUrl(location.href, latest));
+                    }
+                })
+                .catch(function () { /* オフライン等は no-op で固まらせない */ });
+        } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
+    })();
+    </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>送迎表</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-text-size-adjust:100%; }
+body {
+  font-family:'Hiragino Sans','Yu Gothic UI','Meiryo',sans-serif;
+  background:#f5f5f5; color:#212121; padding:10px 12px 40px;
+}
+
+/* ── 上部バー ── */
+.topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:12px; flex-wrap:nowrap;
+  background:#fff; border:1px solid #cfd8dc; border-radius:8px;
+  padding:8px 12px; margin-bottom:8px;
+}
+.date-nav { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+.nav-btn {
+  font-size:17px; font-weight:700; line-height:1;
+  padding:9px 14px; border:1px solid #90a4ae; border-radius:6px;
+  background:#fff; color:#37474f; cursor:pointer;
+}
+.nav-btn:active { background:#eceff1; }
+.nav-btn:disabled { opacity:.35; cursor:default; }
+.date-label { font-size:22px; font-weight:800; min-width:200px; text-align:center; white-space:nowrap; }
+.unit-switch { display:flex; gap:0; white-space:nowrap; }
+.unit-btn {
+  font-size:18px; font-weight:800; line-height:1;
+  padding:10px 26px; border:1px solid #90a4ae; background:#fff; color:#546e7a; cursor:pointer;
+}
+.unit-btn:first-child { border-radius:6px 0 0 6px; }
+.unit-btn:last-child { border-radius:0 6px 6px 0; border-left:none; }
+.unit-btn.active { background:#37474f; color:#fff; border-color:#37474f; }
+
+/* カレンダー用の日付入力は画面に出さない（ボタンから呼び出すだけ・書き込みはしない） */
+#datePicker { position:absolute; opacity:0; width:1px; height:1px; pointer-events:none; }
+
+/* ── 凡例 ── */
+.legend {
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  background:#fff; border:1px solid #cfd8dc; border-radius:8px;
+  padding:7px 12px; margin-bottom:12px; font-size:14px;
+}
+.legend .item { display:flex; align-items:center; gap:6px; }
+.legend .swatch { display:inline-block; width:20px; height:14px; border-radius:3px; border:1px solid #b0bec5; }
+.legend .readonly {
+  margin-left:auto; font-size:14px; font-weight:800; color:#455a64;
+  background:#eceff1; border:1px solid #b0bec5; border-radius:12px; padding:3px 14px; white-space:nowrap;
+}
+
+/* ── セクション ── */
+h2.sec {
+  font-size:18px; font-weight:800; color:#263238;
+  margin:0 0 6px; padding:5px 10px;
+  background:#e0e0e0; border-left:5px solid #546e7a; border-radius:3px;
+}
+.table-wrap { overflow-x:auto; margin-bottom:18px; }
+table.route {
+  border-collapse:collapse; background:#fff; width:100%;
+  table-layout:auto;
+}
+table.route td { border:1px solid #90a4ae; padding:4px 6px; vertical-align:middle; }
+
+td.dep {
+  width:86px; min-width:86px; text-align:center; background:#eceff1; white-space:nowrap;
+}
+td.dep .lbl { font-size:12px; font-weight:700; color:#546e7a; }
+td.dep .val { font-size:19px; font-weight:800; color:#263238; }
+td.no {
+  width:64px; min-width:64px; text-align:center; background:#eceff1;
+  font-size:26px; font-weight:800; color:#37474f;
+}
+td.car {
+  width:96px; min-width:96px; text-align:center; background:#eceff1; white-space:nowrap;
+}
+td.car .name { font-size:19px; font-weight:800; color:#263238; }
+td.car .cap { font-size:13px; font-weight:700; color:#546e7a; }
+
+/* 停車順の横並び（折り返さない） */
+td.stops { padding:3px 4px; }
+.stop-row { display:flex; flex-wrap:nowrap; gap:4px; }
+.stop {
+  flex:1 1 0; min-width:88px;
+  border:1px solid #cfd8dc; border-radius:5px; overflow:hidden; background:#fff;
+}
+.stop .nm {
+  font-size:16px; font-weight:800; text-align:center; white-space:nowrap;
+  padding:4px 3px; line-height:1.25;
+}
+.stop .tm {
+  font-size:14px; font-weight:700; text-align:center; white-space:nowrap;
+  padding:3px; line-height:1.2; border-top:1px solid #eceff1; color:#37474f;
+}
+.stop.empty { background:#fafafa; border-style:dashed; }
+.stop.empty .nm { color:#b0bec5; font-weight:700; }
+
+/* ── 色分け（体験＝橙／新規＝青／時間変更＝赤） ── */
+.nm.st-trial { background:#ffe0b2; color:#e65100; }
+.nm.st-new   { background:#bbdefb; color:#0d47a1; }
+.tm.st-chg   { background:#ffcdd2; color:#b71c1c; }
+.badge {
+  display:inline-block; font-size:11px; font-weight:800; line-height:1.5;
+  border-radius:3px; padding:0 5px; margin-left:4px; vertical-align:middle; color:#fff;
+}
+.badge.trial { background:#e65100; }
+.badge.new   { background:#1565c0; }
+.badge.chg   { background:#c62828; }
+
+/* ── 状態メッセージ ── */
+.msg {
+  background:#fff; border:2px solid #cfd8dc; border-radius:8px;
+  padding:28px 20px; text-align:center; font-size:19px; font-weight:700; color:#546e7a;
+}
+.msg.error { border-color:#e57373; background:#ffebee; color:#b71c1c; }
+.msg .sub { display:block; margin-top:8px; font-size:15px; font-weight:600; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="date-nav">
+    <button class="nav-btn" id="btnPrev" onclick="shiftDate(-1)">◀ 前日</button>
+    <span class="date-label" id="dateLabel">—</span>
+    <button class="nav-btn" id="btnNext" onclick="shiftDate(1)">翌日 ▶</button>
+    <button class="nav-btn" onclick="openCalendar()">📅</button>
+    <input type="date" id="datePicker" tabindex="-1" aria-hidden="true" onchange="pickDate(this.value)">
+  </div>
+  <div class="unit-switch">
+    <button class="unit-btn" id="btnAm" onclick="setUnit('am')">AM</button>
+    <button class="unit-btn" id="btnPm" onclick="setUnit('pm')">PM</button>
+  </div>
+</div>
+
+<div class="legend">
+  <span class="item"><span class="swatch" style="background:#ffe0b2"></span>体験</span>
+  <span class="item"><span class="swatch" style="background:#bbdefb"></span>新規</span>
+  <span class="item"><span class="swatch" style="background:#ffcdd2"></span>時間変更</span>
+  <span class="readonly">👀 見るだけ</span>
+</div>
+
+<div id="main"></div>
+
+<script>
+// ============================================================
+// 送迎表（閲覧専用）
+//   出勤＆送迎表(attendance-ops.html)が日付ごとに保存したデータを、そのまま表示するだけ。
+//   書き込みは一切しない。POSTするコードをこのファイルに足さないこと。
+// ============================================================
+
+// 送迎日誌GAS。dailyOps を複数セル連結で読むのはこのGASだけ。
+// V66Udd 側の getOps は A1セル1個しか読まずデータが途中で切れるため使わない
+// （attendance-ops.html:966-975 も同URLを検出したら消す作りになっている）。
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyh_h7qB93S17_9mI52uTcCfUfBjeX9K4Xaq6LIX3d8Bae4w0lqKY-Gsqnw173atAvm7Q/exec';
+
+// 車両記号→定員。データ側に定員は入っていないため対応表を持つ。
+// 出典: attendance-ops.html:950 （車両が増減したら両方直すこと）
+const CAR_CAPACITY = {'ス':7, 'シS':6, 'シW':6, 'モ':3, 'キ':4};
+
+const DOW = ['日','月','火','水','木','金','土'];
+const MARU = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+
+// 取得は起動時のみ。断続404に備えて MAX_TRY 回まで自動で再試行する
+// （2026-08-04 実測: 同一URL・同一パラメータで 200 と 404 が混在する。1回の失敗で諦めない）
+const MAX_TRY = 3;
+const RETRY_WAIT_MS = 2500;
+
+let ALL_OPS = null;       // { "yyyy-MM-dd": D } … 起動時に1回だけ取得して保持する
+let loadFailed = false;
+let loadTry = 0;          // 現在の試行回数（読み込み中の表示に使う）
+let selectedDate = '';
+let currentUnit = 'am';
+let navMin = '';          // 移動できる最古の日付
+let navMax = '';          // 移動できる最新の日付（打ち間違いの遠い未来を除外した上限）
+
+function esc(s){
+  if(s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+// 敬称。sched-grid.html:812-817 の sama() と同じ扱いに揃える
+function sama(name){
+  if(!name) return '';
+  const s = String(name);
+  if(s.endsWith('様') || s.endsWith('さん')) return s;
+  return s + '様';
+}
+
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+// 「8月10日(月)」形式。月日はゼロ埋めしない
+function formatDateLabel(s){
+  const p = String(s||'').split('-');
+  if(p.length !== 3) return '—';
+  const d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  return Number(p[1]) + '月' + Number(p[2]) + '日(' + DOW[d.getDay()] + ')';
+}
+
+function addDays(s, n){
+  const p = String(s).split('-');
+  const d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+// ── 移動できる日付の範囲を決める ──
+// 出勤＆送迎表のデータには打ち間違いの日付が混ざっている（2026-08-04 実測: "2099-12-31"）。
+// 今日から SANE_FUTURE_DAYS 日より先のキーは移動範囲に入れない＝前日/翌日でもカレンダーでも辿り着かない。
+// データ自体は消さない（直すのは出勤＆送迎表側の仕事で、この閲覧アプリの役目ではない）。
+const SANE_FUTURE_DAYS = 400;
+function computeNavRange(){
+  const today = todayStr();
+  const limit = addDays(today, SANE_FUTURE_DAYS);
+  const keys = Object.keys(ALL_OPS || {})
+    .filter(function(k){ return /^\d{4}-\d{2}-\d{2}$/.test(k) && k <= limit; })
+    .sort();
+  navMin = keys.length ? keys[0] : today;
+  navMax = keys.length ? keys[keys.length - 1] : today;
+  // 今日は常に見られるようにする（データが無い日でも「未登録」と出す）
+  if(today < navMin) navMin = today;
+  if(today > navMax) navMax = today;
+  const el = document.getElementById('datePicker');
+  if(el){ el.min = navMin; el.max = navMax; }
+}
+function clampDate(s){
+  if(navMin && s < navMin) return navMin;
+  if(navMax && s > navMax) return navMax;
+  return s;
+}
+
+// ── 日付・AM/PM の切り替え（再取得はしない。手元のデータを描き直すだけ）──
+function shiftDate(n){ selectedDate = clampDate(addDays(selectedDate, n)); render(); }
+function pickDate(v){ if(v){ selectedDate = clampDate(v); render(); } }
+function openCalendar(){
+  const el = document.getElementById('datePicker');
+  if(!el) return;
+  el.value = selectedDate;
+  if(typeof el.showPicker === 'function'){ try { el.showPicker(); return; } catch(e){} }
+  // showPicker 非対応端末向けのフォールバック
+  el.style.position = 'static'; el.style.opacity = '1';
+  el.style.width = 'auto'; el.style.height = 'auto'; el.style.pointerEvents = 'auto';
+  el.focus();
+}
+function setUnit(u){ currentUnit = u; render(); }
+
+// ── 1停車ぶんのセル ──
+function renderStop(stop, userStatus){
+  const name = (stop && stop.user) ? String(stop.user).trim() : '';
+  if(!name) return '<div class="stop empty"><div class="nm">—</div><div class="tm">—</div></div>';
+
+  const st = userStatus[name] || '';
+  let nmCls = '', nmBadge = '';
+  if(st === 'trial'){ nmCls = ' st-trial'; nmBadge = '<span class="badge trial">体験</span>'; }
+  else if(st === 'new'){ nmCls = ' st-new'; nmBadge = '<span class="badge new">新規</span>'; }
+
+  // 時刻は出勤＆送迎表に保存された文字列をそのまま出す（例 8:05~10）。整形も補完もしない
+  const time = (stop.time !== undefined && stop.time !== null && String(stop.time) !== '') ? String(stop.time) : '—';
+  const chg = stop.timeChanged === true;
+  const tmCls = chg ? ' st-chg' : '';
+  const tmBadge = chg ? '<span class="badge chg">変更</span>' : '';
+
+  return '<div class="stop">'
+       +   '<div class="nm' + nmCls + '">' + esc(sama(name)) + nmBadge + '</div>'
+       +   '<div class="tm' + tmCls + '">' + esc(time) + tmBadge + '</div>'
+       + '</div>';
+}
+
+// 送りは利用者名のみ（時刻は出さない）
+function renderStopNameOnly(stop, userStatus){
+  const name = (stop && stop.user) ? String(stop.user).trim() : '';
+  if(!name) return '<div class="stop empty"><div class="nm">—</div></div>';
+  const st = userStatus[name] || '';
+  let nmCls = '', nmBadge = '';
+  if(st === 'trial'){ nmCls = ' st-trial'; nmBadge = '<span class="badge trial">体験</span>'; }
+  else if(st === 'new'){ nmCls = ' st-new'; nmBadge = '<span class="badge new">新規</span>'; }
+  return '<div class="stop"><div class="nm' + nmCls + '">' + esc(sama(name)) + nmBadge + '</div></div>';
+}
+
+function renderCarCell(vehicle){
+  const v = (vehicle === undefined || vehicle === null) ? '' : String(vehicle).trim();
+  if(!v) return '<td class="car"><div class="name">—</div></td>';
+  const cap = CAR_CAPACITY[v];
+  return '<td class="car"><div class="name">' + esc(v) + '</div>'
+       + (cap ? '<div class="cap">' + cap + '名</div>' : '') + '</td>';
+}
+
+// ── 迎え：出発 / 停車順（名前＋到着時刻） / 送迎車 ──
+function renderPick(routes, userStatus){
+  let h = '<h2 class="sec">迎え</h2>';
+  if(!routes.length) return h + '<div class="msg">この時間帯の迎えルートはありません</div>';
+  h += '<div class="table-wrap"><table class="route">';
+  routes.forEach(function(route){
+    const dep = (route.depTime !== undefined && route.depTime !== null && String(route.depTime) !== '')
+      ? String(route.depTime) : '—';
+    const stops = Array.isArray(route.stops) ? route.stops : [];
+    h += '<tr>'
+       +   '<td class="dep"><div class="lbl">出発</div><div class="val">' + esc(dep) + '</div></td>'
+       +   '<td class="stops"><div class="stop-row">'
+       +     stops.map(function(s){ return renderStop(s, userStatus); }).join('')
+       +   '</div></td>'
+       +   renderCarCell(route.vehicle)
+       + '</tr>';
+  });
+  return h + '</table></div>';
+}
+
+// ── 送り：順番 / 利用者名のみ / 送迎車 ──
+function renderDrop(routes, userStatus){
+  let h = '<h2 class="sec">送り</h2>';
+  if(!routes.length) return h + '<div class="msg">この時間帯の送りルートはありません</div>';
+  h += '<div class="table-wrap"><table class="route">';
+  routes.forEach(function(route, i){
+    const stops = Array.isArray(route.stops) ? route.stops : [];
+    h += '<tr>'
+       +   '<td class="no">' + (MARU[i] || (i+1)) + '</td>'
+       +   '<td class="stops"><div class="stop-row">'
+       +     stops.map(function(s){ return renderStopNameOnly(s, userStatus); }).join('')
+       +   '</div></td>'
+       +   renderCarCell(route.vehicle)
+       + '</tr>';
+  });
+  return h + '</table></div>';
+}
+
+function render(){
+  document.getElementById('dateLabel').textContent = formatDateLabel(selectedDate);
+  document.getElementById('btnAm').className = 'unit-btn' + (currentUnit === 'am' ? ' active' : '');
+  document.getElementById('btnPm').className = 'unit-btn' + (currentUnit === 'pm' ? ' active' : '');
+
+  // 移動範囲の端では前日/翌日を押せなくする（打ち間違いの日付へ迷い込ませない）
+  const bp = document.getElementById('btnPrev');
+  const bn = document.getElementById('btnNext');
+  if(bp) bp.disabled = !!(ALL_OPS && navMin && selectedDate <= navMin);
+  if(bn) bn.disabled = !!(ALL_OPS && navMax && selectedDate >= navMax);
+
+  const main = document.getElementById('main');
+
+  if(loadFailed){
+    main.innerHTML = '<div class="msg error">読み込めませんでした'
+      + '<span class="sub">' + MAX_TRY + '回試しましたが取得できませんでした。'
+      + '通信を確認して、画面を再読み込みしてください</span></div>';
+    return;
+  }
+  if(!ALL_OPS){
+    main.innerHTML = '<div class="msg">読み込み中…'
+      + (loadTry > 1 ? '<span class="sub">再試行 ' + loadTry + ' / ' + MAX_TRY + '</span>' : '')
+      + '</div>';
+    return;
+  }
+
+  const day = ALL_OPS[selectedDate];
+  if(!day){
+    main.innerHTML = '<div class="msg">' + esc(formatDateLabel(selectedDate)) + ' の送迎表はまだ登録されていません</div>';
+    return;
+  }
+  const unit = day[currentUnit];
+  if(!unit){
+    main.innerHTML = '<div class="msg">' + esc(formatDateLabel(selectedDate))
+      + ' の' + (currentUnit === 'am' ? '午前' : '午後') + 'は登録されていません</div>';
+    return;
+  }
+
+  const userStatus = unit.userStatus || {};
+  const pick = Array.isArray(unit.pick) ? unit.pick : [];
+  const drop = Array.isArray(unit.drop) ? unit.drop : [];
+  main.innerHTML = renderPick(pick, userStatus) + renderDrop(drop, userStatus);
+}
+
+// ── 起動時に取得する（日付を動かしても再取得しない）──
+// GAS は同じURL・同じパラメータでも断続的に404を返す（2026-08-04 実測で 200/404 が混在）。
+// 1回の失敗で「読み込めませんでした」を出すと、実際には生きているのに使えなくなる。
+// そのため間隔を空けて最大 MAX_TRY 回まで自動で入れ直し、全部落ちたときだけ諦める。
+function load(){
+  loadTry++;
+  render();   // 「読み込み中…（再試行 n/3）」を出す。無言で固まらせない
+  fetch(GAS_URL + '?action=getOps&t=' + Date.now())
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data){
+      if(!data || typeof data !== 'object') throw new Error('形式不正');
+      ALL_OPS = data.dailyOps || {};
+      computeNavRange();
+      selectedDate = clampDate(selectedDate);
+      loadFailed = false;
+      render();
+    })
+    .catch(function(err){
+      console.warn('[送迎表] 取得失敗 (' + loadTry + '/' + MAX_TRY + '):', err);
+      if(loadTry < MAX_TRY){
+        setTimeout(load, RETRY_WAIT_MS);
+        render();
+        return;
+      }
+      loadFailed = true;
+      render();
+    });
+}
+
+selectedDate = todayStr();
+render();
+load();
+</script>
+</body>
+</html>
