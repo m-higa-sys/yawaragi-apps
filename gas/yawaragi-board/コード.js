@@ -17238,6 +17238,125 @@ function AAA_ランチャー測定管理を出す() {
 }
 
 // =============================================================
+// ランチャー台帳：ケアマネ提出（10日便）を現場へ出す（2026-08-05）
+// -------------------------------------------------------------
+// 背景: 2026-08-05 社長決定でケアマネ提出を2便制にした。
+//   実績＝月末最終日便（従来どおり ケアマネ送付チェックリスト.html）
+//   計画書等（個訓・口腔・通所計画・測定）＝毎月10日便 → 本命UIは teishutsu.html
+// teishutsu.html は 2026-07-03 に作られたが台帳未登録＝現場から到達できず、
+// 提出送付台帳は 2026-07-03 のバックフィル103件のまま7月・8月が0行だった
+// （2026-08-05 実測。sorotta_by / soufusha はいずれも 0/103＝人の操作はゼロ）。
+// 測定管理(sokutei)とまったく同じ「配線漏れ」なので、同じ手当てをする。
+//
+// ⚠️ appregistryMigrateLauncherV2() は使わない・呼ばない（上の測定管理の注記と同じ理由）。
+//    台帳は LAUNCHER_MAPPING より先行しており、流すと差分が internal へ落ちて現場から消える。
+//
+// やること: teishutsu の行を1本足す。それだけ。
+//   測定管理のときと違い、既存行の書き換えは1セルも無い（改名対象なし）。
+//   ケアマネ送付チェックリストの行は残す＝実績便で現役のため（社長指示）。
+// 表示順 2.5 の理由: ケアマネ送付チェック(2)の直後へ、既存行を1つも動かさずに割り込むため。
+//   描画側(applauncher-render.js:19)は parseInt(表示順,10) で 2 に丸め、同値はアプリ名の
+//   localeCompare('ja') で決まる。'ケアマネ送付チェック' < 'ケアマネ提出（10日便）' なので直後。
+//   整数3を使うと 見学・体験・新規(3) を4へ動かす必要が出る＝「追加のみ」原則を破る。
+//   前例: 請求集計ビュー（月次）= 6.5。
+// 冪等（2回実行しても行は増えない）。
+// =============================================================
+var LAUNCHER_TEISHUTSU_URL_ = 'https://m-higa-sys.github.io/yawaragi-apps/teishutsu.html';
+var LAUNCHER_TEISHUTSU_NAME_ = 'ケアマネ提出（10日便）';
+var LAUNCHER_TEISHUTSU_ICON_ = '📤';
+var LAUNCHER_TEISHUTSU_CAT_ = '相談員業務';
+var LAUNCHER_TEISHUTSU_ORDER_ = 2.5;
+var LAUNCHER_TEISHUTSU_DESC_ = '毎月10日便の提出物（個訓・口腔・通所計画・測定）。揃った／送付済を記録';
+
+// 純関数: 既存行(array-of-arrays・列順=APPREGISTRY_HEADERS・14列)を受け取り、
+// 「反映後の行配列」と「何をするかの計画」を返す。シートには触らない。
+// ★既存行は1セルも書き換えない（最終更新日[10] も動かさない）。行うのは末尾への1行追記だけ。
+function launcherPlanTeishutsu_(rows, todayStr) {
+  var COLS = 14;
+  var out = [];
+  var plan = {
+    addRow: null, alreadyRegistered: false,
+    beforeRowCount: (rows || []).length, afterRowCount: 0
+  };
+  var slugOf = launcherSlugFromUrl_;
+  for (var i = 0; i < (rows || []).length; i++) {
+    var r = rows[i].slice();
+    while (r.length < COLS) r.push('');
+    if (slugOf(r[3]) === 'teishutsu') plan.alreadyRegistered = true;
+    out.push(r);
+  }
+  // teishutsu がまだ無ければ1行足す。公開区分[4]は同カテゴリの既存行と同じ 'staff'（internalへ落とさない）
+  if (!plan.alreadyRegistered) {
+    var nr = [];
+    for (var k = 0; k < COLS; k++) nr.push('');
+    nr[0] = LAUNCHER_TEISHUTSU_NAME_;
+    nr[1] = LAUNCHER_TEISHUTSU_CAT_;
+    nr[2] = LAUNCHER_TEISHUTSU_DESC_;
+    nr[3] = LAUNCHER_TEISHUTSU_URL_;
+    nr[4] = 'staff';
+    nr[9] = todayStr;    // 作成日
+    nr[10] = todayStr;   // 最終更新日
+    nr[12] = LAUNCHER_TEISHUTSU_ICON_;
+    nr[13] = LAUNCHER_TEISHUTSU_ORDER_;
+    plan.addRow = nr.slice();
+    out.push(nr);
+  }
+  plan.afterRowCount = out.length;
+  return { rows: out, plan: plan };
+}
+
+// IO: 台帳を読んで計画を作り、dryRun=false のときだけ書き戻す。
+// 書き戻しは「追加した1行の追記」だけ（全域 clear→書き戻しはしない＝他の行を巻き込む余地を作らない）。
+function launcherAddTeishutsu_(dryRun) {
+  var ss = appregistrySS_();
+  var sheet = ss.getSheetByName(APPREGISTRY_SHEET);
+  if (!sheet) throw new Error("台帳シート '" + APPREGISTRY_SHEET + "' が無い");
+  var COLS = APPREGISTRY_HEADERS.length;
+  var lastRow = sheet.getLastRow();
+  var rows = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, COLS).getValues() : [];
+  var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var res = launcherPlanTeishutsu_(rows, today);
+  var p = res.plan;
+
+  Logger.log('===== ランチャー台帳：ケアマネ提出（10日便）を出す ' + (dryRun ? '【確認のみ・書き込みなし】' : '【実行】') + ' =====');
+  Logger.log('台帳の行数（ヘッダー除く）: ' + p.beforeRowCount + ' → ' + p.afterRowCount);
+  if (p.alreadyRegistered) {
+    Logger.log('［追加］既に登録済み・変更なし（teishutsu の行がある）');
+  } else {
+    Logger.log('［追加］下の1行を足す:');
+    for (var a = 0; a < COLS; a++) {
+      if (String(p.addRow[a]) !== '') Logger.log('    ' + APPREGISTRY_HEADERS[a] + ' = ' + p.addRow[a]);
+    }
+  }
+  Logger.log('［変更］既存の行は1セルも変更しません（今回は追加のみ）');
+
+  if (dryRun) {
+    Logger.log('※ 確認のみのため、台帳には何も書いていません。');
+    return { dryRun: true, plan: p };
+  }
+
+  // teishutsu の行を末尾へ追記する（これが唯一の書き込み）
+  if (!p.alreadyRegistered) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, COLS).setValues([p.addRow]);
+  }
+  SpreadsheetApp.flush();
+  // 読み戻し検証（書けたことを実測してから成功を返す）
+  var after = sheet.getRange(2, 1, sheet.getLastRow() - 1, COLS).getValues();
+  var verify = launcherPlanTeishutsu_(after, today).plan;
+  var ok = verify.alreadyRegistered;
+  Logger.log(ok ? '✅ 反映を確認しました（行数 ' + after.length + '）' : '⚠️ 反映の確認が取れませんでした');
+  return { dryRun: false, ok: ok, rowCount: after.length, plan: p };
+}
+
+// GASエディタから引数なしで実行する入口（AAA_ 命名＝一覧の先頭に出す）
+function AAA_ランチャーケアマネ提出を出す_確認のみ() {
+  return launcherAddTeishutsu_(true);
+}
+function AAA_ランチャーケアマネ提出を出す() {
+  return launcherAddTeishutsu_(false);
+}
+
+// =============================================================
 // 伝達ボード（社長⇄スタッフ⇄スタッフ 3方向メッセージ板・2026-06-18）
 //   シート「伝達ボード」列=id/from/to/body/deadline/createdAt/done/doneAt/doneBy/recipients/readBy
 //   純関数の正本は genba.html 側（PhaseA・31テストPASS）と同一実装（二重持ち）。

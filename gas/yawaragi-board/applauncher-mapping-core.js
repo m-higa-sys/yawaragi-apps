@@ -7,6 +7,16 @@ var LAUNCHER_SHOKAI_URL = 'https://script.google.com/macros/s/AKfycbx1z2qR6sB2UL
 
 var LAUNCHER_CATEGORY_ORDER = ['メインボード','毎日の業務','利用者の記録','相談員業務','事務・手続き','設備・備品','その他'];
 
+// 🔴この表はランチャーの「正本ではない」（2026-07-29・2026-08-05 に2度同じ抜けが起きたので明記）
+//   正本＝社長専用SSの「アプリ台帳」シート。
+//   経路: portal.html → getAppRegistry&scope=staff → アプリ台帳シート → applauncher-render.js
+//   下の launcherApplyMapping_ は「台帳に既にある行を slug で照合して上書きする」だけで、
+//   行の新規追加はしない。よって★この表に足しても現場のランチャーには出ない★。
+//   アプリを現場へ出すときは コード.js の launcherAdd○○_ 系（行追記1件だけ・冪等）を作る。
+//   前例: launcherAddSokutei_（測定管理・2026-07-29）／ launcherAddTeishutsu_（ケアマネ提出・2026-08-05）
+//   ⚠️ appregistryMigrateLauncherV2() は使用禁止（コード.js の同関数の注記を読むこと）。
+//      台帳はこの表より先行しており、流すと差分が internal へ落ちて現場から消える。
+//
 // キー = 既存スタッフ用URLの slug(ファイル名から .html を除いたもの)
 // meta: cat=カテゴリ / icon=絵文字 / name=表示名 / order=カテゴリ内表示順 / newUrl?=URL差替 / desc?=説明差替
 var LAUNCHER_MAPPING = {
@@ -34,6 +44,14 @@ var LAUNCHER_MAPPING = {
 
   'after-contract': { cat:'相談員業務', icon:'📋', name:'担会・契約後', order:1 },
   'ケアマネ送付チェックリスト': { cat:'相談員業務', icon:'📋', name:'ケアマネ送付チェック', order:2 },
+  // ケアマネ提出（10日便）。2026-08-05 社長決定の2便制（実績=月末最終日便／計画書等=毎月10日便）の
+  // 10日便側の本命UI＝提出送付台帳に直結する teishutsu.html。
+  // ⚠️ この行だけでは現場に出ない（このマッピングは正本ではない・下の注記参照）。
+  //    実際に出すのは コード.js の launcherAddTeishutsu_（AAA_ランチャーケアマネ提出を出す）。
+  // 表示順 2.5 は「ケアマネ送付チェック(2)の直後へ、既存行を1セルも動かさずに割り込む」ため。
+  //    描画側(applauncher-render.js:19)は parseInt で 2 に丸め、同値はアプリ名の五十音で決まる。
+  //    'ケアマネ送付チェック' < 'ケアマネ提出（10日便）' なので直後に並ぶ。前例: 請求集計ビュー=6.5。
+  'teishutsu':      { cat:'相談員業務', icon:'📤', name:'ケアマネ提出（10日便）', order:2.5, desc:'毎月10日便の提出物（個訓・口腔・通所計画・測定）。揃った／送付済を記録' },
   'intake':         { cat:'相談員業務', icon:'🏠', name:'見学・体験・新規', order:3, desc:'見学・体験・新規利用者の受入対応チェック' },
 
   'caremgr-change': { cat:'事務・手続き', icon:'🔄', name:'ケアマネ変更', order:2 },
