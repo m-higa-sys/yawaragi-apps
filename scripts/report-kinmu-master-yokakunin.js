@@ -96,6 +96,20 @@ console.log('人数: ' + res.counts.total + '（在籍 ' + res.counts.active + '
 console.log('要確認: 合計 ' + total + ' 項目');
 console.log('');
 
+console.log('■ 勤務形態区分（導出結果）  常勤基準 = ' +
+  ctx.fulltimeThreshold_(res.settings['常勤所定_週時間_一覧表用']) + ' 時間/週');
+const KUBUN_LABEL = { A: '常勤・専従', B: '常勤・兼務', C: '非常勤・専従', D: '非常勤・兼務' };
+staff.forEach((s) => {
+  const k = s.勤務形態区分;
+  console.log('  ' + (s.退職 ? '[退職]' : '      ') + s.氏名.padEnd(6, '　') +
+    ' 週' + String(s.週所定時間 === null ? '—' : s.週所定時間).padStart(6) + 'h  職種' + s.職種.length + '  → ' +
+    (k ? k + '（' + KUBUN_LABEL[k] + '）' : '要確認（週所定時間が未登録）'));
+});
+const tally = {};
+staff.forEach((s) => { const k = s.勤務形態区分 || '導出不可'; tally[k] = (tally[k] || 0) + 1; });
+console.log('  内訳: ' + Object.keys(tally).sort().map((k) => k + '=' + tally[k]).join(' / '));
+console.log('');
+
 console.log('■ 項目別');
 Object.keys(perItem)
   .sort((a, b) => perItem[b].length - perItem[a].length || a.localeCompare(b))

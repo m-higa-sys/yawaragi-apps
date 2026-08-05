@@ -35,7 +35,9 @@ var STAFF_HEADERS = [
   '職種①', '勤務形態区分①', '比率①',
   '職種②', '勤務形態区分②', '比率②',
   '日次ルールタグ', '保有資格', 'シフト用役割', '備考',
-  '職種③', '勤務形態区分③', '比率③'
+  '職種③', '勤務形態区分③', '比率③',
+  // 2026-08-06 追加。常勤/非常勤の判定入力。出典＝有給管理簿（syncFromYukyu() が書く）
+  '週所定時間'
 ];
 // doGet が必須とするのは元の14列だけ。③列が未追加のシートでも読めるようにする。
 var STAFF_HEADERS_REQUIRED = STAFF_HEADERS.slice(0, 14);
@@ -88,6 +90,75 @@ var SETTINGS_ROWS = [
 //   相談員条件 … 下浦・喜多のいずれか出勤→介護職員／両名不在→生活相談員（勝又・星野）
 // ※「看護2名条件」（比嘉）は職種を切り替えないのでここには入れない。
 var TAGS_SWITCHING_SHOKUSHU = ['相談員条件'];
+
+/* ------------------------------------------------------------
+   勤務形態区分の機械導出（2026-08-06）
+   区分は2軸に分解できる。手入力項目ではない。
+     A=常勤かつ専従 / B=常勤かつ兼務 / C=非常勤かつ専従 / D=非常勤かつ兼務
+   常勤の判定 … 埼玉県の基準。「当該事業所で定められた常勤の所定労働時間
+     （週32時間を下回る場合は32時間を基本）に達しているか」。雇用形態の名前では決まらない。
+   専従/兼務   … 職種が2つ以上なら兼務。
+   ------------------------------------------------------------ */
+
+// 常勤とみなす週所定時間のしきい値。事業所の所定が32hを下回るなら32hを基本にする。
+function fulltimeThreshold_(shoteiWeekHours) {
+  var n = Number(shoteiWeekHours);
+  if (!n || isNaN(n)) return 32;
+  return n < 32 ? 32 : n;
+}
+
+// 週所定時間が不明なら '' を返す（＝導出できない）
+function deriveKubun_(weeklyHours, shokushuCount, threshold) {
+  if (weeklyHours === '' || weeklyHours === null || weeklyHours === undefined) return '';
+  var h = Number(weeklyHours);
+  if (isNaN(h)) return '';
+  var isFulltime = h >= Number(threshold);
+  var isKenmu = Number(shokushuCount) >= 2;
+  if (isFulltime) return isKenmu ? 'B' : 'A';
+  return isKenmu ? 'D' : 'C';
+}
+
+// 小数点以下第2位を切り捨て（＝小数第1位まで残す）。
+// 参考様式1 の注記「算出にあたっては、小数点以下第２位を切り捨ててください。」に対応。
+// 実物（令和3年4月・鳩山町 計画）の全26行がこの挙動で一致した。四捨五入ではない。
+function truncate1_(x) {
+  var n = Number(x);
+  if (isNaN(n)) return 0;
+  return Math.floor(Math.round(n * 1e6) / 1e6 * 10) / 10;
+}
+
+/* ------------------------------------------------------------
+   有給管理簿（自社運用GAS・別スプレッドシート）
+   職員マスタ: staff_id | 氏名 | 入社日 | 雇用形態 | 週所定労働日数 | 週所定時間 | 適用開始日 | 状態 | 備考
+   ※週所定の変更は行追加で履歴化される（適用開始日が新しい行が有効）
+   ------------------------------------------------------------ */
+var YUKYU_SPREADSHEET_ID = '1KaWfk1cNKgTit09s8UGbA72QKD2y44bnpglvwam2ps4';
+var YUKYU_SHEET_STAFF = '職員マスタ';
+
+// 2026-08-06 に読んだ内容の記録。syncFromYukyu() はライブで読むが、
+// 読めた値がこの記録と食い違ったらログに出す（silent drift を防ぐ）。
+var YUKYU_SNAPSHOT_20260806 = {
+  '下浦理絵':   { 入社日: '2024-09-03', 週所定時間: 20.25 },
+  '髙山奈緒美': { 入社日: '2022-09-01', 週所定時間: 15 },
+  '小野重次郎': { 入社日: '2023-07-19', 週所定時間: 13 },
+  '春山忍':     { 入社日: '2025-04-07', 週所定時間: 15 },
+  '勝又裕子':   { 入社日: '2025-11-03', 週所定時間: 40 },
+  '工藤経子':   { 入社日: '2026-02-06', 週所定時間: 21 },
+  '林秀明':     { 入社日: '2026-01-30', 週所定時間: 6 },
+  '星野友太':   { 入社日: '2026-02-13', 週所定時間: 40 },
+  '大久保好美': { 入社日: '2026-03-02', 週所定時間: 8 },
+  '石井祐子':   { 入社日: '2026-04-01', 週所定時間: 15 }
+};
+
+// 2026-08-06 にクロコ側で確定した値（社長判断不要）。applyDecisions20260806() が書く。
+var DECISIONS_20260806 = {
+  // 喜多さんのシフト用役割 ＝ 下浦さんと同値（同じ生活相談員）
+  '喜多美咲': { 'シフト用役割': '介福,相談' },
+  // 退職者の比率 ＝ 職種数で均等割。過去月の在籍判定用の概算で、請求額には影響しない。
+  '石丸美幸':   { '比率①': 100 },
+  '田中美奈子': { '比率①': 34, '比率②': 33, '比率③': 33 },
+  '伊得たか子': { '比率①': 34, '比率②': 33, '比率③': 33 }
+};
 
 // 職種スロット。①は必須、②③は空でよい。
 var SHOKUSHU_SLOTS = [
@@ -142,6 +213,8 @@ function doGet(e) {
     }
 
     var activeOnly = String(p.activeOnly || '') === '1';
+    var stPre = readSettings_(ss);
+    var threshold = fulltimeThreshold_(stPre.flat['常勤所定_週時間_一覧表用']);
 
     var staff = [];
     var yokakuninTotal = 0;
@@ -181,10 +254,17 @@ function doGet(e) {
         if (!nm || nm === '要確認') return;
         rec.職種.push({
           職種: nm,
-          勤務形態区分: (trio[1] in idx) ? cell_(row[idx[trio[1]]]) : '',
           比率: (trio[2] in idx) ? numOrNull_(row[idx[trio[2]]]) : null
         });
       });
+
+      // 勤務形態区分は導出値。シートの手入力値は使わない（誤入力に引きずられないため）。
+      var wh = ('週所定時間' in idx) ? numOrNull_(row[idx['週所定時間']]) : null;
+      var kubun = deriveKubun_(wh === null ? '' : wh, rec.職種.length, threshold);
+      rec.週所定時間 = wh;
+      rec.常勤 = (wh === null) ? null : (wh >= threshold);
+      rec.勤務形態区分 = kubun;
+      rec.職種.forEach(function (s) { s.勤務形態区分 = kubun; });
 
       // 未確定の項目を機械的に拾う（要確認一覧の単一の正）
       rec.要確認 = collectYokakunin_(row, idx);
@@ -262,13 +342,16 @@ function collectYokakunin_(row, idx) {
   var tags = splitList_(at('日次ルールタグ'));
   var hasDailyRule = tags.some(function (t) { return TAGS_SWITCHING_SHOKUSHU.indexOf(t) >= 0; });
 
-  // 職種①は必須。②③は「職種名が入っているのに区分/比率が空」のときだけ未確定。
+  // 2026-08-06: 勤務形態区分は導出値になったので手入力の未確定として数えない。
+  // 代わりに導出の入力である「週所定時間」が無い人だけを立てる。
+  if ('週所定時間' in idx && at('週所定時間') === '') out.push('週所定時間');
+
+  // 職種①は必須。②③は「職種名が入っているのに比率が空」のときだけ未確定。
   SHOKUSHU_SLOTS.forEach(function (trio, i) {
     var isFirst = (i === 0);
     if (!isFirst && !(trio[0] in idx)) return;        // ③列が未追加のシート
     if (!isFirst && at(trio[0]) === '') return;       // 職種名が空のスロットは問わない
     if (isFirst && at(trio[0]) === '') out.push(trio[0]);
-    if (at(trio[1]) === '') out.push(trio[1]);
     if (!hasDailyRule && at(trio[2]) === '') out.push(trio[2]);
   });
   return out;
@@ -292,7 +375,7 @@ function setupSheets() {
   var headerNow = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
     .map(function (h) { return String(h).trim(); });
   var added = [];
-  ['職種③', '勤務形態区分③', '比率③'].forEach(function (h) {
+  ['職種③', '勤務形態区分③', '比率③', '週所定時間'].forEach(function (h) {
     if (headerNow.indexOf(h) >= 0) return;          // 既にあるなら何もしない
     var col = sh.getLastColumn() + 1;
     if (sh.getMaxColumns() < col) sh.insertColumnsAfter(sh.getMaxColumns(), 1);
@@ -316,7 +399,7 @@ function setupSheets() {
     '職種①': 130, '勤務形態区分①': 120, '比率①': 60,
     '職種②': 130, '勤務形態区分②': 120, '比率②': 60,
     '日次ルールタグ': 130, '保有資格': 240, 'シフト用役割': 170, '備考': 520,
-    '職種③': 130, '勤務形態区分③': 120, '比率③': 60
+    '職種③': 130, '勤務形態区分③': 120, '比率③': 60, '週所定時間': 100
   };
   Object.keys(widths).forEach(function (name) {
     var c = colOf(name);
@@ -329,11 +412,12 @@ function setupSheets() {
     .setAllowInvalid(false)
     .setHelpText('職種は ' + SHOKUSHU_LIST.join(' / ') + ' から選んでください')
     .build();
-  // 勤務形態区分①②③のプルダウン
+  // 勤務形態区分①②③。2026-08-06 以降は syncDerived() が書く自動計算値で、手入力しない。
   var dvKubun = SpreadsheetApp.newDataValidation()
     .requireValueInList(KUBUN_LIST, true)
     .setAllowInvalid(false)
-    .setHelpText('勤務形態区分は A=常勤専従 / B=常勤兼務 / C=非常勤専従 / D=非常勤兼務')
+    .setHelpText('【自動計算】週所定時間と職種数から導出される（A=常勤専従/B=常勤兼務/C=非常勤専従/D=非常勤兼務）。' +
+      '直したいときは「週所定時間」列を直すこと。手入力してもAPIは導出値を返す')
     .build();
   SHOKUSHU_SLOTS.forEach(function (trio) {
     var cs = colOf(trio[0]);
@@ -458,6 +542,171 @@ function applyDecisions20260805() {
     反映: changed.length ? changed : '（なし・既に反映済み）',
     見送り: skipped.length ? skipped : '（なし）',
     件数: { 反映: changed.length, 見送り: skipped.length }
+  };
+  Logger.log(JSON.stringify(info, null, 2));
+  return info;
+}
+
+/* ============================================================
+   2026-08-06 分（setupSheets() のあと、この順で実行）
+     ① syncFromYukyu()          有給管理簿から 入社日・週所定時間 を取り込む
+     ② applyDecisions20260806() 喜多さんの役割・退職者の比率を入れる
+     ③ syncDerived()            週所定時間と職種数から勤務形態区分を導出して書く
+   いずれも冪等。
+   ============================================================ */
+
+// ① 有給管理簿（別スプレッドシート）から 入社日・週所定時間 を取り込む。
+//    週所定は行追加で履歴化されるので、適用開始日が今日以前で最新の行を採る。
+function syncFromYukyu() {
+  var ys = SpreadsheetApp.openById(YUKYU_SPREADSHEET_ID);
+  var ysh = ys.getSheetByName(YUKYU_SHEET_STAFF);
+  if (!ysh) throw new Error('有給管理簿に「' + YUKYU_SHEET_STAFF + '」シートがありません');
+
+  var yv = ysh.getDataRange().getValues();
+  var yh = yv[0].map(function (h) { return String(h).trim(); });
+  var yi = {};
+  yh.forEach(function (h, i) { yi[h] = i; });
+  ['氏名', '入社日', '週所定時間', '適用開始日'].forEach(function (h) {
+    if (!(h in yi)) throw new Error('有給管理簿に列「' + h + '」がありません（実際: ' + yh.join(',') + '）');
+  });
+
+  var today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var eff = {};   // 氏名 → {入社日, 週所定時間, from}
+  for (var i = 1; i < yv.length; i++) {
+    var nm = cell_(yv[i][yi['氏名']]);
+    if (!nm) continue;
+    var from = normDate_(yv[i][yi['適用開始日']]);
+    if (from && from > today) continue;                       // 未来の適用行は使わない
+    if (eff[nm] && eff[nm].from && from && from <= eff[nm].from) continue;
+    eff[nm] = {
+      入社日: normDate_(yv[i][yi['入社日']]),
+      週所定時間: numOrNull_(yv[i][yi['週所定時間']]),
+      from: from
+    };
+  }
+
+  // 2026-08-06 に読んだ内容とズレていたら黙って通さずログに出す
+  var drift = [];
+  Object.keys(YUKYU_SNAPSHOT_20260806).forEach(function (nm) {
+    var snap = YUKYU_SNAPSHOT_20260806[nm];
+    var now = eff[nm];
+    if (!now) { drift.push(nm + ': 有給管理簿から消えた'); return; }
+    if (now.入社日 !== snap.入社日) drift.push(nm + ' 入社日: ' + snap.入社日 + ' → ' + now.入社日);
+    if (Number(now.週所定時間) !== Number(snap.週所定時間)) {
+      drift.push(nm + ' 週所定時間: ' + snap.週所定時間 + ' → ' + now.週所定時間);
+    }
+  });
+
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SHEET_STAFF);
+  var data = sh.getDataRange().getValues();
+  var hdr = data[0].map(function (h) { return String(h).trim(); });
+  var idx = {};
+  hdr.forEach(function (h, i) { idx[h] = i; });
+  if (!('週所定時間' in idx)) throw new Error('「週所定時間」列がありません。先に setupSheets() を実行してください');
+
+  var changed = [], unmatched = [];
+  for (var r = 1; r < data.length; r++) {
+    var name = cell_(data[r][idx['氏名']]);
+    if (!name) continue;
+    var e = eff[name];
+    if (!e) { unmatched.push(name); continue; }
+
+    if (e.週所定時間 !== null && numOrNull_(data[r][idx['週所定時間']]) !== e.週所定時間) {
+      sh.getRange(r + 1, idx['週所定時間'] + 1).setValue(e.週所定時間);
+      changed.push(name + ' 週所定時間 → ' + e.週所定時間);
+    }
+    var curJoin = cell_(data[r][idx['入職日']]);
+    if (e.入社日 && (curJoin === '' || curJoin === '要確認')) {
+      sh.getRange(r + 1, idx['入職日'] + 1).setValue(e.入社日);
+      changed.push(name + ' 入職日 → ' + e.入社日);
+    }
+  }
+
+  var info = {
+    反映: changed.length ? changed : '（なし・既に反映済み）',
+    '有給管理簿に居ない人': unmatched,
+    '2026-08-06の記録とのズレ': drift.length ? drift : '（なし）'
+  };
+  Logger.log(JSON.stringify(info, null, 2));
+  return info;
+}
+
+// ② 2026-08-06 にクロコ側で確定した値を書く（社長判断不要ぶん）
+function applyDecisions20260806() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SHEET_STAFF);
+  var data = sh.getDataRange().getValues();
+  var hdr = data[0].map(function (h) { return String(h).trim(); });
+  var idx = {};
+  hdr.forEach(function (h, i) { idx[h] = i; });
+
+  var changed = [], skipped = [];
+  for (var r = 1; r < data.length; r++) {
+    var name = cell_(data[r][idx['氏名']]);
+    var dec = DECISIONS_20260806[name];
+    if (!dec) continue;
+    Object.keys(dec).forEach(function (col) {
+      if (!(col in idx)) { skipped.push(name + ' ' + col + ': 列が無い'); return; }
+      var cur = cell_(data[r][idx[col]]);
+      if (cur === String(dec[col])) return;
+      if (cur !== '' && cur !== '要確認') {
+        skipped.push(name + ' ' + col + ': 既存値「' + cur + '」を尊重（確定値は「' + dec[col] + '」）');
+        return;
+      }
+      sh.getRange(r + 1, idx[col] + 1).setValue(dec[col]);
+      changed.push(name + ' ' + col + ' → ' + dec[col]);
+    });
+  }
+  var info = { 反映: changed.length ? changed : '（なし）', 見送り: skipped.length ? skipped : '（なし）' };
+  Logger.log(JSON.stringify(info, null, 2));
+  return info;
+}
+
+// ③ 勤務形態区分①②③をシートへ書き戻す（APIは常に導出値を返すので、これは人が見る用）
+function syncDerived() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sh = ss.getSheetByName(SHEET_STAFF);
+  var threshold = fulltimeThreshold_(readSettings_(ss).flat['常勤所定_週時間_一覧表用']);
+
+  var data = sh.getDataRange().getValues();
+  var hdr = data[0].map(function (h) { return String(h).trim(); });
+  var idx = {};
+  hdr.forEach(function (h, i) { idx[h] = i; });
+
+  var changed = [], undecidable = [];
+  for (var r = 1; r < data.length; r++) {
+    var name = cell_(data[r][idx['氏名']]);
+    if (!name) continue;
+
+    var n = 0;
+    SHOKUSHU_SLOTS.forEach(function (trio) {
+      if (!(trio[0] in idx)) return;
+      var v = cell_(data[r][idx[trio[0]]]);
+      if (v && v !== '要確認') n++;
+    });
+
+    var wh = numOrNull_(data[r][idx['週所定時間']]);
+    var kubun = deriveKubun_(wh === null ? '' : wh, n, threshold);
+    if (!kubun) undecidable.push(name + '（週所定時間が未登録）');
+
+    SHOKUSHU_SLOTS.forEach(function (trio, i) {
+      if (!(trio[1] in idx)) return;
+      // 職種が入っているスロットにだけ区分を書く
+      var hasJob = (trio[0] in idx) && cell_(data[r][idx[trio[0]]]) !== '' &&
+        cell_(data[r][idx[trio[0]]]) !== '要確認';
+      var want = hasJob ? kubun : '';
+      var cur = cell_(data[r][idx[trio[1]]]);
+      if (cur === want) return;
+      sh.getRange(r + 1, idx[trio[1]] + 1).setValue(want);
+      changed.push(name + ' ' + trio[1] + ': ' + (cur || '空') + ' → ' + (want || '空'));
+    });
+  }
+
+  var info = {
+    常勤基準: threshold + ' 時間/週',
+    反映: changed.length ? changed : '（なし・既に反映済み）',
+    '導出できなかった人': undecidable.length ? undecidable : '（なし）'
   };
   Logger.log(JSON.stringify(info, null, 2));
   return info;
