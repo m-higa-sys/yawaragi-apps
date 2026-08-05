@@ -68,7 +68,7 @@ function makeCtx(opts) {
   const props = opts.props || { KINMU_MASTER_TOKEN: 'tok123' };
   const sheets = {
     '職員マスタ': makeSheet(opts.staffValues || makeStaffValues()),
-    '設定': makeSheet(SETTINGS_VALUES)
+    '設定': makeSheet(opts.settingsValues || SETTINGS_VALUES)
   };
   if (opts.noSettings) delete sheets['設定'];
 
@@ -196,7 +196,7 @@ console.log('test-kinmu-master-api');
   eq('シフト用役割をカンマで分解', katsu.シフト用役割, ['相談', '介福', '送迎兼務']);
   eq('日次ルールタグも配列', katsu.日次ルールタグ, ['相談員条件']);
   const taka = r.staff.find((s) => s.氏名 === '髙山奈緒美');
-  eq('保有資格は単一でも配列', taka.保有資格, ['看護師']);
+  eq('保有資格は単一でも配列', taka.保有資格, [{ name: '看護師', acquiredOn: '' }]);
   eq('空欄は空配列', taka.日次ルールタグ, []);
 }
 
@@ -246,6 +246,221 @@ console.log('test-kinmu-master-api');
 {
   const ctx = makeCtx();
   eq('doPost は定義されていない（読み取り専用）', typeof ctx.doPost, 'undefined');
+}
+
+/* ============================================================
+   2026-08-05 社長判断5件の反映ぶん
+   ============================================================ */
+
+// 職種③まである新構成のシート
+const STAFF_HEADERS_V2 = STAFF_HEADERS.concat(['職種③', '勤務形態区分③', '比率③']);
+
+function makeStaffValuesV2() {
+  return [
+    STAFF_HEADERS_V2,
+    // 勝又: 判断1 → 職種①介護職員 / 職種②生活相談員。比率は日次ルールで決まるので空
+    ['勝又裕子', 'かつまたゆうこ', '要確認', '', '介護職員', '', '', '生活相談員', '', '',
+      '相談員条件', '介護福祉士', '相談,介福,送迎兼務', 'memo', '', '', ''],
+    // 田中: 判断3 → 3職種を収容
+    ['田中美奈子', 'たなかみなこ', '要確認', '要確認', '看護職員', '', '', '機能訓練指導員', '', '',
+      '', '看護師', '', 'memo', '介護職員', '', ''],
+    // 髙山: 職種③なし。区分②が空なので要確認
+    ['髙山奈緒美', 'たかやまなおみ', '要確認', '', '看護職員', '', 50, '機能訓練指導員', '', 50,
+      '', '看護師', '看護,機訓', 'memo', '', '', '']
+  ];
+}
+
+const SETTINGS_VALUES_V2 = [
+  ['設定キー', '値', '単位・形式', '状態', '備考'],
+  ['常勤所定_週時間_一覧表用', 40, '時間/週', '確定', '様式(12)週平均勤務時間数の基準'],
+  ['常勤所定_月時間_加算判定用', 160, '時間/月', '暫定', '東松山市最新様式＋就業規則の裏取り後に確定'],
+  ['区分B_定義', '常勤・兼務', '凡例', '確定', ''],
+  ['端数処理_方式', '要確認', '切上/切捨/四捨五入', '未確定', '']
+];
+
+// ===== 11. 職種③（判断3）=====
+{
+  const ctx = makeCtx({ staffValues: makeStaffValuesV2() });
+  const r = callGet(ctx, { token: 'tok123' });
+  eq('職種③まで読める → ok', r.ok, true);
+
+  const tanaka = r.staff.find((s) => s.氏名 === '田中美奈子');
+  eq('3職種が配列になる', tanaka.職種.length, 3);
+  eq('職種③', tanaka.職種[2], { 職種: '介護職員', 勤務形態区分: '', 比率: null });
+  eq('職種③があり区分③が空なら要確認', tanaka.要確認.includes('勤務形態区分③'), true);
+  eq('職種③があり比率③が空なら要確認', tanaka.要確認.includes('比率③'), true);
+
+  const taka = r.staff.find((s) => s.氏名 === '髙山奈緒美');
+  eq('職種③が空なら2職種のまま', taka.職種.length, 2);
+  eq('職種③が空なら区分③は要確認に載せない', taka.要確認.includes('勤務形態区分③'), false);
+}
+
+// ===== 12. 旧構成（職種③なし）でも壊れない =====
+{
+  const ctx = makeCtx(); // 14列のまま
+  const r = callGet(ctx, { token: 'tok123' });
+  eq('職種③列が無いシートでも ok', r.ok, true);
+  const taka = r.staff.find((s) => s.氏名 === '髙山奈緒美');
+  eq('旧構成でも2職種読める', taka.職種.length, 2);
+  eq('旧構成で職種③関連は要確認に出ない', taka.要確認.some((k) => /③/.test(k)), false);
+}
+
+// ===== 13. 日次ルールタグがある行は比率を要確認にしない（判断1）=====
+{
+  const ctx = makeCtx({ staffValues: makeStaffValuesV2() });
+  const r = callGet(ctx, { token: 'tok123' });
+
+  const katsu = r.staff.find((s) => s.氏名 === '勝又裕子');
+  eq('職種①②が入った', katsu.職種.map((x) => x.職種), ['介護職員', '生活相談員']);
+  eq('タグ持ちは比率①を要確認にしない', katsu.要確認.includes('比率①'), false);
+  eq('タグ持ちは比率②も要確認にしない', katsu.要確認.includes('比率②'), false);
+  eq('タグ持ちでも区分①は要確認に残る', katsu.要確認.includes('勤務形態区分①'), true);
+
+  const tanaka = r.staff.find((s) => s.氏名 === '田中美奈子');
+  eq('タグ無しなら比率①は要確認に残る', tanaka.要確認.includes('比率①'), true);
+}
+// 免除は「職種が日ごとに切り替わるタグ」だけ。看護2名条件（比嘉）は免除しない。
+{
+  const ctx = makeCtx();
+  eq('免除対象タグは相談員条件のみ', ctx.TAGS_SWITCHING_SHOKUSHU, ['相談員条件']);
+  const r = callGet(ctx, { token: 'tok123' });
+  const higa = r.staff.find((s) => s.氏名 === '比嘉学');
+  eq('看護2名条件は比率①を免除しない（管理者と機訓の配分が未確定のため）',
+    higa.要確認.includes('比率①'), true);
+}
+
+// ===== 14. 設定シートの状態列（判断2・4）=====
+{
+  const ctx = makeCtx({ settingsValues: SETTINGS_VALUES_V2 });
+  const r = callGet(ctx, { token: 'tok123' });
+  eq('settings は従来どおり キー→値', r.settings['常勤所定_週時間_一覧表用'], '40');
+  eq('settingsMeta に状態が入る', r.settingsMeta['常勤所定_月時間_加算判定用'].状態, '暫定');
+  eq('settingsMeta に単位が入る', r.settingsMeta['常勤所定_月時間_加算判定用'].単位, '時間/月');
+  eq('確定した凡例が読める', r.settings['区分B_定義'], '常勤・兼務');
+  eq('未確定は状態=未確定', r.settingsMeta['端数処理_方式'].状態, '未確定');
+}
+
+// ===== 15. 設定シートの既定値（判断2・4・5）=====
+{
+  const ctx = makeCtx();
+  const rows = ctx.SETTINGS_ROWS;
+  const byKey = {};
+  rows.forEach((r) => { byKey[r[0]] = r; });
+
+  eq('分母は用途別に2つある(一覧表用)', byKey['常勤所定_週時間_一覧表用'][1], 40);
+  eq('分母は用途別に2つある(加算判定用)', byKey['常勤所定_月時間_加算判定用'][1], 160);
+  eq('加算判定用は暫定フラグ', byKey['常勤所定_月時間_加算判定用'][3], '暫定');
+  eq('一覧表用は確定', byKey['常勤所定_週時間_一覧表用'][3], '確定');
+  ok('旧キー 常勤所定_週時間 は残さない', !byKey['常勤所定_週時間']);
+
+  eq('区分A凡例が確定値で入る', byKey['区分A_定義'][1], '常勤・専従');
+  eq('区分B凡例が確定値で入る', byKey['区分B_定義'][1], '常勤・兼務');
+  eq('区分C凡例が確定値で入る', byKey['区分C_定義'][1], '非常勤・専従');
+  eq('区分D凡例が確定値で入る', byKey['区分D_定義'][1], '非常勤・兼務');
+  eq('区分凡例は確定', byKey['区分A_定義'][3], '確定');
+
+  eq('端数処理_方式は要確認のまま', byKey['端数処理_方式'][1], '要確認');
+  eq('端数処理_桁数は要確認のまま', byKey['端数処理_桁数'][1], '要確認');
+}
+
+// ===== 16. 判断の反映表（applyDecisions20260805 が書く中身）=====
+{
+  const ctx = makeCtx();
+  const d = ctx.DECISIONS_20260805;
+  ok('反映表がある', !!d);
+  eq('対象は5名', Object.keys(d).length, 5);
+  eq('勝又', d['勝又裕子'], { '職種①': '介護職員', '職種②': '生活相談員' });
+  eq('星野', d['星野友太'], { '職種①': '介護職員', '職種②': '生活相談員' });
+  eq('石丸', d['石丸美幸'], { '職種①': '生活相談員' });
+  eq('田中', d['田中美奈子'], { '職種①': '看護職員', '職種②': '機能訓練指導員', '職種③': '介護職員' });
+  eq('伊得', d['伊得たか子'], { '職種①': '看護職員', '職種②': '機能訓練指導員', '職種③': '介護職員' });
+
+  const all = [];
+  Object.keys(d).forEach((n) => { Object.keys(d[n]).forEach((k) => all.push(d[n][k])); });
+  ok('反映値はすべて職種プルダウンの6択に収まる',
+    all.every((v) => ctx.SHOKUSHU_LIST.indexOf(v) >= 0), JSON.stringify(all));
+}
+
+// ===== 17. STAFF_HEADERS は既存列を動かさない（追加のみ）=====
+{
+  const ctx = makeCtx();
+  eq('先頭14列は元のまま', ctx.STAFF_HEADERS.slice(0, 14), STAFF_HEADERS);
+  eq('③列は右端に追加', ctx.STAFF_HEADERS.slice(14), ['職種③', '勤務形態区分③', '比率③']);
+  eq('列数は17', ctx.STAFF_HEADERS.length, 17);
+}
+
+// ===== 18. 保有資格 = 「資格名:取得日」形式（スキーマ変更）=====
+{
+  const vals = [
+    STAFF_HEADERS_V2,
+    ['比嘉学', 'ひがまなぶ', '要確認', '', '管理者', 'B', '', '', '', '',
+      '看護2名条件', '柔道整復師:要確認,介護福祉士:2026-03-26', '機訓,介福', 'memo', '', '', ''],
+    ['髙山奈緒美', 'たかやまなおみ', '要確認', '', '看護職員', '', 50, '機能訓練指導員', '', 50,
+      '', '看護師:2020-04-01', '看護,機訓', 'memo', '', '', ''],
+    // 旧形式（コロン無し）も壊れずに読めること
+    ['下浦理絵', 'しもうらりえ', '要確認', '', '生活相談員', '', 100, '', '', '',
+      '', '介護福祉士', '介福,相談', 'memo', '', '', ''],
+    // 資格名そのものが未確定
+    ['喜多美咲', '要確認', '要確認', '', '生活相談員', '', 100, '', '', '',
+      '', '要確認', '要確認', 'memo', '', '', '']
+  ];
+  const ctx = makeCtx({ staffValues: vals });
+  const r = callGet(ctx, { token: 'tok123' });
+
+  const higa = r.staff.find((s) => s.氏名 === '比嘉学');
+  eq('比嘉は2資格を保持', higa.保有資格, [
+    { name: '柔道整復師', acquiredOn: '' },
+    { name: '介護福祉士', acquiredOn: '2026-03-26' }
+  ]);
+  eq('取得日が1つでも未確定なら資格取得日が要確認', higa.要確認.includes('資格取得日'), true);
+  eq('資格名は確定しているので保有資格は要確認に出ない', higa.要確認.includes('保有資格'), false);
+
+  const taka = r.staff.find((s) => s.氏名 === '髙山奈緒美');
+  eq('取得日が揃っていれば要確認に出ない', taka.要確認.includes('資格取得日'), false);
+  eq('単一資格もオブジェクト配列', taka.保有資格, [{ name: '看護師', acquiredOn: '2020-04-01' }]);
+
+  const shimo = r.staff.find((s) => s.氏名 === '下浦理絵');
+  eq('旧形式は acquiredOn 空で読める', shimo.保有資格, [{ name: '介護福祉士', acquiredOn: '' }]);
+  eq('旧形式は資格取得日が要確認', shimo.要確認.includes('資格取得日'), true);
+
+  const kita = r.staff.find((s) => s.氏名 === '喜多美咲');
+  eq('資格名が要確認なら空配列', kita.保有資格, []);
+  eq('資格名が要確認なら保有資格が要確認', kita.要確認.includes('保有資格'), true);
+  eq('資格名が未確定なら資格取得日は立てない', kita.要確認.includes('資格取得日'), false);
+}
+
+// ===== 19. 資格セルの移行ロジック（冪等）=====
+{
+  const ctx = makeCtx();
+  const m = ctx.migrateQualCell_;
+
+  eq('比嘉は両資格＋取得日を確定値で書く', m('比嘉学', '要確認'),
+    '柔道整復師:要確認,介護福祉士:2026-03-26');
+  eq('比嘉は反映済みなら触らない（冪等）',
+    m('比嘉学', '柔道整復師:要確認,介護福祉士:2026-03-26'), null);
+
+  eq('旧形式に :要確認 を足す', m('髙山奈緒美', '看護師'), '看護師:要確認');
+  eq('複数資格も各々に足す', m('誰か', '介護福祉士,社会福祉士'), '介護福祉士:要確認,社会福祉士:要確認');
+  eq('移行済みは触らない（冪等）', m('髙山奈緒美', '看護師:2020-04-01'), null);
+  eq('資格名が未確定なら触らない', m('喜多美咲', '要確認'), null);
+  eq('空欄も触らない', m('誰か', ''), null);
+}
+
+// ===== 20. 比嘉さんが介護福祉士を保有＝サ体加算の分子判定に効く（第2弾申し送りの前提）=====
+{
+  const vals = [
+    STAFF_HEADERS_V2,
+    ['比嘉学', 'ひがまなぶ', '要確認', '', '管理者', 'B', '', '', '', '',
+      '看護2名条件', '柔道整復師:要確認,介護福祉士:2026-03-26', '機訓,介福', 'memo', '', '', '']
+  ];
+  const ctx = makeCtx({ staffValues: vals });
+  const r = callGet(ctx, { token: 'tok123' });
+  const higa = r.staff.find((s) => s.氏名 === '比嘉学');
+  // 職種名は「管理者」だが、資格判定は職種名ではなく保有資格で行う
+  eq('職種名には介護職員が無い', higa.職種.map((x) => x.職種).includes('介護職員'), false);
+  eq('保有資格には介護福祉士がある', higa.保有資格.some((q) => q.name === '介護福祉士'), true);
+  eq('介護福祉士の取得日が取れる',
+    higa.保有資格.find((q) => q.name === '介護福祉士').acquiredOn, '2026-03-26');
 }
 
 console.log('\nPASS ' + pass + ' / FAIL ' + fail);
