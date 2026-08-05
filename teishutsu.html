@@ -115,6 +115,15 @@
   .pill.ng { color: #d32f2f; }
   .pill.saving { color: #999; }
 
+  /* 読み込み失敗の赤帯（2026-08-05 の事故を受けて）。
+     ただし赤帯は保険であって守りの本体ではない。本体は「壊れたデータで上書きしない」こと。 */
+  .load-error { background: #c62828; color: #fff; padding: 10px 14px; font-size: 13px; line-height: 1.5;
+                display: flex; align-items: center; gap: 10px; }
+  .load-error .msg { flex: 1; }
+  .load-error small { display: block; opacity: .9; font-size: 11px; }
+  .load-error button { background: #fff; color: #c62828; border: none; border-radius: 8px;
+                       padding: 8px 12px; font-size: 12px; font-weight: bold; cursor: pointer; flex: none; }
+
   .empty-msg { text-align: center; color: #999; padding: 40px 20px; font-size: 14px; }
   .loading { text-align: center; color: #666; padding: 30px; font-size: 14px; }
 
@@ -141,6 +150,12 @@
     <div class="sync-info" id="syncInfo" title="タップで再読込">☁️ 同期中…</div>
   </div>
 </header>
+
+<div class="load-error hidden" id="loadError">
+  <span class="msg">⚠️ 利用者情報を取得できませんでした。数字は不完全です
+    <small>通信を確認して再読込してください。今月分のカードが出ていない可能性があります</small></span>
+  <button id="loadErrorRetry">再読込</button>
+</div>
 
 <div class="operator-bar">
   <span class="label">操作者:</span>
@@ -329,7 +344,9 @@ const state = {
   // 検索語はあえて保存しない（2026-08-05 指示）。前回の絞り込みが残っていると
   // 「件数が減っている」のを締め漏れと読み違える。リロードで必ず全件へ戻す。
   search: '',
-  data: null, tasks: [], lastUndo: null, pollTimer: null
+  data: null, tasks: [], lastUndo: null, pollTimer: null,
+  // dataYm = state.data がどの月のものか。popFailed = 直近の取得に失敗したか（赤帯の出し分け）
+  dataYm: '', popFailed: false
 };
 
 // ---------- JSONP ----------
@@ -371,25 +388,59 @@ async function loadStaff() {
   state.staff = STAFF_FALLBACK.slice();
 }
 
+// getOralPlansYear だけは失敗したら1回だけ自動で再試行する（2026-08-05・C）。
+// ★成否の判定は「users が配列で返ったか」。件数では見ない。
+//   0名という応答（users:[]）は正常な答えであって失敗ではない。ここを件数で見ると
+//   「本当に0名」と「取れなかった」が区別できなくなる。
+// 失敗の形は3つあり、どれもこの判定で拾える:
+//   ①通信断・20秒タイムアウト → reject   ②GAS内部で例外 → {error,success:false}（usersキー無し）
+//   ③doGetの外側で例外 → callback未発火 → ①に合流
+// ループは必ず2周で終わる＝再試行は1回だけ。無限に叩き続けない。
+async function loadOralWithRetry(url) {
+  let attempts = 0;
+  for (let i = 0; i < 2; i++) {
+    attempts++;
+    try {
+      const r = await jsonp(url);
+      if (r && Array.isArray(r.users)) return { ok: true, res: r, attempts: attempts };
+    } catch (e) { /* 次の周回へ。2周目で打ち切る */ }
+  }
+  return { ok: false, res: null, attempts: attempts };
+}
+
+// 成功したら true。失敗したら ★state.data を一切触らずに false を返す（B）。
+// 前回の正常データを壊さないことが、この関数の一番大事な仕事。
 async function loadData(ym) {
   const fiscalYear = (() => { const [y, m] = ym.split('-').map(Number); return m >= 4 ? y : y - 1; })();
-  const [oral, due, mon, keik, contactsRes, ledger] = await Promise.all([
-    jsonp(BOARD_API + '?action=getOralPlansYear&year=' + fiscalYear).catch(() => ({ users: [] })),
+  const [oralR, due, mon, keik, contactsRes, ledger] = await Promise.all([
+    loadOralWithRetry(BOARD_API + '?action=getOralPlansYear&year=' + fiscalYear),
     jsonp(BOARD_API + '?action=getTsushoDueDates').catch(() => ({ dueDates: {} })),
     jsonp(BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear).catch(() => ({ users: [] })),
     jsonp(BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear).catch(() => ({ users: [] })),
     jsonp(BOARD_API + '?action=contacts').catch(() => ({ cmContacts: [] })),
     jsonp(BOARD_API + '?action=getSoufuLedger&ym=' + encodeURIComponent(ym)).catch(() => ({ rows: [] }))
   ]);
+  // ★ここが「黙って0件」を塞ぐ一点。取れなかったら state.data に手を触れずに帰る。
+  //   従来は .catch(() => ({users: []})) で空配列に化かしていたため、当月分が丸ごと消えたうえに
+  //   繰越行の事業所名・フリガナまで失われ（buildTasks が pop を引くため）、
+  //   ひらがな検索でも引けなくなっていた（2026-08-05 の事故）。
+  if (!oralR.ok) {
+    state.popFailed = true;
+    return false;
+  }
+  const oral = oralR.res;
   const monMap = {}; (mon.users || []).forEach(u => { monMap[u.userId] = u; });
   const keikMap = {}; (keik.users || []).forEach(u => { keikMap[u.userId] = u; });
   const contactMap = {}; (contactsRes.cmContacts || []).forEach(c => { contactMap[normOffice(c.office)] = c; });
+  state.popFailed = false;
   state.data = {
     pop: (oral.users || []).filter(u => !u.cancelled),
     dueMap: due.dueDates || {},
     monMap, keikMap, contactMap,
     ledgerRows: ledger.rows || []
   };
+  state.dataYm = ym;   // どの月のデータを持っているか。月をまたいだ失敗で前月分を見せないため
+  return true;
 }
 
 // ---------- 変換層（当月ベース）＋台帳マージ ----------
@@ -823,16 +874,45 @@ function showModal(title, msg, onOk) {
 }
 
 // ---------- 同期 ----------
-async function reload(silent) {
-  if (!silent) document.getElementById('taskList').innerHTML = '<div class="loading">読み込み中…</div>';
-  try {
-    await loadData(state.ym);
+// 取得に失敗したときの描画（A＋B）。
+// ・前回と同じ月の正常データを持っていれば、それで描き続ける（画面が真っ白にならない）
+// ・持っていなければ「読み込めませんでした」を出す。★「該当タスクはありません」とは別の文言。
+//   件数も数字で出さず「—」にする。0 と書くと「終わった」と読めてしまうため。
+// ・どちらの場合も赤帯を出し、setSyncTime() は呼ばない（成功したように見せない）。
+function renderLoadFailure() {
+  document.getElementById('loadError').classList.toggle('hidden', false);
+  const usable = !!state.data && state.dataYm === state.ym;
+  if (usable) {
     state.tasks = buildTasks(state.ym);
     render();
-    setSyncTime();
-  } catch (e) {
-    document.getElementById('taskList').innerHTML = '<div class="empty-msg">読み込みに失敗しました。同期表示をタップして再試行してください。</div>';
+    return;
   }
+  ['cntTodo', 'cntCarry', 'cntSorotta', 'cntSent'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  document.getElementById('taskList').innerHTML =
+    '<div class="empty-msg">読み込めませんでした'
+    + '<br><small>利用者情報が取得できていません。通信を確認して再読込してください</small></div>';
+}
+
+async function reload(silent) {
+  if (!silent) document.getElementById('taskList').innerHTML = '<div class="loading">読み込み中…</div>';
+  let ok = false;
+  try {
+    ok = await loadData(state.ym);
+  } catch (e) {
+    state.popFailed = true;
+    ok = false;
+  }
+  if (!ok) {
+    // ★ここで return する＝ setSyncTime() を通らない。「最終同期 20:50」と嘘をつかない。
+    renderLoadFailure();
+    return;
+  }
+  document.getElementById('loadError').classList.toggle('hidden', true);
+  state.tasks = buildTasks(state.ym);
+  render();
+  setSyncTime();
 }
 function setSyncTime() {
   const d = new Date();
@@ -855,6 +935,7 @@ async function init() {
   document.getElementById('prevM').onclick = () => { state.ym = shiftYM(state.ym, -1); reload(false); };
   document.getElementById('nextM').onclick = () => { state.ym = shiftYM(state.ym, 1); reload(false); };
   document.getElementById('syncInfo').onclick = () => reload(false);
+  document.getElementById('loadErrorRetry').onclick = () => reload(false);
 
   // 検索は打つそばから効かせる（確定ボタンなし）。localStorage には入れない＝リロードでクリア。
   document.getElementById('searchBox').oninput = (ev) => { state.search = ev.target.value; render(); };
