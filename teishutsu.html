@@ -20,6 +20,19 @@
   .operator-bar select { font-size: 15px; padding: 6px 10px; border-radius: 8px; border: 2px solid #2c6e49; font-weight: bold; color: #2c6e49; background: #fff; }
   .operator-hint { font-size: 11px; color: #c62828; }
 
+  /* レール（手順）＝押す基準を人の頭でなく画面に置く（2026-08-05）。表示のみ・ロジック非関与 */
+  .rail { background: #fff; margin: 10px 12px 0; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; }
+  .rail > summary { list-style: none; cursor: pointer; padding: 10px 14px; font-size: 13px; font-weight: bold; color: #2c6e49; background: #e8f0eb; display: flex; align-items: center; gap: 6px; }
+  .rail > summary::-webkit-details-marker { display: none; }
+  .rail > summary::after { content: '▼ 閉じる'; margin-left: auto; font-size: 11px; font-weight: normal; color: #666; }
+  .rail:not([open]) > summary::after { content: '▶ 開く'; }
+  .rail-def { padding: 10px 14px 0; font-size: 13px; line-height: 1.6; color: #333; }
+  .rail-def b { color: #2e7d32; }
+  .rail-steps { margin: 8px 0 0; padding: 0 14px 12px 32px; }
+  .rail-steps li { font-size: 13px; line-height: 1.5; margin-bottom: 7px; }
+  .rail-steps li:last-child { margin-bottom: 0; }
+  .rail-note { display: block; font-size: 11px; color: #666; line-height: 1.4; }
+
   .summary { display: flex; gap: 8px; padding: 10px 16px; overflow-x: auto; }
   .stat { background: #fff; border-radius: 10px; padding: 8px 14px; text-align: center; min-width: 84px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
   .stat .num { font-size: 22px; font-weight: bold; }
@@ -61,6 +74,7 @@
   .btn-done-sorotta { background: #e8f5e9; color: #2e7d32; border: 2px solid #a5d6a7; font-size: 11px; line-height: 1.3; }
   .btn-sent { background: #e3f2fd; color: #1565c0; border: 2px solid #90caf9; font-size: 12px; }
   .btn-clear { background: #fff; color: #999; border: 1px solid #ccc; font-size: 11px; width: 92px; margin-top: 4px; }
+  .btn-note { width: 92px; margin-left: auto; font-size: 10px; color: #666; line-height: 1.3; margin-top: 3px; text-align: center; }
   .task.state-red { border-left: 4px solid #d32f2f; }
   .task.state-green { border-left: 4px solid #2e7d32; }
   .task.state-blue { border-left: 4px solid #1565c0; opacity: .72; }
@@ -101,6 +115,17 @@
   <select id="operatorSel"><option value="">— 名前を選択 —</option></select>
   <span class="operator-hint" id="opHint">← 最初に自分の名前を選んでください</span>
 </div>
+
+<details class="rail" id="rail" open>
+  <summary>📋 「揃った」を押すまでの手順</summary>
+  <div class="rail-def"><b>「揃った」＝利用者のサインが済んだ（＝いつでも送れる状態）。</b><br>サイン前は押しません。</div>
+  <ol class="rail-steps">
+    <li>計画書を印刷する<span class="rail-note">電子サインの方はリハブ上で署名</span></li>
+    <li>利用者にサインをもらう</li>
+    <li>署名済みPDFを用意する<span class="rail-note">紙＝スキャン／電子＝リハブからダウンロード</span></li>
+    <li>この画面で「揃った」を押す<span class="rail-note">サイン済み＝押す／サイン前＝押さない</span></li>
+  </ol>
+</details>
 
 <div class="summary">
   <div class="stat red"><div class="num" id="cntTodo">0</div><div class="cap">今月あと</div></div>
@@ -465,7 +490,11 @@ function taskRow(t) {
     }
     if (showSent) action += '<button class="btn btn-sent" data-act="sent" data-id="' + id + '">送付済にする</button>';
   } else {
-    action = showSorotta ? '<button class="btn btn-sorotta" data-act="sorotta" data-id="' + id + '">揃った</button>' : '';
+    // ボタン直下に押す基準を出す（表示のみ・押下条件は変えない）。定義は上部レールと同一。
+    action = showSorotta
+      ? '<button class="btn btn-sorotta" data-act="sorotta" data-id="' + id + '">揃った</button>'
+        + '<div class="btn-note">サイン済み＝押す<br>サイン前＝押さない</div>'
+      : '';
   }
 
   return '<div class="task ' + stateCls + '" data-taskid="' + id + '">'
