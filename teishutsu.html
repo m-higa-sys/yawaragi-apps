@@ -152,8 +152,8 @@
 </header>
 
 <div class="load-error hidden" id="loadError">
-  <span class="msg">⚠️ 利用者情報を取得できませんでした。数字は不完全です
-    <small>通信を確認して再読込してください。今月分のカードが出ていない可能性があります</small></span>
+  <span class="msg">⚠️ <b id="loadErrorWhat">利用者情報</b>を取得できませんでした。数字は不完全です
+    <small id="loadErrorHint">通信を確認して再読込してください</small></span>
   <button id="loadErrorRetry">再読込</button>
 </div>
 
@@ -345,8 +345,9 @@ const state = {
   // 「件数が減っている」のを締め漏れと読み違える。リロードで必ず全件へ戻す。
   search: '',
   data: null, tasks: [], lastUndo: null, pollTimer: null,
-  // dataYm = state.data がどの月のものか。popFailed = 直近の取得に失敗したか（赤帯の出し分け）
-  dataYm: '', popFailed: false
+  // dataYm = state.data がどの月のものか。loadFailed = 直近の取得に失敗したか（赤帯の出し分け）。
+  // failedSources = 取れなかったものの名前（'利用者情報' / '提出送付台帳'）。赤帯の文言に使う。
+  dataYm: '', loadFailed: false, failedSources: []
 };
 
 // ---------- JSONP ----------
@@ -388,21 +389,22 @@ async function loadStaff() {
   state.staff = STAFF_FALLBACK.slice();
 }
 
-// getOralPlansYear だけは失敗したら1回だけ自動で再試行する（2026-08-05・C）。
-// ★成否の判定は「users が配列で返ったか」。件数では見ない。
-//   0名という応答（users:[]）は正常な答えであって失敗ではない。ここを件数で見ると
-//   「本当に0名」と「取れなかった」が区別できなくなる。
+// カードが消える原因になる2本（利用者情報＝当月分の素／提出送付台帳＝繰越の素）は、
+// 失敗したら1回だけ自動で再試行する（2026-08-05・C）。
+// ★成否の判定は「期待した配列が返ったか」。件数では見ない。
+//   0件という応答（users:[] や rows:[]）は正常な答えであって失敗ではない。ここを件数で見ると
+//   「本当に0件」と「取れなかった」が区別できなくなる。
 // 失敗の形は3つあり、どれもこの判定で拾える:
-//   ①通信断・20秒タイムアウト → reject   ②GAS内部で例外 → {error,success:false}（usersキー無し）
+//   ①通信断・20秒タイムアウト → reject   ②GAS内部で例外 → {error,success:false}（配列キー無し）
 //   ③doGetの外側で例外 → callback未発火 → ①に合流
 // ループは必ず2周で終わる＝再試行は1回だけ。無限に叩き続けない。
-async function loadOralWithRetry(url) {
+async function loadWithRetry(url, arrayKey) {
   let attempts = 0;
   for (let i = 0; i < 2; i++) {
     attempts++;
     try {
       const r = await jsonp(url);
-      if (r && Array.isArray(r.users)) return { ok: true, res: r, attempts: attempts };
+      if (r && Array.isArray(r[arrayKey])) return { ok: true, res: r, attempts: attempts };
     } catch (e) { /* 次の周回へ。2周目で打ち切る */ }
   }
   return { ok: false, res: null, attempts: attempts };
@@ -412,27 +414,35 @@ async function loadOralWithRetry(url) {
 // 前回の正常データを壊さないことが、この関数の一番大事な仕事。
 async function loadData(ym) {
   const fiscalYear = (() => { const [y, m] = ym.split('-').map(Number); return m >= 4 ? y : y - 1; })();
-  const [oralR, due, mon, keik, contactsRes, ledger] = await Promise.all([
-    loadOralWithRetry(BOARD_API + '?action=getOralPlansYear&year=' + fiscalYear),
+  const [oralR, due, mon, keik, contactsRes, ledgerR] = await Promise.all([
+    loadWithRetry(BOARD_API + '?action=getOralPlansYear&year=' + fiscalYear, 'users'),
     jsonp(BOARD_API + '?action=getTsushoDueDates').catch(() => ({ dueDates: {} })),
     jsonp(BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear).catch(() => ({ users: [] })),
     jsonp(BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear).catch(() => ({ users: [] })),
     jsonp(BOARD_API + '?action=contacts').catch(() => ({ cmContacts: [] })),
-    jsonp(BOARD_API + '?action=getSoufuLedger&ym=' + encodeURIComponent(ym)).catch(() => ({ rows: [] }))
+    loadWithRetry(BOARD_API + '?action=getSoufuLedger&ym=' + encodeURIComponent(ym), 'rows')
   ]);
   // ★ここが「黙って0件」を塞ぐ一点。取れなかったら state.data に手を触れずに帰る。
-  //   従来は .catch(() => ({users: []})) で空配列に化かしていたため、当月分が丸ごと消えたうえに
-  //   繰越行の事業所名・フリガナまで失われ（buildTasks が pop を引くため）、
-  //   ひらがな検索でも引けなくなっていた（2026-08-05 の事故）。
-  if (!oralR.ok) {
-    state.popFailed = true;
+  //   従来は .catch(() => ({users: []})) / .catch(() => ({rows: []})) で空配列に化かしていた。
+  //   ・利用者情報が落ちる → 当月分が丸ごと消え、さらに繰越行の事業所名・フリガナまで失われ
+  //     （buildTasks が pop を引くため）ひらがな検索でも引けなくなる（2026-08-05 の事故）
+  //   ・台帳が落ちる → 繰越が丸ごと消える＝締めで固定したはずの未提出が無音で無かったことになる
+  //   どちらも「無いように見える」＝出すべき書類が出ない。片方でも欠けたら更新を見送る。
+  //   （成功した側だけ部分的に反映すると、中途半端に食い違った画面ができるのでやらない）
+  state.failedSources = [];
+  if (!oralR.ok) state.failedSources.push('利用者情報');
+  if (!ledgerR.ok) state.failedSources.push('提出送付台帳');
+  if (state.failedSources.length) {
+    state.loadFailed = true;
     return false;
   }
   const oral = oralR.res;
+  const ledger = ledgerR.res;
   const monMap = {}; (mon.users || []).forEach(u => { monMap[u.userId] = u; });
   const keikMap = {}; (keik.users || []).forEach(u => { keikMap[u.userId] = u; });
   const contactMap = {}; (contactsRes.cmContacts || []).forEach(c => { contactMap[normOffice(c.office)] = c; });
-  state.popFailed = false;
+  state.loadFailed = false;
+  state.failedSources = [];
   state.data = {
     pop: (oral.users || []).filter(u => !u.cancelled),
     dueMap: due.dueDates || {},
@@ -881,6 +891,16 @@ function showModal(title, msg, onOk) {
 // ・どちらの場合も赤帯を出し、setSyncTime() は呼ばない（成功したように見せない）。
 function renderLoadFailure() {
   document.getElementById('loadError').classList.toggle('hidden', false);
+  // 何が取れなかったかを名指しする。「利用者情報」なら当月分、「提出送付台帳」なら繰越が疑わしい、
+  // と現場が当たりを付けられるようにするため。
+  const src = (state.failedSources && state.failedSources.length) ? state.failedSources : ['データ'];
+  document.getElementById('loadErrorWhat').textContent = src.join('と');
+  const lost = [];
+  if (src.indexOf('利用者情報') >= 0) lost.push('今月分');
+  if (src.indexOf('提出送付台帳') >= 0) lost.push('繰越');
+  document.getElementById('loadErrorHint').textContent =
+    '通信を確認して再読込してください'
+    + (lost.length ? '。' + lost.join('と') + 'のカードが出ていない可能性があります' : '');
   const usable = !!state.data && state.dataYm === state.ym;
   if (usable) {
     state.tasks = buildTasks(state.ym);
@@ -901,7 +921,8 @@ async function reload(silent) {
   try {
     ok = await loadData(state.ym);
   } catch (e) {
-    state.popFailed = true;
+    state.loadFailed = true;
+    if (!state.failedSources || !state.failedSources.length) state.failedSources = ['データ'];
     ok = false;
   }
   if (!ok) {
