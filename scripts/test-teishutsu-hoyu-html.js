@@ -27,7 +27,13 @@ ok('A7 こちら側のチップ＝サイン待ち／作成中', /chips: \['サ�
 console.log('\n[B) ★台帳にはチップ文字列だけを保存する（新列を作らない）]');
 ok('B1 kurikoshiRiyu へ保存している', /'kurikoshiRiyu=' \+ encodeURIComponent\(val\)/.test(html));
 ok('B2 グループ名(key/cls)を送信していない', !/kurikoshiRiyuGroup|reasonGroup=|'group='/.test(html));
-ok('B3 手入力欄を作っていない（<input> 0個）', count(/<input/g) === 0, '実測 ' + count(/<input/g));
+// この番人の意図は「台帳へ書く値を人に打たせない（表記ゆれを台帳に入れない）」。
+// 2026-08-05 に検索ボックス（type="search"・絞り込み専用でGASへ送らない）を1つ足したので、
+// 「input が0個」ではなく「台帳へ書く input が0個」で判定する。
+ok('B3 台帳へ書く手入力欄を作っていない（inputは検索専用の1つだけ）',
+   count(/<input/g) === 1 && /<input id="searchBox" type="search"/.test(html),
+   '実測 input ' + count(/<input/g) + '個');
+ok('B3b その1つは検索専用でGASへ送っていない', !/searchBox[\s\S]{0,400}upsertSoufuStatus/.test(html));
 ok('B4 prompt() による番号入力をやめた', !/prompt\(/.test(html));
 
 console.log('\n[C) ★未作成カードからでも理由を押せる（拒否の撤去）]');

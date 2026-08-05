@@ -42,6 +42,18 @@
   .stat.green .num { color: #2e7d32; }
   .stat.blue .num { color: #1565c0; }
 
+  /* 検索（2026-08-05）。7月分93件の締めで件数が増え、目的の人に辿り着けなくなったため。
+     表示の絞り込みだけを担当する＝台帳にも件数の定義にも触らない */
+  .searchbar { display: flex; align-items: center; gap: 8px; margin: 0 12px 8px; background: #fff;
+               border-radius: 10px; padding: 8px 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .searchbar .sicon { font-size: 15px; opacity: .65; }
+  .searchbar input { flex: 1; min-width: 0; border: none; outline: none; font-size: 15px;
+                     background: transparent; color: #333; font-family: inherit; }
+  .searchbar input::-webkit-search-cancel-button { display: none; }  /* ✕は自前のを1つだけ出す */
+  .searchbar .sclear { border: none; background: #eee; color: #666; border-radius: 50%;
+                       width: 26px; height: 26px; font-size: 14px; cursor: pointer; flex: none; line-height: 1; }
+  .searchbar .shit { font-size: 12px; color: #2c6e49; font-weight: bold; white-space: nowrap; }
+
   .filters { display: flex; gap: 6px; padding: 4px 16px 10px; overflow-x: auto; }
   .fchip { background: #fff; border: 1px solid #ccc; border-radius: 14px; padding: 5px 13px; font-size: 13px; white-space: nowrap; color: #555; cursor: pointer; }
   .fchip.on { background: #2c6e49; border-color: #2c6e49; color: #fff; font-weight: bold; }
@@ -156,6 +168,13 @@
   <div class="stat blue"><div class="num" id="cntSent">0</div><div class="cap">今月送付済</div></div>
 </div>
 
+<div class="searchbar">
+  <span class="sicon">🔍</span>
+  <input id="searchBox" type="search" placeholder="利用者名・カナ・事業所名で絞り込み" autocomplete="off" enterkeyhint="search">
+  <span class="shit hidden" id="searchHit"></span>
+  <button class="sclear hidden" id="searchClear" title="検索をクリア">✕</button>
+</div>
+
 <div class="filters" id="filters"></div>
 
 <div id="taskList"><div class="loading">読み込み中…</div></div>
@@ -249,6 +268,38 @@ function isMeasureMonth(planStart, ym, startDate, care) {
   return diff % cycle === 0;
 }
 function normOffice(s) { return String(s || '').normalize('NFKC').replace(/[\s　]/g, ''); }
+
+// ---- 検索（2026-08-05・表示の絞り込みだけ。台帳にも件数の定義にも触らない） ----
+// normOffice の考え方（NFKC＋空白除去）を踏襲しつつ、探す側の都合を2つ足す:
+//   ・小文字化 … 英字混じりの事業所名を大小どちらで打っても引けるように
+//   ・ひらがな→カタカナ … 台帳のフリガナはカタカナなので、「ねぎし」でも「ネギシ」でも引ける
+//     （U+3041〜U+3096 に +0x60 でカタカナへ。半角カナは NFKC が全角カナへ寄せてくれる）
+function searchNorm(s) {
+  return String(s || '').normalize('NFKC').replace(/[\s　]/g, '').toLowerCase()
+    .replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); });
+}
+// 検索語を空白で割ってAND条件にする。「わかば 根岸」で事業所×名前の絞り込みができる。
+// 空白は searchNorm が消してしまうので、割るのが先。
+function searchTokens(raw) {
+  return String(raw == null ? '' : raw).split(/[\s　]+/).map(searchNorm).filter(function (t) { return t; });
+}
+// 利用者名・フリガナ・事業所名のどれかに当たればヒット。
+// 3つを NUL文字 で連結して探す＝「名前の末尾＋事業所の先頭」がつながって誤ヒットするのを防ぐ。
+function matchesSearch(t, tokens) {
+  if (!tokens || !tokens.length) return true;
+  var hay = searchNorm(t.userId) + '\u0000' + searchNorm(t.furigana) + '\u0000' + searchNorm(t.office);
+  return tokens.every(function (tk) { return hay.indexOf(tk) >= 0; });
+}
+// 事業所ごとの「あと○件」。★渡すのは検索前の集合。
+// 検索は表示の絞り込みであって残数の定義ではないので、検索しても数字が動いてはいけない。
+function officeRemainMap(tasks) {
+  var m = {};
+  (tasks || []).forEach(function (t) {
+    if (t.status === '送付済') return;
+    m[t.office] = (m[t.office] || 0) + 1;
+  });
+  return m;
+}
 function resolveSoufu(method) {
   const m = String(method || '');
   const isCarePlan = m.indexOf('ケアプランデータ連携') >= 0 || m.indexOf('ケアプー') >= 0;
@@ -275,6 +326,9 @@ const state = {
   ym: '', operator: '', operatorRole: '', staff: [],
   docFilter: localStorage.getItem(LS_FILTER) || 'all',
   unsentOnly: localStorage.getItem(LS_UNSENT) !== '0',
+  // 検索語はあえて保存しない（2026-08-05 指示）。前回の絞り込みが残っていると
+  // 「件数が減っている」のを締め漏れと読み違える。リロードで必ず全件へ戻す。
+  search: '',
   data: null, tasks: [], lastUndo: null, pollTimer: null
 };
 
@@ -435,11 +489,19 @@ function render() {
   renderFilters();
   renderOperatorState();
 
-  const filtered = state.tasks.filter(t => {
+  // 2段構え（2026-08-05）:
+  //   baseFiltered … 書類フィルタ＋未完了のみ を適用した集合。「あと○件」バッジの母数はこちら。
+  //   filtered     … さらに検索で絞った集合。カードの描画はこちら。
+  // こう分けないと、検索するたびに事業所の残数が見かけ上減って「片付いた」と誤読される。
+  const baseFiltered = state.tasks.filter(t => {
     if (state.docFilter !== 'all' && DOC[t.docType].filter !== state.docFilter) return false;
     if (state.unsentOnly && t.status === '送付済') return false;
     return true;
   });
+  const tokens = searchTokens(state.search);
+  const filtered = baseFiltered.filter(t => matchesSearch(t, tokens));
+  const remainMap = officeRemainMap(baseFiltered);
+  renderSearchState(tokens.length ? filtered.length : null);
 
   // サマリ（当月基準・送付済は当月sofu_atのみ）
   let cTodo = 0, cCarry = 0, cSorotta = 0, cSent = 0;
@@ -468,7 +530,10 @@ function render() {
 
   const host = document.getElementById('taskList');
   if (!filtered.length) {
-    host.innerHTML = '<div class="empty-msg">' + (state.unsentOnly ? '未完了のタスクはありません 🎉' : '該当タスクはありません') + '</div>';
+    const msg = tokens.length
+      ? '「' + esc(state.search.trim()) + '」に該当する人はいません<br><small>名前・カナ・事業所名で探せます。✕で戻ります</small>'
+      : (state.unsentOnly ? '未完了のタスクはありません 🎉' : '該当タスクはありません');
+    host.innerHTML = '<div class="empty-msg">' + msg + '</div>';
     return;
   }
   let html = '';
@@ -476,7 +541,8 @@ function render() {
     const list = groups[office].slice().sort(sortDanger);
     const gkey = methodGroupOf(normOffice(office), state.data.contactMap);
     const mb = methodBadge(gkey);
-    const remaining = list.filter(t => t.status !== '送付済').length;
+    // ★検索前の母数から取る（検索で数字が動かないように）
+    const remaining = remainMap[office] || 0;
     html += '<div class="office"><div class="office-head"><span>' + esc(office)
       + ' <span class="cnt">(あと' + remaining + '件)</span></span>'
       + '<span class="method ' + mb.cls + '">' + esc(mb.text) + '</span></div>';
@@ -601,6 +667,22 @@ function renderOperatorSelect() {
 }
 function renderOperatorState() {
   document.getElementById('opHint').classList.toggle('hidden', !!state.operator);
+}
+
+// ---------- 検索 ----------
+// hitCount: 検索中なら該当件数、検索していなければ null
+function renderSearchState(hitCount) {
+  const hitEl = document.getElementById('searchHit');
+  const clrEl = document.getElementById('searchClear');
+  const on = hitCount !== null;
+  hitEl.textContent = on ? hitCount + '件該当' : '';
+  hitEl.classList.toggle('hidden', !on);
+  clrEl.classList.toggle('hidden', !on);
+}
+function clearSearch() {
+  state.search = '';
+  document.getElementById('searchBox').value = '';
+  render();
 }
 
 // ---------- 操作（揃った/送付済/clear） ----------
@@ -773,6 +855,10 @@ async function init() {
   document.getElementById('prevM').onclick = () => { state.ym = shiftYM(state.ym, -1); reload(false); };
   document.getElementById('nextM').onclick = () => { state.ym = shiftYM(state.ym, 1); reload(false); };
   document.getElementById('syncInfo').onclick = () => reload(false);
+
+  // 検索は打つそばから効かせる（確定ボタンなし）。localStorage には入れない＝リロードでクリア。
+  document.getElementById('searchBox').oninput = (ev) => { state.search = ev.target.value; render(); };
+  document.getElementById('searchClear').onclick = () => clearSearch();
 
   // タブ復帰＋定期ポーリング
   document.addEventListener('visibilitychange', () => { if (!document.hidden) reload(true); });

@@ -60,8 +60,14 @@ ok('GASエンドポイント(BOARD_API)は1箇所・変更なし',
    count(/const BOARD_API = 'https:\/\/script\.google\.com\/macros\/s\/AKfycbwo1UGxsK1qgmO8IDaqT-inDM0Qgoe_MRvxfKDxHy_gXANi4FwNFlgn2pEanMXVQxsdlw\/exec';/g) === 1);
 ok('権限マトリクス PERM は不変（staff:*, owner:[kokun_set]）',
    /sorotta: \{ staff: '\*', owner: \['kokun_set'\] \}/.test(html));
-ok('日付・氏名の手入力欄を新設していない（8\/4原則）',
-   !/<input[^>]*type="(date|text)"/.test(html) && count(/<input/g) === 0);
+// 8/4原則の意図は「台帳へ書く値を人に打たせない」。
+// 2026-08-05 に検索ボックス（type="search"・絞り込み専用でGASへ送らない）を1つ足したので、
+// 「日付・氏名の入力欄が無い」かつ「input は検索専用の1つだけ」で判定する。
+ok('日付・氏名の手入力欄を新設していない（8/4原則）',
+   !/<input[^>]*type="(date|text)"/.test(html)
+   && count(/<input/g) === 1
+   && /<input id="searchBox" type="search"/.test(html),
+   '実測 input ' + count(/<input/g) + '個');
 
 console.log('\n[F) 既存の表示要素を壊していない]');
 ok('サマリ4カードが残っている', /id="cntTodo"/.test(html) && /id="cntCarry"/.test(html)
