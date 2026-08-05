@@ -3010,27 +3010,17 @@ function doGet(e) {
           return respond({ ok: true, cleared: usRowIdx > 0 }, callback);
         }
 
-        var usNext = usCur ? JSON.parse(JSON.stringify(usCur)) : {
-          userId: usUserId, docType: usDocType, taishoTsuki: usTaishoTsuki,
-          tekiyoTsuki: '', status: '', sorotta_at: '', sorotta_by: '', sofu_at: '',
-          soufusha: '', soufuHouhou: '', kurikoshiRiyu: '', signKigen: '',
-          updatedBy: '', updatedAt: ''
-        };
-
-        // 状態遷移（同一statusなら時刻・操作者は不変）
-        if (usNext.status !== usStatus) {
-          if (usStatus === '揃った') {
-            usNext.status = '揃った';
-            usNext.sorotta_at = usNow;
-            usNext.sorotta_by = usBy;
-            usNext.sofu_at = '';
-            usNext.soufusha = '';
-          } else {
-            usNext.status = '送付済';
-            usNext.sofu_at = usNow;
-            usNext.soufusha = usBy;
-          }
-        }
+        // 状態遷移（同一statusなら時刻・操作者は不変）。
+        // 2026-08-05: ここに直書きしていた分岐を soufu-status-core.js の純関数へ移した。
+        //   旧実装は「'揃った' でなければ else で '送付済'」の決め打ちで、'保留' を足すと
+        //   保留のつもりが送付済として記録され sofu_at/soufusha まで捏造される地雷だった。
+        //   純関数側は未知の status を例外にして黙って落ちないようにしてある。
+        //   テスト: scripts/test-soufu-status-core.js
+        var usNext = soufuNextRow_(
+          usCur,
+          { userId: usUserId, docType: usDocType, taishoTsuki: usTaishoTsuki },
+          usStatus, usNow, usBy
+        );
         // 任意フィールド（渡された時のみ更新・状態遷移と独立）
         if (usP.tekiyoTsuki !== undefined) usNext.tekiyoTsuki = String(usP.tekiyoTsuki || '').trim();
         if (usP.soufuHouhou !== undefined) usNext.soufuHouhou = String(usP.soufuHouhou || '').trim();
@@ -15243,7 +15233,12 @@ function getTsushoTargetUsersV2_(includeCancelled) {
 // tsusho_keikaku=通所介護計画書 / tsusho_moni=通所モニ / tsusho_hyouka=通所評価
 // sokutei=測定結果(要支援4ヶ月) / jisseki=実績(利用者単位で保持・表示は事業所集計)
 var SOUFU_DOC_TYPES = ['kokun_set', 'oral_plan', 'oral_moni', 'tsusho_keikaku', 'tsusho_moni', 'tsusho_hyouka', 'sokutei', 'jisseki'];
-var SOUFU_STATUSES = ['揃った', '送付済'];
+// '保留'（2026-08-05 追加）= 対象だが今月は出せない。理由は kurikoshiRiyu（任意・空＝理由未記録）。
+// 月末締めスナップショットが作る凍結行もこの status を使う（案C・社長決定）。
+// ⚠️ この配列は soufu-status-core.js の SOUFU_STATUSES_ と必ず同じ内容にすること。
+//    ズレると「画面から送れるのに upsert が弾く／その逆」が起きる。
+//    scripts/test-soufu-statuses-parity.js が両者の一致を機械で見張っている。
+var SOUFU_STATUSES = ['揃った', '送付済', '保留'];
 
 // 台帳1行 → オブジェクト（Date型で保存されても YYYY-MM / YYYY-MM-dd に正規化して吸収）
 function soufuLedgerRowToObj_(row) {
@@ -17354,6 +17349,210 @@ function AAA_ランチャーケアマネ提出を出す_確認のみ() {
 }
 function AAA_ランチャーケアマネ提出を出す() {
   return launcherAddTeishutsu_(false);
+}
+
+// =============================================================
+// 月末締めスナップショット（案C・2026-08-05 社長決定）
+// -------------------------------------------------------------
+// 何のために要るか:
+//   teishutsu.html の変換層は「当月ベース」で書類を毎回その場で算出する。
+//   誰も何も押さなかった案件は台帳に行が無い＝翌月になった瞬間に算出対象から外れ、
+//   未提出が画面から静かに消える。実際 7月・8月の提出送付台帳は0行だった（2026-08-05実測）。
+//   そこで毎月1日の未明に「前月分で行が無いもの」を status='保留' として台帳に固定する。
+//   これが締め＝過去を凍らせる工程。凍らせた後は変換層が何を返そうと台帳の行が残る。
+//
+// 何をしないか:
+//   既に行がある案件（揃った・送付済・保留）には一切触らない。キーだけで冪等判定する。
+//   人が押した記録を機械が上書きすることは絶対にない。
+//
+// 純関数は soufu-close-core.js（テスト: scripts/test-soufu-close-core.js）。
+// ここはシート入出力だけを担当する。
+// =============================================================
+
+// 対象月＝実行時点の前月（'YYYY-MM'）
+function soufuClosePrevYm_() {
+  var d = new Date();
+  var t = d.getFullYear() * 12 + d.getMonth() - 1;  // getMonth()は0始まり＝そのまま前月
+  return Math.floor(t / 12) + '-' + ('0' + (t % 12 + 1)).slice(-2);
+}
+
+// 対象月の「来館した日数」を利用者名（正規化）ごとに1パスで数える。
+// 中止者の母集団判定に使う。1人ずつ getMonthlyUsage を呼ぶとシート読みが人数分走って
+// 実行時間上限に当たるため、dailyOps を1回だけ読んで全員ぶんを数える。
+// 同じ日に午前・午後の両方に居ても 1日 と数える。
+function soufuAttendedDaysMap_(ym) {
+  var res = _muFetchAllDailyOps_();
+  var ops = (res && res.ops) || {};
+  var map = {};
+  Object.keys(ops).forEach(function (dateKey) {
+    if (String(dateKey).slice(0, 7) !== ym) return;
+    var seen = {};
+    ['am', 'pm'].forEach(function (u) {
+      var o = ops[dateKey][u];
+      if (!o || !o.users) return;
+      o.users.forEach(function (nm) {
+        var st = (o.userStatus && o.userStatus[nm]) || '';
+        if (st === 'absent' || st === 'longabsent') return;  // 欠席は来館に数えない
+        seen[_normalizeUserName(nm)] = true;
+      });
+    });
+    Object.keys(seen).forEach(function (n) { map[n] = (map[n] || 0) + 1; });
+  });
+  return map;
+}
+
+// 通所介護計画書の満了日マップ（userId -> 'yyyy-MM-dd'）。doGet の getTsushoDueDates と同じ読み方。
+function soufuTsushoDueMap_() {
+  var sheets = ensureTsushoPlansSheets_();
+  var values = sheets.configSheet.getDataRange().getValues();
+  var hdr = (values[0] || []).map(function (v) { return String(v).trim(); });
+  var col = hdr.indexOf('due_date');
+  var map = {};
+  if (col < 0) return map;
+  for (var i = 1; i < values.length; i++) {
+    var uid = String(values[i][0] || '').trim();
+    if (!uid) continue;
+    var raw = values[i][col];
+    var s = (raw instanceof Date) ? Utilities.formatDate(raw, 'Asia/Tokyo', 'yyyy-MM-dd') : String(raw || '').trim();
+    if (s) map[uid] = s;
+  }
+  return map;
+}
+
+// 締めに必要な利用者情報を1つの形に揃える（teishutsu.html の loadData 相当）
+function soufuGatherCloseUsers_(ym) {
+  var oral = getOralTargetUsers_(true);          // 中止者も含めて取る（母集団判定は純関数側）
+  var keik = getKeikakushoTargetUsers_(true);    // 個訓 planStart / planMonths
+  var mon = getMonitoringTargetUsers_(true);     // 通所モニ planStart（測定周期にも使う）
+  var dueMap = soufuTsushoDueMap_();
+  var attMap = soufuAttendedDaysMap_(ym);
+
+  var keikMap = {}; keik.forEach(function (k) { keikMap[k.userId] = k; });
+  var monMap = {}; mon.forEach(function (m) { monMap[m.userId] = m; });
+
+  return oral.map(function (u) {
+    var k = keikMap[u.userId] || {};
+    var m = monMap[u.userId] || {};
+    return {
+      userId: u.userId,
+      category: u.category,
+      cancelled: !!u.cancelled,
+      usageDays: attMap[_normalizeUserName(u.userId)] || 0,
+      isTarget: !!u.isTarget,
+      oralStartedAt: u.startedAt || '',
+      kunPlanStart: k.planStart || '',
+      kunPlanMonths: k.planMonths || 3,
+      // 測定周期のアンカーは モニ設定 > 個訓 の順（teishutsu.html buildTasks と同じ優先順）
+      sokuteiPlanStart: m.planStart || k.planStart || '',
+      dueYM: dueMap[u.userId] || ''
+    };
+  });
+}
+
+// 締め本体。dryRun=true なら1行も書かずにログだけ出す。
+function soufuMonthlyClose_(ym, dryRun) {
+  if (!/^\d{4}-\d{2}$/.test(String(ym))) throw new Error('対象月は YYYY-MM 形式: ' + ym);
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) { throw new Error('lock timeout'); }
+  try {
+    var sheet = ensureSoufuLedgerSheet_();
+    var values = sheet.getDataRange().getValues();
+    var existingKeys = [];
+    for (var i = 1; i < values.length; i++) {
+      var o = soufuLedgerRowToObj_(values[i]);
+      if (!o.userId) continue;
+      existingKeys.push(o.userId + '|' + o.docType + '|' + o.taishoTsuki);
+    }
+
+    var users = soufuGatherCloseUsers_(ym);
+    var res = soufuClosePlan_(users, ym, existingKeys);
+    var st = res.stats;
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+
+    Logger.log('===== 月末締めスナップショット ' + (dryRun ? '【確認のみ・書き込みなし】' : '【実行】') + ' =====');
+    Logger.log('対象月            : ' + ym);
+    Logger.log('台帳の既存行数    : ' + existingKeys.length);
+    Logger.log('利用者台帳から取得: ' + st.inputUsers + ' 名');
+    Logger.log('母集団            : ' + st.populationTotal + ' 名'
+      + '（うち中止者で実績1日以上 ' + st.cancelledIncluded + ' 名／実績0日で除外 ' + st.cancelledExcluded + ' 名）');
+    Logger.log('対象書類の総数    : ' + st.candidates + ' 件');
+    Logger.log('  ├ 既に行がありスキップ: ' + st.skippedExisting + ' 件');
+    Logger.log('  └ 新たに保留で凍結    : ' + st.created + ' 件');
+    Logger.log('書類種別の内訳    : ' + JSON.stringify(st.byDocType));
+    if (res.rows.length) {
+      Logger.log('--- 凍結する行（先頭20件） ---');
+      res.rows.slice(0, 20).forEach(function (r, idx) {
+        Logger.log('  ' + (idx + 1) + '. ' + r.userId + ' / ' + r.docType + ' / 対象月=' + r.taishoTsuki + ' / 適用月=' + r.tekiyoTsuki);
+      });
+      if (res.rows.length > 20) Logger.log('  …ほか ' + (res.rows.length - 20) + ' 件');
+    } else {
+      Logger.log('（凍結対象なし）');
+    }
+
+    if (dryRun) {
+      Logger.log('※ 確認のみのため、台帳には1行も書いていません。');
+      return { dryRun: true, ym: ym, stats: st, rows: res.rows };
+    }
+
+    if (res.rows.length) {
+      var arr = res.rows.map(function (r) {
+        return [r.userId, r.docType, r.taishoTsuki, r.tekiyoTsuki, r.status,
+                r.sorotta_at, r.sorotta_by, r.sofu_at, r.soufusha, r.soufuHouhou,
+                r.kurikoshiRiyu, r.signKigen, r.updatedBy, now];
+      });
+      // 既存行には一切触らない。末尾へまとめて追記するだけ。
+      // appendRow はテキスト書式を無視してDate解釈するので「書式確定 → setValues」で書く（upsert と同じパス）。
+      var range = sheet.getRange(sheet.getLastRow() + 1, 1, arr.length, 14);
+      range.setNumberFormat('@');
+      range.setValues(arr);
+      SpreadsheetApp.flush();
+    }
+
+    // 読み戻し検証（書けたことを実測してから成功を返す）
+    var after = sheet.getDataRange().getValues();
+    var verified = 0;
+    var wantKeys = {};
+    res.rows.forEach(function (r) { wantKeys[r.userId + '|' + r.docType + '|' + r.taishoTsuki] = true; });
+    for (var j = 1; j < after.length; j++) {
+      var ao = soufuLedgerRowToObj_(after[j]);
+      if (wantKeys[ao.userId + '|' + ao.docType + '|' + ao.taishoTsuki] && ao.status === '保留') verified++;
+    }
+    var ok = verified === res.rows.length;
+    Logger.log(ok ? '✅ 反映を確認しました（保留 ' + verified + ' 件）'
+                  : '⚠️ 反映の確認が取れません（期待 ' + res.rows.length + ' 件 / 実測 ' + verified + ' 件）');
+    return { dryRun: false, ok: ok, ym: ym, created: res.rows.length, verified: verified, stats: st };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// 時間トリガーの実体（毎月1日 未明1〜3時）。引数なしで前月を締める。
+function soufuMonthlyCloseTrigger_() {
+  return soufuMonthlyClose_(soufuClosePrevYm_(), false);
+}
+
+// GASエディタから引数なしで実行する入口（AAA_ 命名＝一覧の先頭に出す）
+function AAA_月末締め_確認のみ() {
+  return soufuMonthlyClose_(soufuClosePrevYm_(), true);
+}
+function AAA_月末締め_手動実行() {
+  return soufuMonthlyClose_(soufuClosePrevYm_(), false);
+}
+
+// トリガー設置（冪等・二重設置しない）。社長が1度だけ押す。
+function AAA_月末締めトリガー設置() {
+  var found = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'soufuMonthlyCloseTrigger_') found++;
+  });
+  if (found > 0) {
+    Logger.log('既に設置済み（' + found + '件）。何もしません。');
+    return { created: false, existing: found };
+  }
+  ScriptApp.newTrigger('soufuMonthlyCloseTrigger_')
+    .timeBased().onMonthDay(1).atHour(2).create();   // 毎月1日 2時台
+  Logger.log('✅ 月末締めトリガーを設置しました（毎月1日 2時台・前月分を締めます）');
+  return { created: true, existing: 0 };
 }
 
 // =============================================================

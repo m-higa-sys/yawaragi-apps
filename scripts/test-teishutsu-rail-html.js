@@ -40,7 +40,10 @@ ok('サイン前は押さないと書いてある', /サイン前は押しませ
 console.log('\n[D) ボタン近くの補足]');
 ok('btn-note を出している', /class="btn-note"/.test(html));
 ok('補足の文面が「サイン済み＝押す／サイン前＝押さない」', /サイン済み＝押す<br>サイン前＝押さない/.test(html));
-ok('補足は「揃った」ボタン（未操作行）に付く', /data-act="sorotta"[\s\S]{0,120}class="btn-note"/.test(html));
+// 2026-08-05: 保留カードでは「揃った」と補足の間に「戻す」ボタンが入るので距離が伸びる。
+// 距離ではなく「同じ分岐の中で 揃った → (任意で戻す) → 補足 の順に出ている」ことを見る。
+ok('補足は「揃った」ボタン（未操作行）に付く',
+   /data-act="sorotta"[^]*?揃った<\/button>'[^]*?class="btn-note"/.test(html));
 ok('btn-note の CSS がある', /\.btn-note\s*\{/.test(html));
 ok('rail の CSS がある', /\.rail\s*\{/.test(html));
 

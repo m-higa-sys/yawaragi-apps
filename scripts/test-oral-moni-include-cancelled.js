@@ -117,7 +117,14 @@ ok(/getKeikakushoTargetUsers_\(kkIncludeCancelled\)/.test(kk), 'keikakusho: 既�
 console.log('[3] 既存呼び出しの互換');
 const monCalls = SRC.match(/getMonitoringTargetUsers_\([^)]*\)/g)
   .filter(s => !/^getMonitoringTargetUsers_\(includeCancelled\)$/.test(s));
-const badMon = monCalls.filter(s => s !== 'getMonitoringTargetUsers_()' && s !== 'getMonitoringTargetUsers_(monIncludeCancelled)');
+// この番人が守るのは「既存の呼び出しがうっかり真値を渡し始めていないこと」。
+// 2026-08-05 追加: soufuGatherCloseUsers_（月末締めスナップショット）は、母集団ルール
+//   「非中止の全員＋中止者のうち対象月に利用実績1日以上」を判定するために
+//   意図して中止者ごと取得する。よって getMonitoringTargetUsers_(true) を明示的に許可する。
+//   ※これを許可しても既定（引数なし）の応答は1バイトも変わらない（上の [1] で担保済み）。
+const badMon = monCalls.filter(s => s !== 'getMonitoringTargetUsers_()'
+  && s !== 'getMonitoringTargetUsers_(monIncludeCancelled)'
+  && s !== 'getMonitoringTargetUsers_(true)');
 ok(badMon.length === 0, 'getMonitoringTargetUsers_ の呼び出しは 引数なし か monIncludeCancelled のみ', JSON.stringify(badMon));
 
 console.log('\nPASS ' + pass + ' / FAIL ' + fail);

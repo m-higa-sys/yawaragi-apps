@@ -78,6 +78,26 @@
   .task.state-red { border-left: 4px solid #d32f2f; }
   .task.state-green { border-left: 4px solid #2e7d32; }
   .task.state-blue { border-left: 4px solid #1565c0; opacity: .72; }
+  /* 保留＝黄。未作成(赤)と区別する。赤=まだ誰も見ていない／黄=見た上で今月は出せないと分かっている */
+  .task.state-yellow { border-left: 4px solid #f9a825; background: #fffdf3; }
+  .b-hold { background: #fff8e1; color: #ef6c00; border: 1px solid #ffcc80; font-weight: bold; }
+
+  /* 理由チップ選択（2グループ＋その他）。手入力欄は作らない＝タップだけで決まる */
+  .rmodal { background: #fff; border-radius: 14px; padding: 18px; max-width: 360px; width: 100%; max-height: 84vh; overflow-y: auto; }
+  .rmodal h3 { font-size: 16px; margin-bottom: 4px; }
+  .rmodal .who-doc { font-size: 12px; color: #666; margin-bottom: 14px; line-height: 1.5; }
+  .rgroup { margin-bottom: 14px; }
+  .rgroup .glabel { font-size: 12px; font-weight: bold; color: #555; margin-bottom: 6px; }
+  .rchips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .rchip { background: #fff; border: 2px solid #bbb; border-radius: 16px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+  .rchip.on { border-color: #2c6e49; background: #e8f0eb; color: #2c6e49; font-weight: bold; }
+  .rgroup.g-aite .rchip { border-color: #ffb74d; color: #ef6c00; }
+  .rgroup.g-kochira .rchip { border-color: #ef9a9a; color: #c62828; }
+  .rgroup.g-other .rchip { border-color: #bbb; color: #666; }
+  .rmodal .rfoot { display: flex; gap: 10px; margin-top: 6px; }
+  .rmodal .rfoot button { flex: 1; padding: 11px; border-radius: 8px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; }
+  .rmodal .rcancel { background: #eee; color: #555; }
+  .rmodal .rclear { background: #fff; color: #999; border: 1px solid #ccc; }
   .task .pill { font-size: 10px; margin-top: 3px; }
   .pill.ok { color: #2e7d32; }
   .pill.ng { color: #d32f2f; }
@@ -125,6 +145,8 @@
     <li>署名済みPDFを用意する<span class="rail-note">紙＝スキャン／電子＝リハブからダウンロード</span></li>
     <li>この画面で「揃った」を押す<span class="rail-note">サイン済み＝押す／サイン前＝押さない</span></li>
   </ol>
+  <div class="rail-def" style="padding-bottom:12px"><b>今月は出せないと分かったら「理由」を押す。</b><br>
+    <span class="rail-note" style="display:block;margin-top:4px">気づいた相談員がその場で押す。あとで誰かがまとめて入れるものではありません。押すとカードが黄色（保留）になり、押した人と日時が自動で残ります。</span></div>
 </details>
 
 <div class="summary">
@@ -187,6 +209,17 @@ const FILTER_CHIPS = [
   { key: 'tsusho', label: '通所' },
   { key: 'sokutei',label: '測定(要支援)' }  // 個訓の測定はkokun_setに内包（呼称の混乱防止）
 ];
+// 保留/繰越の理由チップ（2026-08-05 社長決定・2グループ＋その他）。
+// ★グループはUI上の見出しでしかない。台帳に保存するのはチップの文字列そのもの（kurikoshiRiyu 列）。
+//   グループ名は保存しないし、新しい列も作らない。並べ替えたければこの配列を触るだけでよい。
+// 分け方の意図: 「相手待ち」＝こちらは動きようがない／「こちら側」＝手を動かせば進む。
+//   この2つが混ざると、朝の報告で「何件が自分たちの遅れなのか」が読めなくなる。
+const REASON_GROUPS = [
+  { key: 'aite',    cls: 'g-aite',    label: '🟠 計画書が作れない（相手待ち）', chips: ['ケアプラン待ち', '保険証到着待ち'] },
+  { key: 'kochira', cls: 'g-kochira', label: '🔴 作れたが出せない（こちら側）', chips: ['サイン待ち', '作成中'] },
+  { key: 'other',   cls: 'g-other',   label: '⚪ その他',                      chips: ['その他'] }
+];
+
 const LS_OP = 'yawaragi_teishutsu_operator';
 const LS_FILTER = 'yawaragi_teishutsu_filter';
 const LS_UNSENT = 'yawaragi_teishutsu_unsentonly';
@@ -455,16 +488,24 @@ function render() {
 }
 
 function taskRow(t) {
-  const stateCls = t.status === '送付済' ? 'state-blue' : (t.status === '揃った' ? 'state-green' : 'state-red');
+  // 未作成=赤（まだ誰も見ていない）／保留=黄（見た上で今月は出せないと分かっている）／揃った=緑／送付済=青
+  const stateCls = t.status === '送付済' ? 'state-blue'
+    : t.status === '揃った' ? 'state-green'
+    : t.status === '保留' ? 'state-yellow'
+    : 'state-red';
   const method = (state.data.contactMap[normOffice(t.office)] || {}).method || '';
   const id = btoa(unescape(encodeURIComponent(t.userId + '|' + t.docType + '|' + t.taishoTsuki))).replace(/=/g, '');
   let badges = '';
   if (t.isCarry) badges += '<span class="badge b-carry">↩ ' + Number(t.taishoTsuki.split('-')[1]) + '月から繰越</span>';
   if (t.status !== '送付済') {
-    if (t.isCarry || t.kurikoshiRiyu) {
+    if (t.status === '保留') badges += '<span class="badge b-hold">⏸ 保留</span>';
+    // 未作成カード（台帳に行が無い）にも理由バッジを出す。押した瞬間に保留の行が生まれる。
+    // 「気づいた相談員がその場で押す」ための入口なので、揃った済み以外には常に出す。
+    if (t.isCarry || t.kurikoshiRiyu || !t.status || t.status === '保留') {
       badges += t.kurikoshiRiyu
         ? '<span class="badge b-reason" data-reason="' + id + '">' + esc(reasonIcon(t.kurikoshiRiyu)) + '</span>'
-        : '<span class="badge b-reason empty" data-reason="' + id + '">❓ 理由</span>';
+        : '<span class="badge b-reason empty" data-reason="' + id + '">❓ '
+          + (t.status === '保留' ? '理由未記録' : '理由') + '</span>';
     }
     if (t.signKigen) badges += '<span class="badge b-kigen">⚠ ' + esc(t.signKigen) + 'までにサイン</span>';
   }
@@ -490,11 +531,14 @@ function taskRow(t) {
     }
     if (showSent) action += '<button class="btn btn-sent" data-act="sent" data-id="' + id + '">送付済にする</button>';
   } else {
-    // ボタン直下に押す基準を出す（表示のみ・押下条件は変えない）。定義は上部レールと同一。
-    action = showSorotta
-      ? '<button class="btn btn-sorotta" data-act="sorotta" data-id="' + id + '">揃った</button>'
-        + '<div class="btn-note">サイン済み＝押す<br>サイン前＝押さない</div>'
-      : '';
+    // 未作成・保留とも「揃った」は押せる（保留から直接サイン済みへ進める）。
+    // 保留だけ「戻す」を足す＝既存の clear（行削除）で解除。新しい経路は作らない。
+    if (showSorotta) {
+      action = '<button class="btn btn-sorotta" data-act="sorotta" data-id="' + id + '">揃った</button>';
+      if (t.status === '保留') action += '<button class="btn btn-clear" data-act="clear" data-id="' + id + '">戻す</button>';
+      // ボタン直下に押す基準を出す（表示のみ・押下条件は変えない）。定義は上部レールと同一。
+      action += '<div class="btn-note">サイン済み＝押す<br>サイン前＝押さない</div>';
+    }
   }
 
   return '<div class="task ' + stateCls + '" data-taskid="' + id + '">'
@@ -504,8 +548,14 @@ function taskRow(t) {
     + '<div class="action">' + action + '</div></div>';
 }
 
+// 旧チップ（作成遅れ／ケアマネ都合）は 2026-08-05 の再編で選択肢から外したが、
+// 過去データに残っているので表示だけは従来どおり出す（消すと台帳の履歴が読めなくなる）。
 function reasonIcon(r) {
-  const map = { 'サイン待ち': '🖊 サイン待ち', 'ケアプラン待ち': '📋 ケアプラン待ち', '作成遅れ': '✏️ 作成遅れ', 'ケアマネ都合': '🏢 ケアマネ都合' };
+  const map = {
+    'サイン待ち': '🖊 サイン待ち', 'ケアプラン待ち': '📋 ケアプラン待ち',
+    '保険証到着待ち': '🪪 保険証到着待ち', '作成中': '✏️ 作成中', 'その他': '📌 その他',
+    '作成遅れ': '✏️ 作成遅れ', 'ケアマネ都合': '🏢 ケアマネ都合'
+  };
   return map[r] || ('📌 ' + r);
 }
 
@@ -611,22 +661,54 @@ async function clearTask(t, btn) {
   catch (e) { alert('戻す操作に失敗しました。再度お試しください'); document.querySelectorAll('.btn').forEach(b => b.disabled = false); }
 }
 
-// 繰越理由チップ
+// 理由チップ（2グループ＋その他）。番号入力の prompt をやめてタップ選択にした（2026-08-05）。
+// 手入力欄は作らない＝表記ゆれが台帳に入らない。
 function pickReason(t) {
-  const reasons = ['サイン待ち', 'ケアプラン待ち', '作成遅れ', 'ケアマネ都合', 'その他', '（クリア）'];
-  const choice = prompt('繰越理由を選択（番号）:\n' + reasons.map((r, i) => (i + 1) + '. ' + r).join('\n'), '');
-  if (!choice) return;
-  const idx = parseInt(choice, 10) - 1;
-  if (idx < 0 || idx >= reasons.length) return;
-  if (!state.operator) { alert('先に操作者を選んでください'); return; }
-  const val = idx === 5 ? '' : reasons[idx];
+  if (!state.operator) { alert('先に操作者（自分の名前）を選んでください'); return; }
+  const host = document.getElementById('modalHost');
+  const cur = t.kurikoshiRiyu || '';
+  let groups = '';
+  REASON_GROUPS.forEach(g => {
+    groups += '<div class="rgroup ' + g.cls + '"><div class="glabel">' + esc(g.label) + '</div><div class="rchips">'
+      + g.chips.map(c => '<span class="rchip' + (c === cur ? ' on' : '') + '" data-reason-val="' + esc(c) + '">' + esc(c) + '</span>').join('')
+      + '</div></div>';
+  });
+  const ymLbl = Number(t.taishoTsuki.split('-')[1]) + '月分';
+  host.innerHTML = '<div class="modal-bg"><div class="rmodal">'
+    + '<h3>今月出せない理由</h3>'
+    + '<div class="who-doc">' + esc(t.userId) + 'さん ／ ' + esc(DOC[t.docType].label) + '（' + ymLbl + '）<br>'
+    + '選ぶと「保留」になり、押した人と日時が自動で残ります。</div>'
+    + groups
+    + '<div class="rfoot">'
+    + '<button class="rcancel">キャンセル</button>'
+    + (cur ? '<button class="rclear">理由を消す</button>' : '')
+    + '</div></div></div>';
+  host.querySelector('.rcancel').onclick = () => { host.innerHTML = ''; };
+  const clearBtn = host.querySelector('.rclear');
+  if (clearBtn) clearBtn.onclick = () => { host.innerHTML = ''; applyReason(t, ''); };
+  host.querySelectorAll('[data-reason-val]').forEach(el => {
+    el.onclick = () => { host.innerHTML = ''; applyReason(t, el.dataset.reasonVal); };
+  });
+}
+
+// 理由を台帳へ書く。
+// ★未作成カード（台帳に行が無い）から押した場合は、その瞬間に status='保留' の行が生まれる。
+//   2026-08-05 以前は「『揃った』にしてから理由を付けられます」と拒否しており、
+//   出せない案件は台帳に何も残らず、翌月には画面から消えていた（＝案C導入の動機）。
+// 既に状態がある行（揃った・送付済・保留）は状態を変えず、理由だけ差し替える。
+function applyReason(t, val) {
+  const status = t.status || '保留';
   const params = ['action=upsertSoufuStatus', 'userId=' + encodeURIComponent(t.userId),
     'docType=' + t.docType, 'taishoTsuki=' + t.taishoTsuki,
-    'status=' + encodeURIComponent(t.status || '揃った'),
+    'status=' + encodeURIComponent(status),
     'updatedBy=' + encodeURIComponent(state.operator), 'kurikoshiRiyu=' + encodeURIComponent(val)];
-  // status未設定（未作成）の理由付与は、行を作らずスキップ（未作成は行を持たない設計）
-  if (!t.status) { alert('「揃った」にしてから理由を付けられます'); return; }
-  jsonp(BOARD_API + '?' + params.join('&')).then(() => reload(true));
+  if (t.tekiyoTsuki) params.push('tekiyoTsuki=' + t.tekiyoTsuki);
+  jsonp(BOARD_API + '?' + params.join('&'))
+    .then(res => {
+      if (!res || !res.ok) throw new Error('ng');
+      return reload(true);
+    })
+    .catch(() => alert('理由の保存に失敗しました。もう一度お試しください'));
 }
 
 // ---------- Undo ----------
@@ -642,9 +724,10 @@ document.getElementById('undoBtn').onclick = () => {
   if (!state.lastUndo) return;
   const t = state.lastUndo.t;
   document.getElementById('undoToast').classList.add('hidden');
-  // 「揃った」→戻す＝clear、「送付済」→戻す＝揃った
-  if (state.lastUndo.status === '揃った') clearTask(t, { dataset: {} });
-  else doUpsert(t, '揃った', { dataset: { id: '' } });
+  // 「送付済」→戻す＝揃った。それ以外（揃った・保留）→戻す＝clear（行削除）。
+  // 2026-08-05: '保留' 追加時に else へ落ちて「保留を取り消したら揃ったになる」事故を防ぐため明示分岐に。
+  if (state.lastUndo.status === '送付済') doUpsert(t, '揃った', { dataset: { id: '' } });
+  else clearTask(t, { dataset: {} });
   state.lastUndo = null;
 };
 
