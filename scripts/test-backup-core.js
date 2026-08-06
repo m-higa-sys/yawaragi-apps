@@ -204,5 +204,135 @@ console.log('\n[D) 対象シートの定義]');
   ok('D6 最優先(A)が1件以上ある', TARGETS.some(t => t.priority === 'A'));
 }
 
+console.log('\n[E) 口腔実施記録（JSON）の追加 — 2026-08-07]');
+// 口腔実施記録は旧GAS「健康チェック同期」がDriveのJSONファイルに書いている（スプレッドシートではない）。
+// 加算の根拠なのにバックアップ射程外だった。ここで対象に加える。
+// ★スプレッドシート以外を扱えるようにする＝削除の網を1つ緩める、ということ。
+//   緩めた分だけ、緩めても対象外が守られることをここで実証する。
+{
+  const JSON_MIME = 'text/plain';                              // Drive上の oral_data.json の実mimeType（2026-08-07 実測）
+  const ORAL_JSON = '1Vjz5K9VBoXjWTXLtCto_T1dxaoxG6R1I';       // oral_data.json の原本ID
+  const BOTH = [SS_MIME, JSON_MIME];
+
+  // バックアップフォルダ直下にあるJSONバックアップのひな形
+  function fj(over) { return f(Object.assign({ mimeType: JSON_MIME }, over || {})); }
+
+  const oral = TARGETS.filter(t => t.id === ORAL_JSON);
+  ok('E1 口腔実施記録（oral_data.json）が対象に入っている', oral.length === 1,
+     JSON.stringify(TARGETS.map(t => t.label)));
+  ok('E2 各対象に mimeType が明示されている（種類を推測で決めない）',
+     TARGETS.every(t => t.mimeType), JSON.stringify(TARGETS.filter(t => !t.mimeType).map(t => t.label)));
+  ok('E3 口腔実施記録の種類は text/plain（スプレッドシートではない）',
+     oral.length === 1 && oral[0].mimeType === JSON_MIME, JSON.stringify(oral));
+  ok('E4 既存6件の種類はスプレッドシートのまま（扱いを変えない）',
+     TARGETS.filter(t => t.id !== ORAL_JSON).every(t => t.mimeType === SS_MIME));
+  ok('E5 BK_JSON_MIME が公開されている', core.BK_JSON_MIME === JSON_MIME, String(core.BK_JSON_MIME));
+  ok('E6 許可する種類は対象の定義から重複なく導かれる（手で二重管理しない）', (() => {
+    const a = core.bkAllowedMimeTypes_ && core.bkAllowedMimeTypes_();
+    return Array.isArray(a) && a.length === 2 && a.indexOf(SS_MIME) >= 0 && a.indexOf(JSON_MIME) >= 0;
+  })(), JSON.stringify(core.bkAllowedMimeTypes_ && core.bkAllowedMimeTypes_()));
+
+  const mixed = [
+    f({ id: 'a1', name: '_BAK_週次_利用者台帳_2026-08-01_0400' }),
+    f({ id: 'a2', name: '_BAK_週次_利用者台帳_2026-08-08_0400' }),
+    fj({ id: 'j1', name: '_BAK_週次_口腔実施記録_2026-07-01_0400' }),
+    fj({ id: 'j2', name: '_BAK_週次_口腔実施記録_2026-07-08_0400' }),
+    fj({ id: 'j3', name: '_BAK_週次_口腔実施記録_2026-07-15_0400' })
+  ];
+  ok('E7 許可する種類を渡さなければ従来どおりスプレッドシートだけ（既存挙動を変えない）',
+     idsOf(selectStale(mixed, opts({ keep: 1 }))).join(',') === 'a1',
+     JSON.stringify(idsOf(selectStale(mixed, opts({ keep: 1 })))));
+  ok('E8 JSONを許可すればJSONにも世代管理が効く（放置して溜まり続けない）',
+     idsOf(selectStale(mixed, opts({ keep: 1, allowedMimeTypes: BOTH }))).join(',') === 'a1,j1,j2',
+     JSON.stringify(idsOf(selectStale(mixed, opts({ keep: 1, allowedMimeTypes: BOTH })))));
+
+  const otherKinds = [
+    fj({ id: 'j1', name: '_BAK_週次_口腔実施記録_2026-07-01_0400' }),
+    fj({ id: 'j2', name: '_BAK_週次_口腔実施記録_2026-07-08_0400' }),
+    f({ id: 'p1', name: '_BAK_週次_口腔実施記録_2026-06-01_0400', mimeType: 'application/pdf' }),
+    f({ id: 'g1', name: '_BAK_週次_口腔実施記録_2026-06-08_0400', mimeType: 'application/vnd.google-apps.folder' }),
+    f({ id: 'c1', name: '_BAK_週次_口腔実施記録_2026-06-15_0400', mimeType: 'text/csv' })
+  ];
+  ok('E9 ★JSONを許可しても、許可していない種類は対象外のまま（網を1つだけ緩める）',
+     idsOf(selectStale(otherKinds, opts({ keep: 1, allowedMimeTypes: BOTH }))).join(',') === 'j1',
+     JSON.stringify(idsOf(selectStale(otherKinds, opts({ keep: 1, allowedMimeTypes: BOTH })))));
+
+  const withJsonSource = [
+    fj({ id: ORAL_JSON, name: '_BAK_週次_口腔実施記録_2026-01-01_0400' }),  // 原本がなぜかここに居る
+    fj({ id: 'j1', name: '_BAK_週次_口腔実施記録_2026-08-01_0400' }),
+    fj({ id: 'j2', name: '_BAK_週次_口腔実施記録_2026-08-08_0400' })
+  ];
+  ok('E10 ★JSONの原本IDは、名前が何であっても対象にしない',
+     idsOf(selectStale(withJsonSource, opts({ keep: 1, sourceIds: [GENBA_SS, ORAL_JSON], allowedMimeTypes: BOTH })))
+       .join(',') === 'j1',
+     JSON.stringify(idsOf(selectStale(withJsonSource, opts({ keep: 1, sourceIds: [GENBA_SS, ORAL_JSON], allowedMimeTypes: BOTH })))));
+
+  const indep = [
+    f({ id: 'a1', name: '_BAK_週次_利用者台帳_2026-08-01_0400' }),
+    f({ id: 'a2', name: '_BAK_週次_利用者台帳_2026-08-08_0400' }),
+    f({ id: 'a3', name: '_BAK_週次_利用者台帳_2026-08-15_0400' }),
+    fj({ id: 'j1', name: '_BAK_週次_口腔実施記録_2026-08-01_0400' }),
+    fj({ id: 'j2', name: '_BAK_週次_口腔実施記録_2026-08-08_0400' })
+  ];
+  ok('E11 シートとJSONが混ざっても原本ごとに独立して数える',
+     idsOf(selectStale(indep, opts({ keep: 2, allowedMimeTypes: BOTH }))).join(',') === 'a1',
+     JSON.stringify(idsOf(selectStale(indep, opts({ keep: 2, allowedMimeTypes: BOTH })))));
+
+  // 全部入り（JSON版）: 対象になるのは a1 と j1 だけ
+  const soup = [
+    f({ id: 'a1', name: '_BAK_週次_利用者台帳_2026-08-01_0400' }),        // ← 対象
+    f({ id: 'a2', name: '_BAK_週次_利用者台帳_2026-08-08_0400' }),        // 最新so残す
+    fj({ id: 'j1', name: '_BAK_週次_口腔実施記録_2026-08-01_0400' }),      // ← 対象
+    fj({ id: 'j2', name: '_BAK_週次_口腔実施記録_2026-08-08_0400' }),      // 最新so残す
+    fj({ id: 'jm', name: '_BAK_手動_口腔実施記録_2026-08-02_1000' }),      // 手動
+    fj({ id: ORAL_JSON, name: '_BAK_週次_口腔実施記録_2026-01-01_0400' }), // ★原本そのもの
+    fj({ id: 'jo', name: '_BAK_週次_口腔実施記録_2026-07-01_0400', parentIds: ['よそ'] }),
+    fj({ id: 'jr', name: '_BAK_週次_口腔実施記録_2026-07-03_0400 のコピー' }),
+    fj({ id: 'jx', name: 'oral_data.json' }),                              // 原本と同名の何か
+    f({ id: 'jp', name: '_BAK_週次_口腔実施記録_2026-07-04_0400', mimeType: 'application/pdf' })
+  ];
+  const e12 = selectStale(soup, opts({ keep: 1, sourceIds: [GENBA_SS, ORAL_JSON], allowedMimeTypes: BOTH }));
+  ok('E12 ★JSONを混ぜて全部入りにしても、選ばれるのは想定の2件だけ',
+     idsOf(e12).join(',') === 'a1,j1', JSON.stringify(idsOf(e12)));
+  ok('E13 JSONでも除外の内訳を返す（何を守ったかをログで見せる）',
+     e12.skipped && e12.skipped.manual === 1 && e12.skipped.isSource === 1
+     && e12.skipped.otherFolder === 1 && e12.skipped.renamed === 1
+     && e12.skipped.notBackupName === 1 && e12.skipped.notSpreadsheet === 1,
+     JSON.stringify(e12.skipped));
+}
+
+console.log('\n[F) 呼び出し側の結線 — 判定を渡し忘れていないか（コード.js の静的検査）]');
+// 純関数がどれだけ正しくても、コード.js が許可する種類を渡さなければ JSON は永久に溜まり続ける。
+// 逆に直前確認をスプレッドシート固定のままにすると、選ばれても最後に弾かれて世代管理が効かない。
+// どちらも「消えすぎ」ではないが要件未達so、結線をここで固定する。
+{
+  const fs = require('fs');
+  const gasSrc = fs.readFileSync(path.join(GAS, 'コード.js'), 'utf8');
+  // 関数の先頭から、行頭の '}' までを本体とみなす（この2関数は行頭 '}' で閉じている）
+  function fnBody(name) {
+    const i = gasSrc.indexOf('function ' + name + '(');
+    if (i < 0) return '';
+    const j = gasSrc.indexOf('\n}', i);
+    return j < 0 ? gasSrc.slice(i) : gasSrc.slice(i, j);
+  }
+
+  const rotate = fnBody('bkRotate_');
+  ok('F1 bkRotate_ が見つかる', rotate.length > 0);
+  ok('F2 世代管理が「許可する種類」を純関数に渡している（渡し忘れるとJSONが溜まり続ける）',
+     /allowedMimeTypes\s*:/.test(rotate), rotate.slice(0, 0));
+  ok('F3 許可する種類を定義から導いている（コードに直書きしない）',
+     /bkAllowedMimeTypes_\(\)/.test(rotate));
+  ok('F4 ★削除直前の再確認がスプレッドシート固定になっていない（固定のままだとJSONを弾いてしまう）',
+     !/!==\s*BK_SS_MIME/.test(rotate) && /allowedMimes\.indexOf/.test(rotate));
+  ok('F5 ★削除直前の再確認は残っている（種類・種別・フォルダ・原本IDの4点）',
+     /parsed\.kind\s*!==\s*'auto'/.test(rotate)
+     && /parents\.indexOf\(folderId\)\s*<\s*0/.test(rotate)
+     && /sourceIds\.indexOf\(t\.id\)\s*>=\s*0/.test(rotate));
+
+  const runBackup = fnBody('bkRunBackup_');
+  ok('F6 コピーのログに原本名が出る（ラベルとDrive上の実名のずれ＝ID取り違えに気づける）',
+     /r\.srcName/.test(runBackup));
+}
+
 console.log('\n===== PASS ' + pass + ' / FAIL ' + fail + ' =====');
 process.exit(fail ? 1 : 0);

@@ -19311,7 +19311,9 @@ function undoneDigestForMorning_(ss, todayStr) {
 // ★安全設計（順番に効く多重の網）:
 //   1. 原本には一切書き込まない。makeCopy でコピーを作るだけ。
 //   2. 削除の判定は backup-core.js の純関数に集約し、テストで固定（scripts/test-backup-core.js）。
-//   3. 消すのは「保存先フォルダ直下 ∧ スプレッドシート ∧ _BAK_週次_ 形式 ∧ 原本IDでない」もののみ。
+//   3. 消すのは「保存先フォルダ直下 ∧ 対象として宣言済みの種類 ∧ _BAK_週次_ 形式 ∧ 原本IDでない」もののみ。
+//      （2026-08-07: 種類はスプレッドシート固定をやめ、BACKUP_TARGETS の mimeType から導く方式に変えた。
+//        口腔実施記録が Drive 上の JSON だったため。網は1種類だけ広がる＝宣言していない種類は従来どおり触らない）
 //   4. 実行直前に現物をもう一度読み、条件が崩れていたら触らない（一覧は取得時点のスナップショット）。
 //   5. 完全削除しない。setTrashed(true)＝ゴミ箱行きなので30日は戻せる。
 //   6. 手動バックアップは何世代あっても機械が消さない（社長が作った復元点を機械が壊さない）。
@@ -19395,11 +19397,12 @@ function bkRunBackup_(kind, dryRun) {
     + ' 種別=' + (kind === 'manual' ? '手動' : '週次') + ' =====');
   Logger.log('日時          : ' + stamp);
   Logger.log('保存先        : ' + folder.getName() + '（' + folder.getUrl() + '）');
-  Logger.log('対象シート    : ' + BACKUP_TARGETS.length + ' 件');
+  Logger.log('対象          : ' + BACKUP_TARGETS.length + ' 件');
   results.forEach(function (r, i) {
+    // ★原本名を必ず出す。ラベルとDrive上の実ファイル名がずれていたら（＝IDの取り違え）ここで気づける。
     Logger.log('  ' + (i + 1) + '. [' + r.priority + '] ' + r.label
-      + (r.ok ? (dryRun ? '（原本OK・最終更新 ' + r.lastUpdated + '）→ ' + r.name
-                        : ' → ' + r.name)
+      + (r.ok ? (dryRun ? '（原本「' + r.srcName + '」・最終更新 ' + r.lastUpdated + '）→ ' + r.name
+                        : '（原本「' + r.srcName + '」）→ ' + r.name)
               : ' ⚠️失敗: ' + r.error));
   });
   Logger.log(dryRun ? '※ 確認のみのため、1件もコピーしていません。'
@@ -19419,10 +19422,13 @@ function bkRotate_(dryRun) {
   var req = bkRequireFolder_();
   var folderId = req.id;
   var sourceIds = BACKUP_TARGETS.map(function (t) { return t.id; });
+  // 触ってよい種類は対象の定義から導く（2026-08-07: 口腔実施記録の JSON を含む）。
+  var allowedMimes = bkAllowedMimeTypes_();
   var files = bkListBackupFolderFiles_(folderId);
   var sel = bkSelectStale_(files, {
     backupFolderId: folderId, keep: BK_KEEP_GENERATIONS,
-    sourceIds: sourceIds, maxDelete: BK_MAX_DELETE
+    sourceIds: sourceIds, maxDelete: BK_MAX_DELETE,
+    allowedMimeTypes: allowedMimes
   });
 
   Logger.log('===== 世代管理 ' + (dryRun ? '【確認のみ・削除なし】' : '【実行】') + ' =====');
@@ -19431,8 +19437,9 @@ function bkRotate_(dryRun) {
   Logger.log('残す世代      : 各シート ' + BK_KEEP_GENERATIONS + ' 世代（実際に残る ' + sel.kept + ' 件）');
   Logger.log('触らないもの  : 手動 ' + sel.skipped.manual + ' 件 / 原本 ' + sel.skipped.isSource
     + ' 件 / バックアップ名でない ' + sel.skipped.notBackupName + ' 件 / 名前を書き換えたもの '
-    + sel.skipped.renamed + ' 件 / スプレッドシート以外 ' + sel.skipped.notSpreadsheet
+    + sel.skipped.renamed + ' 件 / 対象外の種類 ' + sel.skipped.notSpreadsheet
     + ' 件 / フォルダ外 ' + sel.skipped.otherFolder + ' 件');
+  Logger.log('触ってよい種類: ' + allowedMimes.join(' / '));
 
   if (sel.aborted) {
     Logger.log('⛔ ' + sel.reason);
@@ -19465,7 +19472,7 @@ function bkRotate_(dryRun) {
     while (pit.hasNext()) parents.push(pit.next().getId());
 
     if (!parsed || parsed.kind !== 'auto'
-        || String(file.getMimeType()) !== BK_SS_MIME
+        || allowedMimes.indexOf(String(file.getMimeType())) < 0
         || parents.indexOf(folderId) < 0
         || sourceIds.indexOf(t.id) >= 0) {
       guarded.push(nowName + '（直前確認で条件が外れたため触りませんでした）');
