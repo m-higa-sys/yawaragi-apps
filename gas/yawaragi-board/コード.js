@@ -19287,3 +19287,287 @@ function undoneDigestForMorning_(ss, todayStr) {
     : Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   return buildUndoneDigestSection_(values.slice(1), header, today, UNDONE_DIGEST_DAYS);
 }
+
+// =============================================================
+// スプレッドシート・バックアップ機構（2026-08-06）
+// -------------------------------------------------------------
+// なぜ作るか:
+//   2026-08-03「利用者台帳から53名が消えた」で数時間の犯人探しをした（実際は Drive 読み取りの
+//   打ち切りでデータは無事）。手元にコピーがあれば5分で終わっていた。
+//   コードは git が守っている。守れていないのはスプレッドシートだけ。
+//
+// 何をするか:
+//   ①作業前スナップショット（手動・社長がボタンを押す）
+//   ②週1の自動バックアップ＋世代管理（古い自動分だけをゴミ箱へ）
+//
+// ★安全設計（順番に効く多重の網）:
+//   1. 原本には一切書き込まない。makeCopy でコピーを作るだけ。
+//   2. 削除の判定は backup-core.js の純関数に集約し、テストで固定（scripts/test-backup-core.js）。
+//   3. 消すのは「保存先フォルダ直下 ∧ スプレッドシート ∧ _BAK_週次_ 形式 ∧ 原本IDでない」もののみ。
+//   4. 実行直前に現物をもう一度読み、条件が崩れていたら触らない（一覧は取得時点のスナップショット）。
+//   5. 完全削除しない。setTrashed(true)＝ゴミ箱行きなので30日は戻せる。
+//   6. 手動バックアップは何世代あっても機械が消さない（社長が作った復元点を機械が壊さない）。
+//   7. 想定より多く選ばれたら1件も消さずに中断する（暴走時の全滅を防ぐ）。
+// =============================================================
+
+// 保存先フォルダIDは Script Properties に持つ（コードに書かない＝取り違えたまま push されない）。
+var BK_FOLDER_PROP = 'BACKUP_FOLDER_ID';
+// 共有ドライブ「yawaragi」のルート（2026-08-06 実測）。保存先フォルダはこの下に作る。
+var BK_SHARED_DRIVE_ID = '0AJttruAKvxahUk9PVA';
+var BK_FOLDER_NAME = '_バックアップ_スプレッドシート';
+// 週次を何世代残すか。8世代＝約2ヶ月。月1回しか気づかない事故（月末締め・請求）を跨いで戻せる。
+var BK_KEEP_GENERATIONS = 8;
+// 1回の実行で消してよい上限。これを超えたら1件も消さずに中断する。
+var BK_MAX_DELETE = 20;
+
+function bkStampNow_() {
+  return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd_HHmm');
+}
+
+function bkGetBackupFolderId_() {
+  return String(PropertiesService.getScriptProperties().getProperty(BK_FOLDER_PROP) || '').trim();
+}
+
+function bkRequireFolder_() {
+  var id = bkGetBackupFolderId_();
+  if (!id) {
+    throw new Error('保存先フォルダが未設定です。先に AAA_バックアップ_保存先フォルダを作る を実行してください。');
+  }
+  return { id: id, folder: DriveApp.getFolderById(id) };   // 開けなければここで例外＝黙って進まない
+}
+
+// 保存先フォルダ直下のファイルを、純関数が食べる形にして返す。
+// ★親IDは getFiles() から自明だが、あえて現物から取り直す（判定の前提を実測で埋める）。
+function bkListBackupFolderFiles_(folderId) {
+  var folder = DriveApp.getFolderById(folderId);
+  var it = folder.getFiles(), out = [];
+  while (it.hasNext()) {
+    var file = it.next();
+    var parents = [], pit = file.getParents();
+    while (pit.hasNext()) parents.push(pit.next().getId());
+    out.push({ id: file.getId(), name: file.getName(), mimeType: file.getMimeType(), parentIds: parents });
+  }
+  return out;
+}
+
+/**
+ * 対象スプレッドシートをコピーする。dryRun=true なら1件もコピーせず、
+ * 「何を・どこに・何件」だけをログに出す。
+ * 1件失敗しても残りは続ける（部分縮退）。失敗はログに残す。
+ */
+function bkRunBackup_(kind, dryRun) {
+  var req = bkRequireFolder_();
+  var folder = req.folder;
+  var stamp = bkStampNow_();
+  var results = [];
+
+  BACKUP_TARGETS.forEach(function (t) {
+    var name = bkBuildBackupName_(kind, t.label, stamp);
+    try {
+      var src = DriveApp.getFileById(t.id);
+      var srcName = src.getName();
+      if (dryRun) {
+        results.push({ ok: true, label: t.label, priority: t.priority, name: name,
+                       srcName: srcName, lastUpdated: Utilities.formatDate(src.getLastUpdated(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm') });
+        return;
+      }
+      var copy = src.makeCopy(name, folder);
+      results.push({ ok: true, label: t.label, priority: t.priority, name: name,
+                     srcName: srcName, copyId: copy.getId(), url: copy.getUrl() });
+    } catch (err) {
+      results.push({ ok: false, label: t.label, priority: t.priority, name: name,
+                     error: String((err && err.message) || err) });
+    }
+  });
+
+  var okCount = results.filter(function (r) { return r.ok; }).length;
+  var ngCount = results.length - okCount;
+
+  Logger.log('===== バックアップ ' + (dryRun ? '【確認のみ・コピーなし】' : '【実行】')
+    + ' 種別=' + (kind === 'manual' ? '手動' : '週次') + ' =====');
+  Logger.log('日時          : ' + stamp);
+  Logger.log('保存先        : ' + folder.getName() + '（' + folder.getUrl() + '）');
+  Logger.log('対象シート    : ' + BACKUP_TARGETS.length + ' 件');
+  results.forEach(function (r, i) {
+    Logger.log('  ' + (i + 1) + '. [' + r.priority + '] ' + r.label
+      + (r.ok ? (dryRun ? '（原本OK・最終更新 ' + r.lastUpdated + '）→ ' + r.name
+                        : ' → ' + r.name)
+              : ' ⚠️失敗: ' + r.error));
+  });
+  Logger.log(dryRun ? '※ 確認のみのため、1件もコピーしていません。'
+                    : (ngCount === 0 ? '✅ ' + okCount + ' 件コピーしました。'
+                                     : '⚠️ ' + okCount + ' 件コピー / ' + ngCount + ' 件失敗。'));
+
+  return { dryRun: !!dryRun, kind: kind, stamp: stamp, folderId: req.id,
+           folderName: folder.getName(), folderUrl: folder.getUrl(),
+           copied: dryRun ? 0 : okCount, failed: ngCount, results: results };
+}
+
+/**
+ * 世代管理。古い「週次」バックアップだけをゴミ箱へ移す。
+ * dryRun=true なら1件も触らず、消す予定と守った内訳だけをログに出す。
+ */
+function bkRotate_(dryRun) {
+  var req = bkRequireFolder_();
+  var folderId = req.id;
+  var sourceIds = BACKUP_TARGETS.map(function (t) { return t.id; });
+  var files = bkListBackupFolderFiles_(folderId);
+  var sel = bkSelectStale_(files, {
+    backupFolderId: folderId, keep: BK_KEEP_GENERATIONS,
+    sourceIds: sourceIds, maxDelete: BK_MAX_DELETE
+  });
+
+  Logger.log('===== 世代管理 ' + (dryRun ? '【確認のみ・削除なし】' : '【実行】') + ' =====');
+  Logger.log('保存先        : ' + req.folder.getName() + '（' + req.folder.getUrl() + '）');
+  Logger.log('フォルダ内    : ' + files.length + ' 件');
+  Logger.log('残す世代      : 各シート ' + BK_KEEP_GENERATIONS + ' 世代（実際に残る ' + sel.kept + ' 件）');
+  Logger.log('触らないもの  : 手動 ' + sel.skipped.manual + ' 件 / 原本 ' + sel.skipped.isSource
+    + ' 件 / バックアップ名でない ' + sel.skipped.notBackupName + ' 件 / 名前を書き換えたもの '
+    + sel.skipped.renamed + ' 件 / スプレッドシート以外 ' + sel.skipped.notSpreadsheet
+    + ' 件 / フォルダ外 ' + sel.skipped.otherFolder + ' 件');
+
+  if (sel.aborted) {
+    Logger.log('⛔ ' + sel.reason);
+    return { dryRun: !!dryRun, aborted: true, reason: sel.reason, trashed: 0, skipped: sel.skipped };
+  }
+  if (!sel.targets.length) {
+    Logger.log('（消す対象はありません）');
+    return { dryRun: !!dryRun, aborted: false, trashed: 0, targets: [], skipped: sel.skipped };
+  }
+
+  Logger.log('ゴミ箱へ移す  : ' + sel.targets.length + ' 件（完全削除ではないので30日は戻せます）');
+  sel.targets.forEach(function (t, i) { Logger.log('  ' + (i + 1) + '. ' + t.name); });
+
+  if (dryRun) {
+    Logger.log('※ 確認のみのため、1件も削除していません。');
+    return { dryRun: true, aborted: false, trashed: 0, targets: sel.targets, skipped: sel.skipped };
+  }
+
+  // ★実行直前の再確認。一覧は取得時点のスナップショットなので、現物をもう一度読んで
+  //   条件が1つでも崩れていたら触らない。
+  var trashed = 0, guarded = [];
+  sel.targets.forEach(function (t) {
+    var file;
+    try { file = DriveApp.getFileById(t.id); }
+    catch (e) { guarded.push(t.name + '（開けません: ' + e + '）'); return; }
+
+    var nowName = file.getName();
+    var parsed = bkParseBackupName_(nowName);
+    var parents = [], pit = file.getParents();
+    while (pit.hasNext()) parents.push(pit.next().getId());
+
+    if (!parsed || parsed.kind !== 'auto'
+        || String(file.getMimeType()) !== BK_SS_MIME
+        || parents.indexOf(folderId) < 0
+        || sourceIds.indexOf(t.id) >= 0) {
+      guarded.push(nowName + '（直前確認で条件が外れたため触りませんでした）');
+      return;
+    }
+    file.setTrashed(true);
+    trashed++;
+  });
+
+  Logger.log(trashed === sel.targets.length
+    ? '✅ ' + trashed + ' 件をゴミ箱へ移しました。'
+    : '⚠️ ' + trashed + ' 件をゴミ箱へ移しました（' + guarded.length + ' 件は守りました）。');
+  guarded.forEach(function (g) { Logger.log('  ・' + g); });
+
+  return { dryRun: false, aborted: false, trashed: trashed, guarded: guarded,
+           targets: sel.targets, skipped: sel.skipped };
+}
+
+// 週次トリガーの実体（コピー → 世代管理の順）。
+function bkWeeklyBackupTrigger_() {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) { throw new Error('lock timeout'); }
+  try {
+    var copied = bkRunBackup_('auto', false);
+    // ★コピーが1件も取れなかった週は世代を削らない（新しい世代が増えていないのに古いのを消さない）。
+    if (copied.copied === 0) {
+      Logger.log('⚠️ 今回のコピーが0件だったため、世代管理はスキップしました。');
+      return { copied: copied, rotated: null };
+    }
+    var rotated = bkRotate_(false);
+    return { copied: copied, rotated: rotated };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---- ここから下は GASエディタから社長が押す入口（AAA_ 命名＝関数一覧の先頭に出る）----
+
+// 保存先フォルダを用意する（1回だけ・冪等）。共有ドライブ「yawaragi」の直下に作る。
+function AAA_バックアップ_保存先フォルダを作る() {
+  var props = PropertiesService.getScriptProperties();
+  var existing = bkGetBackupFolderId_();
+  if (existing) {
+    try {
+      var cur = DriveApp.getFolderById(existing);
+      Logger.log('既に設定済みです。何もしません。');
+      Logger.log('  保存先: ' + cur.getName() + '（' + cur.getUrl() + '）');
+      return { created: false, folderId: existing, folderUrl: cur.getUrl() };
+    } catch (e) {
+      // 設定はあるのに開けない＝取り違え・削除の疑い。勝手に作り直さず、人に見せて止まる。
+      Logger.log('⛔ 設定されている保存先フォルダが開けません: ' + existing);
+      Logger.log('   ' + String((e && e.message) || e));
+      Logger.log('   スクリプトプロパティ ' + BK_FOLDER_PROP + ' を確認してください。');
+      return { created: false, folderId: existing, error: String((e && e.message) || e) };
+    }
+  }
+
+  var root;
+  try {
+    root = DriveApp.getFolderById(BK_SHARED_DRIVE_ID);
+  } catch (e) {
+    Logger.log('⛔ 共有ドライブ「yawaragi」が開けません: ' + String((e && e.message) || e));
+    Logger.log('   共有ドライブのメンバー権限（コンテンツ管理者以上）が要ります。');
+    return { created: false, error: String((e && e.message) || e) };
+  }
+
+  var it = root.getFoldersByName(BK_FOLDER_NAME);
+  var folder = it.hasNext() ? it.next() : root.createFolder(BK_FOLDER_NAME);
+  props.setProperty(BK_FOLDER_PROP, folder.getId());
+  Logger.log('✅ 保存先フォルダを設定しました。');
+  Logger.log('  名前: ' + folder.getName());
+  Logger.log('  URL : ' + folder.getUrl());
+  return { created: true, folderId: folder.getId(), folderUrl: folder.getUrl() };
+}
+
+// 作業前スナップショット（確認のみ）。1件もコピーしない。
+function AAA_バックアップ_今すぐ取る_確認のみ() {
+  return bkRunBackup_('manual', true);
+}
+
+// 作業前スナップショット（実行）。危ない作業の前にこれを押す。
+function AAA_バックアップ_今すぐ取る() {
+  return bkRunBackup_('manual', false);
+}
+
+// 週次バックアップを手で1回試す（確認のみ）。
+function AAA_バックアップ_週次を試す_確認のみ() {
+  var copied = bkRunBackup_('auto', true);
+  var rotated = bkRotate_(true);
+  return { copied: copied, rotated: rotated };
+}
+
+// 世代管理だけを確認する（何を消す予定か・何を守るかを見る）。
+function AAA_バックアップ_古い世代を消す_確認のみ() {
+  return bkRotate_(true);
+}
+
+// 週次トリガー設置（冪等・二重設置しない）。社長が1度だけ押す。
+// 日曜4時台＝営業日でなく、既存の3時台ジョブ（アクセスログ整理・見学カード自動整理）とも重ならない。
+function AAA_バックアップ週次トリガー設置() {
+  var found = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'bkWeeklyBackupTrigger_') found++;
+  });
+  if (found > 0) {
+    Logger.log('既に設置済み（' + found + '件）。何もしません。');
+    return { created: false, existing: found };
+  }
+  ScriptApp.newTrigger('bkWeeklyBackupTrigger_')
+    .timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(4).create();
+  Logger.log('✅ 週次バックアップのトリガーを設置しました（毎週日曜 4時台）。');
+  return { created: true, existing: 0 };
+}
