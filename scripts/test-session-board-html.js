@@ -19,12 +19,12 @@ const TODAY = ymd(new Date());
 
 // board GAS が返すレスポンス相当（要求dateをエコー・行にsession）
 // noSign=true: sign キーを持たない旧GAS応答（版が古い本番）を再現する
-function makeFixture(date, noSign) {
+function makeFixture(date, noSign, noLast) {
   var p = date.split('-');
   var sign = {
     rows: [
       { key: 'サイン最終子', name: 'サイン 最終子', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
-        applyYm: p[0] + '-' + p[1], state: 'last', firstVisitDate: date },
+        applyYm: p[0] + '-' + p[1], state: noLast ? 'paper' : 'last', firstVisitDate: date },
       { key: 'サイン紙男', name: 'サイン 紙男', docType: 'tsusho', docLabel: '通所介護計画書',
         applyYm: p[0] + '-' + p[1], state: 'paper', firstVisitDate: p[0] + '-' + p[1] + '-01' },
       { key: 'サイン電子子', name: 'サイン 電子子', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
@@ -94,7 +94,7 @@ function runBoard(initialStore, opts) {
   const requestedDates = [];
   const pending = [];
   let inited = false;
-  function fireRec(rec) { if (typeof sandbox[rec.cb] === 'function') sandbox[rec.cb](makeFixture(rec.date, opts.noSign)); }
+  function fireRec(rec) { if (typeof sandbox[rec.cb] === 'function') sandbox[rec.cb](makeFixture(rec.date, opts.noSign, opts.noLast)); }
   const documentStub = {
     getElementById: getEl,
     querySelectorAll(sel) { return sel === '#tabs .tab' ? [amBtn, pmBtn] : []; },
@@ -207,30 +207,34 @@ var ri = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' 
 var boardI = ri.getEl('board').innerHTML;
 ok(/サイン(をもらう人|依頼)/.test(boardI), 'I1: サインのセクション見出しが出る');
 ok(boardI.indexOf('サイン 最終子') >= 0, 'I2: 🟡最終チャンスの人が出る');
-ok(boardI.indexOf('サイン 紙男') >= 0, 'I3: 🔴紙の人が出る');
-ok(boardI.indexOf('サイン 電子子') >= 0, 'I4: 🟢電子OKの人が出る');
-ok(boardI.indexOf('サイン 最終子') < boardI.indexOf('サイン 電子子'), 'I5: 🟡🔴が🟢より上に並ぶ');
-ok(boardI.indexOf('サイン 紙男') < boardI.indexOf('サイン 電子子'), 'I6: 🔴も🟢より上');
-ok(/最終チャンス/.test(boardI), 'I7: 🟡は「最終チャンス」と言い切る');
-ok(/紙でサイン/.test(boardI), 'I8: 🔴は「紙でサインをもらってください」');
-ok(/電子OK|今日サインもらえます/.test(boardI), 'I9: 🟢は「今日サインもらえます（電子OK）」');
-ok(boardI.indexOf('個別機能訓練計画書') >= 0 && boardI.indexOf('通所介護計画書') >= 0, 'I10: 書類名が出る（どっちのサインか分かる）');
 
 // タブを切り替えてもサイン欄は消えない（誕生日と同じくタブ外の月単位業務）
 ri.pmBtn.fire('click');
 ok(ri.getEl('board').innerHTML.indexOf('サイン 最終子') >= 0, 'I11: タブ切替でもサイン欄は常時表示');
 
-// ===== I-2. ⚪計画書未作成の警告表示（2026-08-06 社長決定：無表示→警告付き表示）=====
-var mdPlus3 = mdOf(addDays(TODAY, 3));
-ok(boardI.indexOf('サイン 未作成子') >= 0, 'I12: ⚪計画書未作成の人が画面に出る');
-ok(boardI.indexOf(mdPlus3) >= 0, 'I13: 「◯月◯日に来ます」と来所予定日が出る（' + mdPlus3 + '）');
-ok(/計画書/.test(boardI) && /作/.test(boardI), 'I14: 「計画書を作る」という次の行動が書かれている');
-ok(boardI.indexOf('サイン 間に合わ男') >= 0, 'I15: 初回来所日を過ぎた⚪も出る');
-ok(boardI.indexOf('サイン 未作成子') > boardI.indexOf('サイン 紙男'), 'I16: ⚪は🔴より下');
-ok(boardI.indexOf('サイン 未作成子') < boardI.indexOf('サイン 電子子'), 'I17: ⚪は🟢より上（別ブロック）');
-// 期限切れの⚪に「◯日に来ます（間に合う）」と出すと嘘になる＝言い分けができていること
-var segPassed = boardI.slice(boardI.indexOf('サイン 間に合わ男'), boardI.indexOf('サイン 間に合わ男') + 400);
-ok(/間に合|使えま|過ぎ|紙/.test(segPassed), 'I18: 期限切れの⚪は「もう電子は使えない」と分かる書き方');
+// ===== I-3. 🟡が0件の日は名前欄の見出しを残さない =====
+var rz = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) }, { noLast: true });
+var boardZ = rz.getEl('board').innerHTML;
+ok(boardZ.indexOf('サイン 最終子') < 0, 'I21: 🟡が居ない日は名前が1つも出ない');
+ok(!/今日サインをもらう人/.test(boardZ), 'I22: 空の見出しを残さない');
+ok(/teishutsu\.html/.test(boardZ), 'I23: 🟡が0件でも件数とアプリへの動線は出る');
+
+// ===== I-2. 件数中心へ（2026-08-06 社長決定）=====
+// 板＝気づく場所／アプリ＝やる場所。53行が毎日出ると誰も読まなくなるため件数に畳む。
+// ★ただし🟡（今日が最終チャンス）だけは名前を残す＝その日その場でしか取れないため。
+ok(boardI.indexOf('サイン 未作成子') < 0, 'I12: ⚪は名前を出さない（件数に畳む）');
+ok(boardI.indexOf('サイン 紙男') < 0, 'I13: 🔴も名前を出さない（件数に畳む）');
+ok(boardI.indexOf('サイン 電子子') < 0, 'I14: 🟢も名前を出さない（件数に畳む）');
+ok(boardI.indexOf('サイン 最終子') >= 0, 'I15: ★🟡（今日が最終チャンス）だけは名前が残る');
+ok(/最終チャンス/.test(boardI), 'I16: 🟡は「最終チャンス」と言い切る');
+ok(boardI.indexOf('個別機能訓練計画書') >= 0, 'I17: 🟡はどの書類か分かる');
+// 件数タイル＋アプリへの動線
+ok(/teishutsu\.html/.test(boardI), 'I18: 「アプリで見る」リンクが出る');
+ok(/あと\s*\d+\s*件|\d+\s*件/.test(boardI), 'I19: 件数が出る');
+// 内訳は1〜2行に収める（行の列挙をしない）
+var signSeg = boardI.slice(boardI.indexOf('サインをもらう人'), boardI.indexOf('サインをもらう人') + 1800);
+ok((signSeg.match(/class="sign /g) || []).length <= 2,
+   'I20: サイン行の描画は🟡のぶんだけ（列挙しない）:: 実測=' + (signSeg.match(/class="sign /g) || []).length);
 
 // ===== J. 明日の印刷リマインド＋「明日」ボタン =====
 var boardJ = ri.getEl('board').innerHTML;

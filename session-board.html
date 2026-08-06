@@ -183,6 +183,14 @@
   .sign.none{border-left-color:var(--calm-line);}
   .sign.none .msg{color:var(--ink-2);}
   .sign.none.passed .msg{color:var(--crit);}
+  /* 件数タイル（🟡以外はここに畳む）＋アプリへの動線 */
+  .signcount{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:12px 14px; box-shadow:var(--shadow); display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .signcount .sc-n{font-size:1.05rem; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums;}
+  .signcount .sc-b{font-size:.76rem; color:var(--ink-2); font-weight:700;}
+  .signcount .sc-link{margin-left:auto; font-size:.85rem; font-weight:800; color:var(--accent);
+    text-decoration:none; border:1.5px solid var(--accent); border-radius:9px; padding:6px 12px; white-space:nowrap;}
+  .signcount .sc-link:active{transform:translateY(1px);}
   .printrem{background:var(--warn-bg); border:1.5px solid var(--warn-line); border-radius:var(--radius); padding:11px 14px; margin-bottom:10px;}
   .printrem .ph{font-size:.82rem; font-weight:800; color:var(--warn); margin-bottom:5px;}
   .printrem .pn{font-size:.85rem; color:var(--ink); font-weight:700;}
@@ -359,14 +367,22 @@
       + '<span class="spacer"></span>'
       + '<span class="msg">'+esc(signMsg(r))+'</span></div>';
   }
+  // ★2026-08-06 社長決定: 板は件数だけ。詳細はアプリで見る（板＝気づく場所／アプリ＝やる場所）。
+  //   実測で53行が毎日出ており、これでは誰も読まない。
+  //   ただし🟡（今日が電子サインの最終チャンス）だけは名前を残す。
+  //   その日その場でしか取れないため、件数に畳むと機会をそのまま逃すことになる。
+  //   🔴紙／⚪計画書がまだ／🟢電子OK は、アプリを開けば分かるので件数で足りる。
   function signSection(sign){
     var rows = (sign && sign.rows) || [];
     var rem = (sign && sign.tomorrowPrint) || [];
-    var urgent = rows.filter(function(r){ return r.state==='last' || r.state==='paper'; });
-    var noneRows = rows.filter(function(r){ return r.state==='none'; });
-    var okRows = rows.filter(function(r){ return r.state==='ok'; });
-    var h = '<div class="sec"><div class="sec-h"><span class="t">✍️ サインをもらう人</span><span class="c">'+rows.length+'名</span></div>';
-    h += '<div class="sec-note">電子サインが使えるのは「その計画書の適用月に初めて来た日」まで。2回目以降は紙です。計画書がまだ出来ていない人は出ません。</div>';
+    var lastRows = rows.filter(function(r){ return r.state==='last'; });
+    var nPaper = rows.filter(function(r){ return r.state==='paper'; }).length;
+    var nNone  = rows.filter(function(r){ return r.state==='none'; }).length;
+    var nOk    = rows.filter(function(r){ return r.state==='ok'; }).length;
+    var h = '<div class="sec"><div class="sec-h"><span class="t">✍️ サインをもらう人</span>'
+      + '<span class="c">'+rows.length+'名</span></div>';
+
+    // 明日の準備（🔴になる予定者）は件数に畳まない。当日では間に合わないため。
     if (rem.length){
       h += '<div class="printrem"><div class="ph">🖨 明日の準備</div>';
       rem.forEach(function(r){
@@ -374,15 +390,22 @@
       });
       h += '</div>';
     }
-    if (!rows.length){ h += '<div class="empty">サインをもらう人はいません</div></div>'; return h; }
-    urgent.forEach(function(r){ h += signRow(r); });
-    if (noneRows.length){
-      h += '<div class="subhead">▶ 計画書がまだの人（先に作る）</div>';
-      noneRows.forEach(function(r){ h += signRow(r); });
+
+    // 🟡だけ名前を出す。0件のときは見出しごと出さない（空の見出しを残さない）。
+    if (lastRows.length){
+      h += '<div class="sec-note">今日がこの人の電子サインの最終チャンスです。今日を過ぎると紙になります。</div>';
+      lastRows.forEach(function(r){ h += signRow(r); });
     }
-    if (okRows.length){
-      h += '<div class="subhead">▶ まだ余裕がある（電子OK）</div>';
-      okRows.forEach(function(r){ h += signRow(r); });
+
+    // 残りは件数だけ。内訳は1行に収める。
+    var restCount = nPaper + nNone + nOk;
+    if (restCount){
+      h += '<div class="signcount">'
+        + '<div class="sc-n">提出物 あと'+restCount+'件</div>'
+        + '<div class="sc-b">紙でもらう '+nPaper+'件／計画書がまだ '+nNone+'件／まだ余裕がある '+nOk+'件</div>'
+        + '<a class="sc-link" href="teishutsu.html">アプリで見る →</a></div>';
+    } else if (!lastRows.length){
+      h += '<div class="empty">サインをもらう人はいません</div>';
     }
     h += '</div>'; return h;
   }
