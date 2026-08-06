@@ -564,10 +564,14 @@ function sbSignNextYm_(today) {
 }
 
 // 4状態の判定本体。applyYm='YYYY-MM' / planCreated=計画書ができているか / firstVisitDate=適用月の初回来所日。
-function sbSignState_(applyYm, planCreated, firstVisitDate, today) {
+// alwaysPaper: 台帳「サイン方法」＝常に紙（認知症等でご家族にサインをもらう方）。
+//   この方たちは電子という選択肢が最初から無いso、🟢🟡を出すと現場が迷う。常に🔴にする。
+//   ★末尾の追加引数＝既存の4引数呼び出しは1バイトも変わらない。
+function sbSignState_(applyYm, planCreated, firstVisitDate, today, alwaysPaper) {
   if (!planCreated) return 'none';
   if (!/^\d{4}-\d{2}$/.test(String(applyYm || ''))) return 'none';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(today || ''))) return 'none';
+  if (alwaysPaper) return 'paper';
   var tYm = sbYmOf_(today);
   if (tYm < applyYm) return 'ok';      // 適用月より前＝まだ電子で取れる
   if (tYm > applyYm) return 'paper';   // 適用月を過ぎた＝電子は使えない
@@ -625,6 +629,7 @@ function sbBuildSignBoard_(input) {
   var tomorrow = sbAddDays_(today, 1);
   var users = inp.users || [];
   var absentByKey = inp.absentByKey || {};
+  var alwaysPaperByKey = inp.alwaysPaperByKey || {};   // 台帳「サイン方法」＝常に紙
   var kunCreated = sbSignCreatedMap_(inp.kunRows, 'keikaku_date');
   var tsushoCreated = sbSignCreatedMap_(inp.tsushoRows, 'plan_date');
 
@@ -635,10 +640,11 @@ function sbBuildSignBoard_(input) {
     var start = String(u.startDate || '');
     var cancel = String(u.cancelDate || '');
     var absent = absentByKey[key] || {};
+    var alwaysPaper = !!(alwaysPaperByKey[key] || (u.userId != null && alwaysPaperByKey[u.userId]));
 
     function push(docType, applyYm, created) {
       var first = sbFirstVisitDate_(days, applyYm, absent, start, cancel);
-      var state = sbSignState_(applyYm, created, first, today);
+      var state = sbSignState_(applyYm, created, first, today, alwaysPaper);
       // ★2026-08-06 社長決定: ⚪（計画書未作成）も出す。サインをもらう日は計画書の有無と関係なく
       //   決まっているso、「この日までに作らないと電子で取れない」という前倒しの督促になる。
       //   ただし⚪は「作る時期が来た人」だけ＝適用月が翌月までのものに限る。
@@ -648,7 +654,7 @@ function sbBuildSignBoard_(input) {
       if (state === 'none' && applyYm > sbSignNextYm_(today)) return;
       out.rows.push({
         key: key, name: u.name, docType: docType, docLabel: SB_SIGN_DOC_LABEL[docType] || docType,
-        applyYm: applyYm, state: state, firstVisitDate: first,
+        applyYm: applyYm, state: state, firstVisitDate: first, alwaysPaper: alwaysPaper,
         // ⚪に「◯月◯日に来ます」と出すのは初回来所日がまだ先のときだけ。過ぎていたら
         // 計画書ができても電子は使えない＝別の言い方をする必要がある（判定を表示層に置かない）。
         deadlinePassed: !!(first && today > first) || sbYmOf_(today) > applyYm
@@ -695,9 +701,100 @@ function sbBuildSignBoard_(input) {
   return out;
 }
 
+// ============================================================
+// 署名済み計画書PDFの検知（2026-08-06 社長決定）
+// ------------------------------------------------------------
+// なぜ要るか:
+//   「揃った」は自己申告so、押されなければ無かったことになる。実測（2026-08-06）で
+//   提出送付台帳は7月・8月とも全93件が status='保留'・理由は92件が空だった。
+//   署名済みPDFが所定フォルダに在ること自体を証拠にすれば、申告は要らなくなる。
+//   実測で送付方法は ケアプー76件 / FAX15件 / メール2件＝持参・郵送ゼロ＝全件がPDF経路。
+//
+// 保存先: yawaragi-apps/計画書送付/YYYY-MM/  （実績送付・口腔送付とは分ける＝誤検知防止）
+// 正式名: 2026-07_通所介護計画書_小倉京子.pdf
+//   区切りは `_` ／ 半角コロン禁止（Windowsのファイル名に使えない）／ 月は YYYY-MM ／ フルネーム必須
+//
+// ★機械側はゆるく作る: 全角半角・スペース・敬称・スキャナの連番を吸収し、フルネームさえ
+//   含まれていれば拾う。月はフォルダ位置から補える。書類名が読めないものは weak として残す。
+//   ＝「きちんと付けるほど確実、多少崩れても落ちない」
+//
+// GAS側は「フォルダのファイル名一覧を取る」だけに徹する（scanOralSendFolder_ と同じ構造）。
+// 突合はここに集約する＝teishutsu も session-board も同じ関数を読む。
+// ============================================================
+
+// 書類種別 → ファイル名に現れうる書類名（正式名＋現場で使われる略称）。
+// 略称を足すのはこの表だけ＝判定を散らさない。
+var SB_PDF_DOC_WORDS = {
+  kokun_set:      ['個別機能訓練計画書', '個別機能訓練', '個訓', '機能訓練計画書'],
+  tsusho_keikaku: ['通所介護計画書', '通所計画書', '通所介護'],
+  tsusho_hyouka:  ['通所評価', '評価表'],
+  tsusho_moni:    ['通所モニタリング', '通所モニ', 'モニタリング'],
+  oral_plan:      ['口腔機能向上計画書', '口腔計画書', '口腔'],
+  sokutei:        ['測定結果', '測定']
+};
+
+// 台帳「旧姓・別表記」セル1つ → 別名の配列。区切りは 読点/カンマ/スラッシュ/中黒/空白。
+function sbParseAliases_(cell) {
+  var s = String(cell == null ? '' : cell);
+  if (!s.trim()) return [];
+  return s.split(/[、,\/／・\s　]+/).map(function (x) { return String(x).trim(); })
+    .filter(function (x) { return !!x; });
+}
+
+// ファイル名一覧から、その人の署名済みPDFを探す。
+// files: ['2026-07_通所介護計画書_小倉京子.pdf', ...]（1ヶ月フォルダの中身）
+// name : 台帳の氏名 ／ aliases: 旧姓・別表記の配列 ／ docType: SB_PDF_DOC_WORDS のキー
+// 返り: { found, fileName, match:'strong'|'weak'|'', matchedBy:'name'|'alias'|'' }
+//   strong … 氏名＋その書類名の両方が読めた（どの書類か確定）
+//   weak   … 氏名は読めたが書類名が読めない／別書類の名前だった（PDFは在るが確定できない）
+function sbFindSignedPdf_(files, name, aliases, docType) {
+  var miss = { found: false, fileName: '', match: '', matchedBy: '' };
+  var list = files || [];
+  var baseKey = sbNormalizeName_(name);
+  if (!baseKey) return miss;   // 氏名が空＝全員に当たってしまうso何も当てない
+  var keys = [{ k: baseKey, by: 'name' }];
+  (aliases || []).forEach(function (a) {
+    var ak = sbNormalizeName_(a);
+    if (ak) keys.push({ k: ak, by: 'alias' });
+  });
+  var words = SB_PDF_DOC_WORDS[docType] || [];
+  var weak = null;
+  for (var i = 0; i < list.length; i++) {
+    var raw = String(list[i] == null ? '' : list[i]);
+    var fn = sbNormalizeName_(raw.replace(/\.[A-Za-z0-9]+$/, ''));  // 拡張子を落としてから正規化
+    if (!fn) continue;
+    for (var j = 0; j < keys.length; j++) {
+      if (fn.indexOf(keys[j].k) < 0) continue;
+      var hasDoc = false;
+      for (var w = 0; w < words.length; w++) {
+        if (fn.indexOf(sbNormalizeName_(words[w])) >= 0) { hasDoc = true; break; }
+      }
+      if (hasDoc) return { found: true, fileName: raw, match: 'strong', matchedBy: keys[j].by };
+      if (!weak) weak = { found: true, fileName: raw, match: 'weak', matchedBy: keys[j].by };
+      break;
+    }
+  }
+  return weak || miss;
+}
+
+// 1ヶ月ぶんのファイル名一覧 × 対象者リスト → { 'key|docType': {found,fileName,match,matchedBy} }
+// targets: [{ key, name, aliases, docType }]。当たったものだけ入れる（無い人はキーごと入らない）。
+function sbBuildPdfFoundMap_(files, targets) {
+  var out = {};
+  (targets || []).forEach(function (t) {
+    if (!t) return;
+    var hit = sbFindSignedPdf_(files, t.name, t.aliases, t.docType);
+    if (hit.found) out[t.key + '|' + t.docType] = hit;
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     sbNormalizeName_: sbNormalizeName_,
+    sbParseAliases_: sbParseAliases_,
+    sbFindSignedPdf_: sbFindSignedPdf_,
+    sbBuildPdfFoundMap_: sbBuildPdfFoundMap_,
     sbYmOf_: sbYmOf_,
     sbAddDays_: sbAddDays_,
     sbIsVisitDay_: sbIsVisitDay_,

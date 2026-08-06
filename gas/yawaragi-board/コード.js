@@ -2607,6 +2607,31 @@ function doGet(e) {
       return kdWriteDaicho_(e, callback, 'excluded');
     }
 
+    // ============================================================
+    // サイン運用（2026-08-06）: 台帳2列の読み書き ＋ 計画書送付フォルダの走査
+    //   判定は一切ここに書かない（session-board-core.js の純関数へ委譲）。
+    //   ここは「シート/フォルダを読む」「1セルを書く」だけ。
+    // ============================================================
+
+    // --- 読取: 常に紙 / 旧姓・別表記（列が無ければ冪等に増設される）---
+    if (action === 'getSignCols') {
+      var sgRes = sgReadSignCols_();
+      if (sgRes.error) return respond({ ok: false, error: sgRes.error }, callback);
+      return respond({ ok: true, alwaysPaper: sgRes.alwaysPaper, aliases: sgRes.aliases }, callback);
+    }
+
+    // --- 書込: 「常に紙」のトグル（相談員が個訓チェック画面から押す）---
+    if (action === 'setSignMethod') {
+      return sgWriteSignMethod_(e, callback);
+    }
+
+    // --- 読取: 計画書送付フォルダ（yawaragi-apps/計画書送付/YYYY-MM/）のファイル名一覧 ---
+    //   突合はフロント側が core の sbBuildPdfFoundMap_ で行う。ここは名前を渡すだけ。
+    if (action === 'scanKeikakushoFolder') {
+      var skYm = String((e && e.parameter && e.parameter.ym) || '').trim();
+      return respond(scanKeikakushoSendFolder_(skYm), callback);
+    }
+
     // --- 読取: 操作ログ（planStart / due_ym / excluded の変更履歴）---
     // updatePlanStart は既に logKeikakushoOp_ を呼んでいるが読み口が無かった。
     // これが「4件がなぜズレたか」を追えなかった原因。読取のみ・追記はしない。
@@ -14926,6 +14951,35 @@ function ensureOralPlansSheets_() {
   return { recordSheet: recordSheet, configSheet: configSheet };
 }
 
+// ============================================================
+// 計画書送付フォルダ（yawaragi-apps/計画書送付/YYYY-MM/）のファイル名一覧（2026-08-06）
+// ------------------------------------------------------------
+// ★この関数は「ファイル名を読むだけ」。誰の何の書類かの判定は一切しない。
+//   突合は session-board-core.js の sbFindSignedPdf_ / sbBuildPdfFoundMap_ に集約する
+//   （teishutsu と session-board が同じ判定を読む＝複製を作らない）。
+// ★実績送付・口腔送付とは別フォルダにする（社長決定・誤検知防止）。
+// ★フォルダが無くても壊さない。ok:true / files:[] / note で「なぜ0件か」を返す
+//   ＝「黙って0件」にしないための約束（2026-08-05 の事故と同じ轍を踏まない）。
+//   月フォルダはここでは作らない（読み取りaction が書き込むのは筋が悪い）。
+//   運用側が作る想定so、無いときは note:'月フォルダ未作成' を返して画面に出す。
+var KEIKAKUSHO_SEND_FOLDER = '計画書送付';
+
+function scanKeikakushoSendFolder_(ym) {
+  if (!/^\d{4}-\d{2}$/.test(String(ym || ''))) {
+    return { ok: false, ym: String(ym || ''), files: [], error: 'ym は YYYY-MM' };
+  }
+  var apps = DriveApp.getFoldersByName('yawaragi-apps');
+  if (!apps.hasNext()) return { ok: true, ym: ym, files: [], note: 'yawaragi-apps フォルダ未作成' };
+  var sub = apps.next().getFoldersByName(KEIKAKUSHO_SEND_FOLDER);
+  if (!sub.hasNext()) return { ok: true, ym: ym, files: [], note: KEIKAKUSHO_SEND_FOLDER + ' フォルダ未作成' };
+  var mf = sub.next().getFoldersByName(ym);
+  if (!mf.hasNext()) return { ok: true, ym: ym, files: [], note: '月フォルダ(' + ym + ')未作成' };
+  var folder = mf.next();
+  var it = folder.getFiles(), names = [];
+  while (it.hasNext()) names.push(it.next().getName());
+  return { ok: true, ym: ym, files: names, folderUrl: folder.getUrl() };
+}
+
 // 口腔送付フォルダ（yawaragi-apps/口腔送付/YYYY-MM/）をスキャンし、年度内(4月〜翌3月)の
 // 各月フォルダのPDFファイル名を集め、氏名一致で送付済み月を返す（2026-05-31 v2）
 // 戻り: { ok, year, found:{'YYYY-MM':[filename...]}, byUser:{氏名:['YYYY-MM'...]} }
@@ -18441,6 +18495,13 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     }
   });
 
+  // --- 「常に紙」＋旧姓・別表記（台帳2列）。取れなくても既存の判定は動く（従来どおり） ---
+  var signAlwaysPaper = {}, signAliases = {};
+  safe('signCols', function () {
+    var sg = sgReadSignCols_();
+    if (sg && !sg.error) { signAlwaysPaper = sg.alwaysPaper || {}; signAliases = sg.aliases || {}; }
+  });
+
   return {
     year: year, month: month, today: dateStr,
     attendance: attendance,
@@ -18459,7 +18520,8 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
       kobetsuYotei: kobetsuYoteiS,
       kunRows: signKunRows,
       tsushoDueMap: signTsushoDueMap,
-      tsushoRows: signTsushoRows
+      tsushoRows: signTsushoRows,
+      alwaysPaperByKey: signAlwaysPaper   // ★台帳「サイン方法」＝常に紙（家族サインの方）
     }
   };
 }
@@ -18872,6 +18934,100 @@ function kdReadDaicho_() {
     });
   }
   return { rows: rows };
+}
+
+// ============================================================
+// サイン運用の台帳2列（2026-08-06 社長決定・列追加は1回で済ませる）
+// ------------------------------------------------------------
+//   SG_COL_METHOD … 「常に紙」。認知症等でご家族にサインをもらう方は電子という選択肢が
+//                    最初から無いso、🟢🟡を出すと現場が迷う。値は '常に紙' のみ（空=通常）。
+//   SG_COL_ALIAS  … 旧姓・別表記。PDFファイル名の照合キーに足す。
+//                    実測（2026-08-06）で個訓シート13件・通所due 6件が台帳と突合できず、
+//                    改名/旧姓が混じっている可能性がある。台帳に別名列が無いと拾えない。
+// ★既存列は一切触らない。kdEnsureDaichoCols_ と同じ冪等増設の型に従う。
+//   （kdEnsureDaichoCols_ 自体は変更しない＝計画書期限の3列だけを見る既存の責務を保つ）
+// ============================================================
+var SG_COL_METHOD = 'サイン方法';
+var SG_COL_ALIAS  = '旧姓・別表記';
+var SG_ALWAYS_PAPER = '常に紙';
+
+function sgEnsureDaichoCols_() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName('利用者台帳');
+  if (!sheet) return { error: '利用者台帳なし' };
+  var header = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]
+    .map(function (h) { return String(h || '').trim(); });
+  var nameCol = findCol(header, ['名前', '氏名', '利用者名']);
+  if (nameCol < 0) return { error: '名前列なし' };
+  function ensureCol(title) {
+    var i = header.indexOf(title);
+    if (i >= 0) return i;
+    var newIdx = sheet.getLastColumn();          // 0-based の新列index
+    sheet.getRange(1, newIdx + 1).setValue(title);
+    sheet.getRange(1, newIdx + 1).setBackground('#2c5282').setFontColor('#ffffff').setFontWeight('bold');
+    header.push(title);
+    return newIdx;
+  }
+  var methodCol = ensureCol(SG_COL_METHOD);
+  var aliasCol  = ensureCol(SG_COL_ALIAS);
+  // どちらもテキスト書式（'常に紙' の誤変換や、別表記のDate解釈を防ぐ）。冪等。
+  sheet.getRange(1, methodCol + 1, sheet.getMaxRows(), 1).setNumberFormat('@');
+  sheet.getRange(1, aliasCol + 1, sheet.getMaxRows(), 1).setNumberFormat('@');
+  return { sheet: sheet, header: header, nameCol: nameCol, methodCol: methodCol, aliasCol: aliasCol };
+}
+
+// 台帳から「常に紙」「旧姓・別表記」を読む。列が無ければ作る（冪等）。
+// 返り: { alwaysPaper: {正規化名:true}, aliases: {正規化名:[別表記...]} }
+function sgReadSignCols_() {
+  var d = sgEnsureDaichoCols_();
+  if (d.error) return { error: d.error, alwaysPaper: {}, aliases: {} };
+  var vals = d.sheet.getDataRange().getValues();
+  var ap = {}, al = {};
+  for (var i = 1; i < vals.length; i++) {
+    var nm = String(vals[i][d.nameCol] || '').trim();
+    if (!nm) continue;
+    var key = sbNormalizeName_(nm);
+    if (String(vals[i][d.methodCol] || '').trim() === SG_ALWAYS_PAPER) ap[key] = true;
+    var aliases = sbParseAliases_(vals[i][d.aliasCol]);
+    if (aliases.length) al[key] = aliases;
+  }
+  return { alwaysPaper: ap, aliases: al };
+}
+
+// 「常に紙」のトグル書込。1ロック内で 読み→判定→書き。kdWriteDaicho_ と同じ流儀。
+function sgWriteSignMethod_(e, callback) {
+  var p = (e && e.parameter) || {};
+  var userId = String(p.userId || '').trim();
+  var by     = String(p.updated_by || p.operator || '').trim();
+  var on     = String(p.always_paper || '') === '1' || String(p.always_paper || '').toLowerCase() === 'true';
+  if (!userId) return respond({ ok: false, error: 'userId は必須です' }, callback);
+  if (!by)     return respond({ ok: false, error: '更新者（updated_by）は必須です' }, callback);
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(3000)) {
+    return respond({ ok: false, error: '他の職員が編集中です。少し待ってからもう一度お試しください。' }, callback);
+  }
+  try {
+    var d = sgEnsureDaichoCols_();
+    if (d.error) return respond({ ok: false, error: d.error }, callback);
+    var vals = d.sheet.getDataRange().getValues();
+    var rowIdx = -1;
+    var want = sbNormalizeName_(userId);
+    for (var i = 1; i < vals.length; i++) {
+      if (sbNormalizeName_(String(vals[i][d.nameCol] || '').trim()) === want) { rowIdx = i + 1; break; }
+    }
+    if (rowIdx < 0) return respond({ ok: false, error: 'user not found: ' + userId }, callback);
+    var oldV = String(vals[rowIdx - 1][d.methodCol] || '').trim();
+    var newV = on ? SG_ALWAYS_PAPER : '';
+    if (oldV === newV) return respond({ ok: false, error: '値が変わっていません' }, callback);
+    if (newV) d.sheet.getRange(rowIdx, d.methodCol + 1).setValue(newV);
+    else d.sheet.getRange(rowIdx, d.methodCol + 1).clearContent();
+    // 既存の個訓ログへ相乗り（追記専用）。本体書込が成功してから残す。
+    try { logKeikakushoOp_(by, userId, userId, '', '', on ? 'set_always_paper' : 'clear_always_paper', 'sign_method', oldV, newV); } catch (logErr) {}
+    return respond({ ok: true, userId: userId, field: 'sign_method', old_value: oldV, new_value: newV }, callback);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // due_ym / excluded の書込。読み取り→判定→書き込みを1ロック内に収める。

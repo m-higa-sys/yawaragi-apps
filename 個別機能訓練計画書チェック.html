@@ -216,6 +216,11 @@ th.sub-header.month-start { border-left: 3px solid #234e52; }
 .kb-cyc-past { color:#718096; }
 .kb-badges { display:flex; flex-wrap:wrap; gap:2px; }
 .kb-hold { font-size:0.85rem; color:#744210; font-weight:700; }
+/* 「常に紙」トグル（2026-08-06）。OFFは薄く出す＝設定できることが分かる状態にしておく。 */
+.kb-paper { display:inline-block; margin-left:4px; padding:1px 5px; border-radius:5px; cursor:pointer;
+  font-size:0.68rem; font-weight:700; background:#eceff1; color:#90a4ae; border:1px solid #cfd8dc; }
+.kb-paper.on { background:#fff3e0; color:#e65100; border-color:#ffb74d; }
+.kb-paper:active { transform:translateY(1px); }
 .kb-sm { font-size:0.72rem; font-weight:700; }
 /* 押下フィードバック（状態色/insetを塗りつぶさず filter明度+transformで重ねる・box-shadow非使用で cell-todo/ready/done/current と非競合）。
    touchデバイスは :active が効かない場合があるため委譲JSで .kb-pressed も付与。 */
@@ -839,7 +844,12 @@ let state = {
     // 予定月シート domain='kobetsu'（段階4）。{ userId: { nextYm, cycleMonths, slideCount, note, name } }
     yotei: {},
     // 予定月を「読めているか」。false のあいだは planStart ベースへ落ち、バナーを出す（黙って戻らない）。
-    yoteiOk: false
+    yoteiOk: false,
+    // 台帳「サイン方法」＝常に紙（2026-08-06）。{ 正規化名: true }
+    // 認知症等でご家族にサインをもらう方は電子という選択肢が無いso、セッションボードで
+    // 🟢🟡を出すと現場が迷う。相談員が計画書を作るその場でここから設定できるようにする。
+    // ★読めなくても {} のまま＝従来の判定に戻るだけ（黙って全員紙にはしない）。
+    alwaysPaper: {}
 };
 // 測定者/出力者の選択肢（staff_listの生文字列から MEASURER_EXCLUDE を除いたもの）
 function getMeasurerOptions() {
@@ -1361,6 +1371,8 @@ async function loadFiscalYearData() {
         if (pendingChanged) setPendingMap(pmap);
 
         state.records = newRecords;
+        // 「常に紙」（台帳サイン方法）。失敗しても従来表示so await せず後追いで反映する。
+        loadAlwaysPaper();
         saveCache();
         hideOffline();
         renderTable();
@@ -1391,6 +1403,65 @@ function kobetsuCycleAt(planStart, planMonths, year, month, yoteiYm) {
     }
     return { role: 'none', nodeYear: year, nodeMonth: month };
 }
+// 名前セルの「常に紙」トグル。ONは目立たせ、OFFは薄く出す（設定できることが分かる状態にしておく）。
+// ★onclick は名前セル本体（openUsageModal）へ伝播させない。
+function paperBadge(u) {
+    const on = !!state.alwaysPaper[kbNormName(u.userId)];
+    return '<span class="kb-paper' + (on ? ' on' : '') + '"'
+        + ' data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '"'
+        + ' title="' + (on ? 'サインは常に紙（押すと解除）' : 'ご家族にサインをもらう方はここを押す') + '"'
+        + ' onclick="event.stopPropagation();toggleAlwaysPaper(this)">' + (on ? '🖊常に紙' : '🖊') + '</span>';
+}
+
+// ===== 「常に紙」（台帳「サイン方法」列）2026-08-06 =====
+// ご家族にサインをもらう方は電子という選択肢が最初から無い。セッションボードで
+// 🟢🟡を出すと現場が迷うので、常に🔴（紙）にする。設定はここ（計画書を作るその場）で行う。
+async function loadAlwaysPaper() {
+    try {
+        const res = await fetch(API_BASE + '?action=getSignCols&t=' + Date.now());
+        const json = await res.json();
+        if (json && json.ok) { state.alwaysPaper = json.alwaysPaper || {}; renderTable(); }
+    } catch (e) {
+        console.error('getSignCols error:', e);   // 取れなくても従来表示のまま（画面は壊さない）
+    }
+}
+
+// 氏名の正規化。突合キーの正本は session-board-core.js の sbNormalizeName_。
+// この画面は core を読んでいないため、同じ規約の最小版をここに置く（NFKC＋全空白除去＋末尾敬称除去）。
+function kbNormName(name) {
+    let s = String(name == null ? '' : name);
+    if (typeof s.normalize === 'function') s = s.normalize('NFKC');
+    s = s.replace(/[\s　]+/g, '');
+    return s.replace(/(様|さま|サマ)$/, '');
+}
+
+async function toggleAlwaysPaper(el) {
+    const userId = el.getAttribute('data-userid');
+    const name = el.getAttribute('data-name');
+    const key = kbNormName(userId);
+    const on = !state.alwaysPaper[key];
+    const op = getOperator();
+    if (!op) { showToast('⚠ 先に操作者を選んでください', 'warn'); return; }
+    if (on && !confirm(name + ' さんを「サインは常に紙」にします。\n（ご家族にサインをもらう方など。セッションボードで電子サインの案内を出しません）')) return;
+    if (!on && !confirm(name + ' さんの「常に紙」を解除します。\n（通常どおり電子サインの案内を出します）')) return;
+    try {
+        const url = API_BASE + '?action=setSignMethod'
+            + '&userId=' + encodeURIComponent(userId)
+            + '&always_paper=' + (on ? '1' : '0')
+            + '&updated_by=' + encodeURIComponent(op)
+            + '&t=' + Date.now();
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || '保存失敗');
+        if (on) state.alwaysPaper[key] = true; else delete state.alwaysPaper[key];
+        showToast(on ? ('🖊 ' + name + ' さんはサインを常に紙にしました') : ('✅ ' + name + ' さんの「常に紙」を解除しました'), on ? 'warn' : '');
+        renderTable();
+    } catch (e) {
+        console.error('setSignMethod error:', e);
+        showToast('⚠ ' + name + ' さん サイン方法の保存に失敗しました', 'error');
+    }
+}
+
 function renderTable() {
     const fy = state.fiscalYear;
     const thead = document.querySelector('#matrixTable thead');
@@ -1459,7 +1530,11 @@ function renderTable() {
             + '</button>';
         let cells = '<td class="group-cell"></td>'
             + '<td class="name-cell" data-userid="' + escapeAttr(u.userId) + '" data-name="' + escapeAttr(u.name) + '" data-planstart="' + escapeAttr(u.planStart || '') + '" onclick="openUsageModal(this)">'
-            + escapeHtml(u.name) + badge + cancelBadge + '<br>' + yoteiBtn + '</td>';
+            // paperBadge は同ファイル内で必ず定義済み。typeof ガードは renderTable だけを
+            // 切り出して実行する既存のDOMテスト（scripts/test-kobetsu-*.js）を壊さないため。
+            + escapeHtml(u.name) + badge + cancelBadge
+            + (typeof paperBadge === 'function' ? paperBadge(u) : '')
+            + '<br>' + yoteiBtn + '</td>';
         let rowTodo = false;
 
         // 段階6-1: 配置は「期間開始月」から一意に決まるようになったので、

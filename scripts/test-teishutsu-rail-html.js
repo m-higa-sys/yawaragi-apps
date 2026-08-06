@@ -29,8 +29,14 @@ ok('手順が4つある', steps.length === 4, '実測 ' + steps.length + ' 件')
 ok('① 計画書を印刷する', /計画書を印刷する/.test(steps[0] || ''));
 ok('① 電子サインはリハブ上で署名の注記', /電子サインの方はリハブ上で署名/.test(steps[0] || ''));
 ok('② 利用者にサインをもらう', /利用者にサインをもらう/.test(steps[1] || ''));
-ok('③ 署名済みPDFを用意する', /署名済みPDFを用意する/.test(steps[2] || ''));
-ok('③ 紙＝スキャン／電子＝DLの注記', /紙＝スキャン／電子＝リハブからダウンロード/.test(steps[2] || ''));
+// ★2026-08-06: ③を「PDFを用意する」から「フォルダに入れる」へ変更（社長決定）。
+//   入れた事実そのものを完了の証拠にするため（＝「揃った」の自己申告に頼らない）。
+//   電子と紙で作業が違うので言い分ける。担当は決めない＝気づいた人が入れる。
+ok('③ 署名済みPDFをフォルダに入れる', /署名済みPDFを「計画書送付」フォルダの今月分に入れる/.test(steps[2] || ''));
+ok('③ 電子サインの方の手順（リハブからPDF）', /電子サインの方[\s\S]*リハブからPDF/.test(steps[2] || ''));
+ok('③ 紙サインの方の手順（スキャン）', /紙にサインをもらった方[\s\S]*スキャン/.test(steps[2] || ''));
+ok('③ 担当を決めない（気づいた人が入れる）', /気づいた人がその場で入れます/.test(steps[2] || ''));
+ok('③ 今月のフォルダへの導線がある', /id="pdfFolderLink"/.test(steps[2] || ''));
 ok('④ この画面で「揃った」を押す', /この画面で「揃った」を押す/.test(steps[3] || ''));
 
 console.log('\n[C) 「揃った」の定義が明記されている]');
@@ -75,6 +81,28 @@ ok('サマリ4カードが残っている', /id="cntTodo"/.test(html) && /id="cn
 ok('操作者セレクトが残っている', /id="operatorSel"/.test(html));
 ok('タスク一覧のホストが残っている', /id="taskList"/.test(html));
 ok('Undoトーストが残っている', /id="undoToast"/.test(html));
+
+// 2026-08-06: 署名済みPDFの検知を「並走表示」で足した回の回帰ガード。
+// ★並走＝「揃った」ボタンは残したまま検知結果を先に見せる。1ヶ月一致を見てから廃止を判断する。
+//   ここで守るのは「勝手に自動判定へ切り替わっていないこと」と「判定を画面に書いていないこと」。
+console.log('\n[G) 署名済みPDFの検知（並走表示・2026-08-06）]');
+ok('判定は core を読む（画面に判定を書かない）',
+   /<script src="gas\/yawaragi-board\/session-board-core\.js/.test(html));
+ok('フォルダのファイル名一覧を取りに行く', /action=scanKeikakushoFolder/.test(html));
+ok('旧姓・別表記を取りに行く（照合の別名キー）', /action=getSignCols/.test(html));
+ok('突合は core の sbBuildPdfFoundMap_ に委譲している', /sbBuildPdfFoundMap_\(/.test(html));
+ok('画面側に照合ロジックを書いていない（indexOf での氏名突合を持たない）',
+   !/fileName[\s\S]{0,40}indexOf/.test(html) && !/files[\s\S]{0,30}\.indexOf\(/.test(html));
+ok('PDF確認済みバッジ（strong）', /b-pdfok[\s\S]{0,80}PDF確認済み/.test(html));
+ok('書類名が読めないPDFは別表示（weak）', /b-pdfweak[\s\S]{0,80}書類名が読めません/.test(html));
+ok('バッジのCSSがある', /\.b-pdfok\s*\{/.test(html) && /\.b-pdfweak\s*\{/.test(html));
+ok('今月のフォルダへの導線がある', /id="pdfFolderLink"/.test(html) && /folder-btn/.test(html));
+ok('フォルダが無いとき・取れないときも黙らない',
+   /フォルダの確認ができませんでした/.test(html) && /フォルダ未作成/.test(html));
+ok('★並走: 「揃った」ボタンは残っている（自動判定へ切り替えていない）',
+   /data-act="sorotta"/.test(html) && /class="btn btn-sorotta"/.test(html));
+ok('★PDF検知が status を書き換えていない（upsert は 3本のまま）',
+   count(/action=upsertSoufuStatus/g) === 3);
 
 console.log('\n=== 結果 ===');
 console.log('PASS ' + pass + ' / FAIL ' + fail);

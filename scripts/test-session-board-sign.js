@@ -206,6 +206,30 @@ ok(rbNames.indexOf('翌々月未作成子') < 0, 'D24: 適用月が翌々月の�
 ok(rbNames.indexOf('半年先未作成子') < 0, 'D25: 半年先の⚪は出さない');
 eq(rb.rows.length, 3, 'D26: 出るのは3件（当月・翌月・過去）');
 
+// ===== D-4. 「常に紙」（台帳「サイン方法」＝家族サインの方）=====
+// 電子という選択肢が最初から無い方に🟢🟡を出すと現場が迷う。常に🔴にする。
+const paperInput = {
+  today: '2026-08-06',
+  users: [
+    { name: '常に紙子', userId: '常に紙子', category: '要介護1', days: '火木', startDate: '', cancelDate: '' },
+    { name: '通常電子子', userId: '通常電子子', category: '要介護1', days: '火木', startDate: '', cancelDate: '' }
+  ],
+  absentByKey: {},
+  kobetsuYotei: { '常に紙子': '2026-09', '通常電子子': '2026-09' },
+  kunRows: [
+    { userId: '常に紙子', name: '常に紙子', year: 2026, month: 9, keikaku_date: '2026-08-03' },
+    { userId: '通常電子子', name: '通常電子子', year: 2026, month: 9, keikaku_date: '2026-08-03' }
+  ],
+  tsushoDueMap: {}, tsushoRows: [],
+  alwaysPaperByKey: { '常に紙子': true }
+};
+const pb = core.sbBuildSignBoard_(paperInput);
+eq(pick(pb.rows, '常に紙子', 'kobetsu').state, 'paper', 'D27: 「常に紙」の人は適用月前でも🔴');
+eq(pick(pb.rows, '通常電子子', 'kobetsu').state, 'ok', 'D28: 同条件でも通常の人は🟢（巻き添えにしない）');
+eq(pick(pb.rows, '常に紙子', 'kobetsu').alwaysPaper, true, 'D29: 行に「常に紙」の印が付く（画面で理由を出せる）');
+const pbNone = core.sbBuildSignBoard_(Object.assign({}, paperInput, { alwaysPaperByKey: null }));
+eq(pick(pbNone.rows, '常に紙子', 'kobetsu').state, 'ok', 'D30: 台帳列が無い/取れない時は従来どおり（黙って全員紙にしない）');
+
 // ===== F. 縮退（materialが欠けても落ちない） =====
 const empty = core.sbBuildSignBoard_({ today: '2026-08-06' });
 eq((empty.rows || []).length, 0, 'F1: 入力が空でも落ちず0件');

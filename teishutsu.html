@@ -78,6 +78,12 @@
   .b-reason { background: #f3e5f5; color: #7b1fa2; cursor: pointer; }
   .b-reason.empty { background: #fce4ec; color: #c2185b; border: 1px dashed #c2185b; }
   .b-kigen { background: #ffebee; color: #c62828; font-weight: bold; }
+  /* 署名済みPDFの検知（並走表示・2026-08-06）。緑=書類まで確定／灰=氏名だけ読めた */
+  .b-pdfok { background: #e8f5e9; color: #2e7d32; font-weight: bold; }
+  .b-pdfweak { background: #eceff1; color: #546e7a; }
+  .rail-folder { display: block; margin-top: 6px; }
+  .folder-btn { display: inline-block; padding: 6px 12px; border-radius: 8px; background: #2c5282; color: #fff;
+    font-size: 12px; font-weight: bold; text-decoration: none; }
   .b-out { background: #e3f2fd; color: #1565c0; }
   .task .action { min-width: 92px; text-align: right; }
   .btn { border: none; border-radius: 8px; padding: 9px 10px; font-size: 13px; font-weight: bold; width: 92px; cursor: pointer; }
@@ -169,7 +175,12 @@
   <ol class="rail-steps">
     <li>計画書を印刷する<span class="rail-note">電子サインの方はリハブ上で署名</span></li>
     <li>利用者にサインをもらう</li>
-    <li>署名済みPDFを用意する<span class="rail-note">紙＝スキャン／電子＝リハブからダウンロード</span></li>
+    <li>署名済みPDFを「計画書送付」フォルダの今月分に入れる
+      <span class="rail-note"><b>電子サインの方</b>：リハブからPDFにしてフォルダに入れる（口腔送付と同じやり方です）</span>
+      <span class="rail-note"><b>紙にサインをもらった方</b>：スキャンして同じフォルダに入れる</span>
+      <span class="rail-note">気づいた人がその場で入れます。担当は決めません。</span>
+      <span class="rail-folder" id="pdfFolderLink"></span>
+    </li>
     <li>この画面で「揃った」を押す<span class="rail-note">サイン済み＝押す／サイン前＝押さない</span></li>
   </ol>
   <div class="rail-def" style="padding-bottom:12px"><b>今月は出せないと分かったら「理由」を押す。</b><br>
@@ -199,6 +210,10 @@
 <div id="modalHost"></div>
 
 <script src="shared.js?v=2026-07-03a"></script>
+<!-- 署名済みPDFの照合（sbFindSignedPdf_ / sbBuildPdfFoundMap_ / sbNormalizeName_）。
+     判定の正本は session-board-core.js の1本だけ。ここにも GAS にも複製を置かない。
+     ※ _config.yml で exclude されていない＝Pages配信される（measure-app.html も同じ読み方） -->
+<script src="gas/yawaragi-board/session-board-core.js?v=2026-08-06"></script>
 <script>
 // ============================================================
 // ケアマネ提出物 統合管理 — スタッフビュー v1（Phase 2）
@@ -414,13 +429,17 @@ async function loadWithRetry(url, arrayKey) {
 // 前回の正常データを壊さないことが、この関数の一番大事な仕事。
 async function loadData(ym) {
   const fiscalYear = (() => { const [y, m] = ym.split('-').map(Number); return m >= 4 ? y : y - 1; })();
-  const [oralR, due, mon, keik, contactsRes, ledgerR] = await Promise.all([
+  const [oralR, due, mon, keik, contactsRes, ledgerR, pdfRes, signColsRes] = await Promise.all([
     loadWithRetry(BOARD_API + '?action=getOralPlansYear&year=' + fiscalYear, 'users'),
     jsonp(BOARD_API + '?action=getTsushoDueDates').catch(() => ({ dueDates: {} })),
     jsonp(BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear).catch(() => ({ users: [] })),
     jsonp(BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear).catch(() => ({ users: [] })),
     jsonp(BOARD_API + '?action=contacts').catch(() => ({ cmContacts: [] })),
-    loadWithRetry(BOARD_API + '?action=getSoufuLedger&ym=' + encodeURIComponent(ym), 'rows')
+    loadWithRetry(BOARD_API + '?action=getSoufuLedger&ym=' + encodeURIComponent(ym), 'rows'),
+    // 署名済みPDF（計画書送付/YYYY-MM）。★取れなくても画面は出す＝並走表示so、
+    //   失敗は「PDFの確認ができませんでした」と明示し、揃ったボタンの運用は従来どおり続ける。
+    jsonp(BOARD_API + '?action=scanKeikakushoFolder&ym=' + encodeURIComponent(ym)).catch(() => null),
+    jsonp(BOARD_API + '?action=getSignCols').catch(() => null)
   ]);
   // ★ここが「黙って0件」を塞ぐ一点。取れなかったら state.data に手を触れずに帰る。
   //   従来は .catch(() => ({users: []})) / .catch(() => ({rows: []})) で空配列に化かしていた。
@@ -447,7 +466,10 @@ async function loadData(ym) {
     pop: (oral.users || []).filter(u => !u.cancelled),
     dueMap: due.dueDates || {},
     monMap, keikMap, contactMap,
-    ledgerRows: ledger.rows || []
+    ledgerRows: ledger.rows || [],
+    // 署名済みPDF検知（並走表示）。pdf===null は「確認できなかった」で、0件とは区別する。
+    pdf: pdfRes && pdfRes.ok ? pdfRes : null,
+    aliases: (signColsRes && signColsRes.ok && signColsRes.aliases) || {}
   };
   state.dataYm = ym;   // どの月のデータを持っているか。月をまたいだ失敗で前月分を見せないため
   return true;
@@ -516,6 +538,23 @@ function buildTasks(ym) {
     });
   });
 
+  // ---- 署名済みPDFの突合（並走表示・2026-08-06）----
+  // 判定は core の sbBuildPdfFoundMap_ 1本。ここは材料を渡して結果を各行へ載せるだけ。
+  // ★「揃った」ボタンは残したまま、検知結果を先に見せる。1ヶ月ぶん一致を見てから廃止を判断する。
+  if (d.pdf && typeof sbBuildPdfFoundMap_ === 'function') {
+    const targets = tasks
+      .filter(t => t.taishoTsuki === ym)   // フォルダは月別so、当月分だけ突合できる
+      .map(t => ({
+        key: t.userId, name: t.userId, docType: t.docType,
+        aliases: d.aliases[sbNormalizeName_(t.userId)] || []
+      }));
+    const found = sbBuildPdfFoundMap_(d.pdf.files || [], targets);
+    tasks.forEach(t => {
+      const hit = found[t.userId + '|' + t.docType];
+      if (t.taishoTsuki === ym && hit) { t.pdfMatch = hit.match; t.pdfFile = hit.fileName; }
+    });
+  }
+
   return tasks;
 }
 
@@ -549,6 +588,7 @@ function render() {
   document.getElementById('ymLabel').textContent = ymJp(state.ym);
   renderFilters();
   renderOperatorState();
+  renderPdfFolderLink();
 
   // 2段構え（2026-08-05）:
   //   baseFiltered … 書類フィルタ＋未完了のみ を適用した集合。「あと○件」バッジの母数はこちら。
@@ -614,6 +654,25 @@ function render() {
   bindTaskButtons();
 }
 
+// 今月の「計画書送付」フォルダへの導線。
+// フォルダが無いとき・確認できなかったときは、そう書く（黙ってリンクを消さない）。
+function renderPdfFolderLink() {
+  const el = document.getElementById('pdfFolderLink');
+  if (!el) return;
+  const p = state.data && state.data.pdf;
+  if (!p) {
+    el.innerHTML = '<span class="rail-note">⚠ フォルダの確認ができませんでした（通信）。従来どおり「揃った」で進めてください</span>';
+    return;
+  }
+  if (p.folderUrl) {
+    el.innerHTML = '<a class="folder-btn" href="' + esc(p.folderUrl) + '" target="_blank" rel="noopener">📁 ' + esc(state.ym) + ' のフォルダを開く</a>'
+      + '<span class="rail-note">この中に入っているPDFを、この画面が自動で見つけます（' + (p.files || []).length + '件）</span>';
+  } else {
+    el.innerHTML = '<span class="rail-note">📁 ' + esc(p.note || 'フォルダ未作成') + '。'
+      + 'マイドライブの「yawaragi-apps ＞ 計画書送付」に「' + esc(state.ym) + '」フォルダを作って、そこに入れてください</span>';
+  }
+}
+
 function taskRow(t) {
   // 未作成=赤（まだ誰も見ていない）／保留=黄（見た上で今月は出せないと分かっている）／揃った=緑／送付済=青
   const stateCls = t.status === '送付済' ? 'state-blue'
@@ -635,6 +694,9 @@ function taskRow(t) {
           + (t.status === '保留' ? '理由未記録' : '理由') + '</span>';
     }
     if (t.signKigen) badges += '<span class="badge b-kigen">⚠ ' + esc(t.signKigen) + 'までにサイン</span>';
+    // 署名済みPDFの検知結果（並走表示）。strong=氏名＋書類名が読めた／weak=氏名だけ読めた。
+    if (t.pdfMatch === 'strong') badges += '<span class="badge b-pdfok" title="' + esc(t.pdfFile || '') + '">📄 PDF確認済み</span>';
+    else if (t.pdfMatch === 'weak') badges += '<span class="badge b-pdfweak" title="' + esc(t.pdfFile || '') + '">📄 PDFあり（書類名が読めません）</span>';
   }
   badges += '<span class="badge b-out">' + esc(outGuide(method)) + '</span>';
 
