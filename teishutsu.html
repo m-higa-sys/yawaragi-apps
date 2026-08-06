@@ -81,6 +81,28 @@
   /* 署名済みPDFの検知（並走表示・2026-08-06）。緑=書類まで確定／灰=氏名だけ読めた */
   .b-pdfok { background: #e8f5e9; color: #2e7d32; font-weight: bold; }
   .b-pdfweak { background: #eceff1; color: #546e7a; }
+  /* 2タブ（集める／送る）2026-08-06 */
+  .maintabs { display: flex; gap: 8px; margin: 12px 0 10px; }
+  .mtab { flex: 1; padding: 12px 8px; border-radius: 11px; border: 2px solid #d6dee5; background: #fff;
+    font-size: 15px; font-weight: 800; color: #5b6b78; cursor: pointer; display: flex; align-items: center;
+    justify-content: center; gap: 8px; }
+  .mtab.on { border-color: #2c5282; background: #eaf1f8; color: #2c5282; }
+  .mtab .mcnt { font-size: 18px; font-variant-numeric: tabular-nums; }
+  /* 集めるタブ: 1行1件・動詞で始まる。内部用語は出さず、詳細はタップで開く */
+  .cgroup-h { font-size: 13px; font-weight: 800; color: #2c5282; margin: 16px 2px 6px; }
+  .crow { background: #fff; border: 1px solid #e3e9ee; border-left: 5px solid #cfd8dc; border-radius: 10px;
+    padding: 11px 13px; margin-bottom: 7px; cursor: pointer; }
+  .crow.make { border-left-color: #e53e3e; }
+  .crow.sign { border-left-color: #dd6b20; }
+  .crow.pdf { border-left-color: #38a169; }
+  .crow.unknown { border-left-color: #a0aec0; background: #f7f8f9; }
+  .crow .cverb { font-size: 15px; font-weight: 800; color: #1a202c; }
+  .crow .cwho { font-size: 15px; font-weight: 800; color: #1a202c; margin-left: 2px; }
+  .crow .cdoc { font-size: 12.5px; color: #5b6b78; margin-top: 3px; }
+  .crow .cmore { font-size: 11px; color: #90a0ad; margin-top: 4px; }
+  .cdetail { margin-top: 9px; padding-top: 9px; border-top: 1px dashed #e3e9ee; font-size: 12px; color: #4a5568; }
+  .cdetail div { margin-bottom: 3px; }
+  .cdetail .k { display: inline-block; min-width: 6.5em; color: #90a0ad; }
   .rail-folder { display: block; margin-top: 6px; }
   .folder-btn { display: inline-block; padding: 6px 12px; border-radius: 8px; background: #2c5282; color: #fff;
     font-size: 12px; font-weight: bold; text-decoration: none; }
@@ -202,6 +224,12 @@
   <button class="sclear hidden" id="searchClear" title="検索をクリア">✕</button>
 </div>
 
+<!-- 2タブ（2026-08-06 社長決定）: 集める＝足りないものだけ／送る＝10日便。初期表示は「集める」 -->
+<div class="maintabs" id="mainTabs">
+  <button class="mtab on" data-tab="collect" type="button">集める<span class="mcnt" id="mcntCollect">0</span></button>
+  <button class="mtab" data-tab="send" type="button">送る<span class="mcnt" id="mcntSend">0</span></button>
+</div>
+
 <div class="filters" id="filters"></div>
 
 <div id="taskList"><div class="loading">読み込み中…</div></div>
@@ -214,7 +242,7 @@
 <!-- 署名済みPDFの照合（sbFindSignedPdf_ / sbBuildPdfFoundMap_ / sbNormalizeName_）。
      判定の正本は session-board-core.js の1本だけ。ここにも GAS にも複製を置かない。
      ※ _config.yml で exclude されていない＝Pages配信される（measure-app.html も同じ読み方） -->
-<script src="gas/yawaragi-board/session-board-core.js?v=2026-08-06b"></script>
+<script src="gas/yawaragi-board/session-board-core.js?v=2026-08-06c"></script>
 <script>
 // ============================================================
 // ケアマネ提出物 統合管理 — スタッフビュー v1（Phase 2）
@@ -363,7 +391,10 @@ const state = {
   data: null, tasks: [], lastUndo: null, pollTimer: null,
   // dataYm = state.data がどの月のものか。loadFailed = 直近の取得に失敗したか（赤帯の出し分け）。
   // failedSources = 取れなかったものの名前（'利用者情報' / '提出送付台帳'）。赤帯の文言に使う。
-  dataYm: '', loadFailed: false, failedSources: []
+  dataYm: '', loadFailed: false, failedSources: [],
+  // 2タブ（2026-08-06）。初期表示は「集める」＝スタッフが開いて最初に見るのは足りないもの。
+  // ★保存しない。前回「送る」で終えた人が翌日そのまま開くと、集めるべきものに気づけないため。
+  mainTab: 'collect'
 };
 
 // ---------- JSONP ----------
@@ -430,7 +461,7 @@ async function loadWithRetry(url, arrayKey) {
 // 前回の正常データを壊さないことが、この関数の一番大事な仕事。
 async function loadData(ym) {
   const fiscalYear = (() => { const [y, m] = ym.split('-').map(Number); return m >= 4 ? y : y - 1; })();
-  const [oralR, due, mon, keik, contactsRes, ledgerR, pdfRes, signColsRes] = await Promise.all([
+  const [oralR, due, mon, keik, contactsRes, ledgerR, pdfRes, signColsRes, tsushoPlansRes] = await Promise.all([
     loadWithRetry(BOARD_API + '?action=getOralPlansYear&year=' + fiscalYear, 'users'),
     jsonp(BOARD_API + '?action=getTsushoDueDates').catch(() => ({ dueDates: {} })),
     jsonp(BOARD_API + '?action=getMonitoringYear&year=' + fiscalYear).catch(() => ({ users: [] })),
@@ -441,7 +472,10 @@ async function loadData(ym) {
     //   ★取れなくても画面は出す＝並走表示so、失敗は「確認できませんでした」と明示し、
     //     「揃った」ボタンの運用は従来どおり続ける。
     jsonp(BOARD_API + '?action=scanSignFolders').catch(() => null),
-    jsonp(BOARD_API + '?action=getSignCols').catch(() => null)
+    jsonp(BOARD_API + '?action=getSignCols').catch(() => null),
+    // 通所介護計画書の作成日（plan_date）。「計画書を作る」か「サインをもらう」かの分かれ目。
+    // ★取れなくても止めない。取れなければその書類は「情報が足りません」枠へ出す（黙って消さない）。
+    jsonp(BOARD_API + '?action=getTsushoPlansYear&year=' + fiscalYear).catch(() => null)
   ]);
   // ★ここが「黙って0件」を塞ぐ一点。取れなかったら state.data に手を触れずに帰る。
   //   従来は .catch(() => ({users: []})) / .catch(() => ({rows: []})) で空配列に化かしていた。
@@ -471,7 +505,10 @@ async function loadData(ym) {
     ledgerRows: ledger.rows || [],
     // 署名済みPDF検知（並走表示）。pdf===null は「確認できなかった」で、0件とは区別する。
     pdf: pdfRes && pdfRes.ok ? pdfRes : null,
-    aliases: (signColsRes && signColsRes.ok && signColsRes.aliases) || {}
+    aliases: (signColsRes && signColsRes.ok && signColsRes.aliases) || {},
+    // 計画書ができているかの材料。null は「取れなかった」＝「情報が足りません」へ倒す（0件扱いにしない）。
+    kunRecords: (keik && keik.records) || null,
+    tsushoRecords: (tsushoPlansRes && tsushoPlansRes.ok && tsushoPlansRes.records) || null
   };
   state.dataYm = ym;   // どの月のデータを持っているか。月をまたいだ失敗で前月分を見せないため
   return true;
@@ -566,6 +603,30 @@ function buildTasks(ym) {
     });
   }
 
+  // ---- 「今やること」を動詞1つに決める（2タブ化・2026-08-06）----
+  // 判定は core の sbCollectVerb_ 1本。ここは材料（計画書ができているか）を用意して渡すだけ。
+  // ★材料が取れない書類は planCreated を undefined のままにする＝core が unknown を返し、
+  //   「情報が足りません」枠に出る。false（＝計画書がまだ）に丸めない。取れないことと
+  //   作られていないことは別で、混ぜると「作れ」と嘘の指示を出すことになる。
+  const kunCreated = d.kunRecords ? sbSignCreatedMap_(d.kunRecords, 'keikaku_date') : null;
+  const tsuCreated = d.tsushoRecords
+    ? sbSignCreatedMap_(d.tsushoRecords.map(r => ({ userId: r.userId, name: r.userId, year: r.year, month: r.month, plan_date: r.plan_date })), 'plan_date')
+    : null;
+  tasks.forEach(t => {
+    const key = sbNormalizeName_(t.userId);
+    const applyYm = t.tekiyoTsuki || t.taishoTsuki;
+    let planCreated;   // undefined のまま＝材料が無い
+    if (t.docType === 'kokun_set' && kunCreated) {
+      planCreated = !!(kunCreated[key + '|' + applyYm] || kunCreated[t.userId + '|' + applyYm]);
+    } else if (t.docType === 'tsusho_keikaku' && tsuCreated) {
+      planCreated = !!(tsuCreated[key + '|' + applyYm] || tsuCreated[t.userId + '|' + applyYm]);
+    }
+    t.planCreated = planCreated;
+    const cv = sbCollectVerb_(t.status, planCreated, t.pdfMatch);
+    t.verb = cv.verb;
+    t.verbLabel = cv.label;
+  });
+
   return tasks;
 }
 
@@ -611,7 +672,7 @@ function render() {
     return true;
   });
   const tokens = searchTokens(state.search);
-  const filtered = baseFiltered.filter(t => matchesSearch(t, tokens));
+  let filtered = baseFiltered.filter(t => matchesSearch(t, tokens));
   const remainMap = officeRemainMap(baseFiltered);
   renderSearchState(tokens.length ? filtered.length : null);
 
@@ -626,6 +687,24 @@ function render() {
   document.getElementById('cntCarry').textContent = cCarry;
   document.getElementById('cntSorotta').textContent = cSorotta;
   document.getElementById('cntSent').textContent = cSent;
+
+  // ---- 2タブ（2026-08-06）----
+  // 集める＝まだ足りないもの（動詞1つで出す）／送る＝現行画面（事業所ごとに束ねる）
+  // 振り分けは core の sbIsCollectVerb_ 1本。ここでは数えて描き分けるだけ。
+  const collectAll = baseFiltered.filter(t => sbIsCollectVerb_(t.verb));
+  const sendAll = baseFiltered.filter(t => t.verb === 'send');
+  document.getElementById('mcntCollect').textContent = collectAll.length;
+  document.getElementById('mcntSend').textContent = sendAll.length;
+  const mtabs = document.querySelectorAll('#mainTabs .mtab');
+  for (let i = 0; i < mtabs.length; i++) {
+    mtabs[i].className = 'mtab' + (mtabs[i].getAttribute('data-tab') === state.mainTab ? ' on' : '');
+  }
+  if (state.mainTab === 'collect') {
+    renderCollect(filtered.filter(t => sbIsCollectVerb_(t.verb)), tokens);
+    return;
+  }
+  // 送るタブは従来どおり（filtered をさらに send に絞るだけ＝挙動は現行と同じ）
+  filtered = filtered.filter(t => t.verb === 'send');
 
   // 事業所グループ（送付方法順）
   const groups = {}; // office -> tasks[]
@@ -692,6 +771,82 @@ function renderPdfFolderLink() {
     + '<span class="rail-note">この中に入っているPDFを、この画面が自動で見つけます。'
     + 'ファイル名は今までどおりで構いません（フルネームだけ必ず入れてください）</span>'
     + (ng.length ? '<span class="rail-note">⚠ 読めなかったフォルダ: ' + esc(ng.join('／')) + '</span>' : '');
+}
+
+// ===== 集めるタブ（2026-08-06 社長決定）=====
+// 1行1件・動詞で始まる・3要素だけ（動詞／氏名／書類名）。
+// 内部用語（対象月・繰越・保留・status・docType）は出さず、タップで開く詳細に畳む。
+const DOC_PLAIN = {
+  kokun_set: '個訓の計画書', oral_plan: '口腔の計画書', tsusho_keikaku: '通所介護計画書',
+  tsusho_hyouka: '通所の評価', tsusho_moni: '通所のモニタリング', sokutei: '測定の結果'
+};
+function jpMonth(ym) { const p = String(ym || '').split('-'); return p.length === 2 ? Number(p[1]) + '月' : ''; }
+
+function collectRow(t) {
+  const id = btoa(unescape(encodeURIComponent(t.userId + '|' + t.docType + '|' + t.taishoTsuki))).replace(/=/g, '');
+  const doc = DOC_PLAIN[t.docType] || DOC[t.docType].label;
+  const apply = t.tekiyoTsuki ? '（' + jpMonth(t.tekiyoTsuki) + 'から）' : '';
+  return '<div class="crow ' + esc(t.verb) + '" data-collect="' + id + '">'
+    + '<div><span class="cverb">' + esc(t.verbLabel) + '</span>　<span class="cwho">' + esc(t.userId) + 'さん</span></div>'
+    + '<div class="cdoc">' + esc(doc) + esc(apply) + '</div>'
+    + '<div class="cmore">タップすると詳しい情報が出ます</div>'
+    + '<div class="cdetail" id="cd-' + id + '" style="display:none"></div></div>';
+}
+
+// 詳細パネル＝畳んだ情報の置き場。ここに出す＝どれも失われていない。
+function collectDetail(t) {
+  const method = (state.data.contactMap[normOffice(t.office)] || {}).method || '（未登録）';
+  const rows = [
+    ['対象の月', jpMonth(t.taishoTsuki) + '分' + (t.isCarry ? '（先月から持ち越し）' : '')],
+    ['いつから使う', t.tekiyoTsuki ? jpMonth(t.tekiyoTsuki) + 'から' : '—'],
+    ['書類', DOC[t.docType].label],
+    ['ケアマネ事業所', t.office],
+    ['送り方', method + '（' + outGuide(method) + '）'],
+    ['いまの状態', t.status || 'まだ手つかず'],
+    ['止まっている理由', t.kurikoshiRiyu || '—'],
+    ['サインの期限', t.signKigen || '—'],
+    ['計画書', t.planCreated === true ? 'できている' : (t.planCreated === false ? 'まだ' : '確認できませんでした')],
+    ['署名済みPDF', t.pdfMatch === 'strong' ? 'フォルダにあります（' + (t.pdfFile || '') + '）'
+      : (t.pdfMatch === 'weak' ? '似た名前のPDFはありますが、書類名が読めません' : '見つかりません')]
+  ];
+  return rows.map(r => '<div><span class="k">' + esc(r[0]) + '</span>' + esc(r[1]) + '</div>').join('');
+}
+
+function renderCollect(rows, tokens) {
+  const host = document.getElementById('taskList');
+  if (!rows.length) {
+    host.innerHTML = '<div class="empty-msg">' + (tokens.length
+      ? '「' + esc(state.search.trim()) + '」に該当する人はいません<br><small>名前・カナ・事業所名で探せます。✕で戻ります</small>'
+      : '集めるものはありません 🎉') + '</div>';
+    return;
+  }
+  const sorted = rows.slice().sort((a, b) => {
+    const oa = SB_VERB_ORDER[a.verb], ob = SB_VERB_ORDER[b.verb];
+    if (oa !== ob) return oa - ob;
+    return sortDanger(a, b);
+  });
+  let html = '', lastVerb = '';
+  sorted.forEach(t => {
+    if (t.verb !== lastVerb) {
+      const n = sorted.filter(x => x.verb === t.verb).length;
+      html += '<div class="cgroup-h">' + esc(t.verbLabel) + '（' + n + '件）</div>';
+      lastVerb = t.verb;
+    }
+    html += collectRow(t);
+  });
+  host.innerHTML = html;
+  host.querySelectorAll('[data-collect]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.getAttribute('data-collect');
+      const box = document.getElementById('cd-' + id);
+      if (!box) return;
+      const open = box.style.display !== 'none';
+      if (open) { box.style.display = 'none'; return; }
+      const t = taskById(id);
+      if (t) box.innerHTML = collectDetail(t);
+      box.style.display = '';
+    });
+  });
 }
 
 function taskRow(t) {
@@ -773,6 +928,19 @@ function taskById(id) {
   return state.tasks.find(t => {
     const tid = btoa(unescape(encodeURIComponent(t.userId + '|' + t.docType + '|' + t.taishoTsuki))).replace(/=/g, '');
     return tid === id;
+  });
+}
+
+// ---------- 2タブの切り替え ----------
+// 検索・書類フィルタはタブをまたいで効かせる（絞り込んだまま行き来できるように）。
+function bindMainTabs() {
+  document.querySelectorAll('#mainTabs .mtab').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = el.getAttribute('data-tab');
+      if (t !== 'collect' && t !== 'send') return;
+      state.mainTab = t;
+      render();
+    });
   });
 }
 
@@ -1034,6 +1202,7 @@ async function init() {
   const found = state.staff.find(s => s.name === state.operator);
   state.operatorRole = found ? found.role : '';
   renderOperatorSelect();
+  bindMainTabs();
   await reload(false);
 
   document.getElementById('prevM').onclick = () => { state.ym = shiftYM(state.ym, -1); reload(false); };

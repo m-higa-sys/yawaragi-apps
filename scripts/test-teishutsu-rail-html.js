@@ -115,6 +115,30 @@ ok('★並走: 「揃った」ボタンは残っている（自動判定へ切�
 ok('★PDF検知が status を書き換えていない（upsert は 3本のまま）',
    count(/action=upsertSoufuStatus/g) === 3);
 
+// 2026-08-06: 2タブ化（集める／送る）。社長本人が現行画面を見て「私もよく分からない」＝
+// 読めない画面は使われない。1案件＝動詞1つにし、内部用語は詳細へ畳む。
+console.log('\n[H) 2タブ化（集める／送る）]');
+ok('2つのタブがある', /data-tab="collect"/.test(html) && /data-tab="send"/.test(html));
+ok('初期表示は「集める」', /mainTab:\s*'collect'/.test(html));
+ok('動詞の判定は core に委譲（画面に判定を書かない）', /sbCollectVerb_\(/.test(html));
+ok('タブの振り分けも core に委譲', /sbIsCollectVerb_\(/.test(html));
+ok('画面側に動詞のif分岐を作っていない',
+   !/verb\s*===\s*'make'/.test(html) && !/verb\s*===\s*'sign'/.test(html));
+ok('集めるタブは1行1件のカードで出す', /class="crow /.test(html) && /function collectRow\(/.test(html));
+ok('詳細はタップで開く（畳んである）', /class="cdetail"/.test(html) && /function collectDetail\(/.test(html));
+// ★畳んだ情報が失われていないこと＝詳細に全部入っている
+['対象の月', 'いつから使う', 'ケアマネ事業所', '送り方', 'いまの状態', '止まっている理由', 'サインの期限', '署名済みPDF']
+  .forEach(k => ok('詳細に「' + k + '」がある', new RegExp("'" + k + "'").test(html)));
+ok('繰越は詳細の中で平易な言葉にしている', /先月から持ち越し/.test(html));
+// ★内部用語を集めるタブの表面に出さない
+ok('書類名を平易な言い方に置き換えている', /DOC_PLAIN/.test(html) && /個訓の計画書/.test(html));
+ok('「情報が足りません」枠がある（黙って消さない）', /情報が足りません/.test(html) || /unknown/.test(html));
+ok('送るタブは現行の taskRow をそのまま使う', /list\.forEach\(t => \{ html \+= taskRow\(t\); \}\)/.test(html));
+ok('検索は両タブで効く（renderの共通経路で絞っている）',
+   /const tokens = searchTokens\(state\.search\)/.test(html) && /renderCollect\(filtered\.filter/.test(html));
+ok('★「揃った」ボタンは残っている（並走のまま）', /data-act="sorotta"/.test(html));
+ok('★台帳へ書く経路は増えていない（upsert 3本のまま）', count(/action=upsertSoufuStatus/g) === 3);
+
 console.log('\n=== 結果 ===');
 console.log('PASS ' + pass + ' / FAIL ' + fail);
 process.exit(fail === 0 ? 0 : 1);

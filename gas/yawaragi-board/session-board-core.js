@@ -825,9 +825,66 @@ function sbBuildPdfFoundMap_(files, targets, ym) {
   return out;
 }
 
+// ============================================================
+// 「今やること」を動詞1つに決める（teishutsu 2タブ化・2026-08-06 社長決定）
+// ------------------------------------------------------------
+// なぜ要るか:
+//   現行の提出画面は、対象月・繰越・保留・理由・送付方法が同時に並んでいて、
+//   社長本人が見て「私もよく分からない」状態だった＝読めない画面は使われない。
+//   1案件につき動詞を1つに決め、それ以外は畳む。内部用語は画面に出さない。
+//
+//   make    計画書を作る               … 計画書がまだ（個訓 keikaku_date／通所 plan_date が空）
+//   sign    サインをもらう             … 計画書はできている
+//   pdf     PDFにしてフォルダに入れる   … サイン済みの申告はあるがPDFが無い
+//   send    送る                      … PDFが在る／揃った案件 → 送るタブ
+//   done    完了                      … 送付済（どちらのタブにも出さない）
+//   unknown 情報が足りません            … 計画書の作成状況が分からない（★黙って消さない）
+//
+// ★判定材料が無い書類（通所モニ・通所評価・口腔・測定）は planCreated が不明so unknown になる。
+//   件数は実データで測って報告する。0件に見せかけない。
+// ============================================================
+
+var SB_VERB_LABEL = {
+  make: '計画書を作る',
+  sign: 'サインをもらう',
+  pdf: 'PDFにしてフォルダに入れる',
+  send: '送る',
+  done: '',
+  unknown: '情報が足りません'
+};
+// 並び順＝工程の手前ほど上（作る → サインをもらう → PDFにする）。情報不足は最後。
+var SB_VERB_ORDER = { make: 0, sign: 1, pdf: 2, unknown: 3, send: 4, done: 5 };
+
+// status: 台帳の状態（''／'保留'／'揃った'／'送付済'）
+// planCreated: 計画書ができているか（true/false／材料が無ければ undefined）
+// pdfMatch: 署名済みPDFの検知結果（'strong'／'weak'／''）
+function sbCollectVerb_(status, planCreated, pdfMatch) {
+  var st = String(status == null ? '' : status);
+  var verb;
+  if (st === '送付済') verb = 'done';
+  // PDFが在る＝サインもPDF化も済んでいる。「揃った」未押下でも送る段階として扱う。
+  // ★weak（氏名は当たったが書類名が読めない）は確定させない＝送るへ飛ばさない。
+  else if (pdfMatch === 'strong') verb = 'send';
+  else if (st === '揃った') verb = 'pdf';
+  else if (planCreated === false) verb = 'make';
+  else if (planCreated === true) verb = 'sign';
+  else verb = 'unknown';
+  return { verb: verb, label: SB_VERB_LABEL[verb] };
+}
+
+// 集めるタブに出すか（送るタブ＝send／どちらにも出さない＝done）
+function sbIsCollectVerb_(verb) {
+  return verb === 'make' || verb === 'sign' || verb === 'pdf' || verb === 'unknown';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     sbNormalizeName_: sbNormalizeName_,
+    sbCollectVerb_: sbCollectVerb_,
+    sbIsCollectVerb_: sbIsCollectVerb_,
+    sbSignCreatedMap_: sbSignCreatedMap_,
+    SB_VERB_LABEL: SB_VERB_LABEL,
+    SB_VERB_ORDER: SB_VERB_ORDER,
     sbParseAliases_: sbParseAliases_,
     sbFindSignedPdf_: sbFindSignedPdf_,
     sbBuildPdfFoundMap_: sbBuildPdfFoundMap_,
