@@ -170,6 +170,20 @@
   .bd .todo{font-size:.74rem; color:var(--ink-2); font-weight:700;}
   .allsec{margin-top:30px; padding-top:8px; border-top:2px dashed var(--line);}
 
+  /* ✍️ サインをもらう人（電子サイン期限） */
+  .sign{background:var(--surface); border-radius:var(--radius); padding:10px 13px; margin-bottom:7px; box-shadow:var(--shadow); border:1px solid var(--line); border-left:5px solid var(--calm-line); display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .sign .nm{font-weight:800; color:var(--ink); font-size:.98rem;}
+  .sign .doc{font-size:.72rem; color:var(--chip-ink); background:var(--chip-bg); border-radius:6px; padding:2px 8px; font-weight:700; white-space:nowrap;}
+  .sign .msg{width:100%; font-size:.82rem; font-weight:800; color:var(--ink-2);}
+  .sign.last{border-left-color:var(--warn-line); background:var(--warn-bg);}
+  .sign.last .msg{color:var(--warn);}
+  .sign.paper{border-left-color:var(--crit-line); background:var(--crit-bg);}
+  .sign.paper .msg{color:var(--crit);}
+  .sign.ok .msg{color:var(--ok);}
+  .printrem{background:var(--warn-bg); border:1.5px solid var(--warn-line); border-radius:var(--radius); padding:11px 14px; margin-bottom:10px;}
+  .printrem .ph{font-size:.82rem; font-weight:800; color:var(--warn); margin-bottom:5px;}
+  .printrem .pn{font-size:.85rem; color:var(--ink); font-weight:700;}
+
   .residue{margin-top:22px; background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:var(--radius); padding:11px 14px;}
   .residue .rh{font-size:.82rem; font-weight:800; color:var(--warn); margin-bottom:5px;}
   .residue .rn{font-size:.85rem; color:var(--ink); font-weight:700;}
@@ -195,6 +209,7 @@
     <input type="date" id="datePick" class="dpick" aria-label="日付を選ぶ">
     <button class="dnav" id="nextDay" type="button" aria-label="翌日">▶</button>
     <button class="dtoday" id="todayBtn" type="button">今日</button>
+    <button class="dtoday" id="tomorrowBtn" type="button">明日</button>
     <span class="loadInd" id="loadInd" aria-live="polite"></span>
   </div>
 
@@ -303,6 +318,44 @@
     h += '</div>'; return h;
   }
 
+  // ===== ✍️ サインをもらう人 =====
+  // 判定は一切ここに書かない（session-board-core.js の sbBuildSignBoard_ が state を確定して返す）。
+  // 表示だけを担当する: 🟡最終チャンス・🔴紙 を上、🟢電子OK をその下。⚪計画書未作成は行自体が来ない。
+  var SIGN_MSG = {
+    last:  '🟡 今日が電子サインの最終チャンスです',
+    paper: '🔴 紙でサインをもらってください（電子は使わない）',
+    ok:    '🟢 今日サインもらえます（電子OK）'
+  };
+  function signRow(r){
+    return '<div class="sign '+esc(r.state)+'">'
+      + '<span class="nm">'+esc(r.name)+'</span>'
+      + '<span class="doc">'+esc(r.docLabel||'')+'</span>'
+      + '<span class="spacer"></span>'
+      + '<span class="msg">'+esc(SIGN_MSG[r.state]||'')+'</span></div>';
+  }
+  function signSection(sign){
+    var rows = (sign && sign.rows) || [];
+    var rem = (sign && sign.tomorrowPrint) || [];
+    var urgent = rows.filter(function(r){ return r.state==='last' || r.state==='paper'; });
+    var okRows = rows.filter(function(r){ return r.state==='ok'; });
+    var h = '<div class="sec"><div class="sec-h"><span class="t">✍️ サインをもらう人</span><span class="c">'+rows.length+'名</span></div>';
+    h += '<div class="sec-note">電子サインが使えるのは「その計画書の適用月に初めて来た日」まで。2回目以降は紙です。計画書がまだ出来ていない人は出ません。</div>';
+    if (rem.length){
+      h += '<div class="printrem"><div class="ph">🖨 明日の準備</div>';
+      rem.forEach(function(r){
+        h += '<div class="pn">明日 '+esc(r.name)+'さんが来ます。'+esc(r.docLabel||'計画書')+'を印刷して準備してください</div>';
+      });
+      h += '</div>';
+    }
+    if (!rows.length){ h += '<div class="empty">サインをもらう人はいません</div></div>'; return h; }
+    urgent.forEach(function(r){ h += signRow(r); });
+    if (okRows.length){
+      h += '<div class="subhead">▶ まだ余裕がある（電子OK）</div>';
+      okRows.forEach(function(r){ h += signRow(r); });
+    }
+    h += '</div>'; return h;
+  }
+
   function tile(k, v, unit, accent){
     return '<div class="tile'+(accent?' accent':'')+'"><div class="k">'+k+'</div>'
       + '<div class="v">'+v+'<small>'+(unit||'')+'</small></div></div>';
@@ -387,8 +440,12 @@
     h += chipSection('💨 口腔体操', tais);
     h += chipSection('🏋 個別機能訓練', kot);
 
+    // タブ外・常時表示の月単位業務（サイン → 誕生日）
+    h += '<div class="allsec">';
+    h += signSection(b.sign);
+
     // 誕生日（タブ外・常時）
-    h += '<div class="allsec"><div class="sec"><div class="sec-h"><span class="t">🎂 誕生日（今月）</span><span class="c">'+(b.birthday||[]).length+'名</span></div>';
+    h += '<div class="sec"><div class="sec-h"><span class="t">🎂 誕生日（今月）</span><span class="c">'+(b.birthday||[]).length+'名</span></div>';
     h += '<div class="sec-note">当日出席・時間帯に関係なく今月の対象を表示（撮影→プリント→お渡しが未完の人）</div>';
     if (!(b.birthday||[]).length) h += '<div class="empty">今月の対象はいません</div>';
     (b.birthday||[]).forEach(function(r){
@@ -471,6 +528,8 @@
   document.getElementById('prevDay').addEventListener('click', function(){ goDate(addDays_(curDate,-1)); });
   document.getElementById('nextDay').addEventListener('click', function(){ goDate(addDays_(curDate,1)); });
   document.getElementById('todayBtn').addEventListener('click', function(){ goDate(todayYMD()); });
+  // 「明日」＝前日のうちに準備（計画書の印刷）を済ませるための動線。未来日警告バナーはそのまま出る。
+  document.getElementById('tomorrowBtn').addEventListener('click', function(){ goDate(addDays_(todayYMD(), 1)); });
   document.getElementById('datePick').addEventListener('change', function(){ goDate(document.getElementById('datePick').value); });
 
   // 本番: 起動時に今日を1回JSONPで叩き描画（初回はタブ自動判定＝keepTab=false）

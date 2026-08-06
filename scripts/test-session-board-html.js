@@ -18,9 +18,25 @@ function mdOf(s) { var p = s.split('-'); return (+p[1]) + '/' + (+p[2]); }
 const TODAY = ymd(new Date());
 
 // board GAS が返すレスポンス相当（要求dateをエコー・行にsession）
-function makeFixture(date) {
+// noSign=true: sign キーを持たない旧GAS応答（版が古い本番）を再現する
+function makeFixture(date, noSign) {
   var p = date.split('-');
-  return {
+  var sign = {
+    rows: [
+      { key: 'サイン最終子', name: 'サイン 最終子', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
+        applyYm: p[0] + '-' + p[1], state: 'last', firstVisitDate: date },
+      { key: 'サイン紙男', name: 'サイン 紙男', docType: 'tsusho', docLabel: '通所介護計画書',
+        applyYm: p[0] + '-' + p[1], state: 'paper', firstVisitDate: p[0] + '-' + p[1] + '-01' },
+      { key: 'サイン電子子', name: 'サイン 電子子', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
+        applyYm: p[0] + '-' + p[1], state: 'ok', firstVisitDate: '' }
+    ],
+    tomorrowPrint: [
+      { key: 'サイン明日男', name: 'サイン 明日男', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
+        applyYm: p[0] + '-' + p[1], date: addDays(date, 1) }
+    ],
+    fallback: { kobetsuNoYotei: [], tsushoNoDue: [] }
+  };
+  var fx = {
     ok: true, date: date, year: +p[0], month: +p[1],
     presentCount: 22, presentAm: 12, presentPm: 10,
     ampmConflict: [{ name: '例外 花子', key: '例外花子' }],
@@ -34,6 +50,8 @@ function makeFixture(date) {
     birthday: [{ name: '加藤 信', key: '加藤信', month: +p[1], day: 15 }],
     residue: [{ name: '新規 太郎（体験）', key: '新規太郎（体験）', session: 'am' }]
   };
+  if (!noSign) fx.sign = sign;
+  return fx;
 }
 
 let pass = 0, fail = 0;
@@ -72,7 +90,7 @@ function runBoard(initialStore, opts) {
   const requestedDates = [];
   const pending = [];
   let inited = false;
-  function fireRec(rec) { if (typeof sandbox[rec.cb] === 'function') sandbox[rec.cb](makeFixture(rec.date)); }
+  function fireRec(rec) { if (typeof sandbox[rec.cb] === 'function') sandbox[rec.cb](makeFixture(rec.date, opts.noSign)); }
   const documentStub = {
     getElementById: getEl,
     querySelectorAll(sel) { return sel === '#tabs .tab' ? [amBtn, pmBtn] : []; },
@@ -179,6 +197,50 @@ rh.getEl('nextDay').fire('click');   // 応答は保留(manual)
 ok(/読み込み|読込|⟳/.test(rh.getEl('loadInd').textContent), 'H2: 日付変更中は読み込み中表示が出る');
 rh.fireAt(rh.pending.length - 1);    // 応答受領
 ok(rh.getEl('loadInd').textContent === '', 'H3: 応答受領で読み込み表示クリア');
+
+// ===== I. サインをもらう人（タブ外・常時表示。🟡🔴が上・🟢が下・⚪は出さない）=====
+var ri = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) });
+var boardI = ri.getEl('board').innerHTML;
+ok(/サイン(をもらう人|依頼)/.test(boardI), 'I1: サインのセクション見出しが出る');
+ok(boardI.indexOf('サイン 最終子') >= 0, 'I2: 🟡最終チャンスの人が出る');
+ok(boardI.indexOf('サイン 紙男') >= 0, 'I3: 🔴紙の人が出る');
+ok(boardI.indexOf('サイン 電子子') >= 0, 'I4: 🟢電子OKの人が出る');
+ok(boardI.indexOf('サイン 最終子') < boardI.indexOf('サイン 電子子'), 'I5: 🟡🔴が🟢より上に並ぶ');
+ok(boardI.indexOf('サイン 紙男') < boardI.indexOf('サイン 電子子'), 'I6: 🔴も🟢より上');
+ok(/最終チャンス/.test(boardI), 'I7: 🟡は「最終チャンス」と言い切る');
+ok(/紙でサイン/.test(boardI), 'I8: 🔴は「紙でサインをもらってください」');
+ok(/電子OK|今日サインもらえます/.test(boardI), 'I9: 🟢は「今日サインもらえます（電子OK）」');
+ok(boardI.indexOf('個別機能訓練計画書') >= 0 && boardI.indexOf('通所介護計画書') >= 0, 'I10: 書類名が出る（どっちのサインか分かる）');
+
+// タブを切り替えてもサイン欄は消えない（誕生日と同じくタブ外の月単位業務）
+ri.pmBtn.fire('click');
+ok(ri.getEl('board').innerHTML.indexOf('サイン 最終子') >= 0, 'I11: タブ切替でもサイン欄は常時表示');
+
+// ===== J. 明日の印刷リマインド＋「明日」ボタン =====
+var boardJ = ri.getEl('board').innerHTML;
+ok(boardJ.indexOf('サイン 明日男') >= 0, 'J1: 明日🔴になる人のリマインドが出る');
+ok(/明日.*来ます/.test(boardJ), 'J2: 「明日◯◯さんが来ます」の文言');
+ok(/印刷/.test(boardJ), 'J3: 「計画書を印刷して準備してください」の指示');
+ri.getEl('tomorrowBtn').fire('click');
+ok(ri.requestedDates[ri.requestedDates.length - 1] === addDays(TODAY, 1), 'J4: 「明日」ボタンで翌日をfetch');
+ok(ri.getEl('dnum').textContent === mdOf(addDays(TODAY, 1)), 'J5: 表示日付も明日に切り替わる');
+ok(/未来/.test(ri.getEl('dstate').textContent), 'J6: 既存の未来日警告バナーはそのまま生きている');
+
+// ===== K. 旧GAS応答（signキー無し）でも落ちない＝既存表示が一切変わらない =====
+var rk = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) }, { noSign: true });
+var boardK = rk.getEl('board').innerHTML;
+ok(boardK.indexOf('田中 一郎') >= 0, 'K1: sign無しでも既存セクションは通常描画される');
+ok(boardK.indexOf('加藤 信') >= 0, 'K2: sign無しでも誕生日は出る');
+ok(boardK.indexOf('undefined') < 0, 'K3: sign無しで「undefined」が画面に出ない');
+
+// ===== L. 通信本数（サイン欄を足してもJSONPは1画面1本のまま）=====
+// ★1人1回の monthly_usage 等を叩くと30名で30発になる。サイン欄はサーバ側1パス集計so増えない。
+var rl = runBoard({ 'sessionBoard_tab': JSON.stringify({ date: TODAY, tab: 'am' }) });
+ok(rl.requestedDates.length === 1, 'L1: 初期表示のJSONPは1本（サイン欄を足しても増えない）:: 実測=' + rl.requestedDates.length);
+rl.pmBtn.fire('click');
+ok(rl.requestedDates.length === 1, 'L2: タブ切替は再取得しない（描画のみ）:: 実測=' + rl.requestedDates.length);
+rl.getEl('tomorrowBtn').fire('click');
+ok(rl.requestedDates.length === 2, 'L3: 日付移動のときだけ1本増える:: 実測=' + rl.requestedDates.length);
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

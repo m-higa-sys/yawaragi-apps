@@ -491,9 +491,203 @@ function sbSokuteiSort_(pool, weights) {
   return arr;
 }
 
+// ============================================================
+// サインをもらう人（電子サインの期限判定）2026-08-06・社長決定
+// ------------------------------------------------------------
+// 何のために要るか:
+//   電子サインが使えるのは「その計画書の適用月に初めて来所した日まで」。2回目以降は紙。
+//   このルールはスタッフの記憶頼りで運用されていて、外すと紙に戻せず取り直しになる。
+//   画面が「今日サインもらえます／今日が最終チャンス／紙で」と言い切る形にする。
+//
+// 対象は電子サイン対応の2書類のみ:
+//   kobetsu = 個別機能訓練計画書（適用月＝作業月の翌月＝予定月シート domain='kobetsu' の値）
+//   tsusho  = 通所介護計画書（適用月＝満了月＝通所介護計画書設定の due_date の年月）
+//
+// 4状態:
+//   'none'（⚪計画書未作成）… まだ作る段階。案内を出すと現場が混乱するso画面に出さない
+//   'ok'  （🟢電子OK）      … 適用月の初回来所日がまだ来ていない
+//   'last'（🟡最終チャンス）… 今日が適用月の初回来所日（＝非欠席予定日の先頭）
+//   'paper'（🔴紙）         … 適用月に来所した日が1日以上ある／適用月を過ぎた
+//
+// ★期限は列に凍結しない（signKigen を埋めない・社長決定）。欠席が入ると初回来所日がずれ、
+//   凍結値はその瞬間に嘘になるため、毎回この純関数で計算し直す。
+// ============================================================
+
+var SB_SIGN_DOC_LABEL = { kobetsu: '個別機能訓練計画書', tsusho: '通所介護計画書' };
+var SB_SIGN_ORDER = { last: 0, paper: 1, ok: 2 };
+
+// 'YYYY-MM-DD' → 'YYYY-MM'
+function sbYmOf_(dateStr) { return String(dateStr == null ? '' : dateStr).slice(0, 7); }
+
+// 'YYYY-MM-DD' に日数を足す（UTC固定＝TZ非依存）
+function sbAddDays_(dateStr, delta) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return '';
+  var y = parseInt(dateStr.slice(0, 4), 10), m = parseInt(dateStr.slice(5, 7), 10), d = parseInt(dateStr.slice(8, 10), 10);
+  var t = new Date(Date.UTC(y, m - 1, d + delta));
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  return t.getUTCFullYear() + '-' + pad(t.getUTCMonth() + 1) + '-' + pad(t.getUTCDate());
+}
+
+// その日が「来所予定日」か。材料は getAttendance と同じ（利用曜日／欠席／利用開始日／中止日）。
+// absentDates: { 'YYYY-MM-DD': true }（その人の欠席・長期休みを展開したもの）
+function sbIsVisitDay_(days, dateStr, absentDates, startDate, cancelDate) {
+  var s = String(days == null ? '' : days);
+  if (!s) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr || ''))) return false;
+  if (startDate && dateStr < startDate) return false;    // 利用開始前
+  if (cancelDate && dateStr > cancelDate) return false;  // 中止日より後
+  if (absentDates && absentDates[dateStr]) return false; // 欠席
+  var y = parseInt(dateStr.slice(0, 4), 10), m = parseInt(dateStr.slice(5, 7), 10), d = parseInt(dateStr.slice(8, 10), 10);
+  var w = ['日', '月', '火', '水', '木', '金', '土'];  // getUTCDay: 0=日
+  return s.indexOf(w[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]) >= 0;
+}
+
+// 適用月の「非欠席予定日の先頭」＝電子サインの最終チャンス日。月内を1日ずつ走査する薄い1本。
+// 予定日が無い／全部欠席なら ''（来所機会なし）。
+function sbFirstVisitDate_(days, ym, absentDates, startDate, cancelDate) {
+  if (!/^\d{4}-\d{2}$/.test(String(ym || ''))) return '';
+  var y = parseInt(ym.slice(0, 4), 10), m = parseInt(ym.slice(5, 7), 10);
+  var lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  for (var d = 1; d <= lastDay; d++) {
+    var ds = ym + '-' + (d < 10 ? '0' : '') + d;
+    if (sbIsVisitDay_(days, ds, absentDates, startDate, cancelDate)) return ds;
+  }
+  return '';
+}
+
+// 4状態の判定本体。applyYm='YYYY-MM' / planCreated=計画書ができているか / firstVisitDate=適用月の初回来所日。
+function sbSignState_(applyYm, planCreated, firstVisitDate, today) {
+  if (!planCreated) return 'none';
+  if (!/^\d{4}-\d{2}$/.test(String(applyYm || ''))) return 'none';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(today || ''))) return 'none';
+  var tYm = sbYmOf_(today);
+  if (tYm < applyYm) return 'ok';      // 適用月より前＝まだ電子で取れる
+  if (tYm > applyYm) return 'paper';   // 適用月を過ぎた＝電子は使えない
+  if (!firstVisitDate) return 'ok';    // 適用月に来所予定が無い＝機会未到来
+  if (today < firstVisitDate) return 'ok';
+  if (today === firstVisitDate) return 'last';
+  return 'paper';
+}
+
+// キー候補（userId／正規化名／原文名）でマップを引く。板は要介護の userId が氏名相当so3通り試す。
+function sbSignLookup_(map, userId, key, name) {
+  if (!map) return '';
+  if (userId != null && map[userId] != null) return map[userId];
+  if (map[key] != null) return map[key];
+  if (name != null && map[name] != null) return map[name];
+  return '';
+}
+
+// シート行（userId/name/year/month＋日付列）から「key|YYYY-MM → 作成済み」を作る
+function sbSignCreatedMap_(rows, dateField) {
+  var out = {};
+  (rows || []).forEach(function (r) {
+    if (!r) return;
+    if (!String(r[dateField] || '').trim()) return;   // 日付が入っていない＝未作成
+    var y = parseInt(r.year, 10) || 0, m = parseInt(r.month, 10) || 0;
+    if (!y || !m) return;
+    var ym = y + '-' + (m < 10 ? '0' : '') + m;
+    var uid = String(r.userId == null ? '' : r.userId).trim();
+    var nm = String(r.name == null ? '' : r.name).trim();
+    if (uid) out[uid + '|' + ym] = true;
+    if (nm) out[sbNormalizeName_(nm) + '|' + ym] = true;
+    if (uid) out[sbNormalizeName_(uid) + '|' + ym] = true;
+  });
+  return out;
+}
+
+// 全員×2書類のサイン状態を組み立てる。
+// input = {
+//   today: 'YYYY-MM-DD',
+//   users: [{ name, userId, category, days, startDate, cancelDate }],
+//   absentByKey: { 正規化名: { 'YYYY-MM-DD': true } },
+//   kobetsuYotei: { userId|正規化名: 'YYYY-MM' },              // 個訓の適用月（＝計画期間の開始月）
+//   kunRows: [{ userId, name, year, month, keikaku_date }],    // 個別機能訓練計画書記録（全行）
+//   tsushoDueMap: { userId: 'YYYY-MM-DD' },                    // 通所の満了日
+//   tsushoRows: [{ userId, year, month, plan_date }]           // 通所介護計画書記録（全行）
+// }
+// 返り = { rows:[{key,name,docType,docLabel,applyYm,state,firstVisitDate}], tomorrowPrint:[...], fallback:{...} }
+//   rows は 'none' を含まない（⚪は画面に出さない）。並びは 🟡last → 🔴paper → 🟢ok。
+//   fallback は「適用月が取れず判定できなかった人」＝黙って落とさないための可視化。
+function sbBuildSignBoard_(input) {
+  var out = { rows: [], tomorrowPrint: [], fallback: { kobetsuNoYotei: [], tsushoNoDue: [] } };
+  var inp = input || {};
+  var today = String(inp.today || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) return out;
+  var tomorrow = sbAddDays_(today, 1);
+  var users = inp.users || [];
+  var absentByKey = inp.absentByKey || {};
+  var kunCreated = sbSignCreatedMap_(inp.kunRows, 'keikaku_date');
+  var tsushoCreated = sbSignCreatedMap_(inp.tsushoRows, 'plan_date');
+
+  users.forEach(function (u) {
+    if (!u || !u.name) return;
+    var key = sbNormalizeName_(u.name);
+    var days = String(u.days || '');
+    var start = String(u.startDate || '');
+    var cancel = String(u.cancelDate || '');
+    var absent = absentByKey[key] || {};
+
+    function push(docType, applyYm, created) {
+      var first = sbFirstVisitDate_(days, applyYm, absent, start, cancel);
+      var state = sbSignState_(applyYm, created, first, today);
+      if (state !== 'none') {
+        out.rows.push({
+          key: key, name: u.name, docType: docType, docLabel: SB_SIGN_DOC_LABEL[docType] || docType,
+          applyYm: applyYm, state: state, firstVisitDate: first
+        });
+      }
+      // 明日の印刷リマインド: 明日来所予定 かつ 明日時点で🔴（＝電子が使えない状態で来る）
+      if (!sbIsVisitDay_(days, tomorrow, absent, start, cancel)) return;
+      var firstTomorrow = sbFirstVisitDate_(days, sbYmOf_(tomorrow), absent, start, cancel);
+      var stateTomorrow = sbSignState_(applyYm, created,
+        (sbYmOf_(tomorrow) === applyYm) ? firstTomorrow : first, tomorrow);
+      if (stateTomorrow === 'paper') {
+        out.tomorrowPrint.push({
+          key: key, name: u.name, docType: docType, docLabel: SB_SIGN_DOC_LABEL[docType] || docType,
+          applyYm: applyYm, date: tomorrow
+        });
+      }
+    }
+
+    // --- 個別機能訓練計画書（要介護のみ・適用月＝予定月） ---
+    if (String(u.category || '').indexOf('要介護') === 0) {
+      var yv = String(sbSignLookup_(inp.kobetsuYotei, u.userId, key, u.name) || '');
+      if (!/^\d{4}-\d{2}$/.test(yv)) {
+        out.fallback.kobetsuNoYotei.push(key);   // 予定月が無い＝適用月不明so案内を出さない
+      } else {
+        push('kobetsu', yv, !!kunCreated[key + '|' + yv] || !!(u.userId && kunCreated[u.userId + '|' + yv]));
+      }
+    }
+
+    // --- 通所介護計画書（全員・適用月＝満了月） ---
+    var due = String(sbSignLookup_(inp.tsushoDueMap, u.userId, key, u.name) || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) {
+      out.fallback.tsushoNoDue.push(key);        // 満了日が無い＝適用月不明so案内を出さない
+    } else {
+      var tYm = due.slice(0, 7);
+      push('tsusho', tYm, !!tsushoCreated[key + '|' + tYm] || !!(u.userId && tsushoCreated[u.userId + '|' + tYm]));
+    }
+  });
+
+  out.rows.sort(function (a, b) {
+    var oa = SB_SIGN_ORDER[a.state], ob = SB_SIGN_ORDER[b.state];
+    if (oa !== ob) return oa - ob;
+    if (a.applyYm !== b.applyYm) return String(a.applyYm).localeCompare(String(b.applyYm));
+    return String(a.key || '').localeCompare(String(b.key || ''));
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     sbNormalizeName_: sbNormalizeName_,
+    sbYmOf_: sbYmOf_,
+    sbAddDays_: sbAddDays_,
+    sbIsVisitDay_: sbIsVisitDay_,
+    sbFirstVisitDate_: sbFirstVisitDate_,
+    sbSignState_: sbSignState_,
+    sbBuildSignBoard_: sbBuildSignBoard_,
     sbUniquePresent_: sbUniquePresent_,
     sokuteiCycleMonths_: sokuteiCycleMonths_,
     sokuteiDueDate_: sokuteiDueDate_,

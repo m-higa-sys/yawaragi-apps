@@ -18210,6 +18210,9 @@ function sessionBoard(e) {
       ['presentCount', 'presentAm', 'presentPm', 'sokutei', 'koukuMoni', 'koukuTaisou', 'kotan', 'birthday', 'residue', 'ampmConflict', 'universe']
         .forEach(function (k) { out[k] = board[k]; });
     } else { out.ok = false; }
+    // ★サインをもらう人（additive）。ここが落ちても既存セクションは返る＝部分縮退。
+    var signBoard = safe('sbBuildSignBoard', function () { return sbBuildSignBoard_(built.signInput); });
+    out.sign = signBoard || { rows: [], tomorrowPrint: [], fallback: {} };
   } else { out.ok = false; }
 
   out.errors = errors;
@@ -18245,6 +18248,7 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
   //     ② 測定記録シートを見ていなかった。片寄せ（版-03）後の新規測定はすべてそちらへ書かれる。
   //   ★個訓シート13列目の参照は外していない（過去分は引き続き拾う）。読む先を足しただけ。
   var kaigoDoneByKey = {};
+  var signKunRows = [];   // ★サイン判定用: 同じ読みから keikaku_date も拾う（シート読みを増やさない）
   safe('kaigoDoneByKey', function () {
     var kkSheet = ensureKeikakushoSheet_();
     var kkValues = kkSheet.getDataRange().getValues();
@@ -18256,6 +18260,12 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
         name: String(kr[1] || '').trim(),
         year: parseInt(kr[2], 10) || 0, month: parseInt(kr[3], 10) || 0,
         sokutei_date: fmtDate_(kr[12])
+      });
+      // col0=userId, col6=keikaku_date（行の year/month＝計画期間の開始月＝サインの適用月）
+      signKunRows.push({
+        userId: String(kr[0] || '').trim(), name: String(kr[1] || '').trim(),
+        year: parseInt(kr[2], 10) || 0, month: parseInt(kr[3], 10) || 0,
+        keikaku_date: fmtDate_(kr[6])
       });
     }
     var shRows = [];
@@ -18270,8 +18280,11 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     kaigoDoneByKey = sbBuildKaigoDone_(kkRows, shRows, ymKey, sbNormalizeName_);
   });
 
-  // --- 利用者台帳を1回読み: shienUsers（要支援/事業対象・days付き）＋ bdUsers（誕生日M/D） ---
-  var shienUsers = [], bdUsers = [];
+  // --- 利用者台帳を1回読み: shienUsers（要支援/事業対象・days付き）＋ bdUsers（誕生日M/D）
+  //     ＋ signUsers（サイン判定用の全員・利用曜日/介護度/利用開始日）★同じ1パスで積む ---
+  var shienUsers = [], bdUsers = [], signUsers = [];
+  var signIntakeStart = {};
+  safe('signIntakeStart', function () { signIntakeStart = _buildIntakeStartDateMap(ss) || {}; });
   safe('daichoScan', function () {
     var uSheet = ss.getSheetByName('利用者台帳');
     if (!uSheet) return;
@@ -18285,6 +18298,7 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     if (uStatusCol < 0) uStatusCol = findColP(uh, 'ステータス');
     if (uStatusCol < 0) uStatusCol = findColP(uh, '利用状況');
     var uBdCol = findCol(uh, ['誕生日', '生年月日']);
+    var uStartCol = findCol(uh, ['利用開始日', '利用開始']);  // ★サイン判定: 利用開始前は来所予定日に数えない
     if (uNameCol < 0) return;
     for (var ui = 1; ui < uv.length; ui++) {
       var urow = uv[ui];
@@ -18299,6 +18313,19 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
       if (ucare.indexOf('要支援') === 0 || ucare.indexOf('事業対象') === 0) {
         shienUsers.push({ name: uname, care: ucare, days: udays });
       }
+      // ★サイン判定用（全員）。中止/終了/卒業は上の continue で既に除外済み＝cancelDate は不要。
+      //   利用開始日は台帳列→無ければ見学体験新規の本格利用開始日（getAttendance と同じ材料）。
+      var uStart = '';
+      if (uStartCol >= 0) {
+        var uSraw = urow[uStartCol];
+        if (uSraw instanceof Date) uStart = Utilities.formatDate(uSraw, 'Asia/Tokyo', 'yyyy-MM-dd');
+        else {
+          var uSm = String(uSraw || '').trim().match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+          if (uSm) uStart = uSm[1] + '-' + ('0' + uSm[2]).slice(-2) + '-' + ('0' + uSm[3]).slice(-2);
+        }
+      }
+      if (!uStart && signIntakeStart[uname]) uStart = signIntakeStart[uname];
+      signUsers.push({ name: uname, userId: uname, category: ucare, days: udays, startDate: uStart, cancelDate: '' });
       if (uBdCol >= 0) {
         var bv = urow[uBdCol], mmdd = '';
         if (bv instanceof Date) { mmdd = (bv.getMonth() + 1) + '/' + bv.getDate(); }
@@ -18377,6 +18404,43 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     });
   });
 
+  // --- サイン（電子サイン期限）用の残り材料 ---
+  // ★1人1回のAPI呼び出し（monthly_usage 等）は使わない。30名なら30発になり実行時間上限に当たる。
+  //   ここは「シートを1枚ずつ読んで全員ぶんを1パスで渡す」だけ。判定は session-board-core.js。
+  var signAbsentByKey = {};
+  safe('signAbsence', function () {
+    // 走査範囲は前月1日〜翌々月末。適用月は「当月 or 翌月」（前月準備の原則）で、余裕を持たせている。
+    var fromYm = sbSignShiftYm_(year, month, -1), toYm = sbSignShiftYm_(year, month, 2);
+    signAbsentByKey = sessionBoardAbsentMap_(ss, fromYm + '-01', sbMonthEnd_(
+      parseInt(toYm.slice(0, 4), 10), parseInt(toYm.slice(5, 7), 10)));
+  });
+
+  var signTsushoDueMap = {}, signTsushoRows = [];
+  safe('signTsusho', function () {
+    var tSheets = ensureTsushoPlansSheets_();
+    // 満了日（due_date は後付けの動的列so indexOf で位置を出す）
+    var cfgV = tSheets.configSheet.getDataRange().getValues();
+    var cfgH = (cfgV[0] || []).map(function (x) { return String(x).trim(); });
+    var dCol = cfgH.indexOf('due_date');
+    if (dCol >= 0) {
+      for (var ci = 1; ci < cfgV.length; ci++) {
+        var cuid = String(cfgV[ci][0] || '').trim(); if (!cuid) continue;
+        var ds = fmtDate_(cfgV[ci][dCol]);
+        if (ds) signTsushoDueMap[cuid] = ds;
+      }
+    }
+    // 計画書記録（col0=userId, col1=year, col2=month, col3=plan_date）
+    var recV = tSheets.recordSheet.getDataRange().getValues();
+    for (var ri = 1; ri < recV.length; ri++) {
+      var ruid = String(recV[ri][0] || '').trim(); if (!ruid) continue;
+      signTsushoRows.push({
+        userId: ruid, name: ruid,
+        year: parseInt(recV[ri][1], 10) || 0, month: parseInt(recV[ri][2], 10) || 0,
+        plan_date: fmtDate_(recV[ri][3])
+      });
+    }
+  });
+
   return {
     year: year, month: month, today: dateStr,
     attendance: attendance,
@@ -18386,8 +18450,60 @@ function sessionBoardBuildInput_(dateStr, year, month, safe) {
     usageByKey: usageByKey,
     oralUsers: oralUsers, oralRecByKey: oralRecByKey, oralSettings: oralSettings,
     allUsers: allUsers,
-    bdUsers: bdUsers, bdStatusByKey: {}  // 初版フォールバック（撮影status除外なし・§3.3）
+    bdUsers: bdUsers, bdStatusByKey: {},  // 初版フォールバック（撮影status除外なし・§3.3）
+    // ★サイン判定の入力（additive。既存キーは1つも変えていない）
+    signInput: {
+      today: dateStr,
+      users: signUsers,
+      absentByKey: signAbsentByKey,
+      kobetsuYotei: kobetsuYoteiS,
+      kunRows: signKunRows,
+      tsushoDueMap: signTsushoDueMap,
+      tsushoRows: signTsushoRows
+    }
   };
+}
+
+// 年月を delta ヶ月ずらして 'YYYY-MM' を返す（年跨ぎ対応）
+function sbSignShiftYm_(year, month, delta) {
+  var t = year * 12 + (month - 1) + delta;
+  return Math.floor(t / 12) + '-' + ('0' + (t % 12 + 1)).slice(-2);
+}
+
+// 出欠変更シートを1回だけ読み、期間内の欠席を「正規化名 → { 'YYYY-MM-DD': true }」へ展開する。
+// getAbsenceMap（日単位・1日1回読み）と同じシート・同じ規約だが、月内走査のため期間まとめ読みにしている。
+//   ・type='欠席' … その日
+//   ・type='長期休み' … 開始日 <= 対象日 かつ（終了日が空 or 終了日 > 対象日）＝getAbsenceMap と同じ境界
+// 単位（終日/午前/午後）は区別しない。1日2単位制で本人はどちらか一方しか来ないため、
+// その人に欠席行がある日は「来所しない日」で正しい。
+function sessionBoardAbsentMap_(ss, fromDate, toDate) {
+  var sheet = ss.getSheetByName('出欠変更');
+  if (!sheet || sheet.getLastRow() < 2) return {};
+  var data = sheet.getDataRange().getValues();
+  var map = {};
+  function mark(name, dateStr) {
+    var k = sbNormalizeName_(name);
+    if (!k) return;
+    if (!map[k]) map[k] = {};
+    map[k][dateStr] = true;
+  }
+  for (var i = 1; i < data.length; i++) {
+    var d = fmtDate(data[i][0]);
+    var name = String(data[i][1] || '').trim();
+    var type = String(data[i][3] || '').trim();
+    if (!name || !d) continue;
+    if (type === '欠席') {
+      if (d >= fromDate && d <= toDate) mark(name, d);
+    } else if (type === '長期休み') {
+      var endDate = data[i][7] ? fmtDate(data[i][7]) : '';
+      var s = (d > fromDate) ? d : fromDate;
+      for (var ds = s; ds && ds <= toDate; ds = sbAddDays_(ds, 1)) {
+        if (endDate && ds >= endDate) break;   // 終了日当日は来る扱い（getAbsenceMap と同じ）
+        mark(name, ds);
+      }
+    }
+  }
+  return map;
 }
 
 // ============================================================
