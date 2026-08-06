@@ -103,6 +103,60 @@ eq(Object.keys(map).length, 2, 'G4: 当たったぶんだけ');
 eq(core.sbBuildPdfFoundMap_(null, targets) && Object.keys(core.sbBuildPdfFoundMap_(null, targets)).length, 0,
    'G5: ファイル一覧が取れなくても落ちず0件');
 
+// ===== I. 月の絞り込み（★誤検知の防止・2026-08-06 実物調査を受けて）=====
+// 実物のフォルダはフラットで、7月分と8月分が同じ場所に同居している（実測）。
+// 月で絞らないと「先月のPDF」で今月を揃った扱いにしてしまう。
+// 月の在り処はファイル名の先頭＝「8月◯◯…」。全角の「７月」も NFKC で吸収する。
+var mixed = [
+  '7月　アウトカム詳細　架空花子.pdf',
+  '8月個別機能訓練計画書・架空花子.pdf',
+  '７月アウトカム・架空太郎.pdf'
+];
+eq(core.sbFindSignedPdf_(mixed, '架空花子', [], 'kokun_set', '2026-08').fileName,
+   '8月個別機能訓練計画書・架空花子.pdf', 'I1: 対象月(8月)のファイルを選ぶ');
+eq(core.sbFindSignedPdf_(['7月　アウトカム詳細　架空花子.pdf'], '架空花子', [], 'sokutei', '2026-08').found, false,
+   'I2: ★7月分しか無ければ8月は見つからない（先月のPDFで今月を揃ったにしない）');
+eq(core.sbFindSignedPdf_(['７月アウトカム・架空太郎.pdf'], '架空太郎', [], 'sokutei', '2026-07').match, 'strong',
+   'I3: 全角「７月」も NFKC で7月として拾う');
+eq(core.sbFindSignedPdf_(['8月個別機能訓練計画書・架空花子.pdf'], '架空花子', [], 'kokun_set').match, 'strong',
+   'I4: ym を渡さなければ従来どおり月を見ない（既存呼び出しは不変）');
+// 月が読めないファイルは「どの月か確定できない」so strong にしない（誤判定より未確定を選ぶ）
+eq(core.sbFindSignedPdf_(['個別機能訓練計画書・架空花子.pdf'], '架空花子', [], 'kokun_set', '2026-08').match, 'weak',
+   'I5: 月が読めないファイルは weak 止まり（勝手に今月扱いしない）');
+eq(core.sbFindSignedPdf_(['12月個別機能訓練計画書・架空花子.pdf'], '架空花子', [], 'kokun_set', '2026-12').match, 'strong',
+   'I6: 2桁の月も拾う');
+eq(core.sbFindSignedPdf_(['1月個別機能訓練計画書・架空花子.pdf'], '架空花子', [], 'kokun_set', '2026-12').found, false,
+   'I7: 1月と12月を取り違えない');
+
+// ===== J. 実物の語彙（「アウトカム」＝測定結果）=====
+// 実物は「アウトカム」表記で、私の語彙表は「測定結果」しか持っていなかった（weak 4件の原因）。
+eq(core.sbFindSignedPdf_(['8月アウトカム・架空花子.pdf'], '架空花子', [], 'sokutei', '2026-08').match, 'strong',
+   'J1: 「アウトカム」を測定結果として読む');
+eq(core.sbFindSignedPdf_(['7月　アウトカム詳細　架空花子.pdf'], '架空花子', [], 'sokutei', '2026-07').match, 'strong',
+   'J2: 「アウトカム詳細」も読む');
+// ★測定結果を計画書として確定してはいけない（別の書類so）
+eq(core.sbFindSignedPdf_(['8月アウトカム・架空花子.pdf'], '架空花子', [], 'kokun_set', '2026-08').match, 'weak',
+   'J3: アウトカム(測定結果)を個訓計画書として strong にしない');
+
+// ===== K. 書類種別 → 共有ドライブのフォルダ対応表 =====
+// 実物の場所（共有ドライブ yawaragi／実績 配下）。判定と同じくここが唯一の定義箇所。
+ok(core.SB_PDF_FOLDERS && core.SB_PDF_FOLDERS.kokun_set && core.SB_PDF_FOLDERS.kokun_set.id, 'K1: 個訓のフォルダIDを持つ');
+ok(core.SB_PDF_FOLDERS.sokutei && core.SB_PDF_FOLDERS.sokutei.id, 'K2: 要支援測定のフォルダID');
+ok(core.SB_PDF_FOLDERS.oral_plan && core.SB_PDF_FOLDERS.oral_plan.id, 'K3: 口腔のフォルダID');
+ok(core.SB_PDF_FOLDERS.tsusho_keikaku && core.SB_PDF_FOLDERS.tsusho_keikaku.id, 'K4: 通所計画書のフォルダID');
+ok(core.SB_PDF_FOLDERS.tsusho_moni && core.SB_PDF_FOLDERS.tsusho_moni.id, 'K5: 通所モニのフォルダID');
+ok(core.SB_PDF_FOLDERS.tsusho_hyouka && core.SB_PDF_FOLDERS.tsusho_hyouka.id, 'K6: 通所評価のフォルダID');
+var ids = Object.keys(core.SB_PDF_FOLDERS).map(function (k) { return core.SB_PDF_FOLDERS[k].id; });
+eq(ids.length, new (function () { var s = {}; ids.forEach(function (i) { s[i] = 1; }); this.length = Object.keys(s).length; })().length,
+   'K7: 個訓と要支援測定は別フォルダ（IDの重複が無い）');
+
+// ===== L. sbBuildPdfFoundMap_ も月で絞れる =====
+var lTargets = [{ key: '架空花子', name: '架空花子', aliases: [], docType: 'kokun_set' }];
+eq(Object.keys(core.sbBuildPdfFoundMap_(['7月　アウトカム詳細　架空花子.pdf'], lTargets, '2026-08')).length, 0,
+   'L1: 先月分だけなら当月は0件');
+eq(Object.keys(core.sbBuildPdfFoundMap_(['8月個別機能訓練計画書・架空花子.pdf'], lTargets, '2026-08')).length, 1,
+   'L2: 当月分があれば1件');
+
 // ===== H. 「常に紙」（認知症等で家族サインの方）=====
 // 電子という選択肢が最初から無い人に🟢🟡を出すと現場が迷う。常に🔴（紙）にする。
 eq(core.sbSignState_('2026-09', true, '', '2026-08-06'), 'ok', 'H1: 既定は従来どおり（第5引数なし＝1バイトも変わらない）');

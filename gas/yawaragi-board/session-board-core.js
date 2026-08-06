@@ -727,11 +727,38 @@ function sbBuildSignBoard_(input) {
 var SB_PDF_DOC_WORDS = {
   kokun_set:      ['個別機能訓練計画書', '個別機能訓練', '個訓', '機能訓練計画書'],
   tsusho_keikaku: ['通所介護計画書', '通所計画書', '通所介護'],
-  tsusho_hyouka:  ['通所評価', '評価表'],
+  tsusho_hyouka:  ['通所評価', '結果報告書', '評価表'],
   tsusho_moni:    ['通所モニタリング', '通所モニ', 'モニタリング'],
   oral_plan:      ['口腔機能向上計画書', '口腔計画書', '口腔'],
-  sokutei:        ['測定結果', '測定']
+  // ★実物は「アウトカム」表記（2026-08-06 実測）。'測定結果' しか持っていなかったため weak 止まりだった。
+  //   ★kokun_set 側には入れない。測定結果を計画書として確定させないため（別の書類）。
+  sokutei:        ['アウトカム詳細', 'アウトカム', '測定結果', '測定']
 };
+
+// 書類種別 → 実物の保管フォルダ（共有ドライブ「yawaragi」→「実績」配下・2026-08-06 実測）。
+// ★場所の定義もここ1箇所。GAS も teishutsu もこの表を読む。
+// ★名前ではなくIDで持つ理由: DriveApp.getFoldersByName() の名前検索は共有ドライブを横断しない。
+//   ID直指定なら読めることを本番で実証済み（2026-08-06・7フォルダすべて取得成功）。
+var SB_PDF_FOLDERS = {
+  kokun_set:      { id: '1cwGxoMHEWHYvaOT8u4YQOnwcx9aa-lka', label: '個別計画書・測定結果（アウトカム）' },
+  sokutei:        { id: '1S81l3LEUwuyyLo3-DQd0PkCzbsFVRYzS', label: '支援・事業対象の測定結果(アウトカム)' },
+  oral_plan:      { id: '14PnVkqMa4pR5_WS9p8tg0DbYvf5xQpl2', label: '口腔計画書・結果報告書' },
+  tsusho_keikaku: { id: '1qVOCttl3LIzcIPSnsqDBdwnE6oscAdnv', label: '通所計画書' },
+  tsusho_moni:    { id: '1XToFAUOuhcSwNrbtHPs5bXe2FyqP-6gn', label: '通所モニタリング' },
+  tsusho_hyouka:  { id: '1E2Phv7F8kCaCoo-ALQPV0ATrx2cXxe7s', label: '通所・結果報告書' }
+};
+
+// ファイル名の先頭にある「◯月」を読む（NFKC後so全角「７月」も拾える）。読めなければ 0。
+// ★実物のフォルダはフラットで、7月分と8月分が同居している（2026-08-06 実測）。
+//   月で絞らないと「先月のPDF」で今月を揃った扱いにしてしまう。
+function sbPdfMonthOf_(fileName) {
+  var s = String(fileName == null ? '' : fileName);
+  if (typeof s.normalize === 'function') s = s.normalize('NFKC');
+  var m = s.match(/(\d{1,2})\s*月/);
+  if (!m) return 0;
+  var n = parseInt(m[1], 10);
+  return (n >= 1 && n <= 12) ? n : 0;
+}
 
 // 台帳「旧姓・別表記」セル1つ → 別名の配列。区切りは 読点/カンマ/スラッシュ/中黒/空白。
 function sbParseAliases_(cell) {
@@ -747,7 +774,11 @@ function sbParseAliases_(cell) {
 // 返り: { found, fileName, match:'strong'|'weak'|'', matchedBy:'name'|'alias'|'' }
 //   strong … 氏名＋その書類名の両方が読めた（どの書類か確定）
 //   weak   … 氏名は読めたが書類名が読めない／別書類の名前だった（PDFは在るが確定できない）
-function sbFindSignedPdf_(files, name, aliases, docType) {
+// ym: 'YYYY-MM'（任意）。渡すとファイル名の先頭の月で絞る。渡さなければ従来どおり月を見ない。
+//   月が一致 … 通常どおり strong/weak を判定
+//   月が違う … 対象外（見つけない）＝先月のPDFで今月を揃った扱いにしない
+//   月が読めない … weak 止まり（どの月か確定できないものを勝手に今月扱いしない）
+function sbFindSignedPdf_(files, name, aliases, docType, ym) {
   var miss = { found: false, fileName: '', match: '', matchedBy: '' };
   var list = files || [];
   var baseKey = sbNormalizeName_(name);
@@ -758,18 +789,23 @@ function sbFindSignedPdf_(files, name, aliases, docType) {
     if (ak) keys.push({ k: ak, by: 'alias' });
   });
   var words = SB_PDF_DOC_WORDS[docType] || [];
+  var wantMonth = /^\d{4}-\d{2}$/.test(String(ym || '')) ? parseInt(String(ym).slice(5, 7), 10) : 0;
   var weak = null;
   for (var i = 0; i < list.length; i++) {
     var raw = String(list[i] == null ? '' : list[i]);
     var fn = sbNormalizeName_(raw.replace(/\.[A-Za-z0-9]+$/, ''));  // 拡張子を落としてから正規化
     if (!fn) continue;
+    var fileMonth = wantMonth ? sbPdfMonthOf_(raw) : 0;
+    if (wantMonth && fileMonth && fileMonth !== wantMonth) continue;  // 別の月のPDF＝対象外
     for (var j = 0; j < keys.length; j++) {
       if (fn.indexOf(keys[j].k) < 0) continue;
       var hasDoc = false;
       for (var w = 0; w < words.length; w++) {
         if (fn.indexOf(sbNormalizeName_(words[w])) >= 0) { hasDoc = true; break; }
       }
-      if (hasDoc) return { found: true, fileName: raw, match: 'strong', matchedBy: keys[j].by };
+      // 月を見る指定なのに月が読めないファイルは、書類名が合っていても確定させない
+      var monthOk = !wantMonth || fileMonth === wantMonth;
+      if (hasDoc && monthOk) return { found: true, fileName: raw, match: 'strong', matchedBy: keys[j].by };
       if (!weak) weak = { found: true, fileName: raw, match: 'weak', matchedBy: keys[j].by };
       break;
     }
@@ -779,11 +815,11 @@ function sbFindSignedPdf_(files, name, aliases, docType) {
 
 // 1ヶ月ぶんのファイル名一覧 × 対象者リスト → { 'key|docType': {found,fileName,match,matchedBy} }
 // targets: [{ key, name, aliases, docType }]。当たったものだけ入れる（無い人はキーごと入らない）。
-function sbBuildPdfFoundMap_(files, targets) {
+function sbBuildPdfFoundMap_(files, targets, ym) {
   var out = {};
   (targets || []).forEach(function (t) {
     if (!t) return;
-    var hit = sbFindSignedPdf_(files, t.name, t.aliases, t.docType);
+    var hit = sbFindSignedPdf_(files, t.name, t.aliases, t.docType, ym);
     if (hit.found) out[t.key + '|' + t.docType] = hit;
   });
   return out;
@@ -795,6 +831,9 @@ if (typeof module !== 'undefined' && module.exports) {
     sbParseAliases_: sbParseAliases_,
     sbFindSignedPdf_: sbFindSignedPdf_,
     sbBuildPdfFoundMap_: sbBuildPdfFoundMap_,
+    sbPdfMonthOf_: sbPdfMonthOf_,
+    SB_PDF_FOLDERS: SB_PDF_FOLDERS,
+    SB_PDF_DOC_WORDS: SB_PDF_DOC_WORDS,
     sbYmOf_: sbYmOf_,
     sbAddDays_: sbAddDays_,
     sbIsVisitDay_: sbIsVisitDay_,

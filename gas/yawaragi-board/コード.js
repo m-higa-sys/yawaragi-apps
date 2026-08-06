@@ -2638,6 +2638,11 @@ function doGet(e) {
       return respond(scanDriveFolderFiles_(String((e && e.parameter && e.parameter.folderId) || '')), callback);
     }
 
+    // --- 読取: 書類種別ごとの実物フォルダをまとめて（teishutsu が1回で全部取れるように）---
+    if (action === 'scanSignFolders') {
+      return respond(scanSignFoldersAll_(), callback);
+    }
+
     // --- 読取: 操作ログ（planStart / due_ym / excluded の変更履歴）---
     // updatePlanStart は既に logKeikakushoOp_ を呼んでいるが読み口が無かった。
     // これが「4件がなぜズレたか」を追えなかった原因。読取のみ・追記はしない。
@@ -14998,6 +15003,25 @@ function scanDriveFolderFiles_(folderId) {
     // 共有ドライブが読めないときは、その事実をそのまま返す（黙って0件にしない）。
     return { ok: false, folderId: fid, files: [], error: String((err && err.message) || err) };
   }
+}
+
+// 書類種別ごとの実物フォルダを1回でまとめて読む（teishutsu が6回叩かなくて済むように）。
+// 対応表 SB_PDF_FOLDERS は session-board-core.js が唯一の定義箇所＝ここには書かない。
+// 1フォルダが読めなくても他は返す（部分縮退）。読めなかったものは error を添えて可視化する。
+function scanSignFoldersAll_() {
+  var out = { ok: true, folders: {} };
+  for (var docType in SB_PDF_FOLDERS) {
+    if (!SB_PDF_FOLDERS.hasOwnProperty(docType)) continue;
+    var def = SB_PDF_FOLDERS[docType];
+    var r = scanDriveFolderFiles_(def.id);
+    out.folders[docType] = {
+      label: def.label,
+      files: r.files || [],
+      folderUrl: r.folderUrl || '',
+      error: r.ok ? '' : (r.error || '読めませんでした')
+    };
+  }
+  return out;
 }
 
 function scanKeikakushoSendFolder_(ym) {

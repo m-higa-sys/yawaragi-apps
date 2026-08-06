@@ -175,9 +175,10 @@
   <ol class="rail-steps">
     <li>計画書を印刷する<span class="rail-note">電子サインの方はリハブ上で署名</span></li>
     <li>利用者にサインをもらう</li>
-    <li>署名済みPDFを「計画書送付」フォルダの今月分に入れる
-      <span class="rail-note"><b>電子サインの方</b>：リハブからPDFにしてフォルダに入れる（口腔送付と同じやり方です）</span>
+    <li>署名済みPDFを、いつもの書類フォルダに入れる
+      <span class="rail-note"><b>電子サインの方</b>：リハブからPDFにしてフォルダに入れる（今までどおりです）</span>
       <span class="rail-note"><b>紙にサインをもらった方</b>：スキャンして同じフォルダに入れる</span>
+      <span class="rail-note">ファイル名は今までどおりで構いません。<b>フルネームだけ必ず入れてください</b>（同じ苗字の方がいるため）</span>
       <span class="rail-note">気づいた人がその場で入れます。担当は決めません。</span>
       <span class="rail-folder" id="pdfFolderLink"></span>
     </li>
@@ -436,9 +437,10 @@ async function loadData(ym) {
     jsonp(BOARD_API + '?action=getKeikakushoYear&year=' + fiscalYear).catch(() => ({ users: [] })),
     jsonp(BOARD_API + '?action=contacts').catch(() => ({ cmContacts: [] })),
     loadWithRetry(BOARD_API + '?action=getSoufuLedger&ym=' + encodeURIComponent(ym), 'rows'),
-    // 署名済みPDF（計画書送付/YYYY-MM）。★取れなくても画面は出す＝並走表示so、
-    //   失敗は「PDFの確認ができませんでした」と明示し、揃ったボタンの運用は従来どおり続ける。
-    jsonp(BOARD_API + '?action=scanKeikakushoFolder&ym=' + encodeURIComponent(ym)).catch(() => null),
+    // 署名済みPDF。実物は共有ドライブ yawaragi／実績 配下の書類種別ごとのフォルダ（2026-08-06 実測）。
+    //   ★取れなくても画面は出す＝並走表示so、失敗は「確認できませんでした」と明示し、
+    //     「揃った」ボタンの運用は従来どおり続ける。
+    jsonp(BOARD_API + '?action=scanSignFolders').catch(() => null),
     jsonp(BOARD_API + '?action=getSignCols').catch(() => null)
   ]);
   // ★ここが「黙って0件」を塞ぐ一点。取れなかったら state.data に手を触れずに帰る。
@@ -541,14 +543,23 @@ function buildTasks(ym) {
   // ---- 署名済みPDFの突合（並走表示・2026-08-06）----
   // 判定は core の sbBuildPdfFoundMap_ 1本。ここは材料を渡して結果を各行へ載せるだけ。
   // ★「揃った」ボタンは残したまま、検知結果を先に見せる。1ヶ月ぶん一致を見てから廃止を判断する。
-  if (d.pdf && typeof sbBuildPdfFoundMap_ === 'function') {
-    const targets = tasks
-      .filter(t => t.taishoTsuki === ym)   // フォルダは月別so、当月分だけ突合できる
-      .map(t => ({
+  // ★実物のフォルダは書類種別ごと（共有ドライブ yawaragi／実績 配下）で、中は月フォルダを持たない
+  //   フラット構造。7月分と8月分が同居しているso、対象月(ym)を渡して月で絞る＝先月のPDFで
+  //   今月を「揃った」にしない（誤検知の防止）。
+  if (d.pdf && d.pdf.folders && typeof sbBuildPdfFoundMap_ === 'function') {
+    const byDoc = {};
+    tasks.filter(t => t.taishoTsuki === ym).forEach(t => {
+      (byDoc[t.docType] = byDoc[t.docType] || []).push({
         key: t.userId, name: t.userId, docType: t.docType,
         aliases: d.aliases[sbNormalizeName_(t.userId)] || []
-      }));
-    const found = sbBuildPdfFoundMap_(d.pdf.files || [], targets);
+      });
+    });
+    const found = {};
+    Object.keys(byDoc).forEach(docType => {
+      const f = d.pdf.folders[docType];
+      if (!f || f.error) return;                       // そのフォルダが読めなければ黙ってスキップ（下でバナー表示）
+      Object.assign(found, sbBuildPdfFoundMap_(f.files || [], byDoc[docType], ym));
+    });
     tasks.forEach(t => {
       const hit = found[t.userId + '|' + t.docType];
       if (t.taishoTsuki === ym && hit) { t.pdfMatch = hit.match; t.pdfFile = hit.fileName; }
@@ -656,21 +667,31 @@ function render() {
 
 // 今月の「計画書送付」フォルダへの導線。
 // フォルダが無いとき・確認できなかったときは、そう書く（黙ってリンクを消さない）。
+// 書類種別ごとの実物フォルダへの導線（共有ドライブ yawaragi ＞ 実績 ＞ …）。
+// 読めなかったフォルダは名指しで出す（黙って「PDFが無い」ことにしない）。
 function renderPdfFolderLink() {
   const el = document.getElementById('pdfFolderLink');
   if (!el) return;
   const p = state.data && state.data.pdf;
-  if (!p) {
+  if (!p || !p.folders) {
     el.innerHTML = '<span class="rail-note">⚠ フォルダの確認ができませんでした（通信）。従来どおり「揃った」で進めてください</span>';
     return;
   }
-  if (p.folderUrl) {
-    el.innerHTML = '<a class="folder-btn" href="' + esc(p.folderUrl) + '" target="_blank" rel="noopener">📁 ' + esc(state.ym) + ' のフォルダを開く</a>'
-      + '<span class="rail-note">この中に入っているPDFを、この画面が自動で見つけます（' + (p.files || []).length + '件）</span>';
-  } else {
-    el.innerHTML = '<span class="rail-note">📁 ' + esc(p.note || 'フォルダ未作成') + '。'
-      + 'マイドライブの「yawaragi-apps ＞ 計画書送付」に「' + esc(state.ym) + '」フォルダを作って、そこに入れてください</span>';
-  }
+  // 今出ているタスクの書類種別だけリンクを出す（使わないフォルダを並べても迷うだけ）
+  const used = {};
+  (state.tasks || []).forEach(t => { if (t.taishoTsuki === state.ym) used[t.docType] = true; });
+  let html = '', ng = [];
+  Object.keys(p.folders).forEach(docType => {
+    const f = p.folders[docType];
+    if (f.error) { ng.push(f.label || docType); return; }
+    if (!used[docType]) return;
+    html += '<a class="folder-btn" href="' + esc(f.folderUrl) + '" target="_blank" rel="noopener">📁 '
+      + esc(f.label) + '（' + (f.files || []).length + '件）</a> ';
+  });
+  el.innerHTML = (html || '<span class="rail-note">今月の対象書類に対応するフォルダはありません</span>')
+    + '<span class="rail-note">この中に入っているPDFを、この画面が自動で見つけます。'
+    + 'ファイル名は今までどおりで構いません（フルネームだけ必ず入れてください）</span>'
+    + (ng.length ? '<span class="rail-note">⚠ 読めなかったフォルダ: ' + esc(ng.join('／')) + '</span>' : '');
 }
 
 function taskRow(t) {
