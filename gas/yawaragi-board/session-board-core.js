@@ -514,7 +514,8 @@ function sbSokuteiSort_(pool, weights) {
 // ============================================================
 
 var SB_SIGN_DOC_LABEL = { kobetsu: '個別機能訓練計画書', tsusho: '通所介護計画書' };
-var SB_SIGN_ORDER = { last: 0, paper: 1, ok: 2 };
+// 並び順。⚪none は「計画書を作る」という行動が要るso、何もしなくてよい🟢ok より上に置く。
+var SB_SIGN_ORDER = { last: 0, paper: 1, none: 2, ok: 3 };
 
 // 'YYYY-MM-DD' → 'YYYY-MM'
 function sbYmOf_(dateStr) { return String(dateStr == null ? '' : dateStr).slice(0, 7); }
@@ -553,6 +554,13 @@ function sbFirstVisitDate_(days, ym, absentDates, startDate, cancelDate) {
     if (sbIsVisitDay_(days, ds, absentDates, startDate, cancelDate)) return ds;
   }
   return '';
+}
+
+// today('YYYY-MM-DD')の翌月を 'YYYY-MM' で返す（年跨ぎ対応）。⚪を出す上限月に使う。
+function sbSignNextYm_(today) {
+  var y = parseInt(String(today).slice(0, 4), 10), m = parseInt(String(today).slice(5, 7), 10);
+  var t = y * 12 + m;  // (m-1)+1 ＝翌月の0始まり通算
+  return Math.floor(t / 12) + '-' + ('0' + (t % 12 + 1)).slice(-2);
 }
 
 // 4状態の判定本体。applyYm='YYYY-MM' / planCreated=計画書ができているか / firstVisitDate=適用月の初回来所日。
@@ -631,12 +639,20 @@ function sbBuildSignBoard_(input) {
     function push(docType, applyYm, created) {
       var first = sbFirstVisitDate_(days, applyYm, absent, start, cancel);
       var state = sbSignState_(applyYm, created, first, today);
-      if (state !== 'none') {
-        out.rows.push({
-          key: key, name: u.name, docType: docType, docLabel: SB_SIGN_DOC_LABEL[docType] || docType,
-          applyYm: applyYm, state: state, firstVisitDate: first
-        });
-      }
+      // ★2026-08-06 社長決定: ⚪（計画書未作成）も出す。サインをもらう日は計画書の有無と関係なく
+      //   決まっているso、「この日までに作らないと電子で取れない」という前倒しの督促になる。
+      //   ただし⚪は「作る時期が来た人」だけ＝適用月が翌月までのものに限る。
+      //   実測（2026-08-06）: 絞らないと⚪が157件並び、現場が読めず督促として死ぬ
+      //   （通所は満了日が1年先まで登録済みso、全月が未作成として出てしまう）。
+      //   過去の適用月は「やり残し」so出す。落とすのは未来（翌々月以降）だけ。
+      if (state === 'none' && applyYm > sbSignNextYm_(today)) return;
+      out.rows.push({
+        key: key, name: u.name, docType: docType, docLabel: SB_SIGN_DOC_LABEL[docType] || docType,
+        applyYm: applyYm, state: state, firstVisitDate: first,
+        // ⚪に「◯月◯日に来ます」と出すのは初回来所日がまだ先のときだけ。過ぎていたら
+        // 計画書ができても電子は使えない＝別の言い方をする必要がある（判定を表示層に置かない）。
+        deadlinePassed: !!(first && today > first) || sbYmOf_(today) > applyYm
+      });
       // 明日の印刷リマインド: 明日来所予定 かつ 明日時点で🔴（＝電子が使えない状態で来る）
       if (!sbIsVisitDay_(days, tomorrow, absent, start, cancel)) return;
       var firstTomorrow = sbFirstVisitDate_(days, sbYmOf_(tomorrow), absent, start, cancel);

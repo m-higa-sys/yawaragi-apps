@@ -28,7 +28,11 @@ function makeFixture(date, noSign) {
       { key: 'サイン紙男', name: 'サイン 紙男', docType: 'tsusho', docLabel: '通所介護計画書',
         applyYm: p[0] + '-' + p[1], state: 'paper', firstVisitDate: p[0] + '-' + p[1] + '-01' },
       { key: 'サイン電子子', name: 'サイン 電子子', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
-        applyYm: p[0] + '-' + p[1], state: 'ok', firstVisitDate: '' }
+        applyYm: p[0] + '-' + p[1], state: 'ok', firstVisitDate: '' },
+      { key: 'サイン未作成子', name: 'サイン 未作成子', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
+        applyYm: p[0] + '-' + p[1], state: 'none', firstVisitDate: addDays(date, 3), deadlinePassed: false },
+      { key: 'サイン間に合わ男', name: 'サイン 間に合わ男', docType: 'tsusho', docLabel: '通所介護計画書',
+        applyYm: p[0] + '-' + p[1], state: 'none', firstVisitDate: addDays(date, -3), deadlinePassed: true }
     ],
     tomorrowPrint: [
       { key: 'サイン明日男', name: 'サイン 明日男', docType: 'kobetsu', docLabel: '個別機能訓練計画書',
@@ -215,6 +219,18 @@ ok(boardI.indexOf('個別機能訓練計画書') >= 0 && boardI.indexOf('通所�
 // タブを切り替えてもサイン欄は消えない（誕生日と同じくタブ外の月単位業務）
 ri.pmBtn.fire('click');
 ok(ri.getEl('board').innerHTML.indexOf('サイン 最終子') >= 0, 'I11: タブ切替でもサイン欄は常時表示');
+
+// ===== I-2. ⚪計画書未作成の警告表示（2026-08-06 社長決定：無表示→警告付き表示）=====
+var mdPlus3 = mdOf(addDays(TODAY, 3));
+ok(boardI.indexOf('サイン 未作成子') >= 0, 'I12: ⚪計画書未作成の人が画面に出る');
+ok(boardI.indexOf(mdPlus3) >= 0, 'I13: 「◯月◯日に来ます」と来所予定日が出る（' + mdPlus3 + '）');
+ok(/計画書/.test(boardI) && /作/.test(boardI), 'I14: 「計画書を作る」という次の行動が書かれている');
+ok(boardI.indexOf('サイン 間に合わ男') >= 0, 'I15: 初回来所日を過ぎた⚪も出る');
+ok(boardI.indexOf('サイン 未作成子') > boardI.indexOf('サイン 紙男'), 'I16: ⚪は🔴より下');
+ok(boardI.indexOf('サイン 未作成子') < boardI.indexOf('サイン 電子子'), 'I17: ⚪は🟢より上（別ブロック）');
+// 期限切れの⚪に「◯日に来ます（間に合う）」と出すと嘘になる＝言い分けができていること
+var segPassed = boardI.slice(boardI.indexOf('サイン 間に合わ男'), boardI.indexOf('サイン 間に合わ男') + 400);
+ok(/間に合|使えま|過ぎ|紙/.test(segPassed), 'I18: 期限切れの⚪は「もう電子は使えない」と分かる書き方');
 
 // ===== J. 明日の印刷リマインド＋「明日」ボタン =====
 var boardJ = ri.getEl('board').innerHTML;

@@ -180,6 +180,9 @@
   .sign.paper{border-left-color:var(--crit-line); background:var(--crit-bg);}
   .sign.paper .msg{color:var(--crit);}
   .sign.ok .msg{color:var(--ok);}
+  .sign.none{border-left-color:var(--calm-line);}
+  .sign.none .msg{color:var(--ink-2);}
+  .sign.none.passed .msg{color:var(--crit);}
   .printrem{background:var(--warn-bg); border:1.5px solid var(--warn-line); border-radius:var(--radius); padding:11px 14px; margin-bottom:10px;}
   .printrem .ph{font-size:.82rem; font-weight:800; color:var(--warn); margin-bottom:5px;}
   .printrem .pn{font-size:.85rem; color:var(--ink); font-weight:700;}
@@ -326,17 +329,41 @@
     paper: '🔴 紙でサインをもらってください（電子は使わない）',
     ok:    '🟢 今日サインもらえます（電子OK）'
   };
+  function signDateLabel(ymd){
+    var p = String(ymd||'').split('-');
+    if (p.length !== 3) return '';
+    var d = new Date(+p[0], +p[1]-1, +p[2]);
+    return (+p[1]) + '/' + (+p[2]) + '(' + YOUBI[d.getDay()] + ')';
+  }
+  // ⚪計画書未作成の文言（2026-08-06 社長決定）。スタッフが読んで次の行動が分かる書き方にする。
+  // 期限切れ(deadlinePassed)かどうかで言い分ける＝「もう来た人」に「◯日に来ます」と出すと嘘になる。
+  function signMsg(r){
+    if (r.state !== 'none') return SIGN_MSG[r.state] || '';
+    var doc = r.docLabel || '計画書';
+    if (r.deadlinePassed){
+      return '⚪ もう電子サインは使えません'
+        + (r.firstVisitDate ? '（' + signDateLabel(r.firstVisitDate) + 'に来ています）' : '')
+        + '。' + doc + 'ができたら紙でサインをもらってください';
+    }
+    if (r.firstVisitDate){
+      return '⚪ ' + signDateLabel(r.firstVisitDate) + 'にこの人が来ます。それまでに' + doc + 'を作れば電子サインが使えます';
+    }
+    return '⚪ ' + (/^\d{4}-\d{2}$/.test(r.applyYm||'') ? (+String(r.applyYm).slice(5,7)) + '月' : 'この月')
+      + 'は来る予定がありません。' + doc + 'ができたら紙でサインをもらってください';
+  }
   function signRow(r){
-    return '<div class="sign '+esc(r.state)+'">'
+    var cls = 'sign ' + esc(r.state) + (r.state==='none' && r.deadlinePassed ? ' passed' : '');
+    return '<div class="'+cls+'">'
       + '<span class="nm">'+esc(r.name)+'</span>'
       + '<span class="doc">'+esc(r.docLabel||'')+'</span>'
       + '<span class="spacer"></span>'
-      + '<span class="msg">'+esc(SIGN_MSG[r.state]||'')+'</span></div>';
+      + '<span class="msg">'+esc(signMsg(r))+'</span></div>';
   }
   function signSection(sign){
     var rows = (sign && sign.rows) || [];
     var rem = (sign && sign.tomorrowPrint) || [];
     var urgent = rows.filter(function(r){ return r.state==='last' || r.state==='paper'; });
+    var noneRows = rows.filter(function(r){ return r.state==='none'; });
     var okRows = rows.filter(function(r){ return r.state==='ok'; });
     var h = '<div class="sec"><div class="sec-h"><span class="t">✍️ サインをもらう人</span><span class="c">'+rows.length+'名</span></div>';
     h += '<div class="sec-note">電子サインが使えるのは「その計画書の適用月に初めて来た日」まで。2回目以降は紙です。計画書がまだ出来ていない人は出ません。</div>';
@@ -349,6 +376,10 @@
     }
     if (!rows.length){ h += '<div class="empty">サインをもらう人はいません</div></div>'; return h; }
     urgent.forEach(function(r){ h += signRow(r); });
+    if (noneRows.length){
+      h += '<div class="subhead">▶ 計画書がまだの人（先に作る）</div>';
+      noneRows.forEach(function(r){ h += signRow(r); });
+    }
     if (okRows.length){
       h += '<div class="subhead">▶ まだ余裕がある（電子OK）</div>';
       okRows.forEach(function(r){ h += signRow(r); });

@@ -91,7 +91,15 @@ function pick(rows, name, docType) {
   return (rows || []).filter(function (r) { return r.name === name && r.docType === docType; })[0];
 }
 const rBoard = board.rows || [];
-eq(!!pick(rBoard, '未作成男', 'kobetsu'), false, 'D1: ⚪計画書未作成は画面に出さない');
+// ★2026-08-06 社長決定: ⚪は「無表示」から「警告付き表示」へ変更。
+//   サインをもらう日は計画書の有無と関係なく確定しているso、出さない理由がない。前倒しの督促になる。
+eq(pick(rBoard, '未作成男', 'kobetsu').state, 'none', 'D1: ⚪計画書未作成も行として返す（前倒し督促）');
+eq(pick(rBoard, '未作成男', 'kobetsu').firstVisitDate, '2026-08-04',
+   'D1b: ⚪にも初回来所日が入る（「◯月◯日に来ます」と言えるように）');
+// ★初回来所日が過ぎている⚪に「◯日に来ます」と出すと嘘になる（もう電子は使えない）。
+//   表示層に判定を書かないため、core が期限切れかどうかを持つ。
+eq(pick(rBoard, '未作成男', 'kobetsu').deadlinePassed, true,
+   'D1c: 初回来所日を過ぎた⚪は期限切れ扱い（8/4に来所済み・今日は8/6）');
 eq(pick(rBoard, '欠席ずれ子', 'kobetsu').state, 'last', 'D2: ★欠席で初回がずれた人が今日🟡になる');
 eq(pick(rBoard, '欠席ずれ子', 'kobetsu').firstVisitDate, '2026-08-06', 'D3: 初回来所日は都度計算した実日付');
 eq(pick(rBoard, '来所済男', 'kobetsu').state, 'paper', 'D4: 適用月に来所済み＝🔴');
@@ -102,13 +110,16 @@ eq(!!pick(rBoard, '予定月なし子', 'kobetsu'), false, 'D8: 予定月が取�
 ok((board.fallback && board.fallback.kobetsuNoYotei || []).indexOf('予定月なし子') >= 0,
    'D9: 予定月が取れない人はfallbackで可視化（黙って落とさない）');
 
-// 並び: 🟡→🔴→🟢（🟡🔴を上に、🟢はその下）
+// 並び: 🟡last → 🔴paper → ⚪none → 🟢ok
+//   ⚪は「計画書を作る」という行動が要るso、何もしなくてよい🟢より上に置く。
 const states = rBoard.map(function (r) { return r.state; });
 const firstOk = states.indexOf('ok');
-ok(firstOk === -1 || states.slice(0, firstOk).every(function (s) { return s === 'last' || s === 'paper'; }),
-   'D10: 並びは🟡🔴が先・🟢が後');
+ok(firstOk === -1 || states.slice(0, firstOk).every(function (s) { return s !== 'ok'; }),
+   'D10: 🟢は最後（🟡🔴⚪より下）');
 ok(states.indexOf('last') === 0, 'D11: 🟡最終チャンスが最上段');
-eq(rBoard.every(function (r) { return r.state !== 'none'; }), true, 'D12: none行は含まれない');
+ok(states.indexOf('none') > states.indexOf('paper') && states.indexOf('none') < states.indexOf('ok'),
+   'D12: ⚪は🔴より下・🟢より上');
+eq(rBoard.filter(function (r) { return r.state === 'none'; }).length, 1, 'D12b: ⚪は1件（未作成男のみ）');
 eq(pick(rBoard, '欠席ずれ子', 'kobetsu').docLabel, '個別機能訓練計画書', 'D13: 書類名ラベルもcoreが持つ（表示層に判定を置かない）');
 eq(pick(rBoard, '通所明日子', 'tsusho').docLabel, '通所介護計画書', 'D14: 通所のラベル');
 
@@ -142,6 +153,58 @@ eq(tp[0] && tp[0].name, '明日紙子', 'E2: 明日来所して🔴になる人�
 eq(tp[0] && tp[0].date, '2026-08-07', 'E3: リマインドは明日の日付を持つ');
 ok(!tp.some(function (r) { return r.name === '明日欠席子'; }), 'E4: 明日欠席の人は出さない');
 ok(!tp.some(function (r) { return r.name === '明日電子子'; }), 'E5: 明日も電子OKの人は出さない');
+
+// ===== D-2. ⚪の期限切れ判定（まだ間に合う⚪ / もう間に合わない⚪）=====
+const noneInput = {
+  today: '2026-08-06',
+  users: [
+    // 適用月が翌月＝初回来所日はまだ先 → まだ間に合う
+    { name: '未作成来月子', userId: '未作成来月子', category: '要介護1', days: '火木', startDate: '', cancelDate: '' },
+    // 適用月が当月・初回8/4は過ぎている → もう間に合わない
+    { name: '未作成期限切男', userId: '未作成期限切男', category: '要介護1', days: '火木', startDate: '', cancelDate: '' },
+    // 適用月が当月・初回は今日 → 今日中に作ればまだ間に合う
+    { name: '未作成今日子', userId: '未作成今日子', category: '要介護1', days: '木', startDate: '', cancelDate: '' }
+  ],
+  absentByKey: {},
+  kobetsuYotei: { '未作成来月子': '2026-09', '未作成期限切男': '2026-08', '未作成今日子': '2026-08' },
+  kunRows: [],          // 1件も作成記録が無い＝全員⚪
+  tsushoDueMap: {}, tsushoRows: []
+};
+const nb = core.sbBuildSignBoard_(noneInput);
+eq(nb.rows.length, 3, 'D15: 計画書が1件も無くても3名とも行として出る（前倒し督促）');
+eq(nb.rows.every(function (r) { return r.state === 'none'; }), true, 'D16: 全員⚪');
+eq(pick(nb.rows, '未作成来月子', 'kobetsu').deadlinePassed, false, 'D17: 適用月が翌月＝まだ間に合う');
+eq(pick(nb.rows, '未作成期限切男', 'kobetsu').deadlinePassed, true, 'D18: 初回来所日を過ぎた＝もう間に合わない');
+eq(pick(nb.rows, '未作成今日子', 'kobetsu').deadlinePassed, false, 'D19: 初回来所日が今日＝今日中ならまだ間に合う');
+eq(pick(nb.rows, '未作成今日子', 'kobetsu').firstVisitDate, '2026-08-06', 'D20: 今日が初回来所日');
+
+// ===== D-3. ⚪を出す時期の絞り込み =====
+// 実データ実測（2026-08-06）: 絞りなしだと⚪157件が並び、現場が読めない＝督促として死ぬ。
+// 「作る時期が来ていない先の月」は出さない。過去（やり残し）と当月・翌月だけ出す。
+const rangeInput = {
+  today: '2026-08-06',
+  users: [
+    { name: '当月未作成子', userId: '当月未作成子', category: '要介護1', days: '火', startDate: '', cancelDate: '' },
+    { name: '翌月未作成子', userId: '翌月未作成子', category: '要介護1', days: '火', startDate: '', cancelDate: '' },
+    { name: '翌々月未作成子', userId: '翌々月未作成子', category: '要介護1', days: '火', startDate: '', cancelDate: '' },
+    { name: '半年先未作成子', userId: '半年先未作成子', category: '要介護1', days: '火', startDate: '', cancelDate: '' },
+    { name: '過去未作成子', userId: '過去未作成子', category: '要介護1', days: '火', startDate: '', cancelDate: '' }
+  ],
+  absentByKey: {},
+  kobetsuYotei: {
+    '当月未作成子': '2026-08', '翌月未作成子': '2026-09', '翌々月未作成子': '2026-10',
+    '半年先未作成子': '2027-02', '過去未作成子': '2026-06'
+  },
+  kunRows: [], tsushoDueMap: {}, tsushoRows: []
+};
+const rb = core.sbBuildSignBoard_(rangeInput);
+const rbNames = rb.rows.map(function (r) { return r.name; });
+ok(rbNames.indexOf('当月未作成子') >= 0, 'D21: 適用月が当月の⚪は出す');
+ok(rbNames.indexOf('翌月未作成子') >= 0, 'D22: 適用月が翌月の⚪は出す（前倒しの督促）');
+ok(rbNames.indexOf('過去未作成子') >= 0, 'D23: 適用月が過去の⚪は出す（やり残し）');
+ok(rbNames.indexOf('翌々月未作成子') < 0, 'D24: 適用月が翌々月の⚪は出さない（まだ作る時期でない）');
+ok(rbNames.indexOf('半年先未作成子') < 0, 'D25: 半年先の⚪は出さない');
+eq(rb.rows.length, 3, 'D26: 出るのは3件（当月・翌月・過去）');
 
 // ===== F. 縮退（materialが欠けても落ちない） =====
 const empty = core.sbBuildSignBoard_({ today: '2026-08-06' });
