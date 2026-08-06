@@ -17553,6 +17553,10 @@ function soufuGatherCloseUsers_(ym) {
       cancelled: !!u.cancelled,
       usageDays: attMap[_normalizeUserName(u.userId)] || 0,
       isTarget: !!u.isTarget,
+      // 口腔の節目判定は plan_start 起点（2026-08-06 修正）。started_at は全員一律の初期値で
+      // サイクルを表さないため判定には使わない。値自体は既存の参照先があるので残す。
+      oralPlanStart: u.planStart || '',
+      oralPlanEnd: u.planEnd || '',
       oralStartedAt: u.startedAt || '',
       kunPlanStart: k.planStart || '',
       kunPlanMonths: k.planMonths || 3,
@@ -17589,6 +17593,10 @@ function soufuMonthlyClose_(ym, dryRun) {
     Logger.log('利用者台帳から取得: ' + st.inputUsers + ' 名');
     Logger.log('母集団            : ' + st.populationTotal + ' 名'
       + '（うち中止者で実績1日以上 ' + st.cancelledIncluded + ' 名／実績0日で除外 ' + st.cancelledExcluded + ' 名）');
+    if (st.oralPlanStartMissing) {
+      Logger.log('⚠ 口腔の計画開始月 未設定: ' + st.oralPlanStartMissing + ' 名'
+        + '（この人たちは節目が判定できず oral_plan を1件も作れません。口腔②アプリの【未設定】で確認）');
+    }
     Logger.log('対象書類の総数    : ' + st.candidates + ' 件');
     Logger.log('  ├ 既に行がありスキップ: ' + st.skippedExisting + ' 件');
     Logger.log('  └ 新たに保留で凍結    : ' + st.created + ' 件');

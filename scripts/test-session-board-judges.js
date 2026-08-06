@@ -36,6 +36,16 @@ if (portedOral !== canonOral) {
 }
 ok(portedOral === canonOral, 'DG2: oralCycleAt 移植がoral-plan.htmlとbyte一致（driftなし）');
 
+// DG3: shared.js の oralCycleAt（2026-08-06 追加・teishutsu.html が使う）も同じでなければならない。
+// teishutsu の口腔判定を started_at 起点から plan_start 起点へ寄せた際に、ブラウザ側の共通ライブラリへも
+// 同じ関数が必要になった。3者（oral-plan.html / shared.js / session-board-judges.js）がズレると
+// 「画面では節目なのに提出管理には出ない」が再発する。
+const sharedOral = extractFn(sharedSrc, 'oralCycleAt');
+if (sharedOral !== canonOral) {
+  console.error('  [DIFF] shared.js oralCycleAt length: canon=' + canonOral.length + ' shared=' + sharedOral.length);
+}
+ok(sharedOral === canonOral, 'DG3: shared.js の oralCycleAt が oral-plan.html と byte一致（driftなし）');
+
 // --- Behavioral matrix ---
 const canonHyoukaFn = new Function(canonHyouka + '; return isHyoukaMonth;')();
 const canonOralFn = new Function(canonOral + '; return oralCycleAt;')();

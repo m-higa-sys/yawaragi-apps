@@ -545,7 +545,38 @@ function isHyoukaMonth(planStart, planMonths, year, month) {
     return false;
 }
 
+// 口腔 3ヶ月サイクルの現在地: plan_start 起点。role='moni1'(1ヶ月目)/'moni2'(2ヶ月目)/'setsume'(3ヶ月目＝
+// 結果報告書＋計画書を作る節目)/'none'。nodeYear/nodeMonth はその周回の節目月（記録行のキー）。
+// ★正本は oral-plan.html:714。ここはブラウザ共通ライブラリへの逐語移植で、
+//   gas/yawaragi-board/session-board-judges.js（GAS実行用）と合わせて3者がbyte一致していなければならない
+//   （scripts/test-session-board-judges.js の DG2/DG3 で検知）。
+// ★下の isOralEvalMonth（started_at 起点）は使わないこと。started_at は口腔②導入時に加算対象
+//   106名すべてへ '2026-06' が一括投入された初期値で、個人のサイクルを表していない（2026-08-06 実測）。
+//   それで判定すると「8月0名・9月に106名全員」という現実にあり得ない結果になる。
+function oralCycleAt(planStart, planEnd, year, month) {
+    const m = String(planStart || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return { role: 'none', nodeYear: 0, nodeMonth: 0 };
+    const P = parseInt(m[1], 10) * 12 + (parseInt(m[2], 10) - 1);
+    const T = year * 12 + (month - 1);
+    if (T < P) return { role: 'none', nodeYear: 0, nodeMonth: 0 };
+    if (planEnd) {
+        const e = String(planEnd).match(/^(\d{4})-(\d{2})$/);
+        if (e) {
+            const E = parseInt(e[1], 10) * 12 + (parseInt(e[2], 10) - 1);
+            if (T > E) return { role: 'none', nodeYear: 0, nodeMonth: 0 };
+        }
+    }
+    const r = (T - P) % 3;
+    let role, nodeTotal;
+    if (r === 0) { role = 'moni1'; nodeTotal = T + 2; }
+    else if (r === 1) { role = 'moni2'; nodeTotal = T + 1; }
+    else { role = 'setsume'; nodeTotal = T; }
+    return { role: role, nodeYear: Math.floor(nodeTotal / 12), nodeMonth: (nodeTotal % 12) + 1 };
+}
+
 // 口腔 評価月: startedAt起点3ヶ月毎。②oral.html の同名関数を移植。
+// ⚠️ 2026-08-06 以降、提出管理(teishutsu)と月末締めはこの関数を使わない（上の oralCycleAt を使う）。
+//    残しているのは oral.html（ランチャー上「⛔口腔機能管理（使わない）」）が参照しているため。
 function isOralEvalMonth(startedAt, year, month) {
     const m = String(startedAt || '').match(/^(\d{4})-(\d{2})/);
     if (!m) return false;

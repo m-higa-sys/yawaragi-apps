@@ -98,8 +98,12 @@ ok('判定は core を読む（画面に判定を書かない）',
    /<script src="gas\/yawaragi-board\/session-board-core\.js/.test(html));
 ok('書類種別ごとの実物フォルダをまとめて取りに行く', /action=scanSignFolders/.test(html));
 // ★実物のフォルダはフラット（7月分と8月分が同居）so、月で絞らないと先月のPDFで今月が揃ってしまう。
-ok('★対象月を渡して月で絞っている（先月のPDFで今月を揃ったにしない）',
-   /sbBuildPdfFoundMap_\([^)]*,\s*ym\s*\)/.test(html));
+// ★2026-08-06 修正: 絞りに使う月は「対象月」ではなく、その書類の【適用月】(tekiyoTsuki)。
+//   ファイル名の「◯月」は書類が効く月＝適用月だった（実測）。対象月で絞っていたため、
+//   適用月が翌月になる書類（個訓セット・口腔）が丸ごと未検知だった（個訓 21件が 0件→12件）。
+ok('★適用月を渡して月で絞っている（先月のPDFで今月を揃ったにしない）',
+   /const useYm = String\(t\.tekiyoTsuki \|\| ym\)\.slice\(0, 7\)/.test(html)
+   && /sbBuildPdfFoundMap_\([^)]*,\s*useYm\s*\)/.test(html));
 ok('旧姓・別表記を取りに行く（照合の別名キー）', /action=getSignCols/.test(html));
 ok('突合は core の sbBuildPdfFoundMap_ に委譲している', /sbBuildPdfFoundMap_\(/.test(html));
 ok('画面側に照合ロジックを書いていない（indexOf での氏名突合を持たない）',

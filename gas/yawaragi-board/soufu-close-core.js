@@ -10,7 +10,7 @@
  *   サーバー側にもう一度書いている。片方だけ直すと締めと画面がズレる。
  *   将来どちらかへ寄せるまでは、両方セットで直すこと。
  *   - isHyoukaMonth … session-board-judges.js のGASグローバルを使う（重複なし）
- *   - _scIsOralEvalMonth … shared.js:549 isOralEvalMonth の移植（GAS側に無いため重複）
+ *   - 口腔の節目 … session-board-judges.js の oralCycleAt を使う（重複なし・2026-08-06 に自前計算を廃止）
  *   - _scIsMeasureMonth … teishutsu.html インライン isMeasureMonth の移植（同上）
  *   - _scCareOf / _scShiftYM … teishutsu.html の careOf / shiftYM の移植（同上）
  */
@@ -28,14 +28,21 @@ function _scShiftYM(ym, delta) {
   return Math.floor(t / 12) + '-' + ('0' + (t % 12 + 1)).slice(-2);
 }
 
-// 口腔 評価月: startedAt 起点3ヶ月毎（shared.js:549 と同一ロジック）
-function _scIsOralEvalMonth(startedAt, year, month) {
-  var m = String(startedAt || '').match(/^(\d{4})-(\d{2})/);
-  if (!m) return false;
-  var sTotal = parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
-  var tTotal = year * 12 + month;
-  if (tTotal < sTotal) return false;
-  return (tTotal - sTotal) % 3 === 0;
+// 口腔 節目月（結果報告書＋計画書を作る月）: plan_start 起点の3ヶ月サイクル。
+// ★2026-08-06 修正。判定は自前で持たず、GASグローバルの oralCycleAt（session-board-judges.js）を使う。
+//   なぜ起点を変えたか（実測 2026-08-06）:
+//     旧実装は started_at 起点だったが、started_at は口腔②導入時に加算対象106名すべてへ
+//     '2026-06' が一括投入された初期値で、個人のサイクルを表していない。
+//     そのまま3ヶ月周期を回すと 8月0名 / 9月106名（全員） / 10月0名 となり、
+//     実際の分布（plan_start 起点で 8月40名 / 9月35名 / 10月29名）と全く合わない。
+//     7月の締めで口腔が1件も作られなかったのはこれが原因。
+//   画面(oral-plan.html)・月次ボード(month-board-core.js)は元から plan_start 起点の oralCycleAt を
+//   使っているので、締めをそちらへ揃える＝判定を1本にする（複製を増やさない）。
+function _scOralSetsume_(planStart, planEnd, year, month) {
+  if (typeof oralCycleAt !== 'function') {
+    throw new Error('oralCycleAt が未ロード（session-board-judges.js が必要）');
+  }
+  return oralCycleAt(planStart, planEnd, year, month).role === 'setsume';
 }
 
 // 測定月: 要支援=4ヶ月周期 / 要介護=3ヶ月周期（teishutsu.html インライン版と同一ロジック）
@@ -99,7 +106,7 @@ function _scDocsFor(user, ym) {
   if (care === 'shien' && isManryou) out.push({ docType: 'tsusho_hyouka', tekiyoTsuki: dueYM });
   if (care === 'kaigo' && _scHyoukaMonth(user.kunPlanStart, user.kunPlanMonths, yy, mm))
     out.push({ docType: 'kokun_set', tekiyoTsuki: _scShiftYM(ym, 1) });
-  if (user.isTarget && _scIsOralEvalMonth(user.oralStartedAt, yy, mm))
+  if (user.isTarget && _scOralSetsume_(user.oralPlanStart, user.oralPlanEnd, yy, mm))
     out.push({ docType: 'oral_plan', tekiyoTsuki: _scShiftYM(ym, 1) });
   if (care === 'shien' && _scIsMeasureMonth(user.sokuteiPlanStart, ym, '', care))
     out.push({ docType: 'sokutei', tekiyoTsuki: ym });
@@ -130,6 +137,10 @@ function soufuClosePlan_(users, ym, existingKeys) {
     candidates: 0,            // 生成候補（＝対象書類の総数）
     skippedExisting: 0,       // 既に台帳に行があってスキップした数
     created: 0,               // 実際に足す行数
+    // ★口腔の plan_start が未設定の加算対象者（母集団に入った人のみ）。
+    //   未設定だと節目が判定できず oral_plan を1件も立てられない＝黙って落ちる。
+    //   落とすのは「誤った月に立てるより安全」だが、落ちた事実は件数で見せる。
+    oralPlanStartMissing: 0,
     byDocType: {}
   };
 
@@ -137,6 +148,7 @@ function soufuClosePlan_(users, ym, existingKeys) {
     if (!_scIncludeUser(user)) { stats.cancelledExcluded++; return; }
     stats.populationTotal++;
     if (user.cancelled) stats.cancelledIncluded++;
+    if (user.isTarget && !String(user.oralPlanStart || '').trim()) stats.oralPlanStartMissing++;
 
     _scDocsFor(user, ym).forEach(function (d) {
       stats.candidates++;
@@ -167,7 +179,7 @@ if (typeof module !== 'undefined' && module.exports) {
     soufuClosePlan_: soufuClosePlan_,
     _scCareOf: _scCareOf,
     _scShiftYM: _scShiftYM,
-    _scIsOralEvalMonth: _scIsOralEvalMonth,
+    _scOralSetsume_: _scOralSetsume_,
     _scIsMeasureMonth: _scIsMeasureMonth,
     _scIncludeUser: _scIncludeUser,
     _scDocsFor: _scDocsFor

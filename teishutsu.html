@@ -190,6 +190,15 @@
   <button id="loadErrorRetry">再読込</button>
 </div>
 
+<!-- 口腔の計画開始月(plan_start)が未設定の人は、3ヶ月サイクルの節目が判定できず口腔の書類を1件も
+     立てられない。落とすのは「誤った月に立てるより安全」だが、落ちた事実は黙らせない（件数で見せる）。
+     設定は口腔②アプリ（口腔モニ・評価・計画）の【未設定】から。ここは表示だけで書き込まない。 -->
+<div class="load-error hidden" id="oralUnsetNote"
+     style="background:#fffaf0; color:#744210; border-color:#f6ad55;">
+  <span class="msg">⚠️ 口腔の計画開始月が未設定: <b id="oralUnsetCount">0</b>名
+    <small>この人たちは口腔の書類がこの画面に出ません。口腔②アプリの【未設定】で開始月を入れてください</small></span>
+</div>
+
 <div class="operator-bar">
   <span class="label">操作者:</span>
   <select id="operatorSel"><option value="">— 名前を選択 —</option></select>
@@ -246,7 +255,11 @@
 
 <div id="modalHost"></div>
 
-<script src="shared.js?v=2026-07-03a"></script>
+<!-- ★shared.js に新関数 oralCycleAt を足したので ?v= を上げる（2026-08-06）。
+     上げないと現場の端末がキャッシュ済みの古い shared.js を読み続け、
+     oralCycleAt is not defined で画面が丸ごと出なくなる。
+     teishutsu は version.txt の版ゲートを持たない（no-store配信）ため、この値は手で上げる。 -->
+<script src="shared.js?v=2026-08-06a"></script>
 <!-- 署名済みPDFの照合（sbFindSignedPdf_ / sbBuildPdfFoundMap_ / sbNormalizeName_）。
      判定の正本は session-board-core.js の1本だけ。ここにも GAS にも複製を置かない。
      ※ _config.yml で exclude されていない＝Pages配信される（measure-app.html も同じ読み方） -->
@@ -313,7 +326,9 @@ const LS_UNSENT = 'yawaragi_teishutsu_unsentonly';
 const careOf = cat => (String(cat).includes('支援') || String(cat).includes('事業対象')) ? 'shien' : 'kaigo';
 
 // ---- shared.js に無い純関数の移植（ケアマネ送付チェックリスト.html から完全同一・無回帰） ----
-// shared.js が供給するのは isPlanMonth / isHyoukaMonth / isOralEvalMonth。以下は当該HTMLのインライン定義。
+// shared.js が供給するのは isPlanMonth / isHyoukaMonth / oralCycleAt / isOralEvalMonth。
+// 口腔の節目判定は shared.js の oralCycleAt（plan_start 起点）を使う。isOralEvalMonth は使わない。
+// 以下は当該HTMLのインライン定義。
 function isMeasureMonth(planStart, ym, startDate, care) {
   if (!planStart) return false;
   const cycle = (care === 'shien') ? 4 : 3;
@@ -566,7 +581,14 @@ function buildTasks(ym) {
     // 表示例:「7月分: 個訓セット（8月〜）」。B1修正(2026-07-03・修正前は isPlan∪isHyouka で過剰表示)。
     if (care === 'kaigo' && isHyoukaMonth(kUser.planStart, kUser.planMonths, yy, mm))
       pushTask(name, 'kokun_set', care, office, fg, shiftYM(ym, 1));
-    if (u.isTarget && isOralEvalMonth(u.startedAt, yy, mm)) pushTask(name, 'oral_plan', care, office, fg, shiftYM(ym, 1));
+    // 口腔の節目（結果報告書＋計画書を作る月）は plan_start 起点の oralCycleAt で判定する。
+    // ★2026-08-06 修正: 旧実装は isOralEvalMonth(u.startedAt) だったが、started_at は口腔②導入時に
+    //   加算対象106名すべてへ '2026-06' が一括投入された初期値で、個人のサイクルを表していない（実測）。
+    //   そのため「8月0名・9月に106名全員」という判定になり、7月の締めでは口腔が1件も作られなかった
+    //   （台帳の oral_plan が0行＝PDFが29件実在するのに突合が起きない状態だった）。
+    //   画面(oral-plan.html)・月次ボードと同じ oralCycleAt へ揃える＝判定を1本にする。
+    if (u.isTarget && oralCycleAt(u.planStart, u.planEnd, yy, mm).role === 'setsume')
+      pushTask(name, 'oral_plan', care, office, fg, shiftYM(ym, 1));
     if (care === 'shien' && isMeasureMonth(planStart, ym, '', care)) pushTask(name, 'sokutei', care, office, fg, ym);
   });
 
@@ -592,21 +614,34 @@ function buildTasks(ym) {
   // 判定は core の sbBuildPdfFoundMap_ 1本。ここは材料を渡して結果を各行へ載せるだけ。
   // ★「揃った」ボタンは残したまま、検知結果を先に見せる。1ヶ月ぶん一致を見てから廃止を判断する。
   // ★実物のフォルダは書類種別ごと（共有ドライブ yawaragi／実績 配下）で、中は月フォルダを持たない
-  //   フラット構造。7月分と8月分が同居しているso、対象月(ym)を渡して月で絞る＝先月のPDFで
-  //   今月を「揃った」にしない（誤検知の防止）。
+  //   フラット構造。7月分と8月分が同居しているso、月で絞る＝先月のPDFで今月を「揃った」にしない。
+  // ★絞りに使うのは「対象月」ではなく、その書類の【適用月】(tekiyoTsuki)（2026-08-06 実測で修正）。
+  //   ファイル名の先頭に付く「◯月」は、作業した月ではなく書類が効く月＝適用月だった。
+  //   対象月で絞っていたため、適用月が翌月になる書類（個訓セット・口腔）が丸ごと未検知だった。
+  //   実測（台帳 対象月2026-07 の93行 × 実フォルダ）:
+  //     個訓セット 21件 … 対象月絞り 0件 → 適用月絞り 12件
+  //     口腔       （当時は行が0件）→ 7月節目29名で 26件
+  //     通所モニ   51件 … 適用月＝対象月なので 48件のまま不変
+  //   同じ docType でも適用月が人によって違う場合（通所計画書＝満了月）があるため、
+  //   docType ではなく「docType × 適用月」でまとめて渡す。
   if (d.pdf && d.pdf.folders && typeof sbBuildPdfFoundMap_ === 'function') {
-    const byDoc = {};
+    const byDocMonth = {};
     tasks.filter(t => t.taishoTsuki === ym).forEach(t => {
-      (byDoc[t.docType] = byDoc[t.docType] || []).push({
+      // 適用月が空の行は対象月で絞る（従来どおり・黙って全期間に広げない）
+      const useYm = String(t.tekiyoTsuki || ym).slice(0, 7);
+      const gk = t.docType + ' ' + useYm;
+      (byDocMonth[gk] = byDocMonth[gk] || []).push({
         key: t.userId, name: t.userId, docType: t.docType,
         aliases: d.aliases[sbNormalizeName_(t.userId)] || []
       });
     });
     const found = {};
-    Object.keys(byDoc).forEach(docType => {
+    Object.keys(byDocMonth).forEach(gk => {
+      const docType = gk.split(' ')[0];
+      const useYm = gk.split(' ')[1];
       const f = d.pdf.folders[docType];
       if (!f || f.error) return;                       // そのフォルダが読めなければ黙ってスキップ（下でバナー表示）
-      Object.assign(found, sbBuildPdfFoundMap_(f.files || [], byDoc[docType], ym));
+      Object.assign(found, sbBuildPdfFoundMap_(f.files || [], byDocMonth[gk], useYm));
     });
     tasks.forEach(t => {
       const hit = found[t.userId + '|' + t.docType];
@@ -667,11 +702,25 @@ function methodBadge(gkey) {
 }
 
 // ---------- 描画 ----------
+// 口腔の計画開始月(plan_start)が未設定の加算対象者を数えて帯に出す。
+// oralCycleAt は planStart が無ければ role='none' を返す＝その人の口腔書類は1件も立たない。
+// 立てない判断自体は正しい（誤った月に立てるより安全）が、黙って消えると気づけないので件数で見せる。
+// ★ここは表示だけ。設定の書き込みは口腔②アプリの仕事で、この画面からは触らない。
+function renderOralUnsetNote() {
+  const el = document.getElementById('oralUnsetNote');
+  if (!el) return;
+  const pop = (state.data && state.data.pop) || [];
+  const n = pop.filter(u => u.isTarget && !String(u.planStart || '').trim()).length;
+  el.classList.toggle('hidden', n === 0);
+  document.getElementById('oralUnsetCount').textContent = n;
+}
+
 function render() {
   document.getElementById('ymLabel').textContent = ymJp(state.ym);
   renderFilters();
   renderOperatorState();
   renderPdfFolderLink();
+  renderOralUnsetNote();
 
   // 2段構え（2026-08-05）:
   //   baseFiltered … 書類フィルタ＋未完了のみ を適用した集合。「あと○件」バッジの母数はこちら。

@@ -12,8 +12,9 @@
 // 実行: node scripts/test-soufu-close-core.js
 const path = require('path');
 const GAS = path.join(__dirname, '..', 'gas', 'yawaragi-board');
-// isHyoukaMonth は session-board-judges.js（GAS内グローバル）を使う。Nodeでは global へ注入する。
+// isHyoukaMonth / oralCycleAt は session-board-judges.js（GAS内グローバル）を使う。Nodeでは global へ注入する。
 global.isHyoukaMonth = require(path.join(GAS, 'session-board-judges.js')).isHyoukaMonth;
+global.oralCycleAt = require(path.join(GAS, 'session-board-judges.js')).oralCycleAt;
 const core = require(path.join(GAS, 'soufu-close-core.js'));
 const plan = core.soufuClosePlan_;
 
@@ -28,7 +29,8 @@ const docsOf = (rows, userId) => rows.filter(r => r.userId === userId).map(r => 
 function u(over) {
   return Object.assign({
     userId: 'ダミー', category: '要介護1', cancelled: false, usageDays: 8,
-    isTarget: false, oralStartedAt: '', kunPlanStart: '', kunPlanMonths: 3,
+    isTarget: false, oralPlanStart: '', oralPlanEnd: '', oralStartedAt: '',
+    kunPlanStart: '', kunPlanMonths: 3,
     sokuteiPlanStart: '', dueYM: ''
   }, over || {});
 }
@@ -90,16 +92,42 @@ console.log('\n[B) 生成ルール6種が teishutsu.html buildTasks と同一]')
   ok('B4c 要支援には kokun_set を立てない', docsOf(r2.rows, 'D2').indexOf('kokun_set') < 0, JSON.stringify(docsOf(r2.rows, 'D2')));
 }
 {
-  // ⑤ 口腔対象 ∧ isOralEvalMonth（startedAt起点3ヶ月毎）→ oral_plan（適用月＝翌月）
-  const r = plan([u({ userId: 'E', isTarget: true, oralStartedAt: '2026-04-01' })], '2026-07', []);
-  ok('B5 口腔対象・評価月 → oral_plan', docsOf(r.rows, 'E').indexOf('oral_plan') >= 0, JSON.stringify(docsOf(r.rows, 'E')));
+  // ⑤ 口腔対象 ∧ oralCycleAt(plan_start)の role==='setsume' → oral_plan（適用月＝翌月）
+  // ★2026-08-06 修正: 起点を started_at から plan_start へ。
+  //   started_at は口腔②導入時に全員 2026-06 で一括投入された初期値で、個人のサイクルを表していない
+  //   （実測: 加算対象106名すべて 2026-06）。そのまま3ヶ月周期を回すと「8月0名・9月に106名全員」という
+  //   現実にあり得ない判定になり、実際に7月の締めでは口腔が1件も作られなかった。
+  //   画面(oral-plan.html)と月次ボードは plan_start 起点の oralCycleAt で回っているので、そちらへ揃える。
+  //   plan_start は節目の2ヶ月前（moni①の月）＝ setsume はその2ヶ月後。
+  const r = plan([u({ userId: 'E', isTarget: true, oralPlanStart: '2026-05' })], '2026-07', []);
+  ok('B5 口腔対象・節目月(plan_start+2) → oral_plan', docsOf(r.rows, 'E').indexOf('oral_plan') >= 0, JSON.stringify(docsOf(r.rows, 'E')));
   ok('B5b 適用月＝翌月', r.rows.find(x => x.docType === 'oral_plan').tekiyoTsuki === '2026-08');
 
-  const r2 = plan([u({ userId: 'E2', isTarget: false, oralStartedAt: '2026-04-01' })], '2026-07', []);
+  const r2 = plan([u({ userId: 'E2', isTarget: false, oralPlanStart: '2026-05' })], '2026-07', []);
   ok('B5c 口腔非対象には立てない', r2.rows.length === 0);
 
-  const r3 = plan([u({ userId: 'E3', isTarget: true, oralStartedAt: '2026-05-01' })], '2026-07', []);
-  ok('B5d 3ヶ月周期に当たらない月は立てない', r3.rows.length === 0, JSON.stringify(docsOf(r3.rows, 'E3')));
+  const r3 = plan([u({ userId: 'E3', isTarget: true, oralPlanStart: '2026-06' })], '2026-07', []);
+  ok('B5d 節目でない月（moni②の月）は立てない', r3.rows.length === 0, JSON.stringify(docsOf(r3.rows, 'E3')));
+
+  const r4 = plan([u({ userId: 'E4', isTarget: true, oralPlanStart: '2026-07' })], '2026-07', []);
+  ok('B5e 節目でない月（moni①の月）は立てない', r4.rows.length === 0, JSON.stringify(docsOf(r4.rows, 'E4')));
+
+  // started_at はもう見ない。旧値が入っていても判定を動かさない（誤判定の再発防止）。
+  const r5 = plan([u({ userId: 'E5', isTarget: true, oralPlanStart: '2026-06', oralStartedAt: '2026-04-01' })], '2026-07', []);
+  ok('B5f started_at では判定しない（旧起点の残留値に引きずられない）', r5.rows.length === 0, JSON.stringify(docsOf(r5.rows, 'E5')));
+
+  // plan_end を過ぎたら対象外（画面の oralCycleAt と同じ扱い）
+  const r6 = plan([u({ userId: 'E6', isTarget: true, oralPlanStart: '2026-05', oralPlanEnd: '2026-06' })], '2026-07', []);
+  ok('B5g plan_end を過ぎたら立てない', r6.rows.length === 0, JSON.stringify(docsOf(r6.rows, 'E6')));
+
+  // ★plan_start 未設定は「立てない」が、黙って落とさず件数で見せる（実測: 加算対象106名中2名）
+  const r7 = plan([u({ userId: 'E7', isTarget: true, oralPlanStart: '' })], '2026-07', []);
+  ok('B5h plan_start 未設定では立てない（誤った月に立てるより立てない）', r7.rows.length === 0);
+  ok('B5i ★未設定は stats で件数を返す（黙って落とさない）',
+     r7.stats.oralPlanStartMissing === 1, JSON.stringify(r7.stats.oralPlanStartMissing));
+
+  const r8 = plan([u({ userId: 'E8', isTarget: false, oralPlanStart: '' })], '2026-07', []);
+  ok('B5j 口腔非対象者は未設定に数えない', r8.stats.oralPlanStartMissing === 0, JSON.stringify(r8.stats.oralPlanStartMissing));
 }
 {
   // ⑥ 要支援 ∧ isMeasureMonth（要支援は4ヶ月周期）→ sokutei
