@@ -855,10 +855,25 @@ var SB_VERB_LABEL = {
 // 並び順＝工程の手前ほど上（作る → サインをもらう → PDFにする）。情報不足は最後。
 var SB_VERB_ORDER = { make: 0, sign: 1, pdf: 2, unknown: 3, send: 4, done: 5 };
 
+// 利用者のサインをもらう工程が【無い】書類。ここに載せたものだけ 'sign' を飛ばす。
+// ★電子サイン対応は個訓セットと通所介護計画書の2書類だけ（2026-08-06 社長確認）。
+//   口腔の計画書・結果報告書は利用者サインの工程が無いので、作ったらそのままPDF化して送る。
+// ★「サインが要る書類」ではなく「要らない書類」を列挙するのは、未知の書類が来たときに
+//   従来どおり（sign）へ倒すため。列挙漏れで勝手にサイン工程が消えるのを防ぐ。
+var SB_NO_SIGN_DOCS = { oral_plan: true };
+
+function sbDocNeedsSign_(docType) {
+  var d = String(docType == null ? '' : docType);
+  if (!d) return true;                 // 指定なし＝従来どおり
+  return !SB_NO_SIGN_DOCS[d];
+}
+
 // status: 台帳の状態（''／'保留'／'揃った'／'送付済'）
 // planCreated: 計画書ができているか（true/false／材料が無ければ undefined）
 // pdfMatch: 署名済みPDFの検知結果（'strong'／'weak'／''）
-function sbCollectVerb_(status, planCreated, pdfMatch) {
+// docType: 書類種別（任意）。サイン工程を持たない書類を見分けるためだけに使う。
+//          ★省略時は従来と完全に同じ挙動（既存の呼び出しを変えない）。
+function sbCollectVerb_(status, planCreated, pdfMatch, docType) {
   var st = String(status == null ? '' : status);
   var verb;
   if (st === '送付済') verb = 'done';
@@ -867,7 +882,8 @@ function sbCollectVerb_(status, planCreated, pdfMatch) {
   else if (pdfMatch === 'strong') verb = 'send';
   else if (st === '揃った') verb = 'pdf';
   else if (planCreated === false) verb = 'make';
-  else if (planCreated === true) verb = 'sign';
+  // 作成済み。サイン工程がある書類は「サインをもらう」、無い書類は直接「PDFにして入れる」。
+  else if (planCreated === true) verb = sbDocNeedsSign_(docType) ? 'sign' : 'pdf';
   else verb = 'unknown';
   return { verb: verb, label: SB_VERB_LABEL[verb] };
 }

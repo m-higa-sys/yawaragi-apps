@@ -47,6 +47,28 @@ eq(v('', null, ''), 'unknown', 'D2: null も同じ');
 eq(v('', undefined, 'strong'), 'send', 'D3: 材料不明でもPDFが在れば送る段階');
 eq(v('揃った', undefined, ''), 'pdf', 'D4: 材料不明でも揃った申告があればPDF段階');
 
+// ===== F. 口腔は利用者サインの工程が無い（2026-08-06 社長確認） =====
+// 電子サイン対応は個訓セットと通所介護計画書の2書類だけ。口腔の計画書・結果報告書は
+// 利用者のサインをもらわないので、作ったらそのままPDFにしてフォルダへ入れる。
+// ★第4引数 docType を渡したときだけ挙動が変わる。省略時は従来どおり（他書類は1ミリも変えない）。
+const vd = (status, planCreated, pdfMatch, docType) =>
+  core.sbCollectVerb_(status, planCreated, pdfMatch, docType).verb;
+
+eq(vd('', false, '', 'oral_plan'), 'make', 'F1: 口腔・計画書がまだ → 計画書を作る');
+eq(vd('', true, '', 'oral_plan'), 'pdf', 'F2: ★口腔・作成済み → サインを飛ばして「PDFにしてフォルダに入れる」');
+eq(vd('', true, 'strong', 'oral_plan'), 'send', 'F3: 口腔・PDFが在れば送る');
+eq(vd('送付済', true, 'strong', 'oral_plan'), 'done', 'F4: 口腔・送付済は出さない');
+eq(vd('保留', true, '', 'oral_plan'), 'pdf', 'F5: 口腔・保留でも作成済みならPDF段階');
+eq(vd('', undefined, '', 'oral_plan'), 'unknown', 'F6: 口腔でも材料が無ければ情報が足りません（黙って消さない）');
+eq(vd('', true, 'weak', 'oral_plan'), 'pdf', 'F7: 口腔・weakは確定させない（集めるタブのPDF段階）');
+
+// 他の書類はサイン工程を持つ＝挙動不変
+eq(vd('', true, '', 'kokun_set'), 'sign', 'F8: 個訓セットは従来どおり「サインをもらう」');
+eq(vd('', true, '', 'tsusho_keikaku'), 'sign', 'F9: 通所介護計画書も従来どおり');
+eq(vd('', true, '', 'tsusho_moni'), 'sign', 'F10: 未指定の書類は従来どおり（サイン側に倒す）');
+eq(vd('', true, '', ''), 'sign', 'F11: docType 空も従来どおり');
+eq(v('', true, ''), 'sign', 'F12: ★第4引数を省略した既存の呼び出しは挙動不変');
+
 // ===== E. 画面に出す文言（内部用語を出さない）=====
 const r = core.sbCollectVerb_('', false, '');
 eq(r.label, '計画書を作る', 'E1: 動詞のラベル');

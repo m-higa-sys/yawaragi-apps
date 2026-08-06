@@ -534,7 +534,11 @@ async function loadData(ym) {
     aliases: (signColsRes && signColsRes.ok && signColsRes.aliases) || {},
     // 計画書ができているかの材料。null は「取れなかった」＝「情報が足りません」へ倒す（0件扱いにしない）。
     kunRecords: (keik && keik.records) || null,
-    tsushoRecords: (tsushoPlansRes && tsushoPlansRes.ok && tsushoPlansRes.records) || null
+    tsushoRecords: (tsushoPlansRes && tsushoPlansRes.ok && tsushoPlansRes.records) || null,
+    // 口腔の計画書ができているかの材料（口腔機能向上記録の plan_date）。
+    // ★同じ getOralPlansYear のレスポンスに既に入っている＝通信は増やさない。
+    // ★行のキーは「節目月ノード」（個訓・通所の適用月ノードとは違う）。引くときは対象月を使う。
+    oralRecords: (oral && oral.records) || null
   };
   state.dataYm = ym;   // どの月のデータを持っているか。月をまたいだ失敗で前月分を見せないため
   return true;
@@ -658,6 +662,14 @@ function buildTasks(ym) {
   const tsuCreated = d.tsushoRecords
     ? sbSignCreatedMap_(d.tsushoRecords.map(r => ({ userId: r.userId, name: r.userId, year: r.year, month: r.month, plan_date: r.plan_date })), 'plan_date')
     : null;
+  // 口腔の作成状況。★引くキーの月が個訓・通所と違う（2026-08-06 実測）。
+  //   個訓・通所の記録は「適用月＝計画期間の開始月」のノードに入るが、
+  //   口腔機能向上記録は「節目月＝対象月」のノードに入る（oral-plan.html の oralCycleAt が
+  //   setsume のとき nodeMonth=当月を返すため）。実測: 7月ノードに plan_date 27件＝7月節目の分。
+  //   適用月(翌月)で引くと空のノードを見て全員「未作成」になるので、口腔だけ対象月で引く。
+  const oralCreated = d.oralRecords
+    ? sbSignCreatedMap_(d.oralRecords.map(r => ({ userId: r.userId, name: r.userId, year: r.year, month: r.month, plan_date: r.plan_date })), 'plan_date')
+    : null;
   tasks.forEach(t => {
     const key = sbNormalizeName_(t.userId);
     const applyYm = t.tekiyoTsuki || t.taishoTsuki;
@@ -666,9 +678,12 @@ function buildTasks(ym) {
       planCreated = !!(kunCreated[key + '|' + applyYm] || kunCreated[t.userId + '|' + applyYm]);
     } else if (t.docType === 'tsusho_keikaku' && tsuCreated) {
       planCreated = !!(tsuCreated[key + '|' + applyYm] || tsuCreated[t.userId + '|' + applyYm]);
+    } else if (t.docType === 'oral_plan' && oralCreated) {
+      planCreated = !!(oralCreated[key + '|' + t.taishoTsuki] || oralCreated[t.userId + '|' + t.taishoTsuki]);
     }
     t.planCreated = planCreated;
-    const cv = sbCollectVerb_(t.status, planCreated, t.pdfMatch);
+    // 口腔は利用者サインの工程が無いので docType を渡す（core が sign を飛ばして pdf にする）。
+    const cv = sbCollectVerb_(t.status, planCreated, t.pdfMatch, t.docType);
     t.verb = cv.verb;
     t.verbLabel = cv.label;
   });
