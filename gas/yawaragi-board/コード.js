@@ -2632,6 +2632,12 @@ function doGet(e) {
       return respond(scanKeikakushoSendFolder_(skYm), callback);
     }
 
+    // --- 読取: フォルダID直指定でファイル名一覧（共有ドライブ対応）---
+    //   実物は共有ドライブ yawaragi／実績 配下にあり、名前検索では届かないためIDで開く。
+    if (action === 'scanDriveFolder') {
+      return respond(scanDriveFolderFiles_(String((e && e.parameter && e.parameter.folderId) || '')), callback);
+    }
+
     // --- 読取: 操作ログ（planStart / due_ym / excluded の変更履歴）---
     // updatePlanStart は既に logKeikakushoOp_ を呼んでいるが読み口が無かった。
     // これが「4件がなぜズレたか」を追えなかった原因。読取のみ・追記はしない。
@@ -14963,6 +14969,36 @@ function ensureOralPlansSheets_() {
 //   月フォルダはここでは作らない（読み取りaction が書き込むのは筋が悪い）。
 //   運用側が作る想定so、無いときは note:'月フォルダ未作成' を返して画面に出す。
 var KEIKAKUSHO_SEND_FOLDER = '計画書送付';
+
+// ============================================================
+// 共有ドライブ「yawaragi」→「実績」配下のフォルダを読む（2026-08-06 実物に合わせる修正）
+// ------------------------------------------------------------
+// なぜ ID直指定なのか:
+//   DriveApp.getFoldersByName() の名前検索は共有ドライブを横断しない。
+//   実測（2026-08-06）で書類の実物は共有ドライブ側にあり、既存の口腔・実績の検知
+//   （getFoldersByName('yawaragi-apps')）はマイドライブしか見ていなかった。
+//   フォルダIDは変わらないので、IDで直接開く。
+// ★読み取り専用。フォルダもファイルも作らない・動かさない。
+// ★ここは「ファイル名を読むだけ」。誰の何の書類かの判定は session-board-core.js。
+// ============================================================
+function scanDriveFolderFiles_(folderId) {
+  var fid = String(folderId || '').trim();
+  if (!fid) return { ok: false, error: 'folderId が必要です', files: [] };
+  try {
+    var folder = DriveApp.getFolderById(fid);
+    var it = folder.getFiles(), names = [];
+    while (it.hasNext()) names.push(it.next().getName());
+    var sub = folder.getFolders(), subNames = [];
+    while (sub.hasNext()) subNames.push(sub.next().getName());
+    return {
+      ok: true, folderId: fid, folderName: folder.getName(),
+      files: names, subFolders: subNames, folderUrl: folder.getUrl()
+    };
+  } catch (err) {
+    // 共有ドライブが読めないときは、その事実をそのまま返す（黙って0件にしない）。
+    return { ok: false, folderId: fid, files: [], error: String((err && err.message) || err) };
+  }
+}
 
 function scanKeikakushoSendFolder_(ym) {
   if (!/^\d{4}-\d{2}$/.test(String(ym || ''))) {
