@@ -75,5 +75,17 @@ ok(core.SB_VERB_ORDER.make < core.SB_VERB_ORDER.sign, 'G1: make が sign より�
 ok(core.SB_VERB_ORDER.sign < core.SB_VERB_ORDER.pdf, 'G2: sign が pdf より上');
 ok(core.SB_VERB_ORDER.pdf < core.SB_VERB_ORDER.unknown, 'G3: unknown は最後');
 
+// ===== H. 済んだ分を必要な時だけ見る（2026-08-06 社長要望）=====
+// 「どこかをタップして、この月にやった人も検索できるといい」
+// ★集めるタブは足りないものだけを維持する（混ざると読めない画面に戻る）so、
+//   済んだ分は送るタブのトグルでだけ出す。判定はここ。
+eq(core.sbIsDoneInMonth_('done', '2026-08-05', '2026-08'), true, 'H1: その月に送った案件は「済んだ分」');
+eq(core.sbIsDoneInMonth_('done', '2026-07-31', '2026-08'), false, 'H2: 先月送った分は今月の「済んだ分」ではない');
+eq(core.sbIsDoneInMonth_('done', '', '2026-08'), false, 'H3: 送付日が無ければ済んだ分に数えない');
+eq(core.sbIsDoneInMonth_('send', '2026-08-05', '2026-08'), false, 'H4: まだ送っていない案件（送るタブの本体）は含めない');
+eq(core.sbIsDoneInMonth_('sign', '', '2026-08'), false, 'H5: 集めるタブの案件は含めない');
+eq(core.sbIsDoneInMonth_('done', '2026-08-05', ''), false, 'H6: 対象月が無ければ何も出さない');
+eq(core.sbIsDoneInMonth_(null, null, null), false, 'H7: null でも落ちない');
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

@@ -139,6 +139,26 @@ ok('検索は両タブで効く（renderの共通経路で絞っている）',
 ok('★「揃った」ボタンは残っている（並走のまま）', /data-act="sorotta"/.test(html));
 ok('★台帳へ書く経路は増えていない（upsert 3本のまま）', count(/action=upsertSoufuStatus/g) === 3);
 
+// 2026-08-06: 「この月にやった人も検索できるといい」（社長）。
+// ★集めるタブは足りないものだけを維持する＝済んだ人を常時出さない。送るタブのトグルでだけ開く。
+console.log('\n[I) 済んだ分を必要な時だけ見る]');
+ok('トグルの置き場がある', /id="doneToggle"/.test(html));
+ok('トグルを描く関数がある', /function renderDoneToggle\(/.test(html));
+ok('既定はOFF', /showDone:\s*false/.test(html));
+ok('★状態を保存しない（localStorageに入れない）', !/showDone[^\n]*localStorage/.test(html));
+ok('判定は core に委譲（画面に月の判定を書かない）', /sbIsDoneInMonth_\(/.test(html));
+ok('★集めるタブでは出さない', /renderDoneToggle\(0,\s*true\)/.test(html));
+ok('ONのときだけ完了分を足す', /state\.showDone[\s\S]{0,120}sbIsDoneInMonth_/.test(html));
+ok('検索がこの一覧にも効く', /sbIsDoneInMonth_[\s\S]{0,200}matchesSearch\(t, tokens\)/.test(html));
+ok('書類フィルタもこの一覧に効く', /sbIsDoneInMonth_[\s\S]{0,160}state\.docFilter/.test(html));
+// ★「あと○件」の母数を動かさない＝remainMap は baseFiltered から取ったまま
+ok('★あと○件の母数は baseFiltered のまま（トグルで数字が動かない）',
+   /const remainMap = officeRemainMap\(baseFiltered\)/.test(html));
+ok('完了分は既存の taskRow で描く＝送付済の見た目（state-blue）で区別される',
+   /state-blue/.test(html) && /✓ 送付済/.test(html));
+ok('トグルのCSSがある', /\.dchip\s*\{/.test(html));
+ok('★台帳へ書く経路は増えていない（upsert 3本のまま）', count(/action=upsertSoufuStatus/g) === 3);
+
 console.log('\n=== 結果 ===');
 console.log('PASS ' + pass + ' / FAIL ' + fail);
 process.exit(fail === 0 ? 0 : 1);

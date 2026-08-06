@@ -877,11 +877,22 @@ function sbIsCollectVerb_(verb) {
   return verb === 'make' || verb === 'sign' || verb === 'pdf' || verb === 'unknown';
 }
 
+// その月に「済んだ」案件か（2026-08-06 社長要望「この月にやった人も検索できるといい」）。
+// ★集めるタブは足りないものだけを維持する＝済んだ人を常時出さない（混ざると読めない画面に戻る）。
+//   送るタブのトグルを開いたときだけ、この判定に当たるものを足して見せる。
+//   基準は sofu_at（実際に送った日）の月＝画面上部の「今月送付済」の数え方と同じ。
+function sbIsDoneInMonth_(verb, sofuAt, ym) {
+  if (verb !== 'done') return false;
+  if (!/^\d{4}-\d{2}$/.test(String(ym || ''))) return false;
+  return String(sofuAt || '').slice(0, 7) === String(ym);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     sbNormalizeName_: sbNormalizeName_,
     sbCollectVerb_: sbCollectVerb_,
     sbIsCollectVerb_: sbIsCollectVerb_,
+    sbIsDoneInMonth_: sbIsDoneInMonth_,
     sbSignCreatedMap_: sbSignCreatedMap_,
     SB_VERB_LABEL: SB_VERB_LABEL,
     SB_VERB_ORDER: SB_VERB_ORDER,

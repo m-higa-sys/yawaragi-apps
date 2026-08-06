@@ -103,6 +103,11 @@
   .cdetail { margin-top: 9px; padding-top: 9px; border-top: 1px dashed #e3e9ee; font-size: 12px; color: #4a5568; }
   .cdetail div { margin-bottom: 3px; }
   .cdetail .k { display: inline-block; min-width: 6.5em; color: #90a0ad; }
+  /* 「済んだ分も見る」トグル（送るタブのみ・既定OFF） */
+  .dchip { display: inline-block; margin: 2px 2px 8px; padding: 7px 14px; border-radius: 999px;
+    border: 1px solid #cfd8dc; background: #fff; color: #5b6b78; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+  .dchip.on { border-color: #2c5282; background: #eaf1f8; color: #2c5282; }
+  .dchip:active { transform: translateY(1px); }
   .rail-folder { display: block; margin-top: 6px; }
   .folder-btn { display: inline-block; padding: 6px 12px; border-radius: 8px; background: #2c5282; color: #fff;
     font-size: 12px; font-weight: bold; text-decoration: none; }
@@ -232,6 +237,9 @@
 
 <div class="filters" id="filters"></div>
 
+<!-- 「済んだ分も見る」トグル（送るタブのみ・既定OFF・保存しない） -->
+<div id="doneToggle"></div>
+
 <div id="taskList"><div class="loading">読み込み中…</div></div>
 
 <div class="undo-toast hidden" id="undoToast"><span id="undoMsg"></span><button id="undoBtn">元に戻す</button></div>
@@ -242,7 +250,7 @@
 <!-- 署名済みPDFの照合（sbFindSignedPdf_ / sbBuildPdfFoundMap_ / sbNormalizeName_）。
      判定の正本は session-board-core.js の1本だけ。ここにも GAS にも複製を置かない。
      ※ _config.yml で exclude されていない＝Pages配信される（measure-app.html も同じ読み方） -->
-<script src="gas/yawaragi-board/session-board-core.js?v=2026-08-06c"></script>
+<script src="gas/yawaragi-board/session-board-core.js?v=2026-08-06d"></script>
 <script>
 // ============================================================
 // ケアマネ提出物 統合管理 — スタッフビュー v1（Phase 2）
@@ -394,7 +402,10 @@ const state = {
   dataYm: '', loadFailed: false, failedSources: [],
   // 2タブ（2026-08-06）。初期表示は「集める」＝スタッフが開いて最初に見るのは足りないもの。
   // ★保存しない。前回「送る」で終えた人が翌日そのまま開くと、集めるべきものに気づけないため。
-  mainTab: 'collect'
+  mainTab: 'collect',
+  // 「済んだ分も見る」（2026-08-06 社長要望）。★保存しない＝開き直すと必ずOFFに戻る。
+  // 普段は隠れているのが既定。常時出すと「足りないものだけ」の画面に戻ってしまう。
+  showDone: false
 };
 
 // ---------- JSONP ----------
@@ -700,11 +711,22 @@ function render() {
     mtabs[i].className = 'mtab' + (mtabs[i].getAttribute('data-tab') === state.mainTab ? ' on' : '');
   }
   if (state.mainTab === 'collect') {
+    renderDoneToggle(0, true);   // 集めるタブには出さない（足りないものだけの画面を保つ）
     renderCollect(filtered.filter(t => sbIsCollectVerb_(t.verb)), tokens);
     return;
   }
   // 送るタブは従来どおり（filtered をさらに send に絞るだけ＝挙動は現行と同じ）
   filtered = filtered.filter(t => t.verb === 'send');
+  // 「済んだ分も見る」がONのときだけ、その月に送り終えた案件を足す（2026-08-06 社長要望）。
+  // ★baseFiltered は「未完了のみ」で送付済を落としているso、ここは state.tasks から拾う。
+  // ★remainMap（あと○件）は baseFiltered から算出済み＝トグルで数字は動かない。
+  const doneRows = state.showDone
+    ? state.tasks.filter(t => sbIsDoneInMonth_(t.verb, t.sofu_at, state.ym)
+        && (state.docFilter === 'all' || DOC[t.docType].filter === state.docFilter)
+        && matchesSearch(t, tokens))
+    : [];
+  renderDoneToggle(doneRows.length);
+  filtered = filtered.concat(doneRows);
 
   // 事業所グループ（送付方法順）
   const groups = {}; // office -> tasks[]
@@ -771,6 +793,18 @@ function renderPdfFolderLink() {
     + '<span class="rail-note">この中に入っているPDFを、この画面が自動で見つけます。'
     + 'ファイル名は今までどおりで構いません（フルネームだけ必ず入れてください）</span>'
     + (ng.length ? '<span class="rail-note">⚠ 読めなかったフォルダ: ' + esc(ng.join('／')) + '</span>' : '');
+}
+
+// 「済んだ分も見る」トグル（送るタブのみ）。hide=true で消す（集めるタブ）。
+// ★件数は「その月に送り終えた数」。上部の「あと○件」バッジには影響させない。
+function renderDoneToggle(n, hide) {
+  const el = document.getElementById('doneToggle');
+  if (!el) return;
+  if (hide) { el.innerHTML = ''; return; }
+  el.innerHTML = '<span class="dchip' + (state.showDone ? ' on' : '') + '" id="doneChip">'
+    + (state.showDone ? '✓ 済んだ分も表示中（' + n + '件）　タップで隠す' : '＋ 今月 済んだ分も見る') + '</span>';
+  const chip = document.getElementById('doneChip');
+  if (chip) chip.onclick = () => { state.showDone = !state.showDone; render(); };
 }
 
 // ===== 集めるタブ（2026-08-06 社長決定）=====
