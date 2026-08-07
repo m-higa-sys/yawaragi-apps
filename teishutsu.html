@@ -75,6 +75,8 @@
   .task .badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .badge { font-size: 11px; border-radius: 9px; padding: 2px 8px; }
   .b-carry { background: #fff3e0; color: #ef6c00; border: 1px solid #ffb74d; font-weight: bold; }
+  /* 中止した方の書類（2026-08-07）。灰色＝「もう来ていない」を色でも伝える。 */
+  .b-chushi { background: #eceff1; color: #455a64; border: 1px solid #b0bec5; font-weight: bold; }
   .b-reason { background: #f3e5f5; color: #7b1fa2; cursor: pointer; }
   .b-reason.empty { background: #fce4ec; color: #c2185b; border: 1px dashed #c2185b; }
   .b-kigen { background: #ffebee; color: #c62828; font-weight: bold; }
@@ -98,6 +100,9 @@
   .crow.unknown { border-left-color: #a0aec0; background: #f7f8f9; }
   .crow .cverb { font-size: 15px; font-weight: 800; color: #1a202c; }
   .crow .cwho { font-size: 15px; font-weight: 800; color: #1a202c; margin-left: 2px; }
+  /* 中止した方（2026-08-07）。集めるタブの行はバッジ欄を持たないので、ここに小さく出す。 */
+  .crow .cchushi { font-size: 11px; font-weight: bold; color: #455a64; background: #eceff1;
+                   border: 1px solid #b0bec5; border-radius: 9px; padding: 1px 7px; margin-left: 6px; }
   .crow .cdoc { font-size: 12.5px; color: #5b6b78; margin-top: 3px; }
   .crow .cmore { font-size: 11px; color: #90a0ad; margin-top: 4px; }
   .cdetail { margin-top: 9px; padding-top: 9px; border-top: 1px dashed #e3e9ee; font-size: 12px; color: #4a5568; }
@@ -263,7 +268,7 @@
 <!-- 署名済みPDFの照合（sbFindSignedPdf_ / sbBuildPdfFoundMap_ / sbNormalizeName_）。
      判定の正本は session-board-core.js の1本だけ。ここにも GAS にも複製を置かない。
      ※ _config.yml で exclude されていない＝Pages配信される（measure-app.html も同じ読み方） -->
-<script src="gas/yawaragi-board/session-board-core.js?v=2026-08-06d"></script>
+<script src="gas/yawaragi-board/session-board-core.js?v=2026-08-06e"></script>
 <script>
 // ============================================================
 // ケアマネ提出物 統合管理 — スタッフビュー v1（Phase 2）
@@ -526,6 +531,9 @@ async function loadData(ym) {
   state.failedSources = [];
   state.data = {
     pop: (oral.users || []).filter(u => !u.cancelled),
+    // ★中止者は当月変換層には入れない（母集団ルールは締めと同じまま）。
+    //   繰越行の表示情報を引くためだけに持つ（2026-08-07）。
+    cancelledUsers: (oral.cancelledUsers || []),
     dueMap: due.dueDates || {},
     monMap, keikMap, contactMap,
     ledgerRows: ledger.rows || [],
@@ -542,6 +550,21 @@ async function loadData(ym) {
   };
   state.dataYm = ym;   // どの月のデータを持っているか。月をまたいだ失敗で前月分を見せないため
   return true;
+}
+
+// 台帳の行に載せる表示情報を引く（2026-08-07）。
+// ★なぜ中止者も見るか: 締め(soufu-close-core)は「中止者でも対象月に実績1日以上」なら母集団に含めるので、
+//   台帳には中止者の行が立つ。繰越行は台帳から直接作るため行自体は出ていたが、表示情報を pop
+//   （users から cancelled を除いた配列）からしか引いていなかったため毎回 `|| {}` に落ち、
+//   事業所名・フリガナ・介護度が失われていた（実測2026-08-07: 該当1件が「(事業所未登録)」枠へ）。
+//   ★特に category が空になると careOf('') が要介護に倒れ、要支援の中止者の分類がずれる。
+// ★母集団は変えない。ここは「既に台帳にある行の見た目」を直すだけで、行を増やしも減らしもしない。
+function carryUserInfo(pop, cancelledUsers, userId) {
+  const u = (pop || []).find(x => x.userId === userId);
+  if (u) return { u: u, cancelled: false };
+  const c = (cancelledUsers || []).find(x => x.userId === userId);
+  if (c) return { u: c, cancelled: true };
+  return { u: {}, cancelled: false };   // どちらにも居ない＝不明。中止に化かさない
 }
 
 // ---------- 変換層（当月ベース）＋台帳マージ ----------
@@ -604,13 +627,16 @@ function buildTasks(ym) {
     if (r.docType === 'jisseki' || r.docType === 'oral_moni') return;
     const key = r.userId + '|' + r.docType + '|' + r.taishoTsuki;
     if (curKeys.has(key)) return;
-    const uinfo = (d.pop.find(u => u.userId === r.userId)) || {};
+    // ★中止者も引く（2026-08-07）。行が増えるわけではなく、既に出ている行の情報が埋まるだけ。
+    const found = carryUserInfo(d.pop, d.cancelledUsers, r.userId);
+    const uinfo = found.u;
     tasks.push({
       userId: r.userId, docType: r.docType, care: careOf(uinfo.category || ''),
       office: uinfo.cmOffice || '(事業所未登録)', furigana: uinfo.furigana || '',
       taishoTsuki: r.taishoTsuki, tekiyoTsuki: r.tekiyoTsuki || '',
       status: r.status, sorotta_by: r.sorotta_by, sofu_at: r.sofu_at,
-      kurikoshiRiyu: r.kurikoshiRiyu, signKigen: r.signKigen, isCarry: true
+      kurikoshiRiyu: r.kurikoshiRiyu, signKigen: r.signKigen, isCarry: true,
+      isCancelled: found.cancelled, cancelDate: uinfo.cancelDate || ''
     });
   });
 
@@ -885,7 +911,10 @@ function collectRow(t) {
   const doc = DOC_PLAIN[t.docType] || DOC[t.docType].label;
   const apply = t.tekiyoTsuki ? '（' + jpMonth(t.tekiyoTsuki) + 'から）' : '';
   return '<div class="crow ' + esc(t.verb) + '" data-collect="' + id + '">'
-    + '<div><span class="cverb">' + esc(t.verbLabel) + '</span>　<span class="cwho">' + esc(t.userId) + 'さん</span></div>'
+    + '<div><span class="cverb">' + esc(t.verbLabel) + '</span>　<span class="cwho">' + esc(t.userId) + 'さん</span>'
+    // ★中止した方はここでも分かるようにする（2026-08-07）。この行はバッジ欄を持たないため、
+    //   出さないと「作れ」とだけ見えて、現場が「もう来ていないのに？」と手を止める。
+    + (t.isCancelled ? '<span class="cchushi">🛑 中止</span>' : '') + '</div>'
     + '<div class="cdoc">' + esc(doc) + esc(apply) + '</div>'
     + '<div class="cmore">タップすると詳しい情報が出ます</div>'
     + '<div class="cdetail" id="cd-' + id + '" style="display:none"></div></div>';
@@ -896,6 +925,8 @@ function collectDetail(t) {
   const method = (state.data.contactMap[normOffice(t.office)] || {}).method || '（未登録）';
   const rows = [
     ['対象の月', jpMonth(t.taishoTsuki) + '分' + (t.isCarry ? '（先月から持ち越し）' : '')],
+    // 中止した方の書類は、中止月までに必要だった分so提出義務が残る。日付まで見せて判断材料にする。
+    ...(t.isCancelled ? [['利用の状況', '中止' + (t.cancelDate ? '（' + t.cancelDate + '）' : '') + '　※中止月までの書類は提出が要ります']] : []),
     ['いつから使う', t.tekiyoTsuki ? jpMonth(t.tekiyoTsuki) + 'から' : '—'],
     ['書類', DOC[t.docType].label],
     ['ケアマネ事業所', t.office],
@@ -956,6 +987,10 @@ function taskRow(t) {
   const method = (state.data.contactMap[normOffice(t.office)] || {}).method || '';
   const id = btoa(unescape(encodeURIComponent(t.userId + '|' + t.docType + '|' + t.taishoTsuki))).replace(/=/g, '');
   let badges = '';
+  // ★中止した方の書類。現場が「この人もう来ていないのに？」と迷わないよう先頭に出す（2026-08-07）。
+  //   消さずに出すのは、中止月までに必要だった書類は提出義務が残るため。
+  if (t.isCancelled) badges += '<span class="badge b-chushi">🛑 中止'
+    + (t.cancelDate ? '（' + esc(String(t.cancelDate).slice(5).replace('-', '/')) + '）' : '') + '</span>';
   if (t.isCarry) badges += '<span class="badge b-carry">↩ ' + Number(t.taishoTsuki.split('-')[1]) + '月から繰越</span>';
   if (t.status !== '送付済') {
     if (t.status === '保留') badges += '<span class="badge b-hold">⏸ 保留</span>';
