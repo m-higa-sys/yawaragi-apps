@@ -37,7 +37,10 @@ var STAFF_HEADERS = [
   '日次ルールタグ', '保有資格', 'シフト用役割', '備考',
   '職種③', '勤務形態区分③', '比率③',
   // 2026-08-06 追加。常勤/非常勤の判定入力。出典＝有給管理簿（syncFromYukyu() が書く）
-  '週所定時間'
+  '週所定時間',
+  // 2026-08-07 追加。打刻しない職員（役員など）の勤務をこの値で計上する。
+  // 形式: 「40h / 08:30-17:30 × 週5日」
+  '固定勤務パターン'
 ];
 // doGet が必須とするのは元の14列だけ。③列が未追加のシートでも読めるようにする。
 var STAFF_HEADERS_REQUIRED = STAFF_HEADERS.slice(0, 14);
@@ -60,18 +63,28 @@ var SETTINGS_ROWS = [
   ['PM時間窓_終了',      '17:00',  'HH:MM',              '確定',
     '[確定] 指示書。中島さん版JSONの実値とも一致'],
 
-  // 2026-08-05 社長判断4: 分母は用途別に2つ持つ。40 と 160 は「不一致」ではなく「別用途」。
-  ['常勤所定_週時間_一覧表用',    40,  '時間/週', '確定',
-    '[確定] 勤務形態一覧表の分母。様式(12)週平均勤務時間数の基準。AM/PMフォーマット.xlsx AX6=40 と一致'],
-  ['常勤所定_月時間_加算判定用', 160, '時間/月', '暫定',
-    '★暫定。サービス提供体制強化加算の常勤換算の分母。AM/PMフォーマット.xlsx BB6=160 由来。' +
-    '東松山市の最新様式＋就業規則の裏取り後に確定（クロが別途担当）。週40との差は別用途によるもので不一致ではない'],
+  // 2026-08-07 決着①: 集計期間は暦月。参考様式1(2020-21)の4週固定は旧様式。
+  // 厚労省の全国統一様式化で 4週間 → 1か月(暦月) に変更された。中島さん版テンプレが正しい。
+  ['集計期間', '暦月', '暦月/4週', '確定',
+    '[確定2026-08-07] 全国統一様式で 4週間→1か月(暦月) に変更済み。' +
+    '過去提出物(参考様式1・2020-21年)は旧様式の4週固定なので期間仕様はそちらに寄せない'],
 
-  // 2026-08-05 社長判断5: 端数処理は「仮:未確定」のまま維持。触らない。
-  ['端数処理_方式',      '要確認', '切上/切捨/四捨五入', '未確定',
-    '★未確定のまま維持（社長判断5）。第2弾の計算エンジン実装前に確定が必要。中島さん版は四捨五入だった'],
-  ['端数処理_桁数',      '要確認', '小数第N位',          '未確定',
-    '★未確定のまま維持（社長判断5）。中島さん版は小数第2位(toFixed(2))だった'],
+  // 2026-08-07 決着②: 分母は月ごとに変動する。40h固定でも160h固定でもない。
+  // 設定は「週所定時間=40」だけを持ち、月の分母は計算で出す。
+  ['常勤所定_週時間', 40, '時間/週', '確定',
+    '[確定] 常勤職員が週に勤務すべき時間数。常勤/非常勤の判定と、月の分母の算出に使う。' +
+    '過去提出物の記入済み26行が「週平均÷40」で完全一致したことと合致'],
+  ['月分母_算出方法', '週所定時間 × 当月日数 ÷ 7', '式', '確定',
+    '[確定2026-08-07] 常勤職員の当該月における勤務すべき時間数。月ごとに変動する。' +
+    '例: 31日の月=177.1h / 30日の月=171.4h / 28日の月=160.0h。' +
+    '旧様式の160hは「4週=28日ぶん」の数字であって月の固定値ではない'],
+
+  // 2026-08-07 決着③: 端数処理を確定（新旧共通）。
+  ['端数処理_方式', '切り捨て', '切上/切捨/四捨五入', '確定',
+    '[確定2026-08-07] 様式注記5「算出にあたっては、小数点以下第２位を切り捨ててください。」' +
+    'かつ実物26行が切り捨てで一致（15/4=3.7、3/4=0.7。四捨五入では説明できない）'],
+  ['端数処理_桁数', '小数第1位', '小数第N位', '確定',
+    '[確定2026-08-07] 小数点以下第2位を切り捨て＝小数第1位まで残す。週平均・常勤換算の両方に掛かる'],
 
   // 2026-08-05 社長判断2: A/B/C/D の定義を確定。人の頭に置かずここに書く。
   ['区分A_定義', '常勤・専従',   '凡例', '確定', '[確定] 標準様式1(7)勤務形態欄'],
@@ -99,6 +112,51 @@ var TAGS_SWITCHING_SHOKUSHU = ['相談員条件'];
      （週32時間を下回る場合は32時間を基本）に達しているか」。雇用形態の名前では決まらない。
    専従/兼務   … 職種が2つ以上なら兼務。
    ------------------------------------------------------------ */
+
+// 設定から常勤の週所定時間を引く。旧キー名のシートでも読めるようにしておく。
+function shoteiWeekHours_(settingsFlat) {
+  var f = settingsFlat || {};
+  var v = f['常勤所定_週時間'];
+  if (v === undefined || v === '') v = f['常勤所定_週時間_一覧表用'];
+  var n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+// YYYY-MM の当月日数
+function daysInMonth_(ym) {
+  var m = String(ym || '').match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) return null;
+  var y = Number(m[1]), mo = Number(m[2]);
+  if (mo < 1 || mo > 12) return null;
+  return new Date(y, mo, 0).getDate();
+}
+
+// 2026-08-07 決着②: 常勤職員の当該月における勤務すべき時間数（＝月の分母）。
+// 40h固定でも160h固定でもなく、月ごとに変動する。
+//   40 × 31 ÷ 7 = 177.14…  /  40 × 30 ÷ 7 = 171.42…  /  40 × 28 ÷ 7 = 160.0
+// 旧様式の160hは「4週=28日ぶん」の数字。
+function monthlyDenominator_(weekHours, days) {
+  var w = Number(weekHours), d = Number(days);
+  if (!weekHours || !days || isNaN(w) || isNaN(d)) return null;
+  return w * d / 7;
+}
+
+// 固定勤務パターン「40h / 08:30-17:30 × 週5日」を構造化する。
+// 読めない部分は null にして raw は必ず残す（黙って捨てない）。
+function parseFixedPattern_(v) {
+  var raw = cell_(v);
+  if (!raw || raw === '要確認') return null;
+  var h = raw.match(/([0-9]+(?:\.[0-9]+)?)\s*h/i);
+  var t = raw.match(/([0-9]{1,2}:[0-9]{2})\s*[-~〜～]\s*([0-9]{1,2}:[0-9]{2})/);
+  var d = raw.match(/週\s*([0-9]+(?:\.[0-9]+)?)\s*日/);
+  return {
+    raw: raw,
+    週時間: h ? Number(h[1]) : null,
+    開始: t ? t[1] : null,
+    終了: t ? t[2] : null,
+    週日数: d ? Number(d[1]) : null
+  };
+}
 
 // 常勤とみなす週所定時間のしきい値。事業所の所定が32hを下回るなら32hを基本にする。
 function fulltimeThreshold_(shoteiWeekHours) {
@@ -148,6 +206,20 @@ var YUKYU_SNAPSHOT_20260806 = {
   '星野友太':   { 入社日: '2026-02-13', 週所定時間: 40 },
   '大久保好美': { 入社日: '2026-03-02', 週所定時間: 8 },
   '石井祐子':   { 入社日: '2026-04-01', 週所定時間: 15 }
+};
+
+// 2026-08-07 社長判断。applyDecisions20260807() が書く。
+// 比嘉さんは代表取締役で雇用契約上の所定時間の定めが無いが、介護保険上の常勤判定は
+// 「当該事業所で常勤者が勤務すべき時間数に達しているか」なので、実態の週40h以上をもって常勤。
+// 比率20:80 は過去提出物の田村てるみ氏の実績（管理者25h / 生活相談員131.8h ≒ 16:84）に整合。
+// 管理者は常勤換算の対象外なので、管理業務の実時間だけを小さく計上する自社の従来運用。
+var DECISIONS_20260807 = {
+  '比嘉学': {
+    '週所定時間': 40,
+    '職種①': '管理者',            '比率①': 20,
+    '職種②': '機能訓練指導員',    '比率②': 80,
+    '固定勤務パターン': '40h / 08:30-17:30 × 週5日'
+  }
 };
 
 // 2026-08-06 にクロコ側で確定した値（社長判断不要）。applyDecisions20260806() が書く。
@@ -214,7 +286,8 @@ function doGet(e) {
 
     var activeOnly = String(p.activeOnly || '') === '1';
     var stPre = readSettings_(ss);
-    var threshold = fulltimeThreshold_(stPre.flat['常勤所定_週時間_一覧表用']);
+    var shoteiWeek = shoteiWeekHours_(stPre.flat);
+    var threshold = fulltimeThreshold_(shoteiWeek);
 
     var staff = [];
     var yokakuninTotal = 0;
@@ -266,6 +339,12 @@ function doGet(e) {
       rec.勤務形態区分 = kubun;
       rec.職種.forEach(function (s) { s.勤務形態区分 = kubun; });
 
+      // 打刻しない職員（役員など）。★第2弾: 打刻データを優先し、
+      // 打刻が1件も無い職員だけこのパターンで計上する。両方あれば打刻を採る。
+      rec.固定勤務パターン = ('固定勤務パターン' in idx)
+        ? parseFixedPattern_(row[idx['固定勤務パターン']]) : null;
+      rec.打刻対象外 = !!rec.固定勤務パターン;
+
       // 未確定の項目を機械的に拾う（要確認一覧の単一の正）
       rec.要確認 = collectYokakunin_(row, idx);
       yokakuninTotal += rec.要確認.length;
@@ -280,6 +359,10 @@ function doGet(e) {
       spreadsheetId: SPREADSHEET_ID,
       settings: st.flat,
       settingsMeta: st.meta,
+      常勤基準_週時間: threshold,
+      // 月の分母は月ごとに変わる。?ym=YYYY-MM を渡すとその月ぶんを計算して返す。
+      対象月: cell_(p.ym) || null,
+      月分母: monthlyDenominator_(shoteiWeek, daysInMonth_(cell_(p.ym))),
       staff: staff,
       counts: {
         total: staff.length,
@@ -375,7 +458,7 @@ function setupSheets() {
   var headerNow = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
     .map(function (h) { return String(h).trim(); });
   var added = [];
-  ['職種③', '勤務形態区分③', '比率③', '週所定時間'].forEach(function (h) {
+  ['職種③', '勤務形態区分③', '比率③', '週所定時間', '固定勤務パターン'].forEach(function (h) {
     if (headerNow.indexOf(h) >= 0) return;          // 既にあるなら何もしない
     var col = sh.getLastColumn() + 1;
     if (sh.getMaxColumns() < col) sh.insertColumnsAfter(sh.getMaxColumns(), 1);
@@ -399,7 +482,8 @@ function setupSheets() {
     '職種①': 130, '勤務形態区分①': 120, '比率①': 60,
     '職種②': 130, '勤務形態区分②': 120, '比率②': 60,
     '日次ルールタグ': 130, '保有資格': 240, 'シフト用役割': 170, '備考': 520,
-    '職種③': 130, '勤務形態区分③': 120, '比率③': 60, '週所定時間': 100
+    '職種③': 130, '勤務形態区分③': 120, '比率③': 60, '週所定時間': 100,
+    '固定勤務パターン': 220
   };
   Object.keys(widths).forEach(function (name) {
     var c = colOf(name);
@@ -634,6 +718,16 @@ function syncFromYukyu() {
 
 // ② 2026-08-06 にクロコ側で確定した値を書く（社長判断不要ぶん）
 function applyDecisions20260806() {
+  return applyDecisionTable_(DECISIONS_20260806, '2026-08-06');
+}
+
+// ②' 2026-08-07 の社長判断（比嘉さんの確定値）を書く
+function applyDecisions20260807() {
+  return applyDecisionTable_(DECISIONS_20260807, '2026-08-07');
+}
+
+// 確定値テーブルをシートへ書く共通処理。冪等。人が手で入れた別の値は上書きしない。
+function applyDecisionTable_(table, label) {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sh = ss.getSheetByName(SHEET_STAFF);
   var data = sh.getDataRange().getValues();
@@ -644,7 +738,7 @@ function applyDecisions20260806() {
   var changed = [], skipped = [];
   for (var r = 1; r < data.length; r++) {
     var name = cell_(data[r][idx['氏名']]);
-    var dec = DECISIONS_20260806[name];
+    var dec = table[name];
     if (!dec) continue;
     Object.keys(dec).forEach(function (col) {
       if (!(col in idx)) { skipped.push(name + ' ' + col + ': 列が無い'); return; }
@@ -658,7 +752,11 @@ function applyDecisions20260806() {
       changed.push(name + ' ' + col + ' → ' + dec[col]);
     });
   }
-  var info = { 反映: changed.length ? changed : '（なし）', 見送り: skipped.length ? skipped : '（なし）' };
+  var info = {
+    対象: label,
+    反映: changed.length ? changed : '（なし・既に反映済み）',
+    見送り: skipped.length ? skipped : '（なし）'
+  };
   Logger.log(JSON.stringify(info, null, 2));
   return info;
 }
@@ -667,7 +765,7 @@ function applyDecisions20260806() {
 function syncDerived() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sh = ss.getSheetByName(SHEET_STAFF);
-  var threshold = fulltimeThreshold_(readSettings_(ss).flat['常勤所定_週時間_一覧表用']);
+  var threshold = fulltimeThreshold_(shoteiWeekHours_(readSettings_(ss).flat));
 
   var data = sh.getDataRange().getValues();
   var hdr = data[0].map(function (h) { return String(h).trim(); });

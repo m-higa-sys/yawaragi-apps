@@ -96,8 +96,8 @@ console.log('人数: ' + res.counts.total + '（在籍 ' + res.counts.active + '
 console.log('要確認: 合計 ' + total + ' 項目');
 console.log('');
 
-console.log('■ 勤務形態区分（導出結果）  常勤基準 = ' +
-  ctx.fulltimeThreshold_(res.settings['常勤所定_週時間_一覧表用']) + ' 時間/週');
+// しきい値は API が返す値をそのまま使う（設定キー名を2箇所で持たないため）
+console.log('■ 勤務形態区分（導出結果）  常勤基準 = ' + res.常勤基準_週時間 + ' 時間/週');
 const KUBUN_LABEL = { A: '常勤・専従', B: '常勤・兼務', C: '非常勤・専従', D: '非常勤・兼務' };
 staff.forEach((s) => {
   const k = s.勤務形態区分;
