@@ -7578,6 +7578,8 @@ function getMonthlyShichi(ss, ym) {
 // ============================================================
 var DIGEST_OPS_URL = SOUGEI_GAS_URL + '?action=getOps';
 var DIGEST_FURIKAE_URL = 'https://script.google.com/macros/s/AKfycbwT5wX9EsPnE6tQEPMIAzojDfb6YpxthVxlkX7t7B2phfFKkV5btF5dkXEtjEQDwfgr7A/exec?action=getFurikae&t=now';
+// 電算 結果Excel の取込リマインドを翌月この日から出す（振替日27+6〜8日≒翌月上旬・運用調整可）。
+var FURIKAE_IMPORT_START_DAY = 3;
 
 function morningDigest(e) {
   var callback = (e && e.parameter) ? e.parameter.callback : null;
@@ -7602,9 +7604,18 @@ function morningDigest(e) {
     return { status: sougeiOpsStatus_(d, dateStr) };
   });
   // 外部アプリ: 振替不能（月別・未解決=回収済以外）
+  // 取得した records は下の furikaeImport と共有する（外部呼び出しを1回に抑える・2026-08-08）。
+  // 取得失敗のときは null のままにして、furikaeImport 側を沈黙させる。
+  var furikaeRecords = null;
   safe('furikae', function () {
     var d = JSON.parse(UrlFetchApp.fetch(DIGEST_FURIKAE_URL, { muteHttpExceptions: true }).getContentText());
-    return foldFurikaeByMonth_(d.records || []);
+    furikaeRecords = d.records || [];
+    return foldFurikaeByMonth_(furikaeRecords);
+  });
+  // 電算 結果Excel 取込リマインド（終わるまで方式・翌月 FURIKAE_IMPORT_START_DAY 日から催促）
+  // null=催促なし。判定は純関数 furikaeImportReminder_（テスト: scripts/test-furikae-import-remind.js）。
+  safe('furikaeImport', function () {
+    return furikaeImportReminder_(furikaeRecords, dateStr, FURIKAE_IMPORT_START_DAY);
   });
   // 区変中（既存ハンドラ再利用・編集なし）
   safe('kubun', function () {
@@ -8662,6 +8673,36 @@ function foldFurikaeByMonth_(records) {
     Object.keys(byMonth[m]).forEach(function (st) { unresolvedTotal += byMonth[m][st]; });
   });
   return { byMonth: byMonth, unresolvedTotal: unresolvedTotal };
+}
+// "YYYY-MM-DD" → 前月の "YYYY-MM"（_digestNextYm_ の鏡写し・年またぎ対応）
+// テスト: scripts/test-furikae-import-remind.js（実コード抽出方式）
+function _digestPrevYm_(dateStr) {
+  var y = parseInt(dateStr.slice(0, 4), 10), m = parseInt(dateStr.slice(5, 7), 10);
+  var py = m === 1 ? y - 1 : y, pm = m === 1 ? 12 : m - 1;
+  return py + '-' + ('0' + pm).slice(-2);
+}
+// 電算 結果Excel(kekka.xls) の取込リマインド判定。null=催促なし／object=催促。
+// 設計: docs/superpowers/specs/2026-07-06-furikae-kekka-import-remind-design.md §6
+// 終わるまで方式＝取り込むまで毎朝居座り、取り込んだら自動で消える（手動完了の操作は無い）。
+// 対象は前月 M-1 固定（振替日=前月27日・結果DL可は翌月上旬）。前月しか見ないので、
+// 機能導入前の過去月が誤催促を生まない。
+// 「取込済」の判定は month の有無だけで、status も isImportMarker も読まない。
+//   ・不能あり → 不能カードが該当月に載る
+//   ・不能0件 → 取込済マーカー1件が載る（furikae.html fnkApplyImportMarker）
+// records が null/undefined（＝取得失敗）のときは催促しない（社長判断 2026-08-08）。
+// 取込済か不明な状態で催促すると、取り込んだ人に催促し続ける事故になる。
+// 誤って黙る方が、誤って騒ぐより害が小さい。※空配列[]は「取得成功・1件も無い」＝催促する。
+function furikaeImportReminder_(records, dateStr, startDay) {
+  if (!records) return null;                             // 取得失敗 → 沈黙
+  var day = parseInt(dateStr.slice(8, 10), 10);
+  if (day < startDay) return null;                       // 翌月上旬前は静観
+  var target = _digestPrevYm_(dateStr);                  // 対象＝前月 M-1 固定
+  var imported = records.some(function (r) { return r && r.month === target; });
+  if (imported) return null;                             // 取込済 → 自動消滅
+  return {
+    month: target,
+    message: '電算から結果Excel(kekka.xls)をDL → 振替不能トラッカーに取込（' + target + '分・未取込）'
+  };
 }
 // getLongLeaveList の1レコードから朝報告フラグを計算（スキル Step 3.7 準拠の4種）
 function computeLongLeaveFlags_(r, todayStr) {

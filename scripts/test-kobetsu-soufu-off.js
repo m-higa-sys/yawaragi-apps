@@ -172,13 +172,16 @@ sec('8. GAS: 朝の報告の他のセクションを1つも壊していない');
 {
   const SECTIONS = ['intakeFollowup', 'sougeiOps', 'furikae', 'kubun', 'scheduled', 'longLeave', 'keikakushoBlocked',
     'monitoringExpiring', 'monthlyDocs', 'pendingTasks', 'keikakushoSoufu', 'shift', 'teirei', 'chushi',
-    'yukyuGrant', 'koyouKeiyaku', 'yarinokoshi', 'undone'];
+    'yukyuGrant', 'koyouKeiyaku', 'yarinokoshi', 'undone',
+    'furikaeImport'];  // 2026-08-08 追加: 電算 結果Excel 取込リマインド（設計 §3-b）
   SECTIONS.forEach(s => ok(gas.indexOf("safe('" + s + "'") >= 0, 'セクション ' + s + ' が残っている'));
   // 数の増減は morningDigest 関数の中だけで数える（safe( は他の集計でも使われているため）
+  // ★意図してセクションを増減したときは、上の SECTIONS にも必ず登録する（登録漏れをここで落とす）。
   const dStart = gas.indexOf('function morningDigest(');
   const dEnd = gas.indexOf('\nfunction ', dStart + 10);
   const digest = gas.slice(dStart, dEnd < 0 ? gas.length : dEnd);
-  eq((digest.match(/safe\('/g) || []).length, SECTIONS.length, '★morningDigest のセクション数が本番実測（17個）と一致＝増減なし');
+  eq((digest.match(/safe\('/g) || []).length, SECTIONS.length,
+    '★morningDigest のセクション数が SECTIONS 一覧（' + SECTIONS.length + '個）と一致＝意図しない増減なし');
 }
 
 console.log('\n=== 結果 ===');
