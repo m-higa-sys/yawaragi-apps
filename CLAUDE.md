@@ -137,6 +137,17 @@ node scripts/check-orphan-branches.js
 - GASの変更は原則 **additive**。既存関数の破壊的変更を避ける。
 - board GAS の **clasp認証枠は全体で1個**。別プロジェクトのGASは別枠。
 
+### 🔴 `clasp push` だけでは現場に反映されない（2026-08-08 実測）
+
+**board GAS の本番URLは固定版デプロイに紐づいている。`clasp push` が書き換えるのは @HEAD だけで、固定版の挙動は一切変わらない。**
+
+実例: 2026-08-08、振替不能の繰越除外（`d05dced`）を push（`clasp_push_exit=0` / Pushed 30 files）し、再 pull でスクリプト実体への反映も確認したのに、本番 morningDigest は `unresolvedTotal: 8` のまま変わらなかった。原因は本番URL `AKfycbwo1UGx…` が **@373 の固定版**だったこと。
+
+- 現状を見るコマンド: `clasp deployments`（読み取り専用）。`@HEAD` 以外の版番号が付いていれば固定版。
+- **反映には「新バージョン作成＋当該デプロイの差し替え」が要る**（`clasp deploy` か GASエディタの「デプロイを管理」）。
+- **完了報告に `clasp push` の成功出力を使わない。** 実挙動（本番URLへの GET 等）で確認するまで「反映済み」と書かない。
+- 固定版デプロイを上げると、前回デプロイ以降に溜まった**他の変更も同時に現場へ出る**。上げる前に `clasp pull --versionNumber <現デプロイ版>` で実体を取り、`@HEAD` との差分で同梱物を洗い出すこと（版の実体とrepoコミットの一致は sha256 で照合できる）。
+
 ### 正本ファイル一覧（clasp管理下のGAS）
 
 **`gas/<プロジェクト>/` 配下だけが正本。**`.clasp.json` の rootDir が指すディレクトリの中身がそのまま `clasp push` で本番へ送られる。ここに無いファイルは、どれだけ本物に見えても本番に繋がっていない。
