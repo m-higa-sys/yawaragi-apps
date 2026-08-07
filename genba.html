@@ -21,6 +21,9 @@
         } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
     })();
     </script>
+    <!-- 日付またぎ検知（2026-08-07）。開きっぱなしのiPadが前日の画面のまま使われる事故を塞ぐ。
+         ?v= は scripts/bump-app-version.js が version.txt と自動同期する（手で書き換えない）。 -->
+    <script src="day-gate.js?v=2026-08-06-03"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -3977,6 +3980,10 @@ function toLocalDateStr(d) {
 // 端末のタイムゾーンがズレても境界判定が狂わないようにする（利用曜日変更アプリのUTCズレバグの反省）。
 // GAS側（getUpcomingAbsences / month=）も Asia/Tokyo 基準なので、これで両者のタイムゾーンを揃える。
 function jstTodayStr() {
+    // 2026-08-07: day-gate.js の ywToday() へ一本化（同方式・同結果）。
+    //   日付またぎ検知が使う「今日」と、画面の「今日」を同じ1本にしておく（単一の正）。
+    //   day-gate.js が読めなかったときは従来の実装をそのまま使う（画面を止めない）。
+    if (typeof ywToday === 'function') return ywToday();
     const p = new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
     }).formatToParts(new Date());
@@ -3985,7 +3992,11 @@ function jstTodayStr() {
 }
 
 const TB_STORAGE_KEY = 'yawaragi_taskboard';
-const TB_TODAY = toLocalDateStr();
+// ★2026-08-07: const → let。読み込み時に凍結した「今日」が GASリクエストURL（tbFetchGasTasks の
+//   &date=）にまで入っており、開きっぱなしのiPadは日付をまたいでも**昨日の日付でタスクを取りに行き続けて**いた。
+//   day-gate.js の日付またぎ検知で更新する（gnbOnDayChange_ 参照）。ここ以外で代入しないこと。
+//   基準も toLocalDateStr（端末ローカル）から jstTodayStr（JST固定）へ寄せた＝GAS側 Asia/Tokyo と揃う。
+let TB_TODAY = jstTodayStr();
 
 // GASから取得したタスク（スプレッドシート経由＝クロコ等から登録されたもの）
 let tbGasTasks = [];
@@ -4078,6 +4089,50 @@ document.addEventListener('visibilitychange', () => {
         startPoll(k, p.fn, p.intervalMs);
     });
 });
+
+// ===== 日付またぎ（2026-08-07・day-gate.js と対）=====
+//   上の可視性制御は「開きっぱなしでもGASを叩き続けない」ための仕組みだが、
+//   開きっぱなしのまま0時をまたぐと今度は「昨日の日付のまま動き続ける」問題が残っていた。
+//   ここでその追従だけを足す（取得・描画の中身は一切変えていない）。
+//   分岐は2つ:
+//     (A) 画面が「旧・今日」を表示していた → 新しい今日へ進めて読み直す
+//     (B) 意図して別日（明日/過去日）を見ていた → 表示日付は動かさず、今日基準の表示だけ引き直す
+//   ★location.reload はしない。入力途中が消えるため、データの取り直しだけで済ませる。
+function gnbOnDayChange_(newToday, prevToday) {
+    // ── ① タスクボード ──
+    //    TB_TODAY は tbFetchGasTasks の &date= に入る＝ここを直さないと取得日付ごとズレる。
+    TB_TODAY = newToday;
+    try {
+        tbData = tbLoadData();   // 日付が変わったのでその日のタスクは空から（既存の日次リセット規則どおり）
+        tbSaveData();
+        tbFetchGasTasks();       // 新しい日付でGASへ取りにいく。失敗時は既存の onerror に任せる
+        tbRenderAll();
+    } catch (e) { console.error('[day-gate] taskboard 追従に失敗', e); }
+
+    // ── ② 配置（assign-date）──
+    try {
+        const el = document.getElementById('assign-date');
+        if (el) {
+            if (el.value === prevToday) {          // (A)
+                el.value = newToday;
+                loadAssignment();                  // 先頭で flushHaichiSave する＝打ちかけの配置は先に送られる
+            }
+            // (B) は表示日付を動かさない。配置画面に今日基準のバナーは無いので再描画も不要。
+        }
+    } catch (e) { console.error('[day-gate] 配置の追従に失敗', e); }
+
+    // ── ③ Kボックス（未連絡アラート・当日のみ送信可のゲートが今日基準）──
+    try {
+        if (typeof kbState === 'object' && kbState && kbState.viewDate) {
+            if (kbState.viewDate === prevToday) {  // (A)
+                if (typeof kbJumpTo === 'function') kbJumpTo(newToday);
+            } else if (typeof kbRenderForDate === 'function') {
+                kbRenderForDate(kbState.viewDate); // (B) 表示日は動かさず「今日かどうか」の判定だけ引き直す
+            }
+        }
+    } catch (e) { console.error('[day-gate] Kボックスの追従に失敗', e); }
+}
+if (typeof ywOnDayChange === 'function') ywOnDayChange(gnbOnDayChange_);
 
 function tbInit() {
     tbFetchGasTasks(); // GASからタスクを取得

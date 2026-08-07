@@ -6,8 +6,9 @@
 //   1. 前提チェック: 対象ファイルがdirty / ローカルがorigin/masterよりbehind なら実行拒否（fresh pull前提）
 //   2. assume-unchanged フラグを正常化（version.txt / genba.html を通常追跡へ戻す。罠の再発防止）
 //   3. version.txt を新版へ更新
-//   4. SYNC_HTMLS（genba.html / intake.html）の shared.js?v= を version.txt と自動一致させる（版同期）
-//   5. version.txt と SYNC_HTMLS のみを git add → commit（design.md §9: 必ず同一コミット）
+//   4. SYNC_HTMLS（genba.html / intake.html）の shared.js?v= と、
+//      DAY_GATE_HTMLS（日付またぎ検知の5本）の day-gate.js?v= を version.txt と自動一致させる（版同期）
+//   5. version.txt と上記HTMLのみを git add → commit（design.md §9: 必ず同一コミット）
 //   6. commit後SHAを表示し、「pushコマンド」と「push後verifyコマンド」を提示（実pushはしない）
 //
 // 本番反映の確認（push後に別途実行）:
@@ -34,7 +35,14 @@ const VERSION_TXT = path.join(ROOT, 'version.txt');
 //   2026-07-29: intake.html を追加。intake が shared.js の新関数 gasPostIntake に依存する
 //     ようになったため、古い shared.js が残ると保存が丸ごと壊れる（undefined 呼び出し）。
 const SYNC_HTMLS = ['genba.html', 'intake.html'];
-const TRACKED = ['version.txt'].concat(SYNC_HTMLS); // 版上げで触る対象（assume-unchanged正常化＋add対象）
+// day-gate.js?v= を version.txt と同期させるHTML群（2026-08-07 追加）。
+//   day-gate.js は日付またぎ検知の共通ファイル。HTMLだけ版ゲートで更新されて day-gate.js が
+//   古いキャッシュのまま残ると、検知の挙動だけ旧版という気づきにくい状態になる。
+//   ★shared.js と同じ理由で、?v= を手書き固定にしてはいけない（版が永久にピン留めされる）。
+const DAY_GATE_HTMLS = ['session-board.html', 'sougei-view.html', 'sched-grid.html', 'sougei_nisshi.html', 'genba.html'];
+// 版上げで触る対象（assume-unchanged正常化＋add対象）。genba は両方に載るので重複を除く。
+const TRACKED = ['version.txt'].concat(SYNC_HTMLS, DAY_GATE_HTMLS)
+  .filter(function (v, i, a) { return a.indexOf(v) === i; });
 const PROD_VERSION_URL = 'https://m-higa-sys.github.io/yawaragi-apps/version.txt';
 
 // --- 本番ポーリング設定 ---
@@ -152,21 +160,24 @@ function runBump(newVer) {
   // 1) version.txt を更新（必ずLF・末尾改行1つ）
   fs.writeFileSync(VERSION_TXT, newVer + '\n', 'utf8');
 
-  // 2) 対象HTMLの shared.js?v=... を version.txt と一致させる（版同期）
+  // 2) 対象HTMLの shared.js?v=... / day-gate.js?v=... を version.txt と一致させる（版同期）
   const syncCounts = {};
-  for (const name of SYNC_HTMLS) {
-    const file = path.join(ROOT, name);
-    let html = fs.readFileSync(file, 'utf8');
-    const re = /(shared\.js\?v=)[^"']+/g;
-    const matches = html.match(re) || [];
-    if (matches.length === 0) {
-      console.error(name + ' に shared.js?v= が見つからない（ゲート未適用？）。version.txt のみ更新済・コミットは中止。');
-      process.exit(1);
+  function syncQuery(list, re, label) {
+    for (const name of list) {
+      const file = path.join(ROOT, name);
+      let html = fs.readFileSync(file, 'utf8');
+      const matches = html.match(re) || [];
+      if (matches.length === 0) {
+        console.error(name + ' に ' + label + ' が見つからない（ゲート未適用？）。version.txt のみ更新済・コミットは中止。');
+        process.exit(1);
+      }
+      html = html.replace(re, '$1' + newVer);
+      fs.writeFileSync(file, html, 'utf8');
+      syncCounts[name] = (syncCounts[name] || 0) + matches.length;
     }
-    html = html.replace(re, '$1' + newVer);
-    fs.writeFileSync(file, html, 'utf8');
-    syncCounts[name] = matches.length;
   }
+  syncQuery(SYNC_HTMLS, /(shared\.js\?v=)[^"']+/g, 'shared.js?v=');
+  syncQuery(DAY_GATE_HTMLS, /(day-gate\.js\?v=)[^"']+/g, 'day-gate.js?v=');
 
   // 3) 対象2ファイルのみ add → commit（他のdirtyファイルは巻き込まない）
   sh('git add -- ' + TRACKED.join(' '));
@@ -180,7 +191,7 @@ function runBump(newVer) {
     console.error('  → assume-unchanged残存等を疑う。手動確認のこと。');
     process.exit(1);
   }
-  const msg = 'chore(genba): bump app version ' + oldVer + ' -> ' + newVer + '（version.txt + shared.js?v= 同期・キャッシュゲート）';
+  const msg = 'chore(genba): bump app version ' + oldVer + ' -> ' + newVer + '（version.txt + shared.js/day-gate.js の ?v= 同期・キャッシュゲート）';
   // メッセージにスペースや日本語を含むので一時ファイル経由でコミット（シェルエスケープ事故回避）
   const tmpMsg = path.join(ROOT, '.bump-commit-msg.tmp');
   fs.writeFileSync(tmpMsg, msg + '\n', 'utf8');
@@ -195,8 +206,8 @@ function runBump(newVer) {
   console.log('');
   console.log('版上げ完了（commitまで・push未実行）: ' + oldVer + ' -> ' + newVer);
   console.log('  version.txt 更新');
-  for (const name of SYNC_HTMLS) {
-    console.log('  ' + name + ' shared.js?v= 更新 (' + syncCounts[name] + ' 箇所)');
+  for (const name of Object.keys(syncCounts)) {
+    console.log('  ' + name + ' ?v= 更新 (' + syncCounts[name] + ' 箇所)');
   }
   console.log('  commit: ' + head);
   console.log('');

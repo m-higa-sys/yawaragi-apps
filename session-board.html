@@ -21,6 +21,9 @@
         } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
     })();
     </script>
+    <!-- 日付またぎ検知（2026-08-07）。開きっぱなしのiPadが前日の画面のまま使われる事故を塞ぐ。
+         ?v= は scripts/bump-app-version.js が version.txt と自動同期する（手で書き換えない）。 -->
+    <script src="day-gate.js?v=2026-08-06-03"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -268,7 +271,10 @@
   function filt(arr){ return (arr||[]).filter(inTab); }
 
   // 当日日付（Asia/Tokyo。demo/実運用ともサーバ返却のdateを主に使う）
+  // 2026-08-07: 「今日」の計算を day-gate.js の ywToday() に一本化した（JST固定・端末TZに依存しない）。
+  //   day-gate.js が読めなかったときだけ従来の端末ローカル計算にフォールバックする（画面を止めないため）。
   function todayYMD(){
+    if (typeof ywToday === 'function') return ywToday();
     var d = new Date();
     function pad(n){ return (n<10?'0':'')+n; }
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
@@ -585,6 +591,22 @@
   // 「明日」＝前日のうちに準備（計画書の印刷）を済ませるための動線。未来日警告バナーはそのまま出る。
   document.getElementById('tomorrowBtn').addEventListener('click', function(){ goDate(addDays_(todayYMD(), 1)); });
   document.getElementById('datePick').addEventListener('change', function(){ goDate(document.getElementById('datePick').value); });
+
+  // ===== 日付またぎ（2026-08-07）=====
+  // 事故: 8/6中に「翌日」で8/7を出したまま放置 → 8/7の朝も「⏩未来の日付を表示中（1日後）」が
+  //       残り続けた。render() はデータ取得時にしか走らないため、バナーの基準日が固まる。
+  // (A) 今日を見ていた → 表示日付を新しい今日へ進めて当日データを読み直す
+  // (B) 意図して別日を見ていた → 表示日付は動かさず、バナーの基準日だけ引き直す（再取得しない）
+  if (typeof ywOnDayChange === 'function') {
+    ywOnDayChange(function (newToday, prevToday) {
+      if (curDate === prevToday) {
+        curDate = newToday;
+        fetchBoard(curDate, false);   // 日付が変わった＝タブも時間帯で取り直す（朝に開けば午前）
+      } else {
+        render();                     // todayYMD() を引き直すのでバナー文言が正しくなる
+      }
+    });
+  }
 
   // 本番: 起動時に今日を1回JSONPで叩き描画（初回はタブ自動判定＝keepTab=false）
   fetchBoard(curDate, false);
