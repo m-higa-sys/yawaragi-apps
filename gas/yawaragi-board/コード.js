@@ -8644,12 +8644,16 @@ function isBizDay_(dateStr) {
 function sougeiOpsStatus_(opsData, dateStr) {
   return (opsData && opsData.dailyOps && opsData.dailyOps[dateStr]) ? 'OK' : 'MISSING';
 }
-// 振替不能 records を月別集計。未解決=「回収済」以外の合計。byMonth から「回収済」は落とす。
+// 振替不能 records を月別集計。未解決=「回収済」「繰越」以外の合計。byMonth からもそれらは落とす。
+// 「繰越」はアプリ本体（furikae.html fnkIsUnpaid）で解決済み扱い＝前月分が当月カードへ集約されて
+// 閉じた状態。未解決に数えると同じ債権を二重計上する（2026-07-23 修正・朝報告が3件を8件と誤報）。
+// テスト: scripts/test-furikae-fold-digest.js（同一実装の二重持ち）
+var FURIKAE_CLOSED_STATUSES = ['回収済', '繰越'];
 function foldFurikaeByMonth_(records) {
   var byMonth = {};
   (records || []).forEach(function (r) {
     var m = r.month; if (!m) return;
-    var st = r.status; if (!st || st === '回収済') return;
+    var st = r.status; if (!st || FURIKAE_CLOSED_STATUSES.indexOf(st) !== -1) return;
     byMonth[m] = byMonth[m] || {};
     byMonth[m][st] = (byMonth[m][st] || 0) + 1;
   });
