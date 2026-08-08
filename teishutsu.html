@@ -684,11 +684,28 @@ function buildTasks(ym) {
     if (care === 'shien' && isMeasureMonth(planStart, ym, '', care)) pushTask(name, 'sokutei', care, office, fg, ym);
   });
 
-  // 台帳の繰越行（対象月<当月 かつ 未送付）を追加。当月変換層と重複しないキーのみ。
+  // 台帳の行を画面へ戻す。当月変換層と重複しないキーのみ。
+  //   ・繰越（対象月 < 当月 かつ 未送付）… 従来どおり
+  //   ・当月（対象月 = 当月）で、変換層が作らなかった行 … 2026-08-08 追加（B案）
+  //
+  // ★なぜ当月も拾うか（2026-08-08 実測）:
+  //   2026-07 の台帳に在るのに画面へ1行も出ていない行が17件あった（通所介護計画書9・通所評価8）。
+  //   締め(monthly-close)は8/5時点の満了日で「7月＝満了月」と判定して行を立てたが、その後に
+  //   満了日が翌年へ更新された（＝計画書を作り直した）ため、変換層は同じ人・同じ月に
+  //   別の書類（通所モニ）を立てる。台帳の行はキーが一致せず、繰越の取り込みも
+  //   「対象月 < 当月」しか見ていなかったので、エラーも出さずに消えていた。
+  //   消えた行は送付漏れが起きても誰も気づけない＝いちばん危ない消え方so、台帳の行は必ず出す。
+  //   ★締め側(soufu-close-core.js)は触らない。ここは台帳に在る行を拾うだけ。
+  //   ★変換層が立てた「誤った書類」の抑制はこの改修ではやらない（並記される）。
   const curKeys = new Set(tasks.map(t => t.userId + '|' + t.docType + '|' + t.taishoTsuki));
   d.ledgerRows.forEach(r => {
-    if (r.taishoTsuki >= ym) return;
-    if (r.status === '送付済') return;
+    if (r.taishoTsuki > ym) return;                 // 先の月は出さない
+    const isPast = r.taishoTsuki < ym;
+    // 送付済の扱いは月ごとに従来と同じ:
+    //   繰越（過去月）は未送付のみ出す＝締めで固定した未提出だけを追いかける（従来どおり）。
+    //   当月は変換層が送付済の行も作るので、ここでも出す。出さないと「送付済」を押した瞬間に
+    //   カードが消え、「今月送付済」にも数えられず、押せていないように見える。
+    if (isPast && r.status === '送付済') return;
     if (r.docType === 'jisseki' || r.docType === 'oral_moni') return;
     const key = r.userId + '|' + r.docType + '|' + r.taishoTsuki;
     if (curKeys.has(key)) return;
@@ -700,7 +717,9 @@ function buildTasks(ym) {
       office: uinfo.cmOffice || '(事業所未登録)', furigana: uinfo.furigana || '',
       taishoTsuki: r.taishoTsuki, tekiyoTsuki: r.tekiyoTsuki || '',
       status: r.status, sorotta_by: r.sorotta_by, sofu_at: r.sofu_at,
-      kurikoshiRiyu: r.kurikoshiRiyu, signKigen: r.signKigen, isCarry: true,
+      // ★繰越フラグは「対象月 < 当月」のときだけ。当月の行を繰越にすると
+      //   上部の「繰越」件数が増えて数え方が変わってしまう（集計には触れない）。
+      kurikoshiRiyu: r.kurikoshiRiyu, signKigen: r.signKigen, isCarry: isPast,
       isCancelled: found.cancelled, cancelDate: uinfo.cancelDate || ''
     });
   });
@@ -975,6 +994,21 @@ function renderDoneToggle(n, hide) {
 // ===== 集めるタブ（2026-08-06 社長決定）=====
 // 1行1件・動詞で始まる・3要素だけ（動詞／氏名／書類名）。
 // 内部用語（対象月・繰越・保留・status・docType）は出さず、タップで開く詳細に畳む。
+// 「計画書」欄の言い方（2026-08-08・D案）。planCreated が undefined になる理由は2つあり、
+// それを同じ「確認できませんでした」で書くと、読み取りに失敗したように読めてしまう。
+//   ・そもそも計画書を作る工程が無い書類（通所モニ・通所評価・測定）→ 材料が無いのは正常
+//   ・材料が在るはずの書類（下の PLAN_DOCS）→ 本当に取れなかった＝異常
+// ★分類（unknown＝情報が足りません）は変えない。ここは詳細パネルの言い方だけ。
+// ★PLAN_DOCS は buildTasks が planCreated を作る書類と必ず一致させること。
+//   ズレると「計画書はありません」と嘘をつく（テストで機械的に固定している）。
+const PLAN_DOCS = { kokun_set: true, tsusho_keikaku: true, oral_plan: true };
+function planLabel(docType, planCreated) {
+  if (planCreated === true) return 'できている';
+  if (planCreated === false) return 'まだ';
+  return PLAN_DOCS[docType] ? '確認できませんでした（データを取得できませんでした）'
+                            : 'この書類に計画書はありません';
+}
+
 const DOC_PLAIN = {
   kokun_set: '個訓の計画書', oral_plan: '口腔の計画書', tsusho_keikaku: '通所介護計画書',
   tsusho_hyouka: '通所の評価', tsusho_moni: '通所のモニタリング', sokutei: '測定の結果'
@@ -1009,7 +1043,7 @@ function collectDetail(t) {
     ['いまの状態', t.status || 'まだ手つかず'],
     ['止まっている理由', t.kurikoshiRiyu || '—'],
     ['サインの期限', t.signKigen || '—'],
-    ['計画書', t.planCreated === true ? 'できている' : (t.planCreated === false ? 'まだ' : '確認できませんでした')],
+    ['計画書', planLabel(t.docType, t.planCreated)],
     ['署名済みPDF', t.pdfMatch === 'strong' ? 'フォルダにあります（' + (t.pdfFile || '') + '）'
       : (t.pdfMatch === 'weak' ? '似た名前のPDFはありますが、書類名が読めません' : '見つかりません')]
   ];
