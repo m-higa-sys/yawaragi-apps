@@ -40,8 +40,12 @@ const SYNC_HTMLS = ['genba.html', 'intake.html'];
 //   古いキャッシュのまま残ると、検知の挙動だけ旧版という気づきにくい状態になる。
 //   ★shared.js と同じ理由で、?v= を手書き固定にしてはいけない（版が永久にピン留めされる）。
 //   2026-08-08 段階2: ケアマネ送付チェックリスト / cleaning / schedule を追加。
+//   2026-08-08: teishutsu を追加。初期表示月が10日/11日の境で切り替わるようになり、
+//     開きっぱなしの端末が古い月に固まらないよう day-gate に乗せたため。
+//     ★teishutsu 自体は版ゲート（version.txt ポーリング）を持たない。ここに載せる意味は
+//       「共有ファイル day-gate.js の ?v= を版と一緒に動かす」ことだけ（社長承認 2026-08-08）。
 const DAY_GATE_HTMLS = ['session-board.html', 'sougei-view.html', 'sched-grid.html', 'sougei_nisshi.html', 'genba.html',
-  'ケアマネ送付チェックリスト.html', 'cleaning.html', 'schedule.html'];
+  'ケアマネ送付チェックリスト.html', 'cleaning.html', 'schedule.html', 'teishutsu.html'];
 // 版上げで触る対象（assume-unchanged正常化＋add対象）。genba は両方に載るので重複を除く。
 const TRACKED = ['version.txt'].concat(SYNC_HTMLS, DAY_GATE_HTMLS)
   .filter(function (v, i, a) { return a.indexOf(v) === i; });

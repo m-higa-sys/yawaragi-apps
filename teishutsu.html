@@ -288,6 +288,10 @@
      oralCycleAt is not defined で画面が丸ごと出なくなる。
      teishutsu は version.txt の版ゲートを持たない（no-store配信）ため、この値は手で上げる。 -->
 <script src="shared.js?v=2026-08-06a"></script>
+<!-- 日付またぎ検知（2026-08-08）。初期表示月が10日/11日の境で切り替わるようになったので、
+     開きっぱなしのiPadが古い月に固まらないようにする。teishutsu は版ゲート対象外なので
+     ?v= は他アプリと同じ値を手で合わせる（同じ値＝端末のキャッシュを使い回せる）。 -->
+<script src="day-gate.js?v=2026-08-08-04"></script>
 <!-- 署名済みPDFの照合（sbFindSignedPdf_ / sbBuildPdfFoundMap_ / sbNormalizeName_）。
      判定の正本は session-board-core.js の1本だけ。ここにも GAS にも複製を置かない。
      ※ _config.yml で exclude されていない＝Pages配信される（measure-app.html も同じ読み方） -->
@@ -479,6 +483,24 @@ function shiftYM(ym, delta) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 function ymJp(ym) { const [y, m] = ym.split('-'); return y + '年' + Number(m) + '月'; }
+
+// 「今日」はJST固定（day-gate.js の ywToday() へ一本化）。端末のTZがズレても境界判定が狂わない。
+// day-gate.js が読めなかったときだけ端末ローカルへ落ちる（画面を止めないため）。
+function todayJst() {
+  if (typeof ywToday === 'function') return ywToday();
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// 初期表示月（2026-08-08）。締切は「その月の分を翌月10日まで」なので、
+// 10日までに開いた人が見たいのは前月分＝いま期限が迫っているもの。11日以降は当月分。
+// ★変えるのは初期値だけ。‹ › の手動移動は今までどおり自由。
+function initialYM(todayYmd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(todayYmd || ''));
+  if (!m) return nowYM();                                    // 日付が取れない＝従来どおり当月へ倒す
+  const ym = m[1] + '-' + m[2];
+  return Number(m[3]) <= 10 ? shiftYM(ym, -1) : ym;          // 年跨ぎは shiftYM に任せる
+}
 
 // ---------- 提出期限（2026-08-08）----------
 // ケアマネへの提出期限は「その月の分を翌月10日まで」。表示中の月から毎回算出する。
@@ -1408,11 +1430,33 @@ function goMonth(delta) {
   reload(false);
 }
 
+// ===== 日付またぎ（2026-08-08・day-gate.js と対）=====
+// 10日→11日をまたぐと initialYM() の答えが前月→当月へ変わる。現場のiPadは開きっぱなしなので、
+// 放っておくと締め切った月をいつまでも見続けることになる。
+// ★動かすのは「初期表示のまま触られていない画面」だけ（day-gate の (A)/(B) パターン）。
+//   ‹ › で自分で選んだ月を勝手に動かすと、作業中の画面を横から奪うことになる。
+function startDayGate() {
+  if (typeof ywOnDayChange !== 'function') return;   // day-gate.js が読めなくても画面は止めない
+  ywOnDayChange(function (newToday, prevToday) {
+    const want = initialYM(newToday);
+    // 期限切れの赤はどの経路でも引き直す（日付が変わった＝色の答えが変わりうる）
+    if (state.ym !== want && state.ym === initialYM(prevToday)) {
+      state.ym = want;
+      document.getElementById('ymLabel').textContent = ymJp(state.ym);
+      renderDeadlineBadge();
+      reload(false);
+      return;
+    }
+    renderDeadlineBadge();
+  });
+}
+
 // ---------- 初期化 ----------
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
 async function init() {
-  state.ym = nowYM();
+  // 開いた瞬間に「いま期限が迫っている月」を出す（10日までは前月分・11日以降は当月分）。
+  state.ym = initialYM(todayJst());
   // 期限は通信が要らない＝最初の描画より前に出す。読み込みに失敗しても期限だけは画面に残る。
   document.getElementById('ymLabel').textContent = ymJp(state.ym);
   renderDeadlineBadge();
@@ -1432,6 +1476,8 @@ async function init() {
   // 検索は打つそばから効かせる（確定ボタンなし）。localStorage には入れない＝リロードでクリア。
   document.getElementById('searchBox').oninput = (ev) => { state.search = ev.target.value; render(); };
   document.getElementById('searchClear').onclick = () => clearSearch();
+
+  startDayGate();
 
   // タブ復帰＋定期ポーリング
   document.addEventListener('visibilitychange', () => { if (!document.hidden) reload(true); });
