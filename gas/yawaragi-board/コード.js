@@ -2277,30 +2277,15 @@ function doGet(e) {
       if (!mcYear || !mcMonth || mcMonth < 1 || mcMonth > 12 || mcYear < 2020 || mcYear > 2100) {
         return respond({ ok: false, error: 'invalid params' }, callback);
       }
-      var mcUsers = getMonitoringTargetUsers_();
-      var mcSheet = ensureMonitoringSheet_();
-      var mcValues = mcSheet.getDataRange().getValues();
-      var mcDoneSet = {};
-      for (var mcI = 1; mcI < mcValues.length; mcI++) {
-        if (parseInt(mcValues[mcI][2], 10) !== mcYear) continue;
-        if (parseInt(mcValues[mcI][3], 10) !== mcMonth) continue;
-        // 新仕様: pdfSendDate または printSendDate のどちらかが入っていれば完了
-        var mcPdfSend = String(mcValues[mcI][7] || '').trim();
-        var mcPrintSend = String(mcValues[mcI][8] || '').trim();
-        if (mcPdfSend || mcPrintSend) {
-          mcDoneSet[String(mcValues[mcI][0] || '').trim()] = true;
-        }
-      }
-      var mcUnfinished = 0;
-      for (var mcK = 0; mcK < mcUsers.length; mcK++) {
-        if (!mcDoneSet[mcUsers[mcK].userId]) mcUnfinished++;
-      }
+      // 集計は _getMonitoringUnfinishedData_ に集約（morningDigest の monitoringUnfinished と共有）。
+      // ここは従来どおりシートを ensure してから読む（doGet は書き込みを許す経路）。
+      var mcData = _getMonitoringUnfinishedData_(mcYear, mcMonth, ensureMonitoringSheet_());
       return respond({
         ok: true,
         year: mcYear,
         month: mcMonth,
-        totalUsers: mcUsers.length,
-        unfinishedCount: mcUnfinished
+        totalUsers: mcData.totalUsers,
+        unfinishedCount: mcData.unfinishedCount
       }, callback);
     }
 
@@ -7657,6 +7642,16 @@ function morningDigest(e) {
     var r = _getMonitoringPlanExpiring_(nYm);
     return { month: r.month, count: (r.users || []).length };
   });
+  // 通所介護計画モニタリング 当月の未完了人数（2026-08-08 追加）
+  // シートは getSheetByName で非破壊に読む。ensureMonitoringSheet_ は列追加・シート作成を
+  // 行うため、朝の報告からは呼ばない（黙ってシート構造が変わる経路を作らないため）。
+  // 「1〜14日は出さない」の閾値は朝の報告スキル側に置く（隣の monitoringExpiring と同じ作法）。
+  safe('monitoringUnfinished', function () {
+    var y = parseInt(dateStr.slice(0, 4), 10), m = parseInt(dateStr.slice(5, 7), 10);
+    var sh = SpreadsheetApp.openById(SS_ID).getSheetByName('モニタリングチェック');
+    var r = _getMonitoringUnfinishedData_(y, m, sh);
+    return { month: dateStr.slice(0, 7), count: r.unfinishedCount, totalUsers: r.totalUsers };
+  });
   // 月次書類そろえ（ローカルチェッカーがPOSTした最新結果を読むだけ・無ければnull）
   safe('monthlyDocs', function () {
     return getMonthlyDocsReport_(ss);
@@ -8606,6 +8601,42 @@ function _getBlockedKeikakushoData_(year, month) {
     blocked.push({ userId: String(row[0] || ''), name: String(row[1] || ''), reason: reason });
   }
   return { blockedCount: blocked.length, blocked: blocked };
+}
+
+// 通所介護計画モニタリング「その行は送付済みか」（純関数・仕様の正本）
+// 新仕様(2026-05): pdfSendDate(列7) か printSendDate(列8) の**どちらか一方でも**入っていれば完了。
+// PDFで送っても印刷して渡しても送付は送付、という運用に合わせたもの。
+// 壊れても例外は出ず「未完了N名」が静かにずれるだけなので、テストで固定する。
+// テスト: scripts/test-monitoring-done-row.js（実コード抽出方式）
+function monitoringDoneFromRow_(row) {
+  if (!row) return false;
+  var pdfSend = String(row[7] || '').trim();
+  var printSend = String(row[8] || '').trim();
+  return !!(pdfSend || printSend);
+}
+
+// 通所介護計画モニタリング 未完了人数（getMonitoringUnfinishedCount から切り出し・挙動不変）
+// sheet は呼び出し側が渡す。doGet は ensureMonitoringSheet_()（無ければ作る）を渡し、
+// morningDigest は getSheetByName の結果を渡す（朝の報告からシート構造を変えないため）。
+// sheet が null/undefined のときは「シート未作成」＝全員未完了として返す。
+function _getMonitoringUnfinishedData_(year, month, sheet) {
+  var users = getMonitoringTargetUsers_();
+  var doneSet = {};
+  if (sheet) {
+    var values = sheet.getDataRange().getValues();
+    for (var i = 1; i < values.length; i++) {
+      if (parseInt(values[i][2], 10) !== year) continue;
+      if (parseInt(values[i][3], 10) !== month) continue;
+      if (monitoringDoneFromRow_(values[i])) {
+        doneSet[String(values[i][0] || '').trim()] = true;
+      }
+    }
+  }
+  var unfinished = 0;
+  for (var k = 0; k < users.length; k++) {
+    if (!doneSet[users[k].userId]) unfinished++;
+  }
+  return { totalUsers: users.length, unfinishedCount: unfinished };
 }
 
 // 個訓 ケアマネ未提出（2026-06-15 個訓Phase1 / カットオフ追加）

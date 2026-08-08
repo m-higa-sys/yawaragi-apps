@@ -173,7 +173,8 @@ sec('8. GAS: 朝の報告の他のセクションを1つも壊していない');
   const SECTIONS = ['intakeFollowup', 'sougeiOps', 'furikae', 'kubun', 'scheduled', 'longLeave', 'keikakushoBlocked',
     'monitoringExpiring', 'monthlyDocs', 'pendingTasks', 'keikakushoSoufu', 'shift', 'teirei', 'chushi',
     'yukyuGrant', 'koyouKeiyaku', 'yarinokoshi', 'undone',
-    'furikaeImport'];  // 2026-08-08 追加: 電算 結果Excel 取込リマインド（設計 §3-b）
+    'furikaeImport',        // 2026-08-08 追加: 電算 結果Excel 取込リマインド（設計 §3-b）
+    'monitoringUnfinished'];// 2026-08-08 追加: 通所介護計画モニタリング 当月未完了人数
   SECTIONS.forEach(s => ok(gas.indexOf("safe('" + s + "'") >= 0, 'セクション ' + s + ' が残っている'));
   // 数の増減は morningDigest 関数の中だけで数える（safe( は他の集計でも使われているため）
   // ★意図してセクションを増減したときは、上の SECTIONS にも必ず登録する（登録漏れをここで落とす）。
