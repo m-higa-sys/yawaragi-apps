@@ -149,19 +149,17 @@ console.log('\n[E) ★復活した行にも既存のPDF自動検出が効く（�
      '実測 verb=' + find(t, 'tsusho_keikaku').verb);
 }
 {
-  // ★既知の課題（この改修では直さない・報告のみ）:
-  //   実物の通所評価は「7月通所介護評価・◯◯.pdf」だが、SB_PDF_DOC_WORDS の tsusho_hyouka は
-  //   ['通所評価','結果報告書','評価表'] で「通所介護評価」を持たない。氏名は当たるが書類名が
-  //   読めず weak 止まり＝「送る」へ上がらない。語彙はPDF検出の正本so、今回は触らない。
+  // ★2026-08-08 更新: 実物の通所評価は「7月通所介護評価・◯◯.pdf」。当初この語が
+  //   SB_PDF_DOC_WORDS.tsusho_hyouka に無く weak 止まりだったので、社長承認のうえ1語追加した。
+  //   復活した行が自動で「送る」まで上がることを、ここでも通しで押さえる。
+  //   語彙そのものの検証は scripts/test-pdf-hyouka-word.js。
   const t = build([LROW('tsusho_hyouka', YM, '保留')],
     { tsusho_hyouka: { label: '通所・結果報告書', files: ['7月通所介護評価・甲野花子.pdf'] } });
   const h = find(t, 'tsusho_hyouka');
-  ok('E6 ★実物の「通所介護評価」は weak 止まり（語彙の穴・別トラック）', h && h.pdfMatch === 'weak',
+  ok('E6 ★実物の「通所介護評価」が strong になる', h && h.pdfMatch === 'strong',
      '実測 pdfMatch=' + (h && h.pdfMatch));
-  ok('E7 weak でもPDFの存在自体は画面に出る（黙って消さない）', h && !!h.pdfFile, '実測 ' + (h && h.pdfFile));
-  ok('E8 語彙に「通所介護評価」が無いことを固定（足したらこのテストを更新する）',
-     JSON.stringify(sandbox.SB_PDF_DOC_WORDS.tsusho_hyouka) === JSON.stringify(['通所評価', '結果報告書', '評価表']),
-     '実測 ' + JSON.stringify(sandbox.SB_PDF_DOC_WORDS.tsusho_hyouka));
+  ok('E7 ★復活した行が自動で「送る」へ上がる', h && h.verb === 'send', '実測 verb=' + (h && h.verb));
+  ok('E8 検出したファイル名が画面に出る', h && h.pdfFile === '7月通所介護評価・甲野花子.pdf', '実測 ' + (h && h.pdfFile));
 }
 
 console.log('\n[F) D案: 「計画書」欄の言い方（分類は変えない）]');
