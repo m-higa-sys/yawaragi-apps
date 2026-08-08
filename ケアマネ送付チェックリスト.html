@@ -21,6 +21,10 @@
         } catch (e) { /* 念のため no-op（ゲートで画面を固まらせない） */ }
     })();
     </script>
+    <!-- 日付またぎ検知（2026-08-08・段階2）。このアプリは自動更新を持たないため、
+         開きっぱなしだと実績確定の判定が前日のまま固まる。
+         ?v= は scripts/bump-app-version.js が version.txt と自動同期する（手で書き換えない）。 -->
+    <script src="day-gate.js?v=2026-08-08-02"></script>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2970,6 +2974,22 @@ document.getElementById('filterShowChushi').onchange = function() {
   } catch (e) {
     document.getElementById('main').innerHTML = '<div class="empty" style="color:#c53030;">データ取得失敗: ' + e.message + '<br>リロードボタンを押してください</div>';
   }
+})();
+
+// ===== 日付またぎ（2026-08-08・day-gate.js と対）=====
+//   このアプリは setInterval も visibilitychange も持たない＝開きっぱなしなら永久に前日のまま。
+//   実績確定の判定 canFinalizeJisseki() が「今日」を見ており、日付が変われば結果が変わる。
+//   やることは render() を1回呼ぶだけ（純追加）。render() は今日を中で計算し直す。
+//   ★通信はしない。fetchAll() は呼ばない（GASアクセスを増やさない。データは同じで判定だけが変わるため）。
+//   ★編集中の入力を壊す心配は無い（このアプリに editMode は存在せず、入力は都度モーダルで完結する）。
+//   ※月をまたぐ場合、月セレクタの選択肢は initMonthSelector() が起動時に作ったままなので追随しない。
+//     日粒度の判定だけを直す割り切り（月粒度は宿題.md の (い) 側の論点）。
+(function () {
+  if (typeof ywOnDayChange !== 'function') return;   // day-gate.js が読めなくても画面は止めない
+  ywOnDayChange(function () {
+    try { render(); }
+    catch (e) { console.error('[day-gate] 再描画に失敗', e); }
+  });
 })();
 
 // ============================================================

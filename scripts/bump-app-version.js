@@ -39,7 +39,9 @@ const SYNC_HTMLS = ['genba.html', 'intake.html'];
 //   day-gate.js は日付またぎ検知の共通ファイル。HTMLだけ版ゲートで更新されて day-gate.js が
 //   古いキャッシュのまま残ると、検知の挙動だけ旧版という気づきにくい状態になる。
 //   ★shared.js と同じ理由で、?v= を手書き固定にしてはいけない（版が永久にピン留めされる）。
-const DAY_GATE_HTMLS = ['session-board.html', 'sougei-view.html', 'sched-grid.html', 'sougei_nisshi.html', 'genba.html'];
+//   2026-08-08 段階2: ケアマネ送付チェックリスト / cleaning を追加（schedule は方針判断待ちで未配線）。
+const DAY_GATE_HTMLS = ['session-board.html', 'sougei-view.html', 'sched-grid.html', 'sougei_nisshi.html', 'genba.html',
+  'ケアマネ送付チェックリスト.html', 'cleaning.html'];
 // 版上げで触る対象（assume-unchanged正常化＋add対象）。genba は両方に載るので重複を除く。
 const TRACKED = ['version.txt'].concat(SYNC_HTMLS, DAY_GATE_HTMLS)
   .filter(function (v, i, a) { return a.indexOf(v) === i; });

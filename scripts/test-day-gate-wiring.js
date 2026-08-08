@@ -361,9 +361,85 @@ async function testGenba() {
 }
 
 // ===================================================================
-// 6) 既存の版ゲートが従来どおり動くこと（今回の変更は追加のみ＝無改変であること）
+// 6) ケアマネ送付チェックリスト（2026-08-08 段階2）
+//    このアプリは setInterval も visibilitychange も持たない＝自己回復しない。
+//    日付またぎで render() が呼び直されることだけを見る。
+//    ※render() の中の canFinalizeJisseki() は new Date() を直接読むため、
+//      day-gate の偽時計では中身まで動かせない。ここでは「呼び直しの配線」を固定する。
 // ===================================================================
-const TARGETS = ['session-board.html', 'sougei-view.html', 'sched-grid.html', 'sougei_nisshi.html', 'genba.html'];
+async function testCaremanagerSoufu() {
+  console.log('[ケアマネ送付チェックリスト.html]');
+  const app = bootApp('ケアマネ送付チェックリスト.html', '2026-08-06', {
+    onFetch: function (url) { return url.indexOf('version.txt') >= 0 ? CUR_VERSION : null; }
+  });
+  await app.settle();
+
+  eq(typeof app.w.ywOnDayChange, 'function', 'day-gate.js が読み込まれている');
+  eq(app.w.ywToday(), '2026-08-06', '起動時の今日は 8/6');
+
+  // render を数えるスパイに差し替える（グローバル関数宣言なので window 経由で置換できる）
+  app.w.eval('window.__renderCalls = 0; var __origRender = window.render;' +
+    'window.render = function () { window.__renderCalls++; return __origRender.apply(this, arguments); };');
+  const fetchesBefore = app.fetchUrls.length;
+
+  app.rollTo('2026-08-07');
+  await app.settle();
+
+  eq(app.w.eval('window.__renderCalls'), 1, '日付またぎで render() がちょうど1回呼ばれる');
+  eq(app.w.ywToday(), '2026-08-07', '保持していた今日も更新されている');
+  eq(app.fetchUrls.length, fetchesBefore, '★通信はしない（fetchAll を呼ばずGASアクセスを増やさない）');
+  eq(app.navAttempts.length, 0, 'ページ遷移（location.replace/reload）は起きない');
+
+  // 二重登録していないこと（もう一度またいでも1回ずつ）
+  app.rollTo('2026-08-08');
+  await app.settle();
+  eq(app.w.eval('window.__renderCalls'), 2, '2回目のまたぎでも呼び出しは1回ずつ（二重登録していない）');
+}
+
+// ===================================================================
+// 7) cleaning（2026-08-08 段階2）
+//    当番・ゴミ出しは自動更新(refreshLog→renderTasks)で自己回復する。
+//    取り残されるのは updateDateDisplay() だけなので、そこだけを見る。
+// ===================================================================
+async function testCleaning() {
+  console.log('[cleaning.html]');
+  const app = bootApp('cleaning.html', '2026-08-06', {
+    onFetch: function (url) { return url.indexOf('version.txt') >= 0 ? CUR_VERSION : null; }
+  });
+  await app.settle();
+
+  eq(typeof app.w.ywOnDayChange, 'function', 'day-gate.js が読み込まれている');
+  assert(/年.*月.*日/.test(app.text('headerDate') || ''), '起動時にヘッダ日付が描かれている');
+
+  // updateDateDisplay() は new Date() を直接読むので、window.Date を固定して観測する。
+  //   （day-gate 側の今日は __setClock で別途固定済み。ここは「描画が走ったか」を見るための細工）
+  app.w.eval([
+    '(function () {',
+    '  var R = Date;',
+    '  var fixed = new R(2026, 7, 7, 9, 0, 0).getTime();',   // 2026-08-07（月は0始まり）
+    '  function F() {',
+    '    if (arguments.length === 0) return new R(fixed);',
+    '    return new (Function.prototype.bind.apply(R, [null].concat(Array.prototype.slice.call(arguments))))();',
+    '  }',
+    '  F.now = function () { return fixed; };',
+    '  F.prototype = R.prototype;',
+    '  window.Date = F;',
+    '})();'
+  ].join('\n'));
+
+  app.rollTo('2026-08-07');
+  await app.settle();
+
+  eq(app.text('headerDate'), '2026年8月7日（金）', '★日付またぎでヘッダ日付が描き直される');
+  eq(app.w.ywToday(), '2026-08-07', '保持していた今日も更新されている');
+  eq(app.navAttempts.length, 0, 'ページ遷移（location.replace/reload）は起きない');
+}
+
+// ===================================================================
+// 8) 既存の版ゲートが従来どおり動くこと（今回の変更は追加のみ＝無改変であること）
+// ===================================================================
+const TARGETS = ['session-board.html', 'sougei-view.html', 'sched-grid.html', 'sougei_nisshi.html', 'genba.html',
+  'ケアマネ送付チェックリスト.html', 'cleaning.html'];
 
 async function testVersionGateIntact() {
   console.log('[版ゲート回帰]');
@@ -433,6 +509,8 @@ async function testVersionGateIntact() {
   await testSchedGrid();
   await testSougeiNisshi();
   await testGenba();
+  await testCaremanagerSoufu();
+  await testCleaning();
   console.log('');
   console.log('PASS ' + pass + ' / FAIL ' + fail);
   process.exit(fail ? 1 : 0);
