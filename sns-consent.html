@@ -553,7 +553,24 @@ function syncToCloud() {
 }
 
 // 専用GASから取得してローカルにマージ
+// 編集中かどうか（2026-08-08 追加・furikae.html の fnkIsEditingNow と同方式）。
+//   判定不能なら「編集中でない」に倒す＝更新側を生かす（更新が死ぬ方が害が大きい）。
+function snsIsEditingNow() {
+  try {
+    var el = document.activeElement;
+    if (!el) return false;
+    var tag = String(el.tagName || '').toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  } catch (e) { return false; }
+}
+
 function loadFromCloud(silent) {
+  // ★編集中は取得そのものを止める（records 差し替えも saveLocal も render もしない）。
+  //   render() だけ止めるのは誤り: この関数は state と localStorage を先に書き換えてから
+  //   render の要否を判定するため、render だけ止めると「state は新しいのに画面は古い」状態になり、
+  //   その後の setNote が古い data-idx で走る。furikae も同じ理由で cloudLoad の先頭で止めている。
+  //   実害の実測: 他端末が更新すると、フォーカスを外していない条件メモが消える（打ちかけは state に無い）。
+  if (snsIsEditingNow()) return Promise.resolve();
   return fetch(SNS_API_URL + '?t=' + Date.now())
     .then(r => r.json())
     .then(res => {
