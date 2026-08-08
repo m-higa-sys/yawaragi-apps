@@ -436,10 +436,91 @@ async function testCleaning() {
 }
 
 // ===================================================================
-// 8) 既存の版ゲートが従来どおり動くこと（今回の変更は追加のみ＝無改変であること）
+// 8) schedule（2026-08-08 段階2・案内バナー方式）
+//
+//    ★このアプリだけ (A)/(B) の自動追従をしない。onScheduleDateChange() は
+//      orderedDayUsers / benchUsers / koukuChecked / sokuteiChecked / absentNames を
+//      全部リセットして saveSettings() で保存し、さらにGASを2本叩くため、
+//      夜勤帯に配置を組んでいる途中で0時をまたぐと作業が消えて戻せない。
+//    ここは「帯が出るだけで状態が1バイトも変わらない」ことを固定する番人。
+//    ここが壊れると現場の作業が消えるので、DOM と STATE の両方から見る。
+// ===================================================================
+async function testSchedule() {
+  console.log('[schedule.html]');
+  const app = bootApp('schedule.html', '2026-08-06', {
+    onFetch: function (url) { return url.indexOf('version.txt') >= 0 ? CUR_VERSION : null; }
+  });
+  await app.settle();
+
+  eq(typeof app.w.ywOnDayChange, 'function', 'day-gate.js が読み込まれている');
+  eq(app.doc.getElementById('dayGateNotice').style.display, 'none', '起動時、案内帯は出ていない（レイアウトを押し広げない）');
+
+  // 「夜勤帯に配置を組んでいる途中」を作る。ここが消えないことが本番の関心事。
+  app.w.eval([
+    'STATE.selectedDate = "2026-08-06";',
+    'STATE.orderedDayUsers = ["利用者A", "利用者B"];',
+    'STATE.benchUsers = ["利用者C"];',
+    'STATE.koukuChecked = [0, 2];',
+    'STATE.sokuteiChecked = [1];',
+    'STATE.absentNames = ["利用者D"];'
+  ].join(''));
+  const snapKeys = ['orderedDayUsers', 'benchUsers', 'koukuChecked', 'sokuteiChecked', 'absentNames', 'selectedDate'];
+  const before = {};
+  snapKeys.forEach(function (k) { before[k] = app.w.eval('JSON.stringify(STATE.' + k + ')'); });
+  const lsBefore = app.w.eval('JSON.stringify(Object.keys(localStorage).sort().map(function(k){return k + "=" + localStorage.getItem(k);}))');
+  const fetchesBefore = app.fetchUrls.length;
+  const jsonpBefore = app.jsonpUrls.length;
+
+  // ---- 日付をまたぐ ----
+  app.rollTo('2026-08-07');
+  await app.settle();
+
+  // (1) 帯が出ること
+  eq(app.doc.getElementById('dayGateNotice').style.display, '', '日付またぎで案内帯が出る');
+  has(app.text('dayGateNoticeText'), '2026-08-07', '帯に新しい今日が書かれている');
+  has(app.text('dayGateNoticeText'), '2026-08-06', '帯に表示中の日付も書かれている');
+  has(app.text('dayGateNotice'), '消えます', '★押すと配置が消えると帯に明示されている（押してから気づくのでは遅い）');
+
+  // (2) ★状態が1バイトも変わらないこと（ここが本番の関心事）
+  snapKeys.forEach(function (k) {
+    eq(app.w.eval('JSON.stringify(STATE.' + k + ')'), before[k], '★' + k + ' は日付またぎで変化しない');
+  });
+  eq(app.w.eval('JSON.stringify(Object.keys(localStorage).sort().map(function(k){return k + "=" + localStorage.getItem(k);}))'),
+    lsBefore, '★localStorage も変化しない（saveSettings が走っていない）');
+  eq(app.fetchUrls.length, fetchesBefore, '★fetch は増えない（通信しない）');
+  eq(app.jsonpUrls.length, jsonpBefore, '★JSONP も増えない（GASを叩かない）');
+  eq(app.navAttempts.length, 0, 'ページ遷移（location.replace/reload）は起きない');
+
+  // (3) 「閉じる」で帯だけ消える（状態は触らない）
+  app.doc.getElementById('dayGateDismissBtn').dispatchEvent(new app.w.Event('click'));
+  await app.settle();
+  eq(app.doc.getElementById('dayGateNotice').style.display, 'none', '「閉じる」で帯が消える');
+  eq(app.w.eval('JSON.stringify(STATE.orderedDayUsers)'), before.orderedDayUsers, '「閉じる」でも配置は残る');
+
+  // (4) 押されたときだけ切り替わる（既存の onScheduleDateChange を通す）
+  const app2 = bootApp('schedule.html', '2026-08-06', {
+    onFetch: function (url) { return url.indexOf('version.txt') >= 0 ? CUR_VERSION : null; }
+  });
+  await app2.settle();
+  app2.w.eval('STATE.selectedDate = "2026-08-06"; STATE.orderedDayUsers = ["利用者A"];');
+  app2.w.eval('window.__oscCalls = 0; var __origOsc = window.onScheduleDateChange;' +
+    'window.onScheduleDateChange = function () { window.__oscCalls++; return __origOsc.apply(this, arguments); };');
+  app2.rollTo('2026-08-07');
+  await app2.settle();
+  eq(app2.w.eval('window.__oscCalls'), 0, '★帯が出ただけでは onScheduleDateChange は呼ばれない');
+
+  app2.doc.getElementById('dayGateSwitchBtn').dispatchEvent(new app2.w.Event('click'));
+  await app2.settle();
+  eq(app2.w.eval('window.__oscCalls'), 1, '「切り替える」を押したときだけ onScheduleDateChange が呼ばれる');
+  eq(app2.val('schedDateInput'), '2026-08-07', '押すと日付欄が今日へ変わる');
+  eq(app2.doc.getElementById('dayGateNotice').style.display, 'none', '押した後は帯が消える');
+}
+
+// ===================================================================
+// 9) 既存の版ゲートが従来どおり動くこと（今回の変更は追加のみ＝無改変であること）
 // ===================================================================
 const TARGETS = ['session-board.html', 'sougei-view.html', 'sched-grid.html', 'sougei_nisshi.html', 'genba.html',
-  'ケアマネ送付チェックリスト.html', 'cleaning.html'];
+  'ケアマネ送付チェックリスト.html', 'cleaning.html', 'schedule.html'];
 
 async function testVersionGateIntact() {
   console.log('[版ゲート回帰]');
@@ -511,6 +592,7 @@ async function testVersionGateIntact() {
   await testGenba();
   await testCaremanagerSoufu();
   await testCleaning();
+  await testSchedule();
   console.log('');
   console.log('PASS ' + pass + ' / FAIL ' + fail);
   process.exit(fail ? 1 : 0);
