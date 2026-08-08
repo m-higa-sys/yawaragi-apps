@@ -10,9 +10,31 @@
 
   header { background: #2c6e49; color: #fff; padding: 12px 16px; position: sticky; top: 0; z-index: 50; }
   header h1 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
-  .header-sub { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+  /* flex-wrap / gap は 2026-08-08 追加。期限バッジが増えた分、狭い端末では折り返す */
+  .header-sub { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; flex-wrap: wrap; gap: 6px; }
   .month-nav { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: bold; }
-  .month-nav button { background: rgba(255,255,255,.2); border: none; color: #fff; border-radius: 6px; padding: 3px 12px; font-size: 16px; cursor: pointer; }
+
+  /* ★月送りボタン（2026-08-08 社長実測）。押しても見た目が変わらず「押せたか分からない」問題の是正。
+     先頭の * が -webkit-tap-highlight-color:transparent を全要素に効かせている＝ブラウザ既定の
+     タップ反応まで消えているので、:active を自前で持たないと無反応の板になる。
+     transition は 60ms（＝押した瞬間に見える）。長くすると「遅れて光る」になり無意味。 */
+  .month-nav button { background: rgba(255,255,255,.2); border: none; color: #fff; border-radius: 6px;
+                      padding: 3px 12px; font-size: 16px; cursor: pointer;
+                      min-width: 44px; min-height: 44px;   /* iPad の指で押せる最小サイズ */
+                      display: flex; align-items: center; justify-content: center;
+                      user-select: none; -webkit-user-select: none; touch-action: manipulation;
+                      transition: background-color 60ms linear, transform 60ms linear; }
+  .month-nav button:active { background: rgba(255,255,255,.65); color: #2c6e49; transform: scale(0.94); }
+  /* 読込中は押せない（連打で同じ月へ何本もリクエストが飛ぶのを止める）。無効なことを見た目で言う */
+  .month-nav button:disabled { opacity: .38; cursor: default; transform: none; }
+
+  /* ★期限バッジ（2026-08-08）。「いつまでに何をするか」を画面上部に固定する。
+     値は表示中の月から毎回算出＝月送りに必ず追随する（ハードコード禁止）。 */
+  .deadline-badge { font-size: 11px; font-weight: bold; white-space: nowrap; border-radius: 10px;
+                    padding: 3px 9px; background: rgba(255,255,255,.18);
+                    border: 1px solid rgba(255,255,255,.55); color: #fff; }
+  .deadline-badge.over { background: #ffebee; border-color: #ffebee; color: #c62828; }
+
   .sync-info { opacity: .9; font-size: 11px; text-align: right; line-height: 1.4; cursor: pointer; }
 
   .operator-bar { background: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; }
@@ -184,7 +206,8 @@
 <header>
   <h1>📤 ケアマネ提出物 統合管理</h1>
   <div class="header-sub">
-    <div class="month-nav"><button id="prevM">‹</button><span id="ymLabel">—</span><button id="nextM">›</button></div>
+    <!-- 期限バッジの中身は renderDeadlineBadge() が入れる。ここに文言を書かない＝月送りで嘘にならないため -->
+    <div class="month-nav"><button id="prevM" aria-label="前の月">‹</button><span id="ymLabel">—</span><button id="nextM" aria-label="次の月">›</button><span class="deadline-badge" id="deadlineBadge"></span></div>
     <div class="sync-info" id="syncInfo" title="タップで再読込">☁️ 同期中…</div>
   </div>
 </header>
@@ -420,6 +443,8 @@ const state = {
   // dataYm = state.data がどの月のものか。loadFailed = 直近の取得に失敗したか（赤帯の出し分け）。
   // failedSources = 取れなかったものの名前（'利用者情報' / '提出送付台帳'）。赤帯の文言に使う。
   dataYm: '', loadFailed: false, failedSources: [],
+  // loading = 取得が走っている最中か（2026-08-08）。連打・ポーリング・タブ復帰の二重起動を弾く錠。
+  loading: false,
   // 2タブ（2026-08-06）。初期表示は「集める」＝スタッフが開いて最初に見るのは足りないもの。
   // ★保存しない。前回「送る」で終えた人が翌日そのまま開くと、集めるべきものに気づけないため。
   mainTab: 'collect',
@@ -454,6 +479,24 @@ function shiftYM(ym, delta) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 function ymJp(ym) { const [y, m] = ym.split('-'); return y + '年' + Number(m) + '月'; }
+
+// ---------- 提出期限（2026-08-08）----------
+// ケアマネへの提出期限は「その月の分を翌月10日まで」。表示中の月から毎回算出する。
+// ハードコードすると月送りしたとき嘘の期限を出す（＝一番やってはいけない誤報）。
+function deadlineOf(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m, 10);   // m は1始まりなので、そのまま渡すと「翌月」の0始まりindexになる（12月→翌年1月も自動）
+}
+function deadlineText(ym) {
+  const d = deadlineOf(ym);
+  return (d.getMonth() + 1) + '月' + d.getDate() + '日までに提出';
+}
+// 「過ぎている」に当日は含めない（10日当日はまだ間に合う）。時刻を落として日付だけで比べる。
+function isPastDeadline(ym, now) {
+  const d = deadlineOf(ym);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return today.getTime() > d.getTime();
+}
 
 // ---------- データ取得 ----------
 async function loadStaff() {
@@ -756,8 +799,18 @@ function renderOralUnsetNote() {
   document.getElementById('oralUnsetCount').textContent = n;
 }
 
+// 期限バッジ。render() と月送りの両方から呼ぶ（通信の完了を待たずに月表示と一緒に切り替わる）。
+function renderDeadlineBadge() {
+  const el = document.getElementById('deadlineBadge');
+  if (!el) return;
+  el.textContent = deadlineText(state.ym);
+  // 判定はそのつど実時刻で行う。起動時の値を使い回すと、日付を跨いだ端末で色が古いままになる。
+  el.classList.toggle('over', isPastDeadline(state.ym, new Date()));
+}
+
 function render() {
   document.getElementById('ymLabel').textContent = ymJp(state.ym);
+  renderDeadlineBadge();
   renderFilters();
   renderOperatorState();
   renderPdfFolderLink();
@@ -1299,25 +1352,45 @@ function renderLoadFailure() {
     + '<br><small>利用者情報が取得できていません。通信を確認して再読込してください</small></div>';
 }
 
+// 月送りボタンの見た目を「読込中」に倒す（2026-08-08）。
+// 押せない状態を見た目で言わないと、無効化は「反応しない板」と区別がつかない。
+function setNavBusy(busy) {
+  ['prevM', 'nextM'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = !!busy;
+  });
+}
+
+// ★二重起動を入口で弾く（2026-08-08）。連打・5分ポーリング・タブ復帰が重なると
+//   同じ画面へ何本もリクエストが飛び、遅い方の応答が後から上書きして表示が巻き戻る。
 async function reload(silent) {
-  if (!silent) document.getElementById('taskList').innerHTML = '<div class="loading">読み込み中…</div>';
-  let ok = false;
+  if (state.loading) return;
+  state.loading = true;
+  setNavBusy(true);
   try {
-    ok = await loadData(state.ym);
-  } catch (e) {
-    state.loadFailed = true;
-    if (!state.failedSources || !state.failedSources.length) state.failedSources = ['データ'];
-    ok = false;
+    if (!silent) document.getElementById('taskList').innerHTML = '<div class="loading">読み込み中…</div>';
+    let ok = false;
+    try {
+      ok = await loadData(state.ym);
+    } catch (e) {
+      state.loadFailed = true;
+      if (!state.failedSources || !state.failedSources.length) state.failedSources = ['データ'];
+      ok = false;
+    }
+    if (!ok) {
+      // ★ここで return する＝ setSyncTime() を通らない。「最終同期 20:50」と嘘をつかない。
+      renderLoadFailure();
+      return;
+    }
+    document.getElementById('loadError').classList.toggle('hidden', true);
+    state.tasks = buildTasks(state.ym);
+    render();
+    setSyncTime();
+  } finally {
+    // 例外・早期returnのどちらでも必ず戻す。ここを落とすとボタンが永久に無効のまま固まる。
+    state.loading = false;
+    setNavBusy(false);
   }
-  if (!ok) {
-    // ★ここで return する＝ setSyncTime() を通らない。「最終同期 20:50」と嘘をつかない。
-    renderLoadFailure();
-    return;
-  }
-  document.getElementById('loadError').classList.toggle('hidden', true);
-  state.tasks = buildTasks(state.ym);
-  render();
-  setSyncTime();
 }
 function setSyncTime() {
   const d = new Date();
@@ -1325,11 +1398,24 @@ function setSyncTime() {
   document.getElementById('syncInfo').innerHTML = '☁️ 最終同期 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hh + ':' + mi + '<br>タップで再読込';
 }
 
+// 月送り（2026-08-08）。読込中は何もしない＝連打しても通信は1本のまま。
+// 月表示と期限バッジは通信の完了を待たずに先に切り替える（押した手応えを通信速度に依存させない）。
+function goMonth(delta) {
+  if (state.loading) return;
+  state.ym = shiftYM(state.ym, delta);
+  document.getElementById('ymLabel').textContent = ymJp(state.ym);
+  renderDeadlineBadge();
+  reload(false);
+}
+
 // ---------- 初期化 ----------
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
 async function init() {
   state.ym = nowYM();
+  // 期限は通信が要らない＝最初の描画より前に出す。読み込みに失敗しても期限だけは画面に残る。
+  document.getElementById('ymLabel').textContent = ymJp(state.ym);
+  renderDeadlineBadge();
   await loadStaff();
   state.operator = localStorage.getItem(LS_OP) || '';
   const found = state.staff.find(s => s.name === state.operator);
@@ -1338,8 +1424,8 @@ async function init() {
   bindMainTabs();
   await reload(false);
 
-  document.getElementById('prevM').onclick = () => { state.ym = shiftYM(state.ym, -1); reload(false); };
-  document.getElementById('nextM').onclick = () => { state.ym = shiftYM(state.ym, 1); reload(false); };
+  document.getElementById('prevM').onclick = () => goMonth(-1);
+  document.getElementById('nextM').onclick = () => goMonth(1);
   document.getElementById('syncInfo').onclick = () => reload(false);
   document.getElementById('loadErrorRetry').onclick = () => reload(false);
 

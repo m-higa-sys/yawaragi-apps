@@ -78,8 +78,10 @@ function makeEnv(opts) {
     ym: '2026-08', data: null, dataYm: '', tasks: [], loadFailed: false, failedSources: [], search: ''
   }, o.state || {});
 
+  // setNavBusy … 2026-08-08 に reload が呼ぶようになった（読込中は月送りボタンを無効化する）。
+  // 表示層なのでここではカウントするだけ。挙動は test-teishutsu-deadline-ui.js が見る。
   const api = new Function(
-    'BOARD_API', 'jsonp', 'state', 'document', 'buildTasks', 'render', 'setSyncTime', 'normOffice', 'esc',
+    'BOARD_API', 'jsonp', 'state', 'document', 'buildTasks', 'render', 'setSyncTime', 'normOffice', 'esc', 'setNavBusy',
     SRC + '\nreturn { loadWithRetry, loadData, reload };'
   )(
     'https://example.test/exec', jsonp, state,
@@ -87,7 +89,8 @@ function makeEnv(opts) {
     () => { calls.buildTasks++; return [{ userId: 'x', isCarry: true, status: '保留' }]; },
     () => { calls.render++; },
     () => { calls.setSyncTime++; },
-    s => String(s || ''), s => String(s == null ? '' : s)
+    s => String(s || ''), s => String(s == null ? '' : s),
+    (busy) => { calls.navBusy = busy; }
   );
   return { api, state, calls, els };
 }
